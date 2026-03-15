@@ -1,0 +1,55 @@
+[package]
+name = "stitch-dex-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.stitch-dex]
+path = ".."
+features = []
+
+# Fuzz target: parse arbitrary bytes (must not panic)
+[[bin]]
+name = "fuzz_parse"
+path = "fuzz_targets/fuzz_parse.rs"
+test = false
+doc = false
+bench = false
+
+# Fuzz target: parse with lenient options
+[[bin]]
+name = "fuzz_parse_lenient"
+path = "fuzz_targets/fuzz_parse_lenient.rs"
+test = false
+doc = false
+bench = false
+
+# Fuzz target: LEB128 decoder
+[[bin]]
+name = "fuzz_leb128"
+path = "fuzz_targets/fuzz_leb128.rs"
+test = false
+doc = false
+bench = false
+
+# Fuzz target: round-trip (parse then write, must not panic)
+[[bin]]
+name = "fuzz_round_trip"
+path = "fuzz_targets/fuzz_round_trip.rs"
+test = false
+doc = false
+bench = false
+
+# Fuzz target: MUTF-8 decoder
+[[bin]]
+name = "fuzz_mutf8"
+path = "fuzz_targets/fuzz_mutf8.rs"
+test = false
+doc = false
+bench = false

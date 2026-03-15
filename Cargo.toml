@@ -1,0 +1,35 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/dex",
+    "crates/apk",
+    "crates/sign",
+    "crates/patcher",
+    "crates/cli",
+]
+
+[workspace.dependencies]
+# Internal crates
+stitch-dex     = { path = "crates/dex" }
+stitch-apk     = { path = "crates/apk" }
+stitch-sign    = { path = "crates/sign" }
+stitch-patcher = { path = "crates/patcher" }
+
+# Shared external dependencies (pinned versions for all crates)
+thiserror   = "2"
+bitflags    = "2"
+smallvec    = "1"
+sha1        = "0.10"
+adler       = "1"
+rayon       = "1.10"
+memmap2     = "0.9"
+zip         = "2"
+ring        = "0.17"
+mlua        = { version = "0.10", features = ["lua54", "vendored"] }
+clap        = { version = "4", features = ["derive"] }
+anyhow      = "1"
+
+# Shared dev dependencies
+pretty_assertions = "1"
+criterion         = "0.5"
+tempfile          = "3"

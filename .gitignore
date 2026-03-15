@@ -1,0 +1,5 @@
+/target
+/test-apks/*.apk
+*.apk
+ARCHITECTURE.md
+WORK_LOG.md

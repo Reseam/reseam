@@ -1,0 +1,28 @@
+[package]
+name = "stitch-dex"
+version = "0.1.0"
+edition = "2021"
+description = "A high-performance DEX file parser, writer, and mutator"
+license = "GPL-3.0"
+
+[dependencies]
+thiserror = { workspace = true }
+bitflags  = { workspace = true }
+smallvec  = { workspace = true }
+sha1      = { workspace = true }
+adler     = { workspace = true }
+memmap2   = { workspace = true, optional = true }
+rayon     = { workspace = true, optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+criterion         = { workspace = true }
+
+[features]
+default = ["mmap", "parallel"]
+mmap = ["dep:memmap2"]
+parallel = ["dep:rayon"]
+
+[[bench]]
+name = "dex_bench"
+harness = false

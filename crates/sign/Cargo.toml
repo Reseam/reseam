@@ -1,0 +1,11 @@
+[package]
+name = "stitch-sign"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ring      = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

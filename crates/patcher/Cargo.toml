@@ -1,0 +1,13 @@
+[package]
+name = "stitch-patcher"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+stitch-apk = { workspace = true }
+thiserror  = { workspace = true }
+mlua       = { workspace = true, optional = true }
+
+[features]
+default = ["lua"]
+lua = ["dep:mlua"]
