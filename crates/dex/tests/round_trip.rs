@@ -18,6 +18,6 @@ fn test_parse_truncated_input_returns_error_instead_of_panicking() {
                 ..ParseOptions::default()
             },
         ),
-        Err(stitch_dex::DexError::ParserPanic { .. })
+        Err(stitch_dex::DexError::Truncated { .. })
     ));
 }

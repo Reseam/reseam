@@ -1,5 +1,5 @@
 use crate::encoding::leb128::read_uleb128;
-use crate::error::{DexError, Result};
+use crate::error::{invalid_encoded_value_type, read_u8, Result};
 use crate::model::encoded_value::{EncodedAnnotation, EncodedAnnotationElement, EncodedValue};
 use crate::model::field::FieldIdx;
 use crate::model::method::MethodIdx;
@@ -10,9 +10,9 @@ use crate::model::types::TypeIdx;
 
 pub fn read_encoded_value(buf: &[u8], pos: usize) -> Result<(EncodedValue, usize)> {
     if pos >= buf.len() {
-        return Err(DexError::BufferExhausted { offset: pos });
+        return Err(crate::error::buffer_exhausted("encoded value", pos));
     }
-    let header = buf[pos];
+    let header = read_u8(buf, pos, "encoded value")?;
     let value_type = header & 0x1F;
     let value_arg = (header >> 5) as usize;
     let offset = pos + 1;
@@ -135,7 +135,7 @@ pub fn read_encoded_value(buf: &[u8], pos: usize) -> Result<(EncodedValue, usize
             // BOOLEAN — value_arg IS the value
             Ok((EncodedValue::Boolean(value_arg != 0), 1))
         }
-        _ => Err(DexError::InvalidEncodedValueType { type_byte: header }),
+        _ => Err(invalid_encoded_value_type(header)),
     }
 }
 

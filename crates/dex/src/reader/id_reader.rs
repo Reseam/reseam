@@ -12,7 +12,7 @@ pub fn read_string_ids(buf: &[u8], off: u32, count: u32) -> Result<Vec<u32>> {
     let mut offsets = Vec::with_capacity(count as usize);
     let base = off as usize;
     for i in 0..count as usize {
-        offsets.push(u32_at(buf, base + i * 4));
+        offsets.push(u32_at(buf, base + i * 4)?);
     }
     Ok(offsets)
 }
@@ -36,7 +36,7 @@ pub fn read_type_ids(buf: &[u8], off: u32, count: u32) -> Result<Vec<StringIdx>>
     let mut types = Vec::with_capacity(count as usize);
     let base = off as usize;
     for i in 0..count as usize {
-        types.push(StringIdx(u32_at(buf, base + i * 4)));
+        types.push(StringIdx(u32_at(buf, base + i * 4)?));
     }
     Ok(types)
 }
@@ -46,9 +46,9 @@ pub fn read_proto_ids(buf: &[u8], off: u32, count: u32) -> Result<Vec<Prototype>
     let base = off as usize;
     for i in 0..count as usize {
         let entry_off = base + i * 12;
-        let shorty = StringIdx(u32_at(buf, entry_off));
-        let return_type = TypeIdx(u32_at(buf, entry_off + 4));
-        let params_off = u32_at(buf, entry_off + 8);
+        let shorty = StringIdx(u32_at(buf, entry_off)?);
+        let return_type = TypeIdx(u32_at(buf, entry_off + 4)?);
+        let params_off = u32_at(buf, entry_off + 8)?;
 
         let parameters = if params_off != 0 {
             read_type_list(buf, params_off)?
@@ -67,10 +67,10 @@ pub fn read_proto_ids(buf: &[u8], off: u32, count: u32) -> Result<Vec<Prototype>
 
 pub fn read_type_list(buf: &[u8], off: u32) -> Result<Vec<TypeIdx>> {
     let base = off as usize;
-    let size = u32_at(buf, base) as usize;
+    let size = u32_at(buf, base)? as usize;
     let mut list = Vec::with_capacity(size);
     for i in 0..size {
-        list.push(TypeIdx(u16_at(buf, base + 4 + i * 2) as u32));
+        list.push(TypeIdx(u16_at(buf, base + 4 + i * 2)? as u32));
     }
     Ok(list)
 }
@@ -81,9 +81,9 @@ pub fn read_field_ids(buf: &[u8], off: u32, count: u32) -> Result<Vec<FieldId>> 
     for i in 0..count as usize {
         let entry_off = base + i * 8;
         fields.push(FieldId {
-            class: TypeIdx(u16_at(buf, entry_off) as u32),
-            type_: TypeIdx(u16_at(buf, entry_off + 2) as u32),
-            name: StringIdx(u32_at(buf, entry_off + 4)),
+            class: TypeIdx(u16_at(buf, entry_off)? as u32),
+            type_: TypeIdx(u16_at(buf, entry_off + 2)? as u32),
+            name: StringIdx(u32_at(buf, entry_off + 4)?),
         });
     }
     Ok(fields)
@@ -95,9 +95,9 @@ pub fn read_method_ids(buf: &[u8], off: u32, count: u32) -> Result<Vec<MethodId>
     for i in 0..count as usize {
         let entry_off = base + i * 8;
         methods.push(MethodId {
-            class: TypeIdx(u16_at(buf, entry_off) as u32),
-            proto: ProtoIdx(u16_at(buf, entry_off + 2)),
-            name: StringIdx(u32_at(buf, entry_off + 4)),
+            class: TypeIdx(u16_at(buf, entry_off)? as u32),
+            proto: ProtoIdx(u16_at(buf, entry_off + 2)?),
+            name: StringIdx(u32_at(buf, entry_off + 4)?),
         });
     }
     Ok(methods)

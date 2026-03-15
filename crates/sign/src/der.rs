@@ -1,4 +1,4 @@
-/// Minimal DER encoder — only the subset needed for self-signed ECDSA certs.
+//! Minimal DER encoder for the subset needed by self-signed ECDSA certs.
 
 const TAG_INTEGER: u8 = 0x02;
 const TAG_BIT_STRING: u8 = 0x03;

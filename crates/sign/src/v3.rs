@@ -1,6 +1,6 @@
 use crate::error::Result;
 use crate::keystore::SigningKey;
-use crate::signing_block::{self, ApkSections, BLOCK_ID_V2, BLOCK_ID_V3};
+use crate::signing_block::{self, BLOCK_ID_V2, BLOCK_ID_V3};
 use crate::v2;
 
 pub fn sign(apk: &[u8], key: &SigningKey) -> Result<Vec<u8>> {
@@ -14,14 +14,17 @@ pub fn sign_with_sdk_range(
     max_sdk: u32,
 ) -> Result<Vec<u8>> {
     let sections = signing_block::split_apk(apk)?;
+    let target_len = target_signing_block_len(key)?;
+    let new_cd_offset = v2::checked_cd_offset(sections.contents.len(), target_len)?;
+    let digest = v2::compute_content_digest(&sections, new_cd_offset)?;
 
-    let v2_block = v2::build_v2_block_from_sections(&sections, key)?;
-    let v3_block = build_v3_block(&sections, key, min_sdk, max_sdk)?;
+    let v2_block = v2::build_v2_block_from_digest(&digest, key)?;
+    let v3_block = build_v3_block_from_digest(&digest, key, min_sdk, max_sdk)?;
 
-    let signing_block = signing_block::build_signing_block(&[
-        (BLOCK_ID_V2, v2_block),
-        (BLOCK_ID_V3, v3_block),
-    ]);
+    let signing_block = signing_block::build_signing_block_with_padding(
+        &[(BLOCK_ID_V2, v2_block), (BLOCK_ID_V3, v3_block)],
+        target_len,
+    )?;
 
     signing_block::reassemble_apk(
         sections.contents,
@@ -32,13 +35,13 @@ pub fn sign_with_sdk_range(
 }
 
 /// V3 wraps the v2 signer with minSDK/maxSDK fields prepended.
-fn build_v3_block(
-    sections: &ApkSections<'_>,
+fn build_v3_block_from_digest(
+    digest: &[u8],
     key: &SigningKey,
     min_sdk: u32,
     max_sdk: u32,
 ) -> Result<Vec<u8>> {
-    let v2_signer = v2::build_signer_from_sections(sections, key)?;
+    let v2_signer = v2::build_signer_from_digest(digest, key)?;
 
     let mut v3_signer = Vec::new();
     v3_signer.extend_from_slice(&min_sdk.to_le_bytes());
@@ -49,4 +52,14 @@ fn build_v3_block(
     block.extend_from_slice(&(v3_signer.len() as u32).to_le_bytes());
     block.extend_from_slice(&v3_signer);
     Ok(block)
+}
+
+fn target_signing_block_len(key: &SigningKey) -> Result<usize> {
+    let v2_block_len = v2::max_block_len(key)?;
+    let v3_block_len = v2::max_signer_len(key)? + 12;
+    Ok(signing_block::signing_block_len(&[
+        v2_block_len,
+        v3_block_len,
+        0,
+    ]))
 }

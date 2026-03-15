@@ -4,7 +4,6 @@ use super::encoded_value_reader::read_encoded_array;
 use super::header_reader::u32_at;
 use super::id_reader::read_type_list;
 use crate::encoding::leb128::read_uleb128;
-use crate::error::catch_parser_panic;
 use crate::error::Result;
 use crate::model::access_flags::AccessFlags;
 use crate::model::class::{ClassData, ClassDef, EncodedField, EncodedMethod, NO_INDEX};
@@ -35,14 +34,14 @@ fn read_class_defs_impl(
 
     for i in 0..count as usize {
         let entry_off = base + i * 32;
-        let class_idx = u32_at(buf, entry_off);
-        let access_flags_raw = u32_at(buf, entry_off + 4);
-        let superclass_idx = u32_at(buf, entry_off + 8);
-        let interfaces_off = u32_at(buf, entry_off + 12);
-        let source_file_idx = u32_at(buf, entry_off + 16);
-        let annotations_off = u32_at(buf, entry_off + 20);
-        let class_data_off = u32_at(buf, entry_off + 24);
-        let static_values_off = u32_at(buf, entry_off + 28);
+        let class_idx = u32_at(buf, entry_off)?;
+        let access_flags_raw = u32_at(buf, entry_off + 4)?;
+        let superclass_idx = u32_at(buf, entry_off + 8)?;
+        let interfaces_off = u32_at(buf, entry_off + 12)?;
+        let source_file_idx = u32_at(buf, entry_off + 16)?;
+        let annotations_off = u32_at(buf, entry_off + 20)?;
+        let class_data_off = u32_at(buf, entry_off + 24)?;
+        let static_values_off = u32_at(buf, entry_off + 28)?;
 
         let superclass = if superclass_idx == NO_INDEX {
             None
@@ -103,7 +102,7 @@ fn read_class_defs_impl(
 
 /// Parse class data at a specific offset. Used by lazy resolution.
 pub fn read_class_data_at(buf: &[u8], off: usize) -> Result<ClassData> {
-    catch_parser_panic("resolving class data", || read_class_data(buf, off as u32))
+    read_class_data(buf, off as u32)
 }
 
 fn read_class_data(buf: &[u8], off: u32) -> Result<ClassData> {

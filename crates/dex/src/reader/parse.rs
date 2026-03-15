@@ -3,7 +3,9 @@ use super::encoded_value_reader::read_encoded_array;
 use super::header_reader::{read_header, u16_at, u32_at};
 use super::id_reader::*;
 use crate::encoding::leb128::read_uleb128;
-use crate::error::{catch_parser_panic, DexError, Result};
+use crate::error::{
+    invalid_call_site, invalid_hidden_api_flag, invalid_method_handle_type, Result,
+};
 use crate::model::call_site::CallSiteItem;
 use crate::model::dex_file::DexFile;
 use crate::model::encoded_value::EncodedValue;
@@ -15,7 +17,7 @@ use crate::model::method_handle::{MethodHandle, MethodHandleMember, MethodHandle
 use std::sync::Arc;
 
 pub fn parse(buf: &[u8], opts: ParseOptions) -> Result<DexFile> {
-    catch_parser_panic("parsing DEX data", || parse_impl(buf, opts))
+    parse_impl(buf, opts)
 }
 
 fn parse_impl(buf: &[u8], opts: ParseOptions) -> Result<DexFile> {
@@ -72,7 +74,7 @@ fn parse_impl(buf: &[u8], opts: ParseOptions) -> Result<DexFile> {
 
     // Parse map list to find optional sections
     let map_off = header.map_off as usize;
-    let map_size = u32_at(buf, map_off) as usize;
+    let map_size = u32_at(buf, map_off)? as usize;
 
     let mut call_site_off: Option<(u32, u32)> = None;
     let mut method_handle_off: Option<(u32, u32)> = None;
@@ -80,9 +82,9 @@ fn parse_impl(buf: &[u8], opts: ParseOptions) -> Result<DexFile> {
 
     for i in 0..map_size {
         let entry = map_off + 4 + i * 12;
-        let type_code = u16_at(buf, entry);
-        let size = u32_at(buf, entry + 4);
-        let offset = u32_at(buf, entry + 8);
+        let type_code = u16_at(buf, entry)?;
+        let size = u32_at(buf, entry + 4)?;
+        let offset = u32_at(buf, entry + 8)?;
 
         match type_code {
             0x0007 => call_site_off = Some((offset, size)),
@@ -117,14 +119,11 @@ fn read_method_handles(
     if let Some((off, count)) = method_handle_off {
         for i in 0..count as usize {
             let base = off as usize + i * 8;
-            let handle_type_raw = u16_at(buf, base);
-            let member_id = u16_at(buf, base + 4);
+            let handle_type_raw = u16_at(buf, base)?;
+            let member_id = u16_at(buf, base + 4)?;
 
-            let handle_type = MethodHandleType::from_u16(handle_type_raw).ok_or(
-                DexError::InvalidMethodHandleType {
-                    value: handle_type_raw,
-                },
-            )?;
+            let handle_type = MethodHandleType::from_u16(handle_type_raw)
+                .ok_or_else(|| invalid_method_handle_type(handle_type_raw))?;
 
             let member = if handle_type.is_field() {
                 MethodHandleMember::Field(FieldIdx(member_id as u32))
@@ -144,41 +143,38 @@ fn read_method_handles(
 fn read_call_sites(buf: &[u8], call_site_off: Option<(u32, u32)>, dex: &mut DexFile) -> Result<()> {
     if let Some((off, count)) = call_site_off {
         for i in 0..count as usize {
-            let cs_off = u32_at(buf, off as usize + i * 4);
+            let cs_off = u32_at(buf, off as usize + i * 4)?;
             let (values, _) = read_encoded_array(buf, cs_off as usize)?;
 
             if values.len() < 3 {
-                return Err(DexError::InvalidCallSite {
-                    index: i as u32,
-                    detail: format!("expected at least 3 elements, got {}", values.len()),
-                });
+                return Err(invalid_call_site(
+                    i as u32,
+                    format!("expected at least 3 elements, got {}", values.len()),
+                ));
             }
 
             let bootstrap_method = match &values[0] {
                 EncodedValue::MethodHandle(idx) => *idx,
                 _ => {
-                    return Err(DexError::InvalidCallSite {
-                        index: i as u32,
-                        detail: "bootstrap method is not a method handle".to_owned(),
-                    });
+                    return Err(invalid_call_site(
+                        i as u32,
+                        "bootstrap method is not a method handle",
+                    ));
                 }
             };
             let method_name = match &values[1] {
                 EncodedValue::String(idx) => *idx,
                 _ => {
-                    return Err(DexError::InvalidCallSite {
-                        index: i as u32,
-                        detail: "method name is not a string".to_owned(),
-                    });
+                    return Err(invalid_call_site(i as u32, "method name is not a string"));
                 }
             };
             let method_type = match &values[2] {
                 EncodedValue::MethodType(idx) => *idx,
                 _ => {
-                    return Err(DexError::InvalidCallSite {
-                        index: i as u32,
-                        detail: "method type is not a method type".to_owned(),
-                    });
+                    return Err(invalid_call_site(
+                        i as u32,
+                        "method type is not a method type",
+                    ));
                 }
             };
 
@@ -202,7 +198,7 @@ fn read_hidden_api(buf: &[u8], off: usize, dex: &DexFile) -> Result<HiddenApiDat
     // Read offset table: one u32 per class_def
     let mut data_offsets = Vec::with_capacity(class_count);
     for i in 0..class_count {
-        data_offsets.push(u32_at(buf, off + i * 4));
+        data_offsets.push(u32_at(buf, off + i * 4)?);
     }
 
     // For each class, read the flag sequences
@@ -229,10 +225,7 @@ fn read_hidden_api(buf: &[u8], off: usize, dex: &DexFile) -> Result<HiddenApiDat
             for _ in 0..count {
                 let (v, consumed) = read_uleb128(buf, pos)?;
                 pos += consumed;
-                flags.push(
-                    HiddenApiFlag::from_u32(v)
-                        .ok_or(DexError::InvalidHiddenApiFlag { value: v })?,
-                );
+                flags.push(HiddenApiFlag::from_u32(v).ok_or_else(|| invalid_hidden_api_flag(v))?);
             }
             Ok(flags)
         };
@@ -261,6 +254,7 @@ mod tests {
     use crate::model::field::FieldIdx;
     use crate::model::header::{DexHeader, DexVersion};
     use crate::model::types::TypeIdx;
+    use crate::DexError;
 
     use super::*;
 
@@ -305,7 +299,13 @@ mod tests {
         let mut dex = DexFile::new(empty_header());
         let error = read_call_sites(&buf, Some((0, 1)), &mut dex).unwrap_err();
 
-        assert!(matches!(error, DexError::InvalidCallSite { index: 0, .. }));
+        assert!(matches!(
+            error,
+            DexError::Malformed {
+                section: "call site",
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -335,7 +335,7 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            DexError::InvalidHiddenApiFlag { value: 99 }.to_string()
+            crate::error::invalid_hidden_api_flag(99).to_string()
         );
     }
 }

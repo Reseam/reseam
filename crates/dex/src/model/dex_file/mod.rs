@@ -22,7 +22,7 @@ use super::method_handle::MethodHandle;
 use super::proto::Prototype;
 use super::string::{DexString, StringIdx};
 use super::types::TypeIdx;
-use crate::error::DexError;
+use crate::error::{index_out_of_bounds, invalid_offset};
 
 pub use pattern::{InstructionPattern, OpcodeMatcher};
 pub use search::MethodMatch;
@@ -112,11 +112,11 @@ impl DexFile {
         };
 
         if class_idx >= offsets.len() || class_idx >= self.classes.len() {
-            return Err(DexError::IndexOutOfBounds {
-                index_type: "class",
-                index: class_idx as u32,
-                table_size: self.classes.len() as u32,
-            });
+            return Err(index_out_of_bounds(
+                "class",
+                class_idx as u32,
+                self.classes.len() as u32,
+            ));
         }
 
         let offset = offsets[class_idx];
@@ -124,11 +124,10 @@ impl DexFile {
             return Ok(false);
         }
 
-        let raw = self.raw.as_ref().ok_or(DexError::InvalidOffset {
-            section: "lazy resolve requires raw buffer",
-            offset,
-            file_size: 0,
-        })?;
+        let raw = self
+            .raw
+            .as_ref()
+            .ok_or_else(|| invalid_offset("lazy class data", offset, 0))?;
         let class_data = crate::reader::class_reader::read_class_data_at(raw, offset as usize)?;
         self.classes[class_idx].class_data = Some(class_data);
         Ok(true)

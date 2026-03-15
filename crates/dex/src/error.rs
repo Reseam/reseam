@@ -1,101 +1,38 @@
-use std::any::Any;
-use std::panic::{catch_unwind, AssertUnwindSafe};
-
 /// Errors produced while parsing, validating, or writing DEX data.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum DexError {
-    #[error("Invalid magic bytes: expected dex\\n0NN\\0, got {found:?}")]
-    InvalidMagic { found: [u8; 8] },
-
-    #[error("Unsupported DEX version: {version}")]
-    UnsupportedVersion { version: String },
-
-    #[error("Checksum mismatch: expected {expected:#010x}, computed {computed:#010x}")]
-    ChecksumMismatch { expected: u32, computed: u32 },
-
-    #[error("Signature mismatch")]
-    SignatureMismatch,
-
-    #[error("File truncated: expected {expected} bytes, got {actual}")]
-    FileTruncated { expected: usize, actual: usize },
-
-    #[error("Invalid offset {offset:#010x} for {section} (file size: {file_size:#010x})")]
-    InvalidOffset {
-        offset: u32,
+    #[error("truncated {section} at offset {offset:#x}: need {needed} bytes, have {available}")]
+    Truncated {
         section: &'static str,
-        file_size: u32,
+        offset: usize,
+        needed: usize,
+        available: usize,
     },
 
-    #[error("Invalid LEB128 encoding at offset {offset:#010x}")]
-    InvalidLeb128 { offset: usize },
-
-    #[error("Invalid MUTF-8 encoding at offset {offset:#010x}: {detail}")]
-    InvalidMutf8 { offset: usize, detail: String },
-
-    #[error("Invalid opcode {opcode:#04x} at code offset {offset}")]
-    InvalidOpcode { opcode: u8, offset: u32 },
-
-    #[error("String table not sorted at index {index}")]
-    StringTableUnsorted { index: u32 },
-
-    #[error("Duplicate class definition for {descriptor}")]
-    DuplicateClass { descriptor: String },
-
-    #[error("Index out of bounds: {index_type} index {index} >= table size {table_size}")]
-    IndexOutOfBounds {
-        index_type: &'static str,
-        index: u32,
-        table_size: u32,
-    },
-
-    #[error("Alignment violation: {section} at offset {offset:#010x} (required: {required}-byte)")]
-    AlignmentViolation {
+    #[error("malformed {section} at offset {offset:#x}: {reason}")]
+    Malformed {
         section: &'static str,
-        offset: u32,
-        required: u32,
+        offset: usize,
+        reason: String,
     },
 
-    #[error("Invalid header size: expected 0x70, got {size:#x}")]
-    InvalidHeaderSize { size: u32 },
-
-    #[error("Invalid endian tag: expected 0x12345678, got {tag:#010x}")]
-    InvalidEndianTag { tag: u32 },
-
-    #[error("Invalid encoded value type {type_byte:#04x}")]
-    InvalidEncodedValueType { type_byte: u8 },
-
-    #[error("Invalid annotation visibility {value}")]
-    InvalidAnnotationVisibility { value: u8 },
-
-    #[error("Invalid method handle type {value}")]
-    InvalidMethodHandleType { value: u16 },
-
-    #[error("Invalid debug bytecode {opcode:#04x}")]
-    InvalidDebugBytecode { opcode: u8 },
-
-    #[error("Buffer exhausted at offset {offset}")]
-    BufferExhausted { offset: usize },
-
-    #[error("Invalid catch handler size")]
-    InvalidCatchHandlerSize,
-
-    #[error("Invalid {kind}: {descriptor}")]
-    InvalidDescriptor {
-        kind: &'static str,
-        descriptor: String,
+    #[error("invalid {section}: {reason}")]
+    Invalid {
+        section: &'static str,
+        reason: String,
     },
 
-    #[error("Invalid call site at index {index}: {detail}")]
-    InvalidCallSite { index: u32, detail: String },
-
-    #[error("Invalid hidden API flag {value}")]
-    InvalidHiddenApiFlag { value: u32 },
-
-    #[error("Parser panic while {context}: {detail}")]
-    ParserPanic {
-        context: &'static str,
+    #[error("unsupported {feature}: {detail}")]
+    Unsupported {
+        feature: &'static str,
         detail: String,
+    },
+
+    #[error("internal error while {operation}: {reason}")]
+    Internal {
+        operation: &'static str,
+        reason: String,
     },
 
     #[error("IO error: {0}")]
@@ -105,26 +42,163 @@ pub enum DexError {
 /// Convenient result alias used throughout the crate.
 pub type Result<T> = std::result::Result<T, DexError>;
 
-/// Converts unexpected parser panics into structured errors.
-pub(crate) fn catch_parser_panic<T>(
-    context: &'static str,
-    f: impl FnOnce() -> Result<T>,
-) -> Result<T> {
-    match catch_unwind(AssertUnwindSafe(f)) {
-        Ok(result) => result,
-        Err(payload) => Err(DexError::ParserPanic {
-            context,
-            detail: panic_payload_message(&payload),
-        }),
+pub(crate) fn truncated(
+    section: &'static str,
+    offset: usize,
+    needed: usize,
+    available: usize,
+) -> DexError {
+    DexError::Truncated {
+        section,
+        offset,
+        needed,
+        available,
     }
 }
 
-fn panic_payload_message(payload: &Box<dyn Any + Send>) -> String {
-    if let Some(message) = payload.downcast_ref::<&str>() {
-        return (*message).to_owned();
+pub(crate) fn malformed(
+    section: &'static str,
+    offset: usize,
+    reason: impl Into<String>,
+) -> DexError {
+    DexError::Malformed {
+        section,
+        offset,
+        reason: reason.into(),
     }
-    if let Some(message) = payload.downcast_ref::<String>() {
-        return message.clone();
+}
+
+pub(crate) fn invalid(section: &'static str, reason: impl Into<String>) -> DexError {
+    DexError::Invalid {
+        section,
+        reason: reason.into(),
     }
-    "unknown panic payload".to_owned()
+}
+
+pub(crate) fn unsupported(feature: &'static str, detail: impl Into<String>) -> DexError {
+    DexError::Unsupported {
+        feature,
+        detail: detail.into(),
+    }
+}
+
+pub(crate) fn require_len(
+    buf: &[u8],
+    offset: usize,
+    needed: usize,
+    section: &'static str,
+) -> Result<()> {
+    if offset.checked_add(needed).is_none_or(|end| end > buf.len()) {
+        return Err(truncated(
+            section,
+            offset,
+            needed,
+            buf.len().saturating_sub(offset),
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn slice<'a>(
+    buf: &'a [u8],
+    offset: usize,
+    len: usize,
+    section: &'static str,
+) -> Result<&'a [u8]> {
+    require_len(buf, offset, len, section)?;
+    Ok(&buf[offset..offset + len])
+}
+
+pub(crate) fn read_u8(buf: &[u8], offset: usize, section: &'static str) -> Result<u8> {
+    require_len(buf, offset, 1, section)?;
+    Ok(buf[offset])
+}
+
+pub(crate) fn read_u16_le(buf: &[u8], offset: usize, section: &'static str) -> Result<u16> {
+    let bytes = slice(buf, offset, 2, section)?;
+    Ok(u16::from_le_bytes([bytes[0], bytes[1]]))
+}
+
+pub(crate) fn read_u32_le(buf: &[u8], offset: usize, section: &'static str) -> Result<u32> {
+    let bytes = slice(buf, offset, 4, section)?;
+    Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+}
+
+pub(crate) fn buffer_exhausted(section: &'static str, offset: usize) -> DexError {
+    truncated(section, offset, 1, 0)
+}
+
+pub(crate) fn invalid_leb128(offset: usize) -> DexError {
+    malformed("leb128", offset, "invalid LEB128 encoding")
+}
+
+pub(crate) fn invalid_mutf8(offset: usize, detail: impl Into<String>) -> DexError {
+    malformed("mutf8", offset, detail)
+}
+
+pub(crate) fn invalid_descriptor(kind: &'static str, descriptor: impl Into<String>) -> DexError {
+    invalid(kind, format!("invalid descriptor: {}", descriptor.into()))
+}
+
+pub(crate) fn index_out_of_bounds(
+    index_type: &'static str,
+    index: u32,
+    table_size: u32,
+) -> DexError {
+    invalid(
+        index_type,
+        format!("index {index} is out of bounds for table size {table_size}"),
+    )
+}
+
+pub(crate) fn invalid_offset(section: &'static str, offset: u32, file_size: u32) -> DexError {
+    malformed(
+        section,
+        offset as usize,
+        format!("offset is outside file bounds (file size: {file_size:#x})"),
+    )
+}
+
+pub(crate) fn invalid_magic(found: [u8; 8]) -> DexError {
+    invalid("dex header", format!("invalid magic bytes: {found:?}"))
+}
+
+pub(crate) fn checksum_mismatch(expected: u32, computed: u32) -> DexError {
+    invalid(
+        "dex header",
+        format!("checksum mismatch: expected {expected:#010x}, computed {computed:#010x}"),
+    )
+}
+
+pub(crate) fn signature_mismatch() -> DexError {
+    invalid("dex header", "signature mismatch")
+}
+
+pub(crate) fn invalid_method_handle_type(value: u16) -> DexError {
+    invalid(
+        "method handle",
+        format!("invalid method handle type {value}"),
+    )
+}
+
+pub(crate) fn invalid_call_site(index: u32, detail: impl Into<String>) -> DexError {
+    malformed("call site", index as usize, detail)
+}
+
+pub(crate) fn invalid_hidden_api_flag(value: u32) -> DexError {
+    invalid("hidden api", format!("invalid hidden API flag {value}"))
+}
+
+pub(crate) fn invalid_annotation_visibility(value: u8) -> DexError {
+    invalid(
+        "annotation",
+        format!("invalid annotation visibility {value}"),
+    )
+}
+
+pub(crate) fn invalid_encoded_value_type(type_byte: u8) -> DexError {
+    invalid(
+        "encoded value",
+        format!("invalid encoded value type {type_byte:#04x}"),
+    )
 }

@@ -1,4 +1,4 @@
-use crate::error::{DexError, Result};
+use crate::error::{invalid_mutf8, Result};
 
 pub fn decode_mutf8(bytes: &[u8]) -> Result<String> {
     decode_mutf8_at(bytes, 0)
@@ -19,10 +19,7 @@ pub fn decode_mutf8_at(bytes: &[u8], offset: usize) -> Result<String> {
         } else if b0 & 0xE0 == 0xC0 {
             // Two bytes: 110xxxxx 10xxxxxx
             if i >= bytes.len() {
-                return Err(DexError::InvalidMutf8 {
-                    offset: offset + i - 1,
-                    detail: "truncated 2-byte sequence".into(),
-                });
+                return Err(invalid_mutf8(offset + i - 1, "truncated 2-byte sequence"));
             }
             let b1 = bytes[i];
             i += 1;
@@ -36,10 +33,7 @@ pub fn decode_mutf8_at(bytes: &[u8], offset: usize) -> Result<String> {
         } else if b0 & 0xF0 == 0xE0 {
             // Three bytes: 1110xxxx 10xxxxxx 10xxxxxx
             if i + 1 >= bytes.len() {
-                return Err(DexError::InvalidMutf8 {
-                    offset: offset + i - 1,
-                    detail: "truncated 3-byte sequence".into(),
-                });
+                return Err(invalid_mutf8(offset + i - 1, "truncated 3-byte sequence"));
             }
             let b1 = bytes[i];
             let b2 = bytes[i + 1];

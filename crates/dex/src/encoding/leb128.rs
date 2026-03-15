@@ -1,4 +1,4 @@
-use crate::error::{DexError, Result};
+use crate::error::{buffer_exhausted, invalid_leb128, Result};
 
 pub fn read_uleb128(buf: &[u8], pos: usize) -> Result<(u32, usize)> {
     let mut value: u32 = 0;
@@ -6,7 +6,7 @@ pub fn read_uleb128(buf: &[u8], pos: usize) -> Result<(u32, usize)> {
     let mut i = 0;
     loop {
         if pos + i >= buf.len() {
-            return Err(DexError::BufferExhausted { offset: pos + i });
+            return Err(buffer_exhausted("leb128", pos + i));
         }
         let byte = buf[pos + i];
         i += 1;
@@ -16,7 +16,7 @@ pub fn read_uleb128(buf: &[u8], pos: usize) -> Result<(u32, usize)> {
         }
         shift += 7;
         if i >= 5 {
-            return Err(DexError::InvalidLeb128 { offset: pos });
+            return Err(invalid_leb128(pos));
         }
     }
     Ok((value, i))
@@ -29,7 +29,7 @@ pub fn read_sleb128(buf: &[u8], pos: usize) -> Result<(i32, usize)> {
     let mut byte;
     loop {
         if pos + i >= buf.len() {
-            return Err(DexError::BufferExhausted { offset: pos + i });
+            return Err(buffer_exhausted("leb128", pos + i));
         }
         byte = buf[pos + i];
         i += 1;
@@ -39,7 +39,7 @@ pub fn read_sleb128(buf: &[u8], pos: usize) -> Result<(i32, usize)> {
             break;
         }
         if i >= 5 {
-            return Err(DexError::InvalidLeb128 { offset: pos });
+            return Err(invalid_leb128(pos));
         }
     }
     if shift < 32 && (byte & 0x40) != 0 {

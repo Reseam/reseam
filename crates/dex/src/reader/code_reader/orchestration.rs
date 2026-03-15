@@ -8,6 +8,7 @@ use crate::model::code::CodeItem;
 /// Decodes one `code_item`, including debug info and exception metadata.
 pub fn read_code_item(buf: &[u8], off: u32) -> Result<CodeItem> {
     let base = off as usize;
+    crate::error::require_len(buf, base, 16, "code item")?;
     let registers_size = u16_at(buf, base);
     let ins_size = u16_at(buf, base + 2);
     let outs_size = u16_at(buf, base + 4);

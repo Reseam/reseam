@@ -10,7 +10,6 @@ fn hi8(unit: u16) -> u8 {
     (unit >> 8) as u8
 }
 
-/// Decodes the register list packed into a 35c-style invoke operand.
 pub(crate) fn decode_35c_args(count: u8, reg_unit: u16, unit0: u16) -> SmallVec<[u8; 5]> {
     let c = (reg_unit & 0xF) as u8;
     let d = ((reg_unit >> 4) & 0xF) as u8;
@@ -26,7 +25,6 @@ pub(crate) fn decode_35c_args(count: u8, reg_unit: u16, unit0: u16) -> SmallVec<
     args
 }
 
-/// Decodes the invoke-family opcodes that use the 35c format.
 pub fn decode_35c_invoke(buf: &[u8], off: usize, opcode: u8) -> Instruction {
     let unit0 = u16_at(buf, off);
     let count = ((unit0 >> 12) & 0xF) as u8;
@@ -44,7 +42,6 @@ pub fn decode_35c_invoke(buf: &[u8], off: usize, opcode: u8) -> Instruction {
     }
 }
 
-/// Decodes the invoke-family opcodes that use the 3rc format.
 pub fn decode_3rc_invoke(buf: &[u8], off: usize, opcode: u8) -> Instruction {
     let unit0 = u16_at(buf, off);
     let count = hi8(unit0);
@@ -81,7 +78,6 @@ pub fn decode_3rc_invoke(buf: &[u8], off: usize, opcode: u8) -> Instruction {
     }
 }
 
-/// Decodes the invoke-polymorphic and invoke-custom opcode family.
 pub fn decode_invoke_polymorphic(buf: &[u8], off: usize, opcode: u8) -> Instruction {
     let unit0 = u16_at(buf, off);
     match opcode {

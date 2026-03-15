@@ -1,4 +1,5 @@
 use super::*;
+use crate::DexError;
 
 #[test]
 fn resolve_class_data_rejects_out_of_bounds_index() {
@@ -7,10 +8,9 @@ fn resolve_class_data_rejects_out_of_bounds_index() {
 
     assert!(matches!(
         dex.resolve_class_data(0),
-        Err(DexError::IndexOutOfBounds {
-            index_type: "class",
-            index: 0,
-            table_size: 0,
+        Err(DexError::Invalid {
+            section: "class",
+            ..
         })
     ));
 }
@@ -21,22 +21,22 @@ fn intern_descriptors_return_errors() {
 
     assert!(matches!(
         dex.intern_proto("(V)V"),
-        Err(DexError::InvalidDescriptor {
-            kind: "method descriptor",
+        Err(DexError::Invalid {
+            section: "method descriptor",
             ..
         })
     ));
     assert!(matches!(
         dex.intern_method("not-a-type", "name", "()V"),
-        Err(DexError::InvalidDescriptor {
-            kind: "class descriptor",
+        Err(DexError::Invalid {
+            section: "class descriptor",
             ..
         })
     ));
     assert!(matches!(
         dex.intern_field("Lcom/example/Test;", "value", "bad"),
-        Err(DexError::InvalidDescriptor {
-            kind: "field descriptor",
+        Err(DexError::Invalid {
+            section: "field descriptor",
             ..
         })
     ));

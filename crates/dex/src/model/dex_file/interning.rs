@@ -1,5 +1,5 @@
-use super::{DexError, DexFile};
-use crate::error::Result;
+use super::DexFile;
+use crate::error::{invalid_descriptor, Result};
 use crate::model::class::ClassDef;
 use crate::model::field::{FieldId, FieldIdx};
 use crate::model::method::{MethodId, MethodIdx};
@@ -90,29 +90,24 @@ impl DexFile {
             return Ok(());
         }
 
-        Err(DexError::InvalidDescriptor {
-            kind,
-            descriptor: descriptor.to_owned(),
-        })
+        Err(invalid_descriptor(kind, descriptor))
     }
 
     /// Inserts a method prototype descriptor if needed and returns its canonical index.
     pub fn intern_proto(&mut self, descriptor: &str) -> Result<ProtoIdx> {
         use crate::util::descriptor::{parse_method_descriptor, shorty_from_descriptor};
 
-        let (param_strs, ret_str) =
-            parse_method_descriptor(descriptor).ok_or_else(|| DexError::InvalidDescriptor {
-                kind: "method descriptor",
-                descriptor: descriptor.to_owned(),
-            })?;
+        let (param_strs, ret_str) = parse_method_descriptor(descriptor)
+            .ok_or_else(|| invalid_descriptor("method descriptor", descriptor))?;
 
         let return_type = self.intern_type(ret_str);
-        let parameters: Vec<TypeIdx> = param_strs.iter().map(|p| self.intern_type(p)).collect();
-        let shorty_str =
-            shorty_from_descriptor(descriptor).ok_or_else(|| DexError::InvalidDescriptor {
-                kind: "method shorty descriptor",
-                descriptor: descriptor.to_owned(),
-            })?;
+        let parameters: Vec<TypeIdx> = param_strs
+            .iter()
+            .copied()
+            .map(|p| self.intern_type(p))
+            .collect();
+        let shorty_str = shorty_from_descriptor(descriptor)
+            .ok_or_else(|| invalid_descriptor("method shorty descriptor", descriptor))?;
         let shorty = self.intern_string(&shorty_str);
 
         for (i, proto) in self.prototypes.iter().enumerate() {

@@ -1,6 +1,6 @@
-use std::path::Path;
-use crate::error::{Result, PatcherError};
+use crate::error::{invalid, Result};
 use crate::patch::Patch;
+use std::path::Path;
 
 pub struct PatchBundle {
     pub name: String,
@@ -9,8 +9,9 @@ pub struct PatchBundle {
 
 impl PatchBundle {
     pub fn load(_path: impl AsRef<Path>) -> Result<Self> {
-        Err(PatcherError::BundleError {
-            reason: "Bundle loading not yet implemented".into(),
-        })
+        Err(invalid(
+            "patch bundle",
+            "bundle loading not yet implemented",
+        ))
     }
 }

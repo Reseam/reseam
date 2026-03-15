@@ -2,14 +2,20 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum PatcherError {
+    #[error("invalid {section}: {reason}")]
+    Invalid {
+        section: &'static str,
+        reason: String,
+    },
+
+    #[error("internal error while {operation}: {reason}")]
+    Internal {
+        operation: &'static str,
+        reason: String,
+    },
+
     #[error("APK error: {0}")]
     Apk(#[from] stitch_apk::error::ApkError),
-
-    #[error("Patch failed: {name}: {reason}")]
-    PatchFailed { name: String, reason: String },
-
-    #[error("Bundle error: {reason}")]
-    BundleError { reason: String },
 
     #[cfg(feature = "lua")]
     #[error("Lua error: {0}")]
@@ -20,3 +26,10 @@ pub enum PatcherError {
 }
 
 pub type Result<T> = std::result::Result<T, PatcherError>;
+
+pub(crate) fn invalid(section: &'static str, reason: impl Into<String>) -> PatcherError {
+    PatcherError::Invalid {
+        section,
+        reason: reason.into(),
+    }
+}

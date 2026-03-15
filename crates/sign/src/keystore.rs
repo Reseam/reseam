@@ -1,5 +1,5 @@
 use crate::der;
-use crate::error::{Result, SignError};
+use crate::error::{internal, invalid, Result};
 use ring::rand::SystemRandom;
 use ring::signature::{self, EcdsaKeyPair, KeyPair};
 
@@ -12,38 +12,42 @@ impl SigningKey {
     /// Generate a fresh ECDSA P-256 keypair with a self-signed certificate.
     pub fn generate() -> Result<Self> {
         let rng = SystemRandom::new();
-        let pkcs8_doc = EcdsaKeyPair::generate_pkcs8(
-            &signature::ECDSA_P256_SHA256_ASN1_SIGNING,
-            &rng,
-        )
-        .map_err(|e| SignError::Key { reason: format!("{e}") })?;
+        let pkcs8_doc =
+            EcdsaKeyPair::generate_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, &rng)
+                .map_err(|e| invalid("signing key", format!("key generation failed: {e}")))?;
 
         let key_pair = EcdsaKeyPair::from_pkcs8(
             &signature::ECDSA_P256_SHA256_ASN1_SIGNING,
             pkcs8_doc.as_ref(),
             &rng,
         )
-        .map_err(|e| SignError::Key { reason: format!("{e}") })?;
+        .map_err(|e| invalid("signing key", format!("pkcs8 decoding failed: {e}")))?;
 
-        let certificate_der = build_self_signed_cert(&key_pair, key_pair.public_key().as_ref(), &rng)?;
-        Ok(Self { key_pair, certificate_der })
+        let certificate_der =
+            build_self_signed_cert(&key_pair, key_pair.public_key().as_ref(), &rng)?;
+        Ok(Self {
+            key_pair,
+            certificate_der,
+        })
     }
 
     pub fn from_pkcs8(pkcs8_der: &[u8], certificate_der: Vec<u8>) -> Result<Self> {
         let rng = SystemRandom::new();
-        let key_pair = EcdsaKeyPair::from_pkcs8(
-            &signature::ECDSA_P256_SHA256_ASN1_SIGNING,
-            pkcs8_der,
-            &rng,
-        )
-        .map_err(|e| SignError::Key { reason: format!("{e}") })?;
-        Ok(Self { key_pair, certificate_der })
+        let key_pair =
+            EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, pkcs8_der, &rng)
+                .map_err(|e| invalid("signing key", format!("pkcs8 decoding failed: {e}")))?;
+        Ok(Self {
+            key_pair,
+            certificate_der,
+        })
     }
 
     pub fn sign(&self, data: &[u8]) -> Result<Vec<u8>> {
         let rng = SystemRandom::new();
-        let sig = self.key_pair.sign(&rng, data)
-            .map_err(|e| SignError::Crypto { reason: format!("{e}") })?;
+        let sig = self
+            .key_pair
+            .sign(&rng, data)
+            .map_err(|e| internal("signing payload", format!("crypto signing failed: {e}")))?;
         Ok(sig.as_ref().to_vec())
     }
 
@@ -65,23 +69,22 @@ pub struct GeneratedKey {
 impl GeneratedKey {
     pub fn generate() -> Result<Self> {
         let rng = SystemRandom::new();
-        let pkcs8_doc = EcdsaKeyPair::generate_pkcs8(
-            &signature::ECDSA_P256_SHA256_ASN1_SIGNING,
-            &rng,
-        )
-        .map_err(|e| SignError::Key { reason: format!("{e}") })?;
+        let pkcs8_doc =
+            EcdsaKeyPair::generate_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, &rng)
+                .map_err(|e| invalid("signing key", format!("key generation failed: {e}")))?;
 
         let pkcs8_der = pkcs8_doc.as_ref().to_vec();
-        let key_pair = EcdsaKeyPair::from_pkcs8(
-            &signature::ECDSA_P256_SHA256_ASN1_SIGNING,
-            &pkcs8_der,
-            &rng,
-        )
-        .map_err(|e| SignError::Key { reason: format!("{e}") })?;
+        let key_pair =
+            EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, &pkcs8_der, &rng)
+                .map_err(|e| invalid("signing key", format!("pkcs8 decoding failed: {e}")))?;
 
-        let certificate_der = build_self_signed_cert(&key_pair, key_pair.public_key().as_ref(), &rng)?;
+        let certificate_der =
+            build_self_signed_cert(&key_pair, key_pair.public_key().as_ref(), &rng)?;
         Ok(Self {
-            signing_key: SigningKey { key_pair, certificate_der },
+            signing_key: SigningKey {
+                key_pair,
+                certificate_der,
+            },
             pkcs8_der,
         })
     }
@@ -113,8 +116,16 @@ fn build_self_signed_cert(
         &spki,
     ]);
 
-    let tbs_sig = key_pair.sign(rng, &tbs)
-        .map_err(|e| SignError::Crypto { reason: format!("{e}") })?;
+    let tbs_sig = key_pair.sign(rng, &tbs).map_err(|e| {
+        internal(
+            "building self-signed certificate",
+            format!("crypto signing failed: {e}"),
+        )
+    })?;
 
-    Ok(der::sequence(&[&tbs, &sig_algo, &der::bit_string(tbs_sig.as_ref())]))
+    Ok(der::sequence(&[
+        &tbs,
+        &sig_algo,
+        &der::bit_string(tbs_sig.as_ref()),
+    ]))
 }

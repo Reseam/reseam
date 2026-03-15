@@ -1,5 +1,5 @@
 use crate::encoding::leb128::{read_sleb128, read_uleb128};
-use crate::error::Result;
+use crate::error::{invalid_offset, Result};
 use crate::model::code::{CatchHandler, TryItem, TypedCatch};
 use crate::model::types::TypeIdx;
 
@@ -56,6 +56,7 @@ pub fn read_tries_and_handlers(
 
     for i in 0..tries_size as usize {
         let t_off = tries_off + i * 8;
+        crate::error::require_len(buf, t_off, 8, "try item")?;
         let start_addr = u32_at(buf, t_off);
         let insn_count = u16_at(buf, t_off + 4);
         let handler_off = u16_at(buf, t_off + 6) as usize;
@@ -63,11 +64,7 @@ pub fn read_tries_and_handlers(
         let handler_idx = handler_offsets
             .iter()
             .position(|&o| o == handler_off)
-            .ok_or(crate::error::DexError::InvalidOffset {
-                offset: handler_off as u32,
-                section: "catch_handler",
-                file_size: buf.len() as u32,
-            })?;
+            .ok_or_else(|| invalid_offset("catch_handler", handler_off as u32, buf.len() as u32))?;
 
         tries.push(TryItem {
             start_addr,
