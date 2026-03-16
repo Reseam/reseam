@@ -1,5 +1,12 @@
+use std::path::{Path, PathBuf};
+
+use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
-use anyhow::Result;
+use stitch_apk::ApkFile;
+use stitch_patcher::bundle::PatchBundle;
+use stitch_patcher::context::PatchContext;
+use stitch_patcher::engine::{self, PatchResult};
+use stitch_sign::SigningKey;
 
 #[derive(Parser)]
 #[command(name = "stitch", about = "High-performance APK patching engine")]
@@ -10,26 +17,22 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Patch an APK with a patch bundle
     Patch {
-        /// Path to the input APK
-        apk: String,
-        /// Path to the patch bundle directory
+        apk: PathBuf,
         #[arg(short, long)]
-        patches: String,
-        /// Output path (default: <input>-patched.apk)
+        bundle: PathBuf,
         #[arg(short, long)]
-        output: Option<String>,
+        output: Option<PathBuf>,
+        #[arg(short, long)]
+        key: Option<PathBuf>,
+        #[arg(short, long)]
+        cert: Option<PathBuf>,
     },
-    /// List patches in a bundle
     List {
-        /// Path to the patch bundle directory
-        patches: String,
+        bundle: PathBuf,
     },
-    /// Show info about an APK (DEX count, package name, version)
     Info {
-        /// Path to the APK
-        apk: String,
+        apk: PathBuf,
     },
 }
 
@@ -37,23 +40,202 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Patch { apk, patches, output } => {
-            let out = output.unwrap_or_else(|| apk.replace(".apk", "-patched.apk"));
-            eprintln!("[stitch] Input:   {apk}");
-            eprintln!("[stitch] Patches: {patches}");
-            eprintln!("[stitch] Output:  {out}");
-            eprintln!("[stitch] Patching not yet implemented");
-            Ok(())
+        Commands::Patch {
+            apk,
+            bundle,
+            output,
+            key,
+            cert,
+        } => cmd_patch(&apk, &bundle, output.as_deref(), key.as_deref(), cert.as_deref()),
+        Commands::List { bundle } => cmd_list(&bundle),
+        Commands::Info { apk } => cmd_info(&apk),
+    }
+}
+
+fn cmd_patch(
+    apk_path: &Path,
+    bundle_path: &Path,
+    output: Option<&Path>,
+    key_path: Option<&Path>,
+    cert_path: Option<&Path>,
+) -> Result<()> {
+    let output_path = match output {
+        Some(p) => p.to_path_buf(),
+        None => {
+            let stem = apk_path
+                .file_stem()
+                .context("invalid APK path")?
+                .to_string_lossy();
+            apk_path.with_file_name(format!("{stem}-patched.apk"))
         }
-        Commands::List { patches } => {
-            eprintln!("[stitch] Bundle: {patches}");
-            eprintln!("[stitch] Listing not yet implemented");
-            Ok(())
+    };
+
+    eprintln!("[stitch] opening {}", apk_path.display());
+    let mut apk = ApkFile::open(apk_path).context("failed to open APK")?;
+
+    if let Some(pkg) = apk.package_name() {
+        eprintln!("[stitch] package: {pkg}");
+    }
+    if let Some(ver) = apk.version_name() {
+        eprintln!("[stitch] version: {ver}");
+    }
+    eprintln!("[stitch] dex files: {}", apk.dex().len());
+
+    eprintln!("[stitch] loading bundle {}", bundle_path.display());
+    let patch_bundle = PatchBundle::load(bundle_path).context("failed to load patch bundle")?;
+    eprintln!(
+        "[stitch] bundle '{}' ({} patches)",
+        patch_bundle.name,
+        patch_bundle.patches.len()
+    );
+
+    let mut ctx = PatchContext::new(&mut apk);
+    let results = engine::apply_patches(&mut ctx, &patch_bundle.patches)
+        .context("patch application failed")?;
+    drop(ctx);
+
+    for result in &results {
+        match result {
+            PatchResult::Applied { name } => eprintln!("[stitch] applied: {name}"),
+            PatchResult::Skipped { name, reason } => {
+                eprintln!("[stitch] skipped: {name} ({reason})")
+            }
         }
-        Commands::Info { apk } => {
-            eprintln!("[stitch] APK: {apk}");
-            eprintln!("[stitch] Info not yet implemented");
-            Ok(())
+    }
+
+    let applied_count = results.iter().filter(|r| matches!(r, PatchResult::Applied { .. })).count();
+    eprintln!("[stitch] {applied_count}/{} patches applied", results.len());
+
+    let tmp_dir = tempfile::tempdir().context("failed to create temp directory")?;
+    apk.write_to(tmp_dir.path())
+        .context("failed to write patched APK")?;
+
+    let tmp_apk_path = find_apk_in_dir(tmp_dir.path())?;
+    let unsigned_bytes =
+        std::fs::read(&tmp_apk_path).context("failed to read patched APK bytes")?;
+
+    let signing_key = load_or_generate_key(key_path, cert_path)?;
+
+    eprintln!("[stitch] signing with APK Signature Scheme v2");
+    let signed_bytes =
+        stitch_sign::v2::sign(&unsigned_bytes, &signing_key).context("v2 signing failed")?;
+
+    std::fs::write(&output_path, &signed_bytes)
+        .with_context(|| format!("failed to write {}", output_path.display()))?;
+
+    eprintln!(
+        "[stitch] done: {} ({:.1} MB)",
+        output_path.display(),
+        signed_bytes.len() as f64 / (1024.0 * 1024.0)
+    );
+
+    Ok(())
+}
+
+fn cmd_list(bundle_path: &Path) -> Result<()> {
+    let bundle = PatchBundle::load(bundle_path).context("failed to load patch bundle")?;
+    eprintln!("[stitch] bundle: {}", bundle.name);
+    if !bundle.author.is_empty() {
+        eprintln!("[stitch] author: {}", bundle.author);
+    }
+    if !bundle.description.is_empty() {
+        eprintln!("[stitch] description: {}", bundle.description);
+    }
+    if let Some(pkg) = &bundle.target_package {
+        eprintln!("[stitch] target: {pkg}");
+    }
+    if !bundle.target_versions.is_empty() {
+        eprintln!("[stitch] versions: {}", bundle.target_versions.join(", "));
+    }
+
+    eprintln!();
+    for (i, patch) in bundle.patches.iter().enumerate() {
+        let p: &dyn stitch_patcher::patch::Patch = patch.as_ref();
+        let enabled = if p.enabled_by_default() { "on" } else { "off" };
+        eprintln!(
+            "  {:>3}. [{}] {} - {}",
+            i + 1,
+            enabled,
+            p.name(),
+            p.description()
+        );
+
+        let packages = p.compatible_packages();
+        if !packages.is_empty() {
+            eprintln!("       packages: {}", packages.join(", "));
         }
+
+        let versions = p.compatible_versions();
+        if !versions.is_empty() {
+            eprintln!("       versions: {}", versions.join(", "));
+        }
+    }
+
+    if !bundle.extension_dex.is_empty() {
+        eprintln!();
+        eprintln!("[stitch] extension DEX:");
+        for dex_path in &bundle.extension_dex {
+            eprintln!("  - {}", dex_path.display());
+        }
+    }
+
+    Ok(())
+}
+
+fn cmd_info(apk_path: &Path) -> Result<()> {
+    let apk = ApkFile::open(apk_path).context("failed to open APK")?;
+
+    eprintln!("APK: {}", apk_path.display());
+    if let Some(pkg) = apk.package_name() {
+        eprintln!("  package:    {pkg}");
+    }
+    if let Some(ver) = apk.version_name() {
+        eprintln!("  version:    {ver}");
+    }
+    if let Some(code) = apk.version_code() {
+        eprintln!("  versionCode: {code}");
+    }
+    eprintln!("  dex files:  {}", apk.dex().len());
+    eprintln!("  components: {}", apk.component_count());
+    if apk.is_split() {
+        eprintln!("  splits:     {}", apk.split_names().join(", "));
+    }
+
+    let total_classes: usize = apk.dex().iter().map(|d| d.classes.len()).sum();
+    let total_methods: usize = apk.dex().iter().map(|d| d.methods.len()).sum();
+    eprintln!("  classes:    {total_classes}");
+    eprintln!("  methods:    {total_methods}");
+
+    Ok(())
+}
+
+fn find_apk_in_dir(dir: &Path) -> Result<PathBuf> {
+    for entry in std::fs::read_dir(dir).context("failed to read temp directory")? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().map_or(false, |ext| ext == "apk") {
+            return Ok(path);
+        }
+    }
+    bail!("no APK file found in output directory")
+}
+
+fn load_or_generate_key(
+    key_path: Option<&Path>,
+    cert_path: Option<&Path>,
+) -> Result<SigningKey> {
+    match (key_path, cert_path) {
+        (Some(key), Some(cert)) => {
+            let key_bytes =
+                std::fs::read(key).with_context(|| format!("failed to read key {}", key.display()))?;
+            let cert_bytes = std::fs::read(cert)
+                .with_context(|| format!("failed to read cert {}", cert.display()))?;
+            SigningKey::from_pkcs8(&key_bytes, cert_bytes).context("failed to load signing key")
+        }
+        (None, None) => {
+            eprintln!("[stitch] no key provided, generating ephemeral ECDSA P-256 key");
+            SigningKey::generate().context("failed to generate signing key")
+        }
+        _ => bail!("--key and --cert must both be provided"),
     }
 }

@@ -4,10 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-stitch-apk = { workspace = true }
-thiserror  = { workspace = true }
-mlua       = { workspace = true, optional = true }
+stitch-apk  = { workspace = true }
+thiserror   = { workspace = true }
+serde       = { workspace = true }
+toml        = { workspace = true }
+libloading  = { workspace = true, optional = true }
+mlua        = { workspace = true, optional = true }
 
 [features]
-default = ["lua"]
+default = ["lua", "native"]
 lua = ["dep:mlua"]
+native = ["dep:libloading"]

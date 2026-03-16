@@ -26,6 +26,9 @@ memmap2     = "0.9"
 zip         = "2"
 ring        = "0.17"
 mlua        = { version = "0.10", features = ["lua54", "vendored"] }
+toml        = "0.8"
+serde       = { version = "1", features = ["derive"] }
+libloading  = "0.8"
 clap        = { version = "4", features = ["derive"] }
 anyhow      = "1"
 

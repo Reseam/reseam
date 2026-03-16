@@ -1,13 +1,12 @@
-pub mod error;
-pub mod patch;
+pub mod bundle;
 pub mod context;
 pub mod engine;
-pub mod bundle;
-pub mod native;
-
+pub mod error;
 #[cfg(feature = "lua")]
 pub mod lua;
+#[cfg(feature = "native")]
+pub mod native;
+pub mod patch;
 
-// Re-export apk and dex for convenience
 pub use stitch_apk;
 pub use stitch_apk::stitch_dex;

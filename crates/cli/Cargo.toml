@@ -13,3 +13,4 @@ stitch-sign    = { workspace = true }
 stitch-apk     = { workspace = true }
 clap           = { workspace = true }
 anyhow         = { workspace = true }
+tempfile       = { workspace = true }
