@@ -43,21 +43,27 @@ fn check_compatibility(
     package: &Option<String>,
     version: &Option<String>,
 ) -> Option<String> {
-    let packages = patch.compatible_packages();
-    if !packages.is_empty() {
-        match package {
-            Some(pkg) if !packages.iter().any(|p| p == pkg) => {
-                return Some(format!("incompatible package: {pkg}"));
-            }
-            None => return Some("APK has no package name".to_owned()),
-            _ => {}
-        }
+    let compat = patch.compatible_with();
+    if compat.is_empty() {
+        return None;
     }
 
-    let versions = patch.compatible_versions();
-    if !versions.is_empty() {
+    let pkg = match package {
+        Some(pkg) => pkg,
+        None => return Some("APK has no package name".to_owned()),
+    };
+
+    let matching = compat.iter().find(|c| c.package == *pkg);
+    let entry = match matching {
+        Some(e) => e,
+        None => {
+            return Some(format!("incompatible package: {pkg}"));
+        }
+    };
+
+    if !entry.versions.is_empty() {
         match version {
-            Some(ver) if !versions.iter().any(|v| v == ver) => {
+            Some(ver) if !entry.versions.iter().any(|v| v == ver) => {
                 return Some(format!("incompatible version: {ver}"));
             }
             None => return Some("APK has no version name".to_owned()),

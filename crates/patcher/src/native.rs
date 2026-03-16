@@ -3,7 +3,9 @@ use std::path::Path;
 use crate::error::Result;
 use crate::patch::Patch;
 
-type CreatePatchFn = unsafe fn() -> Box<dyn Patch>;
+type CreatePatchFn = unsafe extern "C" fn() -> *mut PatchBox;
+
+type PatchBox = Box<dyn Patch>;
 
 pub fn load_native_patch(path: impl AsRef<Path>) -> Result<Box<dyn Patch>> {
     let path = path.as_ref();
@@ -14,7 +16,8 @@ pub fn load_native_patch(path: impl AsRef<Path>) -> Result<Box<dyn Patch>> {
     unsafe {
         let lib = libloading::Library::new(path)?;
         let create: libloading::Symbol<CreatePatchFn> = lib.get(b"stitch_create_patch")?;
-        let patch = create();
+        let raw = create();
+        let patch = *Box::from_raw(raw);
         std::mem::forget(lib);
         Ok(patch)
     }

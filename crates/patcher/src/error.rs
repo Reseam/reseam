@@ -15,6 +15,12 @@ pub enum PatcherError {
         actual: String,
     },
 
+    #[error("not found: {0}")]
+    NotFound(String),
+
+    #[error("DEX error: {0}")]
+    Dex(#[from] stitch_apk::stitch_dex::DexError),
+
     #[error("APK error: {0}")]
     Apk(#[from] stitch_apk::error::ApkError),
 

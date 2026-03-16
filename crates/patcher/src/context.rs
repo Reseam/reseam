@@ -4,8 +4,8 @@ use stitch_apk::ApkFile;
 use stitch_apk::axml::reader::AxmlDocument;
 use stitch_apk::resources::arsc::ResourceTable;
 use stitch_apk::stitch_dex::{
-    ClassDef, DexFile, EncodedMethod, InstructionPattern, MethodMatch, MultiDexContainer,
-    ParseOptions,
+    ClassDef, DexFile, EncodedMethod, Instruction, InstructionPattern, MethodMatch,
+    MultiDexContainer, ParseOptions, StringIdx,
 };
 
 use crate::error::{PatcherError, Result as PatcherResult};
@@ -35,7 +35,7 @@ impl<'a> PatchContext<'a> {
         self.apk.dex()
     }
 
-    pub fn dex_mut(&mut self) -> &mut MultiDexContainer {
+    pub fn dex_container_mut(&mut self) -> &mut MultiDexContainer {
         self.apk.dex_mut()
     }
 
@@ -109,6 +109,29 @@ impl<'a> PatchContext<'a> {
             .map(|m| (dex_idx, m))
     }
 
+    pub fn method_mut(
+        &mut self,
+        class_descriptor: &str,
+        method_name: &str,
+    ) -> PatcherResult<(usize, &mut EncodedMethod)> {
+        self.find_method_mut(class_descriptor, method_name)
+            .ok_or_else(|| {
+                PatcherError::NotFound(format!("{class_descriptor}.{method_name}"))
+            })
+    }
+
+    pub fn class_mut(&mut self, descriptor: &str) -> PatcherResult<(usize, &mut ClassDef)> {
+        self.find_class_mut(descriptor)
+            .ok_or_else(|| PatcherError::NotFound(format!("class {descriptor}")))
+    }
+
+    pub fn dex_mut(&mut self, index: usize) -> PatcherResult<&mut DexFile> {
+        self.apk
+            .dex_mut()
+            .dex_mut(index)
+            .ok_or_else(|| PatcherError::NotFound(format!("dex index {index}")))
+    }
+
     pub fn find_methods_with_opcodes(
         &self,
         opcodes: &[InstructionPattern],
@@ -116,6 +139,48 @@ impl<'a> PatchContext<'a> {
         let mut results = Vec::new();
         for (i, dex) in self.apk.dex().iter().enumerate() {
             for m in dex.find_methods_with_opcodes(opcodes) {
+                results.push((i, m));
+            }
+        }
+        results
+    }
+
+    pub fn find_method_by_name(&self, method_name: &str) -> Option<(usize, MethodMatch<'_>)> {
+        for (i, dex) in self.apk.dex().iter().enumerate() {
+            let result = dex.find_method_by(|method_id, _class, _method| {
+                dex.string(method_id.name) == method_name
+            });
+            if let Some(m) = result {
+                return Some((i, m));
+            }
+        }
+        None
+    }
+
+    pub fn find_methods_by_strings(&self, strings: &[&str]) -> Vec<(usize, MethodMatch<'_>)> {
+        let mut results = Vec::new();
+        for (i, dex) in self.apk.dex().iter().enumerate() {
+            let string_idxs: Vec<StringIdx> = strings
+                .iter()
+                .filter_map(|s| dex.find_string_idx(s))
+                .collect();
+            if string_idxs.len() != strings.len() {
+                continue;
+            }
+            let matches = dex.find_methods_by(|_method_id, _class, method| {
+                let code = match &method.code {
+                    Some(c) => c,
+                    None => return false,
+                };
+                string_idxs.iter().all(|target| {
+                    code.instructions.iter().any(|insn| match insn {
+                        Instruction::ConstString { string, .. }
+                        | Instruction::ConstStringJumbo { string, .. } => string == target,
+                        _ => false,
+                    })
+                })
+            });
+            for m in matches {
                 results.push((i, m));
             }
         }

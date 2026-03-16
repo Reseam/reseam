@@ -15,8 +15,8 @@ pub fn sign_with_sdk_range(
 ) -> Result<Vec<u8>> {
     let sections = signing_block::split_apk(apk)?;
     let target_len = target_signing_block_len(key)?;
-    let new_cd_offset = v2::checked_cd_offset(sections.contents.len(), target_len)?;
-    let digest = v2::compute_content_digest(&sections, new_cd_offset)?;
+    let _new_cd_offset = v2::checked_cd_offset(sections.contents.len(), target_len)?;
+    let digest = v2::compute_content_digest(&sections)?;
 
     let v2_block = v2::build_v2_block_from_digest(&digest, key)?;
     let v3_block = build_v3_block_from_digest(&digest, key, min_sdk, max_sdk)?;
@@ -48,15 +48,19 @@ fn build_v3_block_from_digest(
     v3_signer.extend_from_slice(&max_sdk.to_le_bytes());
     v3_signer.extend_from_slice(&v2_signer);
 
+    let mut signers_seq = Vec::new();
+    signers_seq.extend_from_slice(&(v3_signer.len() as u32).to_le_bytes());
+    signers_seq.extend_from_slice(&v3_signer);
+
     let mut block = Vec::new();
-    block.extend_from_slice(&(v3_signer.len() as u32).to_le_bytes());
-    block.extend_from_slice(&v3_signer);
+    block.extend_from_slice(&(signers_seq.len() as u32).to_le_bytes());
+    block.extend_from_slice(&signers_seq);
     Ok(block)
 }
 
 fn target_signing_block_len(key: &SigningKey) -> Result<usize> {
     let v2_block_len = v2::max_block_len(key)?;
-    let v3_block_len = v2::max_signer_len(key)? + 12;
+    let v3_block_len = v2::max_signer_len(key)? + 16; // +8 (min/max sdk) +4 (signer lp) +4 (seq lp)
     Ok(signing_block::signing_block_len(&[
         v2_block_len,
         v3_block_len,

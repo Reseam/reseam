@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-stitch-apk  = { workspace = true }
+stitch-apk          = { workspace = true }
+stitch-patcher-macros = { workspace = true }
 thiserror   = { workspace = true }
 serde       = { workspace = true }
 toml        = { workspace = true }

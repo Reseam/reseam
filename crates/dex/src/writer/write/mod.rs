@@ -66,8 +66,6 @@ pub(crate) struct DexWriter {
     pub(crate) code_item_offsets: Vec<u32>,
     pub(crate) debug_info_offsets: Vec<u32>,
     pub(crate) class_data_offsets: Vec<u32>,
-    pub(crate) annotation_item_cache: HashMap<Vec<u8>, u32>,
-    pub(crate) annotation_set_cache: HashMap<Vec<u32>, u32>,
     pub(crate) debug_info_cache: HashMap<Vec<u8>, u32>,
     pub(crate) map_entries: Vec<MapItem>,
 }
@@ -81,8 +79,6 @@ impl DexWriter {
             code_item_offsets: Vec::new(),
             debug_info_offsets: Vec::new(),
             class_data_offsets: Vec::new(),
-            annotation_item_cache: HashMap::new(),
-            annotation_set_cache: HashMap::new(),
             debug_info_cache: HashMap::new(),
             map_entries: Vec::new(),
         }

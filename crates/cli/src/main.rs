@@ -161,14 +161,19 @@ fn cmd_list(bundle_path: &Path) -> Result<()> {
             p.description()
         );
 
-        let packages = p.compatible_packages();
-        if !packages.is_empty() {
-            eprintln!("       packages: {}", packages.join(", "));
-        }
-
-        let versions = p.compatible_versions();
-        if !versions.is_empty() {
-            eprintln!("       versions: {}", versions.join(", "));
+        let compat = p.compatible_with();
+        if !compat.is_empty() {
+            let formatted: Vec<String> = compat
+                .iter()
+                .map(|c| {
+                    if c.versions.is_empty() {
+                        c.package.clone()
+                    } else {
+                        format!("{} ({})", c.package, c.versions.join(", "))
+                    }
+                })
+                .collect();
+            eprintln!("       packages: {}", formatted.join(", "));
         }
     }
 

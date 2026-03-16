@@ -51,6 +51,11 @@ impl DexFile {
         self.classes.iter_mut().find(|c| c.class_type == type_idx)
     }
 
+    /// Finds a string index by value, returning `None` if absent.
+    pub fn find_string_idx(&self, s: &str) -> Option<StringIdx> {
+        self.string_lookup.get(s).copied()
+    }
+
     /// Finds a type index for a descriptor already present in the file.
     pub fn find_type_idx(&self, descriptor: &str) -> Option<TypeIdx> {
         let string_idx = self.string_lookup.get(descriptor)?;

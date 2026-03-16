@@ -6,10 +6,6 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Deserialize)]
 struct BundleManifest {
     bundle: BundleInfo,
-    #[serde(default)]
-    patches: Vec<String>,
-    #[serde(default)]
-    native_patches: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -42,40 +38,19 @@ impl PatchBundle {
         let mut patches: Vec<Box<dyn Patch>> = Vec::new();
 
         #[cfg(feature = "lua")]
-        for script in &manifest.patches {
-            let script_path = dir.join(script);
-            if !script_path.exists() {
-                return Err(PatcherError::Bundle {
-                    reason: format!("patch file not found: {}", script_path.display()),
-                });
+        {
+            let lua_patches = discover_files(dir, "lua");
+            for script_path in lua_patches {
+                patches.push(crate::lua::load_lua_patch(&script_path)?);
             }
-            patches.push(crate::lua::load_lua_patch(&script_path)?);
-        }
-
-        #[cfg(not(feature = "lua"))]
-        if !manifest.patches.is_empty() {
-            return Err(PatcherError::Bundle {
-                reason: "bundle contains Lua patches but the 'lua' feature is disabled".into(),
-            });
         }
 
         #[cfg(feature = "native")]
-        for lib in &manifest.native_patches {
-            let lib_path = dir.join(lib);
-            if !lib_path.exists() {
-                return Err(PatcherError::Bundle {
-                    reason: format!("native patch not found: {}", lib_path.display()),
-                });
+        {
+            let native_patches = discover_native_libs(dir);
+            for lib_path in native_patches {
+                patches.push(crate::native::load_native_patch(&lib_path)?);
             }
-            patches.push(crate::native::load_native_patch(&lib_path)?);
-        }
-
-        #[cfg(not(feature = "native"))]
-        if !manifest.native_patches.is_empty() {
-            return Err(PatcherError::Bundle {
-                reason: "bundle contains native patches but the 'native' feature is disabled"
-                    .into(),
-            });
         }
 
         let ext_dir = dir.join("extensions");
@@ -83,7 +58,7 @@ impl PatchBundle {
         if ext_dir.is_dir() {
             let mut entries: Vec<_> = std::fs::read_dir(&ext_dir)?
                 .filter_map(|e| e.ok())
-                .filter(|e| e.path().extension().map_or(false, |ext| ext == "dex"))
+                .filter(|e| e.path().extension().is_some_and(|ext| ext == "dex"))
                 .collect();
             entries.sort_by_key(|e| e.file_name());
             for entry in entries {
@@ -99,4 +74,32 @@ impl PatchBundle {
             extension_dex,
         })
     }
+}
+
+fn discover_files(dir: &Path, extension: &str) -> Vec<PathBuf> {
+    let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|ext| ext == extension))
+        .collect();
+    paths.sort();
+    paths
+}
+
+#[cfg(feature = "native")]
+fn discover_native_libs(dir: &Path) -> Vec<PathBuf> {
+    let ext = if cfg!(target_os = "macos") {
+        "dylib"
+    } else if cfg!(target_os = "windows") {
+        "dll"
+    } else {
+        "so"
+    };
+    let release_dir = dir.join("target/release");
+    if release_dir.is_dir() {
+        return discover_files(&release_dir, ext);
+    }
+    discover_files(dir, ext)
 }

@@ -26,9 +26,9 @@ pub fn sign(apk: &[u8], key: &SigningKey) -> Result<Vec<u8>> {
 pub(crate) fn build_v2_block_from_sections(
     sections: &ApkSections<'_>,
     key: &SigningKey,
-    new_cd_offset: u32,
+    _new_cd_offset: u32,
 ) -> Result<Vec<u8>> {
-    let digest = compute_content_digest(sections, new_cd_offset)?;
+    let digest = compute_content_digest(sections)?;
     build_v2_block_from_digest(&digest, key)
 }
 
@@ -37,8 +37,13 @@ pub(crate) fn build_v2_block_from_digest(digest: &[u8], key: &SigningKey) -> Res
     let signature = key.sign(&signed_data)?;
     let signer = build_signer(&signed_data, &signature, key)?;
 
+    // Android expects: [signers_seq_len][signer_len][signer_data]
+    // The outer length-prefix wraps the entire sequence of signers.
+    let mut signers_seq = Vec::new();
+    write_lp(&mut signers_seq, &signer);
+
     let mut block = Vec::new();
-    write_lp(&mut block, &signer);
+    write_lp(&mut block, &signers_seq);
     Ok(block)
 }
 
@@ -50,14 +55,16 @@ pub(crate) fn build_signer_from_digest(digest: &[u8], key: &SigningKey) -> Resul
 
 /// Chunked Merkle digest: each 1MB chunk hashed with 0xa5 prefix,
 /// combined with 0x5a prefix. Sections: contents, central dir, EOCD.
-pub(crate) fn compute_content_digest(
-    sections: &ApkSections<'_>,
-    new_cd_offset: u32,
-) -> Result<Vec<u8>> {
-    // EOCD must reflect the post-signing CD offset for correct digest
+///
+/// Per the APK Signature Scheme v2 spec, the EOCD's CD-offset field is patched
+/// to `contents.len()` (the offset the central directory would have with no signing
+/// block), matching what the verifier reconstructs during verification.
+pub(crate) fn compute_content_digest(sections: &ApkSections<'_>) -> Result<Vec<u8>> {
+    // Android verifier replaces EOCD CD-offset with contents_len (no signing block).
+    let cd_offset_for_digest = sections.contents.len() as u32;
     let mut patched_eocd = sections.eocd.to_vec();
     if patched_eocd.len() >= 22 {
-        patched_eocd[16..20].copy_from_slice(&new_cd_offset.to_le_bytes());
+        patched_eocd[16..20].copy_from_slice(&cd_offset_for_digest.to_le_bytes());
     }
 
     let mut chunk_digests = Vec::new();
@@ -105,7 +112,8 @@ pub(crate) fn max_signer_len(key: &SigningKey) -> Result<usize> {
 }
 
 pub(crate) fn max_block_len(key: &SigningKey) -> Result<usize> {
-    max_signer_len(key)?.checked_add(4).ok_or_else(|| {
+    // +4 for signers_seq write_lp wrapper, +4 for outer block write_lp wrapper
+    max_signer_len(key)?.checked_add(8).ok_or_else(|| {
         malformed(
             "signing block",
             0,

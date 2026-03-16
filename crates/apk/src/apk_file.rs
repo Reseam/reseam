@@ -36,7 +36,9 @@ pub struct ApkFile {
     kind: ApkKind,
     dex: MultiDexContainer,
     manifest: AxmlDocument,
+    manifest_dirty: bool,
     resources: Option<ResourceTable>,
+    resources_dirty: bool,
     components: Vec<ApkComponent>,
 }
 
@@ -75,7 +77,9 @@ impl ApkFile {
             kind: ApkKind::Single,
             dex,
             manifest,
+            manifest_dirty: false,
             resources,
+            resources_dirty: false,
             components: vec![component],
         })
     }
@@ -175,7 +179,9 @@ impl ApkFile {
             kind: ApkKind::Split,
             dex,
             manifest,
+            manifest_dirty: false,
             resources,
+            resources_dirty: false,
             components,
         })
     }
@@ -195,6 +201,7 @@ impl ApkFile {
     }
 
     pub fn manifest_mut(&mut self) -> &mut AxmlDocument {
+        self.manifest_dirty = true;
         &mut self.manifest
     }
 
@@ -203,6 +210,7 @@ impl ApkFile {
     }
 
     pub fn resources_mut(&mut self) -> Option<&mut ResourceTable> {
+        self.resources_dirty = true;
         self.resources.as_mut()
     }
 
@@ -294,22 +302,44 @@ impl ApkFile {
             for (name, data) in dex_entries {
                 replacements.insert(
                     name.clone(),
-                    (data.clone(), zip::CompressionMethod::Stored),
+                    (data.clone(), zip::CompressionMethod::Deflated),
                 );
             }
 
-            let manifest_bytes = self.manifest.serialize()?;
-            replacements.insert(
-                "AndroidManifest.xml".to_string(),
-                (manifest_bytes, zip::CompressionMethod::Stored),
-            );
-
-            if let Some(resources) = &self.resources {
-                let arsc_bytes = resources.serialize()?;
+            if self.manifest_dirty {
+                let manifest_bytes = self.manifest.serialize()?;
                 replacements.insert(
-                    "resources.arsc".to_string(),
-                    (arsc_bytes, zip::CompressionMethod::Stored),
+                    "AndroidManifest.xml".to_string(),
+                    (manifest_bytes, zip::CompressionMethod::Deflated),
                 );
+            }
+
+            if self.resources_dirty {
+                if let Some(resources) = &self.resources {
+                    let arsc_bytes = resources.serialize()?;
+                    replacements.insert(
+                        "resources.arsc".to_string(),
+                        (arsc_bytes, zip::CompressionMethod::Stored),
+                    );
+                }
+            } else {
+                // Always rewrite resources.arsc to guarantee Stored + 4-byte alignment
+                // (required by Android R+), using the original bytes.
+                use std::io::Read as _;
+                let arsc_idx = (0..source.len()).find(|i| {
+                    source
+                        .by_index_raw(*i)
+                        .map(|e| e.name() == "resources.arsc")
+                        .unwrap_or(false)
+                });
+                if let Some(idx) = arsc_idx {
+                    let mut buf = Vec::new();
+                    source.by_index(idx)?.read_to_end(&mut buf)?;
+                    replacements.insert(
+                        "resources.arsc".to_string(),
+                        (buf, zip::CompressionMethod::Stored),
+                    );
+                }
             }
 
             writer.rewrite_apk(&mut source, &replacements, &removals)?;

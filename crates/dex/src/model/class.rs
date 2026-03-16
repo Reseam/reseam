@@ -84,4 +84,16 @@ impl EncodedMethod {
     pub fn code_mut(&mut self) -> Option<&mut CodeItem> {
         self.code.as_mut()
     }
+
+    pub fn return_early(&mut self) {
+        if let Some(code) = self.code.as_mut() {
+            code.return_early();
+        }
+    }
+
+    pub fn return_early_int(&mut self, value: i32) {
+        if let Some(code) = self.code.as_mut() {
+            code.return_early_int(value);
+        }
+    }
 }

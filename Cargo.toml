@@ -5,6 +5,7 @@ members = [
     "crates/apk",
     "crates/sign",
     "crates/patcher",
+    "crates/patcher-macros",
     "crates/cli",
 ]
 
@@ -14,6 +15,7 @@ stitch-dex     = { path = "crates/dex" }
 stitch-apk     = { path = "crates/apk" }
 stitch-sign    = { path = "crates/sign" }
 stitch-patcher = { path = "crates/patcher" }
+stitch-patcher-macros = { path = "crates/patcher-macros" }
 
 # Shared external dependencies (pinned versions for all crates)
 thiserror   = "2"

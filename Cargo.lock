@@ -1216,9 +1216,19 @@ dependencies = [
  "serde",
  "smallvec",
  "stitch-apk",
+ "stitch-patcher-macros",
  "tempfile",
  "thiserror",
  "toml",
+]
+
+[[package]]
+name = "stitch-patcher-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
