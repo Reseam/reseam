@@ -1174,6 +1174,7 @@ dependencies = [
  "pretty_assertions",
  "rayon",
  "stitch-dex",
+ "stitch-sign",
  "tempfile",
  "thiserror",
  "zip",
@@ -1214,6 +1215,7 @@ dependencies = [
  "mlua",
  "serde",
  "stitch-apk",
+ "tempfile",
  "thiserror",
  "toml",
 ]

@@ -1,6 +1,7 @@
 use crate::axml::reader::AxmlDocument;
 use crate::error::Result;
 use crate::multi_dex;
+use crate::resources::arsc::ResourceTable;
 use crate::zip::reader::ApkReader;
 use crate::zip::writer::ApkWriter;
 use stitch_dex::{MultiDexContainer, ParseOptions};
@@ -35,6 +36,7 @@ pub struct ApkFile {
     kind: ApkKind,
     dex: MultiDexContainer,
     manifest: AxmlDocument,
+    resources: Option<ResourceTable>,
     components: Vec<ApkComponent>,
 }
 
@@ -53,6 +55,13 @@ impl ApkFile {
         let manifest_bytes = reader.read_manifest()?;
         let manifest = AxmlDocument::parse(&manifest_bytes)?;
 
+        let resources = if reader.contains("resources.arsc") {
+            let arsc_bytes = reader.read_entry("resources.arsc")?;
+            Some(ResourceTable::parse(&arsc_bytes)?)
+        } else {
+            None
+        };
+
         let dex_names = reader.dex_entry_names();
         let dex = multi_dex::extract_dex(&mut reader, opts)?;
 
@@ -66,6 +75,7 @@ impl ApkFile {
             kind: ApkKind::Single,
             dex,
             manifest,
+            resources,
             components: vec![component],
         })
     }
@@ -90,9 +100,15 @@ impl ApkFile {
         let base_file = File::open(base_path)?;
         let mut base_reader = ApkReader::new(BufReader::new(base_file))?;
 
-        // Parse manifest from base
         let manifest_bytes = base_reader.read_manifest()?;
         let manifest = AxmlDocument::parse(&manifest_bytes)?;
+
+        let resources = if base_reader.contains("resources.arsc") {
+            let arsc_bytes = base_reader.read_entry("resources.arsc")?;
+            Some(ResourceTable::parse(&arsc_bytes)?)
+        } else {
+            None
+        };
 
         let base_dex_names = base_reader.dex_entry_names();
 
@@ -159,6 +175,7 @@ impl ApkFile {
             kind: ApkKind::Split,
             dex,
             manifest,
+            resources,
             components,
         })
     }
@@ -173,9 +190,20 @@ impl ApkFile {
         &mut self.dex
     }
 
-    /// Get the parsed base manifest.
     pub fn manifest(&self) -> &AxmlDocument {
         &self.manifest
+    }
+
+    pub fn manifest_mut(&mut self) -> &mut AxmlDocument {
+        &mut self.manifest
+    }
+
+    pub fn resources(&self) -> Option<&ResourceTable> {
+        self.resources.as_ref()
+    }
+
+    pub fn resources_mut(&mut self) -> Option<&mut ResourceTable> {
+        self.resources.as_mut()
     }
 
     /// Get the package name from the manifest.
@@ -240,7 +268,6 @@ impl ApkFile {
         Ok(())
     }
 
-    /// Write a single APK component.
     fn write_component(
         &self,
         component: &ApkComponent,
@@ -256,17 +283,14 @@ impl ApkFile {
         let mut writer = ApkWriter::new(output_file);
 
         if is_base {
-            // Base APK: replace DEX entries with new ones from the unified container
             let mut replacements: HashMap<String, (Vec<u8>, zip::CompressionMethod)> =
                 HashMap::new();
             let mut removals: HashSet<String> = HashSet::new();
 
-            // Remove old DEX entries
             for name in &component.original_dex_names {
                 removals.insert(name.clone());
             }
 
-            // Add new DEX entries (Stored for Android 9+)
             for (name, data) in dex_entries {
                 replacements.insert(
                     name.clone(),
@@ -274,9 +298,22 @@ impl ApkFile {
                 );
             }
 
+            let manifest_bytes = self.manifest.serialize()?;
+            replacements.insert(
+                "AndroidManifest.xml".to_string(),
+                (manifest_bytes, zip::CompressionMethod::Stored),
+            );
+
+            if let Some(resources) = &self.resources {
+                let arsc_bytes = resources.serialize()?;
+                replacements.insert(
+                    "resources.arsc".to_string(),
+                    (arsc_bytes, zip::CompressionMethod::Stored),
+                );
+            }
+
             writer.rewrite_apk(&mut source, &replacements, &removals)?;
         } else {
-            // Split APK: remove DEX entries, pass through everything else
             let removals: HashSet<String> =
                 component.original_dex_names.iter().cloned().collect();
             let replacements = HashMap::new();

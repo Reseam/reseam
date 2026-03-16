@@ -19,18 +19,12 @@ struct BundleInfo {
     author: String,
     #[serde(default)]
     description: String,
-    #[serde(default)]
-    target_package: Option<String>,
-    #[serde(default)]
-    target_versions: Vec<String>,
 }
 
 pub struct PatchBundle {
     pub name: String,
     pub author: String,
     pub description: String,
-    pub target_package: Option<String>,
-    pub target_versions: Vec<String>,
     pub patches: Vec<Box<dyn Patch>>,
     pub extension_dex: Vec<PathBuf>,
 }
@@ -101,8 +95,6 @@ impl PatchBundle {
             name: manifest.bundle.name,
             author: manifest.bundle.author,
             description: manifest.bundle.description,
-            target_package: manifest.bundle.target_package,
-            target_versions: manifest.bundle.target_versions,
             patches,
             extension_dex,
         })

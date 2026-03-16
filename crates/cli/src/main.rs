@@ -6,7 +6,7 @@ use stitch_apk::ApkFile;
 use stitch_patcher::bundle::PatchBundle;
 use stitch_patcher::context::PatchContext;
 use stitch_patcher::engine::{self, PatchResult};
-use stitch_sign::SigningKey;
+use stitch_sign::{GeneratedKey, SigningKey};
 
 #[derive(Parser)]
 #[command(name = "stitch", about = "High-performance APK patching engine")]
@@ -90,6 +90,14 @@ fn cmd_patch(
     );
 
     let mut ctx = PatchContext::new(&mut apk);
+
+    if !patch_bundle.extension_dex.is_empty() {
+        let count = ctx
+            .merge_extension_dex(&patch_bundle.extension_dex)
+            .context("failed to merge extension DEX")?;
+        eprintln!("[stitch] merged {count} extension DEX files");
+    }
+
     let results = engine::apply_patches(&mut ctx, &patch_bundle.patches)
         .context("patch application failed")?;
     drop(ctx);
@@ -141,13 +149,6 @@ fn cmd_list(bundle_path: &Path) -> Result<()> {
     if !bundle.description.is_empty() {
         eprintln!("[stitch] description: {}", bundle.description);
     }
-    if let Some(pkg) = &bundle.target_package {
-        eprintln!("[stitch] target: {pkg}");
-    }
-    if !bundle.target_versions.is_empty() {
-        eprintln!("[stitch] versions: {}", bundle.target_versions.join(", "));
-    }
-
     eprintln!();
     for (i, patch) in bundle.patches.iter().enumerate() {
         let p: &dyn stitch_patcher::patch::Patch = patch.as_ref();
@@ -220,22 +221,36 @@ fn find_apk_in_dir(dir: &Path) -> Result<PathBuf> {
     bail!("no APK file found in output directory")
 }
 
+const DEFAULT_KEY: &str = "stitch.pk8";
+const DEFAULT_CERT: &str = "stitch.der";
+
 fn load_or_generate_key(
     key_path: Option<&Path>,
     cert_path: Option<&Path>,
 ) -> Result<SigningKey> {
-    match (key_path, cert_path) {
-        (Some(key), Some(cert)) => {
-            let key_bytes =
-                std::fs::read(key).with_context(|| format!("failed to read key {}", key.display()))?;
-            let cert_bytes = std::fs::read(cert)
-                .with_context(|| format!("failed to read cert {}", cert.display()))?;
-            SigningKey::from_pkcs8(&key_bytes, cert_bytes).context("failed to load signing key")
+    let key_path = key_path.map(Path::to_path_buf);
+    let cert_path = cert_path.map(Path::to_path_buf);
+
+    let (key_path, cert_path) = match (key_path, cert_path) {
+        (Some(k), Some(c)) => (k, c),
+        (None, None) if Path::new(DEFAULT_KEY).exists() && Path::new(DEFAULT_CERT).exists() => {
+            eprintln!("[stitch] using existing key {DEFAULT_KEY} + {DEFAULT_CERT}");
+            (PathBuf::from(DEFAULT_KEY), PathBuf::from(DEFAULT_CERT))
         }
         (None, None) => {
-            eprintln!("[stitch] no key provided, generating ephemeral ECDSA P-256 key");
-            SigningKey::generate().context("failed to generate signing key")
+            eprintln!("[stitch] generating ECDSA P-256 key, saving to {DEFAULT_KEY} + {DEFAULT_CERT}");
+            let generated = GeneratedKey::generate().context("failed to generate signing key")?;
+            generated
+                .save(Path::new(DEFAULT_KEY), Path::new(DEFAULT_CERT))
+                .context("failed to save signing key")?;
+            return Ok(generated.signing_key);
         }
         _ => bail!("--key and --cert must both be provided"),
-    }
+    };
+
+    let key_bytes =
+        std::fs::read(&key_path).with_context(|| format!("failed to read key {}", key_path.display()))?;
+    let cert_bytes =
+        std::fs::read(&cert_path).with_context(|| format!("failed to read cert {}", cert_path.display()))?;
+    SigningKey::from_pkcs8(&key_bytes, cert_bytes).context("failed to load signing key")
 }

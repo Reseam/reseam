@@ -11,6 +11,9 @@ toml        = { workspace = true }
 libloading  = { workspace = true, optional = true }
 mlua        = { workspace = true, optional = true }
 
+[dev-dependencies]
+tempfile = { workspace = true }
+
 [features]
 default = ["lua", "native"]
 lua = ["dep:mlua"]

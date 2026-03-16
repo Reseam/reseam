@@ -66,6 +66,21 @@ impl StringPool {
     pub fn is_empty(&self) -> bool {
         self.strings.is_empty()
     }
+
+    pub fn intern(&mut self, s: &str) -> u32 {
+        if let Some(idx) = self.strings.iter().position(|existing| existing == s) {
+            return idx as u32;
+        }
+        let idx = self.strings.len() as u32;
+        self.strings.push(s.to_owned());
+        idx
+    }
+
+    pub fn set(&mut self, index: u32, value: String) {
+        if let Some(entry) = self.strings.get_mut(index as usize) {
+            *entry = value;
+        }
+    }
 }
 
 fn decode_utf8_string(data: &[u8], offset: usize) -> Result<String> {

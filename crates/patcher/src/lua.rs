@@ -63,10 +63,10 @@ impl Patch for LuaPatch {
         let ctx_ptr = ctx as *mut PatchContext<'_> as *mut PatchContext<'static>;
         let lua_ctx = lua.create_any_userdata(LuaCtxWrapper { ctx: ctx_ptr })?;
 
-        register_ctx_methods(&lua, &lua_ctx)?;
+        let ctx_table = build_ctx_table(&lua, lua_ctx)?;
 
         execute_fn
-            .call::<()>(lua_ctx)
+            .call::<()>(ctx_table)
             .map_err(|e| PatcherError::PatchFailed {
                 name: self.name.clone(),
                 reason: e.to_string(),
@@ -157,12 +157,16 @@ fn register_api(lua: &Lua) -> Result<()> {
     Ok(())
 }
 
-fn register_ctx_methods(lua: &Lua, ctx_ud: &LuaAnyUserData) -> Result<()> {
+fn build_ctx_table(lua: &Lua, ud: LuaAnyUserData) -> Result<LuaTable> {
+    let t = lua.create_table()?;
+    t.set("_ud", ud)?;
+
     let methods = lua.create_table()?;
 
     methods.set(
         "package_name",
-        lua.create_function(|_, ud: LuaAnyUserData| {
+        lua.create_function(|_, tbl: LuaTable| {
+            let ud: LuaAnyUserData = tbl.get("_ud")?;
             let wrapper = ud.borrow::<LuaCtxWrapper>()?;
             Ok(wrapper.ctx().package_name().map(|s| s.to_owned()))
         })?,
@@ -170,7 +174,8 @@ fn register_ctx_methods(lua: &Lua, ctx_ud: &LuaAnyUserData) -> Result<()> {
 
     methods.set(
         "version_code",
-        lua.create_function(|_, ud: LuaAnyUserData| {
+        lua.create_function(|_, tbl: LuaTable| {
+            let ud: LuaAnyUserData = tbl.get("_ud")?;
             let wrapper = ud.borrow::<LuaCtxWrapper>()?;
             Ok(wrapper.ctx().version_code())
         })?,
@@ -178,7 +183,8 @@ fn register_ctx_methods(lua: &Lua, ctx_ud: &LuaAnyUserData) -> Result<()> {
 
     methods.set(
         "version_name",
-        lua.create_function(|_, ud: LuaAnyUserData| {
+        lua.create_function(|_, tbl: LuaTable| {
+            let ud: LuaAnyUserData = tbl.get("_ud")?;
             let wrapper = ud.borrow::<LuaCtxWrapper>()?;
             Ok(wrapper.ctx().version_name().map(|s| s.to_owned()))
         })?,
@@ -186,7 +192,8 @@ fn register_ctx_methods(lua: &Lua, ctx_ud: &LuaAnyUserData) -> Result<()> {
 
     methods.set(
         "dex_count",
-        lua.create_function(|_, ud: LuaAnyUserData| {
+        lua.create_function(|_, tbl: LuaTable| {
+            let ud: LuaAnyUserData = tbl.get("_ud")?;
             let wrapper = ud.borrow::<LuaCtxWrapper>()?;
             Ok(wrapper.ctx().dex_count())
         })?,
@@ -194,16 +201,17 @@ fn register_ctx_methods(lua: &Lua, ctx_ud: &LuaAnyUserData) -> Result<()> {
 
     methods.set(
         "find_class",
-        lua.create_function(|lua, (ud, descriptor): (LuaAnyUserData, String)| {
+        lua.create_function(|lua, (tbl, descriptor): (LuaTable, String)| {
+            let ud: LuaAnyUserData = tbl.get("_ud")?;
             let wrapper = ud.borrow::<LuaCtxWrapper>()?;
             match wrapper.ctx().find_class(&descriptor) {
                 Some((dex_idx, class)) => {
-                    let t = lua.create_table()?;
-                    t.set("dex_index", dex_idx)?;
-                    t.set("class_type", class.class_type.0)?;
-                    t.set("access_flags", class.access_flags.bits())?;
-                    t.set("has_data", class.class_data.is_some())?;
-                    Ok(Some(t))
+                    let r = lua.create_table()?;
+                    r.set("dex_index", dex_idx)?;
+                    r.set("class_type", class.class_type.0)?;
+                    r.set("access_flags", class.access_flags.bits())?;
+                    r.set("has_data", class.class_data.is_some())?;
+                    Ok(Some(r))
                 }
                 None => Ok(None),
             }
@@ -213,22 +221,23 @@ fn register_ctx_methods(lua: &Lua, ctx_ud: &LuaAnyUserData) -> Result<()> {
     methods.set(
         "find_method",
         lua.create_function(
-            |lua, (ud, class_desc, method_name): (LuaAnyUserData, String, String)| {
+            |lua, (tbl, class_desc, method_name): (LuaTable, String, String)| {
+                let ud: LuaAnyUserData = tbl.get("_ud")?;
                 let wrapper = ud.borrow::<LuaCtxWrapper>()?;
                 match wrapper.ctx().find_method(&class_desc, &method_name) {
                     Some((dex_idx, method)) => {
-                        let t = lua.create_table()?;
-                        t.set("dex_index", dex_idx)?;
-                        t.set("method_idx", method.method.0)?;
-                        t.set("access_flags", method.access_flags.bits())?;
-                        t.set("has_code", method.code.is_some())?;
+                        let r = lua.create_table()?;
+                        r.set("dex_index", dex_idx)?;
+                        r.set("method_idx", method.method.0)?;
+                        r.set("access_flags", method.access_flags.bits())?;
+                        r.set("has_code", method.code.is_some())?;
                         if let Some(code) = &method.code {
-                            t.set("registers", code.registers_size)?;
-                            t.set("ins", code.ins_size)?;
-                            t.set("outs", code.outs_size)?;
-                            t.set("insn_count", code.instructions.len())?;
+                            r.set("registers", code.registers_size)?;
+                            r.set("ins", code.ins_size)?;
+                            r.set("outs", code.outs_size)?;
+                            r.set("insn_count", code.instructions.len())?;
                         }
-                        Ok(Some(t))
+                        Ok(Some(r))
                     }
                     None => Ok(None),
                 }
@@ -239,7 +248,8 @@ fn register_ctx_methods(lua: &Lua, ctx_ud: &LuaAnyUserData) -> Result<()> {
     methods.set(
         "return_early",
         lua.create_function(
-            |_, (ud, class_desc, method_name): (LuaAnyUserData, String, String)| {
+            |_, (tbl, class_desc, method_name): (LuaTable, String, String)| {
+                let ud: LuaAnyUserData = tbl.get("_ud")?;
                 let wrapper = ud.borrow::<LuaCtxWrapper>()?;
                 match wrapper.ctx_mut().find_method_mut(&class_desc, &method_name) {
                     Some((_, method)) => match method.code_mut() {
@@ -259,7 +269,8 @@ fn register_ctx_methods(lua: &Lua, ctx_ud: &LuaAnyUserData) -> Result<()> {
         "return_early_int",
         lua.create_function(
             |_,
-             (ud, class_desc, method_name, value): (LuaAnyUserData, String, String, i32)| {
+             (tbl, class_desc, method_name, value): (LuaTable, String, String, i32)| {
+                let ud: LuaAnyUserData = tbl.get("_ud")?;
                 let wrapper = ud.borrow::<LuaCtxWrapper>()?;
                 match wrapper.ctx_mut().find_method_mut(&class_desc, &method_name) {
                     Some((_, method)) => match method.code_mut() {
@@ -277,7 +288,8 @@ fn register_ctx_methods(lua: &Lua, ctx_ud: &LuaAnyUserData) -> Result<()> {
 
     methods.set(
         "class_count",
-        lua.create_function(|_, (ud, dex_idx): (LuaAnyUserData, usize)| {
+        lua.create_function(|_, (tbl, dex_idx): (LuaTable, usize)| {
+            let ud: LuaAnyUserData = tbl.get("_ud")?;
             let wrapper = ud.borrow::<LuaCtxWrapper>()?;
             match wrapper.ctx().dex_file(dex_idx) {
                 Some(dex) => Ok(dex.classes.len()),
@@ -288,7 +300,8 @@ fn register_ctx_methods(lua: &Lua, ctx_ud: &LuaAnyUserData) -> Result<()> {
 
     methods.set(
         "string",
-        lua.create_function(|_, (ud, dex_idx, str_idx): (LuaAnyUserData, usize, u32)| {
+        lua.create_function(|_, (tbl, dex_idx, str_idx): (LuaTable, usize, u32)| {
+            let ud: LuaAnyUserData = tbl.get("_ud")?;
             let wrapper = ud.borrow::<LuaCtxWrapper>()?;
             match wrapper.ctx().dex_file(dex_idx) {
                 Some(dex) => {
@@ -303,7 +316,8 @@ fn register_ctx_methods(lua: &Lua, ctx_ud: &LuaAnyUserData) -> Result<()> {
     methods.set(
         "type_descriptor",
         lua.create_function(
-            |_, (ud, dex_idx, type_idx): (LuaAnyUserData, usize, u32)| {
+            |_, (tbl, dex_idx, type_idx): (LuaTable, usize, u32)| {
+                let ud: LuaAnyUserData = tbl.get("_ud")?;
                 let wrapper = ud.borrow::<LuaCtxWrapper>()?;
                 match wrapper.ctx().dex_file(dex_idx) {
                     Some(dex) => {
@@ -318,13 +332,7 @@ fn register_ctx_methods(lua: &Lua, ctx_ud: &LuaAnyUserData) -> Result<()> {
 
     let meta = lua.create_table()?;
     meta.set("__index", methods)?;
+    t.set_metatable(Some(meta));
 
-    lua.globals().set("__stitch_ctx", ctx_ud.clone())?;
-    lua.globals().set("__stitch_meta", meta)?;
-    lua.load(
-        "debug.setmetatable(__stitch_ctx, __stitch_meta); __stitch_ctx = nil; __stitch_meta = nil",
-    )
-    .exec()?;
-
-    Ok(())
+    Ok(t)
 }

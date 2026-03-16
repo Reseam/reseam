@@ -1,7 +1,14 @@
+use std::path::Path;
+
 use stitch_apk::ApkFile;
+use stitch_apk::axml::reader::AxmlDocument;
+use stitch_apk::resources::arsc::ResourceTable;
 use stitch_apk::stitch_dex::{
     ClassDef, DexFile, EncodedMethod, InstructionPattern, MethodMatch, MultiDexContainer,
+    ParseOptions,
 };
+
+use crate::error::{PatcherError, Result as PatcherResult};
 
 pub struct PatchContext<'a> {
     apk: &'a mut ApkFile,
@@ -30,6 +37,22 @@ impl<'a> PatchContext<'a> {
 
     pub fn dex_mut(&mut self) -> &mut MultiDexContainer {
         self.apk.dex_mut()
+    }
+
+    pub fn manifest(&self) -> &AxmlDocument {
+        self.apk.manifest()
+    }
+
+    pub fn manifest_mut(&mut self) -> &mut AxmlDocument {
+        self.apk.manifest_mut()
+    }
+
+    pub fn resources(&self) -> Option<&ResourceTable> {
+        self.apk.resources()
+    }
+
+    pub fn resources_mut(&mut self) -> Option<&mut ResourceTable> {
+        self.apk.resources_mut()
     }
 
     pub fn find_class(&self, descriptor: &str) -> Option<(usize, &ClassDef)> {
@@ -109,5 +132,22 @@ impl<'a> PatchContext<'a> {
 
     pub fn dex_count(&self) -> usize {
         self.apk.dex().len()
+    }
+
+    pub fn merge_extension_dex(&mut self, paths: &[impl AsRef<Path>]) -> PatcherResult<usize> {
+        let mut count = 0;
+        for path in paths {
+            let path = path.as_ref();
+            let bytes = std::fs::read(path).map_err(|e| PatcherError::Bundle {
+                reason: format!("failed to read extension DEX {}: {e}", path.display()),
+            })?;
+            let dex = stitch_apk::stitch_dex::parse(&bytes, ParseOptions::default())
+                .map_err(|e| PatcherError::Bundle {
+                    reason: format!("failed to parse extension DEX {}: {e}", path.display()),
+                })?;
+            self.apk.dex_mut().add_dex(dex);
+            count += 1;
+        }
+        Ok(count)
     }
 }

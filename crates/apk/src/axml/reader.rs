@@ -129,14 +129,15 @@ impl AxmlDocument {
                     let namespace =
                         optional_idx(read_u32_le(data, pos + hs, "axml start element")?);
                     let name = read_u32_le(data, pos + hs + 4, "axml start element")?;
-                    let _attr_start = read_u16_le(data, pos + hs + 8, "axml start element")?;
+                    let attr_start =
+                        read_u16_le(data, pos + hs + 8, "axml start element")? as usize;
                     let attr_size =
                         read_u16_le(data, pos + hs + 10, "axml start element")? as usize;
                     let attr_count =
                         read_u16_le(data, pos + hs + 12, "axml start element")? as usize;
 
                     let attr_size = if attr_size == 0 { 20 } else { attr_size };
-                    let attrs_offset = pos + hs + 16;
+                    let attrs_offset = pos + hs + attr_start;
                     let mut attributes = Vec::with_capacity(attr_count);
                     for j in 0..attr_count {
                         let ao = attrs_offset + j * attr_size;
@@ -291,6 +292,153 @@ impl AxmlDocument {
             TypedValue::Int(v) => Some(v as u32),
             TypedValue::Hex(v) => Some(v),
             _ => None,
+        }
+    }
+
+    pub fn intern_string(&mut self, s: &str) -> u32 {
+        self.string_pool.intern(s)
+    }
+
+    pub fn set_version_code(&mut self, code: u32) {
+        self.set_root_attr_int(RES_VERSION_CODE, code as i32);
+    }
+
+    pub fn set_version_name(&mut self, name: &str) {
+        let idx = self.string_pool.intern(name);
+        self.set_root_attr_string(RES_VERSION_NAME, idx);
+    }
+
+    pub fn set_min_sdk(&mut self, sdk: u32) {
+        for event in &mut self.elements {
+            if let AxmlEvent::StartElement {
+                name, attributes, ..
+            } = event
+            {
+                if self.string_pool.get(*name) == Some("uses-sdk") {
+                    for attr in attributes.iter_mut() {
+                        if self.resource_ids.get(attr.name as usize) == Some(&RES_MIN_SDK_VERSION) {
+                            attr.typed_value = TypedValue::Int(sdk as i32);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn add_permission(&mut self, permission: &str) {
+        let name_idx = self.string_pool.intern("uses-permission");
+        let attr_name_idx = self.string_pool.intern("name");
+        let android_ns_idx = self
+            .elements
+            .iter()
+            .find_map(|e| {
+                if let AxmlEvent::StartNamespace { uri, .. } = e {
+                    Some(*uri)
+                } else {
+                    None
+                }
+            });
+
+        let perm_str_idx = self.string_pool.intern(permission);
+
+        let attr = AxmlAttribute {
+            namespace: android_ns_idx,
+            name: attr_name_idx,
+            raw_value: Some(perm_str_idx),
+            typed_value: TypedValue::String(perm_str_idx),
+        };
+
+        // Insert before the closing </manifest>
+        let insert_pos = self
+            .elements
+            .iter()
+            .rposition(|e| matches!(e, AxmlEvent::EndElement { .. }))
+            .unwrap_or(self.elements.len());
+
+        self.elements.insert(
+            insert_pos,
+            AxmlEvent::EndElement {
+                namespace: None,
+                name: name_idx,
+            },
+        );
+        self.elements.insert(
+            insert_pos,
+            AxmlEvent::StartElement {
+                namespace: None,
+                name: name_idx,
+                attributes: vec![attr],
+            },
+        );
+    }
+
+    pub fn set_attribute_int(&mut self, element_name: &str, res_id: u32, value: i32) {
+        for event in &mut self.elements {
+            if let AxmlEvent::StartElement {
+                name, attributes, ..
+            } = event
+            {
+                if self.string_pool.get(*name) == Some(element_name) {
+                    for attr in attributes.iter_mut() {
+                        if self.resource_ids.get(attr.name as usize) == Some(&res_id) {
+                            attr.typed_value = TypedValue::Int(value);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn set_attribute_string(&mut self, element_name: &str, res_id: u32, value: &str) {
+        let str_idx = self.string_pool.intern(value);
+        for event in &mut self.elements {
+            if let AxmlEvent::StartElement {
+                name, attributes, ..
+            } = event
+            {
+                if self.string_pool.get(*name) == Some(element_name) {
+                    for attr in attributes.iter_mut() {
+                        if self.resource_ids.get(attr.name as usize) == Some(&res_id) {
+                            attr.raw_value = Some(str_idx);
+                            attr.typed_value = TypedValue::String(str_idx);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn set_root_attr_int(&mut self, res_id: u32, value: i32) {
+        let first_element = self
+            .elements
+            .iter_mut()
+            .find(|e| matches!(e, AxmlEvent::StartElement { .. }));
+        if let Some(AxmlEvent::StartElement { attributes, .. }) = first_element {
+            for attr in attributes.iter_mut() {
+                if self.resource_ids.get(attr.name as usize) == Some(&res_id) {
+                    attr.typed_value = TypedValue::Int(value);
+                    return;
+                }
+            }
+        }
+    }
+
+    fn set_root_attr_string(&mut self, res_id: u32, str_idx: u32) {
+        let first_element = self
+            .elements
+            .iter_mut()
+            .find(|e| matches!(e, AxmlEvent::StartElement { .. }));
+        if let Some(AxmlEvent::StartElement { attributes, .. }) = first_element {
+            for attr in attributes.iter_mut() {
+                if self.resource_ids.get(attr.name as usize) == Some(&res_id) {
+                    attr.raw_value = Some(str_idx);
+                    attr.typed_value = TypedValue::String(str_idx);
+                    return;
+                }
+            }
         }
     }
 }
