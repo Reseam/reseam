@@ -3,6 +3,8 @@ pub mod context;
 pub mod engine;
 pub mod error;
 #[cfg(feature = "lua")]
+mod lua_insn;
+#[cfg(feature = "lua")]
 pub mod lua;
 #[cfg(feature = "native")]
 pub mod native;

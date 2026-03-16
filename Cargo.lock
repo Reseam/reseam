@@ -1214,6 +1214,7 @@ dependencies = [
  "libloading",
  "mlua",
  "serde",
+ "smallvec",
  "stitch-apk",
  "tempfile",
  "thiserror",
