@@ -1,0 +1,10 @@
+[package]
+name = "stitch-patch-api"
+version = "0.1.0"
+edition = "2021"
+description = "Guest-side API for writing stitch WASM patches"
+
+[dependencies]
+wit-bindgen = "0.44"
+wit-bindgen-rt = "0.44"
+stitch-patch-macros = { workspace = true }

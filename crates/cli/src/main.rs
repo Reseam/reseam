@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 use stitch_apk::ApkFile;
 use stitch_patcher::bundle::PatchBundle;
 use stitch_patcher::context::PatchContext;
-use stitch_patcher::engine::{self, PatchResult};
+use stitch_patcher::engine::{self, PatchStatus};
 use stitch_sign::{GeneratedKey, SigningKey};
 
 #[derive(Parser)]
@@ -27,6 +27,10 @@ enum Commands {
         key: Option<PathBuf>,
         #[arg(short, long)]
         cert: Option<PathBuf>,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(short, long)]
+        verbose: bool,
     },
     List {
         bundle: PathBuf,
@@ -36,7 +40,29 @@ enum Commands {
     },
 }
 
+fn install_signal_handlers() {
+    unsafe {
+        libc::signal(libc::SIGSEGV, sigsegv_handler as *const () as libc::sighandler_t);
+        libc::signal(libc::SIGBUS, sigsegv_handler as *const () as libc::sighandler_t);
+        libc::signal(libc::SIGABRT, sigsegv_handler as *const () as libc::sighandler_t);
+    }
+}
+
+extern "C" fn sigsegv_handler(sig: libc::c_int) {
+    let msg = match sig {
+        libc::SIGSEGV => "[stitch] FATAL: Segmentation fault (SIGSEGV) — likely ABI mismatch in native patch. Rebuild patches with: cargo build --release\n",
+        libc::SIGBUS => "[stitch] FATAL: Bus error (SIGBUS)\n",
+        libc::SIGABRT => "[stitch] FATAL: Abort (SIGABRT)\n",
+        _ => "[stitch] FATAL: Unexpected signal\n",
+    };
+    unsafe {
+        libc::write(2, msg.as_ptr() as *const libc::c_void, msg.len());
+        libc::_exit(139);
+    }
+}
+
 fn main() -> Result<()> {
+    install_signal_handlers();
     let cli = Cli::parse();
 
     match cli.command {
@@ -46,7 +72,9 @@ fn main() -> Result<()> {
             output,
             key,
             cert,
-        } => cmd_patch(&apk, &bundle, output.as_deref(), key.as_deref(), cert.as_deref()),
+            dry_run,
+            verbose,
+        } => cmd_patch(&apk, &bundle, output.as_deref(), key.as_deref(), cert.as_deref(), dry_run, verbose),
         Commands::List { bundle } => cmd_list(&bundle),
         Commands::Info { apk } => cmd_info(&apk),
     }
@@ -58,6 +86,8 @@ fn cmd_patch(
     output: Option<&Path>,
     key_path: Option<&Path>,
     cert_path: Option<&Path>,
+    dry_run: bool,
+    verbose: bool,
 ) -> Result<()> {
     let output_path = match output {
         Some(p) => p.to_path_buf(),
@@ -103,24 +133,50 @@ fn cmd_patch(
     drop(ctx);
 
     for result in &results {
-        match result {
-            PatchResult::Applied { name } => eprintln!("[stitch] applied: {name}"),
-            PatchResult::Skipped { name, reason } => {
-                eprintln!("[stitch] skipped: {name} ({reason})")
+        if verbose {
+            for log in &result.logs {
+                eprintln!("{log}");
+            }
+        }
+        match &result.status {
+            PatchStatus::Applied => eprintln!("[stitch] applied: {}", result.name),
+            PatchStatus::Skipped { reason } => {
+                eprintln!("[stitch] skipped: {} ({reason})", result.name)
+            }
+            PatchStatus::Failed { reason } => {
+                eprintln!("[stitch] FAILED: {} ({reason})", result.name)
             }
         }
     }
 
-    let applied_count = results.iter().filter(|r| matches!(r, PatchResult::Applied { .. })).count();
+    let applied_count = results
+        .iter()
+        .filter(|r| matches!(r.status, PatchStatus::Applied))
+        .count();
+    let failed_count = results
+        .iter()
+        .filter(|r| matches!(r.status, PatchStatus::Failed { .. }))
+        .count();
+    if failed_count > 0 {
+        eprintln!("[stitch] WARNING: {failed_count} patch(es) failed");
+    }
     eprintln!("[stitch] {applied_count}/{} patches applied", results.len());
 
+    if dry_run {
+        eprintln!("[stitch] dry run — not writing output");
+        return Ok(());
+    }
+
+    eprintln!("[stitch] writing patched APK...");
     let tmp_dir = tempfile::tempdir().context("failed to create temp directory")?;
     apk.write_to(tmp_dir.path())
         .context("failed to write patched APK")?;
+    eprintln!("[stitch] APK written, reading back...");
 
     let tmp_apk_path = find_apk_in_dir(tmp_dir.path())?;
     let unsigned_bytes =
         std::fs::read(&tmp_apk_path).context("failed to read patched APK bytes")?;
+    eprintln!("[stitch] read {} bytes, loading signing key...", unsigned_bytes.len());
 
     let signing_key = load_or_generate_key(key_path, cert_path)?;
 

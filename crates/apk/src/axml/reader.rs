@@ -411,6 +411,300 @@ impl AxmlDocument {
         }
     }
 
+    // ── High-level manifest mutations ──
+
+    pub fn android_ns(&self) -> Option<u32> {
+        self.elements.iter().find_map(|e| {
+            if let AxmlEvent::StartNamespace { uri, .. } = e {
+                Some(*uri)
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn find_element_index(&self, element_name: &str) -> Option<usize> {
+        self.elements.iter().position(|e| {
+            if let AxmlEvent::StartElement { name, .. } = e {
+                self.string_pool.get(*name) == Some(element_name)
+            } else {
+                false
+            }
+        })
+    }
+
+    pub fn find_element_with_attr(
+        &self,
+        element_name: &str,
+        attr_res_id: u32,
+        attr_value: &str,
+    ) -> Option<usize> {
+        self.elements.iter().position(|e| {
+            if let AxmlEvent::StartElement {
+                name, attributes, ..
+            } = e
+            {
+                self.string_pool.get(*name) == Some(element_name)
+                    && attributes.iter().any(|a| {
+                        self.resource_ids.get(a.name as usize) == Some(&attr_res_id)
+                            && self.attr_as_string(a) == Some(attr_value)
+                    })
+            } else {
+                false
+            }
+        })
+    }
+
+    pub fn get_attribute_int(&self, element_idx: usize, res_id: u32) -> Option<u32> {
+        if let Some(AxmlEvent::StartElement { attributes, .. }) = self.elements.get(element_idx) {
+            for attr in attributes {
+                if self.resource_ids.get(attr.name as usize) == Some(&res_id) {
+                    return self.attr_as_int(attr);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn get_attribute_string(&self, element_idx: usize, res_id: u32) -> Option<&str> {
+        if let Some(AxmlEvent::StartElement { attributes, .. }) = self.elements.get(element_idx) {
+            for attr in attributes {
+                if self.resource_ids.get(attr.name as usize) == Some(&res_id) {
+                    return self.attr_as_string(attr);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn set_element_attribute_int(&mut self, element_idx: usize, res_id: u32, value: i32) {
+        if let Some(AxmlEvent::StartElement { attributes, .. }) =
+            self.elements.get_mut(element_idx)
+        {
+            for attr in attributes.iter_mut() {
+                if self.resource_ids.get(attr.name as usize) == Some(&res_id) {
+                    attr.typed_value = TypedValue::Int(value);
+                    return;
+                }
+            }
+        }
+    }
+
+    pub fn set_element_attribute_bool(&mut self, element_idx: usize, res_id: u32, value: bool) {
+        if let Some(AxmlEvent::StartElement { attributes, .. }) =
+            self.elements.get_mut(element_idx)
+        {
+            for attr in attributes.iter_mut() {
+                if self.resource_ids.get(attr.name as usize) == Some(&res_id) {
+                    attr.typed_value = TypedValue::Bool(value);
+                    return;
+                }
+            }
+        }
+    }
+
+    pub fn add_element_attribute_int(
+        &mut self,
+        element_idx: usize,
+        attr_name: &str,
+        res_id: u32,
+        value: i32,
+    ) {
+        let name_idx = self.string_pool.intern(attr_name);
+        let ns = self.android_ns();
+        if let Some(AxmlEvent::StartElement { attributes, .. }) =
+            self.elements.get_mut(element_idx)
+        {
+            attributes.push(AxmlAttribute {
+                namespace: ns,
+                name: name_idx,
+                raw_value: None,
+                typed_value: TypedValue::Int(value),
+            });
+        }
+        // Ensure resource_ids maps this name_idx to the res_id
+        let idx = name_idx as usize;
+        if self.resource_ids.len() <= idx {
+            self.resource_ids.resize(idx + 1, 0);
+        }
+        self.resource_ids[idx] = res_id;
+    }
+
+    pub fn add_element_attribute_string(
+        &mut self,
+        element_idx: usize,
+        attr_name: &str,
+        res_id: u32,
+        value: &str,
+    ) {
+        let name_idx = self.string_pool.intern(attr_name);
+        let value_idx = self.string_pool.intern(value);
+        let ns = self.android_ns();
+        if let Some(AxmlEvent::StartElement { attributes, .. }) =
+            self.elements.get_mut(element_idx)
+        {
+            attributes.push(AxmlAttribute {
+                namespace: ns,
+                name: name_idx,
+                raw_value: Some(value_idx),
+                typed_value: TypedValue::String(value_idx),
+            });
+        }
+        let idx = name_idx as usize;
+        if self.resource_ids.len() <= idx {
+            self.resource_ids.resize(idx + 1, 0);
+        }
+        self.resource_ids[idx] = res_id;
+    }
+
+    pub fn add_element_attribute_bool(
+        &mut self,
+        element_idx: usize,
+        attr_name: &str,
+        res_id: u32,
+        value: bool,
+    ) {
+        let name_idx = self.string_pool.intern(attr_name);
+        let ns = self.android_ns();
+        if let Some(AxmlEvent::StartElement { attributes, .. }) =
+            self.elements.get_mut(element_idx)
+        {
+            attributes.push(AxmlAttribute {
+                namespace: ns,
+                name: name_idx,
+                raw_value: None,
+                typed_value: TypedValue::Bool(value),
+            });
+        }
+        let idx = name_idx as usize;
+        if self.resource_ids.len() <= idx {
+            self.resource_ids.resize(idx + 1, 0);
+        }
+        self.resource_ids[idx] = res_id;
+    }
+
+    pub fn find_end_element(&self, start_idx: usize) -> Option<usize> {
+        let (target_ns, target_name) = match &self.elements[start_idx] {
+            AxmlEvent::StartElement {
+                namespace, name, ..
+            } => (*namespace, *name),
+            _ => return None,
+        };
+        let mut depth = 0u32;
+        for i in start_idx..self.elements.len() {
+            match &self.elements[i] {
+                AxmlEvent::StartElement {
+                    namespace, name, ..
+                } if *namespace == target_ns && *name == target_name => {
+                    depth += 1;
+                }
+                AxmlEvent::EndElement { namespace, name }
+                    if *namespace == target_ns && *name == target_name =>
+                {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(i);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
+    pub fn insert_element_before(
+        &mut self,
+        position: usize,
+        element_name: &str,
+        attributes: Vec<AxmlAttribute>,
+    ) {
+        let name_idx = self.string_pool.intern(element_name);
+        self.elements.insert(
+            position,
+            AxmlEvent::EndElement {
+                namespace: None,
+                name: name_idx,
+            },
+        );
+        self.elements.insert(
+            position,
+            AxmlEvent::StartElement {
+                namespace: None,
+                name: name_idx,
+                attributes,
+            },
+        );
+    }
+
+    pub fn insert_child_element(
+        &mut self,
+        parent_start_idx: usize,
+        element_name: &str,
+        attributes: Vec<AxmlAttribute>,
+    ) {
+        let insert_pos = parent_start_idx + 1;
+        let name_idx = self.string_pool.intern(element_name);
+        self.elements.insert(
+            insert_pos,
+            AxmlEvent::StartElement {
+                namespace: None,
+                name: name_idx,
+                attributes,
+            },
+        );
+        self.elements.insert(
+            insert_pos + 1,
+            AxmlEvent::EndElement {
+                namespace: None,
+                name: name_idx,
+            },
+        );
+    }
+
+    pub fn remove_element(&mut self, start_idx: usize) -> bool {
+        if let Some(end_idx) = self.find_end_element(start_idx) {
+            self.elements.drain(start_idx..=end_idx);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn make_attribute(&mut self, attr_name: &str, res_id: u32, value: TypedValue) -> AxmlAttribute {
+        let name_idx = self.string_pool.intern(attr_name);
+        let ns = self.android_ns();
+        let raw_value = match &value {
+            TypedValue::String(idx) => Some(*idx),
+            _ => None,
+        };
+        let idx = name_idx as usize;
+        if self.resource_ids.len() <= idx {
+            self.resource_ids.resize(idx + 1, 0);
+        }
+        self.resource_ids[idx] = res_id;
+        AxmlAttribute {
+            namespace: ns,
+            name: name_idx,
+            raw_value,
+            typed_value: value,
+        }
+    }
+
+    pub fn make_string_attribute(&mut self, attr_name: &str, res_id: u32, value: &str) -> AxmlAttribute {
+        let value_idx = self.string_pool.intern(value);
+        self.make_attribute(attr_name, res_id, TypedValue::String(value_idx))
+    }
+
+    pub fn make_int_attribute(&mut self, attr_name: &str, res_id: u32, value: i32) -> AxmlAttribute {
+        self.make_attribute(attr_name, res_id, TypedValue::Int(value))
+    }
+
+    pub fn make_bool_attribute(&mut self, attr_name: &str, res_id: u32, value: bool) -> AxmlAttribute {
+        self.make_attribute(attr_name, res_id, TypedValue::Bool(value))
+    }
+
+    // ── Private helpers ──
+
     fn set_root_attr_int(&mut self, res_id: u32, value: i32) {
         let first_element = self
             .elements

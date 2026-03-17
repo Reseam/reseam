@@ -64,26 +64,12 @@ impl MultiDexContainer {
     /// assert!(rewritten.is_empty());
     /// # Ok::<(), stitch_dex::DexError>(())
     /// ```
-    pub fn write_all(&self) -> Result<Vec<Vec<u8>>> {
-        #[cfg(feature = "parallel")]
-        {
-            use rayon::prelude::*;
-            let results: std::result::Result<Vec<_>, _> = self
-                .dex_files
-                .par_iter()
-                .map(crate::writer::write::write)
-                .collect();
-            results
+    pub fn write_all(&mut self) -> Result<Vec<Vec<u8>>> {
+        let mut buffers = Vec::with_capacity(self.dex_files.len());
+        for dex in &mut self.dex_files {
+            buffers.push(crate::writer::write::write(dex)?);
         }
-
-        #[cfg(not(feature = "parallel"))]
-        {
-            let mut buffers = Vec::with_capacity(self.dex_files.len());
-            for dex in &self.dex_files {
-                buffers.push(crate::writer::write::write(dex)?);
-            }
-            Ok(buffers)
-        }
+        Ok(buffers)
     }
 
     /// Returns the number of contained DEX files.

@@ -22,6 +22,62 @@ pub struct ClassDef {
 }
 
 impl ClassDef {
+    pub fn set_access_flags(&mut self, flags: AccessFlags) {
+        self.access_flags = flags;
+    }
+
+    pub fn definal(&mut self) {
+        self.access_flags &= !AccessFlags::FINAL;
+        if let Some(data) = self.class_data.as_mut() {
+            for m in data
+                .direct_methods
+                .iter_mut()
+                .chain(data.virtual_methods.iter_mut())
+            {
+                m.access_flags &= !AccessFlags::FINAL;
+            }
+        }
+    }
+
+    pub fn ensure_class_data(&mut self) -> &mut ClassData {
+        if self.class_data.is_none() {
+            self.class_data = Some(ClassData {
+                static_fields: Vec::new(),
+                instance_fields: Vec::new(),
+                direct_methods: Vec::new(),
+                virtual_methods: Vec::new(),
+            });
+        }
+        // SAFETY: we just ensured it's Some above
+        match self.class_data.as_mut() {
+            Some(data) => data,
+            None => unreachable!(),
+        }
+    }
+
+    pub fn add_direct_method(&mut self, method: EncodedMethod) {
+        self.ensure_class_data().direct_methods.push(method);
+    }
+
+    pub fn add_virtual_method(&mut self, method: EncodedMethod) {
+        self.ensure_class_data().virtual_methods.push(method);
+    }
+
+    pub fn add_static_field(&mut self, field: EncodedField) {
+        self.ensure_class_data().static_fields.push(field);
+    }
+
+    pub fn add_instance_field(&mut self, field: EncodedField) {
+        self.ensure_class_data().instance_fields.push(field);
+    }
+
+    pub fn remove_methods_by<F: FnMut(&EncodedMethod) -> bool>(&mut self, mut predicate: F) {
+        if let Some(data) = self.class_data.as_mut() {
+            data.direct_methods.retain(|m| !predicate(m));
+            data.virtual_methods.retain(|m| !predicate(m));
+        }
+    }
+
     pub fn find_method(
         &self,
         name: &str,
@@ -94,6 +150,18 @@ impl EncodedMethod {
     pub fn return_early_int(&mut self, value: i32) {
         if let Some(code) = self.code.as_mut() {
             code.return_early_int(value);
+        }
+    }
+
+    pub fn return_early_object(&mut self, value: i32) {
+        if let Some(code) = self.code.as_mut() {
+            code.return_early_object(value);
+        }
+    }
+
+    pub fn return_early_wide(&mut self, value: i64) {
+        if let Some(code) = self.code.as_mut() {
+            code.return_early_wide(value);
         }
     }
 }

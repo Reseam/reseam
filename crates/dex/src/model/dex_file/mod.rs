@@ -1,5 +1,6 @@
 //! High-level DEX file container APIs.
 
+mod fingerprint;
 mod interning;
 mod pattern;
 mod search;
@@ -24,6 +25,7 @@ use super::string::{DexString, StringIdx};
 use super::types::TypeIdx;
 use crate::error::{index_out_of_bounds, invalid_offset};
 
+pub use fingerprint::{Fingerprint, FingerprintBuilder, FingerprintMatch};
 pub use pattern::{InstructionPattern, OpcodeMatcher};
 pub use search::MethodMatch;
 

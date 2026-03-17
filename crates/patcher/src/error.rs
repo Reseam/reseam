@@ -18,18 +18,20 @@ pub enum PatcherError {
     #[error("not found: {0}")]
     NotFound(String),
 
+    #[error("dependency cycle: {}", names.join(" -> "))]
+    DependencyCycle { names: Vec<String> },
+
     #[error("DEX error: {0}")]
     Dex(#[from] stitch_apk::stitch_dex::DexError),
 
     #[error("APK error: {0}")]
     Apk(#[from] stitch_apk::error::ApkError),
 
-    #[cfg(feature = "native")]
-    #[error("native patch load error: {0}")]
-    NativeLoad(#[from] libloading::Error),
-
     #[error("lua error: {0}")]
     Lua(String),
+
+    #[error("WASM error: {reason}")]
+    Wasm { reason: String },
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),

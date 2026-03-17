@@ -1,0 +1,640 @@
+// Stitch Patch API — WebAssembly Interface Types
+//
+// This is the contract between the host (stitch engine) and guest (patch .wasm).
+// Every function a patch can call must be declared here.
+// The host implements imports; the guest implements exports.
+
+package stitch:patch@0.1.0;
+
+// ─────────────────────────────────────────────
+// Shared types used across all interfaces
+// ─────────────────────────────────────────────
+
+interface types {
+    // Opaque handles — host owns the data, guest holds integer IDs.
+    // These are cheap to pass across the WASM boundary (single u32).
+    type method-handle = u32;
+    type class-handle = u32;
+    type dex-handle = u32;
+    type field-handle = u32;
+    type document-handle = u32;
+    type element-handle = u32;
+
+    // Index types matching DEX format
+    type string-idx = u32;
+    type type-idx = u32;
+    type proto-idx = u32;
+    type method-idx = u32;
+    type field-idx = u32;
+
+    record compatibility {
+        %package: string,
+        versions: list<string>,
+    }
+
+    record patch-metadata {
+        name: string,
+        description: string,
+        compatible-with: list<compatibility>,
+        enabled-by-default: bool,
+        depends-on: list<string>,
+    }
+
+    flags access-flags {
+        %public,
+        %private,
+        %protected,
+        %static,
+        %final,
+        %synchronized,
+        volatile-or-bridge,
+        transient-or-varargs,
+        %native,
+        %interface,
+        %abstract,
+        %strict,
+        %synthetic,
+        %annotation,
+        %enum,
+        %constructor,
+        declared-synchronized,
+    }
+
+    // DEX opcodes as a u16 value rather than an enum, to avoid WIT identifier restrictions.
+    // The host and guest share the Dalvik opcode numbering scheme (0x00-0xFF).
+    type opcode = u16;
+
+    // Instruction representation — structured, no smali text parsing.
+    // This is a tagged union covering all instruction shapes.
+    // The host converts to/from its internal Instruction enum.
+    variant instruction {
+        // No operands: nop, return-void
+        simple(opcode),
+
+        // 1 register: move-result, return, throw, monitor-enter/exit, move-exception
+        reg1(tuple<opcode, u16>),
+
+        // 2 registers: move, unary ops, array-length, 2addr ops
+        reg2(tuple<opcode, u16, u16>),
+
+        // 3 registers: binary ops, aget/aput, cmp
+        reg3(tuple<opcode, u16, u16, u16>),
+
+        // 1-2 registers + literal: const (dest, 0, value), lit8/lit16 (dest, src, value)
+        reg-literal(tuple<opcode, u16, u16, s64>),
+
+        // 1 register + string: const-string, const-string/jumbo
+        reg-string(tuple<opcode, u16, string>),
+
+        // 1-2 registers + type: const-class (r, 0), check-cast (r, 0), new-instance (r, 0),
+        //   new-array (dest, size), instance-of (dest, ref)
+        reg-type(tuple<opcode, u16, u16, string>),
+
+        // 2 registers + field: iget/iput (dest/src, obj), sget/sput (dest/src, 0)
+        reg-field(tuple<opcode, u16, u16, field-ref>),
+
+        // Invoke with register list
+        invoke(tuple<opcode, list<u16>, method-ref>),
+
+        // Invoke range (first-reg, count)
+        invoke-range(tuple<opcode, u16, u16, method-ref>),
+
+        // Unconditional branch (goto): no registers, just offset
+        branch0(tuple<opcode, s32>),
+
+        // 1-register branch: if-eqz..if-lez, packed-switch, sparse-switch, fill-array-data
+        branch(tuple<opcode, u16, s32>),
+
+        // 2-register branch: if-eq..if-le
+        branch2(tuple<opcode, u16, u16, s32>),
+
+        // filled-new-array (type + register list)
+        filled-array(tuple<opcode, list<u16>, string>),
+
+        // filled-new-array/range (type + first-reg + count)
+        filled-array-range(tuple<opcode, u16, u16, string>),
+
+        // Packed switch payload (first-key + targets)
+        packed-switch-data(tuple<s32, list<s32>>),
+
+        // Sparse switch payload (keys + targets)
+        sparse-switch-data(tuple<list<s32>, list<s32>>),
+
+        // Fill array data payload (element-width + data)
+        fill-array-data(tuple<u16, list<u8>>),
+
+        // Raw/unknown instruction (code units for forward compatibility)
+        raw(list<u8>),
+    }
+
+    record method-ref {
+        defining-class: string,
+        name: string,
+        proto: string,
+    }
+
+    record field-ref {
+        defining-class: string,
+        name: string,
+        field-type: string,
+    }
+
+    // Fingerprint — declarative method matching.
+    // All fields optional. The more you specify, the more precise the match.
+    // Host does all the work; guest just describes what to find.
+    record fingerprint {
+        name: option<string>,
+        defining-class: option<string>,
+        access-flags: option<access-flags>,
+        return-type: option<string>,
+        parameters: option<list<string>>,
+        opcodes: option<list<option<opcode>>>,
+        strings: option<list<string>>,
+    }
+
+    // Result of a fingerprint match
+    record fingerprint-match {
+        method: method-handle,
+        // Indices of matched instructions from the opcodes pattern.
+        // match-indices[i] = instruction index that matched opcodes[i].
+        matched-indices: list<u32>,
+    }
+
+    // Result of instruction scanning
+    record instruction-hit {
+        method: method-handle,
+        index: u32,
+    }
+
+    // Method info returned from queries
+    record method-info {
+        class-descriptor: string,
+        method-name: string,
+        proto: string,
+        access-flags: access-flags,
+        dex-index: u32,
+        register-count: u16,
+        ins-size: u16,
+        outs-size: u16,
+        instruction-count: u32,
+    }
+
+    // Class info returned from queries
+    record class-info {
+        descriptor: string,
+        access-flags: access-flags,
+        superclass: option<string>,
+        interfaces: list<string>,
+        dex-index: u32,
+        direct-method-count: u32,
+        virtual-method-count: u32,
+        static-field-count: u32,
+        instance-field-count: u32,
+    }
+
+    record field-info {
+        class-descriptor: string,
+        name: string,
+        field-type: string,
+        access-flags: access-flags,
+    }
+
+    // For creating new methods
+    record new-method {
+        name: string,
+        proto: string,
+        access-flags: access-flags,
+        registers-size: u16,
+        ins-size: u16,
+        outs-size: u16,
+        instructions: list<instruction>,
+    }
+
+    // For creating new fields
+    record new-field {
+        name: string,
+        field-type: string,
+        access-flags: access-flags,
+    }
+
+    // Patch option declaration — tells the host what the user can configure
+    enum option-type {
+        string-type,
+        bool-type,
+        int-type,
+        float-type,
+        string-list-type,
+        path-type,
+    }
+
+    record option-declaration {
+        key: string,
+        title: string,
+        description: string,
+        option-type: option-type,
+        default-value: option<string>,
+        valid-values: option<list<string>>,
+        required: bool,
+    }
+
+    // Resource entry reference
+    record resource-ref {
+        res-id: u32,
+        package-id: u32,
+        type-id: u8,
+        entry-index: u32,
+        key-name: string,
+    }
+
+    // XML typed values
+    variant typed-value {
+        string-val(string),
+        int-val(s32),
+        bool-val(bool),
+        reference(u32),
+        hex-val(u32),
+    }
+}
+
+
+// ─────────────────────────────────────────────
+// Bytecode: method/class finding & manipulation
+// ─────────────────────────────────────────────
+
+interface bytecode {
+    use types.{
+        method-handle, class-handle, dex-handle, field-handle,
+        string-idx, type-idx, method-idx, field-idx,
+        instruction, opcode, method-ref, field-ref,
+        access-flags, fingerprint, fingerprint-match, instruction-hit,
+        method-info, class-info, field-info, new-method, new-field,
+    };
+
+    // ── Method lookup ──
+
+    // Find by exact class descriptor + method name. Returns first match.
+    find-method: func(class-descriptor: string, method-name: string) -> option<method-handle>;
+
+    // Search all DEX files by method name alone.
+    find-method-by-name: func(name: string) -> option<method-handle>;
+
+    // Find methods whose code contains all of the given string constants.
+    find-methods-by-strings: func(strings: list<string>) -> list<method-handle>;
+
+    // Find methods whose opcodes match a pattern (None = wildcard).
+    find-methods-by-opcodes: func(pattern: list<option<opcode>>) -> list<method-handle>;
+
+    // Declarative fingerprint matching — host does all the heavy lifting.
+    find-method-by-fingerprint: func(fp: fingerprint) -> option<fingerprint-match>;
+    find-methods-by-fingerprint: func(fp: fingerprint) -> list<fingerprint-match>;
+
+    // ── Class lookup ──
+
+    find-class: func(descriptor: string) -> option<class-handle>;
+
+    // ── Info queries (no mutation, cheap) ──
+
+    get-method-info: func(m: method-handle) -> method-info;
+    get-class-info: func(c: class-handle) -> class-info;
+
+    // Get all methods of a class
+    class-methods: func(c: class-handle) -> list<method-handle>;
+    class-direct-methods: func(c: class-handle) -> list<method-handle>;
+    class-virtual-methods: func(c: class-handle) -> list<method-handle>;
+
+    // Get all fields of a class
+    class-fields: func(c: class-handle) -> list<field-info>;
+    class-static-fields: func(c: class-handle) -> list<field-info>;
+    class-instance-fields: func(c: class-handle) -> list<field-info>;
+
+    // ── Instruction read ──
+
+    get-instructions: func(m: method-handle) -> list<instruction>;
+    get-instruction: func(m: method-handle, index: u32) -> instruction;
+    instruction-count: func(m: method-handle) -> u32;
+
+    // ── Instruction search within a single method ──
+
+    index-of-first: func(m: method-handle, start: u32, op: opcode) -> option<u32>;
+    index-of-first-reversed: func(m: method-handle, start: u32, op: opcode) -> option<u32>;
+    index-of-first-literal: func(m: method-handle, literal: s64) -> option<u32>;
+    index-of-first-string: func(m: method-handle, s: string) -> option<u32>;
+    find-all-indices: func(m: method-handle, op: opcode) -> list<u32>;
+
+    // ── Global instruction scanning ──
+    // Host iterates all methods in all DEX files. Returns every match.
+
+    find-instructions-by-literal: func(literal: s64) -> list<instruction-hit>;
+    find-instructions-by-string: func(s: string) -> list<instruction-hit>;
+    find-instructions-by-resource-id: func(res-type: string, res-name: string) -> list<instruction-hit>;
+
+    // ── Instruction mutation ──
+
+    set-instructions: func(m: method-handle, insns: list<instruction>);
+    insert-instruction: func(m: method-handle, index: u32, insn: instruction);
+    insert-instructions: func(m: method-handle, index: u32, insns: list<instruction>);
+    replace-instruction: func(m: method-handle, index: u32, insn: instruction);
+    remove-instruction: func(m: method-handle, index: u32);
+    remove-instructions: func(m: method-handle, index: u32, count: u32);
+
+    // Convenience: replace entire code body with return-void or const+return
+    return-early: func(m: method-handle);
+    return-early-int: func(m: method-handle, value: s32);
+
+    // ── Register manipulation ──
+
+    set-registers: func(m: method-handle, registers-size: u16, outs-size: u16);
+    registers-size: func(m: method-handle) -> u16;
+    ins-size: func(m: method-handle) -> u16;
+    outs-size: func(m: method-handle) -> u16;
+
+    // Register analysis — host scans liveness at the given index.
+    find-free-register: func(m: method-handle, at-index: u32, exclude: list<u16>) -> u16;
+    find-free-registers: func(m: method-handle, at-index: u32, count: u32, exclude: list<u16>) -> list<u16>;
+
+    // Read register operands from a specific instruction
+    instruction-register-a: func(m: method-handle, index: u32) -> u16;
+    instruction-register-b: func(m: method-handle, index: u32) -> u16;
+    instruction-register-c: func(m: method-handle, index: u32) -> u16;
+    instruction-register-d: func(m: method-handle, index: u32) -> u16;
+    instruction-wide-literal: func(m: method-handle, index: u32) -> s64;
+    instruction-string-ref: func(m: method-handle, index: u32) -> option<string>;
+    instruction-method-ref: func(m: method-handle, index: u32) -> option<method-ref>;
+    instruction-field-ref: func(m: method-handle, index: u32) -> option<field-ref>;
+    instruction-type-ref: func(m: method-handle, index: u32) -> option<string>;
+
+    // ── Class mutation ──
+
+    // Modify existing classes
+    set-class-access-flags: func(c: class-handle, %flags: access-flags);
+    set-superclass: func(c: class-handle, superclass: string);
+    add-interface: func(c: class-handle, interface-descriptor: string);
+    remove-class: func(c: class-handle);
+
+    // Create a new class in a DEX file
+    create-class: func(
+        dex-index: u32,
+        descriptor: string,
+        access-flags: access-flags,
+        superclass: string,
+    ) -> class-handle;
+
+    // Add methods and fields to a class
+    add-method: func(c: class-handle, method: new-method) -> method-handle;
+    remove-method: func(m: method-handle);
+    set-method-access-flags: func(m: method-handle, %flags: access-flags);
+
+    add-field: func(c: class-handle, field: new-field) -> field-handle;
+    remove-field: func(c: class-handle, name: string);
+    set-field-access-flags: func(c: class-handle, field-name: string, %flags: access-flags);
+
+    // Clone a method (optionally rename). Returns handle to the new copy.
+    clone-method: func(m: method-handle, new-name: option<string>) -> method-handle;
+
+    // ── Class hierarchy traversal ──
+    // Walk superclass chain. Callback pattern doesn't work across WASM,
+    // so we return the full chain and let the guest iterate.
+
+    superclass-chain: func(c: class-handle) -> list<class-handle>;
+
+    // Remove FINAL from a class and all its methods (used for hierarchy injection)
+    definal-class: func(c: class-handle);
+
+    // ── DEX access ──
+
+    dex-count: func() -> u32;
+    dex: func(index: u32) -> dex-handle;
+    method-dex: func(m: method-handle) -> dex-handle;
+
+    // ── Interning (add new strings/types/methods/fields to DEX) ──
+
+    intern-string: func(d: dex-handle, s: string) -> string-idx;
+    intern-type: func(d: dex-handle, descriptor: string) -> type-idx;
+    intern-proto: func(d: dex-handle, proto: string) -> u32;
+    intern-method: func(d: dex-handle, class: string, name: string, proto: string) -> method-idx;
+    intern-field: func(d: dex-handle, class: string, name: string, field-type: string) -> field-idx;
+    find-string-idx: func(d: dex-handle, s: string) -> option<string-idx>;
+    get-string: func(d: dex-handle, idx: string-idx) -> string;
+    get-type-descriptor: func(d: dex-handle, idx: type-idx) -> string;
+    build-lookups: func(d: dex-handle);
+
+    // ── Extension DEX merging ──
+    // Load additional DEX files (companion Java/Kotlin code) into the APK.
+    // Paths are relative to the bundle directory.
+
+    merge-extension-dex: func(paths: list<string>) -> u32;
+}
+
+
+// ─────────────────────────────────────────────
+// Manifest: AndroidManifest.xml manipulation
+// ─────────────────────────────────────────────
+
+interface manifest {
+    use types.{typed-value, document-handle};
+
+    // ── Read ──
+
+    package-name: func() -> string;
+    version-code: func() -> option<u32>;
+    version-name: func() -> option<string>;
+    min-sdk-version: func() -> option<u32>;
+    split-name: func() -> option<string>;
+
+    // ── Write ──
+
+    set-version-code: func(code: u32);
+    set-version-name: func(name: string);
+    set-min-sdk: func(sdk: u32);
+
+    // ── Permissions ──
+
+    add-permission: func(permission: string);
+
+    // ── Element attributes ──
+    // Find elements by attribute value and modify them.
+    // This covers the common patterns: setting configChanges on an activity,
+    // changing an activity's label, etc.
+
+    set-attribute-int: func(element-name: string, attr-res-id: u32, value: s32);
+    set-attribute-string: func(element-name: string, attr-res-id: u32, value: string);
+
+    // ── Activity manipulation ──
+    // High-level operations for common manifest mutations.
+
+    // Set android:configChanges on an activity
+    set-activity-config-changes: func(activity-name: string, config-changes: string);
+
+    // Add an intent filter to an activity
+    add-intent-filter: func(activity-name: string, action: option<string>, category: option<string>, mime-type: option<string>);
+
+    // Add an activity alias
+    add-activity-alias: func(
+        target-activity: string,
+        alias-name: string,
+        enabled: bool,
+        label: option<string>,
+    );
+
+    // Copy intent filters from one activity to another (for aliasing)
+    copy-intent-filters: func(from-activity: string, to-activity: string);
+
+    // ── Low-level XML access ──
+    // For anything the high-level API doesn't cover.
+    // The manifest is exposed as a document handle for the xml interface.
+
+    get-document: func() -> document-handle;
+}
+
+
+// ─────────────────────────────────────────────
+// Resources: resources.arsc + resource files
+// ─────────────────────────────────────────────
+
+interface resources {
+    use types.{resource-ref};
+
+    // ── String table ──
+
+    has-resources: func() -> bool;
+    get-string: func(index: u32) -> option<string>;
+    set-string: func(index: u32, value: string);
+
+    // ── Resource lookup ──
+
+    // Find resource ID by type and name (e.g. "id", "ad_attribution")
+    resource-id: func(res-type: string, res-name: string) -> option<s64>;
+
+    // Find all resource entries pointing to a given string index
+    find-entries-by-string: func(string-index: u32) -> list<resource-ref>;
+
+    // Replace the string a resource entry points to
+    replace-entry-string: func(res-id: u32, new-string-index: u32);
+
+    // ── File operations ──
+    // Copy files into the APK (icons, drawables, raw resources, etc.)
+    // Source paths are relative to the bundle directory.
+
+    // Copy a single file into the APK at the given internal path
+    copy-file: func(bundle-path: string, apk-path: string);
+
+    // Copy a group of files into a resource directory
+    // e.g. copy-resource-group("drawable", ["icon1.xml", "icon2.xml"])
+    // copies from bundle's resources/drawable/ into APK's res/drawable/
+    copy-resource-group: func(res-type: string, files: list<string>);
+
+    // Delete a file from the APK
+    delete-file: func(apk-path: string);
+
+    // List files in the APK matching a prefix
+    list-files: func(prefix: string) -> list<string>;
+}
+
+
+// ─────────────────────────────────────────────
+// XML: generic XML document manipulation
+// ─────────────────────────────────────────────
+// For modifying res/values/styles.xml, res/xml/preferences.xml,
+// or any other XML file inside the APK.
+
+interface xml {
+    use types.{document-handle, element-handle, typed-value};
+
+    // Open an XML file from the APK for editing.
+    // Returns a document handle. Changes are written back on close.
+    open: func(apk-path: string) -> option<document-handle>;
+
+    // Close and write changes back
+    close: func(doc: document-handle);
+
+    // ── Element queries ──
+
+    // Get the root element
+    root: func(doc: document-handle) -> element-handle;
+
+    // Find elements by tag name
+    find-by-tag: func(doc: document-handle, tag: string) -> list<element-handle>;
+
+    // Find elements by attribute value
+    // e.g. find-by-attribute(doc, "name", "Theme.YouTube.Settings")
+    find-by-attribute: func(doc: document-handle, attr-name: string, attr-value: string) -> list<element-handle>;
+
+    // Get child elements
+    children: func(el: element-handle) -> list<element-handle>;
+
+    // Get parent
+    parent: func(el: element-handle) -> option<element-handle>;
+
+    // ── Element properties ──
+
+    tag-name: func(el: element-handle) -> string;
+    get-attribute: func(el: element-handle, name: string) -> option<string>;
+    set-attribute: func(el: element-handle, name: string, value: string);
+    remove-attribute: func(el: element-handle, name: string);
+    get-text: func(el: element-handle) -> option<string>;
+    set-text: func(el: element-handle, value: string);
+
+    // ── Tree mutation ──
+
+    create-element: func(doc: document-handle, tag: string) -> element-handle;
+    append-child: func(parent: element-handle, child: element-handle);
+    insert-before: func(parent: element-handle, child: element-handle, before: element-handle);
+    remove-element: func(el: element-handle);
+    clone-element: func(el: element-handle, deep: bool) -> element-handle;
+}
+
+
+// ─────────────────────────────────────────────
+// Options: user-configurable patch settings
+// ─────────────────────────────────────────────
+// Patch bundles declare available options in metadata.
+// Users set values via CLI flags, config file, or GUI.
+// The patch reads them at runtime.
+
+interface options {
+    get-string: func(key: string) -> option<string>;
+    get-bool: func(key: string) -> option<bool>;
+    get-int: func(key: string) -> option<s64>;
+    get-float: func(key: string) -> option<f64>;
+    get-string-list: func(key: string) -> option<list<string>>;
+
+    // List all files in a user-provided directory option.
+    // e.g. user sets --icon-dir=/path/to/icons, patch calls list-path-contents("icon-dir")
+    list-path-contents: func(key: string) -> option<list<string>>;
+
+    // Read a file from a user-provided path option.
+    read-path-file: func(key: string, relative-path: string) -> option<list<u8>>;
+}
+
+
+// ─────────────────────────────────────────────
+// Logging
+// ─────────────────────────────────────────────
+
+interface log {
+    // Log a message (printed to stderr or displayed in GUI)
+    info: func(msg: string);
+    warn: func(msg: string);
+    debug: func(msg: string);
+}
+
+
+// ─────────────────────────────────────────────
+// The world: what the host provides, what the guest exports
+// ─────────────────────────────────────────────
+
+world stitch-patch {
+    use types.{patch-metadata, option-declaration};
+
+    import bytecode;
+    import manifest;
+    import resources;
+    import xml;
+    import options;
+    import log;
+
+    export metadata: func() -> patch-metadata;
+    export execute: func() -> result<_, string>;
+    export after-dependents: func() -> result<_, string>;
+    export declare-options: func() -> list<option-declaration>;
+}

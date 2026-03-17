@@ -45,11 +45,11 @@ impl PatchBundle {
             }
         }
 
-        #[cfg(feature = "native")]
+        #[cfg(feature = "wasm")]
         {
-            let native_patches = discover_native_libs(dir);
-            for lib_path in native_patches {
-                patches.push(crate::native::load_native_patch(&lib_path)?);
+            let wasm_patches = discover_files(dir, "wasm");
+            for wasm_path in wasm_patches {
+                patches.push(crate::wasm::load_wasm_patch(&wasm_path)?);
             }
         }
 
@@ -88,18 +88,3 @@ fn discover_files(dir: &Path, extension: &str) -> Vec<PathBuf> {
     paths
 }
 
-#[cfg(feature = "native")]
-fn discover_native_libs(dir: &Path) -> Vec<PathBuf> {
-    let ext = if cfg!(target_os = "macos") {
-        "dylib"
-    } else if cfg!(target_os = "windows") {
-        "dll"
-    } else {
-        "so"
-    };
-    let release_dir = dir.join("target/release");
-    if release_dir.is_dir() {
-        return discover_files(&release_dir, ext);
-    }
-    discover_files(dir, ext)
-}

@@ -23,7 +23,7 @@ fn test_apk_full_round_trip() {
         eprintln!("\n=== full round-trip: {apk_path} ===");
 
         // --- Phase 1: write and verify ZIP structure ---
-        let apk = ApkFile::open(apk_path).expect("open failed");
+        let mut apk = ApkFile::open(apk_path).expect("open failed");
         let original_dex_count = apk.dex().len();
         let original_package = apk.package_name().map(|s| s.to_owned());
         let original_resource_strings = apk
@@ -128,7 +128,7 @@ fn test_apk_full_round_trip() {
         eprintln!("  manifest mutation round-trip OK");
 
         // --- Phase 5: write + sign ---
-        let apk5 = ApkFile::open(apk_path).expect("open for sign test failed");
+        let mut apk5 = ApkFile::open(apk_path).expect("open for sign test failed");
         let tmp5 = tempfile::tempdir().expect("tempdir failed");
         apk5.write_to(tmp5.path()).expect("write_to failed");
         drop(apk5);

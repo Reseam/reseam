@@ -177,6 +177,33 @@ impl ResourceTable {
         }
     }
 
+    pub fn find_resource_id(&self, type_name: &str, entry_name: &str) -> Option<u32> {
+        for pkg in &self.packages {
+            let type_id = pkg
+                .type_strings
+                .iter()
+                .position(|t| t == type_name)
+                .map(|i| (i + 1) as u8)?;
+
+            for res_type in &pkg.types {
+                if res_type.id != type_id {
+                    continue;
+                }
+                for (i, entry) in res_type.entries.iter().enumerate() {
+                    if let Some(entry) = entry {
+                        let key_name = pkg.key_strings.get(entry.key as usize);
+                        if key_name.map(|k| k.as_str()) == Some(entry_name) {
+                            return Some(
+                                (pkg.id << 24) | ((res_type.id as u32) << 16) | (i as u32),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
     pub fn serialize(&self) -> Result<Vec<u8>> {
         let string_pool_chunk = serialize_res_string_pool(&self.global_strings);
         let mut package_chunks = Vec::new();

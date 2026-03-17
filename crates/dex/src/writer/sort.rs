@@ -13,12 +13,12 @@ use crate::model::string::StringIdx;
 use crate::model::types::TypeIdx;
 use crate::util::sort::dex_string_compare;
 
-/// Sort all index tables and remap all references throughout the DexFile.
-/// Returns a new DexFile ready for writing with correctly sorted tables.
-pub fn sort_for_write(dex: &DexFile) -> DexFile {
-    // Step 1: Compute sorted permutations
+/// Sort all index tables and remap all references in place.
+/// Prepares the DexFile for writing with correctly sorted tables.
+pub fn sort_in_place(dex: &mut DexFile) {
+    dex.raw = None;
+    dex.lazy_class_data_offsets = None;
 
-    // Sort strings by UTF-16 code unit order
     let mut string_order: Vec<u32> = (0..dex.strings.len() as u32).collect();
     string_order.sort_by(|&a, &b| {
         dex_string_compare(
@@ -27,16 +27,13 @@ pub fn sort_for_write(dex: &DexFile) -> DexFile {
         )
     });
 
-    // Build remap: old_idx → new_idx
     let string_remap = build_remap(&string_order);
 
-    // Sort types by their (remapped) descriptor string index
     let mut type_order: Vec<u32> = (0..dex.types.len() as u32).collect();
     type_order.sort_by_key(|&i| string_remap[dex.types[i as usize].0 as usize]);
 
     let type_remap = build_remap(&type_order);
 
-    // Sort protos by (return_type, parameters) using remapped type indices
     let mut proto_order: Vec<u16> = (0..dex.prototypes.len() as u16).collect();
     proto_order.sort_by(|&a, &b| {
         let pa = &dex.prototypes[a as usize];
@@ -60,7 +57,6 @@ pub fn sort_for_write(dex: &DexFile) -> DexFile {
 
     let proto_remap = build_remap_u16(&proto_order);
 
-    // Sort fields by (class, name, type) using remapped indices
     let mut field_order: Vec<u32> = (0..dex.fields.len() as u32).collect();
     field_order.sort_by(|&a, &b| {
         let fa = &dex.fields[a as usize];
@@ -73,7 +69,6 @@ pub fn sort_for_write(dex: &DexFile) -> DexFile {
 
     let field_remap = build_remap(&field_order);
 
-    // Sort methods by (class, name, proto) using remapped indices
     let mut method_order: Vec<u32> = (0..dex.methods.len() as u32).collect();
     method_order.sort_by(|&a, &b| {
         let ma = &dex.methods[a as usize];
@@ -86,7 +81,6 @@ pub fn sort_for_write(dex: &DexFile) -> DexFile {
 
     let method_remap = build_remap(&method_order);
 
-    // Check if everything is already in order (common case for unmodified DEX)
     let already_sorted = is_identity(&string_remap)
         && is_identity(&type_remap)
         && is_identity_u16(&proto_remap)
@@ -94,13 +88,9 @@ pub fn sort_for_write(dex: &DexFile) -> DexFile {
         && is_identity(&method_remap);
 
     if already_sorted {
-        let mut sorted = dex.clone();
-        sorted.raw = None;
-        sorted.lazy_class_data_offsets = None;
-        return sorted;
+        return;
     }
 
-    // Step 2: Build sorted DexFile with remapped indices
     let remap = Remap {
         string: &string_remap,
         type_: &type_remap,
@@ -109,25 +99,18 @@ pub fn sort_for_write(dex: &DexFile) -> DexFile {
         method: &method_remap,
     };
 
-    let mut sorted = dex.clone();
-    // Drop raw buffer and lazy offsets — not needed for the sorted writer copy
-    sorted.raw = None;
-    sorted.lazy_class_data_offsets = None;
-
-    // Reorder string table
-    sorted.strings = string_order
+    // Build new sorted index tables from the original data
+    let new_strings: Vec<_> = string_order
         .iter()
         .map(|&i| dex.strings[i as usize].clone())
         .collect();
 
-    // Reorder and remap type table
-    sorted.types = type_order
+    let new_types: Vec<_> = type_order
         .iter()
         .map(|&i| StringIdx(remap.string[dex.types[i as usize].0 as usize]))
         .collect();
 
-    // Reorder and remap proto table
-    sorted.prototypes = proto_order
+    let new_prototypes: Vec<_> = proto_order
         .iter()
         .map(|&i| {
             let p = &dex.prototypes[i as usize];
@@ -139,8 +122,7 @@ pub fn sort_for_write(dex: &DexFile) -> DexFile {
         })
         .collect();
 
-    // Reorder and remap field table
-    sorted.fields = field_order
+    let new_fields: Vec<_> = field_order
         .iter()
         .map(|&i| {
             let f = &dex.fields[i as usize];
@@ -152,8 +134,7 @@ pub fn sort_for_write(dex: &DexFile) -> DexFile {
         })
         .collect();
 
-    // Reorder and remap method table
-    sorted.methods = method_order
+    let new_methods: Vec<_> = method_order
         .iter()
         .map(|&i| {
             let m = &dex.methods[i as usize];
@@ -165,27 +146,27 @@ pub fn sort_for_write(dex: &DexFile) -> DexFile {
         })
         .collect();
 
-    // Remap class definitions
-    for class in &mut sorted.classes {
+    // Replace tables
+    dex.strings = new_strings;
+    dex.types = new_types;
+    dex.prototypes = new_prototypes;
+    dex.fields = new_fields;
+    dex.methods = new_methods;
+
+    // Remap references inside classes, call sites, method handles in place
+    for class in &mut dex.classes {
         remap.remap_class(class);
     }
 
-    // Remap call sites
-    for cs in &mut sorted.call_sites {
+    for cs in &mut dex.call_sites {
         remap.remap_call_site(cs);
     }
 
-    // Remap method handles
-    for mh in &mut sorted.method_handles {
+    for mh in &mut dex.method_handles {
         remap.remap_method_handle(mh);
     }
 
-    // Remap hidden API (class_flags order stays with class order, no index remapping needed)
-
-    // Rebuild lookups
-    sorted.build_lookups();
-
-    sorted
+    dex.build_lookups();
 }
 
 struct Remap<'a> {

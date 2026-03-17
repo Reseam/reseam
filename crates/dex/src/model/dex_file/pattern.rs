@@ -7,6 +7,8 @@ pub enum InstructionPattern {
     Any,
     /// Match by opcode name (discriminant match).
     Opcode(OpcodeMatcher),
+    /// Match by raw opcode u16 value (from Instruction::opcode()).
+    OpcodeValue(u16),
 }
 
 /// Opcode matcher that ignores operand values.
@@ -243,7 +245,7 @@ pub enum OpcodeMatcher {
 }
 
 impl OpcodeMatcher {
-    fn matches(&self, insn: &Instruction) -> bool {
+    pub(super) fn matches(&self, insn: &Instruction) -> bool {
         matches!(
             (self, insn),
             (Self::Nop, Instruction::Nop)
@@ -530,6 +532,11 @@ pub(super) fn matches_pattern(
                 InstructionPattern::Any => {}
                 InstructionPattern::Opcode(matcher) => {
                     if !matcher.matches(&instructions[start + i]) {
+                        continue 'outer;
+                    }
+                }
+                InstructionPattern::OpcodeValue(op) => {
+                    if instructions[start + i].opcode() != Some(*op) {
                         continue 'outer;
                     }
                 }

@@ -51,10 +51,11 @@ pub(crate) fn is_default_value(v: &EncodedValue) -> bool {
 /// assert!(!rewritten.is_empty());
 /// # Ok::<(), stitch_dex::DexError>(())
 /// ```
-pub fn write(dex: &DexFile) -> Result<Vec<u8>> {
-    let sorted = super::sort::sort_for_write(dex);
+pub fn write(dex: &mut DexFile) -> Result<Vec<u8>> {
+    dex.resolve_all_class_data()?;
+    super::sort::sort_in_place(dex);
     let mut w = DexWriter::new();
-    w.write_dex(&sorted)?;
+    w.write_dex(dex)?;
     Ok(w.buf)
 }
 

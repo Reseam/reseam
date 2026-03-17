@@ -73,6 +73,26 @@ impl CodeItem {
         self.debug_info = None;
     }
 
+    pub fn return_early_object(&mut self, value: i32) {
+        self.set_instructions(vec![
+            Instruction::Const { dest: 0, value },
+            Instruction::ReturnObject { src: 0 },
+        ]);
+        self.registers_size = self.ins_size.max(1);
+        self.outs_size = 0;
+        self.debug_info = None;
+    }
+
+    pub fn return_early_wide(&mut self, value: i64) {
+        self.set_instructions(vec![
+            Instruction::ConstWide { dest: 0, value },
+            Instruction::ReturnWide { src: 0 },
+        ]);
+        self.registers_size = self.ins_size.max(2);
+        self.outs_size = 0;
+        self.debug_info = None;
+    }
+
     /// Compute the code unit offset of instruction at `index`.
     fn code_unit_offset(&self, index: usize) -> u32 {
         self.instructions[..index]

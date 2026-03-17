@@ -39,7 +39,7 @@ pub fn extract_dex_unified<R: Read + Seek>(
 /// Serialize all DEX files in a container to named entries for writing into an APK.
 ///
 /// Returns entries named `classes.dex`, `classes2.dex`, `classes3.dex`, etc.
-pub fn dex_to_entries(container: &MultiDexContainer) -> Result<Vec<(String, Vec<u8>)>> {
+pub fn dex_to_entries(container: &mut MultiDexContainer) -> Result<Vec<(String, Vec<u8>)>> {
     let buffers = container.write_all()?;
     let mut entries = Vec::with_capacity(buffers.len());
     for (i, buf) in buffers.into_iter().enumerate() {

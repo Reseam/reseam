@@ -40,6 +40,9 @@ pub struct ApkFile {
     resources: Option<ResourceTable>,
     resources_dirty: bool,
     components: Vec<ApkComponent>,
+    entry_names: Vec<String>,
+    injected_files: HashMap<String, (Vec<u8>, zip::CompressionMethod)>,
+    deleted_files: HashSet<String>,
 }
 
 impl ApkFile {
@@ -64,6 +67,7 @@ impl ApkFile {
             None
         };
 
+        let entry_names = reader.entry_names();
         let dex_names = reader.dex_entry_names();
         let dex = multi_dex::extract_dex(&mut reader, opts)?;
 
@@ -81,6 +85,9 @@ impl ApkFile {
             resources,
             resources_dirty: false,
             components: vec![component],
+            entry_names,
+            injected_files: HashMap::new(),
+            deleted_files: HashSet::new(),
         })
     }
 
@@ -175,6 +182,15 @@ impl ApkFile {
             MultiDexContainer::parse(&refs, opts)?
         };
 
+        let mut entry_names = Vec::new();
+        for comp in &components {
+            if let Ok(f) = File::open(&comp.path) {
+                if let Ok(mut r) = ApkReader::new(BufReader::new(f)) {
+                    entry_names.extend(r.entry_names());
+                }
+            }
+        }
+
         Ok(Self {
             kind: ApkKind::Split,
             dex,
@@ -183,6 +199,9 @@ impl ApkFile {
             resources,
             resources_dirty: false,
             components,
+            entry_names,
+            injected_files: HashMap::new(),
+            deleted_files: HashSet::new(),
         })
     }
 
@@ -248,18 +267,48 @@ impl ApkFile {
             .collect()
     }
 
+    pub fn entry_names(&self) -> &[String] {
+        &self.entry_names
+    }
+
+    pub fn read_entry(&self, entry_name: &str) -> Result<Vec<u8>> {
+        if let Some((data, _)) = self.injected_files.get(entry_name) {
+            return Ok(data.clone());
+        }
+        let base_path = &self.components[0].path;
+        let file = File::open(base_path)?;
+        let mut reader = ApkReader::new(BufReader::new(file))?;
+        reader.read_entry(entry_name)
+    }
+
+    pub fn inject_file(&mut self, path: &str, data: Vec<u8>) {
+        self.injected_files.insert(
+            path.to_string(),
+            (data, zip::CompressionMethod::Deflated),
+        );
+    }
+
+    pub fn inject_file_stored(&mut self, path: &str, data: Vec<u8>) {
+        self.injected_files
+            .insert(path.to_string(), (data, zip::CompressionMethod::Stored));
+    }
+
+    pub fn delete_file(&mut self, path: &str) {
+        self.deleted_files.insert(path.to_string());
+    }
+
     /// Write the (possibly modified) APK to an output directory.
     ///
     /// For single APKs: writes one file at `output_dir/<original_name>`.
     /// For split bundles: writes base + all splits into `output_dir/`.
     ///
     /// All DEX goes into the base APK. Split APKs have their DEX entries removed.
-    pub fn write_to(&self, output_dir: impl AsRef<Path>) -> Result<()> {
+    pub fn write_to(&mut self, output_dir: impl AsRef<Path>) -> Result<()> {
         let output_dir = output_dir.as_ref();
         std::fs::create_dir_all(output_dir)?;
 
         // Serialize all DEX from the unified container
-        let dex_entries = multi_dex::dex_to_entries(&self.dex)?;
+        let dex_entries = multi_dex::dex_to_entries(&mut self.dex)?;
 
         for (idx, component) in self.components.iter().enumerate() {
             let is_base = idx == 0;
@@ -323,8 +372,6 @@ impl ApkFile {
                     );
                 }
             } else {
-                // Always rewrite resources.arsc to guarantee Stored + 4-byte alignment
-                // (required by Android R+), using the original bytes.
                 use std::io::Read as _;
                 let arsc_idx = (0..source.len()).find(|i| {
                     source
@@ -340,6 +387,13 @@ impl ApkFile {
                         (buf, zip::CompressionMethod::Stored),
                     );
                 }
+            }
+
+            for (name, (data, method)) in &self.injected_files {
+                replacements.insert(name.clone(), (data.clone(), *method));
+            }
+            for name in &self.deleted_files {
+                removals.insert(name.clone());
             }
 
             writer.rewrite_apk(&mut source, &replacements, &removals)?;

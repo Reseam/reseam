@@ -16,5 +16,6 @@ pub mod map;
 pub mod method;
 pub mod method_handle;
 pub mod proto;
+pub mod register_analysis;
 pub mod string;
 pub mod types;

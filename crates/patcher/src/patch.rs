@@ -1,5 +1,6 @@
 use crate::context::PatchContext;
 use crate::error::Result;
+use crate::options::OptionDeclaration;
 
 #[derive(Debug, Clone)]
 pub struct Compatibility {
@@ -34,5 +35,14 @@ pub trait Patch: Send + Sync {
     fn enabled_by_default(&self) -> bool {
         true
     }
+    fn depends_on(&self) -> &[&str] {
+        &[]
+    }
+    fn options(&self) -> &[OptionDeclaration] {
+        &[]
+    }
     fn execute(&self, ctx: &mut PatchContext) -> Result<()>;
+    fn after_dependents(&self, _ctx: &mut PatchContext) -> Result<()> {
+        Ok(())
+    }
 }

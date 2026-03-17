@@ -43,7 +43,7 @@ fn test_parse_all_apk_dex_files() {
         assert!(!dex_files.is_empty(), "No DEX files found in {}", apk);
 
         for (name, buf) in &dex_files {
-            let dex = stitch_dex::parse(buf, ParseOptions::default())
+            let mut dex = stitch_dex::parse(buf, ParseOptions::default())
                 .unwrap_or_else(|e| panic!("Failed to parse {} in {}: {}", name, apk, e));
             eprintln!(
                 "  {}: {} strings, {} types, {} methods, {} classes ({} bytes)",
@@ -71,10 +71,10 @@ fn test_round_trip_all_apks() {
         let dex_files = extract_dex_files_from_apk(apk);
 
         for (name, buf) in &dex_files {
-            let dex = stitch_dex::parse(buf, ParseOptions::default())
+            let mut dex = stitch_dex::parse(buf, ParseOptions::default())
                 .unwrap_or_else(|e| panic!("Failed to parse {} in {}: {}", name, apk, e));
 
-            let output = stitch_dex::write(&dex)
+            let output = stitch_dex::write(&mut dex)
                 .unwrap_or_else(|e| panic!("Failed to write {} from {}: {}", name, apk, e));
 
             let dex2 = stitch_dex::parse(&output, ParseOptions::default())
@@ -124,7 +124,7 @@ fn test_multi_dex_container() {
     let dex_files = extract_dex_files_from_apk(YOUTUBE_APK);
     let buffers: Vec<&[u8]> = dex_files.iter().map(|(_, b)| b.as_slice()).collect();
 
-    let container = stitch_dex::MultiDexContainer::parse(&buffers, ParseOptions::default())
+    let mut container = stitch_dex::MultiDexContainer::parse(&buffers, ParseOptions::default())
         .expect("Failed to parse multi-dex");
 
     assert_eq!(container.len(), dex_files.len());
@@ -201,7 +201,7 @@ fn test_intern_method_and_field() {
     assert_eq!(field_idx, field_idx2);
     assert_eq!(dex.fields.len(), original_field_count + 1);
 
-    let output = stitch_dex::write(&dex).expect("Failed to write");
+    let output = stitch_dex::write(&mut dex).expect("Failed to write");
     let dex2 = stitch_dex::parse(&output, ParseOptions::default()).expect("Failed to re-parse");
     assert_eq!(dex2.methods.len(), original_method_count + 1);
     assert_eq!(dex2.fields.len(), original_field_count + 1);
@@ -270,7 +270,7 @@ fn test_mutation_write_reparse() {
     }
     assert_eq!(patched_count, 3);
 
-    let output = stitch_dex::write(&dex).expect("Failed to write");
+    let output = stitch_dex::write(&mut dex).expect("Failed to write");
     let dex2 = stitch_dex::parse(&output, ParseOptions::default()).expect("Failed to re-parse");
     assert_eq!(dex.classes.len(), dex2.classes.len());
     assert_eq!(dex.strings.len(), dex2.strings.len());
@@ -329,7 +329,7 @@ fn test_lazy_parsing() {
         .count();
     assert!(classes_with_data > 0);
 
-    let output = stitch_dex::write(&dex).expect("Failed to write");
+    let output = stitch_dex::write(&mut dex).expect("Failed to write");
     let dex2 = stitch_dex::parse(&output, ParseOptions::default()).expect("Failed to re-parse");
     assert_eq!(dex.classes.len(), dex2.classes.len());
 }

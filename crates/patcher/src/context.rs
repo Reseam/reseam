@@ -4,20 +4,59 @@ use stitch_apk::ApkFile;
 use stitch_apk::axml::reader::AxmlDocument;
 use stitch_apk::resources::arsc::ResourceTable;
 use stitch_apk::stitch_dex::{
-    ClassDef, DexFile, EncodedMethod, Instruction, InstructionPattern, MethodMatch,
-    MultiDexContainer, ParseOptions, StringIdx,
+    ClassDef, CodeItem, DexFile, EncodedMethod, Fingerprint, FingerprintMatch, Instruction,
+    InstructionPattern, MethodMatch, MultiDexContainer, ParseOptions, StringIdx,
+    find_free_register, find_free_registers,
 };
 
 use crate::error::{PatcherError, Result as PatcherResult};
+use crate::log::{LogEntry, PatchLog};
+use crate::options::PatchOptions;
 
 pub struct PatchContext<'a> {
     apk: &'a mut ApkFile,
+    log: PatchLog,
+    options: PatchOptions,
 }
 
 impl<'a> PatchContext<'a> {
     pub fn new(apk: &'a mut ApkFile) -> Self {
-        Self { apk }
+        Self {
+            apk,
+            log: PatchLog::default(),
+            options: PatchOptions::default(),
+        }
     }
+
+    // ── Logging ──
+
+    pub fn log(&mut self) -> &mut PatchLog {
+        &mut self.log
+    }
+
+    pub fn set_log(&mut self, log: PatchLog) {
+        self.log = log;
+    }
+
+    pub fn take_log_entries(&mut self) -> Vec<LogEntry> {
+        self.log.take_entries()
+    }
+
+    // ── Options ──
+
+    pub fn options(&self) -> &PatchOptions {
+        &self.options
+    }
+
+    pub fn set_options(&mut self, options: PatchOptions) {
+        self.options = options;
+    }
+
+    pub fn clear_options(&mut self) {
+        self.options = PatchOptions::default();
+    }
+
+    // ── APK metadata ──
 
     pub fn package_name(&self) -> Option<&str> {
         self.apk.package_name()
@@ -30,6 +69,8 @@ impl<'a> PatchContext<'a> {
     pub fn version_name(&self) -> Option<&str> {
         self.apk.version_name()
     }
+
+    // ── Raw access ──
 
     pub fn dex(&self) -> &MultiDexContainer {
         self.apk.dex()
@@ -55,6 +96,16 @@ impl<'a> PatchContext<'a> {
         self.apk.resources_mut()
     }
 
+    pub fn apk(&self) -> &ApkFile {
+        self.apk
+    }
+
+    pub fn apk_mut(&mut self) -> &mut ApkFile {
+        self.apk
+    }
+
+    // ── Class lookup ──
+
     pub fn find_class(&self, descriptor: &str) -> Option<(usize, &ClassDef)> {
         self.apk.dex().find_class(descriptor)
     }
@@ -62,6 +113,13 @@ impl<'a> PatchContext<'a> {
     pub fn find_class_mut(&mut self, descriptor: &str) -> Option<(usize, &mut ClassDef)> {
         self.apk.dex_mut().find_class_mut(descriptor)
     }
+
+    pub fn class_mut(&mut self, descriptor: &str) -> PatcherResult<(usize, &mut ClassDef)> {
+        self.find_class_mut(descriptor)
+            .ok_or_else(|| PatcherError::NotFound(format!("class {descriptor}")))
+    }
+
+    // ── Method lookup ──
 
     pub fn find_method(
         &self,
@@ -120,30 +178,7 @@ impl<'a> PatchContext<'a> {
             })
     }
 
-    pub fn class_mut(&mut self, descriptor: &str) -> PatcherResult<(usize, &mut ClassDef)> {
-        self.find_class_mut(descriptor)
-            .ok_or_else(|| PatcherError::NotFound(format!("class {descriptor}")))
-    }
-
-    pub fn dex_mut(&mut self, index: usize) -> PatcherResult<&mut DexFile> {
-        self.apk
-            .dex_mut()
-            .dex_mut(index)
-            .ok_or_else(|| PatcherError::NotFound(format!("dex index {index}")))
-    }
-
-    pub fn find_methods_with_opcodes(
-        &self,
-        opcodes: &[InstructionPattern],
-    ) -> Vec<(usize, MethodMatch<'_>)> {
-        let mut results = Vec::new();
-        for (i, dex) in self.apk.dex().iter().enumerate() {
-            for m in dex.find_methods_with_opcodes(opcodes) {
-                results.push((i, m));
-            }
-        }
-        results
-    }
+    // ── Method search ──
 
     pub fn find_method_by_name(&self, method_name: &str) -> Option<(usize, MethodMatch<'_>)> {
         for (i, dex) in self.apk.dex().iter().enumerate() {
@@ -187,6 +222,21 @@ impl<'a> PatchContext<'a> {
         results
     }
 
+    pub fn find_methods_with_opcodes(
+        &self,
+        opcodes: &[InstructionPattern],
+    ) -> Vec<(usize, MethodMatch<'_>)> {
+        let mut results = Vec::new();
+        for (i, dex) in self.apk.dex().iter().enumerate() {
+            for m in dex.find_methods_with_opcodes(opcodes) {
+                results.push((i, m));
+            }
+        }
+        results
+    }
+
+    // ── DEX access ──
+
     pub fn dex_file(&self, index: usize) -> Option<&DexFile> {
         self.apk.dex().dex(index)
     }
@@ -195,9 +245,18 @@ impl<'a> PatchContext<'a> {
         self.apk.dex_mut().dex_mut(index)
     }
 
+    pub fn dex_mut(&mut self, index: usize) -> PatcherResult<&mut DexFile> {
+        self.apk
+            .dex_mut()
+            .dex_mut(index)
+            .ok_or_else(|| PatcherError::NotFound(format!("dex index {index}")))
+    }
+
     pub fn dex_count(&self) -> usize {
         self.apk.dex().len()
     }
+
+    // ── Extension DEX ──
 
     pub fn merge_extension_dex(&mut self, paths: &[impl AsRef<Path>]) -> PatcherResult<usize> {
         let mut count = 0;
@@ -211,6 +270,220 @@ impl<'a> PatchContext<'a> {
                     reason: format!("failed to parse extension DEX {}: {e}", path.display()),
                 })?;
             self.apk.dex_mut().add_dex(dex);
+            count += 1;
+        }
+        Ok(count)
+    }
+
+    // ── Fingerprinting ──
+
+    pub fn find_method_by_fingerprint(
+        &self,
+        fp: &Fingerprint,
+    ) -> Option<(usize, FingerprintMatch<'_>)> {
+        for (i, dex) in self.apk.dex().iter().enumerate() {
+            if let Some(m) = dex.find_method_by_fingerprint(fp) {
+                return Some((i, m));
+            }
+        }
+        None
+    }
+
+    pub fn find_methods_by_fingerprint(
+        &self,
+        fp: &Fingerprint,
+    ) -> Vec<(usize, FingerprintMatch<'_>)> {
+        let mut results = Vec::new();
+        for (i, dex) in self.apk.dex().iter().enumerate() {
+            for m in dex.find_methods_by_fingerprint(fp) {
+                results.push((i, m));
+            }
+        }
+        results
+    }
+
+    // ── Register analysis ──
+
+    pub fn find_free_register(
+        &self,
+        code: &CodeItem,
+        at_index: usize,
+        exclude: &[u16],
+    ) -> Option<u16> {
+        find_free_register(code, at_index, exclude)
+    }
+
+    pub fn find_free_registers(
+        &self,
+        code: &CodeItem,
+        at_index: usize,
+        count: usize,
+        exclude: &[u16],
+    ) -> Option<Vec<u16>> {
+        find_free_registers(code, at_index, count, exclude)
+    }
+
+    // ── Global instruction scanning ──
+
+    pub fn find_instructions_by_literal(&self, literal: i64) -> Vec<(usize, usize, usize, usize)> {
+        let mut results = Vec::new();
+        for (dex_idx, dex) in self.apk.dex().iter().enumerate() {
+            for (class_idx, class) in dex.classes.iter().enumerate() {
+                if let Some(data) = &class.class_data {
+                    for (method_idx, method) in data
+                        .direct_methods
+                        .iter()
+                        .chain(&data.virtual_methods)
+                        .enumerate()
+                    {
+                        if let Some(code) = &method.code {
+                            for (insn_idx, insn) in code.instructions.iter().enumerate() {
+                                if insn.literal() == Some(literal) {
+                                    results.push((dex_idx, class_idx, method_idx, insn_idx));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        results
+    }
+
+    pub fn find_instructions_by_string(&self, target: &str) -> Vec<(usize, usize, usize, usize)> {
+        let mut results = Vec::new();
+        for (dex_idx, dex) in self.apk.dex().iter().enumerate() {
+            let target_idx = match dex.find_string_idx(target) {
+                Some(idx) => idx,
+                None => continue,
+            };
+            for (class_idx, class) in dex.classes.iter().enumerate() {
+                if let Some(data) = &class.class_data {
+                    for (method_idx, method) in data
+                        .direct_methods
+                        .iter()
+                        .chain(&data.virtual_methods)
+                        .enumerate()
+                    {
+                        if let Some(code) = &method.code {
+                            for (insn_idx, insn) in code.instructions.iter().enumerate() {
+                                if insn.string_ref() == Some(target_idx) {
+                                    results.push((dex_idx, class_idx, method_idx, insn_idx));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        results
+    }
+
+    // ── Resolve helpers (fingerprint/match → mutable method) ──
+
+    /// Extracts (class_descriptor, method_name) from a FingerprintMatch.
+    pub fn resolve_fingerprint_location(
+        &self,
+        dex_idx: usize,
+        fp_match: &FingerprintMatch<'_>,
+    ) -> PatcherResult<(String, String)> {
+        let dex = self
+            .dex_file(dex_idx)
+            .ok_or_else(|| PatcherError::NotFound(format!("dex {dex_idx}")))?;
+        let class_desc = dex.type_descriptor(fp_match.class_idx).to_string();
+        let method_id = &dex.methods[fp_match.method.method.0 as usize];
+        let method_name = dex.string(method_id.name).to_string();
+        Ok((class_desc, method_name))
+    }
+
+    /// Extracts (class_descriptor, method_name) from a MethodMatch.
+    pub fn resolve_method_match_location(
+        &self,
+        dex_idx: usize,
+        method_match: &MethodMatch<'_>,
+    ) -> PatcherResult<(String, String)> {
+        let dex = self
+            .dex_file(dex_idx)
+            .ok_or_else(|| PatcherError::NotFound(format!("dex {dex_idx}")))?;
+        let class_desc = dex.type_descriptor(method_match.class_idx).to_string();
+        let method_id = &dex.methods[method_match.method.method.0 as usize];
+        let method_name = dex.string(method_id.name).to_string();
+        Ok((class_desc, method_name))
+    }
+
+    /// Extracts (class_descriptor, method_name) from a literal scan result tuple.
+    pub fn resolve_literal_location(
+        &self,
+        dex_idx: usize,
+        class_idx: usize,
+        method_idx: usize,
+    ) -> PatcherResult<(String, String)> {
+        let dex = self
+            .dex_file(dex_idx)
+            .ok_or_else(|| PatcherError::NotFound(format!("dex {dex_idx}")))?;
+        let class = dex
+            .classes
+            .get(class_idx)
+            .ok_or_else(|| PatcherError::NotFound(format!("class index {class_idx}")))?;
+        let class_desc = dex.type_descriptor(class.class_type).to_string();
+        let data = class
+            .class_data
+            .as_ref()
+            .ok_or_else(|| PatcherError::NotFound("class data".to_string()))?;
+        let method = data
+            .direct_methods
+            .iter()
+            .chain(&data.virtual_methods)
+            .nth(method_idx)
+            .ok_or_else(|| PatcherError::NotFound(format!("method index {method_idx}")))?;
+        let method_id = &dex.methods[method.method.0 as usize];
+        let method_name = dex.string(method_id.name).to_string();
+        Ok((class_desc, method_name))
+    }
+
+    // ── Resource ID lookup ──
+
+    pub fn find_resource_id(&self, type_name: &str, entry_name: &str) -> Option<u32> {
+        self.apk
+            .resources()
+            .and_then(|res| res.find_resource_id(type_name, entry_name))
+    }
+
+    // ── File operations ──
+
+    pub fn inject_file(&mut self, apk_path: &str, data: Vec<u8>) {
+        self.apk.inject_file(apk_path, data);
+    }
+
+    pub fn inject_file_stored(&mut self, apk_path: &str, data: Vec<u8>) {
+        self.apk.inject_file_stored(apk_path, data);
+    }
+
+    pub fn delete_file(&mut self, apk_path: &str) {
+        self.apk.delete_file(apk_path);
+    }
+
+    pub fn list_files(&self) -> &[String] {
+        self.apk.entry_names()
+    }
+
+    // ── Resource files ──
+
+    pub fn copy_resource_group(
+        &mut self,
+        bundle_dir: &Path,
+        res_type: &str,
+        files: &[&str],
+    ) -> PatcherResult<usize> {
+        let mut count = 0;
+        for file_name in files {
+            let src = bundle_dir.join("resources").join(res_type).join(file_name);
+            if !src.exists() {
+                continue;
+            }
+            let data = std::fs::read(&src)?;
+            let apk_path = format!("res/{res_type}/{file_name}");
+            self.apk.inject_file(&apk_path, data);
             count += 1;
         }
         Ok(count)

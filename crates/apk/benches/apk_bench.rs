@@ -60,11 +60,11 @@ fn bench_write(c: &mut Criterion) {
         .collect();
     for (name, dex) in &parsed {
         group.bench_with_input(BenchmarkId::new("write", name), dex, |b, dex| {
-            b.iter(|| stitch_dex::write(dex).unwrap());
+            b.iter_batched(|| dex.clone(), |mut d| stitch_dex::write(&mut d).unwrap(), criterion::BatchSize::LargeInput);
         });
     }
     group.bench_function("write_all", |b| {
-        b.iter(|| { for (_, dex) in &parsed { stitch_dex::write(dex).unwrap(); } });
+        b.iter_batched(|| parsed.iter().map(|(_, d)| d.clone()).collect::<Vec<_>>(), |mut ds| { for d in &mut ds { stitch_dex::write(d).unwrap(); } }, criterion::BatchSize::LargeInput);
     });
     group.finish();
 }
@@ -75,8 +75,8 @@ fn bench_round_trip(c: &mut Criterion) {
     let (name, buf) = &dex_files[0];
     c.bench_function(&format!("round_trip/{}", name), |b| {
         b.iter(|| {
-            let dex = stitch_dex::parse(buf, skip_verify_opts()).unwrap();
-            let output = stitch_dex::write(&dex).unwrap();
+            let mut dex = stitch_dex::parse(buf, skip_verify_opts()).unwrap();
+            let output = stitch_dex::write(&mut dex).unwrap();
             std::hint::black_box(output.len());
         });
     });
@@ -143,7 +143,7 @@ fn bench_multi_dex(c: &mut Criterion) {
         b.iter(|| stitch_dex::MultiDexContainer::parse(&buffers, skip_verify_opts()).unwrap());
     });
     let container = stitch_dex::MultiDexContainer::parse(&buffers, default_opts()).unwrap();
-    c.bench_function("multi_dex/write_all", |b| { b.iter(|| container.write_all().unwrap()); });
+    c.bench_function("multi_dex/write_all", |b| { b.iter_batched(|| container.clone(), |mut c| c.write_all().unwrap(), criterion::BatchSize::LargeInput); });
     c.bench_function("multi_dex/find_class_across_dexes", |b| {
         b.iter(|| container.find_class("Landroid/support/v4/app/Fragment;"));
     });
@@ -164,12 +164,12 @@ fn bench_instagram(c: &mut Criterion) {
     });
     let largest_dex = stitch_dex::parse(largest_buf, default_opts()).unwrap();
     group.bench_function(BenchmarkId::new("write_largest", largest_name), |b| {
-        b.iter(|| stitch_dex::write(&largest_dex).unwrap());
+        b.iter_batched(|| largest_dex.clone(), |mut d| stitch_dex::write(&mut d).unwrap(), criterion::BatchSize::LargeInput);
     });
     group.bench_function(BenchmarkId::new("round_trip_largest", largest_name), |b| {
         b.iter(|| {
-            let dex = stitch_dex::parse(largest_buf, skip_verify_opts()).unwrap();
-            let out = stitch_dex::write(&dex).unwrap();
+            let mut dex = stitch_dex::parse(largest_buf, skip_verify_opts()).unwrap();
+            let out = stitch_dex::write(&mut dex).unwrap();
             std::hint::black_box(out.len());
         });
     });
@@ -179,7 +179,7 @@ fn bench_instagram(c: &mut Criterion) {
     });
     let container = stitch_dex::MultiDexContainer::parse(&buffers, default_opts()).unwrap();
     group.bench_function(BenchmarkId::new("multi_dex_write", format!("{} files", dex_files.len())), |b| {
-        b.iter(|| container.write_all().unwrap());
+        b.iter_batched(|| container.clone(), |mut c| c.write_all().unwrap(), criterion::BatchSize::LargeInput);
     });
     group.bench_function(BenchmarkId::new("lazy_parse_largest", largest_name), |b| {
         b.iter(|| {

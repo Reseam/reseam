@@ -39,7 +39,10 @@ pub use model::call_site::{CallSiteIdx, CallSiteItem};
 pub use model::class::{ClassData, ClassDef, EncodedField, EncodedMethod};
 pub use model::code::CodeItem;
 pub use model::debug::DebugInfo;
-pub use model::dex_file::{DexFile, InstructionPattern, MethodMatch, OpcodeMatcher};
+pub use model::dex_file::{
+    DexFile, Fingerprint, FingerprintBuilder, FingerprintMatch, InstructionPattern, MethodMatch,
+    OpcodeMatcher,
+};
 pub use model::encoded_value::EncodedValue;
 pub use model::field::{FieldId, FieldIdx};
 pub use model::header::{DexHeader, DexVersion, ParseOptions};
@@ -49,6 +52,7 @@ pub use model::map::MapItem;
 pub use model::method::{MethodId, MethodIdx};
 pub use model::method_handle::{MethodHandle, MethodHandleIdx};
 pub use model::proto::{ProtoIdx, Prototype};
+pub use model::register_analysis::{find_free_register, find_free_registers};
 pub use model::string::{DexString, StringIdx};
 pub use model::types::TypeIdx;
 pub use multi_dex::MultiDexContainer;

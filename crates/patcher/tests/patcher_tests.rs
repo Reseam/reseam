@@ -1,8 +1,8 @@
 use stitch_apk::ApkFile;
 use stitch_patcher::context::PatchContext;
-use stitch_patcher::engine::{self, PatchResult};
+use stitch_patcher::engine::{self, PatchStatus};
 use stitch_patcher::error::Result as PatcherResult;
-use stitch_patcher::patch::Patch;
+use stitch_patcher::patch::{Compatibility, Patch};
 
 const YOUTUBE_APK: &str =
     "../../test-apks/for_testing_com.google.android.youtube_21.10.494.apk";
@@ -11,12 +11,9 @@ fn has_apk() -> bool {
     std::path::Path::new(YOUTUBE_APK).exists()
 }
 
-// --- Stub patches for engine tests ---
-
 struct StubPatch {
     name: String,
-    packages: Vec<String>,
-    versions: Vec<String>,
+    compat: Vec<Compatibility>,
     enabled: bool,
     action: Box<dyn Fn(&mut PatchContext) -> PatcherResult<()> + Send + Sync>,
 }
@@ -25,8 +22,7 @@ impl StubPatch {
     fn noop(name: &str) -> Box<dyn Patch> {
         Box::new(Self {
             name: name.to_string(),
-            packages: vec![],
-            versions: vec![],
+            compat: vec![],
             enabled: true,
             action: Box::new(|_| Ok(())),
         })
@@ -35,8 +31,7 @@ impl StubPatch {
     fn for_package(name: &str, pkg: &str) -> Box<dyn Patch> {
         Box::new(Self {
             name: name.to_string(),
-            packages: vec![pkg.to_string()],
-            versions: vec![],
+            compat: vec![Compatibility::package(pkg)],
             enabled: true,
             action: Box::new(|_| Ok(())),
         })
@@ -45,8 +40,10 @@ impl StubPatch {
     fn for_version(name: &str, ver: &str) -> Box<dyn Patch> {
         Box::new(Self {
             name: name.to_string(),
-            packages: vec![],
-            versions: vec![ver.to_string()],
+            compat: vec![Compatibility::with_versions(
+                "com.google.android.youtube",
+                vec![ver.to_string()],
+            )],
             enabled: true,
             action: Box::new(|_| Ok(())),
         })
@@ -55,8 +52,7 @@ impl StubPatch {
     fn failing(name: &str) -> Box<dyn Patch> {
         Box::new(Self {
             name: name.to_string(),
-            packages: vec![],
-            versions: vec![],
+            compat: vec![],
             enabled: true,
             action: Box::new(|_| {
                 Err(stitch_patcher::error::PatcherError::PatchFailed {
@@ -75,11 +71,8 @@ impl Patch for StubPatch {
     fn description(&self) -> &str {
         "test patch"
     }
-    fn compatible_packages(&self) -> &[String] {
-        &self.packages
-    }
-    fn compatible_versions(&self) -> &[String] {
-        &self.versions
+    fn compatible_with(&self) -> &[Compatibility] {
+        &self.compat
     }
     fn enabled_by_default(&self) -> bool {
         self.enabled
@@ -88,8 +81,6 @@ impl Patch for StubPatch {
         (self.action)(ctx)
     }
 }
-
-// --- Engine compatibility tests (single APK open) ---
 
 #[test]
 fn test_engine_compatibility() {
@@ -102,77 +93,58 @@ fn test_engine_compatibility() {
     let pkg = apk.package_name().expect("no package").to_owned();
     let ver = apk.version_name().expect("no version").to_owned();
 
-    // universal patch applies
     {
         let mut ctx = PatchContext::new(&mut apk);
         let patches: Vec<Box<dyn Patch>> = vec![StubPatch::noop("universal")];
         let results = engine::apply_patches(&mut ctx, &patches).expect("apply failed");
         assert_eq!(results.len(), 1);
-        assert_eq!(
-            results[0],
-            PatchResult::Applied {
-                name: "universal".into()
-            }
-        );
+        assert_eq!(results[0].status, PatchStatus::Applied);
+        assert_eq!(results[0].name, "universal");
     }
 
-    // incompatible package is skipped
     {
         let mut ctx = PatchContext::new(&mut apk);
         let patches: Vec<Box<dyn Patch>> =
             vec![StubPatch::for_package("wrong-pkg", "com.example.wrong")];
         let results = engine::apply_patches(&mut ctx, &patches).expect("apply failed");
-        match &results[0] {
-            PatchResult::Skipped { name, reason } => {
-                assert_eq!(name, "wrong-pkg");
+        match &results[0].status {
+            PatchStatus::Skipped { reason } => {
+                assert_eq!(results[0].name, "wrong-pkg");
                 assert!(reason.contains("incompatible package"), "got: {reason}");
             }
             other => panic!("expected Skipped, got: {other:?}"),
         }
     }
 
-    // matching package applies
     {
         let mut ctx = PatchContext::new(&mut apk);
         let patches: Vec<Box<dyn Patch>> = vec![StubPatch::for_package("right-pkg", &pkg)];
         let results = engine::apply_patches(&mut ctx, &patches).expect("apply failed");
-        assert_eq!(
-            results[0],
-            PatchResult::Applied {
-                name: "right-pkg".into()
-            }
-        );
+        assert_eq!(results[0].status, PatchStatus::Applied);
+        assert_eq!(results[0].name, "right-pkg");
     }
 
-    // incompatible version is skipped
     {
         let mut ctx = PatchContext::new(&mut apk);
         let patches: Vec<Box<dyn Patch>> =
             vec![StubPatch::for_version("wrong-ver", "0.0.0-nonexistent")];
         let results = engine::apply_patches(&mut ctx, &patches).expect("apply failed");
-        match &results[0] {
-            PatchResult::Skipped { name, reason } => {
-                assert_eq!(name, "wrong-ver");
+        match &results[0].status {
+            PatchStatus::Skipped { reason } => {
+                assert_eq!(results[0].name, "wrong-ver");
                 assert!(reason.contains("incompatible version"), "got: {reason}");
             }
             other => panic!("expected Skipped, got: {other:?}"),
         }
     }
 
-    // matching version applies
     {
         let mut ctx = PatchContext::new(&mut apk);
         let patches: Vec<Box<dyn Patch>> = vec![StubPatch::for_version("right-ver", &ver)];
         let results = engine::apply_patches(&mut ctx, &patches).expect("apply failed");
-        assert_eq!(
-            results[0],
-            PatchResult::Applied {
-                name: "right-ver".into()
-            }
-        );
+        assert_eq!(results[0].status, PatchStatus::Applied);
     }
 
-    // mixed compatible and incompatible
     {
         let mut ctx = PatchContext::new(&mut apk);
         let patches: Vec<Box<dyn Patch>> = vec![
@@ -183,13 +155,12 @@ fn test_engine_compatibility() {
         ];
         let results = engine::apply_patches(&mut ctx, &patches).expect("apply failed");
         assert_eq!(results.len(), 4);
-        assert!(matches!(&results[0], PatchResult::Applied { .. }));
-        assert!(matches!(&results[1], PatchResult::Skipped { .. }));
-        assert!(matches!(&results[2], PatchResult::Applied { .. }));
-        assert!(matches!(&results[3], PatchResult::Applied { .. }));
+        assert_eq!(results[0].status, PatchStatus::Applied);
+        assert!(matches!(results[1].status, PatchStatus::Skipped { .. }));
+        assert_eq!(results[2].status, PatchStatus::Applied);
+        assert_eq!(results[3].status, PatchStatus::Applied);
     }
 
-    // failing patch returns error
     {
         let mut ctx = PatchContext::new(&mut apk);
         let patches: Vec<Box<dyn Patch>> = vec![
@@ -197,12 +168,16 @@ fn test_engine_compatibility() {
             StubPatch::failing("bad"),
             StubPatch::noop("after"),
         ];
-        let err = engine::apply_patches(&mut ctx, &patches).unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("bad"), "error should name the patch: {msg}");
+        let results = engine::apply_patches(&mut ctx, &patches).expect("apply failed");
+        assert_eq!(results.len(), 3);
+        assert_eq!(results[0].status, PatchStatus::Applied);
+        assert!(matches!(results[1].status, PatchStatus::Failed { .. }));
+        assert_eq!(results[2].status, PatchStatus::Applied);
+        if let PatchStatus::Failed { reason } = &results[1].status {
+            assert!(reason.contains("intentional failure"), "got: {reason}");
+        }
     }
 
-    // empty patches
     {
         let mut ctx = PatchContext::new(&mut apk);
         let patches: Vec<Box<dyn Patch>> = vec![];
@@ -212,8 +187,6 @@ fn test_engine_compatibility() {
 
     eprintln!("engine compatibility tests OK");
 }
-
-// --- Bundle loading tests (no APK needed) ---
 
 #[test]
 fn test_bundle_load_missing_dir() {
@@ -265,25 +238,21 @@ description = "test bundle"
 }
 
 #[test]
-fn test_bundle_load_missing_lua_script() {
+fn test_bundle_load_no_patches() {
     let tmp = tempfile::tempdir().expect("tempdir failed");
     let bundle_toml = tmp.path().join("bundle.toml");
     std::fs::write(
         &bundle_toml,
         r#"
-patches = ["nonexistent.lua"]
-
 [bundle]
-name = "broken"
+name = "empty"
 "#,
     )
     .expect("write failed");
 
-    let err = stitch_patcher::bundle::PatchBundle::load(tmp.path())
-        .err()
-        .expect("should have failed");
-    let msg = err.to_string();
-    assert!(msg.contains("not found"), "got: {msg}");
+    let bundle =
+        stitch_patcher::bundle::PatchBundle::load(tmp.path()).expect("load failed");
+    assert!(bundle.patches.is_empty());
 }
 
 #[test]
@@ -321,8 +290,6 @@ name = "ext-test"
     assert!(bundle.extension_dex[1].ends_with("ext2.dex"));
 }
 
-// --- Lua patch tests ---
-
 #[cfg(feature = "lua")]
 mod lua_tests {
     use super::*;
@@ -341,8 +308,10 @@ mod lua_tests {
 return {
     name = "lua-test",
     description = "a test patch",
-    compatible_packages = {"com.example.app"},
-    compatible_versions = {"1.0", "2.0"},
+    compatible_with = {
+        "com.example.app",
+        { "com.example.beta", { "1.0", "2.0" } }
+    },
     enabled_by_default = false,
     execute = function(ctx) end
 }
@@ -352,8 +321,6 @@ return {
         std::fs::write(
             tmp.path().join("bundle.toml"),
             r#"
-patches = ["test.lua"]
-
 [bundle]
 name = "lua-bundle"
 "#,
@@ -367,9 +334,12 @@ name = "lua-bundle"
         let p = bundle.patches[0].as_ref();
         assert_eq!(p.name(), "lua-test");
         assert_eq!(p.description(), "a test patch");
-        assert_eq!(p.compatible_packages(), &["com.example.app"]);
-        assert_eq!(p.compatible_versions(), &["1.0", "2.0"]);
         assert!(!p.enabled_by_default());
+        assert_eq!(p.compatible_with().len(), 2);
+        assert_eq!(p.compatible_with()[0].package, "com.example.app");
+        assert!(p.compatible_with()[0].versions.is_empty());
+        assert_eq!(p.compatible_with()[1].package, "com.example.beta");
+        assert_eq!(p.compatible_with()[1].versions, vec!["1.0", "2.0"]);
     }
 
     #[test]
@@ -388,8 +358,6 @@ return {
         std::fs::write(
             tmp.path().join("bundle.toml"),
             r#"
-patches = ["bad.lua"]
-
 [bundle]
 name = "bad-bundle"
 "#,
@@ -419,8 +387,6 @@ return {
         std::fs::write(
             tmp.path().join("bundle.toml"),
             r#"
-patches = ["no_exec.lua"]
-
 [bundle]
 name = "no-exec-bundle"
 "#,
@@ -442,8 +408,6 @@ name = "no-exec-bundle"
         std::fs::write(
             tmp.path().join("bundle.toml"),
             r#"
-patches = ["syntax.lua"]
-
 [bundle]
 name = "syntax-bundle"
 "#,
@@ -454,7 +418,6 @@ name = "syntax-bundle"
         assert!(result.is_err());
     }
 
-    // All APK-dependent Lua tests combined into one
     #[test]
     fn test_lua_patches_with_apk() {
         if !has_apk() {
@@ -464,7 +427,6 @@ name = "syntax-bundle"
 
         let mut apk = ApkFile::open(YOUTUBE_APK).expect("open failed");
 
-        // --- execution test ---
         {
             let tmp = tempfile::tempdir().expect("tempdir failed");
             write_lua_patch(
@@ -490,8 +452,6 @@ return {
             std::fs::write(
                 tmp.path().join("bundle.toml"),
                 r#"
-patches = ["exec.lua"]
-
 [bundle]
 name = "exec-bundle"
 "#,
@@ -504,10 +464,9 @@ name = "exec-bundle"
             let results =
                 engine::apply_patches(&mut ctx, &bundle.patches).expect("apply failed");
             assert_eq!(results.len(), 1);
-            assert!(matches!(&results[0], PatchResult::Applied { .. }));
+            assert_eq!(results[0].status, PatchStatus::Applied);
         }
 
-        // --- find_class test: find first real class from dex[0] ---
         let first_class = {
             let ctx = PatchContext::new(&mut apk);
             let dex = ctx.dex_file(0).expect("dex 0");
@@ -537,8 +496,6 @@ return {{
             std::fs::write(
                 tmp.path().join("bundle.toml"),
                 r#"
-patches = ["find.lua"]
-
 [bundle]
 name = "find-bundle"
 "#,
@@ -550,10 +507,9 @@ name = "find-bundle"
             let mut ctx = PatchContext::new(&mut apk);
             let results =
                 engine::apply_patches(&mut ctx, &bundle.patches).expect("apply failed");
-            assert!(matches!(&results[0], PatchResult::Applied { .. }));
+            assert_eq!(results[0].status, PatchStatus::Applied);
         }
 
-        // --- runtime error test ---
         {
             let tmp = tempfile::tempdir().expect("tempdir failed");
             write_lua_patch(
@@ -572,8 +528,6 @@ return {
             std::fs::write(
                 tmp.path().join("bundle.toml"),
                 r#"
-patches = ["err.lua"]
-
 [bundle]
 name = "err-bundle"
 "#,
@@ -583,16 +537,17 @@ name = "err-bundle"
             let bundle =
                 stitch_patcher::bundle::PatchBundle::load(tmp.path()).expect("load failed");
             let mut ctx = PatchContext::new(&mut apk);
-            let err = engine::apply_patches(&mut ctx, &bundle.patches).unwrap_err();
-            let msg = err.to_string();
-            assert!(msg.contains("intentional lua error"), "got: {msg}");
+            let results = engine::apply_patches(&mut ctx, &bundle.patches).expect("apply failed");
+            assert_eq!(results.len(), 1);
+            assert!(matches!(results[0].status, PatchStatus::Failed { .. }));
+            if let PatchStatus::Failed { reason } = &results[0].status {
+                assert!(reason.contains("intentional lua error"), "got: {reason}");
+            }
         }
 
         eprintln!("lua APK tests OK");
     }
 }
-
-// --- PatchContext tests (single APK open) ---
 
 #[test]
 fn test_context_with_apk() {
@@ -603,7 +558,6 @@ fn test_context_with_apk() {
 
     let mut apk = ApkFile::open(YOUTUBE_APK).expect("open failed");
 
-    // accessors
     {
         let ctx = PatchContext::new(&mut apk);
         assert!(ctx.package_name().is_some());
@@ -615,7 +569,6 @@ fn test_context_with_apk() {
         assert!(ctx.manifest().package_name().is_some());
     }
 
-    // find_class - use an app-defined class, not a framework class
     {
         let ctx = PatchContext::new(&mut apk);
         let dex = ctx.dex_file(0).expect("dex 0");
@@ -624,7 +577,6 @@ fn test_context_with_apk() {
         assert!(ctx.find_class("Lcom/nonexistent/Class;").is_none());
     }
 
-    // find_method_mut - find a real method in the first class with methods
     {
         let mut ctx = PatchContext::new(&mut apk);
         let dex = ctx.dex_file(0).expect("dex 0");

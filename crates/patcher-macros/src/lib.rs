@@ -9,6 +9,7 @@ struct PatchAttr {
     description: Option<LitStr>,
     packages: Vec<PackageEntry>,
     enabled_by_default: Option<bool>,
+    depends_on: Vec<LitStr>,
 }
 
 enum PackageEntry {
@@ -25,6 +26,7 @@ impl Parse for PatchAttr {
         let mut description = None;
         let mut packages = Vec::new();
         let mut enabled_by_default = None;
+        let mut depends_on = Vec::new();
 
         let entries = Punctuated::<KeyValue, Token![,]>::parse_terminated(input)?;
 
@@ -34,6 +36,7 @@ impl Parse for PatchAttr {
                 "description" => description = Some(kv.expect_str()?),
                 "packages" => packages = parse_packages(kv.value)?,
                 "enabled_by_default" => enabled_by_default = Some(kv.expect_bool()?),
+                "depends_on" => depends_on = parse_string_array(kv.value)?,
                 other => {
                     return Err(syn::Error::new(
                         kv.key.span(),
@@ -48,6 +51,7 @@ impl Parse for PatchAttr {
             description,
             packages,
             enabled_by_default,
+            depends_on,
         })
     }
 }
@@ -95,6 +99,22 @@ impl KeyValue {
             ))
         }
     }
+}
+
+fn parse_string_array(expr: Expr) -> syn::Result<Vec<LitStr>> {
+    let Expr::Array(array) = expr else {
+        return Err(syn::Error::new_spanned(expr, "expected an array of strings"));
+    };
+    array
+        .elems
+        .into_iter()
+        .map(|elem| match elem {
+            Expr::Lit(ExprLit {
+                lit: Lit::Str(s), ..
+            }) => Ok(s),
+            _ => Err(syn::Error::new_spanned(elem, "expected a string literal")),
+        })
+        .collect()
 }
 
 fn parse_packages(expr: Expr) -> syn::Result<Vec<PackageEntry>> {
@@ -227,6 +247,17 @@ pub fn stitch_patch(attr: TokenStream, item: TokenStream) -> TokenStream {
         None => quote! {},
     };
 
+    let deps = &attrs.depends_on;
+    let deps_impl = if deps.is_empty() {
+        quote! {}
+    } else {
+        quote! {
+            fn depends_on(&self) -> &[&str] {
+                &[#(#deps),*]
+            }
+        }
+    };
+
     let expanded = quote! {
         #func
 
@@ -239,6 +270,7 @@ pub fn stitch_patch(attr: TokenStream, item: TokenStream) -> TokenStream {
             #desc_impl
             #compat_impl
             #enabled_impl
+            #deps_impl
 
             fn execute(&self, ctx: &mut PatchContext) -> Result<()> {
                 #func_name(ctx)
