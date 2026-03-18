@@ -1,6 +1,6 @@
 use super::class_reader::read_class_defs;
 use super::encoded_value_reader::read_encoded_array;
-use super::header_reader::{read_header, u16_at, u32_at};
+use super::header_reader::{read_header, read_header_at, u16_at, u32_at};
 use super::id_reader::*;
 use crate::encoding::leb128::read_uleb128;
 use crate::error::{
@@ -17,18 +17,62 @@ use crate::model::method_handle::{MethodHandle, MethodHandleMember, MethodHandle
 use std::sync::Arc;
 
 pub fn parse(buf: &[u8], opts: ParseOptions) -> Result<DexFile> {
-    parse_impl(buf, opts)
+    parse_single(buf, &opts, None)
 }
 
-fn parse_impl(buf: &[u8], opts: ParseOptions) -> Result<DexFile> {
-    let header = read_header(buf, &opts)?;
+/// Parses a v41 container buffer into its constituent logical DEX files.
+///
+/// For non-container buffers (v40 and earlier), returns a single-element vec.
+pub fn parse_container(buf: &[u8], opts: ParseOptions) -> Result<Vec<DexFile>> {
+    if buf.len() < 8 {
+        let dex = parse_single(buf, &opts, None)?;
+        return Ok(vec![dex]);
+    }
+
+    let mut magic = [0u8; 8];
+    magic.copy_from_slice(&buf[..8]);
+    let version = crate::model::header::DexVersion::from_magic(&magic);
+
+    let is_container = version.is_some_and(|v| v.is_container_format());
+    if !is_container {
+        let dex = parse_single(buf, &opts, None)?;
+        return Ok(vec![dex]);
+    }
+
+    let shared_buf = Arc::from(buf);
+    let mut dex_files = Vec::new();
+    let mut offset = 0usize;
+
+    while offset < buf.len() {
+        if offset + 8 > buf.len() {
+            break;
+        }
+        let mut hdr_magic = [0u8; 8];
+        hdr_magic.copy_from_slice(&buf[offset..offset + 8]);
+        if crate::model::header::DexVersion::from_magic(&hdr_magic).is_none() {
+            break;
+        }
+
+        let mut dex = parse_single(buf, &opts, Some(offset))?;
+        dex.raw = Some(Arc::clone(&shared_buf));
+        dex_files.push(dex);
+
+        offset += dex_files.last().map_or(0, |d| d.header.file_size as usize);
+    }
+
+    Ok(dex_files)
+}
+
+fn parse_single(buf: &[u8], opts: &ParseOptions, header_off: Option<usize>) -> Result<DexFile> {
+    let header = match header_off {
+        Some(off) => read_header_at(buf, off, buf.len() as u32, opts)?,
+        None => read_header(buf, opts)?,
+    };
+
     let lazy = opts.lazy;
     let mut dex = DexFile::new(header.clone());
-
-    // Retain the raw buffer for lazy resolution and caller access.
     dex.raw = Some(Arc::from(buf));
 
-    // String IDs -> String Data
     if header.string_ids_size > 0 {
         let string_offsets = read_string_ids(buf, header.string_ids_off, header.string_ids_size)?;
         for &off in &string_offsets {
@@ -37,27 +81,22 @@ fn parse_impl(buf: &[u8], opts: ParseOptions) -> Result<DexFile> {
         }
     }
 
-    // Type IDs
     if header.type_ids_size > 0 {
         dex.types = read_type_ids(buf, header.type_ids_off, header.type_ids_size)?;
     }
 
-    // Proto IDs
     if header.proto_ids_size > 0 {
         dex.prototypes = read_proto_ids(buf, header.proto_ids_off, header.proto_ids_size)?;
     }
 
-    // Field IDs
     if header.field_ids_size > 0 {
         dex.fields = read_field_ids(buf, header.field_ids_off, header.field_ids_size)?;
     }
 
-    // Method IDs
     if header.method_ids_size > 0 {
         dex.methods = read_method_ids(buf, header.method_ids_off, header.method_ids_size)?;
     }
 
-    // Class Defs
     if header.class_defs_size > 0 {
         if lazy {
             let (classes, offsets) = super::class_reader::read_class_defs_lazy(
@@ -72,7 +111,6 @@ fn parse_impl(buf: &[u8], opts: ParseOptions) -> Result<DexFile> {
         }
     }
 
-    // Parse map list to find optional sections
     let map_off = header.map_off as usize;
     let map_size = u32_at(buf, map_off)? as usize;
 
@@ -94,13 +132,11 @@ fn parse_impl(buf: &[u8], opts: ParseOptions) -> Result<DexFile> {
         }
     }
 
-    // DEX 038+: method handles and call sites
     if header.version.supports_call_sites() {
         read_method_handles(buf, method_handle_off, &mut dex)?;
         read_call_sites(buf, call_site_off, &mut dex)?;
     }
 
-    // DEX 039+: hidden API data
     if header.version.supports_hidden_api() {
         if let Some((off, _)) = hidden_api_off {
             dex.hidden_api = Some(read_hidden_api(buf, off as usize, &dex)?);
@@ -195,13 +231,11 @@ fn read_hidden_api(buf: &[u8], off: usize, dex: &DexFile) -> Result<HiddenApiDat
     let class_count = dex.classes.len();
     let mut class_flags = Vec::with_capacity(class_count);
 
-    // Read offset table: one u32 per class_def
     let mut data_offsets = Vec::with_capacity(class_count);
     for i in 0..class_count {
         data_offsets.push(u32_at(buf, off + i * 4)?);
     }
 
-    // For each class, read the flag sequences
     for (i, &data_off) in data_offsets.iter().enumerate() {
         if data_off == 0 {
             class_flags.push(None);
@@ -281,6 +315,8 @@ mod tests {
             class_defs_off: 0,
             data_size: 0,
             data_off: 0,
+            container_size: 0,
+            header_offset: 0,
         }
     }
 

@@ -9,7 +9,15 @@ impl DexFile {
     }
 
     /// Computes the minimum DEX version required to encode the current contents.
+    ///
+    /// Preserves v040/v041 when the header already declares them, since those
+    /// versions carry semantic meaning (extended SimpleNames, container format)
+    /// that cannot be inferred from content alone.
     pub fn required_version(&self) -> DexVersion {
+        if self.header.version >= DexVersion::V040 {
+            return self.header.version;
+        }
+
         if self.hidden_api.is_some() {
             return DexVersion::V039;
         }

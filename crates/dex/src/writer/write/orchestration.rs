@@ -18,7 +18,10 @@ pub(crate) trait DexWriterWriteExt {
 impl DexWriterWriteExt for DexWriter {
     fn write_dex(&mut self, dex: &DexFile) -> Result<()> {
         let header_off = self.pos();
-        self.buf.extend_from_slice(&[0u8; 112]);
+        self.header_base = header_off;
+        let header_size = dex.required_version().header_size() as usize;
+        self.buf.extend_from_slice(&vec![0u8; header_size]);
+        self.map_entries.clear();
         self.map_entries.push(MapItem {
             type_code: TYPE_HEADER_ITEM,
             size: 1,

@@ -1,7 +1,9 @@
 //! High-level DEX file container APIs.
 
+mod class_ops;
 mod fingerprint;
 mod interning;
+mod lookup;
 mod pattern;
 mod search;
 #[cfg(test)]
@@ -72,6 +74,8 @@ fn empty_test_header() -> DexHeader {
         class_defs_off: 0,
         data_size: 0,
         data_off: 0,
+        container_size: 0,
+        header_offset: 0,
     }
 }
 

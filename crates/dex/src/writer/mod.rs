@@ -6,3 +6,4 @@ pub(crate) mod sort;
 pub mod write;
 
 pub use write::write;
+pub use write::write_container;

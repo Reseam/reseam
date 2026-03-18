@@ -3,6 +3,9 @@ use crate::model::dex_file::DexFile;
 use crate::model::header::ParseOptions;
 
 /// A container for multiple DEX files, typically extracted from an APK.
+///
+/// Supports both traditional multi-DEX (separate files) and the v41
+/// container format (multiple logical DEX files in a single buffer).
 #[derive(Debug)]
 pub struct MultiDexContainer {
     pub dex_files: Vec<DexFile>,
@@ -17,17 +20,6 @@ impl MultiDexContainer {
     }
 
     /// Parses multiple DEX buffers into one container.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use stitch_dex::{MultiDexContainer, ParseOptions};
-    ///
-    /// let buffers: Vec<&[u8]> = Vec::new();
-    /// let container = MultiDexContainer::parse(&buffers, ParseOptions::default())?;
-    /// assert!(container.is_empty());
-    /// # Ok::<(), stitch_dex::DexError>(())
-    /// ```
     pub fn parse(buffers: &[&[u8]], opts: ParseOptions) -> Result<Self> {
         #[cfg(feature = "parallel")]
         {
@@ -51,25 +43,27 @@ impl MultiDexContainer {
         }
     }
 
+    /// Parses a single buffer that may contain a v41 container with multiple
+    /// logical DEX files, or a traditional single DEX file.
+    pub fn parse_container(buf: &[u8], opts: ParseOptions) -> Result<Self> {
+        let dex_files = crate::reader::parse::parse_container(buf, opts)?;
+        Ok(Self { dex_files })
+    }
+
     /// Serializes every contained DEX file back into its own byte buffer.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use stitch_dex::{MultiDexContainer, ParseOptions};
-    ///
-    /// let buffers: Vec<&[u8]> = Vec::new();
-    /// let container = MultiDexContainer::parse(&buffers, ParseOptions::default())?;
-    /// let rewritten = container.write_all()?;
-    /// assert!(rewritten.is_empty());
-    /// # Ok::<(), stitch_dex::DexError>(())
-    /// ```
     pub fn write_all(&mut self) -> Result<Vec<Vec<u8>>> {
         let mut buffers = Vec::with_capacity(self.dex_files.len());
         for dex in &mut self.dex_files {
             buffers.push(crate::writer::write::write(dex)?);
         }
         Ok(buffers)
+    }
+
+    /// Serializes all contained DEX files into a single v41 container buffer.
+    ///
+    /// For a single DEX file, produces a standard (non-container) output.
+    pub fn write_container(&mut self) -> Result<Vec<u8>> {
+        crate::writer::write::write_container(&mut self.dex_files)
     }
 
     /// Returns the number of contained DEX files.

@@ -6,7 +6,6 @@ use sha1::{Digest, Sha1};
 use super::annotations::ClassAnnotations;
 use super::DexWriter;
 
-/// Backpatches section offsets, writes the final header fields, and computes checksums.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn finalize(
     w: &mut DexWriter,
@@ -64,6 +63,10 @@ pub(crate) fn finalize(
         }
     }
 
+    let version = dex.required_version();
+    let is_container = version.is_container_format();
+    let header_size = version.header_size();
+
     const OFF_CHECKSUM: usize = 0x08;
     const OFF_SIGNATURE: usize = 0x0C;
     const OFF_FILE_SIZE: usize = 0x20;
@@ -86,87 +89,102 @@ pub(crate) fn finalize(
     const OFF_CLASS_DEFS_OFF: usize = 0x64;
     const OFF_DATA_SIZE: usize = 0x68;
     const OFF_DATA_OFF: usize = 0x6C;
-    const HEADER_SIZE: u32 = 0x70;
     const ENDIAN_TAG: u32 = 0x12345678;
 
-    let version = dex.required_version();
-    w.buf[0..8].copy_from_slice(version.magic_bytes());
-    w.patch_u32(OFF_HEADER_SIZE, HEADER_SIZE);
-    w.patch_u32(OFF_ENDIAN_TAG, ENDIAN_TAG);
-    w.patch_u32(OFF_LINK_SIZE, 0);
-    w.patch_u32(OFF_LINK_OFF, 0);
-    w.patch_u32(OFF_MAP_OFF, map_off);
-    w.patch_u32(OFF_STRING_IDS_SIZE, dex.strings.len() as u32);
+    let header_base = w.header_base as usize;
+
+    w.buf[header_base..header_base + 8].copy_from_slice(version.magic_bytes());
+    w.patch_u32(header_base + OFF_HEADER_SIZE, header_size);
+    w.patch_u32(header_base + OFF_ENDIAN_TAG, ENDIAN_TAG);
+    w.patch_u32(header_base + OFF_LINK_SIZE, 0);
+    w.patch_u32(header_base + OFF_LINK_OFF, 0);
+    w.patch_u32(header_base + OFF_MAP_OFF, map_off);
+    w.patch_u32(header_base + OFF_STRING_IDS_SIZE, dex.strings.len() as u32);
     w.patch_u32(
-        OFF_STRING_IDS_OFF,
+        header_base + OFF_STRING_IDS_OFF,
         if !dex.strings.is_empty() {
             string_ids_off
         } else {
             0
         },
     );
-    w.patch_u32(OFF_TYPE_IDS_SIZE, dex.types.len() as u32);
+    w.patch_u32(header_base + OFF_TYPE_IDS_SIZE, dex.types.len() as u32);
     w.patch_u32(
-        OFF_TYPE_IDS_OFF,
+        header_base + OFF_TYPE_IDS_OFF,
         if !dex.types.is_empty() {
             type_ids_off
         } else {
             0
         },
     );
-    w.patch_u32(OFF_PROTO_IDS_SIZE, dex.prototypes.len() as u32);
+    w.patch_u32(header_base + OFF_PROTO_IDS_SIZE, dex.prototypes.len() as u32);
     w.patch_u32(
-        OFF_PROTO_IDS_OFF,
+        header_base + OFF_PROTO_IDS_OFF,
         if !dex.prototypes.is_empty() {
             proto_ids_off
         } else {
             0
         },
     );
-    w.patch_u32(OFF_FIELD_IDS_SIZE, dex.fields.len() as u32);
+    w.patch_u32(header_base + OFF_FIELD_IDS_SIZE, dex.fields.len() as u32);
     w.patch_u32(
-        OFF_FIELD_IDS_OFF,
+        header_base + OFF_FIELD_IDS_OFF,
         if !dex.fields.is_empty() {
             field_ids_off
         } else {
             0
         },
     );
-    w.patch_u32(OFF_METHOD_IDS_SIZE, dex.methods.len() as u32);
+    w.patch_u32(header_base + OFF_METHOD_IDS_SIZE, dex.methods.len() as u32);
     w.patch_u32(
-        OFF_METHOD_IDS_OFF,
+        header_base + OFF_METHOD_IDS_OFF,
         if !dex.methods.is_empty() {
             method_ids_off
         } else {
             0
         },
     );
-    w.patch_u32(OFF_CLASS_DEFS_SIZE, dex.classes.len() as u32);
+    w.patch_u32(header_base + OFF_CLASS_DEFS_SIZE, dex.classes.len() as u32);
     w.patch_u32(
-        OFF_CLASS_DEFS_OFF,
+        header_base + OFF_CLASS_DEFS_OFF,
         if !dex.classes.is_empty() {
             class_defs_off
         } else {
             0
         },
     );
-    let aligned_data_size = (data_size + 3) & !3;
-    w.patch_u32(OFF_DATA_SIZE, aligned_data_size);
-    w.patch_u32(OFF_DATA_OFF, data_off);
-    let file_size = w.pos();
-    w.patch_u32(OFF_FILE_SIZE, file_size);
+
+    if is_container {
+        w.patch_u32(header_base + OFF_DATA_SIZE, 0);
+        w.patch_u32(header_base + OFF_DATA_OFF, 0);
+    } else {
+        let aligned_data_size = (data_size + 3) & !3;
+        w.patch_u32(header_base + OFF_DATA_SIZE, aligned_data_size);
+        w.patch_u32(header_base + OFF_DATA_OFF, data_off);
+    }
+
+    let file_size = w.pos() - w.header_base;
+    w.patch_u32(header_base + OFF_FILE_SIZE, file_size);
+
+    if is_container {
+        w.patch_u32(header_base + 0x70, w.container_size);
+        w.patch_u32(header_base + 0x74, w.header_base);
+    }
+
+    let logical_end = w.pos() as usize;
 
     {
         let mut hasher = Sha1::new();
-        hasher.update(&w.buf[32..file_size as usize]);
+        hasher.update(&w.buf[header_base + 32..logical_end]);
         let sig: [u8; 20] = hasher.finalize().into();
-        w.buf[OFF_SIGNATURE..OFF_SIGNATURE + 20].copy_from_slice(&sig);
+        w.buf[header_base + OFF_SIGNATURE..header_base + OFF_SIGNATURE + 20]
+            .copy_from_slice(&sig);
     }
 
     {
-        let checksum = adler::adler32(&w.buf[OFF_CHECKSUM + 4..file_size as usize])
+        let checksum = adler::adler32(&w.buf[header_base + OFF_CHECKSUM + 4..logical_end])
             .expect("writing checksum slice should be infallible");
-        w.patch_u32(OFF_CHECKSUM, checksum);
+        w.patch_u32(header_base + OFF_CHECKSUM, checksum);
     }
 
     Ok(())

@@ -10,6 +10,7 @@ pub(crate) mod id_reader;
 pub mod parse;
 
 pub use parse::parse;
+pub use parse::parse_container;
 
 /// Parse a DEX file from a filesystem path.
 ///

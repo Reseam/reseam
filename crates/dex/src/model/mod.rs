@@ -12,6 +12,7 @@ pub mod field;
 pub mod header;
 pub mod hidden_api;
 pub mod instruction;
+pub mod label;
 pub mod map;
 pub mod method;
 pub mod method_handle;

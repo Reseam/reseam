@@ -92,6 +92,8 @@ impl DexFile {
     ///     class_defs_off: 0,
     ///     data_size: 0,
     ///     data_off: 0,
+    ///     container_size: 0,
+    ///     header_offset: 0,
     /// });
     /// let pattern = [InstructionPattern::Opcode(OpcodeMatcher::ReturnVoid)];
     /// assert!(dex.find_methods_with_opcodes(&pattern).is_empty());

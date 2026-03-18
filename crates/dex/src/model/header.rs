@@ -22,15 +22,23 @@ pub struct DexHeader {
     pub class_defs_off: u32,
     pub data_size: u32,
     pub data_off: u32,
+    /// Size of the entire physical file (v41+ container format).
+    /// For v40 and earlier this equals `file_size`.
+    pub container_size: u32,
+    /// Offset from the start of the physical file to this header (v41+ container format).
+    /// For v40 and earlier this is `0`.
+    pub header_offset: u32,
 }
 
 /// Supported DEX format versions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DexVersion {
     V035,
     V037,
     V038,
     V039,
+    V040,
+    V041,
 }
 
 impl DexVersion {
@@ -41,6 +49,8 @@ impl DexVersion {
             Self::V037 => b"dex\n037\0",
             Self::V038 => b"dex\n038\0",
             Self::V039 => b"dex\n039\0",
+            Self::V040 => b"dex\n040\0",
+            Self::V041 => b"dex\n041\0",
         }
     }
 
@@ -51,18 +61,34 @@ impl DexVersion {
             b"dex\n037\0" => Some(Self::V037),
             b"dex\n038\0" => Some(Self::V038),
             b"dex\n039\0" => Some(Self::V039),
+            b"dex\n040\0" => Some(Self::V040),
+            b"dex\n041\0" => Some(Self::V041),
             _ => None,
         }
     }
 
     /// Reports whether this version supports call sites and method handles.
     pub fn supports_call_sites(self) -> bool {
-        matches!(self, Self::V038 | Self::V039)
+        self >= Self::V038
     }
 
     /// Reports whether this version supports hidden API metadata.
     pub fn supports_hidden_api(self) -> bool {
-        matches!(self, Self::V039)
+        self >= Self::V039
+    }
+
+    /// Reports whether this version uses the container format (v41+).
+    pub fn is_container_format(self) -> bool {
+        self >= Self::V041
+    }
+
+    /// Returns the expected on-disk header size for this version.
+    pub fn header_size(self) -> u32 {
+        if self.is_container_format() {
+            0x78
+        } else {
+            0x70
+        }
     }
 }
 

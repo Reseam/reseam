@@ -18,8 +18,8 @@
 //! ```no_run
 //! use stitch_dex::{parse_file, write, ParseOptions};
 //!
-//! let dex = parse_file("classes.dex", ParseOptions::default())?;
-//! let rewritten = write(&dex)?;
+//! let mut dex = parse_file("classes.dex", ParseOptions::default())?;
+//! let rewritten = write(&mut dex)?;
 //! std::fs::write("classes-rewritten.dex", rewritten)?;
 //! # Ok::<(), stitch_dex::DexError>(())
 //! ```
@@ -48,6 +48,7 @@ pub use model::field::{FieldId, FieldIdx};
 pub use model::header::{DexHeader, DexVersion, ParseOptions};
 pub use model::hidden_api::{ClassHiddenApiFlags, HiddenApiData, HiddenApiFlag};
 pub use model::instruction::Instruction;
+pub use model::label::{CodeBuilder, Label};
 pub use model::map::MapItem;
 pub use model::method::{MethodId, MethodIdx};
 pub use model::method_handle::{MethodHandle, MethodHandleIdx};
@@ -57,5 +58,7 @@ pub use model::string::{DexString, StringIdx};
 pub use model::types::TypeIdx;
 pub use multi_dex::MultiDexContainer;
 pub use reader::parse;
+pub use reader::parse_container;
 pub use reader::parse_file;
 pub use writer::write;
+pub use writer::write_container;

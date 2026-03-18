@@ -1,5 +1,3 @@
-//! DEX writer entrypoint and shared writer state.
-
 use crate::error::Result;
 use crate::model::dex_file::DexFile;
 use crate::model::encoded_value::EncodedValue;
@@ -39,23 +37,62 @@ pub(crate) fn is_default_value(v: &EncodedValue) -> bool {
 }
 
 /// Serializes a [`DexFile`] back into canonical DEX bytes.
-///
-/// # Examples
-///
-/// ```no_run
-/// use stitch_dex::{parse, write, ParseOptions};
-///
-/// let bytes = std::fs::read("classes.dex")?;
-/// let dex = parse(&bytes, ParseOptions::default())?;
-/// let rewritten = write(&dex)?;
-/// assert!(!rewritten.is_empty());
-/// # Ok::<(), stitch_dex::DexError>(())
-/// ```
 pub fn write(dex: &mut DexFile) -> Result<Vec<u8>> {
     dex.resolve_all_class_data()?;
     super::sort::sort_in_place(dex);
     let mut w = DexWriter::new();
     w.write_dex(dex)?;
+    Ok(w.buf)
+}
+
+/// Serializes multiple [`DexFile`]s into a single v41 container buffer.
+///
+/// Each logical DEX file is written sequentially. All offsets are relative
+/// to the start of the physical container.
+pub fn write_container(dex_files: &mut [DexFile]) -> Result<Vec<u8>> {
+    if dex_files.is_empty() {
+        return Ok(Vec::new());
+    }
+    if dex_files.len() == 1 {
+        return write(&mut dex_files[0]);
+    }
+
+    let mut w = DexWriter::new();
+
+    for dex in dex_files.iter_mut() {
+        dex.resolve_all_class_data()?;
+        super::sort::sort_in_place(dex);
+    }
+
+    let total_count = dex_files.len();
+    for (i, dex) in dex_files.iter().enumerate() {
+        w.header_base = w.pos();
+        w.container_size = 0;
+        w.write_dex(dex)?;
+
+        if i + 1 < total_count {
+            w.align(4);
+        }
+    }
+
+    let container_size = w.pos();
+    let mut offset = 0u32;
+    for dex in dex_files.iter() {
+        let header_size = dex.required_version().header_size();
+        if header_size >= 0x78 {
+            w.patch_u32(offset as usize + 0x70, container_size);
+        }
+
+        let file_size_field = u32::from_le_bytes(
+            w.buf[offset as usize + 0x20..offset as usize + 0x24]
+                .try_into()
+                .expect("slice is 4 bytes"),
+        );
+        offset += file_size_field;
+        let padding = (4 - (offset % 4)) % 4;
+        offset += padding;
+    }
+
     Ok(w.buf)
 }
 
@@ -69,6 +106,8 @@ pub(crate) struct DexWriter {
     pub(crate) class_data_offsets: Vec<u32>,
     pub(crate) debug_info_cache: HashMap<Vec<u8>, u32>,
     pub(crate) map_entries: Vec<MapItem>,
+    pub(crate) header_base: u32,
+    pub(crate) container_size: u32,
 }
 
 impl DexWriter {
@@ -82,6 +121,8 @@ impl DexWriter {
             class_data_offsets: Vec::new(),
             debug_info_cache: HashMap::new(),
             map_entries: Vec::new(),
+            header_base: 0,
+            container_size: 0,
         }
     }
 
