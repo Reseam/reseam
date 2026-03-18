@@ -41,6 +41,8 @@ pub mod prelude {
         Instruction, MethodRef, FieldRef, AccessFlags,
         Fingerprint, FingerprintMatch, MethodInfo, ClassInfo,
         NewMethod, NewField, OptionType,
+        TryItem, TypedCatch, CatchHandler,
+        EncodedValue, AnnotationVisibility, AnnotationElement, AnnotationItem,
     };
     pub use stitch_patch_macros::stitch_patch;
 }

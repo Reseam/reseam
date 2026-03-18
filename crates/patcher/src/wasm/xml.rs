@@ -66,9 +66,17 @@ impl Host for WasmState {
     fn close(&mut self, doc: u32) {
         let idx = doc as usize;
         if let Some(Some((document, path))) = self.xml_documents.get(idx) {
-            if let Ok(data) = document.serialize() {
-                let path = path.clone();
-                self.ctx().inject_file(&path, data);
+            match document.serialize() {
+                Ok(data) => {
+                    let path = path.clone();
+                    self.ctx().inject_file(&path, data);
+                }
+                Err(e) => {
+                    let path = path.clone();
+                    self.ctx().log().warn(format!(
+                        "xml close: failed to serialize {path}: {e}"
+                    ));
+                }
             }
         }
         if let Some(slot) = self.xml_documents.get_mut(idx) {

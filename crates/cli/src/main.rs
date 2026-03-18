@@ -23,14 +23,12 @@ enum Commands {
         bundle: PathBuf,
         #[arg(short, long)]
         output: Option<PathBuf>,
-        #[arg(short, long)]
+        #[arg(short, long, requires = "cert")]
         key: Option<PathBuf>,
-        #[arg(short, long)]
+        #[arg(short, long, requires = "key")]
         cert: Option<PathBuf>,
         #[arg(long)]
         dry_run: bool,
-        #[arg(short, long)]
-        verbose: bool,
     },
     List {
         bundle: PathBuf,
@@ -40,29 +38,7 @@ enum Commands {
     },
 }
 
-fn install_signal_handlers() {
-    unsafe {
-        libc::signal(libc::SIGSEGV, sigsegv_handler as *const () as libc::sighandler_t);
-        libc::signal(libc::SIGBUS, sigsegv_handler as *const () as libc::sighandler_t);
-        libc::signal(libc::SIGABRT, sigsegv_handler as *const () as libc::sighandler_t);
-    }
-}
-
-extern "C" fn sigsegv_handler(sig: libc::c_int) {
-    let msg = match sig {
-        libc::SIGSEGV => "[stitch] FATAL: Segmentation fault (SIGSEGV) — likely ABI mismatch in native patch. Rebuild patches with: cargo build --release\n",
-        libc::SIGBUS => "[stitch] FATAL: Bus error (SIGBUS)\n",
-        libc::SIGABRT => "[stitch] FATAL: Abort (SIGABRT)\n",
-        _ => "[stitch] FATAL: Unexpected signal\n",
-    };
-    unsafe {
-        libc::write(2, msg.as_ptr() as *const libc::c_void, msg.len());
-        libc::_exit(139);
-    }
-}
-
 fn main() -> Result<()> {
-    install_signal_handlers();
     let cli = Cli::parse();
 
     match cli.command {
@@ -73,8 +49,7 @@ fn main() -> Result<()> {
             key,
             cert,
             dry_run,
-            verbose,
-        } => cmd_patch(&apk, &bundle, output.as_deref(), key.as_deref(), cert.as_deref(), dry_run, verbose),
+        } => cmd_patch(&apk, &bundle, output.as_deref(), key.as_deref(), cert.as_deref(), dry_run),
         Commands::List { bundle } => cmd_list(&bundle),
         Commands::Info { apk } => cmd_info(&apk),
     }
@@ -87,7 +62,6 @@ fn cmd_patch(
     key_path: Option<&Path>,
     cert_path: Option<&Path>,
     dry_run: bool,
-    verbose: bool,
 ) -> Result<()> {
     let output_path = match output {
         Some(p) => p.to_path_buf(),
@@ -133,11 +107,6 @@ fn cmd_patch(
     drop(ctx);
 
     for result in &results {
-        if verbose {
-            for log in &result.logs {
-                eprintln!("{log}");
-            }
-        }
         match &result.status {
             PatchStatus::Applied => eprintln!("[stitch] applied: {}", result.name),
             PatchStatus::Skipped { reason } => {
@@ -157,10 +126,10 @@ fn cmd_patch(
         .iter()
         .filter(|r| matches!(r.status, PatchStatus::Failed { .. }))
         .count();
-    if failed_count > 0 {
-        eprintln!("[stitch] WARNING: {failed_count} patch(es) failed");
-    }
     eprintln!("[stitch] {applied_count}/{} patches applied", results.len());
+    if failed_count > 0 {
+        bail!("{failed_count} patch(es) failed");
+    }
 
     if dry_run {
         eprintln!("[stitch] dry run — not writing output");
@@ -198,18 +167,18 @@ fn cmd_patch(
 
 fn cmd_list(bundle_path: &Path) -> Result<()> {
     let bundle = PatchBundle::load(bundle_path).context("failed to load patch bundle")?;
-    eprintln!("[stitch] bundle: {}", bundle.name);
+    println!("bundle: {}", bundle.name);
     if !bundle.author.is_empty() {
-        eprintln!("[stitch] author: {}", bundle.author);
+        println!("author: {}", bundle.author);
     }
     if !bundle.description.is_empty() {
-        eprintln!("[stitch] description: {}", bundle.description);
+        println!("description: {}", bundle.description);
     }
-    eprintln!();
+    println!();
     for (i, patch) in bundle.patches.iter().enumerate() {
         let p: &dyn stitch_patcher::patch::Patch = patch.as_ref();
         let enabled = if p.enabled_by_default() { "on" } else { "off" };
-        eprintln!(
+        println!(
             "  {:>3}. [{}] {} - {}",
             i + 1,
             enabled,
@@ -229,15 +198,15 @@ fn cmd_list(bundle_path: &Path) -> Result<()> {
                     }
                 })
                 .collect();
-            eprintln!("       packages: {}", formatted.join(", "));
+            println!("       packages: {}", formatted.join(", "));
         }
     }
 
     if !bundle.extension_dex.is_empty() {
-        eprintln!();
-        eprintln!("[stitch] extension DEX:");
+        println!();
+        println!("extension DEX:");
         for dex_path in &bundle.extension_dex {
-            eprintln!("  - {}", dex_path.display());
+            println!("  - {}", dex_path.display());
         }
     }
 
@@ -247,26 +216,26 @@ fn cmd_list(bundle_path: &Path) -> Result<()> {
 fn cmd_info(apk_path: &Path) -> Result<()> {
     let apk = ApkFile::open(apk_path).context("failed to open APK")?;
 
-    eprintln!("APK: {}", apk_path.display());
+    println!("APK: {}", apk_path.display());
     if let Some(pkg) = apk.package_name() {
-        eprintln!("  package:    {pkg}");
+        println!("  package:    {pkg}");
     }
     if let Some(ver) = apk.version_name() {
-        eprintln!("  version:    {ver}");
+        println!("  version:    {ver}");
     }
     if let Some(code) = apk.version_code() {
-        eprintln!("  versionCode: {code}");
+        println!("  versionCode: {code}");
     }
-    eprintln!("  dex files:  {}", apk.dex().len());
-    eprintln!("  components: {}", apk.component_count());
+    println!("  dex files:  {}", apk.dex().len());
+    println!("  components: {}", apk.component_count());
     if apk.is_split() {
-        eprintln!("  splits:     {}", apk.split_names().join(", "));
+        println!("  splits:     {}", apk.split_names().join(", "));
     }
 
     let total_classes: usize = apk.dex().iter().map(|d| d.classes.len()).sum();
     let total_methods: usize = apk.dex().iter().map(|d| d.methods.len()).sum();
-    eprintln!("  classes:    {total_classes}");
-    eprintln!("  methods:    {total_methods}");
+    println!("  classes:    {total_classes}");
+    println!("  methods:    {total_methods}");
 
     Ok(())
 }
@@ -275,7 +244,7 @@ fn find_apk_in_dir(dir: &Path) -> Result<PathBuf> {
     for entry in std::fs::read_dir(dir).context("failed to read temp directory")? {
         let entry = entry?;
         let path = entry.path();
-        if path.extension().map_or(false, |ext| ext == "apk") {
+        if path.extension().is_some_and(|ext| ext == "apk") {
             return Ok(path);
         }
     }

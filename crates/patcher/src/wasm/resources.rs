@@ -54,8 +54,11 @@ impl Host for WasmState {
             Some(dir) => dir.join(&bundle_path),
             None => std::path::PathBuf::from(&bundle_path),
         };
-        if let Ok(data) = std::fs::read(&full_path) {
-            self.ctx().inject_file(&apk_path, data);
+        match std::fs::read(&full_path) {
+            Ok(data) => self.ctx().inject_file(&apk_path, data),
+            Err(e) => self.ctx().log().warn(format!(
+                "copy_file: failed to read {}: {e}", full_path.display()
+            )),
         }
     }
 
@@ -66,9 +69,14 @@ impl Host for WasmState {
         };
         for file_name in &files {
             let src = bundle_dir.join("resources").join(&res_type).join(file_name);
-            if let Ok(data) = std::fs::read(&src) {
-                let apk_path = format!("res/{res_type}/{file_name}");
-                self.ctx().inject_file(&apk_path, data);
+            match std::fs::read(&src) {
+                Ok(data) => {
+                    let apk_path = format!("res/{res_type}/{file_name}");
+                    self.ctx().inject_file(&apk_path, data);
+                }
+                Err(e) => self.ctx().log().warn(format!(
+                    "copy_resource_group: failed to read {}: {e}", src.display()
+                )),
             }
         }
     }

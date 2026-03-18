@@ -2183,7 +2183,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "libc",
  "stitch-apk",
  "stitch-patcher",
  "stitch-sign",

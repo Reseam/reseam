@@ -72,21 +72,17 @@ impl GeneratedKey {
         let pkcs8_doc =
             EcdsaKeyPair::generate_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, &rng)
                 .map_err(|e| invalid("signing key", format!("key generation failed: {e}")))?;
-
         let pkcs8_der = pkcs8_doc.as_ref().to_vec();
-        let key_pair =
-            EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, &pkcs8_der, &rng)
-                .map_err(|e| invalid("signing key", format!("pkcs8 decoding failed: {e}")))?;
-
-        let certificate_der =
-            build_self_signed_cert(&key_pair, key_pair.public_key().as_ref(), &rng)?;
-        Ok(Self {
-            signing_key: SigningKey {
-                key_pair,
-                certificate_der,
-            },
-            pkcs8_der,
-        })
+        let signing_key = SigningKey::from_pkcs8(&pkcs8_der, {
+            let key_pair = EcdsaKeyPair::from_pkcs8(
+                &signature::ECDSA_P256_SHA256_ASN1_SIGNING,
+                &pkcs8_der,
+                &rng,
+            )
+            .map_err(|e| invalid("signing key", format!("pkcs8 decoding failed: {e}")))?;
+            build_self_signed_cert(&key_pair, key_pair.public_key().as_ref(), &rng)?
+        })?;
+        Ok(Self { signing_key, pkcs8_der })
     }
 
     pub fn save(&self, key_path: &std::path::Path, cert_path: &std::path::Path) -> Result<()> {

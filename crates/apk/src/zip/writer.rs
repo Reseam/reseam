@@ -89,7 +89,7 @@ impl<W: Write + Seek> ApkWriter<W> {
 
 /// Determine the alignment for a ZIP entry based on its name.
 fn entry_alignment(name: &str) -> u16 {
-    if name.ends_with(".so") || name.starts_with("lib/") {
+    if name.ends_with(".so") {
         ALIGNMENT_NATIVE_LIB
     } else {
         ALIGNMENT_DEFAULT

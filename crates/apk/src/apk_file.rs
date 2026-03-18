@@ -122,6 +122,7 @@ impl ApkFile {
         };
 
         let base_dex_names = base_reader.dex_entry_names();
+        let mut entry_names = base_reader.entry_names();
 
         // Collect all readers for unified DEX extraction
         let mut all_buffers: Vec<Vec<u8>> = Vec::new();
@@ -146,6 +147,7 @@ impl ApkFile {
             let mut split_reader = ApkReader::new(BufReader::new(split_file))?;
 
             let split_dex_names = split_reader.dex_entry_names();
+            entry_names.extend(split_reader.entry_names());
             let split_dex_entries = split_reader.read_all_dex()?;
 
             // Derive split name from manifest or filename
@@ -181,15 +183,6 @@ impl ApkFile {
         } else {
             MultiDexContainer::parse(&refs, opts)?
         };
-
-        let mut entry_names = Vec::new();
-        for comp in &components {
-            if let Ok(f) = File::open(&comp.path) {
-                if let Ok(mut r) = ApkReader::new(BufReader::new(f)) {
-                    entry_names.extend(r.entry_names());
-                }
-            }
-        }
 
         Ok(Self {
             kind: ApkKind::Split,
@@ -369,22 +362,6 @@ impl ApkFile {
                     replacements.insert(
                         "resources.arsc".to_string(),
                         (arsc_bytes, zip::CompressionMethod::Stored),
-                    );
-                }
-            } else {
-                use std::io::Read as _;
-                let arsc_idx = (0..source.len()).find(|i| {
-                    source
-                        .by_index_raw(*i)
-                        .map(|e| e.name() == "resources.arsc")
-                        .unwrap_or(false)
-                });
-                if let Some(idx) = arsc_idx {
-                    let mut buf = Vec::new();
-                    source.by_index(idx)?.read_to_end(&mut buf)?;
-                    replacements.insert(
-                        "resources.arsc".to_string(),
-                        (buf, zip::CompressionMethod::Stored),
                     );
                 }
             }

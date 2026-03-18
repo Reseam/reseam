@@ -1,4 +1,5 @@
 use crate::error::Result;
+use crate::multi_dex::dex_sort_key;
 use std::io::{Read, Seek};
 
 /// Wrapper around ZipArchive providing APK-oriented access.
@@ -53,11 +54,7 @@ impl<R: Read + Seek> ApkReader<R> {
         let mut names: Vec<String> = self
             .entry_names()
             .into_iter()
-            .filter(|name| {
-                name.ends_with(".dex")
-                    && (name == "classes.dex"
-                        || (name.starts_with("classes") && name.ends_with(".dex")))
-            })
+            .filter(|name| is_dex_entry(name))
             .collect();
         names.sort_by_key(|n| dex_sort_key(n));
         names
@@ -95,12 +92,7 @@ impl<R: Read + Seek> ApkReader<R> {
     }
 }
 
-/// Sort key for DEX file names: classes.dex=1, classes2.dex=2, etc.
-fn dex_sort_key(name: &str) -> u32 {
-    if name == "classes.dex" {
-        return 1;
-    }
-    let stripped = name.strip_prefix("classes").unwrap_or("0");
-    let num_str = stripped.strip_suffix(".dex").unwrap_or("0");
-    num_str.parse().unwrap_or(0)
+/// Returns true if the entry name matches `classes.dex` or `classesN.dex`.
+fn is_dex_entry(name: &str) -> bool {
+    name == "classes.dex" || (name.starts_with("classes") && name.ends_with(".dex"))
 }

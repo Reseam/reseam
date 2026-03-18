@@ -61,6 +61,7 @@ fn build_v3_block_from_digest(
 fn target_signing_block_len(key: &SigningKey) -> Result<usize> {
     let v2_block_len = v2::max_block_len(key)?;
     let v3_block_len = v2::max_signer_len(key)? + 16; // +8 (min/max sdk) +4 (signer lp) +4 (seq lp)
+    // 0 = padding pair placeholder (actual padding computed at build time)
     Ok(signing_block::signing_block_len(&[
         v2_block_len,
         v3_block_len,

@@ -32,7 +32,13 @@ impl Patch for LuaPatch {
 
     fn execute(&self, ctx: &mut PatchContext) -> Result<()> {
         let lua = Lua::new();
-        register_api(&lua)?;
+
+        // SAFETY: The raw pointer is sound because the Lua VM is created and
+        // destroyed within this function, and ctx outlives the VM.
+        let ctx_ptr = ctx as *mut PatchContext<'_> as *mut PatchContext<'static>;
+        let lua_ctx = lua.create_any_userdata(CtxPtr { ptr: ctx_ptr })?;
+
+        register_api(&lua, &lua_ctx)?;
 
         let patch_table: LuaTable = lua
             .load(&self.source)
@@ -51,10 +57,6 @@ impl Patch for LuaPatch {
                     reason: format!("missing execute function: {e}"),
                 })?;
 
-        // SAFETY: The raw pointer is sound because the Lua VM is created and
-        // destroyed within this function, and ctx outlives the VM.
-        let ctx_ptr = ctx as *mut PatchContext<'_> as *mut PatchContext<'static>;
-        let lua_ctx = lua.create_any_userdata(CtxPtr { ptr: ctx_ptr })?;
         let ctx_table = build_ctx_table(&lua, lua_ctx)?;
 
         execute_fn
@@ -153,13 +155,15 @@ fn parse_lua_compat(table: &LuaTable) -> Result<Vec<Compatibility>> {
     Ok(result)
 }
 
-fn register_api(lua: &Lua) -> Result<()> {
+fn register_api(lua: &Lua, ctx_ud: &LuaAnyUserData) -> Result<()> {
     let globals = lua.globals();
     let stitch_table = lua.create_table()?;
+    let ud_clone = ctx_ud.clone();
     stitch_table.set(
         "log",
-        lua.create_function(|_, msg: String| {
-            eprintln!("[stitch:lua] {msg}");
+        lua.create_function(move |_, msg: String| {
+            let w = ud_clone.borrow::<CtxPtr>()?;
+            w.w().log().info(msg);
             Ok(())
         })?,
     )?;

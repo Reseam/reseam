@@ -61,10 +61,11 @@ fn extract_v2_digest(signed_apk: &[u8]) -> Vec<u8> {
     let signing_block_bytes = &signed_apk[sections.contents.len()..cd_offset as usize];
     let v2_block =
         find_signing_pair_value(signing_block_bytes, signing_block::BLOCK_ID_V2).unwrap();
-    let signer = read_lp(v2_block, 0);
+    let signers_seq = read_lp(v2_block, 0);
+    let signer = read_lp(signers_seq, 0);
     let signed_data = read_lp(signer, 0);
-    let digests = read_lp(signed_data, 0);
-    let digest_entry = read_lp(digests, 0);
+    let digests_seq = read_lp(signed_data, 0);
+    let digest_entry = read_lp(digests_seq, 0);
     let algorithm_id = u32::from_le_bytes(digest_entry[0..4].try_into().unwrap());
     assert_eq!(algorithm_id, SIG_ECDSA_SHA256);
     read_lp(digest_entry, 4).to_vec()
@@ -207,12 +208,11 @@ fn test_sign_large_certificate_uses_final_cd_offset_in_digest() {
     let stored_digest = extract_v2_digest(&signed);
 
     let sections = signing_block::split_apk(&signed).unwrap();
-    let (_, cd_offset, _) = signing_block::find_eocd(&signed).unwrap();
     let recomputed = compute_content_digest(
         sections.contents,
         sections.central_dir,
         sections.eocd,
-        cd_offset,
+        sections.contents.len() as u32,
     );
 
     assert_eq!(stored_digest, recomputed);

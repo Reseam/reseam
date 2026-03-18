@@ -66,9 +66,8 @@ pub fn from_apk(apk_bytes: &[u8], opts: ParseOptions) -> stitch_dex::Result<Mult
     let mut dex_names: Vec<String> = (0..archive.len())
         .filter_map(|i| {
             let name = archive.by_index(i).ok()?.name().to_string();
-            if name.ends_with(".dex")
-                && (name == "classes.dex"
-                    || name.starts_with("classes") && name.ends_with(".dex"))
+            if name == "classes.dex"
+                || (name.starts_with("classes") && name.ends_with(".dex"))
             {
                 Some(name)
             } else {
@@ -95,7 +94,7 @@ pub fn from_apk(apk_bytes: &[u8], opts: ParseOptions) -> stitch_dex::Result<Mult
     Ok(container)
 }
 
-fn dex_sort_key(name: &str) -> u32 {
+pub(crate) fn dex_sort_key(name: &str) -> u32 {
     if name == "classes.dex" {
         return 1;
     }

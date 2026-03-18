@@ -13,6 +13,14 @@ use crate::error::{PatcherError, Result as PatcherResult};
 use crate::log::{LogEntry, PatchLog};
 use crate::options::PatchOptions;
 
+#[derive(Debug, Clone, Copy)]
+pub struct InstructionLocation {
+    pub dex_idx: usize,
+    pub class_idx: usize,
+    pub method_idx: usize,
+    pub insn_idx: usize,
+}
+
 pub struct PatchContext<'a> {
     apk: &'a mut ApkFile,
     log: PatchLog,
@@ -28,8 +36,6 @@ impl<'a> PatchContext<'a> {
         }
     }
 
-    // ── Logging ──
-
     pub fn log(&mut self) -> &mut PatchLog {
         &mut self.log
     }
@@ -42,7 +48,6 @@ impl<'a> PatchContext<'a> {
         self.log.take_entries()
     }
 
-    // ── Options ──
 
     pub fn options(&self) -> &PatchOptions {
         &self.options
@@ -56,7 +61,6 @@ impl<'a> PatchContext<'a> {
         self.options = PatchOptions::default();
     }
 
-    // ── APK metadata ──
 
     pub fn package_name(&self) -> Option<&str> {
         self.apk.package_name()
@@ -70,7 +74,6 @@ impl<'a> PatchContext<'a> {
         self.apk.version_name()
     }
 
-    // ── Raw access ──
 
     pub fn dex(&self) -> &MultiDexContainer {
         self.apk.dex()
@@ -104,7 +107,6 @@ impl<'a> PatchContext<'a> {
         self.apk
     }
 
-    // ── Class lookup ──
 
     pub fn find_class(&self, descriptor: &str) -> Option<(usize, &ClassDef)> {
         self.apk.dex().find_class(descriptor)
@@ -119,7 +121,6 @@ impl<'a> PatchContext<'a> {
             .ok_or_else(|| PatcherError::NotFound(format!("class {descriptor}")))
     }
 
-    // ── Method lookup ──
 
     pub fn find_method(
         &self,
@@ -178,7 +179,6 @@ impl<'a> PatchContext<'a> {
             })
     }
 
-    // ── Method search ──
 
     pub fn find_method_by_name(&self, method_name: &str) -> Option<(usize, MethodMatch<'_>)> {
         for (i, dex) in self.apk.dex().iter().enumerate() {
@@ -235,7 +235,6 @@ impl<'a> PatchContext<'a> {
         results
     }
 
-    // ── DEX access ──
 
     pub fn dex_file(&self, index: usize) -> Option<&DexFile> {
         self.apk.dex().dex(index)
@@ -256,7 +255,6 @@ impl<'a> PatchContext<'a> {
         self.apk.dex().len()
     }
 
-    // ── Extension DEX ──
 
     pub fn merge_extension_dex(&mut self, paths: &[impl AsRef<Path>]) -> PatcherResult<usize> {
         let mut count = 0;
@@ -275,7 +273,6 @@ impl<'a> PatchContext<'a> {
         Ok(count)
     }
 
-    // ── Fingerprinting ──
 
     pub fn find_method_by_fingerprint(
         &self,
@@ -302,7 +299,6 @@ impl<'a> PatchContext<'a> {
         results
     }
 
-    // ── Register analysis ──
 
     pub fn find_free_register(
         &self,
@@ -323,9 +319,8 @@ impl<'a> PatchContext<'a> {
         find_free_registers(code, at_index, count, exclude)
     }
 
-    // ── Global instruction scanning ──
 
-    pub fn find_instructions_by_literal(&self, literal: i64) -> Vec<(usize, usize, usize, usize)> {
+    pub fn find_instructions_by_literal(&self, literal: i64) -> Vec<InstructionLocation> {
         let mut results = Vec::new();
         for (dex_idx, dex) in self.apk.dex().iter().enumerate() {
             for (class_idx, class) in dex.classes.iter().enumerate() {
@@ -339,7 +334,7 @@ impl<'a> PatchContext<'a> {
                         if let Some(code) = &method.code {
                             for (insn_idx, insn) in code.instructions.iter().enumerate() {
                                 if insn.literal() == Some(literal) {
-                                    results.push((dex_idx, class_idx, method_idx, insn_idx));
+                                    results.push(InstructionLocation { dex_idx, class_idx, method_idx, insn_idx });
                                 }
                             }
                         }
@@ -350,7 +345,7 @@ impl<'a> PatchContext<'a> {
         results
     }
 
-    pub fn find_instructions_by_string(&self, target: &str) -> Vec<(usize, usize, usize, usize)> {
+    pub fn find_instructions_by_string(&self, target: &str) -> Vec<InstructionLocation> {
         let mut results = Vec::new();
         for (dex_idx, dex) in self.apk.dex().iter().enumerate() {
             let target_idx = match dex.find_string_idx(target) {
@@ -368,7 +363,7 @@ impl<'a> PatchContext<'a> {
                         if let Some(code) = &method.code {
                             for (insn_idx, insn) in code.instructions.iter().enumerate() {
                                 if insn.string_ref() == Some(target_idx) {
-                                    results.push((dex_idx, class_idx, method_idx, insn_idx));
+                                    results.push(InstructionLocation { dex_idx, class_idx, method_idx, insn_idx });
                                 }
                             }
                         }
@@ -379,7 +374,6 @@ impl<'a> PatchContext<'a> {
         results
     }
 
-    // ── Resolve helpers (fingerprint/match → mutable method) ──
 
     /// Extracts (class_descriptor, method_name) from a FingerprintMatch.
     pub fn resolve_fingerprint_location(
@@ -411,20 +405,18 @@ impl<'a> PatchContext<'a> {
         Ok((class_desc, method_name))
     }
 
-    /// Extracts (class_descriptor, method_name) from a literal scan result tuple.
+    /// Extracts (class_descriptor, method_name) from an instruction location.
     pub fn resolve_literal_location(
         &self,
-        dex_idx: usize,
-        class_idx: usize,
-        method_idx: usize,
+        loc: &InstructionLocation,
     ) -> PatcherResult<(String, String)> {
         let dex = self
-            .dex_file(dex_idx)
-            .ok_or_else(|| PatcherError::NotFound(format!("dex {dex_idx}")))?;
+            .dex_file(loc.dex_idx)
+            .ok_or_else(|| PatcherError::NotFound(format!("dex {}", loc.dex_idx)))?;
         let class = dex
             .classes
-            .get(class_idx)
-            .ok_or_else(|| PatcherError::NotFound(format!("class index {class_idx}")))?;
+            .get(loc.class_idx)
+            .ok_or_else(|| PatcherError::NotFound(format!("class index {}", loc.class_idx)))?;
         let class_desc = dex.type_descriptor(class.class_type).to_string();
         let data = class
             .class_data
@@ -434,14 +426,13 @@ impl<'a> PatchContext<'a> {
             .direct_methods
             .iter()
             .chain(&data.virtual_methods)
-            .nth(method_idx)
-            .ok_or_else(|| PatcherError::NotFound(format!("method index {method_idx}")))?;
+            .nth(loc.method_idx)
+            .ok_or_else(|| PatcherError::NotFound(format!("method index {}", loc.method_idx)))?;
         let method_id = &dex.methods[method.method.0 as usize];
         let method_name = dex.string(method_id.name).to_string();
         Ok((class_desc, method_name))
     }
 
-    // ── Resource ID lookup ──
 
     pub fn find_resource_id(&self, type_name: &str, entry_name: &str) -> Option<u32> {
         self.apk
@@ -449,7 +440,6 @@ impl<'a> PatchContext<'a> {
             .and_then(|res| res.find_resource_id(type_name, entry_name))
     }
 
-    // ── File operations ──
 
     pub fn inject_file(&mut self, apk_path: &str, data: Vec<u8>) {
         let data = Self::auto_compile_xml(apk_path, data);
@@ -484,7 +474,6 @@ impl<'a> PatchContext<'a> {
         self.apk.entry_names()
     }
 
-    // ── Resource files ──
 
     pub fn copy_resource_group(
         &mut self,

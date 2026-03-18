@@ -42,6 +42,7 @@ pub fn apply_patches_with_options(
 
     let mut results = Vec::with_capacity(patches.len());
     let mut applied: Vec<bool> = vec![false; patches.len()];
+    let mut after_dependents_fired: Vec<bool> = vec![false; patches.len()];
     let mut result_map: HashMap<usize, usize> = HashMap::new();
 
     for &idx in &order {
@@ -115,10 +116,11 @@ pub fn apply_patches_with_options(
         }
 
         for (&dep_idx, dep_list) in &dependents {
-            if applied[dep_idx] {
+            if applied[dep_idx] || after_dependents_fired[dep_idx] {
                 continue;
             }
             if dep_list.iter().all(|&d| applied[d]) {
+                after_dependents_fired[dep_idx] = true;
                 ctx.set_log(PatchLog::new(patches[dep_idx].name().to_owned()));
 
                 let after_result = panic::catch_unwind(AssertUnwindSafe(|| {

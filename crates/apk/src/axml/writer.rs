@@ -1,21 +1,13 @@
 use crate::axml::reader::{AxmlAttribute, AxmlDocument, AxmlEvent, TypedValue};
 use crate::axml::string_pool::StringPool;
+use crate::axml::{
+    CHUNK_XML_DOCUMENT, CHUNK_STRING_POOL, CHUNK_RESOURCE_IDS,
+    CHUNK_START_NAMESPACE, CHUNK_END_NAMESPACE, CHUNK_START_ELEMENT, CHUNK_END_ELEMENT,
+    TYPE_STRING, TYPE_INT_DEC, TYPE_INT_HEX, TYPE_INT_BOOLEAN, TYPE_REFERENCE,
+};
 use crate::error::Result;
 
-const CHUNK_XML_DOCUMENT: u16 = 0x0003;
-const CHUNK_STRING_POOL: u16 = 0x0001;
-const CHUNK_RESOURCE_IDS: u16 = 0x0180;
-const CHUNK_START_NAMESPACE: u16 = 0x0100;
-const CHUNK_END_NAMESPACE: u16 = 0x0101;
-const CHUNK_START_ELEMENT: u16 = 0x0102;
-const CHUNK_END_ELEMENT: u16 = 0x0103;
-
 const FLAG_UTF8: u32 = 1 << 8;
-const TYPE_STRING: u8 = 0x03;
-const TYPE_INT_DEC: u8 = 0x10;
-const TYPE_INT_HEX: u8 = 0x11;
-const TYPE_INT_BOOLEAN: u8 = 0x12;
-const TYPE_REFERENCE: u8 = 0x01;
 
 impl AxmlDocument {
     pub fn serialize(&self) -> Result<Vec<u8>> {

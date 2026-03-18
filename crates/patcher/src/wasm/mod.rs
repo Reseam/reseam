@@ -124,46 +124,54 @@ fn wasm_err(msg: impl std::fmt::Display) -> PatcherError {
 
 use stitch_apk::stitch_dex::{DexFile, EncodedMethod};
 
-fn get_method_ref(dex: &DexFile, mh: MethodHandle) -> &EncodedMethod {
-    let class = &dex.classes[mh.class_idx];
-    let data = class.class_data.as_ref().expect("class data");
+fn try_get_method_ref(dex: &DexFile, mh: MethodHandle) -> Option<&EncodedMethod> {
+    let class = dex.classes.get(mh.class_idx)?;
+    let data = class.class_data.as_ref()?;
     if mh.is_virtual {
-        &data.virtual_methods[mh.method_idx]
+        data.virtual_methods.get(mh.method_idx)
     } else {
-        &data.direct_methods[mh.method_idx]
+        data.direct_methods.get(mh.method_idx)
     }
+}
+
+fn try_get_method_mut(dex: &mut DexFile, mh: MethodHandle) -> Option<&mut EncodedMethod> {
+    let class = dex.classes.get_mut(mh.class_idx)?;
+    let data = class.class_data.as_mut()?;
+    if mh.is_virtual {
+        data.virtual_methods.get_mut(mh.method_idx)
+    } else {
+        data.direct_methods.get_mut(mh.method_idx)
+    }
+}
+
+fn get_method_ref(dex: &DexFile, mh: MethodHandle) -> &EncodedMethod {
+    try_get_method_ref(dex, mh).expect("invalid method handle: class has no data or index out of bounds")
 }
 
 fn get_method_mut(dex: &mut DexFile, mh: MethodHandle) -> &mut EncodedMethod {
-    let class = &mut dex.classes[mh.class_idx];
-    let data = class.class_data.as_mut().expect("class data");
-    if mh.is_virtual {
-        &mut data.virtual_methods[mh.method_idx]
-    } else {
-        &mut data.direct_methods[mh.method_idx]
-    }
+    try_get_method_mut(dex, mh).expect("invalid method handle: class has no data or index out of bounds")
 }
 
-fn find_method_location(ctx: &PatchContext<'_>, dex_idx: usize, method: &EncodedMethod) -> (usize, usize, bool) {
-    let dex = ctx.dex_file(dex_idx).expect("dex exists");
+fn find_method_location(ctx: &PatchContext<'_>, dex_idx: usize, method: &EncodedMethod) -> Option<(usize, usize, bool)> {
+    let dex = ctx.dex_file(dex_idx)?;
     for (ci, class) in dex.classes.iter().enumerate() {
         if let Some(data) = &class.class_data {
             for (mi, m) in data.direct_methods.iter().enumerate() {
                 if std::ptr::eq(m, method) {
-                    return (ci, mi, false);
+                    return Some((ci, mi, false));
                 }
             }
             for (mi, m) in data.virtual_methods.iter().enumerate() {
                 if std::ptr::eq(m, method) {
-                    return (ci, mi, true);
+                    return Some((ci, mi, true));
                 }
             }
         }
     }
-    (0, 0, false)
+    None
 }
 
-fn method_match_location(ctx: &PatchContext<'_>, dex_idx: usize, mm: &stitch_apk::stitch_dex::MethodMatch<'_>) -> (usize, usize, bool) {
+fn method_match_location(ctx: &PatchContext<'_>, dex_idx: usize, mm: &stitch_apk::stitch_dex::MethodMatch<'_>) -> Option<(usize, usize, bool)> {
     find_method_location(ctx, dex_idx, mm.method)
 }
 
@@ -196,10 +204,10 @@ pub struct WasmPatch {
     description: String,
     compatible_with: Vec<Compatibility>,
     enabled_by_default: bool,
-    #[allow(dead_code)]
-    depends_on: Vec<String>,
+    depends_on: Vec<&'static str>,
     options: Vec<crate::options::OptionDeclaration>,
-    wasm_bytes: Vec<u8>,
+    engine: Engine,
+    component: Component,
     path: PathBuf,
 }
 
@@ -274,14 +282,20 @@ pub fn load_wasm_patch(path: impl AsRef<Path>) -> crate::error::Result<Box<dyn P
         }
     }).collect();
 
+    let depends_on: Vec<&'static str> = metadata.depends_on
+        .into_iter()
+        .map(|s| &*Box::leak(s.into_boxed_str()))
+        .collect();
+
     Ok(Box::new(WasmPatch {
         name: metadata.name,
         description: metadata.description,
         compatible_with,
         enabled_by_default: metadata.enabled_by_default,
-        depends_on: metadata.depends_on,
+        depends_on,
         options,
-        wasm_bytes,
+        engine,
+        component,
         path: path.to_path_buf(),
     }))
 }
@@ -304,7 +318,7 @@ impl Patch for WasmPatch {
     }
 
     fn depends_on(&self) -> &[&str] {
-        &[]
+        &self.depends_on
     }
 
     fn options(&self) -> &[crate::options::OptionDeclaration] {
@@ -312,11 +326,7 @@ impl Patch for WasmPatch {
     }
 
     fn execute(&self, ctx: &mut PatchContext) -> crate::error::Result<()> {
-        let engine = create_engine()?;
-        let component = Component::new(&engine, &self.wasm_bytes)
-            .map_err(|e| wasm_err(format!("failed to compile {}: {e}", self.path.display())))?;
-
-        let mut linker: Linker<WasmState> = Linker::new(&engine);
+        let mut linker: Linker<WasmState> = Linker::new(&self.engine);
         wasmtime_wasi::add_to_linker_sync(&mut linker)
             .map_err(|e| wasm_err(format!("failed to link WASI: {e}")))?;
         StitchPatch::add_to_linker(&mut linker, |s| s)
@@ -324,9 +334,9 @@ impl Patch for WasmPatch {
 
         let bundle_dir = self.path.parent().map(|p| p.to_path_buf());
         let ctx_ptr = ctx as *mut PatchContext as *mut ();
-        let mut store = create_store(&engine, ctx_ptr, bundle_dir);
+        let mut store = create_store(&self.engine, ctx_ptr, bundle_dir);
 
-        let patch_instance = StitchPatch::instantiate(&mut store, &component, &linker)
+        let patch_instance = StitchPatch::instantiate(&mut store, &self.component, &linker)
             .map_err(|e| wasm_err(format!("failed to instantiate {}: {e}", self.path.display())))?;
 
         match patch_instance.call_execute(&mut store) {

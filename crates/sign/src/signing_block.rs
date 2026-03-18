@@ -178,9 +178,10 @@ pub fn reassemble_apk(
     output.extend_from_slice(central_dir);
 
     let mut patched_eocd = eocd.to_vec();
-    if patched_eocd.len() >= 22 {
-        patched_eocd[16..20].copy_from_slice(&(new_cd_offset as u32).to_le_bytes());
+    if patched_eocd.len() < 22 {
+        return Err(malformed("eocd", 0, "EOCD record too short (< 22 bytes)"));
     }
+    patched_eocd[16..20].copy_from_slice(&(new_cd_offset as u32).to_le_bytes());
     output.extend_from_slice(&patched_eocd);
 
     Ok(output)

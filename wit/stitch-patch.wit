@@ -199,6 +199,67 @@ interface types {
         access-flags: access-flags,
     }
 
+    // ── Try-catch support ──
+
+    record try-item {
+        // Code-unit offset of the first instruction in the try block
+        start-addr: u32,
+        // Number of code units covered by the try block
+        insn-count: u16,
+        // Index into the catch-handlers list
+        handler-idx: u32,
+    }
+
+    record typed-catch {
+        // Exception type descriptor (e.g. "Ljava/io/IOException;")
+        exception-type: string,
+        // Code-unit offset of the catch handler
+        addr: u32,
+    }
+
+    record catch-handler {
+        // Typed exception catches (checked in order)
+        typed-catches: list<typed-catch>,
+        // Code-unit offset for catch-all handler (if any)
+        catch-all-addr: option<u32>,
+    }
+
+    // ── Encoded values (for field initializers and annotations) ──
+
+    variant encoded-value {
+        null-val,
+        bool-val(bool),
+        byte-val(s8),
+        short-val(s16),
+        char-val(u16),
+        int-val(s32),
+        long-val(s64),
+        float-val(f32),
+        double-val(f64),
+        string-val(string),
+        type-val(string),
+    }
+
+    // ── Annotations ──
+
+    enum annotation-visibility {
+        build,
+        runtime,
+        system,
+    }
+
+    record annotation-element {
+        name: string,
+        value: encoded-value,
+    }
+
+    record annotation-item {
+        visibility: annotation-visibility,
+        // Annotation type descriptor (e.g. "Ljava/lang/Deprecated;")
+        annotation-type: string,
+        elements: list<annotation-element>,
+    }
+
     // For creating new methods
     record new-method {
         name: string,
@@ -208,6 +269,8 @@ interface types {
         ins-size: u16,
         outs-size: u16,
         instructions: list<instruction>,
+        tries: list<try-item>,
+        catch-handlers: list<catch-handler>,
     }
 
     // For creating new fields
@@ -215,6 +278,7 @@ interface types {
         name: string,
         field-type: string,
         access-flags: access-flags,
+        initial-value: option<encoded-value>,
     }
 
     // Patch option declaration — tells the host what the user can configure
@@ -268,6 +332,7 @@ interface bytecode {
         instruction, opcode, method-ref, field-ref,
         access-flags, fingerprint, fingerprint-match, instruction-hit,
         method-info, class-info, field-info, new-method, new-field,
+        annotation-item,
     };
 
     // ── Method lookup ──
@@ -423,6 +488,12 @@ interface bytecode {
     // Paths are relative to the bundle directory.
 
     merge-extension-dex: func(paths: list<string>) -> u32;
+
+    // ── Annotations ──
+
+    add-class-annotation: func(c: class-handle, annotation: annotation-item);
+    add-method-annotation: func(m: method-handle, annotation: annotation-item);
+    add-field-annotation: func(c: class-handle, field-name: string, annotation: annotation-item);
 }
 
 

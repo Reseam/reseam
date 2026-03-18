@@ -1,6 +1,9 @@
 use stitch_apk::stitch_dex::{
-    AccessFlags, CodeItem, DexFile, EncodedField, EncodedMethod, FieldIdx,
-    Fingerprint, Instruction as DexInsn, InstructionPattern, StringIdx,
+    AccessFlags, AnnotationElement as DexAnnotationElement, AnnotationItem as DexAnnotationItem,
+    AnnotationVisibility as DexAnnotationVisibility, AnnotationsDirectory,
+    CatchHandler as DexCatchHandler, CodeItem, DexFile, EncodedField, EncodedMethod,
+    EncodedValue, FieldIdx, Fingerprint, Instruction as DexInsn, InstructionPattern, StringIdx,
+    TryItem as DexTryItem, TypedCatch as DexTypedCatch,
 };
 
 use super::convert::{dex_to_wit, wit_to_dex, WitFieldRef, WitInstruction, WitMethodRef};
@@ -73,7 +76,7 @@ impl Host for WasmState {
         let result = ctx.find_method(&class_descriptor, &method_name);
         match result {
             Some((dex_idx, method)) => {
-                let (ci, mi, iv) = find_method_location(ctx, dex_idx, method);
+                let (ci, mi, iv) = find_method_location(ctx, dex_idx, method)?;
                 Some(self.handles.alloc_method(dex_idx, ci, mi, iv))
             }
             None => None,
@@ -85,7 +88,7 @@ impl Host for WasmState {
         let result = ctx.find_method_by_name(&name);
         match result {
             Some((dex_idx, mm)) => {
-                let (ci, mi, iv) = method_match_location(ctx, dex_idx, &mm);
+                let (ci, mi, iv) = method_match_location(ctx, dex_idx, &mm)?;
                 Some(self.handles.alloc_method(dex_idx, ci, mi, iv))
             }
             None => None,
@@ -97,9 +100,9 @@ impl Host for WasmState {
             let ctx = self.ctx();
             let str_refs: Vec<&str> = strings.iter().map(|s| s.as_str()).collect();
             let matches = ctx.find_methods_by_strings(&str_refs);
-            matches.iter().map(|(dex_idx, mm)| {
-                let (ci, mi, iv) = method_match_location(ctx, *dex_idx, mm);
-                (*dex_idx, ci, mi, iv)
+            matches.iter().filter_map(|(dex_idx, mm)| {
+                let (ci, mi, iv) = method_match_location(ctx, *dex_idx, mm)?;
+                Some((*dex_idx, ci, mi, iv))
             }).collect()
         };
         locations.into_iter().map(|(di, ci, mi, iv)| {
@@ -115,9 +118,9 @@ impl Host for WasmState {
         let locations: Vec<(usize, usize, usize, bool)> = {
             let ctx = self.ctx();
             let matches = ctx.find_methods_with_opcodes(&ip);
-            matches.iter().map(|(dex_idx, mm)| {
-                let (ci, mi, iv) = method_match_location(ctx, *dex_idx, mm);
-                (*dex_idx, ci, mi, iv)
+            matches.iter().filter_map(|(dex_idx, mm)| {
+                let (ci, mi, iv) = method_match_location(ctx, *dex_idx, mm)?;
+                Some((*dex_idx, ci, mi, iv))
             }).collect()
         };
         locations.into_iter().map(|(di, ci, mi, iv)| {
@@ -130,7 +133,7 @@ impl Host for WasmState {
         let (dex_idx, ci, mi, iv, matched_indices) = {
             let ctx = self.ctx();
             let (dex_idx, fm) = ctx.find_method_by_fingerprint(&dex_fp)?;
-            let (ci, mi, iv) = find_method_location(ctx, dex_idx, fm.method);
+            let (ci, mi, iv) = find_method_location(ctx, dex_idx, fm.method)?;
             (dex_idx, ci, mi, iv, fm.matched_indices.clone())
         };
         let mh = self.handles.alloc_method(dex_idx, ci, mi, iv);
@@ -144,9 +147,9 @@ impl Host for WasmState {
         let dex_fp = convert_fingerprint(&fp);
         let ctx = self.ctx();
         let matches = ctx.find_methods_by_fingerprint(&dex_fp);
-        let locs: Vec<_> = matches.iter().map(|(dex_idx, fm)| {
-            let (ci, mi, iv) = find_method_location(ctx, *dex_idx, fm.method);
-            (*dex_idx, ci, mi, iv, fm.matched_indices.clone())
+        let locs: Vec<_> = matches.iter().filter_map(|(dex_idx, fm)| {
+            let (ci, mi, iv) = find_method_location(ctx, *dex_idx, fm.method)?;
+            Some((*dex_idx, ci, mi, iv, fm.matched_indices.clone()))
         }).collect();
         locs.into_iter().map(|(di, ci, mi, iv, indices)| {
             let mh = self.handles.alloc_method(di, ci, mi, iv);
@@ -160,8 +163,8 @@ impl Host for WasmState {
         let ctx = self.ctx();
         match ctx.find_class(&descriptor) {
             Some((dex_idx, class)) => {
-                let dex = ctx.dex_file(dex_idx).expect("dex");
-                let class_idx = dex.classes.iter().position(|c| std::ptr::eq(c, class)).expect("class");
+                let dex = ctx.dex_file(dex_idx)?;
+                let class_idx = dex.classes.iter().position(|c| std::ptr::eq(c, class))?;
                 Some(self.handles.alloc_class(dex_idx, class_idx))
             }
             None => None,
@@ -395,9 +398,9 @@ impl Host for WasmState {
         let locations: Vec<(usize, usize, usize, bool, usize)> = {
             let ctx = self.ctx();
             let hits = ctx.find_instructions_by_literal(literal);
-            hits.iter().map(|(dex_idx, class_idx, method_idx, insn_idx)| {
-                let (actual, is_virtual) = scan_location(ctx, *dex_idx, *class_idx, *method_idx);
-                (*dex_idx, *class_idx, actual, is_virtual, *insn_idx)
+            hits.iter().map(|loc| {
+                let (actual, is_virtual) = scan_location(ctx, loc.dex_idx, loc.class_idx, loc.method_idx);
+                (loc.dex_idx, loc.class_idx, actual, is_virtual, loc.insn_idx)
             }).collect()
         };
         locations.into_iter().map(|(di, ci, mi, iv, ii)| {
@@ -412,9 +415,9 @@ impl Host for WasmState {
         let locations: Vec<(usize, usize, usize, bool, usize)> = {
             let ctx = self.ctx();
             let hits = ctx.find_instructions_by_string(&s);
-            hits.iter().map(|(dex_idx, class_idx, method_idx, insn_idx)| {
-                let (actual, is_virtual) = scan_location(ctx, *dex_idx, *class_idx, *method_idx);
-                (*dex_idx, *class_idx, actual, is_virtual, *insn_idx)
+            hits.iter().map(|loc| {
+                let (actual, is_virtual) = scan_location(ctx, loc.dex_idx, loc.class_idx, loc.method_idx);
+                (loc.dex_idx, loc.class_idx, actual, is_virtual, loc.insn_idx)
             }).collect()
         };
         locations.into_iter().map(|(di, ci, mi, iv, ii)| {
@@ -722,22 +725,41 @@ impl Host for WasmState {
             Err(_) => return 0,
         };
         let af = wit_to_access_flags(method.access_flags);
-        let insns: Vec<DexInsn> = method.instructions.iter()
-            .filter_map(|wi| wit_to_dex(wi, dex).ok())
-            .collect();
-        let code = CodeItem {
-            registers_size: method.registers_size,
-            ins_size: method.ins_size,
-            outs_size: method.outs_size,
-            debug_info: None,
-            instructions: insns,
-            tries: Vec::new(),
-            catch_handlers: Vec::new(),
+        let code = if af.contains(AccessFlags::NATIVE) || af.contains(AccessFlags::ABSTRACT) {
+            None
+        } else {
+            let insns: Vec<DexInsn> = method.instructions.iter()
+                .filter_map(|wi| wit_to_dex(wi, dex).ok())
+                .collect();
+            let tries: Vec<DexTryItem> = method.tries.iter().map(|t| DexTryItem {
+                start_addr: t.start_addr,
+                insn_count: t.insn_count,
+                handler_idx: t.handler_idx as usize,
+            }).collect();
+            let catch_handlers: Vec<DexCatchHandler> = method.catch_handlers.iter().map(|ch| {
+                let typed_catches = ch.typed_catches.iter().map(|tc| {
+                    let type_idx = dex.intern_type(&tc.exception_type);
+                    DexTypedCatch { exception_type: type_idx, addr: tc.addr }
+                }).collect();
+                DexCatchHandler {
+                    typed_catches,
+                    catch_all_addr: ch.catch_all_addr,
+                }
+            }).collect();
+            Some(CodeItem {
+                registers_size: method.registers_size,
+                ins_size: method.ins_size,
+                outs_size: method.outs_size,
+                debug_info: None,
+                instructions: insns,
+                tries,
+                catch_handlers,
+            })
         };
         let em = EncodedMethod {
             method: method_idx,
             access_flags: af,
-            code: Some(code),
+            code,
         };
         let is_virtual = !af.contains(AccessFlags::STATIC) && !af.contains(AccessFlags::CONSTRUCTOR) && !af.intersects(AccessFlags::PRIVATE);
         let class = &mut dex.classes[ch.class_idx];
@@ -789,13 +811,23 @@ impl Host for WasmState {
             field: field_idx,
             access_flags: af,
         };
+        // Convert initial value before borrowing class mutably
+        let init_val = field.initial_value.as_ref().map(|v| wit_encoded_value_to_dex(v, dex));
         let class = &mut dex.classes[ch.class_idx];
         if af.contains(AccessFlags::STATIC) {
             class.add_static_field(ef);
+            if let Some(val) = init_val {
+                let static_field_count = class.class_data.as_ref()
+                    .map(|d| d.static_fields.len()).unwrap_or(0);
+                while class.static_values.len() < static_field_count - 1 {
+                    class.static_values.push(EncodedValue::Null);
+                }
+                class.static_values.push(val);
+            }
         } else {
             class.add_instance_field(ef);
         }
-        0 // field handles are not tracked in the handle table
+        0
     }
 
     fn remove_field(&mut self, c: u32, name: String) {
@@ -995,9 +1027,109 @@ impl Host for WasmState {
             Err(_) => 0,
         }
     }
+
+    // ── Annotations ──
+
+    fn add_class_annotation(&mut self, c: u32, annotation: types::AnnotationItem) {
+        let ch = self.handles.get_class(c).expect("valid class handle");
+        let ctx = self.ctx();
+        let dex = ctx.dex_file_mut(ch.dex_idx).expect("dex");
+        let ann = wit_annotation_to_dex(&annotation, dex);
+        let class = &mut dex.classes[ch.class_idx];
+        let dir = class.annotations.get_or_insert_with(|| AnnotationsDirectory {
+            class_annotations: Vec::new(),
+            field_annotations: Vec::new(),
+            method_annotations: Vec::new(),
+            parameter_annotations: Vec::new(),
+        });
+        dir.class_annotations.push(ann);
+    }
+
+    fn add_method_annotation(&mut self, m: u32, annotation: types::AnnotationItem) {
+        let mh = self.handles.get_method(m).expect("valid method handle");
+        let ctx = self.ctx();
+        let dex = ctx.dex_file_mut(mh.dex_idx).expect("dex");
+        let method_idx = get_method_ref(dex, mh).method;
+        let ann = wit_annotation_to_dex(&annotation, dex);
+        let class = &mut dex.classes[mh.class_idx];
+        let dir = class.annotations.get_or_insert_with(|| AnnotationsDirectory {
+            class_annotations: Vec::new(),
+            field_annotations: Vec::new(),
+            method_annotations: Vec::new(),
+            parameter_annotations: Vec::new(),
+        });
+        if let Some(entry) = dir.method_annotations.iter_mut().find(|(mid, _)| *mid == method_idx) {
+            entry.1.push(ann);
+        } else {
+            dir.method_annotations.push((method_idx, vec![ann]));
+        }
+    }
+
+    fn add_field_annotation(&mut self, c: u32, field_name: String, annotation: types::AnnotationItem) {
+        let ch = self.handles.get_class(c).expect("valid class handle");
+        let ctx = self.ctx();
+        let dex = ctx.dex_file_mut(ch.dex_idx).expect("dex");
+        let target_field = dex.classes[ch.class_idx].class_data.as_ref().and_then(|data| {
+            data.static_fields.iter().chain(&data.instance_fields)
+                .find(|f| dex.string(dex.fields[f.field.0 as usize].name) == field_name)
+                .map(|f| f.field)
+        });
+        if let Some(field_idx) = target_field {
+            let ann = wit_annotation_to_dex(&annotation, dex);
+            let class = &mut dex.classes[ch.class_idx];
+            let dir = class.annotations.get_or_insert_with(|| AnnotationsDirectory {
+                class_annotations: Vec::new(),
+                field_annotations: Vec::new(),
+                method_annotations: Vec::new(),
+                parameter_annotations: Vec::new(),
+            });
+            if let Some(entry) = dir.field_annotations.iter_mut().find(|(fid, _)| *fid == field_idx) {
+                entry.1.push(ann);
+            } else {
+                dir.field_annotations.push((field_idx, vec![ann]));
+            }
+        }
+    }
 }
 
 // ── Helper functions ──
+
+fn wit_encoded_value_to_dex(val: &types::EncodedValue, dex: &mut DexFile) -> EncodedValue {
+    match val {
+        types::EncodedValue::NullVal => EncodedValue::Null,
+        types::EncodedValue::BoolVal(b) => EncodedValue::Boolean(*b),
+        types::EncodedValue::ByteVal(v) => EncodedValue::Byte(*v),
+        types::EncodedValue::ShortVal(v) => EncodedValue::Short(*v),
+        types::EncodedValue::CharVal(v) => EncodedValue::Char(*v),
+        types::EncodedValue::IntVal(v) => EncodedValue::Int(*v),
+        types::EncodedValue::LongVal(v) => EncodedValue::Long(*v),
+        types::EncodedValue::FloatVal(v) => EncodedValue::Float(*v),
+        types::EncodedValue::DoubleVal(v) => EncodedValue::Double(*v),
+        types::EncodedValue::StringVal(s) => {
+            let idx = dex.intern_string(s);
+            EncodedValue::String(idx)
+        }
+        types::EncodedValue::TypeVal(desc) => {
+            let idx = dex.intern_type(desc);
+            EncodedValue::Type(idx)
+        }
+    }
+}
+
+fn wit_annotation_to_dex(ann: &types::AnnotationItem, dex: &mut DexFile) -> DexAnnotationItem {
+    let visibility = match ann.visibility {
+        types::AnnotationVisibility::Build => DexAnnotationVisibility::Build,
+        types::AnnotationVisibility::Runtime => DexAnnotationVisibility::Runtime,
+        types::AnnotationVisibility::System => DexAnnotationVisibility::System,
+    };
+    let type_idx = dex.intern_type(&ann.annotation_type);
+    let elements = ann.elements.iter().map(|el| {
+        let name_idx = dex.intern_string(&el.name);
+        let value = wit_encoded_value_to_dex(&el.value, dex);
+        DexAnnotationElement { name: name_idx, value }
+    }).collect();
+    DexAnnotationItem { visibility, type_: type_idx, elements }
+}
 
 fn convert_fingerprint(fp: &types::Fingerprint) -> Fingerprint {
     Fingerprint {

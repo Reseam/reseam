@@ -11,8 +11,8 @@ const MAX_ECDSA_DER_SIGNATURE_LEN: usize = 72;
 pub fn sign(apk: &[u8], key: &SigningKey) -> Result<Vec<u8>> {
     let sections = signing_block::split_apk(apk)?;
     let target_len = target_signing_block_len(key)?;
-    let new_cd_offset = checked_cd_offset(sections.contents.len(), target_len)?;
-    let v2_block = build_v2_block_from_sections(&sections, key, new_cd_offset)?;
+    let _new_cd_offset = checked_cd_offset(sections.contents.len(), target_len)?;
+    let v2_block = build_v2_block_from_sections(&sections, key)?;
     let signing_block =
         signing_block::build_signing_block_with_padding(&[(BLOCK_ID_V2, v2_block)], target_len)?;
     signing_block::reassemble_apk(
@@ -26,16 +26,15 @@ pub fn sign(apk: &[u8], key: &SigningKey) -> Result<Vec<u8>> {
 pub(crate) fn build_v2_block_from_sections(
     sections: &ApkSections<'_>,
     key: &SigningKey,
-    _new_cd_offset: u32,
 ) -> Result<Vec<u8>> {
     let digest = compute_content_digest(sections)?;
     build_v2_block_from_digest(&digest, key)
 }
 
 pub(crate) fn build_v2_block_from_digest(digest: &[u8], key: &SigningKey) -> Result<Vec<u8>> {
-    let signed_data = build_signed_data(digest, key.certificate_der())?;
+    let signed_data = build_signed_data(digest, key.certificate_der());
     let signature = key.sign(&signed_data)?;
-    let signer = build_signer(&signed_data, &signature, key)?;
+    let signer = build_signer(&signed_data, &signature, key);
 
     // Android expects: [signers_seq_len][signer_len][signer_data]
     // The outer length-prefix wraps the entire sequence of signers.
@@ -48,9 +47,9 @@ pub(crate) fn build_v2_block_from_digest(digest: &[u8], key: &SigningKey) -> Res
 }
 
 pub(crate) fn build_signer_from_digest(digest: &[u8], key: &SigningKey) -> Result<Vec<u8>> {
-    let signed_data = build_signed_data(digest, key.certificate_der())?;
+    let signed_data = build_signed_data(digest, key.certificate_der());
     let signature = key.sign(&signed_data)?;
-    build_signer(&signed_data, &signature, key)
+    Ok(build_signer(&signed_data, &signature, key))
 }
 
 /// Chunked Merkle digest: each 1MB chunk hashed with 0xa5 prefix,
@@ -63,9 +62,10 @@ pub(crate) fn compute_content_digest(sections: &ApkSections<'_>) -> Result<Vec<u
     // Android verifier replaces EOCD CD-offset with contents_len (no signing block).
     let cd_offset_for_digest = sections.contents.len() as u32;
     let mut patched_eocd = sections.eocd.to_vec();
-    if patched_eocd.len() >= 22 {
-        patched_eocd[16..20].copy_from_slice(&cd_offset_for_digest.to_le_bytes());
+    if patched_eocd.len() < 22 {
+        return Err(malformed("eocd", 0, "EOCD record too short (< 22 bytes)"));
     }
+    patched_eocd[16..20].copy_from_slice(&cd_offset_for_digest.to_le_bytes());
 
     let mut chunk_digests = Vec::new();
     digest_section_chunks(sections.contents, &mut chunk_digests);
@@ -95,7 +95,7 @@ pub(crate) fn checked_cd_offset(contents_len: usize, signing_block_len: usize) -
 
 pub(crate) fn max_signer_len(key: &SigningKey) -> Result<usize> {
     let digest = [0u8; DIGEST_LEN];
-    let signed_data = build_signed_data(&digest, key.certificate_der())?;
+    let signed_data = build_signed_data(&digest, key.certificate_der());
     let spki_len = crate::der::ec_subject_public_key_info(key.public_key_bytes()).len();
 
     signed_data
@@ -123,6 +123,7 @@ pub(crate) fn max_block_len(key: &SigningKey) -> Result<usize> {
 }
 
 fn target_signing_block_len(key: &SigningKey) -> Result<usize> {
+    // 0 = padding pair placeholder (actual padding computed at build time)
     Ok(signing_block::signing_block_len(&[max_block_len(key)?, 0]))
 }
 
@@ -142,10 +143,9 @@ fn digest_section_chunks(data: &[u8], chunk_digests: &mut Vec<Vec<u8>>) {
     }
 }
 
-fn build_signed_data(digest: &[u8], certificate_der: &[u8]) -> Result<Vec<u8>> {
+fn build_signed_data(digest: &[u8], certificate_der: &[u8]) -> Vec<u8> {
     let mut signed_data = Vec::new();
 
-    // Digests
     let mut digests = Vec::new();
     let mut entry = Vec::new();
     entry.extend_from_slice(&SIG_ECDSA_SHA256.to_le_bytes());
@@ -153,18 +153,16 @@ fn build_signed_data(digest: &[u8], certificate_der: &[u8]) -> Result<Vec<u8>> {
     write_lp(&mut digests, &entry);
     write_lp(&mut signed_data, &digests);
 
-    // Certificates
     let mut certs = Vec::new();
     write_lp(&mut certs, certificate_der);
     write_lp(&mut signed_data, &certs);
 
-    // Additional attributes (empty)
     write_lp(&mut signed_data, &[]);
 
-    Ok(signed_data)
+    signed_data
 }
 
-fn build_signer(signed_data: &[u8], signature: &[u8], key: &SigningKey) -> Result<Vec<u8>> {
+fn build_signer(signed_data: &[u8], signature: &[u8], key: &SigningKey) -> Vec<u8> {
     let mut signer = Vec::new();
 
     write_lp(&mut signer, signed_data);
@@ -179,10 +177,11 @@ fn build_signer(signed_data: &[u8], signature: &[u8], key: &SigningKey) -> Resul
     let spki = crate::der::ec_subject_public_key_info(key.public_key_bytes());
     write_lp(&mut signer, &spki);
 
-    Ok(signer)
+    signer
 }
 
 fn write_lp(out: &mut Vec<u8>, data: &[u8]) {
+    debug_assert!(data.len() <= u32::MAX as usize, "write_lp: data exceeds u32::MAX");
     out.extend_from_slice(&(data.len() as u32).to_le_bytes());
     out.extend_from_slice(data);
 }

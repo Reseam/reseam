@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::error::{PatcherError, Result};
 use crate::patch::Patch;
@@ -69,36 +69,4 @@ pub fn find_dependents(patches: &[Box<dyn Patch>]) -> HashMap<usize, Vec<usize>>
         }
     }
     dependents
-}
-
-pub fn collect_after_dependents_order(
-    patches: &[Box<dyn Patch>],
-    execution_order: &[usize],
-) -> Vec<usize> {
-    let dependents = find_dependents(patches);
-    let mut completed: HashSet<usize> = HashSet::new();
-    let mut after_order = Vec::new();
-
-    for &idx in execution_order {
-        completed.insert(idx);
-
-        for (&dep_idx, dep_list) in &dependents {
-            if completed.contains(&dep_idx) {
-                continue;
-            }
-            if dep_list.iter().all(|d| completed.contains(d)) {
-                if !after_order.contains(&dep_idx) {
-                    after_order.push(dep_idx);
-                }
-            }
-        }
-    }
-
-    for (&dep_idx, dep_list) in &dependents {
-        if dep_list.iter().all(|d| completed.contains(d)) && !after_order.contains(&dep_idx) {
-            after_order.push(dep_idx);
-        }
-    }
-
-    after_order
 }

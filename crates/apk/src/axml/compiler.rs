@@ -1,6 +1,6 @@
 use crate::axml::reader::{AxmlAttribute, AxmlDocument, AxmlEvent, TypedValue};
 use crate::axml::string_pool::StringPool;
-use crate::error::Result;
+use crate::error::{invalid, Result};
 
 const ANDROID_NS: &str = "http://schemas.android.com/apk/res/android";
 const APP_NS: &str = "http://schemas.android.com/apk/res-auto";
@@ -30,7 +30,8 @@ pub fn build_axml_document(text: &str) -> Result<AxmlDocument> {
                 Ok(quick_xml::events::Event::Start(ref e))
                 | Ok(quick_xml::events::Event::Empty(ref e)) => {
                     for attr in e.attributes().flatten() {
-                        let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
+                        let key = std::str::from_utf8(attr.key.as_ref())
+                            .map_err(|e| invalid("axml compiler", format!("invalid UTF-8 in attribute key: {e}")))?;
                         if let Some(local) = key.strip_prefix("android:") {
                             if let Some(res_id) = android_attr_res_id(local) {
                                 if !attr_names_with_res_id.iter().any(|(n, _)| n == local) {
@@ -40,7 +41,7 @@ pub fn build_axml_document(text: &str) -> Result<AxmlDocument> {
                         }
                     }
                 }
-                Err(_) => break,
+                Err(e) => return Err(invalid("axml compiler", format!("XML parse error: {e}"))),
                 _ => {}
             }
             buf.clear();
@@ -96,7 +97,7 @@ pub fn build_axml_document(text: &str) -> Result<AxmlDocument> {
                     name: name_idx,
                 });
             }
-            Err(_) => break,
+            Err(e) => return Err(invalid("axml compiler", format!("XML parse error: {e}"))),
             _ => {}
         }
         buf.clear();
@@ -343,7 +344,7 @@ fn parse_dimension(s: &str) -> Option<u32> {
 
     // Android complex dimension encoding:
     // bits 0-3: unit
-    // bits 4-5: radix (0 = 23p0, 1 = 16p7, 2 = 8p15, 3 = 0p23)
+    // bits 4-5: radix (0 = 23.0, 1 = 16.7, 2 = 8.15, 3 = 0.23)
     // bits 8-31: mantissa
     //
     // For integer values, use radix 0 (23.0 fixed point = integer << 8)
@@ -416,7 +417,7 @@ fn android_attr_res_id(name: &str) -> Option<u32> {
         "height" => 0x0101_015a,
         "minWidth" => 0x0101_015e,
         "minHeight" => 0x0101_015f,
-        "maxWidth" => 0x0101_0000 + 0x15c, // not always needed, approximation
+        "maxWidth" => 0x0101_015c,
         "configChanges" => 0x0101_001f,
         "screenOrientation" => 0x0101_001e,
         "launchMode" => 0x0101_001d,
@@ -444,7 +445,7 @@ fn android_attr_res_id(name: &str) -> Option<u32> {
         "roundIcon" => 0x0101_048f,
         "appComponentFactory" => 0x0101_057a,
         "networkSecurityConfig" => 0x0101_04f0,
-        "debuggable" => 0x0101_000f,
+        "debuggable" => 0x0101_0277,
         "viewportWidth" => 0x0101_0402,
         "viewportHeight" => 0x0101_0403,
         "pathData" => 0x0101_0405,
@@ -491,7 +492,7 @@ fn android_attr_res_id(name: &str) -> Option<u32> {
         "translationZ" => 0x0101_03f8,
         "outlineProvider" => 0x0101_0413,
         "maxLines" => 0x0101_0062,
-        "singleLine" => 0x0101_00ab,
+        "singleLine" => 0x0101_0063,
         "ellipsize" => 0x0101_00ab,
         "inputType" => 0x0101_01a2,
         "hint" => 0x0101_0150,
