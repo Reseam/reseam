@@ -11,5 +11,5 @@ fuzz_target!(|data: &[u8]| {
         lenient_mutf8: true,
         lazy: false,
     };
-    let _ = stitch_dex::reader::parse(data, opts);
+    let _ = stitch_dex::parse(data, opts);
 });

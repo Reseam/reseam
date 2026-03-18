@@ -26,39 +26,36 @@
 
 pub mod encoding;
 pub mod error;
-pub mod model;
-pub mod multi_dex;
-pub mod reader;
+pub mod file;
+pub mod read;
+pub mod types;
 pub mod util;
-pub mod writer;
+pub mod write;
 
 pub use error::{DexError, Result};
-pub use model::access_flags::AccessFlags;
-pub use model::annotation::{AnnotationItem, AnnotationVisibility, AnnotationsDirectory};
-pub use model::call_site::{CallSiteIdx, CallSiteItem};
-pub use model::class::{ClassData, ClassDef, EncodedField, EncodedMethod};
-pub use model::code::CodeItem;
-pub use model::debug::DebugInfo;
-pub use model::dex_file::{
+pub use file::{
     DexFile, Fingerprint, FingerprintBuilder, FingerprintMatch, InstructionPattern, MethodMatch,
     OpcodeMatcher,
 };
-pub use model::encoded_value::EncodedValue;
-pub use model::field::{FieldId, FieldIdx};
-pub use model::header::{DexHeader, DexVersion, ParseOptions};
-pub use model::hidden_api::{ClassHiddenApiFlags, HiddenApiData, HiddenApiFlag};
-pub use model::instruction::Instruction;
-pub use model::label::{CodeBuilder, Label};
-pub use model::map::MapItem;
-pub use model::method::{MethodId, MethodIdx};
-pub use model::method_handle::{MethodHandle, MethodHandleIdx};
-pub use model::proto::{ProtoIdx, Prototype};
-pub use model::register_analysis::{find_free_register, find_free_registers};
-pub use model::string::{DexString, StringIdx};
-pub use model::types::TypeIdx;
-pub use multi_dex::MultiDexContainer;
-pub use reader::parse;
-pub use reader::parse_container;
-pub use reader::parse_file;
-pub use writer::write;
-pub use writer::write_container;
+pub use file::container::MultiDexContainer;
+pub use read::parse;
+pub use read::parse_container;
+pub use read::parse_file;
+pub use types::access_flags::AccessFlags;
+pub use types::annotation::{AnnotationItem, AnnotationVisibility, AnnotationsDirectory};
+pub use types::class::{ClassData, ClassDef, EncodedField, EncodedMethod};
+pub use types::code::CodeItem;
+pub use types::debug::DebugInfo;
+pub use types::encoded_value::EncodedValue;
+pub use types::header::{DexHeader, DexVersion, ParseOptions};
+pub use types::hidden_api::{ClassHiddenApiFlags, HiddenApiData, HiddenApiFlag};
+pub use types::instruction::Instruction;
+pub use types::label::{CodeBuilder, Label};
+pub use types::map::MapItem;
+pub use types::method_handle::{CallSiteIdx, CallSiteItem, MethodHandle, MethodHandleIdx};
+pub use types::register_analysis::{find_free_register, find_free_registers};
+pub use types::{
+    DexString, FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx,
+};
+pub use write::write;
+pub use write::write_container;

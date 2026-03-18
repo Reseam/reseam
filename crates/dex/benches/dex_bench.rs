@@ -9,7 +9,7 @@ fn bench_parse_minimal(c: &mut Criterion) {
 
     c.bench_function("parse_invalid_header", |b| {
         b.iter(|| {
-            let _ = stitch_dex::reader::parse(
+            let _ = stitch_dex::parse(
                 &buf,
                 ParseOptions {
                     skip_checksum: true,

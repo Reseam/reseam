@@ -12,8 +12,8 @@ fuzz_target!(|data: &[u8]| {
     };
 
     // If parse succeeds, write must not panic
-    if let Ok(mut dex) = stitch_dex::reader::parse(data, opts) {
-        if let Ok(output) = stitch_dex::writer::write(&mut dex) {
+    if let Ok(mut dex) = stitch_dex::parse(data, opts) {
+        if let Ok(output) = stitch_dex::write(&mut dex) {
             // Re-parse the output — must not panic
             let opts2 = ParseOptions {
                 skip_checksum: true,
@@ -22,7 +22,7 @@ fuzz_target!(|data: &[u8]| {
                 lenient_mutf8: true,
                 lazy: false,
             };
-            let _ = stitch_dex::reader::parse(&output, opts2);
+            let _ = stitch_dex::parse(&output, opts2);
         }
     }
 });
