@@ -1,6 +1,5 @@
-use stitch_apk::axml::reader::{AxmlAttribute, AxmlDocument, AxmlEvent, TypedValue};
-use stitch_apk::axml::string_pool::StringPool;
-use stitch_apk::resources::arsc::{
+use stitch_apk::axml::{AxmlAttribute, AxmlDocument, AxmlEvent, StringPool, TypedValue};
+use stitch_apk::resources::{
     MapEntry, ResConfig, ResEntry, ResPackage, ResType, ResValue, ResourceTable, TypeSpec,
 };
 

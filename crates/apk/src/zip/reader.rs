@@ -1,5 +1,5 @@
 use crate::error::Result;
-use crate::multi_dex::dex_sort_key;
+use crate::dex::dex_sort_key;
 use std::io::{Read, Seek};
 
 /// Wrapper around ZipArchive providing APK-oriented access.

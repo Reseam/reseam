@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use stitch_apk::ApkFile;
-use stitch_apk::axml::reader::AxmlDocument;
-use stitch_apk::resources::arsc::ResourceTable;
+use stitch_apk::AxmlDocument;
+use stitch_apk::ResourceTable;
 use stitch_apk::stitch_dex::{
     ClassDef, CodeItem, DexFile, EncodedMethod, Fingerprint, FingerprintMatch, Instruction,
     InstructionPattern, MethodMatch, MultiDexContainer, ParseOptions, StringIdx,

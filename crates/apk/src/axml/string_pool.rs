@@ -1,4 +1,5 @@
-use crate::error::{invalid, malformed, read_u16_le, read_u32_le, read_u8, Result};
+use crate::buf::{read_u16_le, read_u32_le, read_u8};
+use crate::error::{invalid, malformed, Result};
 
 /// A parsed AXML string pool.
 #[derive(Debug, Clone)]
@@ -13,7 +14,7 @@ impl StringPool {
     /// Parse a string pool from chunk data (starting after the chunk header type+header_size+size).
     /// `data` should start at the string_count field (offset 8 from chunk start).
     pub fn parse(chunk_data: &[u8], _chunk_start: usize) -> Result<Self> {
-        crate::error::require_len(chunk_data, 0, 20, "axml string pool")?;
+        crate::buf::require_len(chunk_data, 0, 20, "axml string pool")?;
 
         let string_count = read_u32_le(chunk_data, 0, "axml string pool")? as usize;
         let _style_count = read_u32_le(chunk_data, 4, "axml string pool")? as usize;
@@ -24,7 +25,7 @@ impl StringPool {
         let is_utf8 = (flags & FLAG_UTF8) != 0;
 
         let offsets_start = 20;
-        crate::error::require_len(
+        crate::buf::require_len(
             chunk_data,
             offsets_start,
             string_count.saturating_mul(4),

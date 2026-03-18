@@ -1,7 +1,11 @@
 pub mod compiler;
 pub mod reader;
-pub mod writer;
 pub mod string_pool;
+pub mod writer;
+
+pub use compiler::{compile_xml, is_compiled_axml};
+pub use reader::{AxmlAttribute, AxmlDocument, AxmlEvent, TypedValue};
+pub use string_pool::StringPool;
 
 pub(crate) const CHUNK_XML_DOCUMENT: u16 = 0x0003;
 pub(crate) const CHUNK_STRING_POOL: u16 = 0x0001;

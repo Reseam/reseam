@@ -1,7 +1,7 @@
 use crate::axml::reader::AxmlDocument;
+use crate::dex;
 use crate::error::Result;
-use crate::multi_dex;
-use crate::resources::arsc::ResourceTable;
+use crate::resources::ResourceTable;
 use crate::zip::reader::ApkReader;
 use crate::zip::writer::ApkWriter;
 use stitch_dex::{MultiDexContainer, ParseOptions};
@@ -69,7 +69,7 @@ impl ApkFile {
 
         let entry_names = reader.entry_names();
         let dex_names = reader.dex_entry_names();
-        let dex = multi_dex::extract_dex(&mut reader, opts)?;
+        let dex = dex::extract_dex(&mut reader, opts)?;
 
         let component = ApkComponent {
             name: "base".to_string(),
@@ -301,7 +301,7 @@ impl ApkFile {
         std::fs::create_dir_all(output_dir)?;
 
         // Serialize all DEX from the unified container
-        let dex_entries = multi_dex::dex_to_entries(&mut self.dex)?;
+        let dex_entries = dex::dex_to_entries(&mut self.dex)?;
 
         for (idx, component) in self.components.iter().enumerate() {
             let is_base = idx == 0;

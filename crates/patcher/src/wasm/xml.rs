@@ -1,4 +1,4 @@
-use stitch_apk::axml::reader::{AxmlAttribute, AxmlDocument, AxmlEvent, TypedValue};
+use stitch_apk::axml::{AxmlAttribute, AxmlDocument, AxmlEvent, TypedValue};
 
 use super::WasmState;
 use super::stitch::patch::xml::Host;

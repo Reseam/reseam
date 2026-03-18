@@ -1,4 +1,5 @@
-use crate::error::{invalid, malformed, read_u16_le, read_u32_le, require_len, Result};
+use crate::buf::{read_u16_le, read_u32_le, require_len};
+use crate::error::{invalid, malformed, Result};
 
 const RES_TABLE_TYPE: u16 = 0x0002;
 const RES_STRING_POOL_TYPE: u16 = 0x0001;

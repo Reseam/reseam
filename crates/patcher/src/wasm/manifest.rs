@@ -117,7 +117,7 @@ impl Host for WasmState {
         let mut filter_ranges = Vec::new();
         let mut i = from_idx + 1;
         while i < from_end {
-            if let stitch_apk::axml::reader::AxmlEvent::StartElement { name, .. } = &manifest.elements[i] {
+            if let stitch_apk::axml::AxmlEvent::StartElement { name, .. } = &manifest.elements[i] {
                 if manifest.string(*name).map_or(false, |s| s == "intent-filter") {
                     if let Some(end) = manifest.find_end_element(i) {
                         let events: Vec<_> = manifest.elements[i..=end].to_vec();

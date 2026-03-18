@@ -1,5 +1,5 @@
 use std::io::Read;
-use stitch_apk::multi_dex;
+use stitch_apk::dex;
 use stitch_dex::{InstructionPattern, OpcodeMatcher, ParseOptions};
 
 const YOUTUBE_APK: &str = "../../test-apks/for_testing_com.google.android.youtube_21.10.494.apk";
@@ -160,7 +160,7 @@ fn test_from_apk() {
 
     let apk_bytes = std::fs::read(YOUTUBE_APK).expect("Failed to read APK");
     let container =
-        multi_dex::from_apk(&apk_bytes, ParseOptions::default()).expect("Failed to parse from APK");
+        dex::from_apk(&apk_bytes, ParseOptions::default()).expect("Failed to parse from APK");
 
     assert!(!container.is_empty(), "Should have found DEX files in APK");
     eprintln!("from_apk: found {} DEX files", container.len());

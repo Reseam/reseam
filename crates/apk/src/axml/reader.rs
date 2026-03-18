@@ -4,7 +4,8 @@ use crate::axml::{
     CHUNK_START_NAMESPACE, CHUNK_END_NAMESPACE, CHUNK_START_ELEMENT, CHUNK_END_ELEMENT,
     TYPE_STRING, TYPE_INT_DEC, TYPE_INT_HEX, TYPE_INT_BOOLEAN, TYPE_REFERENCE,
 };
-use crate::error::{invalid, malformed, read_u16_le, read_u32_le, read_u8, require_len, Result};
+use crate::buf::{read_u16_le, read_u32_le, read_u8, require_len};
+use crate::error::{invalid, malformed, Result};
 
 const RES_VERSION_CODE: u32 = 0x0101_021b;
 const RES_VERSION_NAME: u32 = 0x0101_021c;

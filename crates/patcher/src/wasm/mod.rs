@@ -13,7 +13,7 @@ use wasmtime::component::{Component, Linker};
 use wasmtime::{Config, Engine, Store};
 use wasmtime_wasi::{IoView, WasiCtxBuilder};
 
-use stitch_apk::axml::reader::AxmlDocument;
+use stitch_apk::AxmlDocument;
 
 use crate::context::PatchContext;
 use crate::error::PatcherError;
