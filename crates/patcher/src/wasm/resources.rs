@@ -39,6 +39,10 @@ impl Host for WasmState {
             .collect()
     }
 
+    fn add_string_resource(&mut self, name: String, value: String) -> Option<u32> {
+        self.ctx().resources_mut()?.add_string_resource(&name, &value)
+    }
+
     fn replace_entry_string(&mut self, res_id: u32, new_string_index: u32) {
         if let Some(res) = self.ctx().resources_mut() {
             res.replace_entry_string(res_id, new_string_index);

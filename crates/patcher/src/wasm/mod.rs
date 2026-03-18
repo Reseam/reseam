@@ -91,6 +91,7 @@ struct WasmState {
     ctx_ptr: *mut (),
     handles: HandleTable,
     xml_documents: Vec<Option<(AxmlDocument, String)>>,
+    pending_elements: Vec<xml::PendingElement>,
     bundle_dir: Option<PathBuf>,
 }
 
@@ -182,6 +183,7 @@ fn create_store(engine: &Engine, ctx_ptr: *mut (), bundle_dir: Option<PathBuf>) 
         ctx_ptr,
         handles: HandleTable::default(),
         xml_documents: Vec::new(),
+        pending_elements: Vec::new(),
         bundle_dir,
     };
     Store::new(engine, state)

@@ -452,7 +452,24 @@ impl<'a> PatchContext<'a> {
     // ── File operations ──
 
     pub fn inject_file(&mut self, apk_path: &str, data: Vec<u8>) {
+        let data = Self::auto_compile_xml(apk_path, data);
         self.apk.inject_file(apk_path, data);
+    }
+
+    fn auto_compile_xml(apk_path: &str, data: Vec<u8>) -> Vec<u8> {
+        if !apk_path.ends_with(".xml") {
+            return data;
+        }
+        if stitch_apk::axml::compiler::is_compiled_axml(&data) {
+            return data;
+        }
+        match std::str::from_utf8(&data) {
+            Ok(text) => match stitch_apk::axml::compiler::compile_xml(text) {
+                Ok(compiled) => compiled,
+                Err(_) => data,
+            },
+            Err(_) => data,
+        }
     }
 
     pub fn inject_file_stored(&mut self, apk_path: &str, data: Vec<u8>) {

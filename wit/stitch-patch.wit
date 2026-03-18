@@ -523,6 +523,10 @@ interface resources {
     // copies from bundle's resources/drawable/ into APK's res/drawable/
     copy-resource-group: func(res-type: string, files: list<string>);
 
+    // Add a new string resource to resources.arsc.
+    // Returns the resource ID (0xPPTTEEEE) or none if the resource table is not available.
+    add-string-resource: func(name: string, value: string) -> option<u32>;
+
     // Delete a file from the APK
     delete-file: func(apk-path: string);
 

@@ -177,6 +177,92 @@ impl ResourceTable {
         }
     }
 
+    /// Add a new string to the global string pool and return its index.
+    pub fn add_global_string(&mut self, value: &str) -> u32 {
+        // Check if already exists
+        if let Some(idx) = self.global_strings.iter().position(|s| s == value) {
+            return idx as u32;
+        }
+        let idx = self.global_strings.len() as u32;
+        self.global_strings.push(value.to_string());
+        idx
+    }
+
+    /// Add a new string resource entry. Returns the resource ID (0xPPTTEEEE).
+    /// Finds or creates the "string" type and appends an entry pointing to the global string pool.
+    pub fn add_string_resource(&mut self, name: &str, value: &str) -> Option<u32> {
+        // Add value to global string pool first (before borrowing packages)
+        let string_idx = self.add_global_string(value);
+
+        let pkg = self.packages.first_mut()?;
+
+        // Find "string" type ID (1-based)
+        let string_type_id = pkg.type_strings.iter()
+            .position(|t| t == "string")
+            .map(|i| (i + 1) as u8)?;
+
+        // Add key to package key strings
+        let key_idx = if let Some(idx) = pkg.key_strings.iter().position(|k| k == name) {
+            idx as u32
+        } else {
+            let idx = pkg.key_strings.len() as u32;
+            pkg.key_strings.push(name.to_string());
+            idx
+        };
+
+        // Find the default config type (empty config = default locale)
+        let default_type = pkg.types.iter_mut()
+            .find(|t| t.id == string_type_id && is_default_config(&t.config));
+
+        let entry_index = if let Some(res_type) = default_type {
+            // Check for existing entry with same key name
+            if let Some(existing) = res_type.entries.iter().position(|e| {
+                e.as_ref().map_or(false, |e| e.key == key_idx)
+            }) {
+                // Update existing entry
+                if let Some(Some(entry)) = res_type.entries.get_mut(existing) {
+                    entry.value = ResValue::Simple {
+                        data_type: VALUE_TYPE_STRING,
+                        data: string_idx,
+                    };
+                }
+                existing
+            } else {
+                let idx = res_type.entries.len();
+                res_type.entries.push(Some(ResEntry {
+                    flags: 0,
+                    key: key_idx,
+                    value: ResValue::Simple {
+                        data_type: VALUE_TYPE_STRING,
+                        data: string_idx,
+                    },
+                }));
+                idx
+            }
+        } else {
+            return None;
+        };
+
+        // Extend TypeSpec flags if needed
+        if let Some(spec) = pkg.type_specs.iter_mut().find(|s| s.id == string_type_id) {
+            while spec.flags.len() <= entry_index {
+                spec.flags.push(0);
+            }
+        }
+
+        // Also add None entries to other type configs for this type_id to keep entry counts aligned
+        for res_type in &mut pkg.types {
+            if res_type.id == string_type_id && !is_default_config(&res_type.config) {
+                while res_type.entries.len() <= entry_index {
+                    res_type.entries.push(None);
+                }
+            }
+        }
+
+        let res_id = (pkg.id << 24) | ((string_type_id as u32) << 16) | (entry_index as u32);
+        Some(res_id)
+    }
+
     pub fn find_resource_id(&self, type_name: &str, entry_name: &str) -> Option<u32> {
         for pkg in &self.packages {
             let type_id = pkg
@@ -746,6 +832,10 @@ fn serialize_entry(out: &mut Vec<u8>, entry: &ResEntry) {
             }
         }
     }
+}
+
+fn is_default_config(config: &ResConfig) -> bool {
+    config.data.iter().all(|&b| b == 0)
 }
 
 fn write_u16(out: &mut Vec<u8>, v: u16) {

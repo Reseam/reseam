@@ -30,6 +30,7 @@ adler       = "1"
 rayon       = "1.10"
 memmap2     = "0.9"
 zip         = "2"
+quick-xml   = "0.37"
 ring        = "0.17"
 mlua        = { version = "0.10", features = ["lua54", "vendored"] }
 toml        = "0.8"

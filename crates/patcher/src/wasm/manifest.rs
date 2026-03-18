@@ -139,7 +139,11 @@ impl Host for WasmState {
     }
 
     fn get_document(&mut self) -> u32 {
-        0
+        let ctx = self.ctx();
+        let manifest = ctx.manifest().clone();
+        let handle = self.xml_documents.len() as u32;
+        self.xml_documents.push(Some((manifest, "AndroidManifest.xml".to_string())));
+        handle
     }
 }
 
