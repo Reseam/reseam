@@ -282,6 +282,28 @@ pub enum Instruction {
 }
 
 impl Instruction {
+    /// Returns the number of outgoing argument registers used by invoke instructions,
+    /// or 0 for non-invoke instructions. Used to compute `outs_size`.
+    pub fn outgoing_arg_count(&self) -> u16 {
+        match self {
+            Self::InvokeVirtual { args, .. }
+            | Self::InvokeSuper { args, .. }
+            | Self::InvokeDirect { args, .. }
+            | Self::InvokeStatic { args, .. }
+            | Self::InvokeInterface { args, .. } => args.len() as u16,
+            Self::InvokeVirtualRange { count, .. }
+            | Self::InvokeSuperRange { count, .. }
+            | Self::InvokeDirectRange { count, .. }
+            | Self::InvokeStaticRange { count, .. }
+            | Self::InvokeInterfaceRange { count, .. } => u16::from(*count),
+            Self::InvokePolymorphic { args, .. } => args.len() as u16,
+            Self::InvokePolymorphicRange { count, .. } => u16::from(*count),
+            Self::InvokeCustom { args, .. } => args.len() as u16,
+            Self::InvokeCustomRange { count, .. } => u16::from(*count),
+            _ => 0,
+        }
+    }
+
     pub fn code_units(&self) -> u32 {
         match self {
             Self::Nop

@@ -37,19 +37,11 @@ impl PatchBundle {
         let manifest: BundleManifest = toml::from_str(&contents)?;
         let mut patches: Vec<Box<dyn Patch>> = Vec::new();
 
-        #[cfg(feature = "lua")]
+        #[cfg(feature = "kotlin")]
         {
-            let lua_patches = discover_files(dir, "lua");
-            for script_path in lua_patches {
-                patches.push(crate::lua::load_lua_patch(&script_path)?);
-            }
-        }
-
-        #[cfg(feature = "wasm")]
-        {
-            let wasm_patches = discover_files(dir, "wasm");
-            for wasm_path in wasm_patches {
-                patches.push(crate::wasm::load_wasm_patch(&wasm_path)?);
+            let jar_files = discover_files(dir, "jar");
+            if !jar_files.is_empty() {
+                patches.extend(crate::kotlin::load_kotlin_patches(&jar_files, dir)?);
             }
         }
 

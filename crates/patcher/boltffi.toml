@@ -1,0 +1,17 @@
+[package]
+name = "stitch_patcher"
+
+[targets.apple]
+enabled = false
+
+[targets.wasm]
+enabled = false
+
+[targets.android]
+enabled = true
+
+[targets.android.kotlin]
+package = "dev.stitch.patch"
+output = "../../kotlin-sdk/generated"
+module_name = "StitchPatcher"
+library_name = "stitch_patcher"

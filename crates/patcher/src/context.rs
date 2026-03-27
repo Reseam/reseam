@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::Path;
 
 use stitch_apk::ApkFile;
@@ -374,6 +375,39 @@ impl<'a> PatchContext<'a> {
         results
     }
 
+    pub fn find_instructions_by_string_contains(&self, substring: &str) -> Vec<InstructionLocation> {
+        let mut results = Vec::new();
+        for (dex_idx, dex) in self.apk.dex().iter().enumerate() {
+            let matching_indices: HashSet<_> = dex.strings.iter().enumerate()
+                .filter(|(_, s)| s.value.contains(substring))
+                .map(|(i, _)| StringIdx(i as u32))
+                .collect();
+            if matching_indices.is_empty() {
+                continue;
+            }
+            for (class_idx, class) in dex.classes.iter().enumerate() {
+                if let Some(data) = &class.class_data {
+                    for (method_idx, method) in data
+                        .direct_methods
+                        .iter()
+                        .chain(&data.virtual_methods)
+                        .enumerate()
+                    {
+                        if let Some(code) = &method.code {
+                            for (insn_idx, insn) in code.instructions.iter().enumerate() {
+                                if let Some(sref) = insn.string_ref() {
+                                    if matching_indices.contains(&sref) {
+                                        results.push(InstructionLocation { dex_idx, class_idx, method_idx, insn_idx });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        results
+    }
 
     /// Extracts (class_descriptor, method_name) from a FingerprintMatch.
     pub fn resolve_fingerprint_location(

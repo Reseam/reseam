@@ -17,6 +17,8 @@ rayon     = { workspace = true, optional = true }
 [dev-dependencies]
 pretty_assertions = { workspace = true }
 criterion         = { workspace = true }
+zip               = { version = "2", default-features = false, features = ["deflate"] }
+smallvec          = { workspace = true }
 
 [features]
 default = ["mmap", "parallel"]

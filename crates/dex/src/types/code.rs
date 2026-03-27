@@ -14,26 +14,54 @@ pub struct CodeItem {
 }
 
 impl CodeItem {
+    /// Computes `outs_size` from the actual instructions (max outgoing arg count).
+    pub fn compute_outs_size(&self) -> u16 {
+        self.instructions
+            .iter()
+            .map(|i| i.outgoing_arg_count())
+            .max()
+            .unwrap_or(0)
+    }
+
     pub fn instruction(&self, index: usize) -> &Instruction {
         &self.instructions[index]
     }
 
     pub fn replace_instruction(&mut self, index: usize, insn: Instruction) {
+        let old_size = self.instructions[index].code_units() as i32;
+        let new_size = insn.code_units() as i32;
+        let mut delta = new_size - old_size;
+        let change_addr = self.code_unit_offset(index);
         self.instructions[index] = insn;
+        if delta != 0 {
+            let needs_pad = delta % 2 != 0 && self.has_payload_after(change_addr);
+            if needs_pad {
+                self.instructions.insert(index + 1, Instruction::Nop);
+                delta += 1;
+            }
+            self.fixup_offsets(change_addr + old_size as u32, delta);
+        }
     }
 
     pub fn insert_instruction(&mut self, index: usize, insn: Instruction) {
-        let delta = insn.code_units() as i32;
-        let insert_addr = self.code_unit_offset(index);
-        self.instructions.insert(index, insn);
-        self.fixup_offsets(insert_addr, delta);
+        self.insert_instructions(index, &[insn]);
     }
 
     pub fn insert_instructions(&mut self, index: usize, insns: &[Instruction]) {
-        let delta: i32 = insns.iter().map(|i| i.code_units() as i32).sum();
+        let mut delta: i32 = insns.iter().map(|i| i.code_units() as i32).sum();
         let insert_addr = self.code_unit_offset(index);
+
+        let needs_pad = delta % 2 != 0 && self.has_payload_after(insert_addr);
+
         self.instructions
             .splice(index..index, insns.iter().cloned());
+
+        if needs_pad {
+            let pad_pos = index + insns.len();
+            self.instructions.insert(pad_pos, Instruction::Nop);
+            delta += 1;
+        }
+
         self.fixup_offsets(insert_addr, delta);
     }
 
@@ -94,48 +122,100 @@ impl CodeItem {
             .sum()
     }
 
+    fn has_payload_after(&self, addr: u32) -> bool {
+        let has_any_payload = self.instructions.iter().any(|insn| {
+            matches!(
+                insn,
+                Instruction::PackedSwitchPayload { .. }
+                    | Instruction::SparseSwitchPayload { .. }
+                    | Instruction::FillArrayDataPayload { .. }
+            )
+        });
+        if !has_any_payload {
+            return false;
+        }
+        let mut cur: u32 = 0;
+        for insn in &self.instructions {
+            if cur > addr {
+                if matches!(
+                    insn,
+                    Instruction::PackedSwitchPayload { .. }
+                        | Instruction::SparseSwitchPayload { .. }
+                        | Instruction::FillArrayDataPayload { .. }
+                ) {
+                    return true;
+                }
+            }
+            cur += insn.code_units();
+        }
+        false
+    }
+
     fn fixup_offsets(&mut self, addr: u32, delta: i32) {
+        let mut total_growth: i32 = 0;
         let mut cur_addr: u32 = 0;
         for insn in &mut self.instructions {
             let insn_size = insn.code_units();
-            fixup_branch(insn, cur_addr, addr, delta);
+            let growth = fixup_branch(insn, cur_addr, addr, delta + total_growth);
+            total_growth += growth;
             cur_addr += insn_size;
         }
+
+        let effective_delta = delta + total_growth;
 
         for t in &mut self.tries {
             let try_end = t.start_addr + t.insn_count as u32;
             if t.start_addr >= addr {
-                t.start_addr = (t.start_addr as i32 + delta) as u32;
+                t.start_addr = (t.start_addr as i32 + effective_delta) as u32;
             } else if try_end > addr {
-                t.insn_count = (t.insn_count as i32 + delta) as u16;
+                t.insn_count = (t.insn_count as i32 + effective_delta) as u16;
             }
         }
 
         for handler in &mut self.catch_handlers {
             for tc in &mut handler.typed_catches {
                 if tc.addr >= addr {
-                    tc.addr = (tc.addr as i32 + delta) as u32;
+                    tc.addr = (tc.addr as i32 + effective_delta) as u32;
                 }
             }
             if let Some(ref mut catch_all) = handler.catch_all_addr {
                 if *catch_all >= addr {
-                    *catch_all = (*catch_all as i32 + delta) as u32;
+                    *catch_all = (*catch_all as i32 + effective_delta) as u32;
                 }
             }
         }
     }
 }
 
-fn fixup_branch(insn: &mut Instruction, insn_addr: u32, change_addr: u32, delta: i32) {
+/// Returns additional code-unit growth if a goto was promoted to a wider form.
+fn fixup_branch(insn: &mut Instruction, insn_addr: u32, change_addr: u32, delta: i32) -> i32 {
     match insn {
         Instruction::Goto { offset } => {
-            *offset = fixup_i8(*offset as i32, insn_addr, change_addr, delta);
+            let new_offset = fixup_i32(*offset as i32, insn_addr, change_addr, delta);
+            if let Ok(v) = i8::try_from(new_offset) {
+                *offset = v;
+                0
+            } else if let Ok(v) = i16::try_from(new_offset) {
+                *insn = Instruction::Goto16 { offset: v };
+                1 // Goto16 is 2 code units vs Goto's 1
+            } else {
+                *insn = Instruction::Goto32 { offset: new_offset };
+                2 // Goto32 is 3 code units vs Goto's 1
+            }
         }
         Instruction::Goto16 { offset } => {
-            *offset = fixup_i16(*offset as i32, insn_addr, change_addr, delta);
+            let new_offset = fixup_i32(*offset as i32, insn_addr, change_addr, delta);
+            if let Ok(v) = i16::try_from(new_offset) {
+                *offset = v;
+                0
+            } else {
+                *insn = Instruction::Goto32 { offset: new_offset };
+                1 // Goto32 is 3 code units vs Goto16's 2
+            }
         }
         Instruction::Goto32 { offset } => {
             *offset = fixup_i32(*offset, insn_addr, change_addr, delta);
+            0
         }
         Instruction::IfEq { offset, .. }
         | Instruction::IfNe { offset, .. }
@@ -149,15 +229,17 @@ fn fixup_branch(insn: &mut Instruction, insn_addr: u32, change_addr: u32, delta:
         | Instruction::IfGez { offset, .. }
         | Instruction::IfGtz { offset, .. }
         | Instruction::IfLez { offset, .. } => {
-            *offset = fixup_i16(*offset as i32, insn_addr, change_addr, delta);
+            *offset = fixup_i32(*offset as i32, insn_addr, change_addr, delta) as i16;
+            0
         }
         Instruction::PackedSwitch { payload_offset, .. }
         | Instruction::SparseSwitch { payload_offset, .. }
         | Instruction::FillArrayData { payload_offset, .. } => {
             *payload_offset = fixup_i32(*payload_offset, insn_addr, change_addr, delta);
+            0
         }
-        Instruction::PackedSwitchPayload { .. } | Instruction::SparseSwitchPayload { .. } => {}
-        _ => {}
+        Instruction::PackedSwitchPayload { .. } | Instruction::SparseSwitchPayload { .. } => 0,
+        _ => 0,
     }
 }
 
@@ -179,14 +261,6 @@ fn fixup_i32(offset: i32, insn_addr: u32, change_addr: u32, delta: i32) -> i32 {
             offset
         }
     }
-}
-
-fn fixup_i16(offset: i32, insn_addr: u32, change_addr: u32, delta: i32) -> i16 {
-    fixup_i32(offset, insn_addr, change_addr, delta) as i16
-}
-
-fn fixup_i8(offset: i32, insn_addr: u32, change_addr: u32, delta: i32) -> i8 {
-    fixup_i32(offset, insn_addr, change_addr, delta) as i8
 }
 
 #[derive(Debug, Clone)]

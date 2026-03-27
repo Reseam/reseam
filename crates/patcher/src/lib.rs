@@ -3,15 +3,11 @@ pub mod context;
 pub mod dependency;
 pub mod engine;
 pub mod error;
+#[cfg(feature = "kotlin")]
+pub mod kotlin;
 pub mod log;
-#[cfg(feature = "lua")]
-mod lua_insn;
-#[cfg(feature = "lua")]
-pub mod lua;
 pub mod options;
 pub mod patch;
-#[cfg(feature = "wasm")]
-pub mod wasm;
 
 pub use stitch_apk;
 pub use stitch_apk::stitch_dex;

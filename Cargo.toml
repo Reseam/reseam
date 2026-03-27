@@ -6,8 +6,6 @@ members = [
     "crates/sign",
     "crates/patcher",
     "crates/patcher-macros",
-    "crates/patch-api",
-    "crates/patch-macros",
     "crates/cli",
 ]
 
@@ -18,8 +16,6 @@ stitch-apk     = { path = "crates/apk" }
 stitch-sign    = { path = "crates/sign" }
 stitch-patcher = { path = "crates/patcher" }
 stitch-patcher-macros = { path = "crates/patcher-macros" }
-stitch-patch-api = { path = "crates/patch-api" }
-stitch-patch-macros = { path = "crates/patch-macros" }
 
 # Shared external dependencies (pinned versions for all crates)
 thiserror   = "2"
@@ -32,11 +28,10 @@ memmap2     = "0.9"
 zip         = "2"
 quick-xml   = "0.37"
 ring        = "0.17"
-mlua        = { version = "0.10", features = ["lua54", "vendored"] }
 toml        = "0.8"
 serde       = { version = "1", features = ["derive"] }
-wasmtime    = "31"
-wasmtime-wasi = "31"
+boltffi     = "0.2"
+jni         = { version = "0.21", features = ["invocation"] }
 clap        = { version = "4", features = ["derive"] }
 anyhow      = "1"
 libc        = "0.2"

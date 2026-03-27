@@ -252,8 +252,9 @@ pub fn stitch_patch(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! {}
     } else {
         quote! {
-            fn depends_on(&self) -> &[&str] {
-                &[#(#deps),*]
+            fn depends_on(&self) -> &[String] {
+                static DEPS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+                DEPS.get_or_init(|| vec![#(#deps.to_string()),*])
             }
         }
     };

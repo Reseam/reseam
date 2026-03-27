@@ -94,6 +94,30 @@ impl DexFile {
         self.raw.as_deref()
     }
 
+    pub fn method_count(&self) -> usize {
+        self.methods.len()
+    }
+
+    pub fn field_count(&self) -> usize {
+        self.fields.len()
+    }
+
+    pub fn type_count(&self) -> usize {
+        self.types.len()
+    }
+
+    pub fn can_add_methods(&self, count: usize) -> bool {
+        self.methods.len() + count <= crate::write::MAX_POOL_SIZE
+    }
+
+    pub fn can_add_fields(&self, count: usize) -> bool {
+        self.fields.len() + count <= crate::write::MAX_POOL_SIZE
+    }
+
+    pub fn can_add_types(&self, count: usize) -> bool {
+        self.types.len() + count <= crate::write::MAX_POOL_SIZE
+    }
+
     pub fn is_lazy(&self) -> bool {
         self.lazy_class_data_offsets.is_some()
     }

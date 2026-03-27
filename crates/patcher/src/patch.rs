@@ -35,7 +35,7 @@ pub trait Patch: Send + Sync {
     fn enabled_by_default(&self) -> bool {
         true
     }
-    fn depends_on(&self) -> &[&str] {
+    fn depends_on(&self) -> &[String] {
         &[]
     }
     fn options(&self) -> &[OptionDeclaration] {

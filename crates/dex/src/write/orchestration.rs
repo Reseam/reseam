@@ -154,7 +154,7 @@ impl DexWriterWriteExt for DexWriter {
         let class_ann_datas = annotations::write_annotations(self, dex);
 
         let code_methods = super::methods_with_code(dex);
-        code::write_code_items(self, &code_methods);
+        code::write_code_items(self, &code_methods)?;
 
         class_data::write_class_data_items(self, dex);
 

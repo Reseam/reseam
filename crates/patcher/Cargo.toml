@@ -3,6 +3,9 @@ name = "stitch-patcher"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["lib", "cdylib"]
+
 [dependencies]
 stitch-apk          = { workspace = true }
 stitch-patcher-macros = { workspace = true }
@@ -10,15 +13,18 @@ thiserror   = { workspace = true }
 serde       = { workspace = true }
 toml        = { workspace = true }
 smallvec    = { workspace = true }
-mlua        = { workspace = true, optional = true }
-wasmtime    = { workspace = true, optional = true }
-wasmtime-wasi = { workspace = true, optional = true }
+boltffi     = { workspace = true, optional = true }
+jni         = { workspace = true, optional = true }
+zip         = { workspace = true }
 anyhow      = { workspace = true }
+
 
 [dev-dependencies]
 tempfile = { workspace = true }
 
 [features]
-default = ["lua"]
-lua = ["dep:mlua"]
-wasm = ["dep:wasmtime", "dep:wasmtime-wasi"]
+default = ["kotlin"]
+kotlin = ["dep:boltffi", "dep:jni"]
+
+[build-dependencies]
+cc = "1"

@@ -11,6 +11,7 @@ use std::collections::HashMap;
 pub(crate) mod annotations;
 pub(crate) mod class_data;
 pub(crate) mod code;
+pub(crate) mod compact;
 pub(crate) mod debug;
 pub(crate) mod encoded_arrays;
 pub(crate) mod encoded_value;
@@ -48,10 +49,36 @@ pub(crate) fn is_default_value(v: &EncodedValue) -> bool {
 /// Serializes a [`DexFile`] back into canonical DEX bytes.
 pub fn write(dex: &mut DexFile) -> Result<Vec<u8>> {
     dex.resolve_all_class_data()?;
+    validate_index_limits(dex)?;
     sort::sort_in_place(dex);
     let mut w = DexWriter::new();
     w.write_dex(dex)?;
     Ok(w.buf)
+}
+
+pub const MAX_POOL_SIZE: usize = 1 << 16;
+
+fn validate_index_limits(dex: &DexFile) -> Result<()> {
+    let checks: &[(&str, usize)] = &[
+        ("type_ids", dex.types.len()),
+        ("proto_ids", dex.prototypes.len()),
+        ("field_ids", dex.fields.len()),
+        ("method_ids", dex.methods.len()),
+        ("call_site_ids", dex.call_sites.len()),
+        ("method_handle_ids", dex.method_handles.len()),
+    ];
+    for &(name, count) in checks {
+        if count > MAX_POOL_SIZE {
+            return Err(crate::error::invalid(
+                "dex",
+                format!(
+                    "{name} count {count} exceeds maximum {MAX_POOL_SIZE} — \
+                     split into multiple DEX files"
+                ),
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Serializes multiple [`DexFile`]s into a single v41 container buffer.
@@ -70,6 +97,7 @@ pub fn write_container(dex_files: &mut [DexFile]) -> Result<Vec<u8>> {
 
     for dex in dex_files.iter_mut() {
         dex.resolve_all_class_data()?;
+        validate_index_limits(dex)?;
         sort::sort_in_place(dex);
     }
 

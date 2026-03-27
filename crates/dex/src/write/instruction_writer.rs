@@ -1,14 +1,15 @@
+use crate::error::Result;
 use crate::types::instruction::Instruction;
 
-pub fn encode_instructions(instructions: &[Instruction]) -> Vec<u16> {
+pub fn encode_instructions(instructions: &[Instruction]) -> Result<Vec<u16>> {
     let mut code: Vec<u16> = Vec::new();
     for insn in instructions {
-        encode_instruction(&mut code, insn);
+        encode_instruction(&mut code, insn)?;
     }
-    code
+    Ok(code)
 }
 
-fn encode_instruction(code: &mut Vec<u16>, insn: &Instruction) {
+fn encode_instruction(code: &mut Vec<u16>, insn: &Instruction) -> Result<()> {
     match insn {
         Instruction::Nop => code.push(0x0000),
 
@@ -161,7 +162,7 @@ fn encode_instruction(code: &mut Vec<u16>, insn: &Instruction) {
 
         // 35c
         Instruction::FilledNewArray { type_, args } => {
-            encode_35c(code, 0x24, type_.0 as u16, args); // type_list indices fit in u16
+            encode_35c(code, 0x24, type_.0 as u16, args)?;
         }
 
         // 3rc
@@ -432,13 +433,13 @@ fn encode_instruction(code: &mut Vec<u16>, insn: &Instruction) {
 
         // 35c: invoke-kind
         Instruction::InvokeVirtual { method, args } => {
-            encode_35c(code, 0x6e, method.0 as u16, args)
+            encode_35c(code, 0x6e, method.0 as u16, args)?
         }
-        Instruction::InvokeSuper { method, args } => encode_35c(code, 0x6f, method.0 as u16, args),
-        Instruction::InvokeDirect { method, args } => encode_35c(code, 0x70, method.0 as u16, args),
-        Instruction::InvokeStatic { method, args } => encode_35c(code, 0x71, method.0 as u16, args),
+        Instruction::InvokeSuper { method, args } => encode_35c(code, 0x6f, method.0 as u16, args)?,
+        Instruction::InvokeDirect { method, args } => encode_35c(code, 0x70, method.0 as u16, args)?,
+        Instruction::InvokeStatic { method, args } => encode_35c(code, 0x71, method.0 as u16, args)?,
         Instruction::InvokeInterface { method, args } => {
-            encode_35c(code, 0x72, method.0 as u16, args)
+            encode_35c(code, 0x72, method.0 as u16, args)?
         }
 
         // 3rc: invoke-kind/range
@@ -494,6 +495,7 @@ fn encode_instruction(code: &mut Vec<u16>, insn: &Instruction) {
             proto,
             args,
         } => {
+            validate_35c_args(args)?;
             let count = args.len() as u8;
             let (c, d, e, f, g) = unpack_args(args);
             code.push(0xfa | ((count as u16) << 12) | ((g as u16) << 8));
@@ -515,7 +517,7 @@ fn encode_instruction(code: &mut Vec<u16>, insn: &Instruction) {
 
         // 35c: invoke-custom
         Instruction::InvokeCustom { call_site, args } => {
-            encode_35c(code, 0xfc, call_site.0 as u16, args)
+            encode_35c(code, 0xfc, call_site.0 as u16, args)?
         }
         Instruction::InvokeCustomRange {
             call_site,
@@ -744,6 +746,7 @@ fn encode_instruction(code: &mut Vec<u16>, insn: &Instruction) {
             code.extend_from_slice(code_units);
         }
     }
+    Ok(())
 }
 
 fn pack_aa_op(op: u16, aa: u8) -> u16 {
@@ -759,12 +762,37 @@ fn encode_23x(code: &mut Vec<u16>, op: u16, aa: u8, bb: u8, cc: u8) {
     code.push((bb as u16) | ((cc as u16) << 8));
 }
 
-fn encode_35c(code: &mut Vec<u16>, op: u16, idx: u16, args: &[u8]) {
+fn encode_35c(code: &mut Vec<u16>, op: u16, idx: u16, args: &[u8]) -> Result<()> {
+    validate_35c_args(args)?;
     let count = args.len() as u8;
     let (c, d, e, f, g) = unpack_args(args);
     code.push(op | ((count as u16) << 12) | ((g as u16) << 8));
     code.push(idx);
     code.push((c as u16) | ((d as u16) << 4) | ((e as u16) << 8) | ((f as u16) << 12));
+    Ok(())
+}
+
+fn validate_35c_args(args: &[u8]) -> Result<()> {
+    if args.len() > 5 {
+        return Err(crate::error::invalid(
+            "instruction",
+            format!(
+                "register count {} exceeds maximum 5 for format 35c/45cc — \
+                 use the range variant instead",
+                args.len()
+            ),
+        ));
+    }
+    if let Some(&r) = args.iter().find(|&&r| r > 15) {
+        return Err(crate::error::invalid(
+            "instruction",
+            format!(
+                "register v{r} exceeds nibble range (0-15) for format 35c/45cc — \
+                 use the range variant instead"
+            ),
+        ));
+    }
+    Ok(())
 }
 
 fn unpack_args(args: &[u8]) -> (u8, u8, u8, u8, u8) {

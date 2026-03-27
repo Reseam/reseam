@@ -3,6 +3,7 @@ use crate::types::class::{ClassData, ClassDef, EncodedMethod};
 use crate::types::code::CodeItem;
 use crate::types::debug::{DebugBytecode, DebugInfo};
 use crate::types::encoded_value::EncodedValue;
+use crate::types::instruction::Instruction;
 use crate::types::method_handle::{CallSiteItem, MethodHandle, MethodHandleMember};
 use crate::types::{FieldId, FieldIdx, MethodId, MethodIdx, Prototype, ProtoIdx, StringIdx, TypeIdx};
 use crate::file::DexFile;
@@ -94,7 +95,6 @@ pub fn sort_in_place(dex: &mut DexFile) {
         method: &method_remap,
     };
 
-    // Build new sorted index tables from the original data
     let new_strings: Vec<_> = string_order
         .iter()
         .map(|&i| dex.strings[i as usize].clone())
@@ -141,14 +141,12 @@ pub fn sort_in_place(dex: &mut DexFile) {
         })
         .collect();
 
-    // Replace tables
     dex.strings = new_strings;
     dex.types = new_types;
     dex.prototypes = new_prototypes;
     dex.fields = new_fields;
     dex.methods = new_methods;
 
-    // Remap references inside classes, call sites, method handles in place
     for class in &mut dex.classes {
         remap.remap_class(class);
     }
@@ -161,47 +159,51 @@ pub fn sort_in_place(dex: &mut DexFile) {
         remap.remap_method_handle(mh);
     }
 
+    dex.classes.sort_by_key(|c| c.class_type.0);
+
+    fixup_instructions(dex);
+
     dex.build_lookups();
 }
 
-struct Remap<'a> {
-    string: &'a [u32],
-    type_: &'a [u32],
-    proto: &'a [u16],
-    field: &'a [u32],
-    method: &'a [u32],
+pub(crate) struct Remap<'a> {
+    pub(crate) string: &'a [u32],
+    pub(crate) type_: &'a [u32],
+    pub(crate) proto: &'a [u16],
+    pub(crate) field: &'a [u32],
+    pub(crate) method: &'a [u32],
 }
 
 impl<'a> Remap<'a> {
-    fn remap_string(&self, idx: StringIdx) -> StringIdx {
+    pub(crate) fn remap_string(&self, idx: StringIdx) -> StringIdx {
         StringIdx(self.string[idx.0 as usize])
     }
 
-    fn remap_type(&self, idx: TypeIdx) -> TypeIdx {
+    pub(crate) fn remap_type(&self, idx: TypeIdx) -> TypeIdx {
         TypeIdx(self.type_[idx.0 as usize])
     }
 
-    fn remap_proto(&self, idx: ProtoIdx) -> ProtoIdx {
+    pub(crate) fn remap_proto(&self, idx: ProtoIdx) -> ProtoIdx {
         ProtoIdx(self.proto[idx.0 as usize])
     }
 
-    fn remap_field(&self, idx: FieldIdx) -> FieldIdx {
+    pub(crate) fn remap_field(&self, idx: FieldIdx) -> FieldIdx {
         FieldIdx(self.field[idx.0 as usize])
     }
 
-    fn remap_method(&self, idx: MethodIdx) -> MethodIdx {
+    pub(crate) fn remap_method(&self, idx: MethodIdx) -> MethodIdx {
         MethodIdx(self.method[idx.0 as usize])
     }
 
-    fn remap_opt_string(&self, idx: Option<StringIdx>) -> Option<StringIdx> {
+    pub(crate) fn remap_opt_string(&self, idx: Option<StringIdx>) -> Option<StringIdx> {
         idx.map(|i| self.remap_string(i))
     }
 
-    fn remap_opt_type(&self, idx: Option<TypeIdx>) -> Option<TypeIdx> {
+    pub(crate) fn remap_opt_type(&self, idx: Option<TypeIdx>) -> Option<TypeIdx> {
         idx.map(|i| self.remap_type(i))
     }
 
-    fn remap_class(&self, class: &mut ClassDef) {
+    pub(crate) fn remap_class(&self, class: &mut ClassDef) {
         class.class_type = self.remap_type(class.class_type);
         class.superclass = self.remap_opt_type(class.superclass);
         class.interfaces = class
@@ -299,26 +301,36 @@ impl<'a> Remap<'a> {
         for item in &mut dir.class_annotations {
             self.remap_annotation_item(item);
         }
+        dir.class_annotations.sort_by_key(|item| item.type_.0);
+
         for (field_idx, items) in &mut dir.field_annotations {
             *field_idx = self.remap_field(*field_idx);
             for item in items.iter_mut() {
                 self.remap_annotation_item(item);
             }
+            items.sort_by_key(|item| item.type_.0);
         }
+        dir.field_annotations.sort_by_key(|(idx, _)| idx.0);
+
         for (method_idx, items) in &mut dir.method_annotations {
             *method_idx = self.remap_method(*method_idx);
             for item in items.iter_mut() {
                 self.remap_annotation_item(item);
             }
+            items.sort_by_key(|item| item.type_.0);
         }
+        dir.method_annotations.sort_by_key(|(idx, _)| idx.0);
+
         for (method_idx, param_items) in &mut dir.parameter_annotations {
             *method_idx = self.remap_method(*method_idx);
             for items in param_items.iter_mut() {
                 for item in items.iter_mut() {
                     self.remap_annotation_item(item);
                 }
+                items.sort_by_key(|item| item.type_.0);
             }
         }
+        dir.parameter_annotations.sort_by_key(|(idx, _)| idx.0);
     }
 
     fn remap_annotation_item(&self, item: &mut AnnotationItem) {
@@ -327,6 +339,7 @@ impl<'a> Remap<'a> {
             elem.name = self.remap_string(elem.name);
             self.remap_encoded_value(&mut elem.value);
         }
+        item.elements.sort_by_key(|e| e.name.0);
     }
 
     fn remap_encoded_value(&self, v: &mut EncodedValue) {
@@ -348,8 +361,8 @@ impl<'a> Remap<'a> {
                     elem.name = self.remap_string(elem.name);
                     self.remap_encoded_value(&mut elem.value);
                 }
+                ann.elements.sort_by_key(|e| e.name.0);
             }
-            // MethodHandle indices are not remapped (they index into method_handles vec, not method table)
             _ => {}
         }
     }
@@ -429,7 +442,7 @@ impl<'a> Remap<'a> {
         }
     }
 
-    fn remap_call_site(&self, cs: &mut CallSiteItem) {
+    pub(crate) fn remap_call_site(&self, cs: &mut CallSiteItem) {
         cs.method_name = self.remap_string(cs.method_name);
         cs.method_type = self.remap_proto(cs.method_type);
         for arg in &mut cs.extra_arguments {
@@ -437,7 +450,7 @@ impl<'a> Remap<'a> {
         }
     }
 
-    fn remap_method_handle(&self, mh: &mut MethodHandle) {
+    pub(crate) fn remap_method_handle(&self, mh: &mut MethodHandle) {
         match &mut mh.member {
             MethodHandleMember::Field(idx) => *idx = self.remap_field(*idx),
             MethodHandleMember::Method(idx) => *idx = self.remap_method(*idx),
@@ -468,4 +481,33 @@ fn is_identity(remap: &[u32]) -> bool {
 
 fn is_identity_u16(remap: &[u16]) -> bool {
     remap.iter().enumerate().all(|(i, &v)| v == i as u16)
+}
+
+fn fixup_instructions(dex: &mut DexFile) {
+    for class in &mut dex.classes {
+        let data = match class.class_data.as_mut() {
+            Some(d) => d,
+            None => continue,
+        };
+        for method in data.direct_methods.iter_mut().chain(data.virtual_methods.iter_mut()) {
+            let code = match method.code.as_mut() {
+                Some(c) => c,
+                None => continue,
+            };
+            let mut i = 0;
+            while i < code.instructions.len() {
+                match &code.instructions[i] {
+                    Instruction::ConstString { dest, string } if string.0 > 0xFFFF => {
+                        let promoted = Instruction::ConstStringJumbo {
+                            dest: *dest,
+                            string: *string,
+                        };
+                        code.replace_instruction(i, promoted);
+                    }
+                    _ => {}
+                }
+                i += 1;
+            }
+        }
+    }
 }

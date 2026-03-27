@@ -3,8 +3,6 @@ use std::collections::HashSet;
 use super::code::CodeItem;
 use super::instruction::Instruction;
 
-const SCAN_WINDOW: usize = 20;
-
 pub fn find_free_register(code: &CodeItem, at_index: usize, exclude: &[u16]) -> Option<u16> {
     let live = live_registers(code, at_index);
     let exclude_set: HashSet<u16> = exclude.iter().copied().collect();
@@ -37,17 +35,15 @@ fn live_registers(code: &CodeItem, at_index: usize) -> HashSet<u16> {
         return live;
     }
 
-    let back_start = at_index.saturating_sub(SCAN_WINDOW);
-    for i in (back_start..at_index).rev() {
+    for i in (0..at_index).rev() {
         let insn = &code.instructions[i];
         for r in written_registers(insn) {
             live.insert(r);
         }
     }
 
-    let fwd_end = len.min(at_index + SCAN_WINDOW);
     let mut written_fwd: HashSet<u16> = HashSet::new();
-    for i in at_index..fwd_end {
+    for i in at_index..len {
         let insn = &code.instructions[i];
         for r in read_registers(insn) {
             if !written_fwd.contains(&r) {

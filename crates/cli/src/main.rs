@@ -116,6 +116,9 @@ fn cmd_patch(
                 eprintln!("[stitch] FAILED: {} ({reason})", result.name)
             }
         }
+        for log in &result.logs {
+            eprintln!("[stitch]   {log}");
+        }
     }
 
     let applied_count = results

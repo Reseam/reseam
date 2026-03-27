@@ -8,7 +8,7 @@ name = "stitch"
 path = "src/main.rs"
 
 [dependencies]
-stitch-patcher = { workspace = true, features = ["wasm"] }
+stitch-patcher = { workspace = true, features = ["kotlin"] }
 stitch-sign    = { workspace = true }
 stitch-apk     = { workspace = true }
 clap           = { workspace = true }

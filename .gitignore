@@ -4,3 +4,6 @@
 ARCHITECTURE.md
 WORK_LOG.md
 temp
+kotlin-sdk/build/
+kotlin-sdk/.gradle/
+kotlin-sdk/generated/

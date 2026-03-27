@@ -27,24 +27,14 @@ pub enum PatcherError {
     #[error("APK error: {0}")]
     Apk(#[from] stitch_apk::error::ApkError),
 
-    #[error("lua error: {0}")]
-    Lua(String),
-
-    #[error("WASM error: {reason}")]
-    Wasm { reason: String },
+    #[error("JVM error: {reason}")]
+    Jvm { reason: String },
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
     #[error("TOML parse error: {0}")]
     Toml(#[from] toml::de::Error),
-}
-
-#[cfg(feature = "lua")]
-impl From<mlua::Error> for PatcherError {
-    fn from(e: mlua::Error) -> Self {
-        PatcherError::Lua(e.to_string())
-    }
 }
 
 pub type Result<T> = std::result::Result<T, PatcherError>;

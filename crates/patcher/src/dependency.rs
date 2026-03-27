@@ -15,7 +15,7 @@ pub fn sort_patches(patches: &[Box<dyn Patch>]) -> Result<Vec<usize>> {
 
     for (i, patch) in patches.iter().enumerate() {
         for dep_name in patch.depends_on() {
-            if let Some(&dep_idx) = name_to_idx.get(dep_name) {
+            if let Some(&dep_idx) = name_to_idx.get(dep_name.as_str()) {
                 adj[dep_idx].push(i);
                 in_degree[i] += 1;
             }
@@ -63,7 +63,7 @@ pub fn find_dependents(patches: &[Box<dyn Patch>]) -> HashMap<usize, Vec<usize>>
     let mut dependents: HashMap<usize, Vec<usize>> = HashMap::new();
     for (i, patch) in patches.iter().enumerate() {
         for dep_name in patch.depends_on() {
-            if let Some(&dep_idx) = name_to_idx.get(dep_name) {
+            if let Some(&dep_idx) = name_to_idx.get(dep_name.as_str()) {
                 dependents.entry(dep_idx).or_default().push(i);
             }
         }

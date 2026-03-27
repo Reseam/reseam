@@ -1,19 +1,20 @@
 use super::instruction_writer::encode_instructions;
 use super::DexWriter;
 use crate::encoding::leb128::{write_sleb128, write_uleb128};
+use crate::error::Result;
 
 /// Writes code items, deduplicated debug info, and code-item backpatches.
 pub(crate) fn write_code_items(
     w: &mut DexWriter,
     methods: &[(&crate::types::class::EncodedMethod, &crate::types::code::CodeItem)],
-) {
+) -> Result<()> {
     let code_start = w.pos();
     w.code_item_offsets.clear();
     for (_, code) in methods {
         w.align(4);
         let off = w.pos();
         w.code_item_offsets.push(off);
-        write_code_item(w, code);
+        write_code_item(w, code)?;
     }
     let code_item_count = methods.len() as u32;
     if code_item_count > 0 {
@@ -64,16 +65,17 @@ pub(crate) fn write_code_items(
             }
         }
     }
+    Ok(())
 }
 
 /// Writes one `code_item`, including the shared encoded catch-handler stream.
-fn write_code_item(w: &mut DexWriter, code: &crate::types::code::CodeItem) {
+fn write_code_item(w: &mut DexWriter, code: &crate::types::code::CodeItem) -> Result<()> {
     w.write_u16(code.registers_size);
     w.write_u16(code.ins_size);
-    w.write_u16(code.outs_size);
+    w.write_u16(code.compute_outs_size());
     w.write_u16(code.tries.len() as u16);
     w.write_u32(0);
-    let insns = encode_instructions(&code.instructions);
+    let insns = encode_instructions(&code.instructions)?;
     w.write_u32(insns.len() as u32);
     for unit in &insns {
         w.write_u16(*unit);
@@ -112,4 +114,5 @@ fn write_code_item(w: &mut DexWriter, code: &crate::types::code::CodeItem) {
 
         w.buf.extend_from_slice(&handler_buf);
     }
+    Ok(())
 }

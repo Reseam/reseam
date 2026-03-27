@@ -4,7 +4,7 @@ use super::{FieldIdx, MethodIdx, ProtoIdx, StringIdx};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MethodHandleIdx(pub u32);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MethodHandle {
     pub handle_type: MethodHandleType,
     pub member: MethodHandleMember,
@@ -61,7 +61,7 @@ impl MethodHandleType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MethodHandleMember {
     Field(FieldIdx),
     Method(MethodIdx),
@@ -70,7 +70,7 @@ pub enum MethodHandleMember {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CallSiteIdx(pub u32);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CallSiteItem {
     pub bootstrap_method: MethodHandleIdx,
     pub method_name: StringIdx,

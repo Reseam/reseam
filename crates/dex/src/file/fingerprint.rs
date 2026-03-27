@@ -157,7 +157,7 @@ impl DexFile {
             }
             for (param_idx, expected) in proto.parameters.iter().zip(parameters) {
                 let param_desc = self.type_descriptor(*param_idx);
-                if param_desc != expected {
+                if !param_matches(param_desc, expected) {
                     return None;
                 }
             }
@@ -202,6 +202,20 @@ impl DexFile {
             matched_indices,
         })
     }
+}
+
+fn param_matches(actual: &str, expected: &str) -> bool {
+    if actual == expected {
+        return true;
+    }
+    // "L" matches any object type (Lcom/foo/Bar;), "[" matches any array type.
+    if expected == "L" {
+        return actual.starts_with('L');
+    }
+    if expected == "[" {
+        return actual.starts_with('[');
+    }
+    false
 }
 
 fn find_pattern_indices(

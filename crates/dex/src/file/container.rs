@@ -1,6 +1,9 @@
 use crate::error::Result;
 use crate::file::DexFile;
-use crate::types::header::ParseOptions;
+use crate::types::header::{DexHeader, DexVersion, ParseOptions};
+use crate::write::compact::{
+    compact_tables, has_overflowed, is_near_full, transplant_class, TableSnapshot,
+};
 
 #[derive(Debug)]
 pub struct MultiDexContainer {
@@ -43,11 +46,78 @@ impl MultiDexContainer {
     }
 
     pub fn write_all(&mut self) -> Result<Vec<Vec<u8>>> {
+        for dex in &mut self.dex_files {
+            dex.resolve_all_class_data()?;
+        }
+
+        let needs_redistribute = self.dex_files.iter().any(has_overflowed);
+        if needs_redistribute {
+            self.redistribute()?;
+        }
+
         let mut buffers = Vec::with_capacity(self.dex_files.len());
         for dex in &mut self.dex_files {
             buffers.push(crate::write::write(dex)?);
         }
         Ok(buffers)
+    }
+
+    /// Flatten all classes from all DEX files, then redistribute them across
+    /// new DEX files so that no single DEX exceeds the 64Ki pool size limit.
+    fn redistribute(&mut self) -> Result<()> {
+        let mut old_dexes = std::mem::take(&mut self.dex_files);
+        let version = old_dexes
+            .first()
+            .map(|d| d.header.version)
+            .unwrap_or(DexVersion::V035);
+
+        let mut all_classes: Vec<(usize, crate::types::class::ClassDef)> = Vec::new();
+        for (i, dex) in old_dexes.iter_mut().enumerate() {
+            for class in dex.classes.drain(..) {
+                all_classes.push((i, class));
+            }
+        }
+
+        let mut output: Vec<DexFile> = Vec::new();
+        let mut current = DexFile::new(empty_header(version));
+
+        for (src_idx, mut class) in all_classes {
+            let source = &old_dexes[src_idx];
+
+            if is_near_full(&current) {
+                let snap = TableSnapshot::capture(&current);
+                let class_backup = class.clone();
+
+                transplant_class(&mut class, source, &mut current)?;
+                current.add_class(class);
+
+                if has_overflowed(&current) {
+                    snap.restore(&mut current);
+
+                    if !current.classes.is_empty() {
+                        output.push(current);
+                    }
+                    current = DexFile::new(empty_header(version));
+
+                    class = class_backup;
+                    transplant_class(&mut class, source, &mut current)?;
+                    current.add_class(class);
+                }
+            } else {
+                transplant_class(&mut class, source, &mut current)?;
+                current.add_class(class);
+            }
+        }
+
+        if !current.classes.is_empty() {
+            output.push(current);
+        }
+
+        for dex in &mut output {
+            compact_tables(dex);
+        }
+        self.dex_files = output;
+        Ok(())
     }
 
     pub fn write_container(&mut self) -> Result<Vec<u8>> {
@@ -105,6 +175,34 @@ impl MultiDexContainer {
 
     pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, DexFile> {
         self.dex_files.iter_mut()
+    }
+}
+
+fn empty_header(version: DexVersion) -> DexHeader {
+    DexHeader {
+        version,
+        checksum: 0,
+        signature: [0; 20],
+        file_size: 0,
+        link_size: 0,
+        link_off: 0,
+        map_off: 0,
+        string_ids_size: 0,
+        string_ids_off: 0,
+        type_ids_size: 0,
+        type_ids_off: 0,
+        proto_ids_size: 0,
+        proto_ids_off: 0,
+        field_ids_size: 0,
+        field_ids_off: 0,
+        method_ids_size: 0,
+        method_ids_off: 0,
+        class_defs_size: 0,
+        class_defs_off: 0,
+        data_size: 0,
+        data_off: 0,
+        container_size: 0,
+        header_offset: 0,
     }
 }
 
