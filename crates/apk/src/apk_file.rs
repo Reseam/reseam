@@ -5,10 +5,11 @@ use crate::resources::ResourceTable;
 use crate::zip::reader::ApkReader;
 use crate::zip::writer::ApkWriter;
 use stitch_dex::{MultiDexContainer, ParseOptions};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
+use tracing::{debug, info, instrument};
 
 /// The kind of APK: single or split bundle.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,11 +48,13 @@ pub struct ApkFile {
 
 impl ApkFile {
     /// Open a single APK from a file path.
+    #[instrument(level = "info", skip_all, fields(apk_path = %path.as_ref().display()))]
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         Self::open_with_options(path, ParseOptions::default())
     }
 
     /// Open a single APK with custom parse options.
+    #[instrument(level = "info", skip_all, fields(apk_path = %path.as_ref().display(), lazy = opts.lazy))]
     pub fn open_with_options(path: impl AsRef<Path>, opts: ParseOptions) -> Result<Self> {
         let path = path.as_ref();
         let file = File::open(path)?;
@@ -77,6 +80,14 @@ impl ApkFile {
             original_dex_names: dex_names,
         };
 
+        info!(
+            package = manifest.package_name(),
+            version = manifest.version_name(),
+            dex_files = dex.len(),
+            has_resources = resources.is_some(),
+            "opened APK"
+        );
+
         Ok(Self {
             kind: ApkKind::Single,
             dex,
@@ -92,6 +103,7 @@ impl ApkFile {
     }
 
     /// Open a split APK bundle (base + splits).
+    #[instrument(level = "info", skip_all, fields(base_path = %base.as_ref().display(), split_count = splits.len()))]
     pub fn open_split(
         base: impl AsRef<Path>,
         splits: &[impl AsRef<Path>],
@@ -100,6 +112,7 @@ impl ApkFile {
     }
 
     /// Open a split APK bundle with custom parse options.
+    #[instrument(level = "info", skip_all, fields(base_path = %base.as_ref().display(), split_count = splits.len(), lazy = opts.lazy))]
     pub fn open_split_with_options(
         base: impl AsRef<Path>,
         splits: &[impl AsRef<Path>],
@@ -183,6 +196,13 @@ impl ApkFile {
         } else {
             MultiDexContainer::parse(&refs, opts)?
         };
+
+        info!(
+            component_count = components.len(),
+            dex_files = dex.len(),
+            has_resources = resources.is_some(),
+            "opened split APK bundle"
+        );
 
         Ok(Self {
             kind: ApkKind::Split,
@@ -268,10 +288,17 @@ impl ApkFile {
         if let Some((data, _)) = self.injected_files.get(entry_name) {
             return Ok(data.clone());
         }
-        let base_path = &self.components[0].path;
-        let file = File::open(base_path)?;
-        let mut reader = ApkReader::new(BufReader::new(file))?;
-        reader.read_entry(entry_name)
+        for component in &self.components {
+            let file = File::open(&component.path)?;
+            let mut reader = ApkReader::new(BufReader::new(file))?;
+            if reader.contains(entry_name) {
+                return reader.read_entry(entry_name);
+            }
+        }
+        Err(crate::error::ApkError::Invalid {
+            section: "apk entry",
+            reason: format!("entry not found in any component: {entry_name}"),
+        })
     }
 
     pub fn inject_file(&mut self, path: &str, data: Vec<u8>) {
@@ -296,12 +323,14 @@ impl ApkFile {
     /// For split bundles: writes base + all splits into `output_dir/`.
     ///
     /// All DEX goes into the base APK. Split APKs have their DEX entries removed.
+    #[instrument(level = "info", skip_all, fields(output_dir = %output_dir.as_ref().display(), component_count = self.components.len()))]
     pub fn write_to(&mut self, output_dir: impl AsRef<Path>) -> Result<()> {
         let output_dir = output_dir.as_ref();
         std::fs::create_dir_all(output_dir)?;
 
         // Serialize all DEX from the unified container
         let dex_entries = dex::dex_to_entries(&mut self.dex)?;
+        info!(dex_entry_count = dex_entries.len(), "serializing APK output");
 
         for (idx, component) in self.components.iter().enumerate() {
             let is_base = idx == 0;
@@ -315,6 +344,7 @@ impl ApkFile {
             self.write_component(component, is_base, &dex_entries, &output_path)?;
         }
 
+        info!("APK write completed");
         Ok(())
     }
 
@@ -325,6 +355,12 @@ impl ApkFile {
         dex_entries: &[(String, Vec<u8>)],
         output_path: &Path,
     ) -> Result<()> {
+        debug!(
+            component = %component.name,
+            is_base,
+            output_path = %output_path.display(),
+            "writing APK component"
+        );
         let src_file = File::open(&component.path)?;
         let src_reader = BufReader::new(src_file);
         let mut source = zip::ZipArchive::new(src_reader)?;
@@ -333,8 +369,8 @@ impl ApkFile {
         let mut writer = ApkWriter::new(output_file);
 
         if is_base {
-            let mut replacements: HashMap<String, (Vec<u8>, zip::CompressionMethod)> =
-                HashMap::new();
+            let mut replacements: BTreeMap<String, (Vec<u8>, zip::CompressionMethod)> =
+                BTreeMap::new();
             let mut removals: HashSet<String> = HashSet::new();
 
             for name in &component.original_dex_names {
@@ -377,7 +413,7 @@ impl ApkFile {
         } else {
             let removals: HashSet<String> =
                 component.original_dex_names.iter().cloned().collect();
-            let replacements = HashMap::new();
+            let replacements = BTreeMap::new();
 
             writer.rewrite_apk(&mut source, &replacements, &removals)?;
         }

@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 ring      = { workspace = true }
 thiserror = { workspace = true }
+tracing   = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

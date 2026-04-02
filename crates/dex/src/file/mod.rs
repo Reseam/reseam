@@ -16,7 +16,7 @@ use crate::error::{index_out_of_bounds, invalid_offset};
 use crate::types::class::ClassDef;
 use crate::types::header::DexHeader;
 use crate::types::method_handle::{CallSiteItem, MethodHandle};
-use crate::types::{DexString, FieldId, MethodId, Prototype, StringIdx, TypeIdx};
+use crate::types::{DexString, FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx};
 
 pub use fingerprint::{Fingerprint, FingerprintBuilder, FingerprintMatch};
 pub use pattern::{InstructionPattern, OpcodeMatcher};
@@ -38,6 +38,10 @@ pub struct DexFile {
     pub(crate) lazy_class_data_offsets: Option<Vec<u32>>,
     string_lookup: HashMap<String, StringIdx>,
     type_lookup: HashMap<StringIdx, TypeIdx>,
+    class_lookup: HashMap<TypeIdx, usize>,
+    proto_lookup: HashMap<(TypeIdx, Vec<TypeIdx>), ProtoIdx>,
+    method_lookup: HashMap<(TypeIdx, StringIdx, ProtoIdx), MethodIdx>,
+    field_lookup: HashMap<(TypeIdx, StringIdx, TypeIdx), FieldIdx>,
 }
 
 #[cfg(test)]
@@ -87,6 +91,10 @@ impl DexFile {
             lazy_class_data_offsets: None,
             string_lookup: HashMap::new(),
             type_lookup: HashMap::new(),
+            class_lookup: HashMap::new(),
+            proto_lookup: HashMap::new(),
+            method_lookup: HashMap::new(),
+            field_lookup: HashMap::new(),
         }
     }
 

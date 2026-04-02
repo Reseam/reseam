@@ -4,6 +4,7 @@ pub(crate) mod buf;
 pub mod dex;
 pub mod error;
 pub mod resources;
+pub(crate) mod string_encoding;
 pub mod zip;
 
 pub use apk_file::{ApkComponent, ApkFile, ApkKind};

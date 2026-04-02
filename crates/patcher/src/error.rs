@@ -21,6 +21,28 @@ pub enum PatcherError {
     #[error("dependency cycle: {}", names.join(" -> "))]
     DependencyCycle { names: Vec<String> },
 
+    #[error("missing dependency: patch {patch} depends on {dependency}")]
+    MissingDependency { patch: String, dependency: String },
+
+    #[error("unknown patch: {0}")]
+    UnknownPatch(String),
+
+    #[error("invalid patch selection: {0}")]
+    InvalidSelection(String),
+
+    #[error("unknown option: patch {patch} has no option '{key}'")]
+    UnknownOption { patch: String, key: String },
+
+    #[error("invalid option value: {patch}.{key}: {reason}")]
+    InvalidOptionValue {
+        patch: String,
+        key: String,
+        reason: String,
+    },
+
+    #[error("missing required option: {patch}.{key}")]
+    MissingRequiredOption { patch: String, key: String },
+
     #[error("DEX error: {0}")]
     Dex(#[from] stitch_apk::stitch_dex::DexError),
 

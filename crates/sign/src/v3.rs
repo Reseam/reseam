@@ -2,11 +2,14 @@ use crate::error::Result;
 use crate::keystore::SigningKey;
 use crate::signing_block::{self, BLOCK_ID_V2, BLOCK_ID_V3};
 use crate::v2;
+use tracing::{debug, instrument};
 
+#[instrument(level = "info", skip(apk, key), fields(apk_size = apk.len()))]
 pub fn sign(apk: &[u8], key: &SigningKey) -> Result<Vec<u8>> {
     sign_with_sdk_range(apk, key, 24, u32::MAX)
 }
 
+#[instrument(level = "info", skip(apk, key), fields(apk_size = apk.len(), min_sdk, max_sdk))]
 pub fn sign_with_sdk_range(
     apk: &[u8],
     key: &SigningKey,
@@ -25,6 +28,8 @@ pub fn sign_with_sdk_range(
         &[(BLOCK_ID_V2, v2_block), (BLOCK_ID_V3, v3_block)],
         target_len,
     )?;
+
+    debug!(target_signing_block_len = target_len, "built APK v3 signing block");
 
     signing_block::reassemble_apk(
         sections.contents,

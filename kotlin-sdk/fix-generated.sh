@@ -12,45 +12,28 @@ fi
 
 cp "$GEN" "$DST"
 
-# BoltFFI bug: BoltFFIScope, async infrastructure, and continuation callback are emitted
-# unconditionally even when no async functions exist. Remove them and their imports.
 python3 -c "
-import re
-
 with open('$DST') as f:
     s = f.read()
 
-# Remove BoltFFIScope object
-s = re.sub(r'^object BoltFFIScope.*?^}\n', '', s, flags=re.MULTILINE | re.DOTALL)
-
-# Remove async constants
-s = re.sub(r'^private const val BOLTFFI_FUTURE_POLL_READY.*\n', '', s, flags=re.MULTILINE)
-s = re.sub(r'^private const val BOLTFFI_FUTURE_POLL_WAKE.*\n', '', s, flags=re.MULTILINE)
-
-# Remove BoltFFIHandleMap class
-s = re.sub(r'^internal class BoltFFIHandleMap.*?^}\n', '', s, flags=re.MULTILINE | re.DOTALL)
-
-# Remove boltffiContinuationMap
-s = re.sub(r'^private val boltffiContinuationMap.*\n', '', s, flags=re.MULTILINE)
-
-# Remove boltffiCallAsync function
-s = re.sub(r'^internal suspend inline fun <T> boltffiCallAsync.*?^}\n', '', s, flags=re.MULTILINE | re.DOTALL)
-
-# Remove boltffiFutureContinuationCallback inside Native object (indented, multi-brace)
-s = re.sub(r'    @JvmStatic fun boltffiFutureContinuationCallback\b.*?\n    }\n', '', s, flags=re.DOTALL)
-
-# Remove unused imports
+# Remove unused imports that BoltFFI emits unconditionally
 for imp in [
-    'kotlin.coroutines.Continuation',
-    'kotlin.coroutines.resume',
-    'kotlin.coroutines.resumeWithException',
-    'kotlinx.coroutines.CancellableContinuation',
-    'kotlinx.coroutines.suspendCancellableCoroutine',
     'java.util.concurrent.ConcurrentHashMap',
     'java.util.concurrent.atomic.AtomicBoolean',
     'java.util.concurrent.atomic.AtomicLong',
 ]:
     s = s.replace('import ' + imp + '\n', '')
+
+# BoltFFI v0.22 bug: useWireBytes is referenced but not defined
+if 'useWireBytes' in s and 'fun useWireBytes' not in s:
+    # Insert after the FfiException class
+    marker = 'class FfiException(val code: Int, message: String) : Exception(message)\n'
+    helper = '''
+private inline fun <T> useWireBytes(bytes: ByteArray, block: (java.nio.ByteBuffer) -> T): T {
+    return block(java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN))
+}
+'''
+    s = s.replace(marker, marker + helper)
 
 with open('$DST', 'w') as f:
     f.write(s)

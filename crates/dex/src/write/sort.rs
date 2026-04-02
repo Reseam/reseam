@@ -11,7 +11,7 @@ use crate::util::sort::dex_string_compare;
 
 /// Sort all index tables and remap all references in place.
 /// Prepares the DexFile for writing with correctly sorted tables.
-pub fn sort_in_place(dex: &mut DexFile) {
+pub fn sort_in_place(dex: &mut DexFile) -> crate::error::Result<()> {
     dex.raw = None;
     dex.lazy_class_data_offsets = None;
 
@@ -37,17 +37,10 @@ pub fn sort_in_place(dex: &mut DexFile) {
         let ra = type_remap[pa.return_type.0 as usize];
         let rb = type_remap[pb.return_type.0 as usize];
         ra.cmp(&rb).then_with(|| {
-            let params_a: Vec<u32> = pa
-                .parameters
+            pa.parameters
                 .iter()
                 .map(|t| type_remap[t.0 as usize])
-                .collect();
-            let params_b: Vec<u32> = pb
-                .parameters
-                .iter()
-                .map(|t| type_remap[t.0 as usize])
-                .collect();
-            params_a.cmp(&params_b)
+                .cmp(pb.parameters.iter().map(|t| type_remap[t.0 as usize]))
         })
     });
 
@@ -84,7 +77,7 @@ pub fn sort_in_place(dex: &mut DexFile) {
         && is_identity(&method_remap);
 
     if already_sorted {
-        return;
+        return Ok(());
     }
 
     let remap = Remap {
@@ -161,9 +154,10 @@ pub fn sort_in_place(dex: &mut DexFile) {
 
     dex.classes.sort_by_key(|c| c.class_type.0);
 
-    fixup_instructions(dex);
+    fixup_instructions(dex)?;
 
     dex.build_lookups();
+    Ok(())
 }
 
 pub(crate) struct Remap<'a> {
@@ -483,7 +477,7 @@ fn is_identity_u16(remap: &[u16]) -> bool {
     remap.iter().enumerate().all(|(i, &v)| v == i as u16)
 }
 
-fn fixup_instructions(dex: &mut DexFile) {
+fn fixup_instructions(dex: &mut DexFile) -> crate::error::Result<()> {
     for class in &mut dex.classes {
         let data = match class.class_data.as_mut() {
             Some(d) => d,
@@ -502,7 +496,7 @@ fn fixup_instructions(dex: &mut DexFile) {
                             dest: *dest,
                             string: *string,
                         };
-                        code.replace_instruction(i, promoted);
+                        code.replace_instruction(i, promoted)?;
                     }
                     _ => {}
                 }
@@ -510,4 +504,5 @@ fn fixup_instructions(dex: &mut DexFile) {
             }
         }
     }
+    Ok(())
 }

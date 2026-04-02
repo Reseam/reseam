@@ -31,6 +31,35 @@ pub fn res_resource_id(res_type: String, res_name: String) -> Option<i64> {
 }
 
 #[export]
+pub fn res_get_resource_value(res_type: String, res_name: String) -> Option<i64> {
+    with_ctx(|ctx| {
+        let res = ctx.resources()?;
+        for pkg in &res.packages {
+            let type_id = pkg
+                .type_strings
+                .iter()
+                .position(|t| t == &res_type)
+                .map(|i| (i + 1) as u8)?;
+
+            for res_t in &pkg.types {
+                if res_t.id != type_id {
+                    continue;
+                }
+                for entry in res_t.entries.iter().flatten() {
+                    let key_name = pkg.key_strings.get(entry.key as usize);
+                    if key_name.map(|k| k.as_str()) == Some(&res_name) {
+                        if let stitch_apk::resources::ResValue::Simple { data, .. } = &entry.value {
+                            return Some(*data as i64);
+                        }
+                    }
+                }
+            }
+        }
+        None
+    })
+}
+
+#[export]
 pub fn res_find_entries_by_string(string_index: u32) -> Vec<ResourceRef> {
     with_ctx(|ctx| {
         let res = match ctx.resources() {
@@ -104,6 +133,11 @@ pub fn res_copy_resource_group(res_type: String, files: Vec<String>) {
             }),
         }
     }
+}
+
+#[export]
+pub fn res_inject_file(apk_path: String, data: Vec<u8>) {
+    with_ctx(|ctx| ctx.inject_file(&apk_path, data));
 }
 
 #[export]

@@ -41,3 +41,13 @@ pub(crate) fn read_u32_le(buf: &[u8], offset: usize, section: &'static str) -> R
     let bytes = slice(buf, offset, 4, section)?;
     Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
 }
+
+#[inline]
+pub(crate) fn write_u16(out: &mut Vec<u8>, v: u16) {
+    out.extend_from_slice(&v.to_le_bytes());
+}
+
+#[inline]
+pub(crate) fn write_u32(out: &mut Vec<u8>, v: u32) {
+    out.extend_from_slice(&v.to_le_bytes());
+}

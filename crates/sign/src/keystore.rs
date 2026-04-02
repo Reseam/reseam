@@ -2,6 +2,7 @@ use crate::der;
 use crate::error::{internal, invalid, Result};
 use ring::rand::SystemRandom;
 use ring::signature::{self, EcdsaKeyPair, KeyPair};
+use tracing::{debug, instrument};
 
 pub struct SigningKey {
     key_pair: EcdsaKeyPair,
@@ -10,6 +11,7 @@ pub struct SigningKey {
 
 impl SigningKey {
     /// Generate a fresh ECDSA P-256 keypair with a self-signed certificate.
+    #[instrument(level = "info", skip_all)]
     pub fn generate() -> Result<Self> {
         let rng = SystemRandom::new();
         let pkcs8_doc =
@@ -31,6 +33,7 @@ impl SigningKey {
         })
     }
 
+    #[instrument(level = "debug", skip(pkcs8_der, certificate_der), fields(pkcs8_len = pkcs8_der.len(), cert_len = certificate_der.len()))]
     pub fn from_pkcs8(pkcs8_der: &[u8], certificate_der: Vec<u8>) -> Result<Self> {
         let rng = SystemRandom::new();
         let key_pair =
@@ -42,12 +45,14 @@ impl SigningKey {
         })
     }
 
+    #[instrument(level = "debug", skip(self, data), fields(payload_len = data.len()))]
     pub fn sign(&self, data: &[u8]) -> Result<Vec<u8>> {
         let rng = SystemRandom::new();
         let sig = self
             .key_pair
             .sign(&rng, data)
             .map_err(|e| internal("signing payload", format!("crypto signing failed: {e}")))?;
+        debug!(signature_len = sig.as_ref().len(), "payload signed");
         Ok(sig.as_ref().to_vec())
     }
 
@@ -67,6 +72,7 @@ pub struct GeneratedKey {
 }
 
 impl GeneratedKey {
+    #[instrument(level = "info", skip_all)]
     pub fn generate() -> Result<Self> {
         let rng = SystemRandom::new();
         let pkcs8_doc =
@@ -85,6 +91,7 @@ impl GeneratedKey {
         Ok(Self { signing_key, pkcs8_der })
     }
 
+    #[instrument(level = "info", skip(self), fields(key_path = %key_path.display(), cert_path = %cert_path.display()))]
     pub fn save(&self, key_path: &std::path::Path, cert_path: &std::path::Path) -> Result<()> {
         std::fs::write(key_path, &self.pkcs8_der)?;
         std::fs::write(cert_path, self.signing_key.certificate_der())?;

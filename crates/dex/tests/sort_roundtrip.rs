@@ -388,7 +388,7 @@ fn sort_roundtrip_after_code_modification_preserves_refs() {
                                 method: ext_method,
                                 args: smallvec::smallvec![0],
                             },
-                        ]);
+                        ]).expect("insert_instructions failed in test");
                         modified_class = Some("(some $-class)".to_owned());
                         break;
                     }

@@ -6,7 +6,7 @@ members = [
     "crates/sign",
     "crates/patcher",
     "crates/patcher-macros",
-    "crates/cli",
+    "crates/cli"
 ]
 
 [workspace.dependencies]
@@ -35,6 +35,8 @@ jni         = { version = "0.21", features = ["invocation"] }
 clap        = { version = "4", features = ["derive"] }
 anyhow      = "1"
 libc        = "0.2"
+tracing     = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 # Shared dev dependencies
 pretty_assertions = "1"

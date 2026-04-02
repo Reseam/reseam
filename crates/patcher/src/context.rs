@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use stitch_apk::ApkFile;
@@ -20,6 +20,18 @@ pub struct InstructionLocation {
     pub class_idx: usize,
     pub method_idx: usize,
     pub insn_idx: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MethodCallSiteHit {
+    pub loc: InstructionLocation,
+    pub target_index: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct FieldAccessSiteHit {
+    pub loc: InstructionLocation,
+    pub target_index: usize,
 }
 
 pub struct PatchContext<'a> {
@@ -321,7 +333,10 @@ impl<'a> PatchContext<'a> {
     }
 
 
-    pub fn find_instructions_by_literal(&self, literal: i64) -> Vec<InstructionLocation> {
+    fn scan_instructions(
+        &self,
+        mut predicate: impl FnMut(usize, &DexFile, &Instruction) -> bool,
+    ) -> Vec<InstructionLocation> {
         let mut results = Vec::new();
         for (dex_idx, dex) in self.apk.dex().iter().enumerate() {
             for (class_idx, class) in dex.classes.iter().enumerate() {
@@ -334,7 +349,7 @@ impl<'a> PatchContext<'a> {
                     {
                         if let Some(code) = &method.code {
                             for (insn_idx, insn) in code.instructions.iter().enumerate() {
-                                if insn.literal() == Some(literal) {
+                                if predicate(dex_idx, dex, insn) {
                                     results.push(InstructionLocation { dex_idx, class_idx, method_idx, insn_idx });
                                 }
                             }
@@ -344,45 +359,59 @@ impl<'a> PatchContext<'a> {
             }
         }
         results
+    }
+
+    pub fn find_instructions_by_literal(&self, literal: i64) -> Vec<InstructionLocation> {
+        self.scan_instructions(|_, _, insn| insn.literal() == Some(literal))
     }
 
     pub fn find_instructions_by_string(&self, target: &str) -> Vec<InstructionLocation> {
-        let mut results = Vec::new();
-        for (dex_idx, dex) in self.apk.dex().iter().enumerate() {
-            let target_idx = match dex.find_string_idx(target) {
-                Some(idx) => idx,
-                None => continue,
-            };
-            for (class_idx, class) in dex.classes.iter().enumerate() {
-                if let Some(data) = &class.class_data {
-                    for (method_idx, method) in data
-                        .direct_methods
-                        .iter()
-                        .chain(&data.virtual_methods)
-                        .enumerate()
-                    {
-                        if let Some(code) = &method.code {
-                            for (insn_idx, insn) in code.instructions.iter().enumerate() {
-                                if insn.string_ref() == Some(target_idx) {
-                                    results.push(InstructionLocation { dex_idx, class_idx, method_idx, insn_idx });
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        results
+        let idx_per_dex: Vec<Option<StringIdx>> = self.apk.dex().iter()
+            .map(|dex| dex.find_string_idx(target))
+            .collect();
+        self.scan_instructions(|dex_idx, _, insn| {
+            idx_per_dex[dex_idx].is_some_and(|target_idx| insn.string_ref() == Some(target_idx))
+        })
     }
 
     pub fn find_instructions_by_string_contains(&self, substring: &str) -> Vec<InstructionLocation> {
+        let sets_per_dex: Vec<HashSet<StringIdx>> = self.apk.dex().iter()
+            .map(|dex| {
+                dex.strings.iter().enumerate()
+                    .filter(|(_, s)| s.value.contains(substring))
+                    .map(|(i, _)| StringIdx(i as u32))
+                    .collect()
+            })
+            .collect();
+        self.scan_instructions(|dex_idx, _, insn| {
+            insn.string_ref().is_some_and(|sref| sets_per_dex[dex_idx].contains(&sref))
+        })
+    }
+
+    /// Find all invoke instructions across all DEX files that call any of the given methods.
+    /// Each target is (class_descriptor, method_name). Returns hits with a target index
+    /// indicating which target matched.
+    pub fn find_method_call_sites(
+        &self,
+        targets: &[(String, String)],
+    ) -> Vec<MethodCallSiteHit> {
         let mut results = Vec::new();
         for (dex_idx, dex) in self.apk.dex().iter().enumerate() {
-            let matching_indices: HashSet<_> = dex.strings.iter().enumerate()
-                .filter(|(_, s)| s.value.contains(substring))
-                .map(|(i, _)| StringIdx(i as u32))
-                .collect();
-            if matching_indices.is_empty() {
+            // Build a set of MethodIdx values that match any target
+            let mut target_map: HashMap<stitch_apk::stitch_dex::MethodIdx, usize> = HashMap::new();
+            for (target_idx, (class_desc, method_name)) in targets.iter().enumerate() {
+                for (i, mid) in dex.methods.iter().enumerate() {
+                    if dex.type_descriptor(mid.class) == *class_desc
+                        && dex.string(mid.name) == *method_name
+                    {
+                        target_map.insert(
+                            stitch_apk::stitch_dex::MethodIdx(i as u32),
+                            target_idx,
+                        );
+                    }
+                }
+            }
+            if target_map.is_empty() {
                 continue;
             }
             for (class_idx, class) in dex.classes.iter().enumerate() {
@@ -395,9 +424,73 @@ impl<'a> PatchContext<'a> {
                     {
                         if let Some(code) = &method.code {
                             for (insn_idx, insn) in code.instructions.iter().enumerate() {
-                                if let Some(sref) = insn.string_ref() {
-                                    if matching_indices.contains(&sref) {
-                                        results.push(InstructionLocation { dex_idx, class_idx, method_idx, insn_idx });
+                                if let Some(mr) = insn.method_ref() {
+                                    if let Some(&target_idx) = target_map.get(&mr) {
+                                        results.push(MethodCallSiteHit {
+                                            loc: InstructionLocation {
+                                                dex_idx,
+                                                class_idx,
+                                                method_idx,
+                                                insn_idx,
+                                            },
+                                            target_index: target_idx,
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        results
+    }
+
+    /// Find all field access instructions across all DEX files that reference any of the given fields.
+    /// Each target is (defining_class, field_name). Returns hits with a target index.
+    pub fn find_field_access_sites(
+        &self,
+        targets: &[(String, String)],
+    ) -> Vec<FieldAccessSiteHit> {
+        let mut results = Vec::new();
+        for (dex_idx, dex) in self.apk.dex().iter().enumerate() {
+            let mut target_map: HashMap<stitch_apk::stitch_dex::FieldIdx, usize> = HashMap::new();
+            for (target_idx, (class_desc, field_name)) in targets.iter().enumerate() {
+                for (i, fid) in dex.fields.iter().enumerate() {
+                    if dex.type_descriptor(fid.class) == *class_desc
+                        && dex.string(fid.name) == *field_name
+                    {
+                        target_map.insert(
+                            stitch_apk::stitch_dex::FieldIdx(i as u32),
+                            target_idx,
+                        );
+                    }
+                }
+            }
+            if target_map.is_empty() {
+                continue;
+            }
+            for (class_idx, class) in dex.classes.iter().enumerate() {
+                if let Some(data) = &class.class_data {
+                    for (method_idx, method) in data
+                        .direct_methods
+                        .iter()
+                        .chain(&data.virtual_methods)
+                        .enumerate()
+                    {
+                        if let Some(code) = &method.code {
+                            for (insn_idx, insn) in code.instructions.iter().enumerate() {
+                                if let Some(fr) = insn.field_ref() {
+                                    if let Some(&target_idx) = target_map.get(&fr) {
+                                        results.push(FieldAccessSiteHit {
+                                            loc: InstructionLocation {
+                                                dex_idx,
+                                                class_idx,
+                                                method_idx,
+                                                insn_idx,
+                                            },
+                                            target_index: target_idx,
+                                        });
                                     }
                                 }
                             }

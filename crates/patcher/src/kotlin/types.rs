@@ -21,6 +21,7 @@ pub struct ClassInfo {
     pub access_flags: u32,
     pub superclass: Option<String>,
     pub interfaces: Vec<String>,
+    pub source_file: Option<String>,
     pub dex_index: u32,
     pub direct_method_count: u32,
     pub virtual_method_count: u32,
@@ -35,6 +36,7 @@ pub struct FieldInfo {
     pub name: String,
     pub field_type: String,
     pub access_flags: u32,
+    pub initial_value: Option<EncodedVal>,
 }
 
 #[data]
@@ -47,6 +49,7 @@ pub struct FingerprintDef {
     pub parameters: Option<Vec<String>>,
     pub opcodes: Option<Vec<i32>>,
     pub strings: Option<Vec<String>>,
+    pub literals: Option<Vec<i64>>,
 }
 
 #[data]
@@ -61,6 +64,22 @@ pub struct FingerprintResult {
 pub struct InstructionHit {
     pub method: u32,
     pub index: u32,
+}
+
+#[data]
+#[derive(Debug, Clone, Copy)]
+pub struct MethodCallSiteResult {
+    pub method: u32,
+    pub index: u32,
+    pub target_index: u32,
+}
+
+#[data]
+#[derive(Debug, Clone, Copy)]
+pub struct FieldAccessSiteResult {
+    pub method: u32,
+    pub index: u32,
+    pub target_index: u32,
 }
 
 #[data]

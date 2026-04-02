@@ -23,3 +23,6 @@ object AccessFlags {
     const val CONSTRUCTOR = 0x10000
     const val DECLARED_SYNCHRONIZED = 0x20000
 }
+
+fun Int.isSet(flags: Int): Boolean = flags and this != 0
+fun Int.isSet(flags: UInt): Boolean = flags.toInt() and this != 0

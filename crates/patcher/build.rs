@@ -32,12 +32,18 @@ fn main() {
         jni_include.join("linux")
     };
 
-    cc::Build::new()
+    let mut build = cc::Build::new();
+    build
         .file(&glue_path)
         .include(&jni_dir)
         .include(&jni_include)
-        .include(&jni_platform)
-        .compile("stitch_jni_glue");
+        .include(&jni_platform);
+
+    // The JNI glue is generated and intentionally keeps the standard JNI
+    // parameter shape even when some exports do not use `env`/`cls`.
+    build.flag_if_supported("-Wno-unused-parameter");
+
+    build.compile("stitch_jni_glue");
 
     let content = fs::read_to_string(&glue_path).unwrap();
     let natives = parse_jni_exports(&content);

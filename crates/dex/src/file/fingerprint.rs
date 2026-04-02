@@ -11,6 +11,7 @@ pub struct Fingerprint {
     pub return_type: Option<String>,
     pub parameters: Option<Vec<String>>,
     pub strings: Option<Vec<String>>,
+    pub literals: Option<Vec<i64>>,
     pub defining_class: Option<String>,
     pub name: Option<String>,
     pub opcodes: Option<Vec<InstructionPattern>>,
@@ -24,6 +25,7 @@ impl Fingerprint {
                 return_type: None,
                 parameters: None,
                 strings: None,
+                literals: None,
                 defining_class: None,
                 name: None,
                 opcodes: None,
@@ -64,6 +66,11 @@ impl FingerprintBuilder {
 
     pub fn name(mut self, name: impl Into<String>) -> Self {
         self.inner.name = Some(name.into());
+        self
+    }
+
+    pub fn literals(mut self, literals: impl IntoIterator<Item = i64>) -> Self {
+        self.inner.literals = Some(literals.into_iter().collect());
         self
     }
 
@@ -178,6 +185,19 @@ impl DexFile {
                     | Instruction::ConstStringJumbo { string, .. } => *string == target_idx,
                     _ => false,
                 });
+                if !found {
+                    return None;
+                }
+            }
+        }
+
+        if let Some(ref literals) = fp.literals {
+            let code = method.code.as_ref()?;
+            for &target in literals {
+                let found = code
+                    .instructions
+                    .iter()
+                    .any(|insn| insn.literal() == Some(target));
                 if !found {
                     return None;
                 }

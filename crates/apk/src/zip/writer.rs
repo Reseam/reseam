@@ -1,5 +1,5 @@
 use crate::error::Result;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::io::{Read, Seek, Write};
 
 /// Alignment for most APK entries (4 bytes).
@@ -44,7 +44,7 @@ impl<W: Write + Seek> ApkWriter<W> {
     pub fn rewrite_apk<R: Read + Seek>(
         &mut self,
         source: &mut zip::ZipArchive<R>,
-        replacements: &HashMap<String, (Vec<u8>, zip::CompressionMethod)>,
+        replacements: &BTreeMap<String, (Vec<u8>, zip::CompressionMethod)>,
         removals: &HashSet<String>,
     ) -> Result<()> {
         // Track which replacement entries we've written (so we can append new ones at the end)

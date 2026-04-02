@@ -17,6 +17,7 @@ boltffi     = { workspace = true, optional = true }
 jni         = { workspace = true, optional = true }
 zip         = { workspace = true }
 anyhow      = { workspace = true }
+tracing     = { workspace = true }
 
 
 [dev-dependencies]

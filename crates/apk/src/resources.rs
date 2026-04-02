@@ -359,6 +359,8 @@ fn parse_res_string_pool(data: &[u8]) -> Result<Vec<String>> {
     Ok(strings)
 }
 
+// Uses MUTF-8 (Modified UTF-8) decoding because resources.arsc string pools
+// encode supplementary characters as surrogate pairs, unlike AXML which uses standard UTF-8.
 fn decode_res_utf8(data: &[u8], offset: usize) -> Result<String> {
     let mut pos = offset;
     if pos >= data.len() {
@@ -653,26 +655,7 @@ fn serialize_res_string_pool(strings: &[String]) -> Vec<u8> {
 
     for s in strings {
         offsets.push(string_data.len() as u32);
-        // UTF-8 encoding
-        let char_len = s.chars().count();
-        let byte_len = s.len();
-
-        if char_len > 0x7F {
-            string_data.push(((char_len >> 8) & 0x7F) as u8 | 0x80);
-            string_data.push((char_len & 0xFF) as u8);
-        } else {
-            string_data.push(char_len as u8);
-        }
-
-        if byte_len > 0x7F {
-            string_data.push(((byte_len >> 8) & 0x7F) as u8 | 0x80);
-            string_data.push((byte_len & 0xFF) as u8);
-        } else {
-            string_data.push(byte_len as u8);
-        }
-
-        string_data.extend_from_slice(s.as_bytes());
-        string_data.push(0);
+        encode_utf8(&mut string_data, s);
     }
 
     let strings_start = header_size + offsets_size;
@@ -839,10 +822,5 @@ fn is_default_config(config: &ResConfig) -> bool {
     config.data.iter().all(|&b| b == 0)
 }
 
-fn write_u16(out: &mut Vec<u8>, v: u16) {
-    out.extend_from_slice(&v.to_le_bytes());
-}
-
-fn write_u32(out: &mut Vec<u8>, v: u32) {
-    out.extend_from_slice(&v.to_le_bytes());
-}
+use crate::buf::{write_u16, write_u32};
+use crate::string_encoding::encode_utf8;

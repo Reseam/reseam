@@ -11,6 +11,7 @@ pub mod parse;
 
 pub use parse::parse;
 pub use parse::parse_container;
+use tracing::debug;
 
 /// Parse a DEX file from a filesystem path.
 ///
@@ -31,6 +32,7 @@ pub fn parse_file(
     opts: crate::types::header::ParseOptions,
 ) -> crate::error::Result<crate::file::DexFile> {
     let path = path.as_ref();
+    debug!(path = %path.display(), lazy = opts.lazy, "parsing DEX file from disk");
 
     #[cfg(feature = "mmap")]
     {

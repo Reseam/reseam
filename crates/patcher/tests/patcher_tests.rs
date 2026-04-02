@@ -1,7 +1,9 @@
 use stitch_apk::ApkFile;
+use stitch_apk::stitch_dex::ParseOptions;
 use stitch_patcher::context::PatchContext;
-use stitch_patcher::engine::{self, PatchStatus};
+use stitch_patcher::engine::{self, ExecutionPlan, PatchStatus};
 use stitch_patcher::error::Result as PatcherResult;
+use stitch_patcher::options::{OptionDeclaration, OptionType, OptionValue, PatchOptions};
 use stitch_patcher::patch::{Compatibility, Patch};
 
 const YOUTUBE_APK: &str =
@@ -11,10 +13,23 @@ fn has_apk() -> bool {
     std::path::Path::new(YOUTUBE_APK).exists()
 }
 
+fn open_test_apk() -> ApkFile {
+    ApkFile::open_with_options(
+        YOUTUBE_APK,
+        ParseOptions {
+            lazy: true,
+            ..ParseOptions::default()
+        },
+    )
+    .expect("open failed")
+}
+
 struct StubPatch {
     name: String,
     compat: Vec<Compatibility>,
     enabled: bool,
+    deps: Vec<String>,
+    options: Vec<OptionDeclaration>,
     action: Box<dyn Fn(&mut PatchContext) -> PatcherResult<()> + Send + Sync>,
 }
 
@@ -24,6 +39,8 @@ impl StubPatch {
             name: name.to_string(),
             compat: vec![],
             enabled: true,
+            deps: vec![],
+            options: vec![],
             action: Box::new(|_| Ok(())),
         })
     }
@@ -33,6 +50,8 @@ impl StubPatch {
             name: name.to_string(),
             compat: vec![Compatibility::package(pkg)],
             enabled: true,
+            deps: vec![],
+            options: vec![],
             action: Box::new(|_| Ok(())),
         })
     }
@@ -45,6 +64,8 @@ impl StubPatch {
                 vec![ver.to_string()],
             )],
             enabled: true,
+            deps: vec![],
+            options: vec![],
             action: Box::new(|_| Ok(())),
         })
     }
@@ -54,12 +75,74 @@ impl StubPatch {
             name: name.to_string(),
             compat: vec![],
             enabled: true,
+            deps: vec![],
+            options: vec![],
             action: Box::new(|_| {
                 Err(stitch_patcher::error::PatcherError::PatchFailed {
                     name: "test".into(),
                     reason: "intentional failure".into(),
                 })
             }),
+        })
+    }
+
+    fn disabled(name: &str) -> Box<dyn Patch> {
+        Box::new(Self {
+            name: name.to_string(),
+            compat: vec![],
+            enabled: false,
+            deps: vec![],
+            options: vec![],
+            action: Box::new(|_| Ok(())),
+        })
+    }
+
+    fn depends_on(name: &str, dependencies: &[&str]) -> Box<dyn Patch> {
+        Box::new(Self {
+            name: name.to_string(),
+            compat: vec![],
+            enabled: true,
+            deps: dependencies.iter().map(|d| (*d).to_string()).collect(),
+            options: vec![],
+            action: Box::new(|_| Ok(())),
+        })
+    }
+
+    fn with_required_option(name: &str, option_key: &str) -> Box<dyn Patch> {
+        Box::new(Self {
+            name: name.to_string(),
+            compat: vec![],
+            enabled: true,
+            deps: vec![],
+            options: vec![OptionDeclaration {
+                key: option_key.to_string(),
+                title: "Test Option".to_string(),
+                description: "test".to_string(),
+                option_type: OptionType::String,
+                default_value: None,
+                valid_values: None,
+                required: true,
+            }],
+            action: Box::new(|_| Ok(())),
+        })
+    }
+
+    fn with_bool_option(name: &str, option_key: &str) -> Box<dyn Patch> {
+        Box::new(Self {
+            name: name.to_string(),
+            compat: vec![],
+            enabled: true,
+            deps: vec![],
+            options: vec![OptionDeclaration {
+                key: option_key.to_string(),
+                title: "Toggle".to_string(),
+                description: "test".to_string(),
+                option_type: OptionType::Bool,
+                default_value: Some(OptionValue::Bool(false)),
+                valid_values: None,
+                required: false,
+            }],
+            action: Box::new(|_| Ok(())),
         })
     }
 }
@@ -77,6 +160,12 @@ impl Patch for StubPatch {
     fn enabled_by_default(&self) -> bool {
         self.enabled
     }
+    fn depends_on(&self) -> &[String] {
+        &self.deps
+    }
+    fn options(&self) -> &[OptionDeclaration] {
+        &self.options
+    }
     fn execute(&self, ctx: &mut PatchContext) -> PatcherResult<()> {
         (self.action)(ctx)
     }
@@ -89,7 +178,7 @@ fn test_engine_compatibility() {
         return;
     }
 
-    let mut apk = ApkFile::open(YOUTUBE_APK).expect("open failed");
+    let mut apk = open_test_apk();
     let pkg = apk.package_name().expect("no package").to_owned();
     let ver = apk.version_name().expect("no version").to_owned();
 
@@ -180,6 +269,27 @@ fn test_engine_compatibility() {
 
     {
         let mut ctx = PatchContext::new(&mut apk);
+        let patches: Vec<Box<dyn Patch>> = vec![StubPatch::disabled("disabled")];
+        let results = engine::apply_patches(&mut ctx, &patches).expect("apply failed");
+        assert!(matches!(results[0].status, PatchStatus::Skipped { .. }));
+        if let PatchStatus::Skipped { reason } = &results[0].status {
+            assert!(reason.contains("not selected"), "got: {reason}");
+        }
+    }
+
+    {
+        let mut ctx = PatchContext::new(&mut apk);
+        let patches: Vec<Box<dyn Patch>> = vec![
+            StubPatch::disabled("base"),
+            StubPatch::depends_on("dependent", &["base"]),
+        ];
+        let results = engine::apply_patches(&mut ctx, &patches).expect("apply failed");
+        assert_eq!(results[0].status, PatchStatus::Applied);
+        assert_eq!(results[1].status, PatchStatus::Applied);
+    }
+
+    {
+        let mut ctx = PatchContext::new(&mut apk);
         let patches: Vec<Box<dyn Patch>> = vec![];
         let results = engine::apply_patches(&mut ctx, &patches).expect("apply failed");
         assert!(results.is_empty());
@@ -189,9 +299,108 @@ fn test_engine_compatibility() {
 }
 
 #[test]
+fn test_execution_plan_selects_only_requested_patches() {
+    if !has_apk() {
+        eprintln!("Skipping: APK not found");
+        return;
+    }
+
+    let mut apk = open_test_apk();
+    let mut ctx = PatchContext::new(&mut apk);
+    let patches: Vec<Box<dyn Patch>> = vec![StubPatch::noop("alpha"), StubPatch::noop("beta")];
+    let mut plan = ExecutionPlan::new();
+    plan.select_patch("beta");
+
+    let results = engine::apply_patches_with_plan(&mut ctx, &patches, &plan).expect("apply failed");
+    assert!(matches!(results[0].status, PatchStatus::Skipped { .. }));
+    assert_eq!(results[1].status, PatchStatus::Applied);
+}
+
+#[test]
+fn test_execution_plan_disables_selected_patch() {
+    if !has_apk() {
+        eprintln!("Skipping: APK not found");
+        return;
+    }
+
+    let mut apk = open_test_apk();
+    let mut ctx = PatchContext::new(&mut apk);
+    let patches: Vec<Box<dyn Patch>> = vec![StubPatch::noop("alpha")];
+    let mut plan = ExecutionPlan::new();
+    plan.select_patch("alpha");
+    plan.disable_patch("alpha");
+
+    let err = engine::apply_patches_with_plan(&mut ctx, &patches, &plan).expect_err("should fail");
+    assert!(err.to_string().contains("both selected and disabled"));
+}
+
+#[test]
+fn test_missing_required_option_is_reported() {
+    if !has_apk() {
+        eprintln!("Skipping: APK not found");
+        return;
+    }
+
+    let mut apk = open_test_apk();
+    let mut ctx = PatchContext::new(&mut apk);
+    let patches: Vec<Box<dyn Patch>> = vec![StubPatch::with_required_option("alpha", "token")];
+
+    let err = engine::apply_patches(&mut ctx, &patches).expect_err("should fail");
+    assert!(err.to_string().contains("missing required option"));
+}
+
+#[test]
+fn test_option_type_validation_is_reported() {
+    if !has_apk() {
+        eprintln!("Skipping: APK not found");
+        return;
+    }
+
+    let mut apk = open_test_apk();
+    let mut ctx = PatchContext::new(&mut apk);
+    let patches: Vec<Box<dyn Patch>> = vec![StubPatch::with_bool_option("alpha", "toggle")];
+    let mut plan = ExecutionPlan::new();
+    let mut options = PatchOptions::new();
+    options.set("toggle", OptionValue::String("not-bool".to_string()));
+    plan.set_patch_options("alpha", options);
+
+    let err = engine::apply_patches_with_plan(&mut ctx, &patches, &plan).expect_err("should fail");
+    assert!(err.to_string().contains("invalid option value"));
+}
+
+#[test]
+fn test_disabled_patch_configuration_is_rejected() {
+    if !has_apk() {
+        eprintln!("Skipping: APK not found");
+        return;
+    }
+
+    let mut apk = open_test_apk();
+    let mut ctx = PatchContext::new(&mut apk);
+    let patches: Vec<Box<dyn Patch>> = vec![StubPatch::with_bool_option("alpha", "toggle")];
+    let mut plan = ExecutionPlan::new();
+    plan.disable_patch("alpha");
+    let mut options = PatchOptions::new();
+    options.set("toggle", OptionValue::Bool(true));
+    plan.set_patch_options("alpha", options);
+
+    let err = engine::apply_patches_with_plan(&mut ctx, &patches, &plan).expect_err("should fail");
+    assert!(err.to_string().contains("options configured but is not enabled"));
+}
+
+#[test]
 fn test_bundle_load_missing_dir() {
     let result = stitch_patcher::bundle::PatchBundle::load("/nonexistent/path");
     assert!(result.is_err());
+}
+
+#[test]
+fn test_missing_dependency_is_reported() {
+    let patches: Vec<Box<dyn Patch>> = vec![StubPatch::depends_on("missing", &["ghost"])];
+    let err = stitch_patcher::dependency::sort_patches(&patches).expect_err("should fail");
+    let msg = err.to_string();
+    assert!(msg.contains("missing dependency"), "got: {msg}");
+    assert!(msg.contains("ghost"), "got: {msg}");
 }
 
 #[test]
@@ -290,265 +499,6 @@ name = "ext-test"
     assert!(bundle.extension_dex[1].ends_with("ext2.dex"));
 }
 
-#[cfg(feature = "lua")]
-mod lua_tests {
-    use super::*;
-
-    fn write_lua_patch(dir: &std::path::Path, filename: &str, source: &str) {
-        std::fs::write(dir.join(filename), source).expect("write lua failed");
-    }
-
-    #[test]
-    fn test_lua_patch_loading() {
-        let tmp = tempfile::tempdir().expect("tempdir failed");
-        write_lua_patch(
-            tmp.path(),
-            "test.lua",
-            r#"
-return {
-    name = "lua-test",
-    description = "a test patch",
-    compatible_with = {
-        "com.example.app",
-        { "com.example.beta", { "1.0", "2.0" } }
-    },
-    enabled_by_default = false,
-    execute = function(ctx) end
-}
-"#,
-        );
-
-        std::fs::write(
-            tmp.path().join("bundle.toml"),
-            r#"
-[bundle]
-name = "lua-bundle"
-"#,
-        )
-        .expect("write toml failed");
-
-        let bundle =
-            stitch_patcher::bundle::PatchBundle::load(tmp.path()).expect("load failed");
-        assert_eq!(bundle.patches.len(), 1);
-
-        let p = bundle.patches[0].as_ref();
-        assert_eq!(p.name(), "lua-test");
-        assert_eq!(p.description(), "a test patch");
-        assert!(!p.enabled_by_default());
-        assert_eq!(p.compatible_with().len(), 2);
-        assert_eq!(p.compatible_with()[0].package, "com.example.app");
-        assert!(p.compatible_with()[0].versions.is_empty());
-        assert_eq!(p.compatible_with()[1].package, "com.example.beta");
-        assert_eq!(p.compatible_with()[1].versions, vec!["1.0", "2.0"]);
-    }
-
-    #[test]
-    fn test_lua_patch_missing_name() {
-        let tmp = tempfile::tempdir().expect("tempdir failed");
-        write_lua_patch(
-            tmp.path(),
-            "bad.lua",
-            r#"
-return {
-    execute = function(ctx) end
-}
-"#,
-        );
-
-        std::fs::write(
-            tmp.path().join("bundle.toml"),
-            r#"
-[bundle]
-name = "bad-bundle"
-"#,
-        )
-        .expect("write toml failed");
-
-        let err = stitch_patcher::bundle::PatchBundle::load(tmp.path())
-            .err()
-            .expect("should have failed");
-        let msg = err.to_string();
-        assert!(msg.contains("name"), "got: {msg}");
-    }
-
-    #[test]
-    fn test_lua_patch_missing_execute() {
-        let tmp = tempfile::tempdir().expect("tempdir failed");
-        write_lua_patch(
-            tmp.path(),
-            "no_exec.lua",
-            r#"
-return {
-    name = "no-exec"
-}
-"#,
-        );
-
-        std::fs::write(
-            tmp.path().join("bundle.toml"),
-            r#"
-[bundle]
-name = "no-exec-bundle"
-"#,
-        )
-        .expect("write toml failed");
-
-        let err = stitch_patcher::bundle::PatchBundle::load(tmp.path())
-            .err()
-            .expect("should have failed");
-        let msg = err.to_string();
-        assert!(msg.contains("execute"), "got: {msg}");
-    }
-
-    #[test]
-    fn test_lua_patch_syntax_error() {
-        let tmp = tempfile::tempdir().expect("tempdir failed");
-        write_lua_patch(tmp.path(), "syntax.lua", "this is not valid lua {{{{");
-
-        std::fs::write(
-            tmp.path().join("bundle.toml"),
-            r#"
-[bundle]
-name = "syntax-bundle"
-"#,
-        )
-        .expect("write toml failed");
-
-        let result = stitch_patcher::bundle::PatchBundle::load(tmp.path());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_lua_patches_with_apk() {
-        if !has_apk() {
-            eprintln!("Skipping: APK not found");
-            return;
-        }
-
-        let mut apk = ApkFile::open(YOUTUBE_APK).expect("open failed");
-
-        {
-            let tmp = tempfile::tempdir().expect("tempdir failed");
-            write_lua_patch(
-                tmp.path(),
-                "exec.lua",
-                r#"
-return {
-    name = "exec-test",
-    execute = function(ctx)
-        local pkg = ctx:package_name()
-        if not pkg then
-            error("no package name")
-        end
-        local count = ctx:dex_count()
-        if count < 1 then
-            error("no dex files")
-        end
-    end
-}
-"#,
-            );
-
-            std::fs::write(
-                tmp.path().join("bundle.toml"),
-                r#"
-[bundle]
-name = "exec-bundle"
-"#,
-            )
-            .expect("write toml failed");
-
-            let bundle =
-                stitch_patcher::bundle::PatchBundle::load(tmp.path()).expect("load failed");
-            let mut ctx = PatchContext::new(&mut apk);
-            let results =
-                engine::apply_patches(&mut ctx, &bundle.patches).expect("apply failed");
-            assert_eq!(results.len(), 1);
-            assert_eq!(results[0].status, PatchStatus::Applied);
-        }
-
-        let first_class = {
-            let ctx = PatchContext::new(&mut apk);
-            let dex = ctx.dex_file(0).expect("dex 0");
-            dex.type_descriptor(dex.classes[0].class_type).to_owned()
-        };
-        {
-            let tmp = tempfile::tempdir().expect("tempdir failed");
-            write_lua_patch(
-                tmp.path(),
-                "find.lua",
-                &format!(r#"
-return {{
-    name = "find-test",
-    execute = function(ctx)
-        local result = ctx:find_class("{first_class}")
-        if not result then
-            error("could not find class")
-        end
-        if result.dex_index == nil then
-            error("missing dex_index")
-        end
-    end
-}}
-"#),
-            );
-
-            std::fs::write(
-                tmp.path().join("bundle.toml"),
-                r#"
-[bundle]
-name = "find-bundle"
-"#,
-            )
-            .expect("write toml failed");
-
-            let bundle =
-                stitch_patcher::bundle::PatchBundle::load(tmp.path()).expect("load failed");
-            let mut ctx = PatchContext::new(&mut apk);
-            let results =
-                engine::apply_patches(&mut ctx, &bundle.patches).expect("apply failed");
-            assert_eq!(results[0].status, PatchStatus::Applied);
-        }
-
-        {
-            let tmp = tempfile::tempdir().expect("tempdir failed");
-            write_lua_patch(
-                tmp.path(),
-                "err.lua",
-                r#"
-return {
-    name = "error-test",
-    execute = function(ctx)
-        error("intentional lua error")
-    end
-}
-"#,
-            );
-
-            std::fs::write(
-                tmp.path().join("bundle.toml"),
-                r#"
-[bundle]
-name = "err-bundle"
-"#,
-            )
-            .expect("write toml failed");
-
-            let bundle =
-                stitch_patcher::bundle::PatchBundle::load(tmp.path()).expect("load failed");
-            let mut ctx = PatchContext::new(&mut apk);
-            let results = engine::apply_patches(&mut ctx, &bundle.patches).expect("apply failed");
-            assert_eq!(results.len(), 1);
-            assert!(matches!(results[0].status, PatchStatus::Failed { .. }));
-            if let PatchStatus::Failed { reason } = &results[0].status {
-                assert!(reason.contains("intentional lua error"), "got: {reason}");
-            }
-        }
-
-        eprintln!("lua APK tests OK");
-    }
-}
-
 #[test]
 fn test_context_with_apk() {
     if !has_apk() {
@@ -556,7 +506,7 @@ fn test_context_with_apk() {
         return;
     }
 
-    let mut apk = ApkFile::open(YOUTUBE_APK).expect("open failed");
+    let mut apk = open_test_apk();
 
     {
         let ctx = PatchContext::new(&mut apk);
@@ -579,6 +529,10 @@ fn test_context_with_apk() {
 
     {
         let mut ctx = PatchContext::new(&mut apk);
+        ctx.dex_mut(0)
+            .expect("dex 0")
+            .resolve_all_class_data()
+            .expect("resolve class data");
         let dex = ctx.dex_file(0).expect("dex 0");
         let mut found_class = None;
         let mut found_method = None;

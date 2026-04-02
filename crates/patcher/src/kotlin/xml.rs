@@ -209,19 +209,15 @@ pub fn xml_find_by_attribute(doc: u32, attr_name: String, attr_value: String) ->
 }
 
 #[export]
-pub fn xml_children(el: u32) -> Vec<u32> {
+pub fn xml_children(doc: u32, el: u32) -> Vec<u32> {
     XML_DOCUMENTS.with(|docs| {
         let docs = docs.borrow();
         let mut results = Vec::new();
-        for doc_slot in docs.iter() {
-            if let Some((document, _)) = doc_slot {
-                let start = el as usize;
-                if start >= document.elements.len() {
-                    continue;
-                }
-                if !matches!(document.elements[start], AxmlEvent::StartElement { .. }) {
-                    continue;
-                }
+        if let Some(Some((document, _))) = docs.get(doc as usize) {
+            let start = el as usize;
+            if start < document.elements.len()
+                && matches!(document.elements[start], AxmlEvent::StartElement { .. })
+            {
                 let mut depth = 0;
                 for i in start..document.elements.len() {
                     match &document.elements[i] {
@@ -240,9 +236,6 @@ pub fn xml_children(el: u32) -> Vec<u32> {
                         _ => {}
                     }
                 }
-                if !results.is_empty() {
-                    return results;
-                }
             }
         }
         results
@@ -250,15 +243,12 @@ pub fn xml_children(el: u32) -> Vec<u32> {
 }
 
 #[export]
-pub fn xml_parent(el: u32) -> Option<u32> {
+pub fn xml_parent(doc: u32, el: u32) -> Option<u32> {
     XML_DOCUMENTS.with(|docs| {
         let docs = docs.borrow();
-        for doc_slot in docs.iter() {
-            if let Some((document, _)) = doc_slot {
-                let target = el as usize;
-                if target >= document.elements.len() {
-                    continue;
-                }
+        if let Some(Some((document, _))) = docs.get(doc as usize) {
+            let target = el as usize;
+            if target < document.elements.len() {
                 let mut depth = 0i32;
                 for i in (0..target).rev() {
                     match &document.elements[i] {
@@ -279,7 +269,7 @@ pub fn xml_parent(el: u32) -> Option<u32> {
 }
 
 #[export]
-pub fn xml_tag_name(el: u32) -> String {
+pub fn xml_tag_name(doc: u32, el: u32) -> String {
     if el >= PENDING_OFFSET {
         return PENDING_ELEMENTS.with(|pe| {
             let pe = pe.borrow();
@@ -303,14 +293,12 @@ pub fn xml_tag_name(el: u32) -> String {
     }
     XML_DOCUMENTS.with(|docs| {
         let docs = docs.borrow();
-        for doc_slot in docs.iter() {
-            if let Some((document, _)) = doc_slot {
-                if let Some(AxmlEvent::StartElement { name, .. }) =
-                    document.elements.get(el as usize)
-                {
-                    if let Some(s) = document.string(*name) {
-                        return s.to_string();
-                    }
+        if let Some(Some((document, _))) = docs.get(doc as usize) {
+            if let Some(AxmlEvent::StartElement { name, .. }) =
+                document.elements.get(el as usize)
+            {
+                if let Some(s) = document.string(*name) {
+                    return s.to_string();
                 }
             }
         }
@@ -319,7 +307,7 @@ pub fn xml_tag_name(el: u32) -> String {
 }
 
 #[export]
-pub fn xml_get_attribute(el: u32, name: String) -> Option<String> {
+pub fn xml_get_attribute(doc: u32, el: u32, name: String) -> Option<String> {
     if el >= PENDING_OFFSET {
         return PENDING_ELEMENTS.with(|pe| {
             let pe = pe.borrow();
@@ -343,13 +331,11 @@ pub fn xml_get_attribute(el: u32, name: String) -> Option<String> {
     }
     XML_DOCUMENTS.with(|docs| {
         let docs = docs.borrow();
-        for doc_slot in docs.iter() {
-            if let Some((document, _)) = doc_slot {
-                if let Some(AxmlEvent::StartElement { attributes, .. }) =
-                    document.elements.get(el as usize)
-                {
-                    return get_attr_value(document, attributes, &name);
-                }
+        if let Some(Some((document, _))) = docs.get(doc as usize) {
+            if let Some(AxmlEvent::StartElement { attributes, .. }) =
+                document.elements.get(el as usize)
+            {
+                return get_attr_value(document, attributes, &name);
             }
         }
         None
@@ -357,7 +343,7 @@ pub fn xml_get_attribute(el: u32, name: String) -> Option<String> {
 }
 
 #[export]
-pub fn xml_set_attribute(el: u32, name: String, value: String) {
+pub fn xml_set_attribute(doc: u32, el: u32, name: String, value: String) {
     if el >= PENDING_OFFSET {
         PENDING_ELEMENTS.with(|pe| {
             let mut pe = pe.borrow_mut();
@@ -383,26 +369,21 @@ pub fn xml_set_attribute(el: u32, name: String, value: String) {
     }
     XML_DOCUMENTS.with(|docs| {
         let mut docs = docs.borrow_mut();
-        for doc_slot in docs.iter_mut() {
-            if let Some((document, _)) = doc_slot {
-                if (el as usize) < document.elements.len() {
-                    let (ns, local) = resolve_namespace(document, &name);
-                    let name_idx = document.string_pool.intern(local);
-                    let val_idx = document.string_pool.intern(&value);
-                    if let Some(AxmlEvent::StartElement { attributes, .. }) =
-                        document.elements.get_mut(el as usize)
-                    {
-                        set_or_add_attr(attributes, ns, name_idx, val_idx);
-                    }
-                    return;
-                }
+        if let Some(Some((document, _))) = docs.get_mut(doc as usize) {
+            let (ns, local) = resolve_namespace(document, &name);
+            let name_idx = document.string_pool.intern(local);
+            let val_idx = document.string_pool.intern(&value);
+            if let Some(AxmlEvent::StartElement { attributes, .. }) =
+                document.elements.get_mut(el as usize)
+            {
+                set_or_add_attr(attributes, ns, name_idx, val_idx);
             }
         }
     });
 }
 
 #[export]
-pub fn xml_remove_attribute(el: u32, name: String) {
+pub fn xml_remove_attribute(doc: u32, el: u32, name: String) {
     if el >= PENDING_OFFSET {
         PENDING_ELEMENTS.with(|pe| {
             let mut pe = pe.borrow_mut();
@@ -427,18 +408,13 @@ pub fn xml_remove_attribute(el: u32, name: String) {
     }
     XML_DOCUMENTS.with(|docs| {
         let mut docs = docs.borrow_mut();
-        for doc_slot in docs.iter_mut() {
-            if let Some((document, _)) = doc_slot {
-                if (el as usize) < document.elements.len() {
-                    let (ns, local) = resolve_namespace(document, &name);
-                    let name_idx = document.string_pool.intern(local);
-                    if let Some(AxmlEvent::StartElement { attributes, .. }) =
-                        document.elements.get_mut(el as usize)
-                    {
-                        attributes.retain(|a| !(a.name == name_idx && a.namespace == ns));
-                    }
-                    return;
-                }
+        if let Some(Some((document, _))) = docs.get_mut(doc as usize) {
+            let (ns, local) = resolve_namespace(document, &name);
+            let name_idx = document.string_pool.intern(local);
+            if let Some(AxmlEvent::StartElement { attributes, .. }) =
+                document.elements.get_mut(el as usize)
+            {
+                attributes.retain(|a| !(a.name == name_idx && a.namespace == ns));
             }
         }
     });
@@ -478,7 +454,7 @@ pub fn xml_create_element(doc: u32, tag: String) -> u32 {
 }
 
 #[export]
-pub fn xml_append_child(parent_el: u32, child: u32) {
+pub fn xml_append_child(doc: u32, parent_el: u32, child: u32) {
     if child >= PENDING_OFFSET {
         let pending = PENDING_ELEMENTS.with(|pe| {
             let mut pe = pe.borrow_mut();
@@ -498,48 +474,30 @@ pub fn xml_append_child(parent_el: u32, child: u32) {
             let doc_idx = pending.doc_idx as usize;
             if let Some(Some((document, _))) = docs.get_mut(doc_idx) {
                 let parent_pos = parent_el as usize;
-                if parent_pos >= document.elements.len() {
-                    return;
+                if parent_pos < document.elements.len() {
+                    let end = element_end(document, parent_pos);
+                    insert_events_at(document, end, pending.events);
                 }
-                let end = element_end(document, parent_pos);
-                insert_events_at(document, end, pending.events);
             }
         });
     } else {
-        let events = XML_DOCUMENTS.with(|docs| {
-            let docs = docs.borrow();
-            for doc_slot in docs.iter() {
-                if let Some((document, _)) = doc_slot {
-                    if (child as usize) < document.elements.len() {
-                        return Some(extract_subtree(document, child as usize));
-                    }
-                }
-            }
-            None
-        });
-        let events = match events {
-            Some(e) => e,
-            None => return,
-        };
         XML_DOCUMENTS.with(|docs| {
             let mut docs = docs.borrow_mut();
-            for doc_slot in docs.iter_mut() {
-                if let Some((document, _)) = doc_slot {
-                    if (parent_el as usize) < document.elements.len() {
-                        let child_start = child as usize;
-                        let child_count = events.len();
-                        document
-                            .elements
-                            .drain(child_start..child_start + child_count);
-                        let parent_pos = if (parent_el as usize) > child_start {
-                            parent_el as usize - child_count
-                        } else {
-                            parent_el as usize
-                        };
-                        let end = element_end(document, parent_pos);
-                        insert_events_at(document, end, events);
-                        return;
-                    }
+            if let Some(Some((document, _))) = docs.get_mut(doc as usize) {
+                if (child as usize) < document.elements.len() {
+                    let events = extract_subtree(document, child as usize);
+                    let child_start = child as usize;
+                    let child_count = events.len();
+                    document
+                        .elements
+                        .drain(child_start..child_start + child_count);
+                    let parent_pos = if (parent_el as usize) > child_start {
+                        parent_el as usize - child_count
+                    } else {
+                        parent_el as usize
+                    };
+                    let end = element_end(document, parent_pos);
+                    insert_events_at(document, end, events);
                 }
             }
         });
@@ -547,7 +505,7 @@ pub fn xml_append_child(parent_el: u32, child: u32) {
 }
 
 #[export]
-pub fn xml_insert_before(_parent: u32, child: u32, before: u32) {
+pub fn xml_insert_before(doc: u32, _parent: u32, child: u32, before: u32) {
     if child >= PENDING_OFFSET {
         let pending = PENDING_ELEMENTS.with(|pe| {
             let mut pe = pe.borrow_mut();
@@ -573,39 +531,22 @@ pub fn xml_insert_before(_parent: u32, child: u32, before: u32) {
             }
         });
     } else {
-        let events = XML_DOCUMENTS.with(|docs| {
-            let docs = docs.borrow();
-            for doc_slot in docs.iter() {
-                if let Some((document, _)) = doc_slot {
-                    if (child as usize) < document.elements.len() {
-                        return Some(extract_subtree(document, child as usize));
-                    }
-                }
-            }
-            None
-        });
-        let events = match events {
-            Some(e) => e,
-            None => return,
-        };
         XML_DOCUMENTS.with(|docs| {
             let mut docs = docs.borrow_mut();
-            for doc_slot in docs.iter_mut() {
-                if let Some((document, _)) = doc_slot {
-                    if (before as usize) < document.elements.len() {
-                        let child_start = child as usize;
-                        let child_count = events.len();
-                        document
-                            .elements
-                            .drain(child_start..child_start + child_count);
-                        let before_pos = if (before as usize) > child_start {
-                            before as usize - child_count
-                        } else {
-                            before as usize
-                        };
-                        insert_events_at(document, before_pos, events);
-                        return;
-                    }
+            if let Some(Some((document, _))) = docs.get_mut(doc as usize) {
+                if (child as usize) < document.elements.len() {
+                    let events = extract_subtree(document, child as usize);
+                    let child_start = child as usize;
+                    let child_count = events.len();
+                    document
+                        .elements
+                        .drain(child_start..child_start + child_count);
+                    let before_pos = if (before as usize) > child_start {
+                        before as usize - child_count
+                    } else {
+                        before as usize
+                    };
+                    insert_events_at(document, before_pos, events);
                 }
             }
         });
@@ -613,64 +554,55 @@ pub fn xml_insert_before(_parent: u32, child: u32, before: u32) {
 }
 
 #[export]
-pub fn xml_remove_element(el: u32) {
+pub fn xml_remove_element(doc: u32, el: u32) {
     XML_DOCUMENTS.with(|docs| {
         let mut docs = docs.borrow_mut();
-        for doc_slot in docs.iter_mut() {
-            if let Some((document, _)) = doc_slot {
-                if (el as usize) < document.elements.len() {
-                    document.remove_element(el as usize);
-                    return;
-                }
+        if let Some(Some((document, _))) = docs.get_mut(doc as usize) {
+            if (el as usize) < document.elements.len() {
+                document.remove_element(el as usize);
             }
         }
     });
 }
 
 #[export]
-pub fn xml_clone_element(el: u32, deep: bool) -> u32 {
+pub fn xml_clone_element(doc: u32, el: u32, deep: bool) -> u32 {
     XML_DOCUMENTS.with(|docs| {
         let docs = docs.borrow();
-        for (doc_idx, doc_slot) in docs.iter().enumerate() {
-            if let Some((document, _)) = doc_slot {
-                let start = el as usize;
-                if start >= document.elements.len() {
-                    continue;
-                }
-                if !matches!(document.elements[start], AxmlEvent::StartElement { .. }) {
-                    continue;
-                }
-                let events = if deep {
-                    extract_subtree(document, start)
-                } else if let AxmlEvent::StartElement {
+        if let Some(Some((document, _))) = docs.get(doc as usize) {
+            let start = el as usize;
+            if start < document.elements.len() {
+                if let AxmlEvent::StartElement {
                     namespace,
                     name,
                     attributes,
                 } = &document.elements[start]
                 {
-                    vec![
-                        AxmlEvent::StartElement {
-                            namespace: *namespace,
-                            name: *name,
-                            attributes: attributes.clone(),
-                        },
-                        AxmlEvent::EndElement {
-                            namespace: *namespace,
-                            name: *name,
-                        },
-                    ]
-                } else {
-                    continue;
-                };
-                return PENDING_ELEMENTS.with(|pe| {
-                    let mut pe = pe.borrow_mut();
-                    let handle = PENDING_OFFSET + pe.len() as u32;
-                    pe.push(PendingElement {
-                        doc_idx: doc_idx as u32,
-                        events,
+                    let events = if deep {
+                        extract_subtree(document, start)
+                    } else {
+                        vec![
+                            AxmlEvent::StartElement {
+                                namespace: *namespace,
+                                name: *name,
+                                attributes: attributes.clone(),
+                            },
+                            AxmlEvent::EndElement {
+                                namespace: *namespace,
+                                name: *name,
+                            },
+                        ]
+                    };
+                    return PENDING_ELEMENTS.with(|pe| {
+                        let mut pe = pe.borrow_mut();
+                        let handle = PENDING_OFFSET + pe.len() as u32;
+                        pe.push(PendingElement {
+                            doc_idx: doc,
+                            events,
+                        });
+                        handle
                     });
-                    handle
-                });
+                }
             }
         }
         0

@@ -23,6 +23,12 @@ class DexClass(val handle: UInt) {
     val instanceFields: List<FieldInfo>
         get() = classInstanceFields(handle)
 
+    val superclass: String?
+        get() = info.superclass
+
+    val sourceFile: String?
+        get() = info.sourceFile
+
     val superclassChain: List<DexClass>
         get() = superclassChain(handle).map { DexClass(it.toUInt()) }
 
@@ -36,6 +42,7 @@ class DexClass(val handle: UInt) {
     fun addField(field: NewField) = addField(handle, field)
     fun removeField(name: String) = removeField(handle, name)
     fun setFieldAccessFlags(fieldName: String, flags: Int) = setFieldAccessFlags(handle, fieldName, flags.toUInt())
+    fun setStaticFieldValue(fieldName: String, value: EncodedVal) = setStaticFieldValue(handle, fieldName, value)
 
     fun addAnnotation(annotation: AnnotationItem) = addClassAnnotation(handle, annotation)
     fun addFieldAnnotation(fieldName: String, annotation: AnnotationItem) =

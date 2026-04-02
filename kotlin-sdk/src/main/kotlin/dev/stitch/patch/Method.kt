@@ -5,6 +5,10 @@ class Method(val handle: UInt) {
         get() = getMethodInfo(handle)
             ?: error("invalid method handle: $handle")
 
+    val classDef: DexClass
+        get() = DexClass(findClass(info.classDescriptor)
+            ?: error("class not found: ${info.classDescriptor}"))
+
     val instructions: List<Instruction>
         get() = getInstructions(handle)
 
@@ -43,9 +47,8 @@ class Method(val handle: UInt) {
     fun replaceLiteral(old: Long, new: Long): Boolean = replaceLiteral(handle, old, new)
     fun replaceAllLiterals(old: Long, new: Long): Int = replaceAllLiterals(handle, old, new).toInt()
     fun replaceMethodCall(
-        oldClass: String, oldName: String,
-        newClass: String, newName: String, newProto: String,
-    ): Int = replaceMethodCall(handle, oldClass, oldName, newClass, newName, newProto).toInt()
+        index: Int, newClass: String, newName: String, newProto: String,
+    ): Boolean = replaceMethodCall(handle, index.toUInt(), newClass, newName, newProto)
 
     fun insertInvokeStatic(
         index: Int, className: String, name: String, proto: String, registers: List<Int>,
@@ -62,8 +65,16 @@ class Method(val handle: UInt) {
     fun indexOfFirst(op: Int, start: Int = 0): Int? = indexOfFirst(handle, start.toUInt(), op.toUShort())?.toInt()
     fun indexOfFirstReversed(op: Int, start: Int): Int? = indexOfFirstReversed(handle, start.toUInt(), op.toUShort())?.toInt()
     fun indexOfFirstLiteral(literal: Long): Int? = indexOfFirstLiteral(handle, literal)?.toInt()
+    fun indexOfFirstLiteralReversed(literal: Long): Int? = indexOfFirstLiteralReversed(handle, literal)?.toInt()
+    fun containsLiteral(literal: Long): Boolean = containsLiteral(handle, literal)
     fun indexOfFirstString(s: String): Int? = indexOfFirstString(handle, s)?.toInt()
     fun findAllIndices(op: Int): List<Int> = findAllIndices(handle, op.toUShort()).toList()
+    fun indexOfFirstMethodCall(definingClass: String, methodName: String, start: Int = 0): Int? =
+        indexOfFirstMethodCall(handle, definingClass, methodName, start.toUInt())?.toInt()
+    fun indexOfFirstFieldAccess(opcode: Int, fieldType: String? = null, definingClass: String? = null, start: Int = 0): Int? =
+        indexOfFirstFieldAccess(handle, opcode, fieldType, definingClass, start.toUInt())?.toInt()
+    fun indexOfOpcodeSequence(opcodes: IntArray, start: Int = 0): Int? =
+        indexOfOpcodeSequence(handle, opcodes, start.toUInt())?.toInt()
 
     fun setRegisters(registersSize: Int, outsSize: Int) = setRegisters(handle, registersSize.toUShort(), outsSize.toUShort())
     fun findFreeRegister(atIndex: Int, exclude: List<Int> = emptyList()): Int =
@@ -83,6 +94,7 @@ class Method(val handle: UInt) {
 
     fun setAccessFlags(flags: Int) = setMethodAccessFlags(handle, flags.toUInt())
     fun clone(newName: String? = null): Method = Method(cloneMethod(handle, newName))
+    fun clonePreserveParameters(): Method = Method(cloneMethodPreserveParameters(handle))
     fun remove() = removeMethod(handle)
     fun addAnnotation(annotation: AnnotationItem) = addMethodAnnotation(handle, annotation)
 }

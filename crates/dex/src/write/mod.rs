@@ -50,7 +50,7 @@ pub(crate) fn is_default_value(v: &EncodedValue) -> bool {
 pub fn write(dex: &mut DexFile) -> Result<Vec<u8>> {
     dex.resolve_all_class_data()?;
     validate_index_limits(dex)?;
-    sort::sort_in_place(dex);
+    sort::sort_in_place(dex)?;
     let mut w = DexWriter::new();
     w.write_dex(dex)?;
     Ok(w.buf)
@@ -98,7 +98,7 @@ pub fn write_container(dex_files: &mut [DexFile]) -> Result<Vec<u8>> {
     for dex in dex_files.iter_mut() {
         dex.resolve_all_class_data()?;
         validate_index_limits(dex)?;
-        sort::sort_in_place(dex);
+        sort::sort_in_place(dex)?;
     }
 
     let total_count = dex_files.len();

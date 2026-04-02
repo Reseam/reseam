@@ -16,6 +16,7 @@ use jni::objects::{JObject, JObjectArray, JValue};
 use jni::{InitArgsBuilder, JavaVM, JNIVersion};
 use stitch_apk::AxmlDocument;
 use stitch_apk::stitch_dex::{DexFile, EncodedMethod};
+use tracing::warn;
 
 use crate::context::PatchContext;
 use crate::error::{PatcherError, Result};
@@ -88,11 +89,33 @@ impl HandleTable {
 }
 
 thread_local! {
-    pub(crate) static CTX_PTR: Cell<*mut ()> = const { Cell::new(std::ptr::null_mut()) };
+    static CTX_PTR: Cell<*mut ()> = const { Cell::new(std::ptr::null_mut()) };
     pub(crate) static HANDLES: RefCell<HandleTable> = RefCell::new(HandleTable::default());
     pub(crate) static XML_DOCUMENTS: RefCell<Vec<Option<(AxmlDocument, String)>>> = RefCell::new(Vec::new());
     pub(crate) static PENDING_ELEMENTS: RefCell<Vec<xml::PendingElement>> = RefCell::new(Vec::new());
     pub(crate) static BUNDLE_DIR: RefCell<Option<PathBuf>> = RefCell::new(None);
+}
+
+struct CtxGuard;
+
+impl CtxGuard {
+    fn enter(ctx: &mut PatchContext<'_>) -> Self {
+        CTX_PTR.with(|cell| {
+            debug_assert!(cell.get().is_null(), "nested CtxGuard — previous context was not cleaned up");
+            cell.set(ctx as *mut PatchContext as *mut ());
+        });
+        HANDLES.with(|h| *h.borrow_mut() = HandleTable::default());
+        CtxGuard
+    }
+}
+
+impl Drop for CtxGuard {
+    fn drop(&mut self) {
+        CTX_PTR.with(|cell| cell.set(std::ptr::null_mut()));
+        HANDLES.with(|h| *h.borrow_mut() = HandleTable::default());
+        XML_DOCUMENTS.with(|docs| docs.borrow_mut().clear());
+        PENDING_ELEMENTS.with(|pe| pe.borrow_mut().clear());
+    }
 }
 
 include!(concat!(env!("OUT_DIR"), "/jni_natives.rs"));
@@ -154,26 +177,32 @@ pub(crate) fn try_get_method_mut(
     }
 }
 
-pub(crate) fn get_method_ref(dex: &DexFile, mh: MethodHandle) -> &EncodedMethod {
-    try_get_method_ref(dex, mh).unwrap_or_else(|| {
-        static EMPTY: std::sync::OnceLock<EncodedMethod> = std::sync::OnceLock::new();
-        EMPTY.get_or_init(|| EncodedMethod {
-            method: stitch_apk::stitch_dex::MethodIdx(0),
-            access_flags: stitch_apk::stitch_dex::AccessFlags::empty(),
-            code: None,
-        })
-    })
+pub(crate) fn get_method_ref(dex: &DexFile, mh: MethodHandle) -> Option<&EncodedMethod> {
+    let result = try_get_method_ref(dex, mh);
+    if result.is_none() {
+        warn!(
+            dex_idx = mh.dex_idx,
+            class_idx = mh.class_idx,
+            method_idx = mh.method_idx,
+            is_virtual = mh.is_virtual,
+            "invalid method handle"
+        );
+    }
+    result
 }
 
-pub(crate) fn get_method_mut(dex: &mut DexFile, mh: MethodHandle) -> &mut EncodedMethod {
-    try_get_method_mut(dex, mh).unwrap_or_else(|| {
-        // Only reached on invalid handle — leak a dummy to avoid panicking
-        Box::leak(Box::new(EncodedMethod {
-            method: stitch_apk::stitch_dex::MethodIdx(0),
-            access_flags: stitch_apk::stitch_dex::AccessFlags::empty(),
-            code: None,
-        }))
-    })
+pub(crate) fn get_method_mut(dex: &mut DexFile, mh: MethodHandle) -> Option<&mut EncodedMethod> {
+    let result = try_get_method_mut(dex, mh);
+    if result.is_none() {
+        warn!(
+            dex_idx = mh.dex_idx,
+            class_idx = mh.class_idx,
+            method_idx = mh.method_idx,
+            is_virtual = mh.is_virtual,
+            "invalid mutable method handle"
+        );
+    }
+    result
 }
 
 pub(crate) fn find_method_location(
@@ -288,7 +317,7 @@ fn get_or_init_jvm() -> Result<&'static JavaVM> {
                 .ok_or_else(|| format!("libjvm not found in {}", java_home.display()))?;
 
             unsafe {
-                libloading_jvm(&jvm_lib).map_err(|e| format!("{e}"))?;
+                setup_jvm_library_path(&jvm_lib).map_err(|e| format!("{e}"))?;
             }
 
             let lib_path = std::env::current_exe()
@@ -297,7 +326,7 @@ fn get_or_init_jvm() -> Result<&'static JavaVM> {
                 .unwrap_or_else(|| PathBuf::from("."));
             let jvm_args = InitArgsBuilder::new()
                 .version(JNIVersion::V8)
-                .option("-Xmx256m")
+                .option(format!("-Xmx{}", std::env::var("STITCH_JVM_HEAP").unwrap_or_else(|_| "256m".into())))
                 .option(format!("-Djava.library.path={}", lib_path.display()))
                 .build()
                 .map_err(|e| format!("JVM args: {e}"))?;
@@ -311,7 +340,7 @@ fn get_or_init_jvm() -> Result<&'static JavaVM> {
     }
 }
 
-unsafe fn libloading_jvm(path: &Path) -> Result<()> {
+unsafe fn setup_jvm_library_path(path: &Path) -> Result<()> {
     let parent = path
         .parent()
         .ok_or_else(|| jvm_err("no parent dir for libjvm"))?;
@@ -335,11 +364,15 @@ pub struct KotlinPatch {
     compatible_with: Vec<Compatibility>,
     enabled_by_default: bool,
     depends_on: Vec<String>,
+    extension_dex: Vec<String>,
     options: Vec<OptionDeclaration>,
     patch_ref: jni::objects::GlobalRef,
     bundle_dir: PathBuf,
 }
 
+// SAFETY: KotlinPatch is Send+Sync because all fields are Send+Sync except `patch_ref` (GlobalRef),
+// which wraps a JNI global reference — thread-safe by JNI spec, but the jni crate doesn't impl
+// Sync due to the raw pointer. We only access it through JNI env calls which handle synchronization.
 unsafe impl Send for KotlinPatch {}
 unsafe impl Sync for KotlinPatch {}
 
@@ -364,58 +397,61 @@ impl Patch for KotlinPatch {
         &self.depends_on
     }
 
+    fn extension_dex(&self) -> &[String] {
+        &self.extension_dex
+    }
+
     fn options(&self) -> &[OptionDeclaration] {
         &self.options
     }
 
     fn execute(&self, ctx: &mut PatchContext) -> Result<()> {
-        let jvm = get_or_init_jvm()?;
-        let mut env = jvm
-            .attach_current_thread()
-            .map_err(|e| jvm_err(format!("attach thread: {e}")))?;
+        call_patch_method(ctx, &self.patch_ref, &self.bundle_dir, "execute")
+    }
 
-        CTX_PTR.with(|cell| {
-            cell.set(ctx as *mut PatchContext as *mut ());
-        });
-        BUNDLE_DIR.with(|bd| {
-            *bd.borrow_mut() = Some(self.bundle_dir.clone());
-        });
-        HANDLES.with(|h| {
-            *h.borrow_mut() = HandleTable::default();
-        });
-        XML_DOCUMENTS.with(|docs| {
-            docs.borrow_mut().clear();
-        });
-        PENDING_ELEMENTS.with(|pe| {
-            pe.borrow_mut().clear();
-        });
-
-        let result = execute_patch(&mut env, self.patch_ref.as_obj());
-
-        CTX_PTR.with(|cell| cell.set(std::ptr::null_mut()));
-        BUNDLE_DIR.with(|bd| *bd.borrow_mut() = None);
-        HANDLES.with(|h| *h.borrow_mut() = HandleTable::default());
-        XML_DOCUMENTS.with(|docs| docs.borrow_mut().clear());
-        PENDING_ELEMENTS.with(|pe| pe.borrow_mut().clear());
-
-        result
+    fn after_dependents(&self, ctx: &mut PatchContext) -> Result<()> {
+        call_patch_method(ctx, &self.patch_ref, &self.bundle_dir, "afterDependents")
     }
 }
 
-fn execute_patch(env: &mut jni::JNIEnv<'_>, patch: &JObject<'_>) -> Result<()> {
-    env.call_method(patch, "execute", "()V", &[])
+fn call_patch_method(
+    ctx: &mut PatchContext,
+    patch_ref: &jni::objects::GlobalRef,
+    bundle_dir: &Path,
+    method_name: &str,
+) -> Result<()> {
+    let jvm = get_or_init_jvm()?;
+    let mut env = jvm
+        .attach_current_thread()
+        .map_err(|e| jvm_err(format!("attach thread: {e}")))?;
+
+    let _guard = CtxGuard::enter(ctx);
+    BUNDLE_DIR.with(|bd| {
+        *bd.borrow_mut() = Some(bundle_dir.to_path_buf());
+    });
+
+    let result = invoke_patch_method(&mut env, patch_ref.as_obj(), method_name);
+
+    BUNDLE_DIR.with(|bd| *bd.borrow_mut() = None);
+    // _guard drops here: nulls CTX_PTR, clears handles/xml/elements
+
+    result
+}
+
+fn invoke_patch_method(env: &mut jni::JNIEnv<'_>, patch: &JObject<'_>, method_name: &str) -> Result<()> {
+    env.call_method(patch, method_name, "()V", &[])
         .map_err(|e| {
             if env.exception_check().unwrap_or(false) {
                 env.exception_describe().ok();
                 env.exception_clear().ok();
             }
-            jvm_err(format!("execute(): {e}"))
+            jvm_err(format!("{method_name}(): {e}"))
         })?;
 
     if env.exception_check().unwrap_or(false) {
         env.exception_describe().ok();
         env.exception_clear().ok();
-        return Err(jvm_err("Kotlin patch threw an exception"));
+        return Err(jvm_err(format!("Kotlin patch threw an exception in {method_name}()")));
     }
 
     Ok(())
@@ -532,6 +568,254 @@ fn read_string_list(
     Ok(result)
 }
 
+fn read_optional_string_list(
+    env: &mut jni::JNIEnv<'_>,
+    obj: &JObject<'_>,
+    getter: &str,
+) -> Result<Option<Vec<String>>> {
+    let list = env
+        .call_method(obj, getter, "()Ljava/util/List;", &[])
+        .map_err(|e| jvm_err(format!("{getter}(): {e}")))?
+        .l()
+        .map_err(|e| jvm_err(format!("{getter} obj: {e}")))?;
+    if list.is_null() {
+        return Ok(None);
+    }
+
+    let size = env
+        .call_method(&list, "size", "()I", &[])
+        .map_err(|e| jvm_err(format!("list.size(): {e}")))?
+        .i()
+        .map_err(|e| jvm_err(format!("size int: {e}")))? as usize;
+
+    let mut result = Vec::with_capacity(size);
+    for i in 0..size {
+        let elem = env
+            .call_method(
+                &list,
+                "get",
+                "(I)Ljava/lang/Object;",
+                &[JValue::Int(i as i32)],
+            )
+            .map_err(|e| jvm_err(format!("list.get({i}): {e}")))?
+            .l()
+            .map_err(|e| jvm_err(format!("list elem: {e}")))?;
+        let jstr: jni::objects::JString = elem.into();
+        let s: String = env
+            .get_string(&jstr)
+            .map(|s| s.into())
+            .map_err(|e| jvm_err(format!("list string: {e}")))?;
+        result.push(s);
+    }
+    Ok(Some(result))
+}
+
+fn read_optional_string_field(
+    env: &mut jni::JNIEnv<'_>,
+    obj: &JObject<'_>,
+    getter: &str,
+) -> Result<Option<String>> {
+    let val = env
+        .call_method(obj, getter, "()Ljava/lang/String;", &[])
+        .map_err(|e| jvm_err(format!("{getter}(): {e}")))?
+        .l()
+        .map_err(|e| jvm_err(format!("{getter} obj: {e}")))?;
+    if val.is_null() {
+        return Ok(None);
+    }
+    let jstr: jni::objects::JString = val.into();
+    env.get_string(&jstr)
+        .map(|s| Some(s.into()))
+        .map_err(|e| jvm_err(format!("{getter} string: {e}")))
+}
+
+fn read_optional_bool_field(
+    env: &mut jni::JNIEnv<'_>,
+    obj: &JObject<'_>,
+    getter: &str,
+) -> Result<Option<bool>> {
+    let val = env
+        .call_method(obj, getter, "()Ljava/lang/Boolean;", &[])
+        .map_err(|e| jvm_err(format!("{getter}(): {e}")))?
+        .l()
+        .map_err(|e| jvm_err(format!("{getter} obj: {e}")))?;
+    if val.is_null() {
+        return Ok(None);
+    }
+    env.call_method(&val, "booleanValue", "()Z", &[])
+        .map_err(|e| jvm_err(format!("{getter}.booleanValue(): {e}")))?
+        .z()
+        .map(Some)
+        .map_err(|e| jvm_err(format!("{getter} bool: {e}")))
+}
+
+fn read_optional_long_field(
+    env: &mut jni::JNIEnv<'_>,
+    obj: &JObject<'_>,
+    getter: &str,
+) -> Result<Option<i64>> {
+    let val = env
+        .call_method(obj, getter, "()Ljava/lang/Long;", &[])
+        .map_err(|e| jvm_err(format!("{getter}(): {e}")))?
+        .l()
+        .map_err(|e| jvm_err(format!("{getter} obj: {e}")))?;
+    if val.is_null() {
+        return Ok(None);
+    }
+    env.call_method(&val, "longValue", "()J", &[])
+        .map_err(|e| jvm_err(format!("{getter}.longValue(): {e}")))?
+        .j()
+        .map(Some)
+        .map_err(|e| jvm_err(format!("{getter} long: {e}")))
+}
+
+fn read_optional_double_field(
+    env: &mut jni::JNIEnv<'_>,
+    obj: &JObject<'_>,
+    getter: &str,
+) -> Result<Option<f64>> {
+    let val = env
+        .call_method(obj, getter, "()Ljava/lang/Double;", &[])
+        .map_err(|e| jvm_err(format!("{getter}(): {e}")))?
+        .l()
+        .map_err(|e| jvm_err(format!("{getter} obj: {e}")))?;
+    if val.is_null() {
+        return Ok(None);
+    }
+    env.call_method(&val, "doubleValue", "()D", &[])
+        .map_err(|e| jvm_err(format!("{getter}.doubleValue(): {e}")))?
+        .d()
+        .map(Some)
+        .map_err(|e| jvm_err(format!("{getter} double: {e}")))
+}
+
+fn read_compatibility_list(
+    env: &mut jni::JNIEnv<'_>,
+    obj: &JObject<'_>,
+) -> Result<Vec<Compatibility>> {
+    let list = env
+        .call_method(obj, "getCompatibleWith", "()Ljava/util/List;", &[])
+        .map_err(|e| jvm_err(format!("getCompatibleWith(): {e}")))?
+        .l()
+        .map_err(|e| jvm_err(format!("getCompatibleWith obj: {e}")))?;
+
+    let size = env
+        .call_method(&list, "size", "()I", &[])
+        .map_err(|e| jvm_err(format!("compat.size(): {e}")))?
+        .i()
+        .map_err(|e| jvm_err(format!("compat size int: {e}")))? as usize;
+
+    let mut result = Vec::with_capacity(size);
+    for i in 0..size {
+        let elem = env
+            .call_method(
+                &list,
+                "get",
+                "(I)Ljava/lang/Object;",
+                &[JValue::Int(i as i32)],
+            )
+            .map_err(|e| jvm_err(format!("compat.get({i}): {e}")))?
+            .l()
+            .map_err(|e| jvm_err(format!("compat elem: {e}")))?;
+        let package = read_string_field(env, &elem, "getName")?;
+        let versions = read_string_list(env, &elem, "getVersions")?;
+        result.push(Compatibility::with_versions(package, versions));
+    }
+    Ok(result)
+}
+
+fn read_option_type(
+    env: &mut jni::JNIEnv<'_>,
+    obj: &JObject<'_>,
+) -> Result<crate::options::OptionType> {
+    let kind = env
+        .call_method(obj, "getType", "()Ldev/stitch/patch/PatchOptionType;", &[])
+        .map_err(|e| jvm_err(format!("getType(): {e}")))?
+        .l()
+        .map_err(|e| jvm_err(format!("getType obj: {e}")))?;
+    let name = read_string_field(env, &kind, "name")?;
+    match name.as_str() {
+        "STRING" => Ok(crate::options::OptionType::String),
+        "BOOL" => Ok(crate::options::OptionType::Bool),
+        "INT" => Ok(crate::options::OptionType::Int),
+        "FLOAT" => Ok(crate::options::OptionType::Float),
+        "STRING_LIST" => Ok(crate::options::OptionType::StringList),
+        "PATH" => Ok(crate::options::OptionType::Path),
+        other => Err(jvm_err(format!("unknown PatchOptionType {other}"))),
+    }
+}
+
+fn read_option_declarations(
+    env: &mut jni::JNIEnv<'_>,
+    obj: &JObject<'_>,
+) -> Result<Vec<OptionDeclaration>> {
+    let list = env
+        .call_method(obj, "getOptions", "()Ljava/util/List;", &[])
+        .map_err(|e| jvm_err(format!("getOptions(): {e}")))?
+        .l()
+        .map_err(|e| jvm_err(format!("getOptions obj: {e}")))?;
+
+    let size = env
+        .call_method(&list, "size", "()I", &[])
+        .map_err(|e| jvm_err(format!("options.size(): {e}")))?
+        .i()
+        .map_err(|e| jvm_err(format!("options size int: {e}")))? as usize;
+
+    let mut result = Vec::with_capacity(size);
+    for i in 0..size {
+        let elem = env
+            .call_method(
+                &list,
+                "get",
+                "(I)Ljava/lang/Object;",
+                &[JValue::Int(i as i32)],
+            )
+            .map_err(|e| jvm_err(format!("options.get({i}): {e}")))?
+            .l()
+            .map_err(|e| jvm_err(format!("option elem: {e}")))?;
+
+        let option_type = read_option_type(env, &elem)?;
+        let default_value = match option_type {
+            crate::options::OptionType::String | crate::options::OptionType::Path => {
+                read_optional_string_field(env, &elem, "getDefaultString")?.map(|value| {
+                    if matches!(option_type, crate::options::OptionType::Path) {
+                        crate::options::OptionValue::Path(value.into())
+                    } else {
+                        crate::options::OptionValue::String(value)
+                    }
+                })
+            }
+            crate::options::OptionType::Bool => {
+                read_optional_bool_field(env, &elem, "getDefaultBool")?
+                    .map(crate::options::OptionValue::Bool)
+            }
+            crate::options::OptionType::Int => {
+                read_optional_long_field(env, &elem, "getDefaultInt")?
+                    .map(crate::options::OptionValue::Int)
+            }
+            crate::options::OptionType::Float => {
+                read_optional_double_field(env, &elem, "getDefaultFloat")?
+                    .map(crate::options::OptionValue::Float)
+            }
+            crate::options::OptionType::StringList => {
+                read_optional_string_list(env, &elem, "getDefaultStringList")?
+                    .map(crate::options::OptionValue::StringList)
+            }
+        };
+
+        result.push(OptionDeclaration {
+            key: read_string_field(env, &elem, "getKey")?,
+            title: read_string_field(env, &elem, "getTitle")?,
+            description: read_string_field(env, &elem, "getDescription")?,
+            option_type,
+            default_value,
+            valid_values: read_optional_string_list(env, &elem, "getValidValues")?,
+            required: read_bool_field(env, &elem, "getRequired")?,
+        });
+    }
+    Ok(result)
+}
+
 fn scan_class_names(jar_paths: &[PathBuf]) -> Vec<String> {
     let mut class_names = Vec::new();
     for jar_path in jar_paths {
@@ -587,7 +871,9 @@ fn collect_patch_obj<'a>(
     let description = read_string_field(env, patch_obj, "getDescription")?;
     let enabled = read_bool_field(env, patch_obj, "getEnabled")?;
     let deps = read_string_list(env, patch_obj, "getDependencies")?;
-    let compat = read_string_list(env, patch_obj, "getCompatibleWith")?;
+    let compat = read_compatibility_list(env, patch_obj)?;
+    let ext_dex = read_string_list(env, patch_obj, "getExtensionDex").unwrap_or_default();
+    let options = read_option_declarations(env, patch_obj).unwrap_or_default();
 
     let patch_global = env
         .new_global_ref(patch_obj)
@@ -596,13 +882,11 @@ fn collect_patch_obj<'a>(
     Ok(KotlinPatch {
         name,
         description,
-        compatible_with: compat
-            .iter()
-            .map(|s| Compatibility::package(s))
-            .collect(),
+        compatible_with: compat,
         enabled_by_default: enabled,
         depends_on: deps,
-        options: Vec::new(),
+        extension_dex: ext_dex,
+        options,
         patch_ref: patch_global,
         bundle_dir: bundle_dir.to_path_buf(),
     })

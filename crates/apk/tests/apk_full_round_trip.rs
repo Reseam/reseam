@@ -1,4 +1,5 @@
 use stitch_apk::ApkFile;
+use stitch_apk::stitch_dex::ParseOptions;
 
 const YOUTUBE_APK: &str =
     "../../test-apks/for_testing_com.google.android.youtube_21.10.494.apk";
@@ -9,6 +10,17 @@ fn available_apks() -> Vec<&'static str> {
         .into_iter()
         .filter(|p| std::path::Path::new(p).exists())
         .collect()
+}
+
+fn open_apk_lazy(path: &str) -> ApkFile {
+    ApkFile::open_with_options(
+        path,
+        ParseOptions {
+            lazy: true,
+            ..ParseOptions::default()
+        },
+    )
+    .expect("open failed")
 }
 
 #[test]
@@ -23,7 +35,7 @@ fn test_apk_full_round_trip() {
         eprintln!("\n=== full round-trip: {apk_path} ===");
 
         // --- Phase 1: write and verify ZIP structure ---
-        let mut apk = ApkFile::open(apk_path).expect("open failed");
+        let mut apk = open_apk_lazy(apk_path);
         let original_dex_count = apk.dex().len();
         let original_package = apk.package_name().map(|s| s.to_owned());
         let original_resource_strings = apk
@@ -57,7 +69,7 @@ fn test_apk_full_round_trip() {
         }
 
         // --- Phase 2: reopen and verify resources preserved ---
-        let apk2 = ApkFile::open(&output_path).expect("reopen failed");
+        let apk2 = open_apk_lazy(output_path.to_str().expect("utf-8 output path"));
         assert_eq!(apk2.package_name().map(|s| s.to_owned()), original_package);
         assert_eq!(apk2.dex().len(), original_dex_count);
         assert_eq!(
@@ -112,14 +124,14 @@ fn test_apk_full_round_trip() {
         eprintln!("  dex mutation round-trip OK (patched {patched} methods)");
 
         // --- Phase 4: mutate manifest, write, reparse ---
-        let mut apk4 = ApkFile::open(apk_path).expect("open for manifest mutation failed");
+        let mut apk4 = open_apk_lazy(apk_path);
         apk4.manifest_mut().set_version_code(99999);
         apk4.manifest_mut().set_version_name("99.0.0-stitch");
 
         let tmp4 = tempfile::tempdir().expect("tempdir failed");
         apk4.write_to(tmp4.path()).expect("write_to failed");
         let out4 = find_apk_in_dir(tmp4.path());
-        let apk4r = ApkFile::open(&out4).expect("reopen manifest-mutated failed");
+        let apk4r = open_apk_lazy(out4.to_str().expect("utf-8 output path"));
         assert_eq!(apk4r.version_code(), Some(99999));
         assert_eq!(apk4r.version_name(), Some("99.0.0-stitch"));
         drop(apk4);
@@ -128,7 +140,7 @@ fn test_apk_full_round_trip() {
         eprintln!("  manifest mutation round-trip OK");
 
         // --- Phase 5: write + sign ---
-        let mut apk5 = ApkFile::open(apk_path).expect("open for sign test failed");
+        let mut apk5 = open_apk_lazy(apk_path);
         let tmp5 = tempfile::tempdir().expect("tempdir failed");
         apk5.write_to(tmp5.path()).expect("write_to failed");
         drop(apk5);

@@ -41,6 +41,9 @@ pub trait Patch: Send + Sync {
     fn options(&self) -> &[OptionDeclaration] {
         &[]
     }
+    fn extension_dex(&self) -> &[String] {
+        &[]
+    }
     fn execute(&self, ctx: &mut PatchContext) -> Result<()>;
     fn after_dependents(&self, _ctx: &mut PatchContext) -> Result<()> {
         Ok(())

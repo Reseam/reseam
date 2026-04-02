@@ -6,12 +6,21 @@ use crate::types::TypeIdx;
 
 impl DexFile {
     pub fn add_class(&mut self, class: ClassDef) {
+        let idx = self.classes.len();
+        let type_idx = class.class_type;
         self.classes.push(class);
+        self.class_lookup.insert(type_idx, idx);
     }
 
     pub fn remove_class(&mut self, type_: TypeIdx) -> Option<ClassDef> {
-        let pos = self.classes.iter().position(|c| c.class_type == type_)?;
-        Some(self.classes.remove(pos))
+        let pos = self.class_lookup.remove(&type_)?;
+        let removed = self.classes.remove(pos);
+        // Rebuild class_lookup since indices shifted
+        self.class_lookup.clear();
+        for (i, c) in self.classes.iter().enumerate() {
+            self.class_lookup.insert(c.class_type, i);
+        }
+        Some(removed)
     }
 
     pub fn create_class(
@@ -29,7 +38,7 @@ impl DexFile {
         let superclass_idx = superclass.map(|sc| self.intern_type(sc));
 
         let idx = self.classes.len();
-        self.classes.push(ClassDef {
+        let class = ClassDef {
             class_type,
             access_flags,
             superclass: superclass_idx,
@@ -43,7 +52,9 @@ impl DexFile {
                 virtual_methods: Vec::new(),
             }),
             static_values: Vec::new(),
-        });
+        };
+        self.class_lookup.insert(class_type, idx);
+        self.classes.push(class);
         Ok(idx)
     }
 
@@ -71,12 +82,8 @@ impl DexFile {
                 None => break,
             };
 
-            match self
-                .classes
-                .iter()
-                .position(|c| c.class_type == superclass_type)
-            {
-                Some(pos) => {
+            match self.class_lookup.get(&superclass_type) {
+                Some(&pos) => {
                     if chain.contains(&pos) {
                         break;
                     }

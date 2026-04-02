@@ -80,5 +80,14 @@ fun Instruction.typeRef(): String? = when (this) {
     else -> null
 }
 
+fun Instruction.wideLiteral(): Long = when (this) {
+    is Instruction.RegLiteral -> value0.literal
+    else -> 0
+}
+
+val Instruction.methodReference: MethodRef? get() = methodRef()
+val Instruction.fieldReference: FieldRef? get() = fieldRef()
+val Instruction.reference: Any? get() = methodRef() ?: fieldRef()
+
 val FieldRef.type: String
     get() = fieldType

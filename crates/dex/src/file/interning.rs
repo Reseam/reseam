@@ -40,15 +40,15 @@ impl DexFile {
             .copied()
             .map(|p| self.intern_type(p))
             .collect();
+
+        let key = (return_type, parameters.clone());
+        if let Some(&idx) = self.proto_lookup.get(&key) {
+            return Ok(idx);
+        }
+
         let shorty_str = shorty_from_descriptor(descriptor)
             .ok_or_else(|| invalid_descriptor("method shorty descriptor", descriptor))?;
         let shorty = self.intern_string(&shorty_str);
-
-        for (i, proto) in self.prototypes.iter().enumerate() {
-            if proto.return_type == return_type && proto.parameters == parameters {
-                return Ok(ProtoIdx(i as u16));
-            }
-        }
 
         let idx = ProtoIdx(self.prototypes.len() as u16);
         self.prototypes.push(Prototype {
@@ -56,6 +56,7 @@ impl DexFile {
             return_type,
             parameters,
         });
+        self.proto_lookup.insert(key, idx);
         Ok(idx)
     }
 
@@ -66,10 +67,9 @@ impl DexFile {
         let name_idx = self.intern_string(name);
         let proto_idx = self.intern_proto(proto)?;
 
-        for (i, method) in self.methods.iter().enumerate() {
-            if method.class == class_idx && method.name == name_idx && method.proto == proto_idx {
-                return Ok(MethodIdx(i as u32));
-            }
+        let key = (class_idx, name_idx, proto_idx);
+        if let Some(&idx) = self.method_lookup.get(&key) {
+            return Ok(idx);
         }
 
         let idx = MethodIdx(self.methods.len() as u32);
@@ -78,6 +78,7 @@ impl DexFile {
             proto: proto_idx,
             name: name_idx,
         });
+        self.method_lookup.insert(key, idx);
         Ok(idx)
     }
 
@@ -89,10 +90,9 @@ impl DexFile {
         let name_idx = self.intern_string(name);
         let type_idx = self.intern_type(type_);
 
-        for (i, field) in self.fields.iter().enumerate() {
-            if field.class == class_idx && field.name == name_idx && field.type_ == type_idx {
-                return Ok(FieldIdx(i as u32));
-            }
+        let key = (class_idx, name_idx, type_idx);
+        if let Some(&idx) = self.field_lookup.get(&key) {
+            return Ok(idx);
         }
 
         let idx = FieldIdx(self.fields.len() as u32);
@@ -101,6 +101,7 @@ impl DexFile {
             type_: type_idx,
             name: name_idx,
         });
+        self.field_lookup.insert(key, idx);
         Ok(idx)
     }
 

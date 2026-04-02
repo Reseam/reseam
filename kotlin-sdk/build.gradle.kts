@@ -6,6 +6,8 @@ plugins {
 group = "dev.stitch"
 version = "0.1.0"
 
+// `generated/` is the raw BoltFFI staging area. The publishable Kotlin sources live in `src/main`.
+
 repositories {
     mavenCentral()
 }
@@ -19,6 +21,11 @@ tasks.test {
     val libDir = "${rootProject.projectDir}/../target/debug"
     jvmArgs("-Djava.library.path=$libDir")
     environment("LD_LIBRARY_PATH", libDir)
+}
+
+tasks.register<Exec>("syncGeneratedBridge") {
+    workingDir = projectDir
+    commandLine("./fix-generated.sh")
 }
 
 kotlin {

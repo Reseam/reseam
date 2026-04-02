@@ -5,8 +5,11 @@ use clap::{Parser, Subcommand};
 use stitch_apk::ApkFile;
 use stitch_patcher::bundle::PatchBundle;
 use stitch_patcher::context::PatchContext;
-use stitch_patcher::engine::{self, PatchStatus};
+use stitch_patcher::engine::{self, ExecutionPlan, PatchStatus};
+use stitch_patcher::options::{OptionDeclaration, PatchOptions};
 use stitch_sign::{GeneratedKey, SigningKey};
+use tracing::{error, info, warn};
+use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
 #[command(name = "stitch", about = "High-performance APK patching engine")]
@@ -27,6 +30,12 @@ enum Commands {
         key: Option<PathBuf>,
         #[arg(short, long, requires = "key")]
         cert: Option<PathBuf>,
+        #[arg(long = "enable")]
+        enable: Vec<String>,
+        #[arg(long = "disable")]
+        disable: Vec<String>,
+        #[arg(long = "option", value_name = "PATCH.KEY=VALUE")]
+        option: Vec<String>,
         #[arg(long)]
         dry_run: bool,
     },
@@ -39,6 +48,7 @@ enum Commands {
 }
 
 fn main() -> Result<()> {
+    init_logging()?;
     let cli = Cli::parse();
 
     match cli.command {
@@ -48,11 +58,38 @@ fn main() -> Result<()> {
             output,
             key,
             cert,
+            enable,
+            disable,
+            option,
             dry_run,
-        } => cmd_patch(&apk, &bundle, output.as_deref(), key.as_deref(), cert.as_deref(), dry_run),
+        } => cmd_patch(
+            &apk,
+            &bundle,
+            output.as_deref(),
+            key.as_deref(),
+            cert.as_deref(),
+            &enable,
+            &disable,
+            &option,
+            dry_run,
+        ),
         Commands::List { bundle } => cmd_list(&bundle),
         Commands::Info { apk } => cmd_info(&apk),
     }
+}
+
+fn init_logging() -> Result<()> {
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        EnvFilter::new(
+            "stitch=info,stitch_cli=info,stitch_patcher=info,stitch_apk=info,stitch_sign=info",
+        )
+    });
+
+    tracing_subscriber::fmt()
+        .with_env_filter(env_filter)
+        .with_target(true)
+        .try_init()
+        .map_err(|e| anyhow::anyhow!("failed to initialize logging: {e}"))
 }
 
 fn cmd_patch(
@@ -61,6 +98,9 @@ fn cmd_patch(
     output: Option<&Path>,
     key_path: Option<&Path>,
     cert_path: Option<&Path>,
+    enabled_patches: &[String],
+    disabled_patches: &[String],
+    option_args: &[String],
     dry_run: bool,
 ) -> Result<()> {
     let output_path = match output {
@@ -74,24 +114,25 @@ fn cmd_patch(
         }
     };
 
-    eprintln!("[stitch] opening {}", apk_path.display());
+    info!(apk_path = %apk_path.display(), "opening APK");
     let mut apk = ApkFile::open(apk_path).context("failed to open APK")?;
 
     if let Some(pkg) = apk.package_name() {
-        eprintln!("[stitch] package: {pkg}");
+        info!(package = pkg, "loaded APK package");
     }
     if let Some(ver) = apk.version_name() {
-        eprintln!("[stitch] version: {ver}");
+        info!(version = ver, "loaded APK version");
     }
-    eprintln!("[stitch] dex files: {}", apk.dex().len());
+    info!(dex_files = apk.dex().len(), "APK ready for patching");
 
-    eprintln!("[stitch] loading bundle {}", bundle_path.display());
+    info!(bundle_path = %bundle_path.display(), "loading patch bundle");
     let patch_bundle = PatchBundle::load(bundle_path).context("failed to load patch bundle")?;
-    eprintln!(
-        "[stitch] bundle '{}' ({} patches)",
-        patch_bundle.name,
-        patch_bundle.patches.len()
+    info!(
+        bundle = %patch_bundle.name,
+        patch_count = patch_bundle.patches.len(),
+        "patch bundle loaded"
     );
+    let plan = build_execution_plan(&patch_bundle, enabled_patches, disabled_patches, option_args)?;
 
     let mut ctx = PatchContext::new(&mut apk);
 
@@ -99,25 +140,30 @@ fn cmd_patch(
         let count = ctx
             .merge_extension_dex(&patch_bundle.extension_dex)
             .context("failed to merge extension DEX")?;
-        eprintln!("[stitch] merged {count} extension DEX files");
+        info!(count, "merged bundle extension DEX files");
     }
 
-    let results = engine::apply_patches(&mut ctx, &patch_bundle.patches)
+    let results = engine::apply_patches_with_plan(&mut ctx, &patch_bundle.patches, &plan)
         .context("patch application failed")?;
     drop(ctx);
 
     for result in &results {
         match &result.status {
-            PatchStatus::Applied => eprintln!("[stitch] applied: {}", result.name),
+            PatchStatus::Applied => info!(patch = %result.name, "patch applied"),
             PatchStatus::Skipped { reason } => {
-                eprintln!("[stitch] skipped: {} ({reason})", result.name)
+                warn!(patch = %result.name, reason, "patch skipped")
             }
             PatchStatus::Failed { reason } => {
-                eprintln!("[stitch] FAILED: {} ({reason})", result.name)
+                error!(patch = %result.name, reason, "patch failed")
             }
         }
         for log in &result.logs {
-            eprintln!("[stitch]   {log}");
+            info!(
+                patch = %log.patch,
+                level = %log.level,
+                message = %log.message,
+                "patch log"
+            );
         }
     }
 
@@ -129,40 +175,45 @@ fn cmd_patch(
         .iter()
         .filter(|r| matches!(r.status, PatchStatus::Failed { .. }))
         .count();
-    eprintln!("[stitch] {applied_count}/{} patches applied", results.len());
+    info!(
+        applied_count,
+        total = results.len(),
+        failed_count,
+        "patch run completed"
+    );
     if failed_count > 0 {
         bail!("{failed_count} patch(es) failed");
     }
 
     if dry_run {
-        eprintln!("[stitch] dry run — not writing output");
+        info!("dry run enabled; not writing output");
         return Ok(());
     }
 
-    eprintln!("[stitch] writing patched APK...");
+    info!(output_path = %output_path.display(), "writing patched APK");
     let tmp_dir = tempfile::tempdir().context("failed to create temp directory")?;
     apk.write_to(tmp_dir.path())
         .context("failed to write patched APK")?;
-    eprintln!("[stitch] APK written, reading back...");
+    info!("patched APK written to temp directory");
 
     let tmp_apk_path = find_apk_in_dir(tmp_dir.path())?;
     let unsigned_bytes =
         std::fs::read(&tmp_apk_path).context("failed to read patched APK bytes")?;
-    eprintln!("[stitch] read {} bytes, loading signing key...", unsigned_bytes.len());
+    info!(unsigned_size = unsigned_bytes.len(), "loaded patched APK bytes");
 
     let signing_key = load_or_generate_key(key_path, cert_path)?;
 
-    eprintln!("[stitch] signing with APK Signature Scheme v2");
+    info!("signing APK with Signature Scheme v2");
     let signed_bytes =
         stitch_sign::v2::sign(&unsigned_bytes, &signing_key).context("v2 signing failed")?;
 
     std::fs::write(&output_path, &signed_bytes)
         .with_context(|| format!("failed to write {}", output_path.display()))?;
 
-    eprintln!(
-        "[stitch] done: {} ({:.1} MB)",
-        output_path.display(),
-        signed_bytes.len() as f64 / (1024.0 * 1024.0)
+    info!(
+        output_path = %output_path.display(),
+        size_mb = signed_bytes.len() as f64 / (1024.0 * 1024.0),
+        "patched APK written"
     );
 
     Ok(())
@@ -202,6 +253,23 @@ fn cmd_list(bundle_path: &Path) -> Result<()> {
                 })
                 .collect();
             println!("       packages: {}", formatted.join(", "));
+        }
+
+        let deps = p.depends_on();
+        if !deps.is_empty() {
+            println!("       depends: {}", deps.join(", "));
+        }
+
+        let options = p.options();
+        if !options.is_empty() {
+            println!("       options:");
+            for option in options {
+                let required = if option.required { "required" } else { "optional" };
+                println!(
+                    "         - {} ({:?}, {})",
+                    option.key, option.option_type, required
+                );
+            }
         }
     }
 
@@ -267,11 +335,11 @@ fn load_or_generate_key(
     let (key_path, cert_path) = match (key_path, cert_path) {
         (Some(k), Some(c)) => (k, c),
         (None, None) if Path::new(DEFAULT_KEY).exists() && Path::new(DEFAULT_CERT).exists() => {
-            eprintln!("[stitch] using existing key {DEFAULT_KEY} + {DEFAULT_CERT}");
+            info!(key = DEFAULT_KEY, cert = DEFAULT_CERT, "using existing signing keypair");
             (PathBuf::from(DEFAULT_KEY), PathBuf::from(DEFAULT_CERT))
         }
         (None, None) => {
-            eprintln!("[stitch] generating ECDSA P-256 key, saving to {DEFAULT_KEY} + {DEFAULT_CERT}");
+            info!(key = DEFAULT_KEY, cert = DEFAULT_CERT, "generating signing keypair");
             let generated = GeneratedKey::generate().context("failed to generate signing key")?;
             generated
                 .save(Path::new(DEFAULT_KEY), Path::new(DEFAULT_CERT))
@@ -286,4 +354,68 @@ fn load_or_generate_key(
     let cert_bytes =
         std::fs::read(&cert_path).with_context(|| format!("failed to read cert {}", cert_path.display()))?;
     SigningKey::from_pkcs8(&key_bytes, cert_bytes).context("failed to load signing key")
+}
+
+fn build_execution_plan(
+    bundle: &PatchBundle,
+    enabled_patches: &[String],
+    disabled_patches: &[String],
+    option_args: &[String],
+) -> Result<ExecutionPlan> {
+    let mut plan = ExecutionPlan::new();
+
+    for patch in enabled_patches {
+        plan.select_patch(patch.clone());
+    }
+    for patch in disabled_patches {
+        plan.disable_patch(patch.clone());
+    }
+
+    for raw in option_args {
+        let (patch_name, option_key, value) = parse_option_arg(raw)?;
+        let declaration = find_option_declaration(bundle, &patch_name, &option_key)?;
+        let parsed_value = declaration
+            .parse_value(&value)
+            .with_context(|| format!("failed to parse --option {raw}"))?;
+
+        let mut patch_options = plan
+            .options()
+            .get(&patch_name)
+            .cloned()
+            .unwrap_or_else(PatchOptions::new);
+        patch_options.set(option_key, parsed_value);
+        plan.set_patch_options(patch_name, patch_options);
+    }
+
+    Ok(plan)
+}
+
+fn parse_option_arg(raw: &str) -> Result<(String, String, String)> {
+    let (lhs, value) = raw
+        .split_once('=')
+        .with_context(|| format!("invalid option '{raw}': expected PATCH.KEY=VALUE"))?;
+    let (patch_name, option_key) = lhs
+        .split_once('.')
+        .with_context(|| format!("invalid option '{raw}': expected PATCH.KEY=VALUE"))?;
+    if patch_name.is_empty() || option_key.is_empty() {
+        bail!("invalid option '{raw}': patch and key must be non-empty");
+    }
+    Ok((patch_name.to_string(), option_key.to_string(), value.to_string()))
+}
+
+fn find_option_declaration<'a>(
+    bundle: &'a PatchBundle,
+    patch_name: &str,
+    option_key: &str,
+) -> Result<&'a OptionDeclaration> {
+    let patch = bundle
+        .patches
+        .iter()
+        .find(|patch| patch.name() == patch_name)
+        .with_context(|| format!("unknown patch '{patch_name}'"))?;
+    patch
+        .options()
+        .iter()
+        .find(|decl| decl.key == option_key)
+        .with_context(|| format!("unknown option '{option_key}' for patch '{patch_name}'"))
 }

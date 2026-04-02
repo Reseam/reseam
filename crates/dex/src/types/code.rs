@@ -1,6 +1,7 @@
 use super::debug::DebugInfo;
 use super::instruction::Instruction;
 use super::TypeIdx;
+use crate::error::Result;
 
 #[derive(Debug, Clone)]
 pub struct CodeItem {
@@ -27,7 +28,7 @@ impl CodeItem {
         &self.instructions[index]
     }
 
-    pub fn replace_instruction(&mut self, index: usize, insn: Instruction) {
+    pub fn replace_instruction(&mut self, index: usize, insn: Instruction) -> Result<()> {
         let old_size = self.instructions[index].code_units() as i32;
         let new_size = insn.code_units() as i32;
         let mut delta = new_size - old_size;
@@ -39,15 +40,16 @@ impl CodeItem {
                 self.instructions.insert(index + 1, Instruction::Nop);
                 delta += 1;
             }
-            self.fixup_offsets(change_addr + old_size as u32, delta);
+            self.fixup_offsets(change_addr + old_size as u32, delta)?;
         }
+        Ok(())
     }
 
-    pub fn insert_instruction(&mut self, index: usize, insn: Instruction) {
-        self.insert_instructions(index, &[insn]);
+    pub fn insert_instruction(&mut self, index: usize, insn: Instruction) -> Result<()> {
+        self.insert_instructions(index, &[insn])
     }
 
-    pub fn insert_instructions(&mut self, index: usize, insns: &[Instruction]) {
+    pub fn insert_instructions(&mut self, index: usize, insns: &[Instruction]) -> Result<()> {
         let mut delta: i32 = insns.iter().map(|i| i.code_units() as i32).sum();
         let insert_addr = self.code_unit_offset(index);
 
@@ -62,14 +64,14 @@ impl CodeItem {
             delta += 1;
         }
 
-        self.fixup_offsets(insert_addr, delta);
+        self.fixup_offsets(insert_addr, delta)
     }
 
-    pub fn remove_instruction(&mut self, index: usize) {
+    pub fn remove_instruction(&mut self, index: usize) -> Result<()> {
         let delta = -(self.instructions[index].code_units() as i32);
         let remove_addr = self.code_unit_offset(index);
         self.instructions.remove(index);
-        self.fixup_offsets(remove_addr, delta);
+        self.fixup_offsets(remove_addr, delta)
     }
 
     pub fn set_instructions(&mut self, insns: Vec<Instruction>) {
@@ -151,14 +153,13 @@ impl CodeItem {
         false
     }
 
-    fn fixup_offsets(&mut self, addr: u32, delta: i32) {
+    fn fixup_offsets(&mut self, addr: u32, delta: i32) -> Result<()> {
         let mut total_growth: i32 = 0;
         let mut cur_addr: u32 = 0;
         for insn in &mut self.instructions {
-            let insn_size = insn.code_units();
-            let growth = fixup_branch(insn, cur_addr, addr, delta + total_growth);
+            let growth = fixup_branch(insn, cur_addr, addr, delta + total_growth)?;
             total_growth += growth;
-            cur_addr += insn_size;
+            cur_addr += insn.code_units();
         }
 
         let effective_delta = delta + total_growth;
@@ -184,38 +185,39 @@ impl CodeItem {
                 }
             }
         }
+        Ok(())
     }
 }
 
 /// Returns additional code-unit growth if a goto was promoted to a wider form.
-fn fixup_branch(insn: &mut Instruction, insn_addr: u32, change_addr: u32, delta: i32) -> i32 {
+fn fixup_branch(insn: &mut Instruction, insn_addr: u32, change_addr: u32, delta: i32) -> Result<i32> {
     match insn {
         Instruction::Goto { offset } => {
             let new_offset = fixup_i32(*offset as i32, insn_addr, change_addr, delta);
             if let Ok(v) = i8::try_from(new_offset) {
                 *offset = v;
-                0
+                Ok(0)
             } else if let Ok(v) = i16::try_from(new_offset) {
                 *insn = Instruction::Goto16 { offset: v };
-                1 // Goto16 is 2 code units vs Goto's 1
+                Ok(1) // Goto16 is 2 code units vs Goto's 1
             } else {
                 *insn = Instruction::Goto32 { offset: new_offset };
-                2 // Goto32 is 3 code units vs Goto's 1
+                Ok(2) // Goto32 is 3 code units vs Goto's 1
             }
         }
         Instruction::Goto16 { offset } => {
             let new_offset = fixup_i32(*offset as i32, insn_addr, change_addr, delta);
             if let Ok(v) = i16::try_from(new_offset) {
                 *offset = v;
-                0
+                Ok(0)
             } else {
                 *insn = Instruction::Goto32 { offset: new_offset };
-                1 // Goto32 is 3 code units vs Goto16's 2
+                Ok(1) // Goto32 is 3 code units vs Goto16's 2
             }
         }
         Instruction::Goto32 { offset } => {
             *offset = fixup_i32(*offset, insn_addr, change_addr, delta);
-            0
+            Ok(0)
         }
         Instruction::IfEq { offset, .. }
         | Instruction::IfNe { offset, .. }
@@ -229,17 +231,28 @@ fn fixup_branch(insn: &mut Instruction, insn_addr: u32, change_addr: u32, delta:
         | Instruction::IfGez { offset, .. }
         | Instruction::IfGtz { offset, .. }
         | Instruction::IfLez { offset, .. } => {
-            *offset = fixup_i32(*offset as i32, insn_addr, change_addr, delta) as i16;
-            0
+            let new_offset = fixup_i32(*offset as i32, insn_addr, change_addr, delta);
+            match i16::try_from(new_offset) {
+                Ok(v) => {
+                    *offset = v;
+                    Ok(0)
+                }
+                Err(_) => Err(crate::error::invalid(
+                    "if-branch fixup",
+                    format!(
+                        "adjusted offset {new_offset} at address {insn_addr} exceeds i16 range"
+                    ),
+                )),
+            }
         }
         Instruction::PackedSwitch { payload_offset, .. }
         | Instruction::SparseSwitch { payload_offset, .. }
         | Instruction::FillArrayData { payload_offset, .. } => {
             *payload_offset = fixup_i32(*payload_offset, insn_addr, change_addr, delta);
-            0
+            Ok(0)
         }
-        Instruction::PackedSwitchPayload { .. } | Instruction::SparseSwitchPayload { .. } => 0,
-        _ => 0,
+        Instruction::PackedSwitchPayload { .. } | Instruction::SparseSwitchPayload { .. } => Ok(0),
+        _ => Ok(0),
     }
 }
 

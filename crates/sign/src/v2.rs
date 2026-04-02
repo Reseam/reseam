@@ -2,12 +2,14 @@ use crate::error::{invalid, malformed, Result};
 use crate::keystore::SigningKey;
 use crate::signing_block::{self, ApkSections, BLOCK_ID_V2};
 use ring::digest::{self, SHA256};
+use tracing::{debug, instrument};
 
 const SIG_ECDSA_SHA256: u32 = 0x0201;
 const CHUNK_SIZE: usize = 1 << 20; // 1 MB
 const DIGEST_LEN: usize = 32;
 const MAX_ECDSA_DER_SIGNATURE_LEN: usize = 72;
 
+#[instrument(level = "info", skip(apk, key), fields(apk_size = apk.len()))]
 pub fn sign(apk: &[u8], key: &SigningKey) -> Result<Vec<u8>> {
     let sections = signing_block::split_apk(apk)?;
     let target_len = target_signing_block_len(key)?;
@@ -15,6 +17,7 @@ pub fn sign(apk: &[u8], key: &SigningKey) -> Result<Vec<u8>> {
     let v2_block = build_v2_block_from_sections(&sections, key)?;
     let signing_block =
         signing_block::build_signing_block_with_padding(&[(BLOCK_ID_V2, v2_block)], target_len)?;
+    debug!(target_signing_block_len = target_len, "built APK v2 signing block");
     signing_block::reassemble_apk(
         sections.contents,
         &signing_block,

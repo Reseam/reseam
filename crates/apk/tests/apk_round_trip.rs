@@ -43,7 +43,7 @@ fn test_parse_all_apk_dex_files() {
         assert!(!dex_files.is_empty(), "No DEX files found in {}", apk);
 
         for (name, buf) in &dex_files {
-            let mut dex = stitch_dex::parse(buf, ParseOptions::default())
+            let dex = stitch_dex::parse(buf, ParseOptions::default())
                 .unwrap_or_else(|e| panic!("Failed to parse {} in {}: {}", name, apk, e));
             eprintln!(
                 "  {}: {} strings, {} types, {} methods, {} classes ({} bytes)",

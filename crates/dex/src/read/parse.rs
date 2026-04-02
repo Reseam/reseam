@@ -13,7 +13,9 @@ use crate::types::hidden_api::{ClassHiddenApiFlags, HiddenApiData, HiddenApiFlag
 use crate::types::method_handle::{MethodHandle, MethodHandleMember, MethodHandleType};
 use crate::types::{FieldIdx, MethodIdx};
 use std::sync::Arc;
+use tracing::{debug, instrument};
 
+#[instrument(level = "debug", skip(buf), fields(buffer_len = buf.len(), lazy = opts.lazy))]
 pub fn parse(buf: &[u8], opts: ParseOptions) -> Result<DexFile> {
     parse_single(buf, &opts, None)
 }
@@ -21,6 +23,7 @@ pub fn parse(buf: &[u8], opts: ParseOptions) -> Result<DexFile> {
 /// Parses a v41 container buffer into its constituent logical DEX files.
 ///
 /// For non-container buffers (v40 and earlier), returns a single-element vec.
+#[instrument(level = "debug", skip(buf), fields(buffer_len = buf.len(), lazy = opts.lazy))]
 pub fn parse_container(buf: &[u8], opts: ParseOptions) -> Result<Vec<DexFile>> {
     if buf.len() < 8 {
         let dex = parse_single(buf, &opts, None)?;
@@ -58,6 +61,7 @@ pub fn parse_container(buf: &[u8], opts: ParseOptions) -> Result<Vec<DexFile>> {
         offset += dex_files.last().map_or(0, |d| d.header.file_size as usize);
     }
 
+    debug!(dex_count = dex_files.len(), "parsed DEX container");
     Ok(dex_files)
 }
 
@@ -142,6 +146,14 @@ fn parse_single(buf: &[u8], opts: &ParseOptions, header_off: Option<usize>) -> R
     }
 
     dex.build_lookups();
+    debug!(
+        version = ?dex.header.version,
+        string_count = dex.strings.len(),
+        type_count = dex.types.len(),
+        method_count = dex.methods.len(),
+        class_count = dex.classes.len(),
+        "parsed DEX file"
+    );
     Ok(dex)
 }
 

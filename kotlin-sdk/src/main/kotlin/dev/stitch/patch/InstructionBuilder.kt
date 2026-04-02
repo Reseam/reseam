@@ -176,6 +176,22 @@ class InstructionBuilder {
 
     fun throw_(reg: Int) = add(Instruction.Reg1(Reg1Insn(Opcodes.THROW.toUShort(), reg.toUShort())))
 
+    fun cmplFloat(dest: Int, src1: Int, src2: Int) =
+        add(Instruction.Reg3(Reg3Insn(Opcodes.CMPL_FLOAT.toUShort(), dest.toUShort(), src1.toUShort(), src2.toUShort())))
+    fun cmpgFloat(dest: Int, src1: Int, src2: Int) =
+        add(Instruction.Reg3(Reg3Insn(Opcodes.CMPG_FLOAT.toUShort(), dest.toUShort(), src1.toUShort(), src2.toUShort())))
+    fun cmplDouble(dest: Int, src1: Int, src2: Int) =
+        add(Instruction.Reg3(Reg3Insn(Opcodes.CMPL_DOUBLE.toUShort(), dest.toUShort(), src1.toUShort(), src2.toUShort())))
+    fun cmpgDouble(dest: Int, src1: Int, src2: Int) =
+        add(Instruction.Reg3(Reg3Insn(Opcodes.CMPG_DOUBLE.toUShort(), dest.toUShort(), src1.toUShort(), src2.toUShort())))
+    fun cmpLong(dest: Int, src1: Int, src2: Int) =
+        add(Instruction.Reg3(Reg3Insn(Opcodes.CMP_LONG.toUShort(), dest.toUShort(), src1.toUShort(), src2.toUShort())))
+
+    fun andIntLit16(dest: Int, src: Int, literal: Int) =
+        add(Instruction.RegLiteral(RegLiteralInsn(Opcodes.AND_INT_LIT16.toUShort(), dest.toUShort(), src.toUShort(), literal.toLong())))
+    fun andIntLit8(dest: Int, src: Int, literal: Int) =
+        add(Instruction.RegLiteral(RegLiteralInsn(Opcodes.AND_INT_LIT8.toUShort(), dest.toUShort(), src.toUShort(), literal.toLong())))
+
     fun build(): List<Instruction> {
         val codeUnitOffsets = IntArray(insns.size + 1)
         var cumulative = 0

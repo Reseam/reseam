@@ -1,9 +1,11 @@
 use crate::error::Result;
 use crate::zip::reader::ApkReader;
-use stitch_dex::{DexError, MultiDexContainer, ParseOptions};
+use stitch_dex::{MultiDexContainer, ParseOptions};
 use std::io::{Read, Seek};
+use tracing::{debug, instrument};
 
 /// Extract and parse all DEX files from a single APK reader.
+#[instrument(level = "debug", skip(reader), fields(lazy = opts.lazy))]
 pub fn extract_dex<R: Read + Seek>(
     reader: &mut ApkReader<R>,
     opts: ParseOptions,
@@ -11,6 +13,7 @@ pub fn extract_dex<R: Read + Seek>(
     let dex_entries = reader.read_all_dex()?;
     let buffers: Vec<&[u8]> = dex_entries.iter().map(|(_, buf)| buf.as_slice()).collect();
     let container = MultiDexContainer::parse(&buffers, opts)?;
+    debug!(dex_count = container.len(), "extracted DEX files from APK");
     Ok(container)
 }
 
@@ -18,6 +21,7 @@ pub fn extract_dex<R: Read + Seek>(
 ///
 /// All DEX from all APKs is merged into a single `MultiDexContainer`.
 /// Config splits with no DEX are silently skipped.
+#[instrument(level = "debug", skip(readers), fields(reader_count = readers.len(), lazy = opts.lazy))]
 pub fn extract_dex_unified<R: Read + Seek>(
     readers: &mut [&mut ApkReader<R>],
     opts: ParseOptions,
@@ -33,12 +37,14 @@ pub fn extract_dex_unified<R: Read + Seek>(
 
     let refs: Vec<&[u8]> = all_buffers.iter().map(|b| b.as_slice()).collect();
     let container = MultiDexContainer::parse(&refs, opts)?;
+    debug!(dex_count = container.len(), "extracted unified DEX container");
     Ok(container)
 }
 
 /// Serialize all DEX files in a container to named entries for writing into an APK.
 ///
 /// Returns entries named `classes.dex`, `classes2.dex`, `classes3.dex`, etc.
+#[instrument(level = "debug", skip(container), fields(dex_count = container.len()))]
 pub fn dex_to_entries(container: &mut MultiDexContainer) -> Result<Vec<(String, Vec<u8>)>> {
     let buffers = container.write_all()?;
     let mut entries = Vec::with_capacity(buffers.len());
@@ -56,12 +62,12 @@ pub fn dex_to_entries(container: &mut MultiDexContainer) -> Result<Vec<(String, 
 /// Extracts and parses `classes*.dex` entries from an APK or ZIP byte slice.
 ///
 /// Convenience function for loading DEX from raw APK bytes without constructing an `ApkReader`.
-pub fn from_apk(apk_bytes: &[u8], opts: ParseOptions) -> stitch_dex::Result<MultiDexContainer> {
+#[instrument(level = "debug", skip(apk_bytes), fields(apk_size = apk_bytes.len(), lazy = opts.lazy))]
+pub fn from_apk(apk_bytes: &[u8], opts: ParseOptions) -> Result<MultiDexContainer> {
     use std::io::Cursor;
 
     let reader = Cursor::new(apk_bytes);
-    let mut archive = ::zip::ZipArchive::new(reader)
-        .map_err(|e| DexError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
+    let mut archive = ::zip::ZipArchive::new(reader)?;
 
     let mut dex_names: Vec<String> = (0..archive.len())
         .filter_map(|i| {
@@ -79,11 +85,9 @@ pub fn from_apk(apk_bytes: &[u8], opts: ParseOptions) -> stitch_dex::Result<Mult
 
     let mut dex_files = Vec::with_capacity(dex_names.len());
     for name in &dex_names {
-        let mut entry = archive
-            .by_name(name)
-            .map_err(|e| DexError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, e)))?;
+        let mut entry = archive.by_name(name)?;
         let mut buf = Vec::with_capacity(entry.size() as usize);
-        entry.read_to_end(&mut buf).map_err(DexError::Io)?;
+        entry.read_to_end(&mut buf)?;
         dex_files.push(stitch_dex::parse(&buf, opts.clone())?);
     }
 
@@ -91,14 +95,19 @@ pub fn from_apk(apk_bytes: &[u8], opts: ParseOptions) -> stitch_dex::Result<Mult
     for dex in dex_files {
         container.add_dex(dex);
     }
+    debug!(dex_count = container.len(), "parsed DEX entries from APK bytes");
     Ok(container)
 }
 
+/// Sort key for DEX entry names. Android convention:
+/// `classes.dex` (primary) < `classes2.dex` < `classes3.dex` < ...
 pub(crate) fn dex_sort_key(name: &str) -> u32 {
-    if name == "classes.dex" {
-        return 1;
+    match name {
+        "classes.dex" => 0,
+        _ => name
+            .strip_prefix("classes")
+            .and_then(|s| s.strip_suffix(".dex"))
+            .and_then(|n| n.parse::<u32>().ok())
+            .unwrap_or(u32::MAX),
     }
-    let stripped = name.strip_prefix("classes").unwrap_or("0");
-    let num_str = stripped.strip_suffix(".dex").unwrap_or("0");
-    num_str.parse().unwrap_or(0)
 }

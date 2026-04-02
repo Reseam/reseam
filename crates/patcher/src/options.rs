@@ -76,6 +76,17 @@ impl OptionValue {
             _ => None,
         }
     }
+
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            OptionValue::String(_) => "string",
+            OptionValue::Bool(_) => "bool",
+            OptionValue::Int(_) => "int",
+            OptionValue::Float(_) => "float",
+            OptionValue::StringList(_) => "string list",
+            OptionValue::Path(_) => "path",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -94,6 +105,14 @@ impl PatchOptions {
 
     pub fn get(&self, key: &str) -> Option<&OptionValue> {
         self.values.get(key)
+    }
+
+    pub fn contains_key(&self, key: &str) -> bool {
+        self.values.contains_key(key)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &OptionValue)> {
+        self.values.iter().map(|(k, v)| (k.as_str(), v))
     }
 
     pub fn get_string(&self, key: &str) -> Option<&str> {
@@ -157,4 +176,157 @@ impl PatchOptions {
         }
         Ok(Some(std::fs::read(&full)?))
     }
+}
+
+impl OptionDeclaration {
+    pub fn parse_value(&self, raw: &str) -> Result<OptionValue> {
+        let value = match self.option_type {
+            OptionType::String => OptionValue::String(raw.to_string()),
+            OptionType::Bool => OptionValue::Bool(raw.parse::<bool>().map_err(|_| {
+                PatcherError::InvalidOptionValue {
+                    patch: String::new(),
+                    key: self.key.clone(),
+                    reason: format!("expected bool, got '{raw}'"),
+                }
+            })?),
+            OptionType::Int => OptionValue::Int(raw.parse::<i64>().map_err(|_| {
+                PatcherError::InvalidOptionValue {
+                    patch: String::new(),
+                    key: self.key.clone(),
+                    reason: format!("expected int, got '{raw}'"),
+                }
+            })?),
+            OptionType::Float => OptionValue::Float(raw.parse::<f64>().map_err(|_| {
+                PatcherError::InvalidOptionValue {
+                    patch: String::new(),
+                    key: self.key.clone(),
+                    reason: format!("expected float, got '{raw}'"),
+                }
+            })?),
+            OptionType::StringList => OptionValue::StringList(
+                raw.split(',')
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.trim().to_string())
+                    .collect(),
+            ),
+            OptionType::Path => OptionValue::Path(PathBuf::from(raw)),
+        };
+        self.validate_value(&value)?;
+        Ok(value)
+    }
+
+    pub fn validate_value(&self, value: &OptionValue) -> Result<()> {
+        let type_matches = matches!(
+            (&self.option_type, value),
+            (OptionType::String, OptionValue::String(_))
+                | (OptionType::Bool, OptionValue::Bool(_))
+                | (OptionType::Int, OptionValue::Int(_))
+                | (OptionType::Float, OptionValue::Float(_))
+                | (OptionType::StringList, OptionValue::StringList(_))
+                | (OptionType::Path, OptionValue::Path(_))
+        );
+
+        if !type_matches {
+            return Err(PatcherError::InvalidOptionValue {
+                patch: String::new(),
+                key: self.key.clone(),
+                reason: format!(
+                    "expected {:?}, got {}",
+                    self.option_type,
+                    value.type_name()
+                ),
+            });
+        }
+
+        if let Some(valid_values) = &self.valid_values {
+            let values_to_check: Vec<&str> = match value {
+                OptionValue::String(v) => vec![v.as_str()],
+                OptionValue::StringList(v) => v.iter().map(String::as_str).collect(),
+                _ => Vec::new(),
+            };
+
+            if !values_to_check.is_empty() {
+                for candidate in values_to_check {
+                    if !valid_values.iter().any(|allowed| allowed == candidate) {
+                        return Err(PatcherError::InvalidOptionValue {
+                            patch: String::new(),
+                            key: self.key.clone(),
+                            reason: format!("'{candidate}' is not in [{}]", valid_values.join(", ")),
+                        });
+                    }
+                }
+            }
+        }
+
+        if let OptionValue::Path(path) = value {
+            if !path.exists() {
+                return Err(PatcherError::InvalidOptionValue {
+                    patch: String::new(),
+                    key: self.key.clone(),
+                    reason: format!("path does not exist: {}", path.display()),
+                });
+            }
+        }
+
+        Ok(())
+    }
+}
+
+pub fn validate_patch_options(
+    patch_name: &str,
+    declarations: &[OptionDeclaration],
+    provided: Option<&PatchOptions>,
+) -> Result<PatchOptions> {
+    let mut resolved = PatchOptions::new();
+    let provided = provided.cloned().unwrap_or_default();
+
+    for (key, _) in provided.iter() {
+        if !declarations.iter().any(|decl| decl.key == key) {
+            return Err(PatcherError::UnknownOption {
+                patch: patch_name.to_string(),
+                key: key.to_string(),
+            });
+        }
+    }
+
+    for decl in declarations {
+        if let Some(value) = provided.get(&decl.key) {
+            decl.validate_value(value).map_err(|err| match err {
+                PatcherError::InvalidOptionValue { reason, .. } => {
+                    PatcherError::InvalidOptionValue {
+                        patch: patch_name.to_string(),
+                        key: decl.key.clone(),
+                        reason,
+                    }
+                }
+                other => other,
+            })?;
+            resolved.set(decl.key.clone(), value.clone());
+            continue;
+        }
+
+        if let Some(default_value) = &decl.default_value {
+            decl.validate_value(default_value).map_err(|err| match err {
+                PatcherError::InvalidOptionValue { reason, .. } => {
+                    PatcherError::InvalidOptionValue {
+                        patch: patch_name.to_string(),
+                        key: decl.key.clone(),
+                        reason,
+                    }
+                }
+                other => other,
+            })?;
+            resolved.set(decl.key.clone(), default_value.clone());
+            continue;
+        }
+
+        if decl.required {
+            return Err(PatcherError::MissingRequiredOption {
+                patch: patch_name.to_string(),
+                key: decl.key.clone(),
+            });
+        }
+    }
+
+    Ok(resolved)
 }
