@@ -1,16 +1,31 @@
 use crate::axml::reader::{AxmlAttribute, AxmlDocument, AxmlEvent, TypedValue};
 use crate::axml::string_pool::StringPool;
 use crate::error::{invalid, Result};
+use crate::resources::ResourceTable;
 
 const ANDROID_NS: &str = "http://schemas.android.com/apk/res/android";
 const APP_NS: &str = "http://schemas.android.com/apk/res-auto";
 
 pub fn compile_xml(text: &str) -> Result<Vec<u8>> {
-    let doc = build_axml_document(text)?;
+    compile_xml_with_resources(text, None)
+}
+
+pub fn compile_xml_with_resources(
+    text: &str,
+    resources: Option<&mut ResourceTable>,
+) -> Result<Vec<u8>> {
+    let doc = build_axml_document_with_resources(text, resources)?;
     doc.serialize()
 }
 
 pub fn build_axml_document(text: &str) -> Result<AxmlDocument> {
+    build_axml_document_with_resources(text, None)
+}
+
+pub fn build_axml_document_with_resources(
+    text: &str,
+    mut resources: Option<&mut ResourceTable>,
+) -> Result<AxmlDocument> {
     let mut pool = StringPool {
         strings: Vec::new(),
         is_utf8: true,
@@ -29,9 +44,16 @@ pub fn build_axml_document(text: &str) -> Result<AxmlDocument> {
                 Ok(quick_xml::events::Event::Eof) => break,
                 Ok(quick_xml::events::Event::Start(ref e))
                 | Ok(quick_xml::events::Event::Empty(ref e)) => {
-                    for attr in e.attributes().flatten() {
-                        let key = std::str::from_utf8(attr.key.as_ref())
-                            .map_err(|e| invalid("axml compiler", format!("invalid UTF-8 in attribute key: {e}")))?;
+                    for attr in e.attributes() {
+                        let attr = attr.map_err(|e| {
+                            invalid("axml compiler", format!("invalid XML attribute: {e}"))
+                        })?;
+                        let key = std::str::from_utf8(attr.key.as_ref()).map_err(|e| {
+                            invalid(
+                                "axml compiler",
+                                format!("invalid UTF-8 in attribute key: {e}"),
+                            )
+                        })?;
                         if let Some(local) = key.strip_prefix("android:") {
                             if let Some(res_id) = android_attr_res_id(local) {
                                 if !attr_names_with_res_id.iter().any(|(n, _)| n == local) {
@@ -75,7 +97,8 @@ pub fn build_axml_document(text: &str) -> Result<AxmlDocument> {
                     &mut events,
                     &mut ns_emitted,
                     false,
-                );
+                    resources.as_deref_mut(),
+                )?;
             }
             Ok(quick_xml::events::Event::Empty(ref e)) => {
                 emit_start_element(
@@ -85,7 +108,8 @@ pub fn build_axml_document(text: &str) -> Result<AxmlDocument> {
                     &mut events,
                     &mut ns_emitted,
                     true,
-                );
+                    resources.as_deref_mut(),
+                )?;
             }
             Ok(quick_xml::events::Event::End(ref e)) => {
                 let name_bytes = e.name();
@@ -136,13 +160,24 @@ fn emit_start_element(
     events: &mut Vec<AxmlEvent>,
     ns_emitted: &mut bool,
     is_empty: bool,
-) {
+    mut resources: Option<&mut ResourceTable>,
+) -> Result<()> {
     // Emit namespace declarations on first element
     if !*ns_emitted {
-        let has_android_ns = e.attributes().flatten().any(|a| {
-            let key = std::str::from_utf8(a.key.as_ref()).unwrap_or("");
-            key == "xmlns:android" || key.starts_with("android:")
-        });
+        let mut has_android_ns = false;
+        let mut has_app_ns = false;
+        for attr in e.attributes() {
+            let attr =
+                attr.map_err(|e| invalid("axml compiler", format!("invalid XML attribute: {e}")))?;
+            let key = std::str::from_utf8(attr.key.as_ref()).map_err(|e| {
+                invalid(
+                    "axml compiler",
+                    format!("invalid UTF-8 in attribute key: {e}"),
+                )
+            })?;
+            has_android_ns |= key == "xmlns:android" || key.starts_with("android:");
+            has_app_ns |= key == "xmlns:app" || key.starts_with("app:");
+        }
         if has_android_ns {
             let prefix_idx = pool.intern("android");
             let uri_idx = pool.intern(ANDROID_NS);
@@ -151,10 +186,6 @@ fn emit_start_element(
                 uri: uri_idx,
             });
         }
-        let has_app_ns = e.attributes().flatten().any(|a| {
-            let key = std::str::from_utf8(a.key.as_ref()).unwrap_or("");
-            key == "xmlns:app" || key.starts_with("app:")
-        });
         if has_app_ns {
             let app_prefix = pool.intern("app");
             let app_uri = pool.intern(APP_NS);
@@ -172,14 +203,24 @@ fn emit_start_element(
     let name_idx = pool.intern(local);
 
     let mut attributes = Vec::new();
-    for attr in e.attributes().flatten() {
-        let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
+    for attr in e.attributes() {
+        let attr =
+            attr.map_err(|e| invalid("axml compiler", format!("invalid XML attribute: {e}")))?;
+        let key = std::str::from_utf8(attr.key.as_ref()).map_err(|e| {
+            invalid(
+                "axml compiler",
+                format!("invalid UTF-8 in attribute key: {e}"),
+            )
+        })?;
         // Skip xmlns declarations — handled as namespace events
         if key.starts_with("xmlns:") || key == "xmlns" {
             continue;
         }
 
-        let value = attr.unescape_value().map(|v| v.to_string()).unwrap_or_default();
+        let value = attr
+            .unescape_value()
+            .map_err(|e| invalid("axml compiler", format!("invalid XML attribute value: {e}")))?
+            .to_string();
         let (namespace, attr_local) = if let Some(local) = key.strip_prefix("android:") {
             let uri_idx = pool.intern(ANDROID_NS);
             (Some(uri_idx), local)
@@ -191,7 +232,7 @@ fn emit_start_element(
         };
 
         let attr_name_idx = pool.intern(attr_local);
-        let (typed_value, raw_value) = parse_attr_value(&value, pool);
+        let (typed_value, raw_value) = parse_attr_value(&value, pool, resources.as_deref_mut());
 
         attributes.push(AxmlAttribute {
             namespace,
@@ -228,10 +269,15 @@ fn emit_start_element(
             name: name_idx,
         });
     }
+
+    Ok(())
 }
 
-fn parse_attr_value(value: &str, pool: &mut StringPool) -> (TypedValue, Option<u32>) {
-    // Boolean
+fn parse_attr_value(
+    value: &str,
+    pool: &mut StringPool,
+    mut resources: Option<&mut ResourceTable>,
+) -> (TypedValue, Option<u32>) {
     if value == "true" {
         return (TypedValue::Bool(true), None);
     }
@@ -239,7 +285,6 @@ fn parse_attr_value(value: &str, pool: &mut StringPool) -> (TypedValue, Option<u
         return (TypedValue::Bool(false), None);
     }
 
-    // Special layout constants
     if value == "match_parent" || value == "fill_parent" {
         return (TypedValue::Int(-1), None);
     }
@@ -247,47 +292,113 @@ fn parse_attr_value(value: &str, pool: &mut StringPool) -> (TypedValue, Option<u
         return (TypedValue::Int(-2), None);
     }
 
-    // Null reference
     if value == "@null" || value == "@empty" {
         return (TypedValue::Reference(0), None);
     }
 
-    // Color: #RGB, #ARGB, #RRGGBB, #AARRGGBB
     if let Some(color) = parse_color(value) {
-        return (TypedValue::Other { data_type: color.0, data: color.1 }, None);
+        return (
+            TypedValue::Other {
+                data_type: color.0,
+                data: color.1,
+            },
+            None,
+        );
     }
 
-    // Dimension: 24dp, 16sp, 10px, etc.
     if let Some(dim) = parse_dimension(value) {
-        return (TypedValue::Other { data_type: 0x05, data: dim }, None);
+        return (
+            TypedValue::Other {
+                data_type: 0x05,
+                data: dim,
+            },
+            None,
+        );
     }
 
-    // Hex integer: 0x...
     if let Some(hex) = value.strip_prefix("0x") {
         if let Ok(v) = u32::from_str_radix(hex, 16) {
             return (TypedValue::Hex(v), None);
         }
     }
 
-    // Integer (must check after dimension)
     if let Ok(v) = value.parse::<i32>() {
         return (TypedValue::Int(v), None);
     }
 
-    // Float
     if let Ok(v) = value.parse::<f32>() {
-        return (TypedValue::Other { data_type: 0x04, data: v.to_bits() }, None);
+        return (
+            TypedValue::Other {
+                data_type: 0x04,
+                data: v.to_bits(),
+            },
+            None,
+        );
     }
 
-    // Resource reference: @type/name → stored as string for now
-    // (resolution requires resources.arsc context, handled at injection time)
+    if let Some(rest) = value.strip_prefix('?') {
+        if let Some(attr_id) = resolve_attribute_ref(rest, resources.as_deref()) {
+            return (
+                TypedValue::Other {
+                    data_type: 0x02,
+                    data: attr_id,
+                },
+                None,
+            );
+        }
+    }
 
-    // Default: string
+    if let Some(rest) = value.strip_prefix('@') {
+        if let Some(id) = resolve_resource_ref(rest, resources.as_deref_mut()) {
+            return (TypedValue::Reference(id), None);
+        }
+    }
+
     let idx = pool.intern(value);
     (TypedValue::String(idx), Some(idx))
 }
 
-fn parse_color(s: &str) -> Option<(u8, u32)> {
+fn resolve_resource_ref(s: &str, resources: Option<&mut ResourceTable>) -> Option<u32> {
+    let (namespace, type_name, entry_name, create_id) = parse_resource_ref(s)?;
+    match namespace {
+        Some("android") if type_name == "attr" => android_attr_res_id(entry_name),
+        Some(_) => None,
+        None => {
+            let res = resources?;
+            if create_id && type_name == "id" {
+                res.ensure_id(entry_name)
+            } else {
+                res.find_resource_id(type_name, entry_name)
+            }
+        }
+    }
+}
+
+fn resolve_attribute_ref(s: &str, resources: Option<&ResourceTable>) -> Option<u32> {
+    if let Some(name) = s.strip_prefix("android:attr/") {
+        return android_attr_res_id(name);
+    }
+    let name = s.strip_prefix("attr/").unwrap_or(s);
+    resources?.find_resource_id("attr", name)
+}
+
+fn parse_resource_ref(s: &str) -> Option<(Option<&str>, &str, &str, bool)> {
+    let create_id = s.starts_with("+id/");
+    let s = s.strip_prefix('+').unwrap_or(s);
+    let slash = s.find('/')?;
+    let (type_part, entry_name) = (&s[..slash], &s[slash + 1..]);
+    let (namespace, type_name) = if let Some(colon) = type_part.find(':') {
+        (Some(&type_part[..colon]), &type_part[colon + 1..])
+    } else {
+        (None, type_part)
+    };
+    if type_name.is_empty() || entry_name.is_empty() {
+        return None;
+    }
+    Some((namespace, type_name, entry_name, create_id))
+}
+
+pub fn parse_color(s: &str) -> Option<(u8, u32)> {
     let hex = s.strip_prefix('#')?;
     match hex.len() {
         // #RGB → #FFRRGGBB
@@ -295,7 +406,10 @@ fn parse_color(s: &str) -> Option<(u8, u32)> {
             let r = u8::from_str_radix(&hex[0..1], 16).ok()?;
             let g = u8::from_str_radix(&hex[1..2], 16).ok()?;
             let b = u8::from_str_radix(&hex[2..3], 16).ok()?;
-            let color = 0xFF000000 | ((r as u32 * 0x11) << 16) | ((g as u32 * 0x11) << 8) | (b as u32 * 0x11);
+            let color = 0xFF000000
+                | ((r as u32 * 0x11) << 16)
+                | ((g as u32 * 0x11) << 8)
+                | (b as u32 * 0x11);
             Some((0x1d, color)) // TYPE_INT_COLOR_RGB8
         }
         // #ARGB → #AARRGGBB
@@ -304,7 +418,10 @@ fn parse_color(s: &str) -> Option<(u8, u32)> {
             let r = u8::from_str_radix(&hex[1..2], 16).ok()?;
             let g = u8::from_str_radix(&hex[2..3], 16).ok()?;
             let b = u8::from_str_radix(&hex[3..4], 16).ok()?;
-            let color = ((a as u32 * 0x11) << 24) | ((r as u32 * 0x11) << 16) | ((g as u32 * 0x11) << 8) | (b as u32 * 0x11);
+            let color = ((a as u32 * 0x11) << 24)
+                | ((r as u32 * 0x11) << 16)
+                | ((g as u32 * 0x11) << 8)
+                | (b as u32 * 0x11);
             Some((0x1c, color)) // TYPE_INT_COLOR_ARGB8
         }
         // #RRGGBB
@@ -321,7 +438,7 @@ fn parse_color(s: &str) -> Option<(u8, u32)> {
     }
 }
 
-fn parse_dimension(s: &str) -> Option<u32> {
+pub fn parse_dimension(s: &str) -> Option<u32> {
     let (num_str, unit) = if let Some(n) = s.strip_suffix("dp") {
         (n, 1u32) // COMPLEX_UNIT_DIP
     } else if let Some(n) = s.strip_suffix("dip") {
@@ -364,7 +481,7 @@ fn parse_dimension(s: &str) -> Option<u32> {
 }
 
 /// Map common android:* attribute names to their framework resource IDs.
-fn android_attr_res_id(name: &str) -> Option<u32> {
+pub fn android_attr_res_id(name: &str) -> Option<u32> {
     Some(match name {
         "theme" => 0x0101_0000,
         "label" => 0x0101_0001,

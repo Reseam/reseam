@@ -1,7 +1,7 @@
 //! DEX serialization entrypoints and helpers.
 
-use crate::error::Result;
 use self::orchestration::DexWriterWriteExt;
+use crate::error::Result;
 use crate::file::DexFile;
 use crate::types::encoded_value::EncodedValue;
 use crate::types::map::*;
@@ -22,7 +22,10 @@ pub(crate) mod sort;
 
 pub(crate) fn methods_with_code(
     dex: &DexFile,
-) -> Vec<(&crate::types::class::EncodedMethod, &crate::types::code::CodeItem)> {
+) -> Vec<(
+    &crate::types::class::EncodedMethod,
+    &crate::types::code::CodeItem,
+)> {
     dex.classes
         .iter()
         .filter_map(|c| c.class_data.as_ref())
@@ -125,7 +128,9 @@ pub fn write_container(dex_files: &mut [DexFile]) -> Result<Vec<u8>> {
             .buf
             .get(start..start + 4)
             .and_then(|s| s.try_into().ok())
-            .ok_or_else(|| crate::error::malformed("container", start, "file size field truncated"))?;
+            .ok_or_else(|| {
+                crate::error::malformed("container", start, "file size field truncated")
+            })?;
         let file_size_field = u32::from_le_bytes(bytes);
         offset += file_size_field;
         let padding = (4 - (offset % 4)) % 4;

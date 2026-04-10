@@ -14,7 +14,7 @@ fi
 
 if [ ! -f "$JNI_SRC" ]; then
     echo "error: JNI glue not found at $JNI_SRC" >&2
-    echo "Run 'cd crates/patcher && boltffi generate header -o ../../kotlin-sdk/generated/jni' first" >&2
+    echo "Run './kotlin-sdk/regenerate.sh' first" >&2
     exit 1
 fi
 

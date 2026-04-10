@@ -28,6 +28,15 @@ pub fn option_get_string_list(key: String) -> Option<Vec<String>> {
 }
 
 #[export]
+pub fn option_get_path(key: String) -> Option<String> {
+    with_ctx(|ctx| {
+        ctx.options()
+            .get_path(&key)
+            .map(|path| path.to_string_lossy().into_owned())
+    })
+}
+
+#[export]
 pub fn option_list_path_contents(key: String) -> Option<Vec<String>> {
     with_ctx(|ctx| ctx.options().list_path_contents(&key).ok().flatten())
 }

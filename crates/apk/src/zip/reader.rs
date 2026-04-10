@@ -1,5 +1,5 @@
-use crate::error::Result;
 use crate::dex::dex_sort_key;
+use crate::error::Result;
 use std::io::{Read, Seek};
 
 /// Wrapper around ZipArchive providing APK-oriented access.
@@ -38,7 +38,7 @@ impl<R: Read + Seek> ApkReader<R> {
     /// Read a single entry's decompressed contents by name.
     pub fn read_entry(&mut self, name: &str) -> Result<Vec<u8>> {
         let mut entry = self.archive.by_name(name)?;
-        let mut buf = Vec::with_capacity(entry.size() as usize);
+        let mut buf = Vec::new();
         std::io::Read::read_to_end(&mut entry, &mut buf)?;
         Ok(buf)
     }

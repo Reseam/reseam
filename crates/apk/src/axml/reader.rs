@@ -1,8 +1,8 @@
 use crate::axml::string_pool::StringPool;
 use crate::axml::{
-    CHUNK_XML_DOCUMENT, CHUNK_STRING_POOL, CHUNK_RESOURCE_IDS,
-    CHUNK_START_NAMESPACE, CHUNK_END_NAMESPACE, CHUNK_START_ELEMENT, CHUNK_END_ELEMENT,
-    TYPE_STRING, TYPE_INT_DEC, TYPE_INT_HEX, TYPE_INT_BOOLEAN, TYPE_REFERENCE,
+    CHUNK_END_ELEMENT, CHUNK_END_NAMESPACE, CHUNK_RESOURCE_IDS, CHUNK_START_ELEMENT,
+    CHUNK_START_NAMESPACE, CHUNK_STRING_POOL, CHUNK_XML_DOCUMENT, TYPE_INT_BOOLEAN, TYPE_INT_DEC,
+    TYPE_INT_HEX, TYPE_REFERENCE, TYPE_STRING,
 };
 use crate::buf::{read_u16_le, read_u32_le, read_u8, require_len};
 use crate::error::{invalid, malformed, Result};
@@ -281,7 +281,7 @@ impl AxmlDocument {
 
     fn attr_as_int(&self, attr: &AxmlAttribute) -> Option<u32> {
         match attr.typed_value {
-            TypedValue::Int(v) => Some(v as u32),
+            TypedValue::Int(v) if v >= 0 => Some(v as u32),
             TypedValue::Hex(v) => Some(v),
             _ => None,
         }
@@ -321,16 +321,13 @@ impl AxmlDocument {
     pub fn add_permission(&mut self, permission: &str) {
         let name_idx = self.string_pool.intern("uses-permission");
         let attr_name_idx = self.string_pool.intern("name");
-        let android_ns_idx = self
-            .elements
-            .iter()
-            .find_map(|e| {
-                if let AxmlEvent::StartNamespace { uri, .. } = e {
-                    Some(*uri)
-                } else {
-                    None
-                }
-            });
+        let android_ns_idx = self.elements.iter().find_map(|e| {
+            if let AxmlEvent::StartNamespace { uri, .. } = e {
+                Some(*uri)
+            } else {
+                None
+            }
+        });
 
         let perm_str_idx = self.string_pool.intern(permission);
 
@@ -470,8 +467,7 @@ impl AxmlDocument {
     }
 
     pub fn set_element_attribute_int(&mut self, element_idx: usize, res_id: u32, value: i32) {
-        if let Some(AxmlEvent::StartElement { attributes, .. }) =
-            self.elements.get_mut(element_idx)
+        if let Some(AxmlEvent::StartElement { attributes, .. }) = self.elements.get_mut(element_idx)
         {
             for attr in attributes.iter_mut() {
                 if self.resource_ids.get(attr.name as usize) == Some(&res_id) {
@@ -483,8 +479,7 @@ impl AxmlDocument {
     }
 
     pub fn set_element_attribute_bool(&mut self, element_idx: usize, res_id: u32, value: bool) {
-        if let Some(AxmlEvent::StartElement { attributes, .. }) =
-            self.elements.get_mut(element_idx)
+        if let Some(AxmlEvent::StartElement { attributes, .. }) = self.elements.get_mut(element_idx)
         {
             for attr in attributes.iter_mut() {
                 if self.resource_ids.get(attr.name as usize) == Some(&res_id) {
@@ -504,8 +499,7 @@ impl AxmlDocument {
     ) {
         let name_idx = self.string_pool.intern(attr_name);
         let ns = self.android_ns();
-        if let Some(AxmlEvent::StartElement { attributes, .. }) =
-            self.elements.get_mut(element_idx)
+        if let Some(AxmlEvent::StartElement { attributes, .. }) = self.elements.get_mut(element_idx)
         {
             attributes.push(AxmlAttribute {
                 namespace: ns,
@@ -532,8 +526,7 @@ impl AxmlDocument {
         let name_idx = self.string_pool.intern(attr_name);
         let value_idx = self.string_pool.intern(value);
         let ns = self.android_ns();
-        if let Some(AxmlEvent::StartElement { attributes, .. }) =
-            self.elements.get_mut(element_idx)
+        if let Some(AxmlEvent::StartElement { attributes, .. }) = self.elements.get_mut(element_idx)
         {
             attributes.push(AxmlAttribute {
                 namespace: ns,
@@ -558,8 +551,7 @@ impl AxmlDocument {
     ) {
         let name_idx = self.string_pool.intern(attr_name);
         let ns = self.android_ns();
-        if let Some(AxmlEvent::StartElement { attributes, .. }) =
-            self.elements.get_mut(element_idx)
+        if let Some(AxmlEvent::StartElement { attributes, .. }) = self.elements.get_mut(element_idx)
         {
             attributes.push(AxmlAttribute {
                 namespace: ns,
@@ -576,6 +568,9 @@ impl AxmlDocument {
     }
 
     pub fn find_end_element(&self, start_idx: usize) -> Option<usize> {
+        if start_idx >= self.elements.len() {
+            return None;
+        }
         let (target_ns, target_name) = match &self.elements[start_idx] {
             AxmlEvent::StartElement {
                 namespace, name, ..
@@ -662,7 +657,12 @@ impl AxmlDocument {
         }
     }
 
-    pub fn make_attribute(&mut self, attr_name: &str, res_id: u32, value: TypedValue) -> AxmlAttribute {
+    pub fn make_attribute(
+        &mut self,
+        attr_name: &str,
+        res_id: u32,
+        value: TypedValue,
+    ) -> AxmlAttribute {
         let name_idx = self.string_pool.intern(attr_name);
         let ns = self.android_ns();
         let raw_value = match &value {
@@ -682,16 +682,31 @@ impl AxmlDocument {
         }
     }
 
-    pub fn make_string_attribute(&mut self, attr_name: &str, res_id: u32, value: &str) -> AxmlAttribute {
+    pub fn make_string_attribute(
+        &mut self,
+        attr_name: &str,
+        res_id: u32,
+        value: &str,
+    ) -> AxmlAttribute {
         let value_idx = self.string_pool.intern(value);
         self.make_attribute(attr_name, res_id, TypedValue::String(value_idx))
     }
 
-    pub fn make_int_attribute(&mut self, attr_name: &str, res_id: u32, value: i32) -> AxmlAttribute {
+    pub fn make_int_attribute(
+        &mut self,
+        attr_name: &str,
+        res_id: u32,
+        value: i32,
+    ) -> AxmlAttribute {
         self.make_attribute(attr_name, res_id, TypedValue::Int(value))
     }
 
-    pub fn make_bool_attribute(&mut self, attr_name: &str, res_id: u32, value: bool) -> AxmlAttribute {
+    pub fn make_bool_attribute(
+        &mut self,
+        attr_name: &str,
+        res_id: u32,
+        value: bool,
+    ) -> AxmlAttribute {
         self.make_attribute(attr_name, res_id, TypedValue::Bool(value))
     }
 

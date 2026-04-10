@@ -6,7 +6,10 @@ use crate::error::Result;
 /// Writes code items, deduplicated debug info, and code-item backpatches.
 pub(crate) fn write_code_items(
     w: &mut DexWriter,
-    methods: &[(&crate::types::class::EncodedMethod, &crate::types::code::CodeItem)],
+    methods: &[(
+        &crate::types::class::EncodedMethod,
+        &crate::types::code::CodeItem,
+    )],
 ) -> Result<()> {
     let code_start = w.pos();
     w.code_item_offsets.clear();

@@ -1,9 +1,9 @@
 use crate::axml::reader::{AxmlAttribute, AxmlDocument, AxmlEvent, TypedValue};
 use crate::axml::string_pool::StringPool;
 use crate::axml::{
-    CHUNK_XML_DOCUMENT, CHUNK_STRING_POOL, CHUNK_RESOURCE_IDS,
-    CHUNK_START_NAMESPACE, CHUNK_END_NAMESPACE, CHUNK_START_ELEMENT, CHUNK_END_ELEMENT,
-    TYPE_STRING, TYPE_INT_DEC, TYPE_INT_HEX, TYPE_INT_BOOLEAN, TYPE_REFERENCE,
+    CHUNK_END_ELEMENT, CHUNK_END_NAMESPACE, CHUNK_RESOURCE_IDS, CHUNK_START_ELEMENT,
+    CHUNK_START_NAMESPACE, CHUNK_STRING_POOL, CHUNK_XML_DOCUMENT, TYPE_INT_BOOLEAN, TYPE_INT_DEC,
+    TYPE_INT_HEX, TYPE_REFERENCE, TYPE_STRING,
 };
 use crate::error::Result;
 
@@ -198,4 +198,4 @@ fn encode_typed_value(tv: &TypedValue) -> (u8, u32) {
 }
 
 use crate::buf::{write_u16, write_u32};
-use crate::string_encoding::{encode_utf8, encode_utf16};
+use crate::string_encoding::{encode_utf16, encode_utf8};

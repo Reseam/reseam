@@ -88,7 +88,10 @@ impl GeneratedKey {
             .map_err(|e| invalid("signing key", format!("pkcs8 decoding failed: {e}")))?;
             build_self_signed_cert(&key_pair, key_pair.public_key().as_ref(), &rng)?
         })?;
-        Ok(Self { signing_key, pkcs8_der })
+        Ok(Self {
+            signing_key,
+            pkcs8_der,
+        })
     }
 
     #[instrument(level = "info", skip(self), fields(key_path = %key_path.display(), cert_path = %cert_path.display()))]

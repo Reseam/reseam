@@ -133,17 +133,20 @@ impl DexWriterWriteExt for DexWriter {
                 self.write_u16(mh.handle_type.to_u16());
                 self.write_u16(0);
                 let member_id = match &mh.member {
-                    crate::types::method_handle::MethodHandleMember::Field(f) => {
-                        u16::try_from(f.0).map_err(|_| crate::error::invalid(
-                            "method_handle_item",
-                            format!("field index {} exceeds u16 limit", f.0),
-                        ))?
-                    }
+                    crate::types::method_handle::MethodHandleMember::Field(f) => u16::try_from(f.0)
+                        .map_err(|_| {
+                            crate::error::invalid(
+                                "method_handle_item",
+                                format!("field index {} exceeds u16 limit", f.0),
+                            )
+                        })?,
                     crate::types::method_handle::MethodHandleMember::Method(m) => {
-                        u16::try_from(m.0).map_err(|_| crate::error::invalid(
-                            "method_handle_item",
-                            format!("method index {} exceeds u16 limit", m.0),
-                        ))?
+                        u16::try_from(m.0).map_err(|_| {
+                            crate::error::invalid(
+                                "method_handle_item",
+                                format!("method index {} exceeds u16 limit", m.0),
+                            )
+                        })?
                     }
                 };
                 self.write_u16(member_id);

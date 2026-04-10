@@ -67,7 +67,7 @@ impl<W: Write + Seek> ApkWriter<W> {
             } else if needs_stored_alignment(&name) {
                 // resources.arsc must be stored uncompressed + aligned (Android API 30+)
                 let mut entry = source.by_index(i)?;
-                let mut data = Vec::with_capacity(entry.size() as usize);
+                let mut data = Vec::new();
                 std::io::copy(&mut entry, &mut data)?;
                 drop(entry);
                 self.write_entry(&name, &data, zip::CompressionMethod::Stored)?;

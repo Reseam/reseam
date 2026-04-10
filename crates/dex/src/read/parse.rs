@@ -226,12 +226,13 @@ fn read_call_sites(buf: &[u8], call_site_off: Option<(u32, u32)>, dex: &mut DexF
 
             let extra_arguments = values[3..].to_vec();
 
-            dex.call_sites.push(crate::types::method_handle::CallSiteItem {
-                bootstrap_method,
-                method_name,
-                method_type,
-                extra_arguments,
-            });
+            dex.call_sites
+                .push(crate::types::method_handle::CallSiteItem {
+                    bootstrap_method,
+                    method_name,
+                    method_type,
+                    extra_arguments,
+                });
         }
     }
     Ok(())
@@ -292,6 +293,7 @@ fn read_hidden_api(buf: &[u8], off: usize, dex: &DexFile) -> Result<HiddenApiDat
 
 #[cfg(test)]
 mod tests {
+    use crate::file::DexFile;
     use crate::types::access_flags::AccessFlags;
     use crate::types::class::{ClassData, ClassDef, EncodedField};
     use crate::types::encoded_value::EncodedValue;
@@ -301,7 +303,6 @@ mod tests {
     use crate::types::TypeIdx;
     use crate::write::encoded_value::write_encoded_array;
     use crate::DexError;
-    use crate::file::DexFile;
 
     use super::*;
 

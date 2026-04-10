@@ -7,3 +7,7 @@ temp
 kotlin-sdk/build/
 kotlin-sdk/.gradle/
 kotlin-sdk/generated/
+kotlin-sdk/dev/
+tests/kotlin-runtime-bundle/build
+tests/kotlin-runtime-bundle/.gradle
+.codex

@@ -17,7 +17,10 @@ pub fn sign(apk: &[u8], key: &SigningKey) -> Result<Vec<u8>> {
     let v2_block = build_v2_block_from_sections(&sections, key)?;
     let signing_block =
         signing_block::build_signing_block_with_padding(&[(BLOCK_ID_V2, v2_block)], target_len)?;
-    debug!(target_signing_block_len = target_len, "built APK v2 signing block");
+    debug!(
+        target_signing_block_len = target_len,
+        "built APK v2 signing block"
+    );
     signing_block::reassemble_apk(
         sections.contents,
         &signing_block,
@@ -184,7 +187,10 @@ fn build_signer(signed_data: &[u8], signature: &[u8], key: &SigningKey) -> Vec<u
 }
 
 fn write_lp(out: &mut Vec<u8>, data: &[u8]) {
-    debug_assert!(data.len() <= u32::MAX as usize, "write_lp: data exceeds u32::MAX");
+    debug_assert!(
+        data.len() <= u32::MAX as usize,
+        "write_lp: data exceeds u32::MAX"
+    );
     out.extend_from_slice(&(data.len() as u32).to_le_bytes());
     out.extend_from_slice(data);
 }

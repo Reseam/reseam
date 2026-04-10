@@ -1,5 +1,5 @@
-use super::DexWriter;
 use super::encoded_value::write_encoded_value;
+use super::DexWriter;
 use crate::encoding::leb128::write_uleb128;
 use std::collections::HashMap;
 
@@ -21,10 +21,7 @@ struct PendingClassAnnData {
 }
 
 /// Writes annotation items, sets, ref-lists, and directories.
-pub(crate) fn write_annotations(
-    w: &mut DexWriter,
-    dex: &crate::file::DexFile,
-) -> ClassAnnotations {
+pub(crate) fn write_annotations(w: &mut DexWriter, dex: &crate::file::DexFile) -> ClassAnnotations {
     let mut annotation_item_cache: HashMap<Vec<u8>, usize> = HashMap::new();
     let mut annotation_items: Vec<Vec<u8>> = Vec::new();
     let mut annotation_set_cache: HashMap<Vec<usize>, usize> = HashMap::new();
@@ -395,7 +392,9 @@ mod tests {
             .map_entries
             .iter()
             .find(|entry| entry.type_code == TYPE_ANNOTATION_ITEM)
-            .ok_or_else(|| crate::error::malformed("map", 0, "annotation item map entry missing"))?;
+            .ok_or_else(|| {
+                crate::error::malformed("map", 0, "annotation item map entry missing")
+            })?;
         let ann_set_map = writer
             .map_entries
             .iter()
@@ -405,14 +404,18 @@ mod tests {
             .map_entries
             .iter()
             .find(|entry| entry.type_code == TYPE_ANNOTATIONS_DIRECTORY_ITEM)
-            .ok_or_else(|| crate::error::malformed("map", 0, "annotation directory map entry missing"))?;
+            .ok_or_else(|| {
+                crate::error::malformed("map", 0, "annotation directory map entry missing")
+            })?;
 
         let mut item_offsets = Vec::new();
         let mut set_offsets = Vec::new();
         let mut dir_offsets = Vec::new();
 
         for class_ann in class_ann_datas {
-            let (dir_off, cad) = class_ann.ok_or_else(|| crate::error::malformed("annotations", 0, "annotated class missing"))?;
+            let (dir_off, cad) = class_ann.ok_or_else(|| {
+                crate::error::malformed("annotations", 0, "annotated class missing")
+            })?;
             dir_offsets.push(dir_off);
             set_offsets.push(cad.class_ann_set_off);
 
@@ -421,7 +424,9 @@ mod tests {
                 .buf
                 .get(set_base..set_base + 4)
                 .and_then(|s| s.try_into().ok())
-                .ok_or_else(|| crate::error::malformed("annotations", set_base, "set size truncated"))?;
+                .ok_or_else(|| {
+                    crate::error::malformed("annotations", set_base, "set size truncated")
+                })?;
             let set_size = u32::from_le_bytes(set_bytes) as usize;
             for i in 0..set_size {
                 let off = set_base + 4 + i * 4;
@@ -429,7 +434,9 @@ mod tests {
                     .buf
                     .get(off..off + 4)
                     .and_then(|s| s.try_into().ok())
-                    .ok_or_else(|| crate::error::malformed("annotations", off, "item offset truncated"))?;
+                    .ok_or_else(|| {
+                        crate::error::malformed("annotations", off, "item offset truncated")
+                    })?;
                 item_offsets.push(u32::from_le_bytes(item_bytes));
             }
         }

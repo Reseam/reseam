@@ -66,10 +66,9 @@ impl CodeBuilder {
     }
 
     pub fn goto(&mut self, target: Label) -> &mut Self {
-        self.entries
-            .push(Entry::Instruction(Instruction::Goto32 {
-                offset: -(target.0 as i32),
-            }));
+        self.entries.push(Entry::Instruction(Instruction::Goto32 {
+            offset: -(target.0 as i32),
+        }));
         self
     }
 
@@ -314,12 +313,7 @@ mod tests {
         b.insn(Instruction::MoveException { dest: 0 });
         b.insn(Instruction::ReturnVoid);
 
-        b.add_try(
-            try_start,
-            try_end,
-            vec![(TypeIdx(0), handler)],
-            None,
-        );
+        b.add_try(try_start, try_end, vec![(TypeIdx(0), handler)], None);
 
         let code = b.build().map_err(|e| format!("build failed: {e}"))?;
         assert_eq!(code.tries.len(), 1);

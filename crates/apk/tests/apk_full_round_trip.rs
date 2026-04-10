@@ -1,8 +1,7 @@
-use stitch_apk::ApkFile;
 use stitch_apk::stitch_dex::ParseOptions;
+use stitch_apk::ApkFile;
 
-const YOUTUBE_APK: &str =
-    "../../test-apks/for_testing_com.google.android.youtube_21.10.494.apk";
+const YOUTUBE_APK: &str = "../../test-apks/for_testing_com.google.android.youtube_21.10.494.apk";
 const INSTAGRAM_APK: &str = "../../test-apks/com.instagram.android_419.0.0.49.71-382508603_minAPI28(arm64-v8a)(360,400,420,480dpi)_apkmirror.com.apk";
 
 fn available_apks() -> Vec<&'static str> {
@@ -38,10 +37,8 @@ fn test_apk_full_round_trip() {
         let mut apk = open_apk_lazy(apk_path);
         let original_dex_count = apk.dex().len();
         let original_package = apk.package_name().map(|s| s.to_owned());
-        let original_resource_strings = apk
-            .resources()
-            .map(|r| r.global_strings.len())
-            .unwrap_or(0);
+        let original_resource_strings =
+            apk.resources().map(|r| r.global_strings.len()).unwrap_or(0);
 
         let tmp = tempfile::tempdir().expect("tempdir failed");
         apk.write_to(tmp.path()).expect("write_to failed");
@@ -80,7 +77,9 @@ fn test_apk_full_round_trip() {
         );
         drop(apk2);
 
-        eprintln!("  write + verify OK (dex={original_dex_count} strings={original_resource_strings})");
+        eprintln!(
+            "  write + verify OK (dex={original_dex_count} strings={original_resource_strings})"
+        );
 
         // --- Phase 3: mutate DEX, write, reparse ---
         let mut apk3 = ApkFile::open(apk_path).expect("open for dex mutation failed");
@@ -149,8 +148,7 @@ fn test_apk_full_round_trip() {
         let unsigned_bytes = std::fs::read(&out5).expect("read failed");
 
         let key = stitch_sign::SigningKey::generate().expect("keygen failed");
-        let signed_bytes =
-            stitch_sign::v2::sign(&unsigned_bytes, &key).expect("signing failed");
+        let signed_bytes = stitch_sign::v2::sign(&unsigned_bytes, &key).expect("signing failed");
 
         assert!(signed_bytes.len() > unsigned_bytes.len());
 
@@ -210,8 +208,7 @@ fn test_apk_full_round_trip() {
         let unsigned6 = std::fs::read(&out6).expect("read failed");
 
         let key6 = stitch_sign::SigningKey::generate().expect("keygen failed");
-        let signed6 =
-            stitch_sign::v2::sign(&unsigned6, &key6).expect("signing failed");
+        let signed6 = stitch_sign::v2::sign(&unsigned6, &key6).expect("signing failed");
 
         let signed_path = tmp6.path().join("signed.apk");
         std::fs::write(&signed_path, &signed6).expect("write signed failed");

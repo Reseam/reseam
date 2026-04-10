@@ -1,6 +1,9 @@
 use crate::buf::{read_u16_le, read_u32_le, read_u8};
 use crate::error::{invalid, malformed, Result};
 
+const MAX_STRING_POOL_STRINGS: usize = 1_000_000;
+const MAX_UTF16_CODE_UNITS: usize = 1_000_000;
+
 /// A parsed AXML string pool.
 #[derive(Debug, Clone)]
 pub struct StringPool {
@@ -17,6 +20,12 @@ impl StringPool {
         crate::buf::require_len(chunk_data, 0, 20, "axml string pool")?;
 
         let string_count = read_u32_le(chunk_data, 0, "axml string pool")? as usize;
+        if string_count > MAX_STRING_POOL_STRINGS {
+            return Err(invalid(
+                "axml string pool",
+                "string count exceeds safety limit",
+            ));
+        }
         let _style_count = read_u32_le(chunk_data, 4, "axml string pool")? as usize;
         let flags = read_u32_le(chunk_data, 8, "axml string pool")?;
         let strings_start = read_u32_le(chunk_data, 12, "axml string pool")? as usize;
@@ -41,8 +50,11 @@ impl StringPool {
             let abs_offset = str_data_offset + offset;
 
             if abs_offset >= chunk_data.len() {
-                strings.push(String::new());
-                continue;
+                return Err(malformed(
+                    "axml string pool",
+                    abs_offset,
+                    "string offset extends past pool",
+                ));
             }
 
             let s = if is_utf8 {
@@ -136,6 +148,12 @@ fn decode_utf16_string(data: &[u8], offset: usize) -> Result<String> {
         pos += 2;
         first as usize
     };
+    if char_count > MAX_UTF16_CODE_UNITS {
+        return Err(invalid(
+            "axml utf16 string",
+            "string length exceeds safety limit",
+        ));
+    }
 
     if pos + char_count * 2 > data.len() {
         return Err(malformed(

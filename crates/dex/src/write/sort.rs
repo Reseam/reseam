@@ -1,3 +1,4 @@
+use crate::file::DexFile;
 use crate::types::annotation::{AnnotationItem, AnnotationsDirectory};
 use crate::types::class::{ClassData, ClassDef, EncodedMethod};
 use crate::types::code::CodeItem;
@@ -5,8 +6,9 @@ use crate::types::debug::{DebugBytecode, DebugInfo};
 use crate::types::encoded_value::EncodedValue;
 use crate::types::instruction::Instruction;
 use crate::types::method_handle::{CallSiteItem, MethodHandle, MethodHandleMember};
-use crate::types::{FieldId, FieldIdx, MethodId, MethodIdx, Prototype, ProtoIdx, StringIdx, TypeIdx};
-use crate::file::DexFile;
+use crate::types::{
+    FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx,
+};
 use crate::util::sort::dex_string_compare;
 
 /// Sort all index tables and remap all references in place.
@@ -483,7 +485,11 @@ fn fixup_instructions(dex: &mut DexFile) -> crate::error::Result<()> {
             Some(d) => d,
             None => continue,
         };
-        for method in data.direct_methods.iter_mut().chain(data.virtual_methods.iter_mut()) {
+        for method in data
+            .direct_methods
+            .iter_mut()
+            .chain(data.virtual_methods.iter_mut())
+        {
             let code = match method.code.as_mut() {
                 Some(c) => c,
                 None => continue,

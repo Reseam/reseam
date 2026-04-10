@@ -2,9 +2,6 @@ package dev.stitch.patch
 
 typealias ClassDef = DexClass
 
-val classes: List<DexClass>
-    get() = getAllClasses().map { DexClass(it.toUInt()) }
-
 data class CompatiblePackage(
     val name: String,
     val versions: List<String> = emptyList(),
@@ -30,12 +27,10 @@ fun patch(
         }
     }
     return PatchBuilder(name, description, compatibleWith, enabledByDefault, resolvedDeps, options)
-        .apply(block).build()
+        .apply(block)
+        .build()
 }
 
-// Kotlin patch declarations model availability separately from execution input.
-// `enabledByDefault` only affects default selection when the host does not provide
-// an explicit execution plan.
 class PatchBuilder(
     val name: String,
     val description: String,
@@ -44,8 +39,8 @@ class PatchBuilder(
     private val initDependsOn: List<String>,
     private val initOptions: List<PatchOption>,
 ) {
-    private var executeBlock: (() -> Unit)? = null
-    private var finalizeBlock: (() -> Unit)? = null
+    private var executeBlock: ((PatchRuntime) -> Unit)? = null
+    private var finalizeBlock: ((PatchRuntime) -> Unit)? = null
     private val extraDependsOn = mutableListOf<String>()
     private val extraCompatibleWith = mutableListOf<CompatiblePackage>()
     private val extraOptions = mutableListOf<PatchOption>()
@@ -75,12 +70,12 @@ class PatchBuilder(
         extensionDexPaths.addAll(paths)
     }
 
-    fun execute(block: () -> Unit) {
-        this.executeBlock = block
+    fun execute(block: (PatchRuntime) -> Unit) {
+        executeBlock = block
     }
 
-    fun finalize(block: () -> Unit) {
-        this.finalizeBlock = block
+    fun afterDependents(block: (PatchRuntime) -> Unit) {
+        finalizeBlock = block
     }
 
     internal fun build(): StitchPatch {
@@ -88,22 +83,24 @@ class PatchBuilder(
         val allDeps = initDependsOn + extraDependsOn
         val allOptions = initOptions + extraOptions
         val allExtensions = extensionDexPaths.toList()
-        val p = this
+        val builder = this
         val exec = executeBlock
         val fin = finalizeBlock
         return object : StitchPatch {
-            override val name = p.name
-            override val description = p.description
+            override val name = builder.name
+            override val description = builder.description
             override val dependencies = allDeps
             override val compatibleWith = allCompat
-            override val enabled = p.enabledByDefault
+            override val enabled = builder.enabledByDefault
             override val options = allOptions
             override val extensionDex = allExtensions
-            override fun execute() {
-                exec?.invoke()
+
+            override fun execute(ctx: PatchRuntime) {
+                exec?.invoke(ctx)
             }
-            override fun afterDependents() {
-                fin?.invoke()
+
+            override fun afterDependents(ctx: PatchRuntime) {
+                fin?.invoke(ctx)
             }
         }
     }

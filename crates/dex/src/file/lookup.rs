@@ -22,14 +22,18 @@ impl DexFile {
 
         self.proto_lookup.clear();
         for (i, proto) in self.prototypes.iter().enumerate() {
-            self.proto_lookup
-                .insert((proto.return_type, proto.parameters.clone()), ProtoIdx(i as u16));
+            self.proto_lookup.insert(
+                (proto.return_type, proto.parameters.clone()),
+                ProtoIdx(i as u16),
+            );
         }
 
         self.method_lookup.clear();
         for (i, method) in self.methods.iter().enumerate() {
-            self.method_lookup
-                .insert((method.class, method.name, method.proto), MethodIdx(i as u32));
+            self.method_lookup.insert(
+                (method.class, method.name, method.proto),
+                MethodIdx(i as u32),
+            );
         }
 
         self.field_lookup.clear();

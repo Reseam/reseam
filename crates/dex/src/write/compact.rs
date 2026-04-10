@@ -178,9 +178,7 @@ impl ReferencedIndices {
             | Instruction::InvokeCustomRange { call_site, .. } => {
                 self.call_sites.insert(call_site.0);
             }
-            Instruction::ConstMethodHandle {
-                method_handle, ..
-            } => {
+            Instruction::ConstMethodHandle { method_handle, .. } => {
                 self.method_handles.insert(method_handle.0);
             }
             _ => {}
@@ -414,23 +412,22 @@ pub(crate) fn transplant_class(
                 MethodHandleMember::Field(idx) => {
                     MethodHandleMember::Field(crate::types::FieldIdx(field_remap[idx.0 as usize]))
                 }
-                MethodHandleMember::Method(idx) => {
-                    MethodHandleMember::Method(crate::types::MethodIdx(
-                        method_remap[idx.0 as usize],
-                    ))
-                }
+                MethodHandleMember::Method(idx) => MethodHandleMember::Method(
+                    crate::types::MethodIdx(method_remap[idx.0 as usize]),
+                ),
             };
             let remapped = MethodHandle {
                 handle_type: handle.handle_type,
                 member: new_member,
             };
-            let new_idx = if let Some(pos) = dest.method_handles.iter().position(|mh| *mh == remapped) {
-                pos as u32
-            } else {
-                let idx = dest.method_handles.len() as u32;
-                dest.method_handles.push(remapped);
-                idx
-            };
+            let new_idx =
+                if let Some(pos) = dest.method_handles.iter().position(|mh| *mh == remapped) {
+                    pos as u32
+                } else {
+                    let idx = dest.method_handles.len() as u32;
+                    dest.method_handles.push(remapped);
+                    idx
+                };
             mh_remap.insert(mh_idx, new_idx);
         }
     }
@@ -463,7 +460,11 @@ pub(crate) fn transplant_class(
                 remap_encoded_value_full(arg, &remap, &mh_remap);
             }
 
-            let new_idx = if let Some(pos) = dest.call_sites.iter().position(|existing| *existing == new_cs) {
+            let new_idx = if let Some(pos) = dest
+                .call_sites
+                .iter()
+                .position(|existing| *existing == new_cs)
+            {
                 pos as u32
             } else {
                 let idx = dest.call_sites.len() as u32;
@@ -544,9 +545,7 @@ fn remap_exotic_refs(
                                 *call_site = CallSiteIdx(new_cs);
                             }
                         }
-                        Instruction::ConstMethodHandle {
-                            method_handle, ..
-                        } => {
+                        Instruction::ConstMethodHandle { method_handle, .. } => {
                             if let Some(&new_mh) = mh_remap.get(&method_handle.0) {
                                 *method_handle = MethodHandleIdx(new_mh);
                             }
@@ -840,14 +839,14 @@ pub(crate) fn compact_tables(dex: &mut DexFile) {
     dex.build_lookups();
 }
 
-fn remap_all_exotic_indices(
-    dex: &mut DexFile,
-    cs_remap: &[u32],
-    mh_remap: &[u32],
-) {
+fn remap_all_exotic_indices(dex: &mut DexFile, cs_remap: &[u32], mh_remap: &[u32]) {
     for class in &mut dex.classes {
         if let Some(data) = &mut class.class_data {
-            for method in data.direct_methods.iter_mut().chain(data.virtual_methods.iter_mut()) {
+            for method in data
+                .direct_methods
+                .iter_mut()
+                .chain(data.virtual_methods.iter_mut())
+            {
                 if let Some(code) = &mut method.code {
                     for insn in &mut code.instructions {
                         match insn {

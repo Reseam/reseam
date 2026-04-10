@@ -436,8 +436,12 @@ fn encode_instruction(code: &mut Vec<u16>, insn: &Instruction) -> Result<()> {
             encode_35c(code, 0x6e, method.0 as u16, args)?
         }
         Instruction::InvokeSuper { method, args } => encode_35c(code, 0x6f, method.0 as u16, args)?,
-        Instruction::InvokeDirect { method, args } => encode_35c(code, 0x70, method.0 as u16, args)?,
-        Instruction::InvokeStatic { method, args } => encode_35c(code, 0x71, method.0 as u16, args)?,
+        Instruction::InvokeDirect { method, args } => {
+            encode_35c(code, 0x70, method.0 as u16, args)?
+        }
+        Instruction::InvokeStatic { method, args } => {
+            encode_35c(code, 0x71, method.0 as u16, args)?
+        }
         Instruction::InvokeInterface { method, args } => {
             encode_35c(code, 0x72, method.0 as u16, args)?
         }

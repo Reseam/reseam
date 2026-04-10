@@ -1,6 +1,6 @@
 use boltffi::export;
 
-use crate::kotlin::{get_method_ref, get_method_mut, with_ctx, with_handles};
+use crate::kotlin::{get_method_mut, get_method_ref, with_ctx, with_handles};
 
 #[export]
 pub fn set_registers(m: u32, registers_size: u16, outs_size: u16) {
@@ -13,7 +13,10 @@ pub fn set_registers(m: u32, registers_size: u16, outs_size: u16) {
             Some(d) => d,
             None => return,
         };
-        let method = match get_method_mut(dex, mh) { Some(m) => m, None => return };
+        let method = match get_method_mut(dex, mh) {
+            Some(m) => m,
+            None => return,
+        };
         if let Some(code) = &mut method.code {
             code.registers_size = registers_size;
             code.outs_size = outs_size;
@@ -86,7 +89,10 @@ pub fn find_free_register(m: u32, at_index: u32, exclude: Vec<u16>) -> u16 {
             Some(d) => d,
             None => return 0,
         };
-        let method = match get_method_ref(dex, mh) { Some(m) => m, None => return 0 };
+        let method = match get_method_ref(dex, mh) {
+            Some(m) => m,
+            None => return 0,
+        };
         method
             .code
             .as_ref()
@@ -106,7 +112,10 @@ pub fn find_free_registers(m: u32, at_index: u32, count: u32, exclude: Vec<u16>)
             Some(d) => d,
             None => return Vec::new(),
         };
-        let method = match get_method_ref(dex, mh) { Some(m) => m, None => return Vec::new() };
+        let method = match get_method_ref(dex, mh) {
+            Some(m) => m,
+            None => return Vec::new(),
+        };
         method
             .code
             .as_ref()
@@ -146,7 +155,10 @@ pub fn instruction_wide_literal(m: u32, index: u32) -> i64 {
             Some(d) => d,
             None => return 0,
         };
-        let method = match get_method_ref(dex, mh) { Some(m) => m, None => return 0 };
+        let method = match get_method_ref(dex, mh) {
+            Some(m) => m,
+            None => return 0,
+        };
         method
             .code
             .as_ref()
@@ -169,7 +181,10 @@ fn get_insn_register(m: u32, index: u32, reg_pos: usize) -> u16 {
             Some(d) => d,
             None => return 0,
         };
-        let method = match get_method_ref(dex, mh) { Some(m) => m, None => return 0 };
+        let method = match get_method_ref(dex, mh) {
+            Some(m) => m,
+            None => return 0,
+        };
         method
             .code
             .as_ref()

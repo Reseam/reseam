@@ -219,7 +219,10 @@ pub fn set_method_access_flags(m: u32, flags: u32) {
             Some(d) => d,
             None => return,
         };
-        let method = match get_method_mut(dex, mh) { Some(m) => m, None => return };
+        let method = match get_method_mut(dex, mh) {
+            Some(m) => m,
+            None => return,
+        };
         method.access_flags = AccessFlags::from_bits_truncate(flags);
     });
 }
@@ -355,14 +358,11 @@ pub fn set_static_field_value(c: u32, field_name: String, value: EncodedVal) {
             None => return,
         };
         let class = &dex.classes[ch.class_idx];
-        let static_idx = class
-            .class_data
-            .as_ref()
-            .and_then(|data| {
-                data.static_fields
-                    .iter()
-                    .position(|f| dex.string(dex.fields[f.field.0 as usize].name) == field_name)
-            });
+        let static_idx = class.class_data.as_ref().and_then(|data| {
+            data.static_fields
+                .iter()
+                .position(|f| dex.string(dex.fields[f.field.0 as usize].name) == field_name)
+        });
         if let Some(idx) = static_idx {
             let val = encoded_val_to_dex(&value, dex);
             let class = &mut dex.classes[ch.class_idx];
@@ -385,7 +385,10 @@ pub fn clone_method(m: u32, new_name: Option<String>) -> u32 {
             Some(d) => d,
             None => return 0,
         };
-        let method = match get_method_ref(dex, mh) { Some(m) => m.clone(), None => return 0 };
+        let method = match get_method_ref(dex, mh) {
+            Some(m) => m.clone(),
+            None => return 0,
+        };
         let method_idx = if let Some(name) = new_name {
             let mid = &dex.methods[method.method.0 as usize];
             let class_desc = dex.type_descriptor(mid.class).to_string();
@@ -446,7 +449,10 @@ pub fn clone_method_preserve_parameters(m: u32) -> u32 {
             Some(d) => d,
             None => return 0,
         };
-        let method = match get_method_ref(dex, mh) { Some(m) => m, None => return 0 };
+        let method = match get_method_ref(dex, mh) {
+            Some(m) => m,
+            None => return 0,
+        };
         let code = match &method.code {
             Some(c) => c,
             None => return 0,
@@ -711,7 +717,10 @@ pub fn add_method_annotation(m: u32, annotation: AnnotationItem) {
             Some(d) => d,
             None => return,
         };
-        let method_idx = match get_method_ref(dex, mh) { Some(m) => m.method, None => return };
+        let method_idx = match get_method_ref(dex, mh) {
+            Some(m) => m.method,
+            None => return,
+        };
         let ann = annotation_to_dex(&annotation, dex);
         let class = &mut dex.classes[mh.class_idx];
         let dir = class

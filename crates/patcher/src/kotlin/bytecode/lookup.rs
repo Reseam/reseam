@@ -1,6 +1,4 @@
-use stitch_apk::stitch_dex::{
-    AccessFlags, DexFile, EncodedValue, Fingerprint, InstructionPattern,
-};
+use stitch_apk::stitch_dex::{AccessFlags, DexFile, EncodedValue, Fingerprint, InstructionPattern};
 
 use boltffi::export;
 

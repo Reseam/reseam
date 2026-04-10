@@ -2,7 +2,7 @@ use super::header::{u16_at, u32_at};
 use crate::encoding::leb128::read_uleb128;
 use crate::encoding::mutf8::decode_mutf8;
 use crate::error::Result;
-use crate::types::{DexString, FieldId, MethodId, Prototype, ProtoIdx, StringIdx, TypeIdx};
+use crate::types::{DexString, FieldId, MethodId, ProtoIdx, Prototype, StringIdx, TypeIdx};
 
 pub fn read_string_ids(buf: &[u8], off: u32, count: u32) -> Result<Vec<u32>> {
     let mut offsets = Vec::with_capacity(count as usize);

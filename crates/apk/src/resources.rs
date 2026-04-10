@@ -6,6 +6,9 @@ const RES_STRING_POOL_TYPE: u16 = 0x0001;
 const RES_TABLE_PACKAGE_TYPE: u16 = 0x0200;
 const RES_TABLE_TYPE_SPEC: u16 = 0x0202;
 const RES_TABLE_TYPE_TYPE: u16 = 0x0201;
+const MAX_STRING_POOL_STRINGS: usize = 1_000_000;
+const MAX_TYPE_ENTRIES: usize = 1_000_000;
+const MAX_UTF16_CODE_UNITS: usize = 1_000_000;
 
 #[derive(Debug, Clone)]
 pub struct ResourceTable {
@@ -89,7 +92,11 @@ impl ResourceTable {
             let cs = read_u32_le(data, pos + 4, "resource chunk")? as usize;
 
             if cs < 8 || pos + cs > data.len() {
-                break;
+                return Err(malformed(
+                    "resource chunk",
+                    pos,
+                    "chunk extends past end of table",
+                ));
             }
 
             match ct {
@@ -130,9 +137,8 @@ impl ResourceTable {
                     if let Some(entry) = entry {
                         if let ResValue::Simple { data_type, data } = &entry.value {
                             if *data_type == VALUE_TYPE_STRING && *data == string_index {
-                                let res_id = (pkg.id << 24)
-                                    | ((res_type.id as u32) << 16)
-                                    | (i as u32);
+                                let res_id =
+                                    (pkg.id << 24) | ((res_type.id as u32) << 16) | (i as u32);
                                 refs.push(ResourceRef {
                                     res_id,
                                     package_id: pkg.id,
@@ -178,6 +184,20 @@ impl ResourceTable {
         }
     }
 
+    pub fn contains_resource_id(&self, res_id: u32) -> bool {
+        let pkg_id = (res_id >> 24) & 0xFF;
+        let type_id = ((res_id >> 16) & 0xFF) as u8;
+        let entry_idx = (res_id & 0xFFFF) as usize;
+
+        self.packages.iter().any(|pkg| {
+            pkg.id == pkg_id
+                && pkg.types.iter().any(|res_type| {
+                    res_type.id == type_id
+                        && matches!(res_type.entries.get(entry_idx), Some(Some(_)))
+                })
+        })
+    }
+
     /// Add a new string to the global string pool and return its index.
     pub fn add_global_string(&mut self, value: &str) -> u32 {
         // Check if already exists
@@ -189,43 +209,37 @@ impl ResourceTable {
         idx
     }
 
-    /// Add a new string resource entry. Returns the resource ID (0xPPTTEEEE).
-    /// Finds or creates the "string" type and appends an entry pointing to the global string pool.
-    pub fn add_string_resource(&mut self, name: &str, value: &str) -> Option<u32> {
-        // Add value to global string pool first (before borrowing packages)
-        let string_idx = self.add_global_string(value);
-
+    pub fn add_resource(
+        &mut self,
+        type_name: &str,
+        entry_name: &str,
+        data_type: u8,
+        data: u32,
+    ) -> Option<u32> {
         let pkg = self.packages.first_mut()?;
+        let type_id = pkg.ensure_type(type_name)?;
 
-        // Find "string" type ID (1-based)
-        let string_type_id = pkg.type_strings.iter()
-            .position(|t| t == "string")
-            .map(|i| (i + 1) as u8)?;
-
-        // Add key to package key strings
-        let key_idx = if let Some(idx) = pkg.key_strings.iter().position(|k| k == name) {
+        let key_idx = if let Some(idx) = pkg.key_strings.iter().position(|k| k == entry_name) {
             idx as u32
         } else {
             let idx = pkg.key_strings.len() as u32;
-            pkg.key_strings.push(name.to_string());
+            pkg.key_strings.push(entry_name.to_string());
             idx
         };
 
-        // Find the default config type (empty config = default locale)
-        let default_type = pkg.types.iter_mut()
-            .find(|t| t.id == string_type_id && is_default_config(&t.config));
+        let default_type = pkg
+            .types
+            .iter_mut()
+            .find(|t| t.id == type_id && is_default_config(&t.config));
 
         let entry_index = if let Some(res_type) = default_type {
-            // Check for existing entry with same key name
-            if let Some(existing) = res_type.entries.iter().position(|e| {
-                e.as_ref().map_or(false, |e| e.key == key_idx)
-            }) {
-                // Update existing entry
+            if let Some(existing) = res_type
+                .entries
+                .iter()
+                .position(|e| e.as_ref().map_or(false, |e| e.key == key_idx))
+            {
                 if let Some(Some(entry)) = res_type.entries.get_mut(existing) {
-                    entry.value = ResValue::Simple {
-                        data_type: VALUE_TYPE_STRING,
-                        data: string_idx,
-                    };
+                    entry.value = ResValue::Simple { data_type, data };
                 }
                 existing
             } else {
@@ -233,10 +247,7 @@ impl ResourceTable {
                 res_type.entries.push(Some(ResEntry {
                     flags: 0,
                     key: key_idx,
-                    value: ResValue::Simple {
-                        data_type: VALUE_TYPE_STRING,
-                        data: string_idx,
-                    },
+                    value: ResValue::Simple { data_type, data },
                 }));
                 idx
             }
@@ -244,33 +255,115 @@ impl ResourceTable {
             return None;
         };
 
-        // Extend TypeSpec flags if needed
-        if let Some(spec) = pkg.type_specs.iter_mut().find(|s| s.id == string_type_id) {
+        if let Some(spec) = pkg.type_specs.iter_mut().find(|s| s.id == type_id) {
             while spec.flags.len() <= entry_index {
                 spec.flags.push(0);
             }
         }
 
-        // Also add None entries to other type configs for this type_id to keep entry counts aligned
         for res_type in &mut pkg.types {
-            if res_type.id == string_type_id && !is_default_config(&res_type.config) {
+            if res_type.id == type_id && !is_default_config(&res_type.config) {
                 while res_type.entries.len() <= entry_index {
                     res_type.entries.push(None);
                 }
             }
         }
 
-        let res_id = (pkg.id << 24) | ((string_type_id as u32) << 16) | (entry_index as u32);
+        let res_id = (pkg.id << 24) | ((type_id as u32) << 16) | (entry_index as u32);
         Some(res_id)
     }
 
+    pub fn add_string_resource(&mut self, name: &str, value: &str) -> Option<u32> {
+        let string_idx = self.add_global_string(value);
+        self.add_resource("string", name, VALUE_TYPE_STRING, string_idx)
+    }
+
+    pub fn add_bool_resource(&mut self, name: &str, value: bool) -> Option<u32> {
+        self.add_resource("bool", name, 0x12, if value { 0xFFFF_FFFF } else { 0 })
+    }
+
+    pub fn add_integer_resource(&mut self, name: &str, value: i32) -> Option<u32> {
+        self.add_resource("integer", name, 0x10, value as u32)
+    }
+
+    pub fn add_color_resource(&mut self, name: &str, argb: u32) -> Option<u32> {
+        self.add_resource("color", name, 0x1c, argb)
+    }
+
+    pub fn add_dimen_resource(&mut self, name: &str, encoded_dim: u32) -> Option<u32> {
+        self.add_resource("dimen", name, 0x05, encoded_dim)
+    }
+
+    pub fn ensure_id(&mut self, name: &str) -> Option<u32> {
+        if let Some(existing) = self.find_resource_id("id", name) {
+            return Some(existing);
+        }
+        self.add_resource("id", name, 0x01, 0)
+    }
+
+    pub fn resource_exists(&self, type_name: &str, entry_name: &str) -> bool {
+        self.find_entry(type_name, entry_name).is_some()
+    }
+
+    pub fn get_string_value(&self, name: &str) -> Option<&str> {
+        let (_, _, _, entry) = self.find_entry("string", name)?;
+        match &entry.value {
+            ResValue::Simple { data_type, data } if *data_type == VALUE_TYPE_STRING => {
+                self.get_string(*data)
+            }
+            _ => None,
+        }
+    }
+
+    pub fn set_string_value(&mut self, name: &str, value: &str) -> bool {
+        let string_idx = match self.find_entry("string", name) {
+            Some((_, _, _, entry)) => match &entry.value {
+                ResValue::Simple { data_type, data } if *data_type == VALUE_TYPE_STRING => *data,
+                _ => return false,
+            },
+            None => return false,
+        };
+        self.set_string(string_idx, value.to_string());
+        true
+    }
+
+    pub fn add_color_parsed(&mut self, name: &str, color: &str) -> Option<u32> {
+        let (data_type, data) = crate::axml::compiler::parse_color(color)?;
+        self.add_resource("color", name, data_type, data)
+    }
+
+    pub fn add_dimen_parsed(&mut self, name: &str, dimen: &str) -> Option<u32> {
+        let encoded = crate::axml::compiler::parse_dimension(dimen)?;
+        self.add_resource("dimen", name, 0x05, encoded)
+    }
+
     pub fn find_resource_id(&self, type_name: &str, entry_name: &str) -> Option<u32> {
+        self.find_entry(type_name, entry_name)
+            .map(|(pkg, res_type, i, _)| (pkg.id << 24) | ((res_type.id as u32) << 16) | (i as u32))
+    }
+
+    pub fn get_resource_value(&self, type_name: &str, entry_name: &str) -> Option<(u8, u32)> {
+        let (_, _, _, entry) = self.find_entry(type_name, entry_name)?;
+        match &entry.value {
+            ResValue::Simple { data_type, data } => Some((*data_type, *data)),
+            ResValue::Complex { .. } => None,
+        }
+    }
+
+    fn find_entry(
+        &self,
+        type_name: &str,
+        entry_name: &str,
+    ) -> Option<(&ResPackage, &ResType, usize, &ResEntry)> {
         for pkg in &self.packages {
-            let type_id = pkg
+            let Some(type_id) = pkg
                 .type_strings
                 .iter()
                 .position(|t| t == type_name)
-                .map(|i| (i + 1) as u8)?;
+                .map(|i| (i + 1) as u8)
+            else {
+                continue;
+            };
 
             for res_type in &pkg.types {
                 if res_type.id != type_id {
@@ -280,9 +373,7 @@ impl ResourceTable {
                     if let Some(entry) = entry {
                         let key_name = pkg.key_strings.get(entry.key as usize);
                         if key_name.map(|k| k.as_str()) == Some(entry_name) {
-                            return Some(
-                                (pkg.id << 24) | ((res_type.id as u32) << 16) | (i as u32),
-                            );
+                            return Some((pkg, res_type, i, entry));
                         }
                     }
                 }
@@ -313,6 +404,29 @@ impl ResourceTable {
     }
 }
 
+impl ResPackage {
+    pub fn ensure_type(&mut self, type_name: &str) -> Option<u8> {
+        if let Some(pos) = self.type_strings.iter().position(|t| t == type_name) {
+            return u8::try_from(pos + 1).ok();
+        }
+        if self.type_strings.len() >= u8::MAX as usize {
+            return None;
+        }
+        self.type_strings.push(type_name.to_string());
+        let type_id = self.type_strings.len() as u8;
+        self.type_specs.push(TypeSpec {
+            id: type_id,
+            flags: Vec::new(),
+        });
+        self.types.push(ResType {
+            id: type_id,
+            config: ResConfig::default(),
+            entries: Vec::new(),
+        });
+        Some(type_id)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ResourceRef {
     pub res_id: u32,
@@ -327,6 +441,12 @@ fn parse_res_string_pool(data: &[u8]) -> Result<Vec<String>> {
 
     let header_size = read_u16_le(data, 2, "res string pool")? as usize;
     let string_count = read_u32_le(data, 8, "res string pool")? as usize;
+    if string_count > MAX_STRING_POOL_STRINGS {
+        return Err(invalid(
+            "res string pool",
+            "string count exceeds safety limit",
+        ));
+    }
     let _style_count = read_u32_le(data, 12, "res string pool")?;
     let flags = read_u32_le(data, 16, "res string pool")?;
     let strings_start = read_u32_le(data, 20, "res string pool")? as usize;
@@ -338,14 +458,21 @@ fn parse_res_string_pool(data: &[u8]) -> Result<Vec<String>> {
     for i in 0..string_count {
         let offset_pos = offsets_start + i * 4;
         if offset_pos + 4 > data.len() {
-            break;
+            return Err(malformed(
+                "res string pool",
+                offset_pos,
+                "string offset table extends past pool",
+            ));
         }
         let offset = read_u32_le(data, offset_pos, "res string offset")? as usize;
         let abs = strings_start + offset;
 
         if abs >= data.len() {
-            strings.push(String::new());
-            continue;
+            return Err(malformed(
+                "res string pool",
+                abs,
+                "string offset extends past pool",
+            ));
         }
 
         let s = if is_utf8 {
@@ -419,6 +546,12 @@ fn decode_res_utf16(data: &[u8], offset: usize) -> Result<String> {
         pos += 2;
         first as usize
     };
+    if char_count > MAX_UTF16_CODE_UNITS {
+        return Err(invalid(
+            "res utf16 string",
+            "string length exceeds safety limit",
+        ));
+    }
 
     if pos + char_count * 2 > data.len() {
         return Err(malformed(
@@ -496,15 +629,21 @@ fn parse_package(data: &[u8], header_size: usize) -> Result<ResPackage> {
         let cs = read_u32_le(data, pos + 4, "package chunk")? as usize;
 
         if cs < 8 || pos + cs > data.len() {
-            break;
+            return Err(malformed(
+                "package chunk",
+                pos,
+                "chunk extends past end of package",
+            ));
         }
 
         match ct {
             RES_TABLE_TYPE_SPEC => {
                 if hs >= 8 && pos + hs <= data.len() {
                     let type_id = data.get(pos + 8).copied().unwrap_or(0);
-                    let entry_count =
-                        read_u32_le(data, pos + 12, "type spec")? as usize;
+                    let entry_count = read_u32_le(data, pos + 12, "type spec")? as usize;
+                    if entry_count > MAX_TYPE_ENTRIES {
+                        return Err(invalid("type spec", "entry count exceeds safety limit"));
+                    }
                     let mut flags = Vec::with_capacity(entry_count);
                     for i in 0..entry_count {
                         let fpos = pos + hs + i * 4;
@@ -512,10 +651,7 @@ fn parse_package(data: &[u8], header_size: usize) -> Result<ResPackage> {
                             flags.push(read_u32_le(data, fpos, "type spec flags")?);
                         }
                     }
-                    type_specs.push(TypeSpec {
-                        id: type_id,
-                        flags,
-                    });
+                    type_specs.push(TypeSpec { id: type_id, flags });
                 }
             }
             RES_TABLE_TYPE_TYPE => {
@@ -544,6 +680,9 @@ fn parse_res_type(data: &[u8], header_size: usize) -> Result<ResType> {
 
     let id = data.get(8).copied().unwrap_or(0);
     let entry_count = read_u32_le(data, 12, "res type")? as usize;
+    if entry_count > MAX_TYPE_ENTRIES {
+        return Err(invalid("res type", "entry count exceeds safety limit"));
+    }
     let entries_start = read_u32_le(data, 16, "res type")? as usize;
 
     let config_start = 20;

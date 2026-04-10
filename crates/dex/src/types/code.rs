@@ -190,7 +190,12 @@ impl CodeItem {
 }
 
 /// Returns additional code-unit growth if a goto was promoted to a wider form.
-fn fixup_branch(insn: &mut Instruction, insn_addr: u32, change_addr: u32, delta: i32) -> Result<i32> {
+fn fixup_branch(
+    insn: &mut Instruction,
+    insn_addr: u32,
+    change_addr: u32,
+    delta: i32,
+) -> Result<i32> {
     match insn {
         Instruction::Goto { offset } => {
             let new_offset = fixup_i32(*offset as i32, insn_addr, change_addr, delta);

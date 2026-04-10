@@ -2,6 +2,8 @@
 name = "stitch-cli"
 version = "0.1.0"
 edition = "2021"
+description = "Command-line interface for the Stitch APK patching toolchain"
+readme = "README.md"
 
 [[bin]]
 name = "stitch"

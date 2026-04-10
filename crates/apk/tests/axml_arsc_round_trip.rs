@@ -73,8 +73,17 @@ fn test_axml_round_trip_synthetic() {
     let bytes = doc.serialize().expect("serialize failed");
     let reparsed = AxmlDocument::parse(&bytes).expect("reparse failed");
 
-    assert_eq!(doc.string_pool.strings.len(), reparsed.string_pool.strings.len());
-    for (i, (a, b)) in doc.string_pool.strings.iter().zip(&reparsed.string_pool.strings).enumerate() {
+    assert_eq!(
+        doc.string_pool.strings.len(),
+        reparsed.string_pool.strings.len()
+    );
+    for (i, (a, b)) in doc
+        .string_pool
+        .strings
+        .iter()
+        .zip(&reparsed.string_pool.strings)
+        .enumerate()
+    {
         assert_eq!(a, b, "string {i} mismatch");
     }
 
@@ -94,8 +103,17 @@ fn test_axml_round_trip_utf16() {
     let bytes = doc.serialize().expect("serialize failed");
     let reparsed = AxmlDocument::parse(&bytes).expect("reparse failed");
 
-    assert_eq!(doc.string_pool.strings.len(), reparsed.string_pool.strings.len());
-    for (i, (a, b)) in doc.string_pool.strings.iter().zip(&reparsed.string_pool.strings).enumerate() {
+    assert_eq!(
+        doc.string_pool.strings.len(),
+        reparsed.string_pool.strings.len()
+    );
+    for (i, (a, b)) in doc
+        .string_pool
+        .strings
+        .iter()
+        .zip(&reparsed.string_pool.strings)
+        .enumerate()
+    {
         assert_eq!(a, b, "string {i} mismatch");
     }
 
@@ -147,9 +165,7 @@ fn make_test_arsc() -> ResourceTable {
             }],
             types: vec![ResType {
                 id: 1,
-                config: ResConfig {
-                    data: vec![0; 48],
-                },
+                config: ResConfig { data: vec![0; 48] },
                 entries: vec![
                     Some(ResEntry {
                         flags: 0,
@@ -171,6 +187,95 @@ fn make_test_arsc() -> ResourceTable {
             }],
         }],
     }
+}
+
+#[test]
+fn test_find_resource_id_across_packages() {
+    let mut table = make_test_arsc();
+    table.packages.insert(
+        0,
+        ResPackage {
+            id: 0x7E,
+            name: "empty.pkg".to_string(),
+            type_strings: vec![],
+            key_strings: vec![],
+            type_specs: vec![],
+            types: vec![],
+        },
+    );
+
+    assert_eq!(table.find_resource_id("string", "hello"), Some(0x7F01_0000));
+}
+
+#[test]
+fn test_xml_compiler_resolves_typed_resource_values() {
+    let mut table = make_test_arsc();
+    let string_id = table
+        .find_resource_id("string", "hello")
+        .expect("string id");
+    let local_attr_id = table
+        .add_resource("attr", "titleText", 0, 0)
+        .expect("attr id");
+    let android_attr_id =
+        stitch_apk::axml::compiler::android_attr_res_id("textColor").expect("android attr id");
+    let xml = r#"
+        <TextView
+            xmlns:android="http://schemas.android.com/apk/res/android"
+            android:text="@string/hello"
+            android:id="@+id/title"
+            android:theme="?attr/titleText"
+            android:textColor="?android:attr/textColor"
+            android:padding="16dp"
+            android:alpha="0.5" />
+    "#;
+
+    let doc = stitch_apk::axml::compiler::build_axml_document_with_resources(xml, Some(&mut table))
+        .expect("build axml");
+    let element = doc
+        .elements
+        .iter()
+        .find_map(|event| match event {
+            AxmlEvent::StartElement { attributes, .. } => Some(attributes),
+            _ => None,
+        })
+        .expect("start element");
+    let attr = |name: &str| {
+        element
+            .iter()
+            .find(|attr| doc.string(attr.name) == Some(name))
+            .expect("attribute present")
+    };
+
+    assert!(matches!(
+        attr("text").typed_value,
+        TypedValue::Reference(id) if id == string_id
+    ));
+    assert!(matches!(
+        attr("id").typed_value,
+        TypedValue::Reference(id) if id == table.find_resource_id("id", "title").unwrap()
+    ));
+    assert!(matches!(
+        attr("theme").typed_value,
+        TypedValue::Other { data_type: 0x02, data } if data == local_attr_id
+    ));
+    assert!(matches!(
+        attr("textColor").typed_value,
+        TypedValue::Other { data_type: 0x02, data } if data == android_attr_id
+    ));
+    assert!(matches!(
+        attr("padding").typed_value,
+        TypedValue::Other {
+            data_type: 0x05,
+            ..
+        }
+    ));
+    assert!(matches!(
+        attr("alpha").typed_value,
+        TypedValue::Other {
+            data_type: 0x04,
+            ..
+        }
+    ));
 }
 
 #[test]
@@ -223,9 +328,7 @@ fn test_arsc_round_trip_complex_entries() {
             }],
             types: vec![ResType {
                 id: 1,
-                config: ResConfig {
-                    data: vec![0; 48],
-                },
+                config: ResConfig { data: vec![0; 48] },
                 entries: vec![Some(ResEntry {
                     flags: 0x0001,
                     key: 0,
@@ -306,8 +409,7 @@ fn test_arsc_round_trip_with_none_entries() {
     assert!(t.entries[3].is_none());
 }
 
-const YOUTUBE_APK: &str =
-    "../../test-apks/for_testing_com.google.android.youtube_21.10.494.apk";
+const YOUTUBE_APK: &str = "../../test-apks/for_testing_com.google.android.youtube_21.10.494.apk";
 const INSTAGRAM_APK: &str = "../../test-apks/com.instagram.android_419.0.0.49.71-382508603_minAPI28(arm64-v8a)(360,400,420,480dpi)_apkmirror.com.apk";
 
 fn available_apks() -> Vec<&'static str> {
@@ -341,7 +443,10 @@ fn test_axml_round_trip_real_apks() {
         let serialized = doc.serialize().expect("serialize failed");
         let reparsed = AxmlDocument::parse(&serialized).expect("reparse failed");
 
-        assert_eq!(doc.string_pool.strings.len(), reparsed.string_pool.strings.len());
+        assert_eq!(
+            doc.string_pool.strings.len(),
+            reparsed.string_pool.strings.len()
+        );
         assert_eq!(doc.resource_ids, reparsed.resource_ids);
         assert_eq!(doc.elements.len(), reparsed.elements.len());
         assert_eq!(doc.package_name(), reparsed.package_name());

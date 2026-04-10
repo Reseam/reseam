@@ -33,16 +33,18 @@ pub mod util;
 pub mod write;
 
 pub use error::{DexError, Result};
+pub use file::container::MultiDexContainer;
 pub use file::{
     DexFile, Fingerprint, FingerprintBuilder, FingerprintMatch, InstructionPattern, MethodMatch,
     OpcodeMatcher,
 };
-pub use file::container::MultiDexContainer;
 pub use read::parse;
 pub use read::parse_container;
 pub use read::parse_file;
 pub use types::access_flags::AccessFlags;
-pub use types::annotation::{AnnotationElement, AnnotationItem, AnnotationVisibility, AnnotationsDirectory};
+pub use types::annotation::{
+    AnnotationElement, AnnotationItem, AnnotationVisibility, AnnotationsDirectory,
+};
 pub use types::class::{ClassData, ClassDef, EncodedField, EncodedMethod};
 pub use types::code::{CatchHandler, CodeItem, TryItem, TypedCatch};
 pub use types::debug::DebugInfo;

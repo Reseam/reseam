@@ -2,6 +2,8 @@
 name = "stitch-apk"
 version = "0.1.0"
 edition = "2021"
+description = "APK container support for Stitch: ZIP, AXML, resources, and DEX extraction"
+readme = "README.md"
 
 [dependencies]
 stitch-dex = { workspace = true }

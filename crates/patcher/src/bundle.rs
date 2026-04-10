@@ -43,20 +43,27 @@ impl PatchBundle {
         let manifest: BundleManifest = toml::from_str(&contents)?;
         let mut patches: Vec<Box<dyn Patch>> = Vec::new();
 
-        #[cfg(feature = "kotlin")]
-        {
-            let jar_files = discover_files(dir, "jar")?;
-            debug!(jar_count = jar_files.len(), "discovered Kotlin patch archives");
-            if !jar_files.is_empty() {
-                patches.extend(crate::kotlin::load_kotlin_patches(&jar_files, dir)?);
-            }
-        }
-
         let ext_dir = dir.join("extensions");
         let mut extension_dex = Vec::new();
         if ext_dir.is_dir() {
             discover_extensions_recursive(&ext_dir, &mut extension_dex);
             extension_dex.sort();
+        }
+
+        #[cfg(feature = "kotlin")]
+        {
+            let jar_files = discover_files(dir, "jar")?;
+            debug!(
+                jar_count = jar_files.len(),
+                "discovered Kotlin patch archives"
+            );
+            if !jar_files.is_empty() {
+                patches.extend(crate::kotlin::load_kotlin_patches(
+                    &jar_files,
+                    dir,
+                    &extension_dex,
+                )?);
+            }
         }
 
         info!(
@@ -98,7 +105,10 @@ fn discover_extensions_recursive(dir: &Path, out: &mut Vec<PathBuf>) {
         let path = entry.path();
         if path.is_dir() {
             discover_extensions_recursive(&path, out);
-        } else if path.extension().is_some_and(|ext| ext == "dex" || ext == "rve") {
+        } else if path
+            .extension()
+            .is_some_and(|ext| ext == "dex" || ext == "rve")
+        {
             out.push(path);
         }
     }

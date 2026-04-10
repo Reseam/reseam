@@ -20,7 +20,10 @@ pub fn set_instructions(m: u32, insns: Vec<Instruction>) {
             None => return,
         };
         let dex_insns: Vec<DexInsn> = insns.iter().map(|ki| kotlin_to_dex(ki, dex)).collect();
-        let method = match get_method_mut(dex, mh) { Some(m) => m, None => return };
+        let method = match get_method_mut(dex, mh) {
+            Some(m) => m,
+            None => return,
+        };
         if let Some(code) = &mut method.code {
             code.set_instructions(dex_insns);
         }
@@ -39,7 +42,10 @@ pub fn insert_instruction(m: u32, index: u32, insn: Instruction) {
             None => return,
         };
         let dex_insn = kotlin_to_dex(&insn, dex);
-        let method = match get_method_mut(dex, mh) { Some(m) => m, None => return };
+        let method = match get_method_mut(dex, mh) {
+            Some(m) => m,
+            None => return,
+        };
         if let Some(code) = &mut method.code {
             if let Err(e) = code.insert_instruction(index as usize, dex_insn) {
                 warn!(error = %e, "insert_instruction failed");
@@ -60,7 +66,10 @@ pub fn insert_instructions(m: u32, index: u32, insns: Vec<Instruction>) {
             None => return,
         };
         let dex_insns: Vec<DexInsn> = insns.iter().map(|ki| kotlin_to_dex(ki, dex)).collect();
-        let method = match get_method_mut(dex, mh) { Some(m) => m, None => return };
+        let method = match get_method_mut(dex, mh) {
+            Some(m) => m,
+            None => return,
+        };
         if let Some(code) = &mut method.code {
             if let Err(e) = code.insert_instructions(index as usize, &dex_insns) {
                 warn!(error = %e, "insert_instructions failed");
@@ -81,7 +90,10 @@ pub fn replace_instruction(m: u32, index: u32, insn: Instruction) {
             None => return,
         };
         let dex_insn = kotlin_to_dex(&insn, dex);
-        let method = match get_method_mut(dex, mh) { Some(m) => m, None => return };
+        let method = match get_method_mut(dex, mh) {
+            Some(m) => m,
+            None => return,
+        };
         if let Some(code) = &mut method.code {
             if let Err(e) = code.replace_instruction(index as usize, dex_insn) {
                 warn!(error = %e, "replace_instruction failed");
@@ -101,7 +113,10 @@ pub fn remove_instruction(m: u32, index: u32) {
             Some(d) => d,
             None => return,
         };
-        let method = match get_method_mut(dex, mh) { Some(m) => m, None => return };
+        let method = match get_method_mut(dex, mh) {
+            Some(m) => m,
+            None => return,
+        };
         if let Some(code) = &mut method.code {
             if let Err(e) = code.remove_instruction(index as usize) {
                 warn!(error = %e, "remove_instruction failed");
@@ -121,7 +136,10 @@ pub fn remove_instructions(m: u32, index: u32, count: u32) {
             Some(d) => d,
             None => return,
         };
-        let method = match get_method_mut(dex, mh) { Some(m) => m, None => return };
+        let method = match get_method_mut(dex, mh) {
+            Some(m) => m,
+            None => return,
+        };
         if let Some(code) = &mut method.code {
             for _ in 0..count {
                 if (index as usize) < code.instructions.len() {
@@ -146,7 +164,10 @@ pub fn return_early(m: u32) {
             Some(d) => d,
             None => return,
         };
-        let method = match get_method_mut(dex, mh) { Some(m) => m, None => return };
+        let method = match get_method_mut(dex, mh) {
+            Some(m) => m,
+            None => return,
+        };
         method.return_early();
     });
 }
@@ -162,7 +183,10 @@ pub fn return_early_int(m: u32, value: i32) {
             Some(d) => d,
             None => return,
         };
-        let method = match get_method_mut(dex, mh) { Some(m) => m, None => return };
+        let method = match get_method_mut(dex, mh) {
+            Some(m) => m,
+            None => return,
+        };
         method.return_early_int(value);
     });
 }
@@ -178,7 +202,10 @@ pub fn return_early_bool(m: u32, value: bool) {
             Some(d) => d,
             None => return,
         };
-        let method = match get_method_mut(dex, mh) { Some(m) => m, None => return };
+        let method = match get_method_mut(dex, mh) {
+            Some(m) => m,
+            None => return,
+        };
         method.return_early_int(if value { 1 } else { 0 });
     });
 }
@@ -194,7 +221,10 @@ pub fn return_early_object_null(m: u32) {
             Some(d) => d,
             None => return,
         };
-        let method = match get_method_mut(dex, mh) { Some(m) => m, None => return };
+        let method = match get_method_mut(dex, mh) {
+            Some(m) => m,
+            None => return,
+        };
         if let Some(code) = &mut method.code {
             code.set_instructions(vec![
                 DexInsn::Const4 { dest: 0, value: 0 },
@@ -215,7 +245,10 @@ pub fn return_early_wide(m: u32, value: i64) {
             Some(d) => d,
             None => return,
         };
-        let method = match get_method_mut(dex, mh) { Some(m) => m, None => return };
+        let method = match get_method_mut(dex, mh) {
+            Some(m) => m,
+            None => return,
+        };
         if let Some(code) = &mut method.code {
             code.set_instructions(vec![
                 DexInsn::ConstWide { dest: 0, value },
@@ -241,7 +274,10 @@ pub fn replace_string(m: u32, old: String, new: String) -> bool {
             None => return false,
         };
         let new_idx = dex.intern_string(&new);
-        let method = match get_method_mut(dex, mh) { Some(m) => m, None => return false };
+        let method = match get_method_mut(dex, mh) {
+            Some(m) => m,
+            None => return false,
+        };
         if let Some(code) = &mut method.code {
             for insn in &mut code.instructions {
                 if insn.string_ref() == Some(old_idx) {
@@ -274,7 +310,10 @@ pub fn replace_all_strings(m: u32, old: String, new: String) -> u32 {
             None => return 0,
         };
         let new_idx = dex.intern_string(&new);
-        let method = match get_method_mut(dex, mh) { Some(m) => m, None => return 0 };
+        let method = match get_method_mut(dex, mh) {
+            Some(m) => m,
+            None => return 0,
+        };
         let mut count = 0u32;
         if let Some(code) = &mut method.code {
             for insn in &mut code.instructions {
@@ -303,7 +342,10 @@ pub fn replace_literal(m: u32, old: i64, new: i64) -> bool {
             Some(d) => d,
             None => return false,
         };
-        let method = match get_method_mut(dex, mh) { Some(m) => m, None => return false };
+        let method = match get_method_mut(dex, mh) {
+            Some(m) => m,
+            None => return false,
+        };
         if let Some(code) = &mut method.code {
             for insn in &mut code.instructions {
                 if insn.literal() == Some(old) {
@@ -327,7 +369,10 @@ pub fn replace_all_literals(m: u32, old: i64, new: i64) -> u32 {
             Some(d) => d,
             None => return 0,
         };
-        let method = match get_method_mut(dex, mh) { Some(m) => m, None => return 0 };
+        let method = match get_method_mut(dex, mh) {
+            Some(m) => m,
+            None => return 0,
+        };
         let mut count = 0u32;
         if let Some(code) = &mut method.code {
             for insn in &mut code.instructions {
@@ -362,7 +407,10 @@ pub fn replace_method_call(
             Ok(idx) => idx,
             Err(_) => return false,
         };
-        let method = match get_method_mut(dex, mh) { Some(m) => m, None => return false };
+        let method = match get_method_mut(dex, mh) {
+            Some(m) => m,
+            None => return false,
+        };
         if let Some(code) = &mut method.code {
             if let Some(insn) = code.instructions.get_mut(index as usize) {
                 set_insn_method_ref(insn, new_method_idx);
@@ -395,8 +443,7 @@ pub fn insert_invoke_static(
             Ok(idx) => idx,
             Err(_) => return false,
         };
-        let needs_range = registers.len() > 5
-            || registers.iter().any(|&r| r > 15);
+        let needs_range = registers.len() > 5 || registers.iter().any(|&r| r > 15);
         let invoke = if needs_range {
             DexInsn::InvokeStaticRange {
                 method: method_idx,
@@ -410,7 +457,10 @@ pub fn insert_invoke_static(
                 args: regs,
             }
         };
-        let method = match get_method_mut(dex, mh) { Some(m) => m, None => return false };
+        let method = match get_method_mut(dex, mh) {
+            Some(m) => m,
+            None => return false,
+        };
         if let Some(code) = &mut method.code {
             match code.insert_instruction(index as usize, invoke) {
                 Ok(()) => return true,
@@ -448,8 +498,7 @@ pub fn insert_invoke_static_with_move_result(
             Ok(idx) => idx,
             Err(_) => return false,
         };
-        let needs_range = registers.len() > 5
-            || registers.iter().any(|&r| r > 15);
+        let needs_range = registers.len() > 5 || registers.iter().any(|&r| r > 15);
         let invoke = if needs_range {
             DexInsn::InvokeStaticRange {
                 method: method_idx,
@@ -472,7 +521,10 @@ pub fn insert_invoke_static_with_move_result(
                 dest: result_register as u8,
             }
         };
-        let method = match get_method_mut(dex, mh) { Some(m) => m, None => return false };
+        let method = match get_method_mut(dex, mh) {
+            Some(m) => m,
+            None => return false,
+        };
         if let Some(code) = &mut method.code {
             match code.insert_instructions(index as usize, &[invoke, move_result]) {
                 Ok(()) => return true,

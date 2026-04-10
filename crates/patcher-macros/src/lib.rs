@@ -141,7 +141,10 @@ impl KeyValue {
 
 fn parse_string_array(expr: Expr) -> syn::Result<Vec<LitStr>> {
     let Expr::Array(array) = expr else {
-        return Err(syn::Error::new_spanned(expr, "expected an array of strings"));
+        return Err(syn::Error::new_spanned(
+            expr,
+            "expected an array of strings",
+        ));
     };
     array
         .elems
@@ -157,10 +160,7 @@ fn parse_string_array(expr: Expr) -> syn::Result<Vec<LitStr>> {
 
 fn parse_packages(expr: Expr) -> syn::Result<Vec<PackageEntry>> {
     let Expr::Array(array) = expr else {
-        return Err(syn::Error::new_spanned(
-            expr,
-            "`packages` must be an array",
-        ));
+        return Err(syn::Error::new_spanned(expr, "`packages` must be an array"));
     };
 
     let mut entries = Vec::new();

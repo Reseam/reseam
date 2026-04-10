@@ -2,37 +2,83 @@
 
 package dev.stitch.patch
 
-object Resources {
-    val hasResources: Boolean get() = resHasResources()
+class ResourceScope internal constructor(
+    private val componentName: String? = null,
+) {
+    fun components(): List<String> = resComponentNames()
 
-    fun getString(index: Int): String? = resGetString(index.toUInt())
-    fun setString(index: Int, value: String) = resSetString(index.toUInt(), value)
+    fun component(name: String): ResourceScope = ResourceScope(name)
 
-    fun resourceId(resType: String, resName: String): Long? =
-        resResourceId(resType, resName)
+    fun split(name: String): ResourceScope = component(name)
 
-    fun getResourceValue(resType: String, resName: String): Long? =
-        resGetResourceValue(resType, resName)
+    fun owningComponent(resType: String, resName: String): String? =
+        resComponentFor(resType, resName)
 
-    fun findEntriesByString(stringIndex: Int): List<ResourceRef> =
-        resFindEntriesByString(stringIndex.toUInt())
+    fun owningComponent(resId: UInt): String? =
+        resComponentForId(resId)
 
-    fun addStringResource(name: String, value: String): Int? =
-        resAddStringResource(name, value)?.toInt()
+    fun id(resType: String, resName: String): UInt? =
+        componentName?.let { resIdInComponent(it, resType, resName) } ?: resId(resType, resName)
 
-    fun replaceEntryString(resId: Int, newStringIndex: Int) =
-        resReplaceEntryString(resId.toUInt(), newStringIndex.toUInt())
+    fun exists(resType: String, resName: String): Boolean =
+        componentName?.let { resExistsInComponent(it, resType, resName) } ?: resExists(resType, resName)
 
-    fun copyFile(bundlePath: String, apkPath: String) =
-        resCopyFile(bundlePath, apkPath)
+    fun getString(name: String): String? =
+        componentName?.let { resGetStringInComponent(it, name) } ?: resGetString(name)
 
-    /** Raw APK entry write (path relative to APK root, e.g. `res/values/extra.xml`). Plain XML is compiled to binary when applicable. */
-    fun injectFile(apkPath: String, data: ByteArray) =
-        resInjectFile(apkPath, data)
+    fun setString(name: String, value: String): Boolean =
+        componentName?.let { resSetStringInComponent(it, name, value) } ?: run {
+            resSetString(name, value)
+            true
+        }
 
-    fun copyResourceGroup(resType: String, files: List<String>) =
-        resCopyResourceGroup(resType, files)
+    fun addString(name: String, value: String): UInt? =
+        componentName?.let { resAddStringInComponent(it, name, value) } ?: resAddString(name, value)
 
-    fun deleteFile(apkPath: String) = resDeleteFile(apkPath)
-    fun listFiles(prefix: String): List<String> = resListFiles(prefix)
+    fun addBool(name: String, value: Boolean): UInt? =
+        componentName?.let { resAddBoolInComponent(it, name, value) } ?: resAddBool(name, value)
+
+    fun addInteger(name: String, value: Int): UInt? =
+        componentName?.let { resAddIntegerInComponent(it, name, value) } ?: resAddInteger(name, value)
+
+    fun addColor(name: String, color: String): UInt? =
+        componentName?.let { resAddColorInComponent(it, name, color) } ?: resAddColor(name, color)
+
+    fun addDimen(name: String, dimen: String): UInt? =
+        componentName?.let { resAddDimenInComponent(it, name, dimen) } ?: resAddDimen(name, dimen)
+
+    fun addId(name: String): UInt? =
+        componentName?.let { resAddIdInComponent(it, name) } ?: resAddId(name)
+
+    fun addRaw(resType: String, name: String, dataType: UByte, data: UInt): UInt? =
+        componentName?.let { resAddRawInComponent(it, resType, name, dataType, data) }
+            ?: resAddRaw(resType, name, dataType, data)
+
+    fun getRaw(resType: String, resName: String): Long? =
+        componentName?.let { resGetRawInComponent(it, resType, resName) } ?: resGetRaw(resType, resName)
+
+    fun poolGet(index: UInt): String? =
+        componentName?.let { resPoolGetInComponent(it, index) } ?: resPoolGet(index)
+
+    fun poolSet(index: UInt, value: String) {
+        if (componentName == null) {
+            resPoolSet(index, value)
+        } else {
+            resPoolSetInComponent(componentName, index, value)
+        }
+    }
+
+    fun poolAdd(value: String): UInt? =
+        componentName?.let { resPoolAddInComponent(it, value) } ?: resPoolAdd(value)
+
+    fun poolFindRefs(stringIndex: UInt): List<ResourceRef> =
+        componentName?.let { resPoolFindRefsInComponent(it, stringIndex) } ?: resPoolFindRefs(stringIndex)
+
+    fun replaceEntry(resId: UInt, newStringIndex: UInt) {
+        if (componentName == null) {
+            resReplaceEntry(resId, newStringIndex)
+        } else {
+            resReplaceEntryInComponent(componentName, resId, newStringIndex)
+        }
+    }
 }

@@ -117,7 +117,10 @@ pub(crate) fn finalize(
             0
         },
     );
-    w.patch_u32(header_base + OFF_PROTO_IDS_SIZE, dex.prototypes.len() as u32);
+    w.patch_u32(
+        header_base + OFF_PROTO_IDS_SIZE,
+        dex.prototypes.len() as u32,
+    );
     w.patch_u32(
         header_base + OFF_PROTO_IDS_OFF,
         if !dex.prototypes.is_empty() {
@@ -177,13 +180,18 @@ pub(crate) fn finalize(
         let mut hasher = Sha1::new();
         hasher.update(&w.buf[header_base + 32..logical_end]);
         let sig: [u8; 20] = hasher.finalize().into();
-        w.buf[header_base + OFF_SIGNATURE..header_base + OFF_SIGNATURE + 20]
-            .copy_from_slice(&sig);
+        w.buf[header_base + OFF_SIGNATURE..header_base + OFF_SIGNATURE + 20].copy_from_slice(&sig);
     }
 
     {
         let checksum = adler::adler32(&w.buf[header_base + OFF_CHECKSUM + 4..logical_end])
-            .map_err(|e| crate::error::malformed("dex header", header_base + OFF_CHECKSUM, format!("checksum: {e}")))?;
+            .map_err(|e| {
+                crate::error::malformed(
+                    "dex header",
+                    header_base + OFF_CHECKSUM,
+                    format!("checksum: {e}"),
+                )
+            })?;
         w.patch_u32(header_base + OFF_CHECKSUM, checksum);
     }
 

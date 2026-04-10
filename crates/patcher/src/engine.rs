@@ -144,14 +144,9 @@ pub fn apply_patches_with_plan(
             continue;
         }
 
-        if let Some(reason) = dependency_skip_reason(
-            patches,
-            &name_to_idx,
-            &applied,
-            &result_map,
-            &results,
-            idx,
-        ) {
+        if let Some(reason) =
+            dependency_skip_reason(patches, &name_to_idx, &applied, &result_map, &results, idx)
+        {
             warn!(reason, "patch skipped due to dependency state");
             let r = PatchResult {
                 name: patch.name().to_owned(),
@@ -163,7 +158,9 @@ pub fn apply_patches_with_plan(
             continue;
         }
 
-        if let Some(reason) = check_compatibility(patch.as_ref(), package.as_deref(), version.as_deref()) {
+        if let Some(reason) =
+            check_compatibility(patch.as_ref(), package.as_deref(), version.as_deref())
+        {
             warn!(reason, "patch skipped due to compatibility check");
             let r = PatchResult {
                 name: patch.name().to_owned(),
@@ -186,7 +183,10 @@ pub fn apply_patches_with_plan(
         // Merge extension DEX files declared by this patch (deduplicated).
         let ext_paths = patch.extension_dex();
         if !ext_paths.is_empty() {
-            debug!(extension_count = ext_paths.len(), "patch declares extension DEX files");
+            debug!(
+                extension_count = ext_paths.len(),
+                "patch declares extension DEX files"
+            );
             let new_paths: Vec<&str> = ext_paths
                 .iter()
                 .filter(|p| merged_extensions.insert((*p).clone()))
@@ -261,13 +261,22 @@ pub fn apply_patches_with_plan(
         }
 
         for (&dep_idx, dep_list) in &dependents {
-            if applied[dep_idx] || after_dependents_fired[dep_idx] {
+            if after_dependents_fired[dep_idx] {
                 continue;
             }
-            if dep_list.iter().all(|&d| applied[d]) {
+            let Some(&result_idx) = result_map.get(&dep_idx) else {
+                continue;
+            };
+            if !matches!(results[result_idx].status, PatchStatus::Applied) {
+                continue;
+            }
+            if dep_list.iter().all(|d| applied[*d]) {
                 after_dependents_fired[dep_idx] = true;
                 ctx.set_log(PatchLog::new(patches[dep_idx].name().to_owned()));
-                debug!(patch = patches[dep_idx].name(), "running after_dependents hook");
+                debug!(
+                    patch = patches[dep_idx].name(),
+                    "running after_dependents hook"
+                );
 
                 let after_result = panic::catch_unwind(AssertUnwindSafe(|| {
                     patches[dep_idx].after_dependents(ctx)
@@ -278,16 +287,36 @@ pub fn apply_patches_with_plan(
                     results[ri].logs.extend(after_logs);
                 }
 
-                if let Ok(Err(e)) = after_result {
-                    warn!(
-                        patch = patches[dep_idx].name(),
-                        error = %e,
-                        "after_dependents hook failed"
-                    );
-                    if let Some(&ri) = result_map.get(&dep_idx) {
-                        results[ri].status = PatchStatus::Failed {
+                match after_result {
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => {
+                        warn!(
+                            patch = patches[dep_idx].name(),
+                            error = %e,
+                            "after_dependents hook failed"
+                        );
+                        results[result_idx].status = PatchStatus::Failed {
                             reason: format!("after_dependents: {e}"),
                         };
+                        applied[dep_idx] = false;
+                    }
+                    Err(panic_info) => {
+                        let reason = if let Some(s) = panic_info.downcast_ref::<String>() {
+                            s.clone()
+                        } else if let Some(s) = panic_info.downcast_ref::<&str>() {
+                            s.to_string()
+                        } else {
+                            "unknown panic".to_string()
+                        };
+                        warn!(
+                            patch = patches[dep_idx].name(),
+                            panic = %reason,
+                            "after_dependents hook panicked"
+                        );
+                        results[result_idx].status = PatchStatus::Failed {
+                            reason: format!("after_dependents panic: {reason}"),
+                        };
+                        applied[dep_idx] = false;
                     }
                 }
             }
@@ -362,12 +391,13 @@ fn resolve_desired_patches(
             continue;
         }
         for dep in patches[idx].depends_on() {
-            let dep_idx = *name_to_idx.get(dep.as_str()).ok_or_else(|| {
-                PatcherError::MissingDependency {
-                    patch: patches[idx].name().to_owned(),
-                    dependency: dep.clone(),
-                }
-            })?;
+            let dep_idx =
+                *name_to_idx
+                    .get(dep.as_str())
+                    .ok_or_else(|| PatcherError::MissingDependency {
+                        patch: patches[idx].name().to_owned(),
+                        dependency: dep.clone(),
+                    })?;
             stack.push(dep_idx);
         }
     }
@@ -393,7 +423,11 @@ fn validate_plan_options(
             continue;
         }
 
-        let resolved = validate_patch_options(patch.name(), patch.options(), plan.options.get(patch.name()))?;
+        let resolved = validate_patch_options(
+            patch.name(),
+            patch.options(),
+            plan.options.get(patch.name()),
+        )?;
         if !resolved.iter().next().is_none() || !patch.options().is_empty() {
             validated.insert(patch.name().to_owned(), resolved);
         }

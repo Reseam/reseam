@@ -17,7 +17,10 @@ pub fn get_instructions(m: u32) -> Vec<Instruction> {
             Some(d) => d,
             None => return Vec::new(),
         };
-        let method = match get_method_ref(dex, mh) { Some(m) => m, None => return Vec::new() };
+        let method = match get_method_ref(dex, mh) {
+            Some(m) => m,
+            None => return Vec::new(),
+        };
         match &method.code {
             Some(c) => c
                 .instructions
@@ -40,7 +43,10 @@ pub fn get_instruction(m: u32, index: u32) -> Instruction {
             Some(d) => d,
             None => return nop(),
         };
-        let method = match get_method_ref(dex, mh) { Some(m) => m, None => return nop() };
+        let method = match get_method_ref(dex, mh) {
+            Some(m) => m,
+            None => return nop(),
+        };
         match &method.code {
             Some(c) => match c.instructions.get(index as usize) {
                 Some(insn) => dex_to_kotlin(insn, dex),
@@ -62,7 +68,10 @@ pub fn instruction_count(m: u32) -> u32 {
             Some(d) => d,
             None => return 0,
         };
-        let method = match get_method_ref(dex, mh) { Some(m) => m, None => return 0 };
+        let method = match get_method_ref(dex, mh) {
+            Some(m) => m,
+            None => return 0,
+        };
         method
             .code
             .as_ref()
@@ -170,7 +179,10 @@ pub fn find_all_indices(m: u32, op: u16) -> Vec<u32> {
             Some(d) => d,
             None => return Vec::new(),
         };
-        let method = match get_method_ref(dex, mh) { Some(m) => m, None => return Vec::new() };
+        let method = match get_method_ref(dex, mh) {
+            Some(m) => m,
+            None => return Vec::new(),
+        };
         match &method.code {
             Some(c) => c
                 .instructions
@@ -359,10 +371,7 @@ pub fn find_method_call_sites(
     if class_names.len() != method_names.len() {
         return Vec::new();
     }
-    let targets: Vec<(String, String)> = class_names
-        .into_iter()
-        .zip(method_names)
-        .collect();
+    let targets: Vec<(String, String)> = class_names.into_iter().zip(method_names).collect();
     let locations: Vec<(usize, usize, usize, bool, usize, usize)> = with_ctx(|ctx| {
         let hits = ctx.find_method_call_sites(&targets);
         hits.iter()
@@ -398,10 +407,7 @@ pub fn find_field_access_sites(
     if class_names.len() != field_names.len() {
         return Vec::new();
     }
-    let targets: Vec<(String, String)> = class_names
-        .into_iter()
-        .zip(field_names)
-        .collect();
+    let targets: Vec<(String, String)> = class_names.into_iter().zip(field_names).collect();
     let locations: Vec<(usize, usize, usize, bool, usize, usize)> = with_ctx(|ctx| {
         let hits = ctx.find_field_access_sites(&targets);
         hits.iter()
@@ -450,10 +456,14 @@ pub fn all_method_handles() -> Vec<u32> {
             for (class_idx, class) in dex.classes.iter().enumerate() {
                 if let Some(data) = &class.class_data {
                     for (mi, _) in data.direct_methods.iter().enumerate() {
-                        handles.push(with_handles(|h| h.alloc_method(dex_idx, class_idx, mi, false)));
+                        handles.push(with_handles(|h| {
+                            h.alloc_method(dex_idx, class_idx, mi, false)
+                        }));
                     }
                     for (mi, _) in data.virtual_methods.iter().enumerate() {
-                        handles.push(with_handles(|h| h.alloc_method(dex_idx, class_idx, mi, true)));
+                        handles.push(with_handles(|h| {
+                            h.alloc_method(dex_idx, class_idx, mi, true)
+                        }));
                     }
                 }
             }
@@ -463,7 +473,10 @@ pub fn all_method_handles() -> Vec<u32> {
 }
 
 #[export]
-pub fn find_instructions_by_invoke(defining_class: String, method_name: String) -> Vec<InstructionHit> {
+pub fn find_instructions_by_invoke(
+    defining_class: String,
+    method_name: String,
+) -> Vec<InstructionHit> {
     find_method_call_sites(vec![defining_class], vec![method_name])
         .into_iter()
         .map(|site| InstructionHit {

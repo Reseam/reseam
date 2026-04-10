@@ -132,7 +132,12 @@ fn cmd_patch(
         patch_count = patch_bundle.patches.len(),
         "patch bundle loaded"
     );
-    let plan = build_execution_plan(&patch_bundle, enabled_patches, disabled_patches, option_args)?;
+    let plan = build_execution_plan(
+        &patch_bundle,
+        enabled_patches,
+        disabled_patches,
+        option_args,
+    )?;
 
     let mut ctx = PatchContext::new(&mut apk);
 
@@ -199,7 +204,10 @@ fn cmd_patch(
     let tmp_apk_path = find_apk_in_dir(tmp_dir.path())?;
     let unsigned_bytes =
         std::fs::read(&tmp_apk_path).context("failed to read patched APK bytes")?;
-    info!(unsigned_size = unsigned_bytes.len(), "loaded patched APK bytes");
+    info!(
+        unsigned_size = unsigned_bytes.len(),
+        "loaded patched APK bytes"
+    );
 
     let signing_key = load_or_generate_key(key_path, cert_path)?;
 
@@ -264,7 +272,11 @@ fn cmd_list(bundle_path: &Path) -> Result<()> {
         if !options.is_empty() {
             println!("       options:");
             for option in options {
-                let required = if option.required { "required" } else { "optional" };
+                let required = if option.required {
+                    "required"
+                } else {
+                    "optional"
+                };
                 println!(
                     "         - {} ({:?}, {})",
                     option.key, option.option_type, required
@@ -325,21 +337,26 @@ fn find_apk_in_dir(dir: &Path) -> Result<PathBuf> {
 const DEFAULT_KEY: &str = "stitch.pk8";
 const DEFAULT_CERT: &str = "stitch.der";
 
-fn load_or_generate_key(
-    key_path: Option<&Path>,
-    cert_path: Option<&Path>,
-) -> Result<SigningKey> {
+fn load_or_generate_key(key_path: Option<&Path>, cert_path: Option<&Path>) -> Result<SigningKey> {
     let key_path = key_path.map(Path::to_path_buf);
     let cert_path = cert_path.map(Path::to_path_buf);
 
     let (key_path, cert_path) = match (key_path, cert_path) {
         (Some(k), Some(c)) => (k, c),
         (None, None) if Path::new(DEFAULT_KEY).exists() && Path::new(DEFAULT_CERT).exists() => {
-            info!(key = DEFAULT_KEY, cert = DEFAULT_CERT, "using existing signing keypair");
+            info!(
+                key = DEFAULT_KEY,
+                cert = DEFAULT_CERT,
+                "using existing signing keypair"
+            );
             (PathBuf::from(DEFAULT_KEY), PathBuf::from(DEFAULT_CERT))
         }
         (None, None) => {
-            info!(key = DEFAULT_KEY, cert = DEFAULT_CERT, "generating signing keypair");
+            info!(
+                key = DEFAULT_KEY,
+                cert = DEFAULT_CERT,
+                "generating signing keypair"
+            );
             let generated = GeneratedKey::generate().context("failed to generate signing key")?;
             generated
                 .save(Path::new(DEFAULT_KEY), Path::new(DEFAULT_CERT))
@@ -349,10 +366,10 @@ fn load_or_generate_key(
         _ => bail!("--key and --cert must both be provided"),
     };
 
-    let key_bytes =
-        std::fs::read(&key_path).with_context(|| format!("failed to read key {}", key_path.display()))?;
-    let cert_bytes =
-        std::fs::read(&cert_path).with_context(|| format!("failed to read cert {}", cert_path.display()))?;
+    let key_bytes = std::fs::read(&key_path)
+        .with_context(|| format!("failed to read key {}", key_path.display()))?;
+    let cert_bytes = std::fs::read(&cert_path)
+        .with_context(|| format!("failed to read cert {}", cert_path.display()))?;
     SigningKey::from_pkcs8(&key_bytes, cert_bytes).context("failed to load signing key")
 }
 
@@ -400,7 +417,11 @@ fn parse_option_arg(raw: &str) -> Result<(String, String, String)> {
     if patch_name.is_empty() || option_key.is_empty() {
         bail!("invalid option '{raw}': patch and key must be non-empty");
     }
-    Ok((patch_name.to_string(), option_key.to_string(), value.to_string()))
+    Ok((
+        patch_name.to_string(),
+        option_key.to_string(),
+        value.to_string(),
+    ))
 }
 
 fn find_option_declaration<'a>(

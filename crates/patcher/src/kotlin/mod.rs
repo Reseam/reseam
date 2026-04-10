@@ -3,6 +3,7 @@ pub(crate) mod convert;
 mod log_host;
 mod manifest;
 mod options;
+mod files;
 mod resources;
 pub mod types;
 mod xml;
@@ -12,10 +13,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+use boltffi::export;
 use jni::objects::{JObject, JObjectArray, JValue};
-use jni::{InitArgsBuilder, JavaVM, JNIVersion};
-use stitch_apk::AxmlDocument;
+use jni::{InitArgsBuilder, JNIVersion, JavaVM};
 use stitch_apk::stitch_dex::{DexFile, EncodedMethod};
+use stitch_apk::AxmlDocument;
 use tracing::warn;
 
 use crate::context::PatchContext;
@@ -101,7 +103,10 @@ struct CtxGuard;
 impl CtxGuard {
     fn enter(ctx: &mut PatchContext<'_>) -> Self {
         CTX_PTR.with(|cell| {
-            debug_assert!(cell.get().is_null(), "nested CtxGuard — previous context was not cleaned up");
+            assert!(
+                cell.get().is_null(),
+                "nested CtxGuard: previous context was not cleaned up"
+            );
             cell.set(ctx as *mut PatchContext as *mut ());
         });
         HANDLES.with(|h| *h.borrow_mut() = HandleTable::default());
@@ -120,10 +125,7 @@ impl Drop for CtxGuard {
 
 include!(concat!(env!("OUT_DIR"), "/jni_natives.rs"));
 
-fn register_jni_natives(
-    env: &mut jni::JNIEnv<'_>,
-    loader: &JObject<'_>,
-) -> Result<()> {
+fn register_jni_natives(env: &mut jni::JNIEnv<'_>, loader: &JObject<'_>) -> Result<()> {
     let name = env
         .new_string("dev.stitch.patch.Native")
         .map_err(|e| jvm_err(format!("new_string: {e}")))?;
@@ -145,9 +147,15 @@ fn register_jni_natives(
 pub(crate) fn with_ctx<R>(f: impl FnOnce(&mut PatchContext<'_>) -> R) -> R {
     CTX_PTR.with(|cell| {
         let ptr = cell.get();
+        assert!(!ptr.is_null(), "patch context is not active");
         let ctx = unsafe { &mut *(ptr as *mut PatchContext<'_>) };
         f(ctx)
     })
+}
+
+#[export]
+pub fn ctx_is_active() -> bool {
+    CTX_PTR.with(|cell| !cell.get().is_null())
 }
 
 pub(crate) fn with_handles<R>(f: impl FnOnce(&mut HandleTable) -> R) -> R {
@@ -320,13 +328,14 @@ fn get_or_init_jvm() -> Result<&'static JavaVM> {
                 setup_jvm_library_path(&jvm_lib).map_err(|e| format!("{e}"))?;
             }
 
-            let lib_path = std::env::current_exe()
-                .ok()
-                .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+            let lib_path = detect_runtime_library_dir()
                 .unwrap_or_else(|| PathBuf::from("."));
             let jvm_args = InitArgsBuilder::new()
                 .version(JNIVersion::V8)
-                .option(format!("-Xmx{}", std::env::var("STITCH_JVM_HEAP").unwrap_or_else(|_| "256m".into())))
+                .option(format!(
+                    "-Xmx{}",
+                    std::env::var("STITCH_JVM_HEAP").unwrap_or_else(|_| "256m".into())
+                ))
                 .option(format!("-Djava.library.path={}", lib_path.display()))
                 .build()
                 .map_err(|e| format!("JVM args: {e}"))?;
@@ -340,6 +349,30 @@ fn get_or_init_jvm() -> Result<&'static JavaVM> {
     }
 }
 
+fn detect_runtime_library_dir() -> Option<PathBuf> {
+    let candidates = std::env::current_exe().ok().map(|exe| {
+        let mut dirs = Vec::new();
+        if let Some(dir) = exe.parent() {
+            dirs.push(dir.to_path_buf());
+            if let Some(parent) = dir.parent() {
+                dirs.push(parent.to_path_buf());
+            }
+        }
+        dirs
+    })?;
+
+    for dir in candidates {
+        let so = dir.join("libstitch_patcher_jni.so");
+        let dylib = dir.join("libstitch_patcher_jni.dylib");
+        let dll = dir.join("stitch_patcher_jni.dll");
+        if so.exists() || dylib.exists() || dll.exists() {
+            return Some(dir);
+        }
+    }
+
+    None
+}
+
 unsafe fn setup_jvm_library_path(path: &Path) -> Result<()> {
     let parent = path
         .parent()
@@ -347,10 +380,7 @@ unsafe fn setup_jvm_library_path(path: &Path) -> Result<()> {
     let parent_str = parent.to_str().unwrap_or("");
     if let Ok(current) = std::env::var("LD_LIBRARY_PATH") {
         if !current.contains(parent_str) {
-            std::env::set_var(
-                "LD_LIBRARY_PATH",
-                format!("{parent_str}:{current}"),
-            );
+            std::env::set_var("LD_LIBRARY_PATH", format!("{parent_str}:{current}"));
         }
     } else {
         std::env::set_var("LD_LIBRARY_PATH", parent_str);
@@ -438,20 +468,59 @@ fn call_patch_method(
     result
 }
 
-fn invoke_patch_method(env: &mut jni::JNIEnv<'_>, patch: &JObject<'_>, method_name: &str) -> Result<()> {
-    env.call_method(patch, method_name, "()V", &[])
+fn invoke_patch_method(
+    env: &mut jni::JNIEnv<'_>,
+    patch: &JObject<'_>,
+    method_name: &str,
+) -> Result<()> {
+    let patch_class = env
+        .call_method(patch, "getClass", "()Ljava/lang/Class;", &[])
+        .and_then(|v| v.l())
+        .map_err(|e| jvm_err(format!("patch.getClass(): {e}")))?;
+    let loader = env
+        .call_method(&patch_class, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])
+        .and_then(|v| v.l())
+        .map_err(|e| jvm_err(format!("patch class loader: {e}")))?;
+    let runtime_name = env
+        .new_string("dev.stitch.patch.PatchRuntime")
+        .map_err(|e| jvm_err(format!("PatchRuntime name: {e}")))?;
+    let runtime_class = env
+        .call_method(
+            &loader,
+            "loadClass",
+            "(Ljava/lang/String;)Ljava/lang/Class;",
+            &[JValue::Object(&runtime_name)],
+        )
+        .and_then(|v| v.l())
+        .map_err(|e| jvm_err(format!("loadClass(PatchRuntime): {e}")))?;
+    let runtime = env
+        .new_object(
+            jni::objects::JClass::from(runtime_class),
+            "()V",
+            &[],
+        )
+        .map_err(|e| jvm_err(format!("construct PatchRuntime: {e}")))?;
+
+    env.call_method(
+        patch,
+        method_name,
+        "(Ldev/stitch/patch/PatchRuntime;)V",
+        &[JValue::Object(&runtime)],
+    )
         .map_err(|e| {
             if env.exception_check().unwrap_or(false) {
                 env.exception_describe().ok();
                 env.exception_clear().ok();
             }
-            jvm_err(format!("{method_name}(): {e}"))
+            jvm_err(format!("{method_name}(PatchRuntime): {e}"))
         })?;
 
     if env.exception_check().unwrap_or(false) {
         env.exception_describe().ok();
         env.exception_clear().ok();
-        return Err(jvm_err(format!("Kotlin patch threw an exception in {method_name}()")));
+        return Err(jvm_err(format!(
+            "Kotlin patch threw an exception in {method_name}(PatchRuntime)"
+        )));
     }
 
     Ok(())
@@ -500,11 +569,7 @@ fn create_class_loader<'a>(
     .map_err(|e| jvm_err(format!("URLClassLoader: {e}")))
 }
 
-fn read_string_field(
-    env: &mut jni::JNIEnv<'_>,
-    obj: &JObject<'_>,
-    getter: &str,
-) -> Result<String> {
+fn read_string_field(env: &mut jni::JNIEnv<'_>, obj: &JObject<'_>, getter: &str) -> Result<String> {
     let val = env
         .call_method(obj, getter, "()Ljava/lang/String;", &[])
         .map_err(|e| jvm_err(format!("{getter}(): {e}")))?
@@ -516,11 +581,7 @@ fn read_string_field(
         .map_err(|e| jvm_err(format!("{getter} string: {e}")))
 }
 
-fn read_bool_field(
-    env: &mut jni::JNIEnv<'_>,
-    obj: &JObject<'_>,
-    getter: &str,
-) -> Result<bool> {
+fn read_bool_field(env: &mut jni::JNIEnv<'_>, obj: &JObject<'_>, getter: &str) -> Result<bool> {
     env.call_method(obj, getter, "()Z", &[])
         .map_err(|e| jvm_err(format!("{getter}(): {e}")))?
         .z()
@@ -866,14 +927,25 @@ fn collect_patch_obj<'a>(
     env: &mut jni::JNIEnv<'a>,
     patch_obj: &JObject<'a>,
     bundle_dir: &Path,
+    bundle_extensions: &[PathBuf],
 ) -> Result<KotlinPatch> {
     let name = read_string_field(env, patch_obj, "getName")?;
     let description = read_string_field(env, patch_obj, "getDescription")?;
     let enabled = read_bool_field(env, patch_obj, "getEnabled")?;
     let deps = read_string_list(env, patch_obj, "getDependencies")?;
     let compat = read_compatibility_list(env, patch_obj)?;
-    let ext_dex = read_string_list(env, patch_obj, "getExtensionDex").unwrap_or_default();
-    let options = read_option_declarations(env, patch_obj).unwrap_or_default();
+    let mut ext_dex = read_string_list(env, patch_obj, "getExtensionDex")?
+        .into_iter()
+        .map(|path| bundle_dir.join(path).to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    ext_dex.extend(
+        bundle_extensions
+            .iter()
+            .map(|path| path.to_string_lossy().into_owned()),
+    );
+    ext_dex.sort();
+    ext_dex.dedup();
+    let options = read_option_declarations(env, patch_obj)?;
 
     let patch_global = env
         .new_global_ref(patch_obj)
@@ -895,6 +967,7 @@ fn collect_patch_obj<'a>(
 pub fn load_kotlin_patches(
     jar_paths: &[PathBuf],
     bundle_dir: &Path,
+    bundle_extensions: &[PathBuf],
 ) -> Result<Vec<Box<dyn Patch>>> {
     let class_names = scan_class_names(jar_paths);
     if class_names.is_empty() {
@@ -1002,7 +1075,7 @@ pub fn load_kotlin_patches(
                 _ => continue,
             };
             if is_patch_type(&mut env, &value, &patch_class) {
-                if let Ok(p) = collect_patch_obj(&mut env, &value, bundle_dir) {
+                if let Ok(p) = collect_patch_obj(&mut env, &value, bundle_dir, bundle_extensions) {
                     if !p.name.is_empty() {
                         patches.push(Box::new(p));
                     }
@@ -1054,12 +1127,7 @@ pub fn load_kotlin_patches(
                 continue;
             }
             let ret_type = match env
-                .call_method(
-                    &method,
-                    "getReturnType",
-                    "()Ljava/lang/Class;",
-                    &[],
-                )
+                .call_method(&method, "getReturnType", "()Ljava/lang/Class;", &[])
                 .and_then(|v| v.l())
             {
                 Ok(rt) => rt,
@@ -1082,7 +1150,10 @@ pub fn load_kotlin_patches(
                     &method,
                     "invoke",
                     "(Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;",
-                    &[JValue::Object(&JObject::null()), JValue::Object(&JObject::null())],
+                    &[
+                        JValue::Object(&JObject::null()),
+                        JValue::Object(&JObject::null()),
+                    ],
                 )
                 .and_then(|v| v.l())
             {
@@ -1094,7 +1165,7 @@ pub fn load_kotlin_patches(
                     continue;
                 }
             };
-            if let Ok(p) = collect_patch_obj(&mut env, &value, bundle_dir) {
+            if let Ok(p) = collect_patch_obj(&mut env, &value, bundle_dir, bundle_extensions) {
                 if !p.name.is_empty() {
                     patches.push(Box::new(p));
                 }
@@ -1103,4 +1174,15 @@ pub fn load_kotlin_patches(
     }
 
     Ok(patches)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::with_ctx;
+
+    #[test]
+    #[should_panic(expected = "patch context is not active")]
+    fn with_ctx_requires_active_context() {
+        with_ctx(|_| ());
+    }
 }

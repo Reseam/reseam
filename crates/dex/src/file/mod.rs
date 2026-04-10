@@ -1,5 +1,5 @@
-pub mod container;
 mod class_ops;
+pub mod container;
 mod fingerprint;
 mod interning;
 mod lookup;
@@ -16,7 +16,9 @@ use crate::error::{index_out_of_bounds, invalid_offset};
 use crate::types::class::ClassDef;
 use crate::types::header::DexHeader;
 use crate::types::method_handle::{CallSiteItem, MethodHandle};
-use crate::types::{DexString, FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx};
+use crate::types::{
+    DexString, FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx,
+};
 
 pub use fingerprint::{Fingerprint, FingerprintBuilder, FingerprintMatch};
 pub use pattern::{InstructionPattern, OpcodeMatcher};

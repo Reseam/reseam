@@ -1,6 +1,8 @@
 use super::DexFile;
 use crate::error::{invalid_descriptor, Result};
-use crate::types::{DexString, FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx};
+use crate::types::{
+    DexString, FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx,
+};
 
 impl DexFile {
     pub fn intern_string(&mut self, s: &str) -> StringIdx {

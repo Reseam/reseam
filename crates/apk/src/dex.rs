@@ -1,7 +1,7 @@
 use crate::error::Result;
 use crate::zip::reader::ApkReader;
-use stitch_dex::{MultiDexContainer, ParseOptions};
 use std::io::{Read, Seek};
+use stitch_dex::{MultiDexContainer, ParseOptions};
 use tracing::{debug, instrument};
 
 /// Extract and parse all DEX files from a single APK reader.
@@ -37,7 +37,10 @@ pub fn extract_dex_unified<R: Read + Seek>(
 
     let refs: Vec<&[u8]> = all_buffers.iter().map(|b| b.as_slice()).collect();
     let container = MultiDexContainer::parse(&refs, opts)?;
-    debug!(dex_count = container.len(), "extracted unified DEX container");
+    debug!(
+        dex_count = container.len(),
+        "extracted unified DEX container"
+    );
     Ok(container)
 }
 
@@ -72,9 +75,7 @@ pub fn from_apk(apk_bytes: &[u8], opts: ParseOptions) -> Result<MultiDexContaine
     let mut dex_names: Vec<String> = (0..archive.len())
         .filter_map(|i| {
             let name = archive.by_index(i).ok()?.name().to_string();
-            if name == "classes.dex"
-                || (name.starts_with("classes") && name.ends_with(".dex"))
-            {
+            if name == "classes.dex" || (name.starts_with("classes") && name.ends_with(".dex")) {
                 Some(name)
             } else {
                 None
@@ -86,7 +87,7 @@ pub fn from_apk(apk_bytes: &[u8], opts: ParseOptions) -> Result<MultiDexContaine
     let mut dex_files = Vec::with_capacity(dex_names.len());
     for name in &dex_names {
         let mut entry = archive.by_name(name)?;
-        let mut buf = Vec::with_capacity(entry.size() as usize);
+        let mut buf = Vec::new();
         entry.read_to_end(&mut buf)?;
         dex_files.push(stitch_dex::parse(&buf, opts.clone())?);
     }
@@ -95,7 +96,10 @@ pub fn from_apk(apk_bytes: &[u8], opts: ParseOptions) -> Result<MultiDexContaine
     for dex in dex_files {
         container.add_dex(dex);
     }
-    debug!(dex_count = container.len(), "parsed DEX entries from APK bytes");
+    debug!(
+        dex_count = container.len(),
+        "parsed DEX entries from APK bytes"
+    );
     Ok(container)
 }
 

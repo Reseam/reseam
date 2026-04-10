@@ -167,7 +167,25 @@ impl PatchOptions {
             Some(p) => p,
             None => return Ok(None),
         };
+        let base = base.canonicalize()?;
         let full = base.join(relative);
+        let full = full.canonicalize().map_err(|e| {
+            PatcherError::NotFound(format!(
+                "file not found: {} ({e})",
+                full.display()
+            ))
+        })?;
+        if !full.starts_with(&base) {
+            return Err(PatcherError::InvalidOptionValue {
+                patch: String::new(),
+                key: key.to_string(),
+                reason: format!(
+                    "path escapes option root: {} is outside {}",
+                    full.display(),
+                    base.display()
+                ),
+            });
+        }
         if !full.exists() {
             return Err(PatcherError::NotFound(format!(
                 "file not found: {}",
@@ -230,11 +248,7 @@ impl OptionDeclaration {
             return Err(PatcherError::InvalidOptionValue {
                 patch: String::new(),
                 key: self.key.clone(),
-                reason: format!(
-                    "expected {:?}, got {}",
-                    self.option_type,
-                    value.type_name()
-                ),
+                reason: format!("expected {:?}, got {}", self.option_type, value.type_name()),
             });
         }
 
@@ -251,7 +265,10 @@ impl OptionDeclaration {
                         return Err(PatcherError::InvalidOptionValue {
                             patch: String::new(),
                             key: self.key.clone(),
-                            reason: format!("'{candidate}' is not in [{}]", valid_values.join(", ")),
+                            reason: format!(
+                                "'{candidate}' is not in [{}]",
+                                valid_values.join(", ")
+                            ),
                         });
                     }
                 }
@@ -306,16 +323,17 @@ pub fn validate_patch_options(
         }
 
         if let Some(default_value) = &decl.default_value {
-            decl.validate_value(default_value).map_err(|err| match err {
-                PatcherError::InvalidOptionValue { reason, .. } => {
-                    PatcherError::InvalidOptionValue {
-                        patch: patch_name.to_string(),
-                        key: decl.key.clone(),
-                        reason,
+            decl.validate_value(default_value)
+                .map_err(|err| match err {
+                    PatcherError::InvalidOptionValue { reason, .. } => {
+                        PatcherError::InvalidOptionValue {
+                            patch: patch_name.to_string(),
+                            key: decl.key.clone(),
+                            reason,
+                        }
                     }
-                }
-                other => other,
-            })?;
+                    other => other,
+                })?;
             resolved.set(decl.key.clone(), default_value.clone());
             continue;
         }

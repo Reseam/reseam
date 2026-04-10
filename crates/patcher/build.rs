@@ -24,26 +24,28 @@ fn main() {
 
     println!("cargo:rerun-if-changed={}", glue_path.display());
 
-    let java_home = find_java_home();
-    let jni_include = PathBuf::from(&java_home).join("include");
-    let jni_platform = if cfg!(target_os = "macos") {
-        jni_include.join("darwin")
-    } else {
-        jni_include.join("linux")
-    };
+    if should_compile_jni_glue() {
+        let java_home = find_java_home();
+        let jni_include = PathBuf::from(&java_home).join("include");
+        let jni_platform = if cfg!(target_os = "macos") {
+            jni_include.join("darwin")
+        } else {
+            jni_include.join("linux")
+        };
 
-    let mut build = cc::Build::new();
-    build
-        .file(&glue_path)
-        .include(&jni_dir)
-        .include(&jni_include)
-        .include(&jni_platform);
+        let mut build = cc::Build::new();
+        build
+            .file(&glue_path)
+            .include(&jni_dir)
+            .include(&jni_include)
+            .include(&jni_platform);
 
-    // The JNI glue is generated and intentionally keeps the standard JNI
-    // parameter shape even when some exports do not use `env`/`cls`.
-    build.flag_if_supported("-Wno-unused-parameter");
+        // The JNI glue is generated and intentionally keeps the standard JNI
+        // parameter shape even when some exports do not use `env`/`cls`.
+        build.flag_if_supported("-Wno-unused-parameter");
 
-    build.compile("stitch_jni_glue");
+        build.compile("stitch_jni_glue");
+    }
 
     let content = fs::read_to_string(&glue_path).unwrap();
     let natives = parse_jni_exports(&content);
@@ -112,7 +114,8 @@ fn parse_jni_exports(content: &str) -> Vec<JniNative> {
         let encoded = &c_name[prefix.len()..];
         let method_name = decode_jni_name(encoded);
 
-        let params_str = &after_jnicall[paren + 1..after_jnicall.find(')').unwrap_or(after_jnicall.len())];
+        let params_str =
+            &after_jnicall[paren + 1..after_jnicall.find(')').unwrap_or(after_jnicall.len())];
         let params: Vec<&str> = params_str
             .split(',')
             .map(|s| s.trim())
@@ -147,6 +150,7 @@ fn decode_jni_name(encoded: &str) -> String {
 fn c_type_to_jni_sig(param: &str) -> String {
     let ty = param.split_whitespace().next().unwrap_or("");
     match ty {
+        "jbyte" => "B",
         "jint" => "I",
         "jlong" => "J",
         "jshort" => "S",
@@ -171,6 +175,10 @@ fn ret_to_jni_sig(ret: &str) -> String {
         other => panic!("unknown JNI return type: {other}"),
     }
     .to_string()
+}
+
+fn should_compile_jni_glue() -> bool {
+    env::var_os("STITCH_SKIP_JNI_GLUE").is_none()
 }
 
 fn find_java_home() -> String {

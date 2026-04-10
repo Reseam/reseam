@@ -519,13 +519,9 @@ fn read_registers(insn: &Instruction) -> Vec<u16> {
         | Instruction::InvokeSuper { args, .. }
         | Instruction::InvokeDirect { args, .. }
         | Instruction::InvokeStatic { args, .. }
-        | Instruction::InvokeInterface { args, .. } => {
-            args.iter().map(|r| *r as u16).collect()
-        }
+        | Instruction::InvokeInterface { args, .. } => args.iter().map(|r| *r as u16).collect(),
 
-        Instruction::InvokePolymorphic { args, .. } => {
-            args.iter().map(|r| *r as u16).collect()
-        }
+        Instruction::InvokePolymorphic { args, .. } => args.iter().map(|r| *r as u16).collect(),
 
         Instruction::FilledNewArrayRange {
             first_reg, count, ..

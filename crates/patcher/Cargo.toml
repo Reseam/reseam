@@ -2,6 +2,8 @@
 name = "stitch-patcher"
 version = "0.1.0"
 edition = "2021"
+description = "Patch execution engine for Stitch with Kotlin JVM bridge support"
+readme = "README.md"
 
 [lib]
 crate-type = ["lib", "cdylib"]

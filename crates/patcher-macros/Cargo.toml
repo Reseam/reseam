@@ -2,6 +2,8 @@
 name = "stitch-patcher-macros"
 version = "0.1.0"
 edition = "2021"
+description = "Proc macros for authoring Stitch patches"
+readme = "README.md"
 
 [lib]
 proc-macro = true

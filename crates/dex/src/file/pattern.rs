@@ -280,7 +280,10 @@ impl OpcodeMatcher {
                 | (Self::NewInstance, Instruction::NewInstance { .. })
                 | (Self::NewArray, Instruction::NewArray { .. })
                 | (Self::FilledNewArray, Instruction::FilledNewArray { .. })
-                | (Self::FilledNewArrayRange, Instruction::FilledNewArrayRange { .. })
+                | (
+                    Self::FilledNewArrayRange,
+                    Instruction::FilledNewArrayRange { .. }
+                )
                 | (Self::FillArrayData, Instruction::FillArrayData { .. })
                 | (Self::Throw, Instruction::Throw { .. })
                 | (Self::Goto, Instruction::Goto { .. })
@@ -352,16 +355,40 @@ impl OpcodeMatcher {
                 | (Self::InvokeDirect, Instruction::InvokeDirect { .. })
                 | (Self::InvokeStatic, Instruction::InvokeStatic { .. })
                 | (Self::InvokeInterface, Instruction::InvokeInterface { .. })
-                | (Self::InvokeVirtualRange, Instruction::InvokeVirtualRange { .. })
+                | (
+                    Self::InvokeVirtualRange,
+                    Instruction::InvokeVirtualRange { .. }
+                )
                 | (Self::InvokeSuperRange, Instruction::InvokeSuperRange { .. })
-                | (Self::InvokeDirectRange, Instruction::InvokeDirectRange { .. })
-                | (Self::InvokeStaticRange, Instruction::InvokeStaticRange { .. })
-                | (Self::InvokeInterfaceRange, Instruction::InvokeInterfaceRange { .. })
-                | (Self::InvokePolymorphic, Instruction::InvokePolymorphic { .. })
-                | (Self::InvokePolymorphicRange, Instruction::InvokePolymorphicRange { .. })
+                | (
+                    Self::InvokeDirectRange,
+                    Instruction::InvokeDirectRange { .. }
+                )
+                | (
+                    Self::InvokeStaticRange,
+                    Instruction::InvokeStaticRange { .. }
+                )
+                | (
+                    Self::InvokeInterfaceRange,
+                    Instruction::InvokeInterfaceRange { .. }
+                )
+                | (
+                    Self::InvokePolymorphic,
+                    Instruction::InvokePolymorphic { .. }
+                )
+                | (
+                    Self::InvokePolymorphicRange,
+                    Instruction::InvokePolymorphicRange { .. }
+                )
                 | (Self::InvokeCustom, Instruction::InvokeCustom { .. })
-                | (Self::InvokeCustomRange, Instruction::InvokeCustomRange { .. })
-                | (Self::ConstMethodHandle, Instruction::ConstMethodHandle { .. })
+                | (
+                    Self::InvokeCustomRange,
+                    Instruction::InvokeCustomRange { .. }
+                )
+                | (
+                    Self::ConstMethodHandle,
+                    Instruction::ConstMethodHandle { .. }
+                )
                 | (Self::ConstMethodType, Instruction::ConstMethodType { .. })
                 | (Self::NegInt, Instruction::NegInt { .. })
                 | (Self::NotInt, Instruction::NotInt { .. })
@@ -467,9 +494,18 @@ impl OpcodeMatcher {
                 | (Self::ShlIntLit8, Instruction::ShlIntLit8 { .. })
                 | (Self::ShrIntLit8, Instruction::ShrIntLit8 { .. })
                 | (Self::UshrIntLit8, Instruction::UshrIntLit8 { .. })
-                | (Self::PackedSwitchPayload, Instruction::PackedSwitchPayload { .. })
-                | (Self::SparseSwitchPayload, Instruction::SparseSwitchPayload { .. })
-                | (Self::FillArrayDataPayload, Instruction::FillArrayDataPayload { .. })
+                | (
+                    Self::PackedSwitchPayload,
+                    Instruction::PackedSwitchPayload { .. }
+                )
+                | (
+                    Self::SparseSwitchPayload,
+                    Instruction::SparseSwitchPayload { .. }
+                )
+                | (
+                    Self::FillArrayDataPayload,
+                    Instruction::FillArrayDataPayload { .. }
+                )
                 | (Self::RawInstruction, Instruction::RawInstruction { .. })
         )
     }

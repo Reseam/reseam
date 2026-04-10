@@ -36,6 +36,6 @@ interface StitchPatch {
     val options: List<PatchOption> get() = emptyList()
     val extensionDex: List<String> get() = emptyList()
 
-    fun execute()
-    fun afterDependents() {}
+    fun execute(ctx: PatchRuntime)
+    fun afterDependents(ctx: PatchRuntime) {}
 }

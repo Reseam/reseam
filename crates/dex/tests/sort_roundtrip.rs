@@ -45,9 +45,7 @@ fn resolve_fields(dex: &stitch_dex::DexFile) -> Vec<(String, String, String)> {
         .collect()
 }
 
-fn resolve_class_methods(
-    dex: &stitch_dex::DexFile,
-) -> HashMap<String, Vec<(String, String)>> {
+fn resolve_class_methods(dex: &stitch_dex::DexFile) -> HashMap<String, Vec<(String, String)>> {
     let mut result: HashMap<String, Vec<(String, String)>> = HashMap::new();
     for class in &dex.classes {
         let class_desc = dex.type_descriptor(class.class_type).to_owned();
@@ -90,7 +88,6 @@ fn sort_roundtrip_preserves_method_ids() {
     }
 
     for (name, dex_bytes) in &dex_entries {
-
         let opts = ParseOptions {
             skip_checksum: true,
             skip_signature: true,
@@ -101,7 +98,6 @@ fn sort_roundtrip_preserves_method_ids() {
         dex.resolve_all_class_data().expect("resolve class data");
 
         let before_methods = resolve_methods(&dex);
-        let before_fields = resolve_fields(&dex);
         let before_class_methods = resolve_class_methods(&dex);
 
         let written = stitch_dex::write(&mut dex).expect("write");
@@ -146,11 +142,15 @@ fn sort_roundtrip_preserves_method_ids() {
         }
 
         // Check class_data method references point to correct classes
-        let mut dex2_resolved = stitch_dex::parse(&written, ParseOptions {
-            skip_checksum: true,
-            skip_signature: true,
-            ..ParseOptions::default()
-        }).expect("parse written again");
+        let mut dex2_resolved = stitch_dex::parse(
+            &written,
+            ParseOptions {
+                skip_checksum: true,
+                skip_signature: true,
+                ..ParseOptions::default()
+            },
+        )
+        .expect("parse written again");
         dex2_resolved.resolve_all_class_data().expect("resolve");
         let after_class_methods = resolve_class_methods(&dex2_resolved);
 
@@ -240,21 +240,13 @@ fn sort_roundtrip_after_interning_preserves_method_ids() {
     dex.intern_string("Lstitch/Extension;");
     dex.intern_type("Lstitch/Extension;");
     dex.intern_string("extensionMethod");
-    let _ = dex.intern_method(
-        "Lstitch/Extension;",
-        "extensionMethod",
-        "()V",
-    );
+    let _ = dex.intern_method("Lstitch/Extension;", "extensionMethod", "()V");
     let _ = dex.intern_method(
         "Lstitch/Extension;",
         "anotherMethod",
         "(Ljava/lang/String;I)Z",
     );
-    let _ = dex.intern_field(
-        "Lstitch/Extension;",
-        "extensionField",
-        "Ljava/lang/String;",
-    );
+    let _ = dex.intern_field("Lstitch/Extension;", "extensionField", "Ljava/lang/String;");
 
     let written = stitch_dex::write(&mut dex).expect("write");
     let mut dex2 = stitch_dex::parse(&written, opts).expect("parse written");
@@ -362,11 +354,9 @@ fn sort_roundtrip_after_code_modification_preserves_refs() {
     let before_class_methods = resolve_class_methods(&dex);
 
     // Intern an extension method and string before modifying code
-    let ext_method = dex.intern_method(
-        "Lstitch/Extension;",
-        "hook",
-        "(Ljava/lang/String;)V",
-    ).expect("intern method");
+    let ext_method = dex
+        .intern_method("Lstitch/Extension;", "hook", "(Ljava/lang/String;)V")
+        .expect("intern method");
     let new_str = dex.intern_string("hooked!");
 
     // Find a $-containing class and modify its code
@@ -376,19 +366,27 @@ fn sort_roundtrip_after_code_modification_preserves_refs() {
             break;
         }
         if let Some(ref mut data) = class.class_data {
-            for m in data.direct_methods.iter_mut().chain(data.virtual_methods.iter_mut()) {
+            for m in data
+                .direct_methods
+                .iter_mut()
+                .chain(data.virtual_methods.iter_mut())
+            {
                 if let Some(ref mut code) = m.code {
                     if code.instructions.len() > 3 {
-                        code.insert_instructions(0, &[
-                            stitch_dex::Instruction::ConstString {
-                                dest: 0,
-                                string: new_str,
-                            },
-                            stitch_dex::Instruction::InvokeStatic {
-                                method: ext_method,
-                                args: smallvec::smallvec![0],
-                            },
-                        ]).expect("insert_instructions failed in test");
+                        code.insert_instructions(
+                            0,
+                            &[
+                                stitch_dex::Instruction::ConstString {
+                                    dest: 0,
+                                    string: new_str,
+                                },
+                                stitch_dex::Instruction::InvokeStatic {
+                                    method: ext_method,
+                                    args: smallvec::smallvec![0],
+                                },
+                            ],
+                        )
+                        .expect("insert_instructions failed in test");
                         modified_class = Some("(some $-class)".to_owned());
                         break;
                     }
@@ -494,7 +492,11 @@ fn sort_double_roundtrip_is_stable() {
 
     // The two outputs should be byte-identical (sort is stable/idempotent)
     if written1 != written2 {
-        eprintln!("Double round-trip NOT stable! Sizes: {} vs {}", written1.len(), written2.len());
+        eprintln!(
+            "Double round-trip NOT stable! Sizes: {} vs {}",
+            written1.len(),
+            written2.len()
+        );
 
         // Parse both and compare method tables
         let d1 = stitch_dex::parse(&written1, opts.clone()).expect("parse w1");
@@ -506,15 +508,30 @@ fn sort_double_roundtrip_is_stable() {
         for (i, (a, b)) in m1.iter().zip(m2.iter()).enumerate() {
             if a != b {
                 eprintln!("Method[{i}] differs:");
-                eprintln!("  pass1: {}.{}({}) -> {}", a.class_desc, a.name, a.params.join(","), a.return_type);
-                eprintln!("  pass2: {}.{}({}) -> {}", b.class_desc, b.name, b.params.join(","), b.return_type);
+                eprintln!(
+                    "  pass1: {}.{}({}) -> {}",
+                    a.class_desc,
+                    a.name,
+                    a.params.join(","),
+                    a.return_type
+                );
+                eprintln!(
+                    "  pass2: {}.{}({}) -> {}",
+                    b.class_desc,
+                    b.name,
+                    b.params.join(","),
+                    b.return_type
+                );
             }
         }
 
         panic!("Double round-trip is not stable (sort is not idempotent)");
     }
 
-    eprintln!("OK: double round-trip is byte-identical ({} bytes)", written1.len());
+    eprintln!(
+        "OK: double round-trip is byte-identical ({} bytes)",
+        written1.len()
+    );
 }
 
 #[test]
@@ -536,7 +553,8 @@ fn compare_patched_vs_original() {
     let patched_bytes = std::fs::read(patched_path).expect("read patched");
 
     let mut orig_zip = zip::ZipArchive::new(std::io::Cursor::new(&orig_bytes)).expect("open orig");
-    let mut patched_zip = zip::ZipArchive::new(std::io::Cursor::new(&patched_bytes)).expect("open patched");
+    let mut patched_zip =
+        zip::ZipArchive::new(std::io::Cursor::new(&patched_bytes)).expect("open patched");
 
     // Collect DEX file names from patched APK
     let patched_dex_names: Vec<String> = (0..patched_zip.len())
@@ -560,8 +578,11 @@ fn compare_patched_vs_original() {
             buf
         };
 
-        let mut patched_dex = stitch_dex::parse(&patched_dex_bytes, opts.clone()).expect("parse patched");
-        patched_dex.resolve_all_class_data().expect("resolve patched");
+        let mut patched_dex =
+            stitch_dex::parse(&patched_dex_bytes, opts.clone()).expect("parse patched");
+        patched_dex
+            .resolve_all_class_data()
+            .expect("resolve patched");
 
         // Check for cross-class method reference corruption
         let mut issues = Vec::new();
@@ -590,7 +611,9 @@ fn compare_patched_vs_original() {
         if let Ok(mut orig_entry) = orig_zip.by_name(dex_name) {
             use std::io::Read;
             let mut orig_dex_bytes = Vec::new();
-            orig_entry.read_to_end(&mut orig_dex_bytes).expect("read orig");
+            orig_entry
+                .read_to_end(&mut orig_dex_bytes)
+                .expect("read orig");
             let orig_dex = stitch_dex::parse(&orig_dex_bytes, opts.clone()).expect("parse orig");
             eprintln!(
                 "[{dex_name}] ORIGINAL: {} methods, {} fields, {} types",
@@ -604,8 +627,11 @@ fn compare_patched_vs_original() {
         if let Ok(mut orig_entry) = orig_zip.by_name(dex_name) {
             use std::io::Read;
             let mut orig_dex_bytes = Vec::new();
-            orig_entry.read_to_end(&mut orig_dex_bytes).expect("read orig");
-            let mut orig_dex = stitch_dex::parse(&orig_dex_bytes, opts.clone()).expect("parse orig");
+            orig_entry
+                .read_to_end(&mut orig_dex_bytes)
+                .expect("read orig");
+            let mut orig_dex =
+                stitch_dex::parse(&orig_dex_bytes, opts.clone()).expect("parse orig");
             orig_dex.resolve_all_class_data().expect("resolve orig");
 
             let orig_class_methods = resolve_class_methods(&orig_dex);
@@ -620,7 +646,9 @@ fn compare_patched_vs_original() {
                     patched_sorted.sort();
                     if orig_sorted != patched_sorted {
                         // Only report if the change involves $-containing classes
-                        let involves_dollar = orig_sorted.iter().chain(patched_sorted.iter())
+                        let involves_dollar = orig_sorted
+                            .iter()
+                            .chain(patched_sorted.iter())
                             .any(|(c, _)| c.contains('$'));
                         if involves_dollar {
                             corrupted.push(format!(
