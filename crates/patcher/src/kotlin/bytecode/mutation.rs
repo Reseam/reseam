@@ -1,5 +1,7 @@
 use smallvec::SmallVec;
-use stitch_apk::stitch_dex::{Instruction as DexInsn, MethodIdx};
+use stitch_apk::stitch_dex::{
+    find_contiguous_free_registers, CodeItem, Instruction as DexInsn, MethodIdx,
+};
 use tracing::warn;
 
 use boltffi::export;
@@ -443,26 +445,17 @@ pub fn insert_invoke_static(
             Ok(idx) => idx,
             Err(_) => return false,
         };
-        let needs_range = registers.len() > 5 || registers.iter().any(|&r| r > 15);
-        let invoke = if needs_range {
-            DexInsn::InvokeStaticRange {
-                method: method_idx,
-                first_reg: registers.first().copied().unwrap_or(0),
-                count: registers.len() as u8,
-            }
-        } else {
-            let regs: SmallVec<[u8; 5]> = registers.iter().map(|r| *r as u8).collect();
-            DexInsn::InvokeStatic {
-                method: method_idx,
-                args: regs,
-            }
-        };
         let method = match get_method_mut(dex, mh) {
             Some(m) => m,
             None => return false,
         };
         if let Some(code) = &mut method.code {
-            match code.insert_instruction(index as usize, invoke) {
+            let lowered =
+                match lower_static_invoke(code, index as usize, method_idx, &proto, &registers) {
+                    Some(insns) => insns,
+                    None => return false,
+                };
+            match code.insert_instructions(index as usize, &lowered) {
                 Ok(()) => return true,
                 Err(e) => {
                     warn!(error = %e, "insert_invoke_static failed");
@@ -498,35 +491,22 @@ pub fn insert_invoke_static_with_move_result(
             Ok(idx) => idx,
             Err(_) => return false,
         };
-        let needs_range = registers.len() > 5 || registers.iter().any(|&r| r > 15);
-        let invoke = if needs_range {
-            DexInsn::InvokeStaticRange {
-                method: method_idx,
-                first_reg: registers.first().copied().unwrap_or(0),
-                count: registers.len() as u8,
-            }
-        } else {
-            let regs: SmallVec<[u8; 5]> = registers.iter().map(|r| *r as u8).collect();
-            DexInsn::InvokeStatic {
-                method: method_idx,
-                args: regs,
-            }
-        };
-        let move_result = if is_object {
-            DexInsn::MoveResultObject {
-                dest: result_register as u8,
-            }
-        } else {
-            DexInsn::MoveResult {
-                dest: result_register as u8,
-            }
-        };
         let method = match get_method_mut(dex, mh) {
             Some(m) => m,
             None => return false,
         };
         if let Some(code) = &mut method.code {
-            match code.insert_instructions(index as usize, &[invoke, move_result]) {
+            let mut lowered =
+                match lower_static_invoke(code, index as usize, method_idx, &proto, &registers) {
+                    Some(insns) => insns,
+                    None => return false,
+                };
+            let move_result = match build_move_result(result_register, is_object) {
+                Some(insn) => insn,
+                None => return false,
+            };
+            lowered.push(move_result);
+            match code.insert_instructions(index as usize, &lowered) {
                 Ok(()) => return true,
                 Err(e) => {
                     warn!(error = %e, "insert_invoke_static_with_move_result failed");
@@ -535,6 +515,209 @@ pub fn insert_invoke_static_with_move_result(
             }
         }
         false
+    })
+}
+
+#[derive(Clone, Copy)]
+enum InvokeMoveKind {
+    Narrow,
+    Wide,
+    Object,
+}
+
+fn lower_static_invoke(
+    code: &CodeItem,
+    index: usize,
+    method: MethodIdx,
+    proto: &str,
+    registers: &[u16],
+) -> Option<Vec<DexInsn>> {
+    if registers.len() > u8::MAX as usize {
+        warn!(
+            register_count = registers.len(),
+            "invoke-static register count exceeds range encoding capacity"
+        );
+        return None;
+    }
+
+    if invoke_is_directly_encodable(registers) {
+        let args: SmallVec<[u8; 5]> = registers.iter().map(|r| *r as u8).collect();
+        return Some(vec![DexInsn::InvokeStatic { method, args }]);
+    }
+
+    if invoke_registers_are_consecutive(registers) {
+        return Some(vec![DexInsn::InvokeStaticRange {
+            method,
+            first_reg: registers.first().copied().unwrap_or(0),
+            count: registers.len() as u8,
+        }]);
+    }
+
+    let specs = parse_static_invoke_arg_specs(proto)?;
+    let expected_words: usize = specs.iter().map(|(words, _)| *words).sum();
+    if expected_words != registers.len() {
+        warn!(
+            register_count = registers.len(),
+            expected_words,
+            proto,
+            "invoke-static registers do not match method prototype"
+        );
+        return None;
+    }
+
+    let scratch = match find_contiguous_free_registers(code, index, registers.len(), registers) {
+        Some(regs) => regs,
+        None => {
+            warn!(
+                register_count = registers.len(),
+                index,
+                "no contiguous scratch registers available for invoke-static lowering"
+            );
+            return None;
+        }
+    };
+    let scratch_start = scratch.first().copied().unwrap_or(0);
+
+    let mut lowered = Vec::with_capacity(specs.len() + 1);
+    let mut src_index = 0usize;
+    let mut dest = scratch_start;
+    for (word_count, kind) in specs {
+        let src = registers[src_index];
+        if word_count == 2 {
+            let Some(&src_hi) = registers.get(src_index + 1) else {
+                warn!(proto, "missing second register word for wide invoke-static arg");
+                return None;
+            };
+            if src_hi != src + 1 {
+                warn!(
+                    src,
+                    src_hi,
+                    proto,
+                    "wide invoke-static arg must occupy consecutive source registers"
+                );
+                return None;
+            }
+        }
+        lowered.push(build_move(kind, dest, src));
+        src_index += word_count;
+        dest += word_count as u16;
+    }
+    lowered.push(DexInsn::InvokeStaticRange {
+        method,
+        first_reg: scratch_start,
+        count: registers.len() as u8,
+    });
+    Some(lowered)
+}
+
+fn parse_static_invoke_arg_specs(proto: &str) -> Option<Vec<(usize, InvokeMoveKind)>> {
+    let params = proto.strip_prefix('(')?.split_once(')')?.0;
+    let mut specs = Vec::new();
+    let bytes = params.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        match bytes[i] as char {
+            '[' => {
+                i += 1;
+                while i < bytes.len() && bytes[i] as char == '[' {
+                    i += 1;
+                }
+                if i >= bytes.len() {
+                    return None;
+                }
+                if bytes[i] as char == 'L' {
+                    while i < bytes.len() && bytes[i] as char != ';' {
+                        i += 1;
+                    }
+                    if i >= bytes.len() {
+                        return None;
+                    }
+                }
+                i += 1;
+                specs.push((1, InvokeMoveKind::Object));
+            }
+            'L' => {
+                while i < bytes.len() && bytes[i] as char != ';' {
+                    i += 1;
+                }
+                if i >= bytes.len() {
+                    return None;
+                }
+                i += 1;
+                specs.push((1, InvokeMoveKind::Object));
+            }
+            'J' | 'D' => {
+                i += 1;
+                specs.push((2, InvokeMoveKind::Wide));
+            }
+            _ => {
+                i += 1;
+                specs.push((1, InvokeMoveKind::Narrow));
+            }
+        }
+    }
+    Some(specs)
+}
+
+fn invoke_is_directly_encodable(registers: &[u16]) -> bool {
+    registers.len() <= 5 && registers.iter().all(|&reg| reg <= 15)
+}
+
+fn invoke_registers_are_consecutive(registers: &[u16]) -> bool {
+    registers
+        .windows(2)
+        .all(|pair| pair[1] == pair[0].saturating_add(1))
+}
+
+fn build_move(kind: InvokeMoveKind, dest: u16, src: u16) -> DexInsn {
+    match kind {
+        InvokeMoveKind::Narrow if dest <= 15 && src <= 15 => DexInsn::Move {
+            dest: dest as u8,
+            src: src as u8,
+        },
+        InvokeMoveKind::Narrow if dest <= u8::MAX as u16 => DexInsn::MoveFrom16 {
+            dest: dest as u8,
+            src,
+        },
+        InvokeMoveKind::Narrow => DexInsn::Move16 { dest, src },
+        InvokeMoveKind::Wide if dest <= 15 && src <= 15 => DexInsn::MoveWide {
+            dest: dest as u8,
+            src: src as u8,
+        },
+        InvokeMoveKind::Wide if dest <= u8::MAX as u16 => DexInsn::MoveWideFrom16 {
+            dest: dest as u8,
+            src,
+        },
+        InvokeMoveKind::Wide => DexInsn::MoveWide16 { dest, src },
+        InvokeMoveKind::Object if dest <= 15 && src <= 15 => DexInsn::MoveObject {
+            dest: dest as u8,
+            src: src as u8,
+        },
+        InvokeMoveKind::Object if dest <= u8::MAX as u16 => DexInsn::MoveObjectFrom16 {
+            dest: dest as u8,
+            src,
+        },
+        InvokeMoveKind::Object => DexInsn::MoveObject16 { dest, src },
+    }
+}
+
+fn build_move_result(result_register: u16, is_object: bool) -> Option<DexInsn> {
+    if result_register > u8::MAX as u16 {
+        warn!(
+            result_register,
+            "move-result destination exceeds v255 and cannot be encoded"
+        );
+        return None;
+    }
+
+    Some(if is_object {
+        DexInsn::MoveResultObject {
+            dest: result_register as u8,
+        }
+    } else {
+        DexInsn::MoveResult {
+            dest: result_register as u8,
+        }
     })
 }
 

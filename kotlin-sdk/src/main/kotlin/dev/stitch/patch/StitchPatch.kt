@@ -1,5 +1,7 @@
 package dev.stitch.patch
 
+import dev.stitch.patch.settings.SettingsSection
+
 class PatchException(message: String) : Exception(message)
 
 enum class PatchOptionType {
@@ -35,6 +37,8 @@ interface StitchPatch {
     // Declarations are metadata; execution-time values are supplied by the host runtime.
     val options: List<PatchOption> get() = emptyList()
     val extensionDex: List<String> get() = emptyList()
+    val settingsHost: String? get() = null
+    val settings: List<SettingsSection> get() = emptyList()
 
     fun execute(ctx: PatchRuntime)
     fun afterDependents(ctx: PatchRuntime) {}

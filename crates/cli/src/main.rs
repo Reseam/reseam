@@ -45,6 +45,25 @@ enum Commands {
     Info {
         apk: PathBuf,
     },
+    Bundle {
+        #[command(subcommand)]
+        command: BundleCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum BundleCommands {
+    Keygen {
+        #[arg(short, long)]
+        out: PathBuf,
+    },
+    Pack {
+        dir: PathBuf,
+        #[arg(short, long)]
+        key: PathBuf,
+        #[arg(short, long)]
+        out: PathBuf,
+    },
 }
 
 fn main() -> Result<()> {
@@ -75,6 +94,10 @@ fn main() -> Result<()> {
         ),
         Commands::List { bundle } => cmd_list(&bundle),
         Commands::Info { apk } => cmd_info(&apk),
+        Commands::Bundle { command } => match command {
+            BundleCommands::Keygen { out } => cmd_bundle_keygen(&out),
+            BundleCommands::Pack { dir, key, out } => cmd_bundle_pack(&dir, &key, &out),
+        },
     }
 }
 
@@ -422,6 +445,200 @@ fn parse_option_arg(raw: &str) -> Result<(String, String, String)> {
         option_key.to_string(),
         value.to_string(),
     ))
+}
+
+fn cmd_bundle_keygen(out: &Path) -> Result<()> {
+    use rand::RngCore;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    if out.exists() {
+        bail!("refusing to overwrite existing key at {}", out.display());
+    }
+    if let Some(parent) = out.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+    }
+
+    let mut seed = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut seed);
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(&seed);
+    let pubkey = signing_key.verifying_key().to_bytes();
+
+    let mut file = std::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .mode(0o600)
+        .open(out)
+        .with_context(|| format!("failed to create {}", out.display()))?;
+    use std::io::Write as _;
+    file.write_all(&seed).context("failed to write seed")?;
+
+    println!("Ed25519 keypair generated");
+    println!("  private seed: {}", out.display());
+    println!("  public key (hex): {}", hex::encode(pubkey));
+    println!();
+    println!("Paste this into stitch_patcher::bundle::TRUSTED_KEYS:");
+    print!("    [");
+    for (i, b) in pubkey.iter().enumerate() {
+        if i > 0 {
+            print!(", ");
+        }
+        print!("0x{b:02x}");
+    }
+    println!("],");
+    Ok(())
+}
+
+fn cmd_bundle_pack(dir: &Path, key_path: &Path, out_path: &Path) -> Result<()> {
+    use sha2::{Digest, Sha256};
+    use std::io::Write as _;
+
+    let manifest_path = dir.join("manifest.toml");
+    let manifest_src = std::fs::read_to_string(&manifest_path)
+        .with_context(|| format!("failed to read {}", manifest_path.display()))?;
+
+    #[derive(serde::Deserialize)]
+    struct PartialManifest {
+        bundle: PartialBundle,
+    }
+    #[derive(serde::Deserialize)]
+    struct PartialBundle {
+        name: String,
+        #[serde(default)]
+        author: String,
+        #[serde(default)]
+        description: String,
+        format_version: u32,
+    }
+
+    let partial: PartialManifest =
+        toml::from_str(&manifest_src).context("failed to parse manifest.toml")?;
+    if partial.bundle.format_version != stitch_patcher::bundle::BUNDLE_FORMAT_VERSION {
+        bail!(
+            "unsupported format_version {}; CLI supports {}",
+            partial.bundle.format_version,
+            stitch_patcher::bundle::BUNDLE_FORMAT_VERSION
+        );
+    }
+
+    let mut payload: Vec<(String, Vec<u8>)> = Vec::new();
+    for entry in std::fs::read_dir(dir).with_context(|| format!("read {}", dir.display()))? {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .context("non-utf8 filename")?
+            .to_string();
+        if name == "manifest.toml" {
+            continue;
+        }
+        let lower = name.to_ascii_lowercase();
+        if !(lower.ends_with(".jar") || lower.ends_with(".dex") || lower.ends_with(".rve")) {
+            continue;
+        }
+        let bytes = std::fs::read(&path).with_context(|| format!("read {}", path.display()))?;
+        payload.push((name, bytes));
+    }
+    payload.sort_by(|a, b| a.0.cmp(&b.0));
+
+    if payload.is_empty() {
+        bail!("no .jar/.dex/.rve files found in {}", dir.display());
+    }
+
+    let mut manifest = String::new();
+    manifest.push_str("[bundle]\n");
+    manifest.push_str(&format!("name = {}\n", toml_string(&partial.bundle.name)));
+    if !partial.bundle.author.is_empty() {
+        manifest.push_str(&format!("author = {}\n", toml_string(&partial.bundle.author)));
+    }
+    if !partial.bundle.description.is_empty() {
+        manifest.push_str(&format!(
+            "description = {}\n",
+            toml_string(&partial.bundle.description)
+        ));
+    }
+    manifest.push_str(&format!(
+        "format_version = {}\n\n",
+        partial.bundle.format_version
+    ));
+    manifest.push_str("[files]\n");
+    for (name, bytes) in &payload {
+        manifest.push_str(&format!(
+            "{} = \"{}\"\n",
+            toml_string(name),
+            hex::encode(Sha256::digest(bytes))
+        ));
+    }
+    let manifest_bytes = manifest.into_bytes();
+
+    let seed = std::fs::read(key_path)
+        .with_context(|| format!("read key {}", key_path.display()))?;
+    if seed.len() != 32 {
+        bail!("signing key must be exactly 32 bytes, got {}", seed.len());
+    }
+    let seed: [u8; 32] = seed.as_slice().try_into().unwrap();
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(&seed);
+    let pubkey = signing_key.verifying_key().to_bytes();
+    let signature = ed25519_dalek::Signer::sign(&signing_key, &manifest_bytes).to_bytes();
+
+    if let Some(parent) = out_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    let file = std::fs::File::create(out_path)
+        .with_context(|| format!("create {}", out_path.display()))?;
+    let mut zip = zip::ZipWriter::new(file);
+    let stored = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored);
+    let deflated = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+
+    zip.start_file("mimetype", stored)?;
+    zip.write_all(stitch_patcher::bundle::BUNDLE_MIMETYPE.as_bytes())?;
+    zip.start_file("manifest.toml", deflated)?;
+    zip.write_all(&manifest_bytes)?;
+    zip.start_file("manifest.pubkey", stored)?;
+    zip.write_all(&pubkey)?;
+    zip.start_file("manifest.sig", stored)?;
+    zip.write_all(&signature)?;
+    for (name, bytes) in &payload {
+        zip.start_file(name, deflated)?;
+        zip.write_all(bytes)?;
+    }
+    zip.finish()?;
+
+    info!(
+        bundle = %partial.bundle.name,
+        out = %out_path.display(),
+        file_count = payload.len(),
+        "bundle packed and signed"
+    );
+    Ok(())
+}
+
+fn toml_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04X}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 fn find_option_declaration<'a>(

@@ -28,6 +28,10 @@ memmap2     = "0.9"
 zip         = "2"
 quick-xml   = "0.37"
 ring        = "0.17"
+ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+sha2        = "0.10"
+hex         = "0.4"
+tempfile    = "3"
 toml        = "0.8"
 serde       = { version = "1", features = ["derive"] }
 boltffi     = "0.2"
@@ -41,4 +45,3 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 # Shared dev dependencies
 pretty_assertions = "1"
 criterion         = "0.5"
-tempfile          = "3"

@@ -28,6 +28,45 @@ pub fn find_free_registers(
     }
 }
 
+pub fn find_contiguous_free_registers(
+    code: &CodeItem,
+    at_index: usize,
+    count: usize,
+    exclude: &[u16],
+) -> Option<Vec<u16>> {
+    if count == 0 {
+        return Some(Vec::new());
+    }
+
+    let live = live_registers(code, at_index);
+    let exclude_set: HashSet<u16> = exclude.iter().copied().collect();
+    let mut run_start = None;
+    let mut run_len = 0usize;
+
+    for reg in 0..code.registers_size {
+        if live.contains(&reg) || exclude_set.contains(&reg) {
+            run_start = None;
+            run_len = 0;
+            continue;
+        }
+
+        let expected = run_start.unwrap_or(reg) + run_len as u16;
+        if run_start.is_none() || reg != expected {
+            run_start = Some(reg);
+            run_len = 1;
+        } else {
+            run_len += 1;
+        }
+
+        if run_len == count {
+            let start = run_start.unwrap();
+            return Some((start..start + count as u16).collect());
+        }
+    }
+
+    None
+}
+
 fn live_registers(code: &CodeItem, at_index: usize) -> HashSet<u16> {
     let mut live = HashSet::new();
     let len = code.instructions.len();

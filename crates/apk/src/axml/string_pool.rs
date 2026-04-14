@@ -128,8 +128,10 @@ fn decode_utf8_string(data: &[u8], offset: usize) -> Result<String> {
         ));
     }
 
-    String::from_utf8(data[pos..pos + byte_len].to_vec())
-        .map_err(|_| invalid("axml utf8 string", "invalid UTF-8 in string pool"))
+    let bytes = &data[pos..pos + byte_len];
+    String::from_utf8(bytes.to_vec())
+        .or_else(|_| stitch_dex::encoding::mutf8::decode_mutf8(bytes))
+        .map_err(|_| invalid("axml utf8 string", "invalid UTF-8/MUTF-8 in string pool"))
 }
 
 fn decode_utf16_string(data: &[u8], offset: usize) -> Result<String> {

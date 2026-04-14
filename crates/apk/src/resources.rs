@@ -887,8 +887,12 @@ fn serialize_type_spec(spec: &TypeSpec) -> Vec<u8> {
 }
 
 fn serialize_res_type(t: &ResType) -> Result<Vec<u8>> {
-    let config_size = t.config.data.len() + 4; // +4 for the config_size field itself
-    let header_size = 20 + config_size;
+    let config_bytes = if t.config.data.is_empty() {
+        4u32.to_le_bytes().to_vec()
+    } else {
+        t.config.data.clone()
+    };
+    let header_size = 20 + config_bytes.len();
     let offset_table_size = t.entries.len() * 4;
 
     let mut entry_data = Vec::new();
@@ -917,9 +921,8 @@ fn serialize_res_type(t: &ResType) -> Result<Vec<u8>> {
     write_u32(&mut out, t.entries.len() as u32);
     write_u32(&mut out, entries_start as u32);
 
-    // Config: size + data
-    write_u32(&mut out, config_size as u32);
-    out.extend_from_slice(&t.config.data);
+    // Config bytes include the leading config.size field when parsed from a real table.
+    out.extend_from_slice(&config_bytes);
 
     for offset in &offsets {
         write_u32(&mut out, *offset);
@@ -958,7 +961,7 @@ fn serialize_entry(out: &mut Vec<u8>, entry: &ResEntry) {
 }
 
 fn is_default_config(config: &ResConfig) -> bool {
-    config.data.iter().all(|&b| b == 0)
+    config.data.is_empty() || config.data[4..].iter().all(|&b| b == 0)
 }
 
 use crate::buf::{write_u16, write_u32};

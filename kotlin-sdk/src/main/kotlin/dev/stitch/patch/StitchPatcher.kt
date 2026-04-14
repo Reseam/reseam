@@ -2506,6 +2506,14 @@ fun findFreeRegisters(m: UInt, atIndex: UInt, count: UInt, exclude: ShortArray):
     }
 }
 
+fun findContiguousFreeRegisters(m: UInt, atIndex: UInt, count: UInt, exclude: ShortArray): ShortArray {
+    val buf = Native.boltffi_find_contiguous_free_registers(m.toInt(), atIndex.toInt(), count.toInt(), exclude)
+        ?: throw FfiException(-1, "Null buffer returned")
+    return useWireBytes(buf) { buffer ->
+        buffer.asShortBuffer().let { sb -> ShortArray(sb.remaining()).also { sb.get(it) } }
+    }
+}
+
 fun instructionRegisterA(m: UInt, index: UInt): UShort {
     return Native.boltffi_instruction_register_a(m.toInt(), index.toInt()).toUShort()
 }
@@ -3572,6 +3580,7 @@ private object Native {
     @JvmStatic external fun boltffi_outs_size(m: Int): Short
     @JvmStatic external fun boltffi_find_free_register(m: Int, at_index: Int, exclude: ShortArray): Short
     @JvmStatic external fun boltffi_find_free_registers(m: Int, at_index: Int, count: Int, exclude: ShortArray): ByteArray?
+    @JvmStatic external fun boltffi_find_contiguous_free_registers(m: Int, at_index: Int, count: Int, exclude: ShortArray): ByteArray?
     @JvmStatic external fun boltffi_instruction_register_a(m: Int, index: Int): Short
     @JvmStatic external fun boltffi_instruction_register_b(m: Int, index: Int): Short
     @JvmStatic external fun boltffi_instruction_register_c(m: Int, index: Int): Short

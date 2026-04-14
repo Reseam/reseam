@@ -20,10 +20,13 @@ jni         = { workspace = true, optional = true }
 zip         = { workspace = true }
 anyhow      = { workspace = true }
 tracing     = { workspace = true }
+tempfile    = { workspace = true }
+ed25519-dalek = { workspace = true }
+sha2        = { workspace = true }
+hex         = { workspace = true }
 
 
 [dev-dependencies]
-tempfile = { workspace = true }
 
 [features]
 default = ["kotlin"]

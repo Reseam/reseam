@@ -58,19 +58,65 @@ fn build_fixture_jar() -> PathBuf {
         .clone()
 }
 
-fn write_bundle_dir() -> tempfile::TempDir {
+const TEST_SIGNING_SEED: [u8; 32] = [0x42; 32];
+
+struct TestBundle {
+    _dir: tempfile::TempDir,
+    path: PathBuf,
+    pubkey: [u8; 32],
+}
+
+fn write_bundle_stitch() -> TestBundle {
+    use sha2::{Digest, Sha256};
+    use std::io::Write as _;
+
     let tmp = tempfile::tempdir().expect("tempdir failed");
-    fs::write(
-        tmp.path().join("bundle.toml"),
-        r#"
-[bundle]
+    let out_path = tmp.path().join("runtime-test-bundle.stitch");
+
+    let jar_bytes = fs::read(build_fixture_jar()).expect("read fixture jar");
+    let jar_name = "stitch-test-patches.jar";
+    let jar_sha = hex::encode(Sha256::digest(&jar_bytes));
+
+    let manifest = format!(
+        r#"[bundle]
 name = "runtime-test-bundle"
-"#,
-    )
-    .expect("write bundle manifest");
-    fs::copy(build_fixture_jar(), tmp.path().join("stitch-test-patches.jar"))
-        .expect("copy test bundle jar");
-    tmp
+format_version = 1
+
+[files]
+"{jar_name}" = "{jar_sha}"
+"#
+    );
+    let manifest_bytes = manifest.into_bytes();
+
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(&TEST_SIGNING_SEED);
+    let pubkey = signing_key.verifying_key().to_bytes();
+    let signature = ed25519_dalek::Signer::sign(&signing_key, &manifest_bytes).to_bytes();
+
+    let file = File::create(&out_path).expect("create .stitch");
+    let mut zip = zip::ZipWriter::new(file);
+    let stored = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored);
+    let deflated = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+
+    zip.start_file("mimetype", stored).unwrap();
+    zip.write_all(stitch_patcher::bundle::BUNDLE_MIMETYPE.as_bytes())
+        .unwrap();
+    zip.start_file("manifest.toml", deflated).unwrap();
+    zip.write_all(&manifest_bytes).unwrap();
+    zip.start_file("manifest.pubkey", stored).unwrap();
+    zip.write_all(&pubkey).unwrap();
+    zip.start_file("manifest.sig", stored).unwrap();
+    zip.write_all(&signature).unwrap();
+    zip.start_file(jar_name, deflated).unwrap();
+    zip.write_all(&jar_bytes).unwrap();
+    zip.finish().expect("finalize zip");
+
+    TestBundle {
+        _dir: tmp,
+        path: out_path,
+        pubkey,
+    }
 }
 
 fn manifest_bytes(version_name: &str, split_name: Option<&str>) -> Vec<u8> {
@@ -188,8 +234,9 @@ fn manifest_contains_permission(apk: &ApkFile, permission: &str) -> bool {
 
 #[test]
 fn kotlin_bundle_executes_against_runtime_api() {
-    let bundle_dir = write_bundle_dir();
-    let bundle = PatchBundle::load(bundle_dir.path()).expect("load runtime bundle");
+    let bundle_file = write_bundle_stitch();
+    let bundle = PatchBundle::load_with_trust_anchors(&bundle_file.path, &[bundle_file.pubkey])
+        .expect("load runtime bundle");
     let (_apk_dir, mut apk) = open_split_test_apk();
     let mut ctx = PatchContext::new(&mut apk);
 
@@ -260,8 +307,9 @@ fn kotlin_bundle_executes_against_runtime_api() {
 
 #[test]
 fn kotlin_bundle_required_option_is_enforced() {
-    let bundle_dir = write_bundle_dir();
-    let bundle = PatchBundle::load(bundle_dir.path()).expect("load runtime bundle");
+    let bundle_file = write_bundle_stitch();
+    let bundle = PatchBundle::load_with_trust_anchors(&bundle_file.path, &[bundle_file.pubkey])
+        .expect("load runtime bundle");
     let (_apk_dir, mut apk) = open_split_test_apk();
     let mut ctx = PatchContext::new(&mut apk);
 

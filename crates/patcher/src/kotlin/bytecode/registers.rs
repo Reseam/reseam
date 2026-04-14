@@ -1,4 +1,5 @@
 use boltffi::export;
+use stitch_apk::stitch_dex::find_contiguous_free_registers as dex_find_contiguous_free_registers;
 
 use crate::kotlin::{get_method_mut, get_method_ref, with_ctx, with_handles};
 
@@ -120,6 +121,34 @@ pub fn find_free_registers(m: u32, at_index: u32, count: u32, exclude: Vec<u16>)
             .code
             .as_ref()
             .and_then(|c| ctx.find_free_registers(c, at_index as usize, count as usize, &exclude))
+            .unwrap_or_default()
+    })
+}
+
+#[export]
+pub fn find_contiguous_free_registers(
+    m: u32,
+    at_index: u32,
+    count: u32,
+    exclude: Vec<u16>,
+) -> Vec<u16> {
+    with_ctx(|ctx| {
+        let mh = match with_handles(|h| h.get_method(m)) {
+            Some(mh) => mh,
+            None => return Vec::new(),
+        };
+        let dex = match ctx.dex_file(mh.dex_idx) {
+            Some(d) => d,
+            None => return Vec::new(),
+        };
+        let method = match get_method_ref(dex, mh) {
+            Some(m) => m,
+            None => return Vec::new(),
+        };
+        method
+            .code
+            .as_ref()
+            .and_then(|c| dex_find_contiguous_free_registers(c, at_index as usize, count as usize, &exclude))
             .unwrap_or_default()
     })
 }

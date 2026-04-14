@@ -22,6 +22,45 @@ pub(crate) struct PendingElement {
     events: Vec<AxmlEvent>,
 }
 
+fn pending_index(handle: u32) -> Option<usize> {
+    (handle >= PENDING_OFFSET).then_some((handle - PENDING_OFFSET) as usize)
+}
+
+fn take_pending_element(handle: u32) -> Option<PendingElement> {
+    let idx = pending_index(handle)?;
+    PENDING_ELEMENTS.with(|pe| {
+        let mut pe = pe.borrow_mut();
+        if idx >= pe.len() {
+            return None;
+        }
+        let pending = std::mem::replace(
+            &mut pe[idx],
+            PendingElement {
+                doc_idx: 0,
+                events: Vec::new(),
+            },
+        );
+        (!pending.events.is_empty()).then_some(pending)
+    })
+}
+
+fn pending_insert_pos(events: &[AxmlEvent]) -> Option<usize> {
+    let mut depth = 0u32;
+    for (idx, event) in events.iter().enumerate() {
+        match event {
+            AxmlEvent::StartElement { .. } => depth += 1,
+            AxmlEvent::EndElement { .. } => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(idx);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 fn element_end(doc: &AxmlDocument, start: usize) -> usize {
     doc.find_end_element(start).unwrap_or(start)
 }
@@ -642,19 +681,29 @@ pub fn xml_create_element(doc: u32, tag: String) -> u32 {
 #[export]
 pub fn xml_append_child(doc: u32, parent_el: u32, child: u32) {
     if child >= PENDING_OFFSET {
-        let pending = PENDING_ELEMENTS.with(|pe| {
-            let mut pe = pe.borrow_mut();
-            let idx = (child - PENDING_OFFSET) as usize;
-            if idx < pe.len() {
-                Some(pe.remove(idx))
-            } else {
-                None
-            }
-        });
+        let pending = take_pending_element(child);
         let pending = match pending {
             Some(p) => p,
             None => return,
         };
+        if parent_el >= PENDING_OFFSET {
+            PENDING_ELEMENTS.with(|pe| {
+                let mut pe = pe.borrow_mut();
+                let Some(parent_idx) = pending_index(parent_el) else {
+                    return;
+                };
+                let Some(parent) = pe.get_mut(parent_idx) else {
+                    return;
+                };
+                let Some(insert_pos) = pending_insert_pos(&parent.events) else {
+                    return;
+                };
+                for (offset, event) in pending.events.into_iter().enumerate() {
+                    parent.events.insert(insert_pos + offset, event);
+                }
+            });
+            return;
+        }
         XML_DOCUMENTS.with(|docs| {
             let mut docs = docs.borrow_mut();
             let doc_idx = pending.doc_idx as usize;
@@ -693,15 +742,7 @@ pub fn xml_append_child(doc: u32, parent_el: u32, child: u32) {
 #[export]
 pub fn xml_insert_before(doc: u32, _parent: u32, child: u32, before: u32) {
     if child >= PENDING_OFFSET {
-        let pending = PENDING_ELEMENTS.with(|pe| {
-            let mut pe = pe.borrow_mut();
-            let idx = (child - PENDING_OFFSET) as usize;
-            if idx < pe.len() {
-                Some(pe.remove(idx))
-            } else {
-                None
-            }
-        });
+        let pending = take_pending_element(child);
         let pending = match pending {
             Some(p) => p,
             None => return,
@@ -887,5 +928,51 @@ mod tests {
             TypedValue::Other { data_type: 0x02, data }
                 if data == stitch_apk::axml::compiler::android_attr_res_id("textColor").unwrap()
         ));
+    }
+
+    #[test]
+    fn xml_append_child_supports_nested_pending_elements() {
+        let document = with_test_doc(|doc| {
+            let parent = xml_create_element(doc, "activity".to_string());
+            let filter = xml_create_element(doc, "intent-filter".to_string());
+            let action = xml_create_element(doc, "action".to_string());
+            let category = xml_create_element(doc, "category".to_string());
+
+            xml_set_attribute(
+                doc,
+                action,
+                "android:name".to_string(),
+                "android.intent.action.MAIN".to_string(),
+            );
+            xml_set_attribute(
+                doc,
+                category,
+                "android:name".to_string(),
+                "android.intent.category.LAUNCHER".to_string(),
+            );
+
+            xml_append_child(doc, filter, action);
+            xml_append_child(doc, filter, category);
+            xml_append_child(doc, parent, filter);
+            xml_append_child(doc, 1, parent);
+        });
+
+        let mut names = Vec::new();
+        for event in &document.elements {
+            if let AxmlEvent::StartElement { name, .. } = event {
+                names.push(document.string(*name).unwrap().to_string());
+            }
+        }
+
+        assert_eq!(
+            names,
+            vec![
+                "LinearLayout".to_string(),
+                "activity".to_string(),
+                "intent-filter".to_string(),
+                "action".to_string(),
+                "category".to_string(),
+            ]
+        );
     }
 }

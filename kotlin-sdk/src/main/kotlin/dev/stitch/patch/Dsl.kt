@@ -1,5 +1,8 @@
 package dev.stitch.patch
 
+import dev.stitch.patch.settings.SettingsSection
+import dev.stitch.patch.settings.registerPatchSettings
+
 typealias ClassDef = DexClass
 
 data class CompatiblePackage(
@@ -17,6 +20,8 @@ fun patch(
     enabledByDefault: Boolean = true,
     dependsOn: List<Any> = emptyList(),
     options: List<PatchOption> = emptyList(),
+    settingsHost: Any? = null,
+    settings: List<SettingsSection> = emptyList(),
     block: PatchBuilder.() -> Unit,
 ): StitchPatch {
     val resolvedDeps = dependsOn.map { dep ->
@@ -26,7 +31,16 @@ fun patch(
             else -> error("dependsOn accepts String or StitchPatch, got: ${dep::class}")
         }
     }
-    return PatchBuilder(name, description, compatibleWith, enabledByDefault, resolvedDeps, options)
+    val resolvedSettingsHost = when (settingsHost) {
+        null -> null
+        is String -> settingsHost
+        is StitchPatch -> settingsHost.name
+        else -> error("settingsHost accepts String or StitchPatch, got: ${settingsHost::class}")
+    }
+    return PatchBuilder(
+        name, description, compatibleWith, enabledByDefault,
+        resolvedDeps, options, resolvedSettingsHost, settings,
+    )
         .apply(block)
         .build()
 }
@@ -38,6 +52,8 @@ class PatchBuilder(
     val enabledByDefault: Boolean,
     private val initDependsOn: List<String>,
     private val initOptions: List<PatchOption>,
+    private val initSettingsHost: String?,
+    private val initSettings: List<SettingsSection>,
 ) {
     private var executeBlock: ((PatchRuntime) -> Unit)? = null
     private var finalizeBlock: ((PatchRuntime) -> Unit)? = null
@@ -45,6 +61,8 @@ class PatchBuilder(
     private val extraCompatibleWith = mutableListOf<CompatiblePackage>()
     private val extraOptions = mutableListOf<PatchOption>()
     private val extensionDexPaths = mutableListOf<String>()
+    private val extraSettings = mutableListOf<SettingsSection>()
+    private var settingsHostName = initSettingsHost
 
     fun dependsOn(vararg deps: Any) {
         for (dep in deps) {
@@ -66,6 +84,18 @@ class PatchBuilder(
         extraOptions.add(declaration)
     }
 
+    fun settings(vararg sections: SettingsSection) {
+        extraSettings.addAll(sections)
+    }
+
+    fun settingsHost(host: Any) {
+        settingsHostName = when (host) {
+            is String -> host
+            is StitchPatch -> host.name
+            else -> error("settingsHost accepts String or StitchPatch, got: ${host::class}")
+        }
+    }
+
     fun extendWith(vararg paths: String) {
         extensionDexPaths.addAll(paths)
     }
@@ -83,6 +113,8 @@ class PatchBuilder(
         val allDeps = initDependsOn + extraDependsOn
         val allOptions = initOptions + extraOptions
         val allExtensions = extensionDexPaths.toList()
+        val allSettings = initSettings + extraSettings
+        val allSettingsHost = settingsHostName
         val builder = this
         val exec = executeBlock
         val fin = finalizeBlock
@@ -94,8 +126,11 @@ class PatchBuilder(
             override val enabled = builder.enabledByDefault
             override val options = allOptions
             override val extensionDex = allExtensions
+            override val settingsHost = allSettingsHost
+            override val settings = allSettings
 
             override fun execute(ctx: PatchRuntime) {
+                registerPatchSettings(allSettingsHost, name, allSettings)
                 exec?.invoke(ctx)
             }
 

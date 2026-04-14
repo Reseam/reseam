@@ -522,3 +522,85 @@ fn test_arsc_round_trip_real_apks() {
         );
     }
 }
+
+#[test]
+fn test_arsc_mutation_preserves_real_type_header_sizes() {
+    let apks = available_apks();
+    if apks.is_empty() {
+        eprintln!("Skipping: no APK files found");
+        return;
+    }
+
+    for apk_path in &apks {
+        eprintln!("\n=== ARSC mutation header preservation: {apk_path} ===");
+        let file = std::fs::File::open(apk_path).unwrap();
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+
+        let arsc_bytes = {
+            let mut entry = archive.by_name("resources.arsc").unwrap();
+            let mut buf = Vec::new();
+            std::io::Read::read_to_end(&mut entry, &mut buf).unwrap();
+            buf
+        };
+
+        let original_headers = collect_type_header_sizes(&arsc_bytes).expect("header scan failed");
+        let mut table = ResourceTable::parse(&arsc_bytes).expect("parse failed");
+        table.add_global_string("stitch mutation sentinel");
+        let serialized = table.serialize().expect("serialize failed");
+        let mutated_headers =
+            collect_type_header_sizes(&serialized).expect("mutated header scan failed");
+
+        assert_eq!(
+            original_headers, mutated_headers,
+            "type header sizes changed after string-pool mutation for {apk_path}"
+        );
+    }
+}
+
+fn collect_type_header_sizes(bytes: &[u8]) -> Result<Vec<u16>, String> {
+    fn read_u16(data: &[u8], offset: usize) -> Result<u16, String> {
+        data.get(offset..offset + 2)
+            .and_then(|slice| slice.try_into().ok())
+            .map(u16::from_le_bytes)
+            .ok_or_else(|| format!("short read at {offset}"))
+    }
+
+    fn read_u32(data: &[u8], offset: usize) -> Result<u32, String> {
+        data.get(offset..offset + 4)
+            .and_then(|slice| slice.try_into().ok())
+            .map(u32::from_le_bytes)
+            .ok_or_else(|| format!("short read at {offset}"))
+    }
+
+    let mut headers = Vec::new();
+    let mut pos = 12usize;
+
+    while pos + 8 <= bytes.len() {
+        let chunk_type = read_u16(bytes, pos)?;
+        let chunk_size = read_u32(bytes, pos + 4)? as usize;
+        if chunk_size < 8 || pos + chunk_size > bytes.len() {
+            return Err(format!("invalid chunk size at {pos}"));
+        }
+
+        if chunk_type == 0x0200 {
+            let package = &bytes[pos..pos + chunk_size];
+            let mut ppos = 288usize;
+            while ppos + 8 <= package.len() {
+                let pkg_chunk_type = read_u16(package, ppos)?;
+                let pkg_header_size = read_u16(package, ppos + 2)?;
+                let pkg_chunk_size = read_u32(package, ppos + 4)? as usize;
+                if pkg_chunk_size < 8 || ppos + pkg_chunk_size > package.len() {
+                    return Err(format!("invalid package chunk size at {ppos}"));
+                }
+                if pkg_chunk_type == 0x0201 {
+                    headers.push(pkg_header_size);
+                }
+                ppos += pkg_chunk_size;
+            }
+        }
+
+        pos += chunk_size;
+    }
+
+    Ok(headers)
+}
