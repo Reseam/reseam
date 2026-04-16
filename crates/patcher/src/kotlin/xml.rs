@@ -1,4 +1,7 @@
-use stitch_apk::axml::{AxmlAttribute, AxmlDocument, AxmlEvent, TypedValue};
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+use reseam_apk::axml::{AxmlAttribute, AxmlDocument, AxmlEvent, TypedValue};
 
 use boltffi::export;
 
@@ -126,7 +129,7 @@ fn get_attr_value(
 
 fn parse_typed_value(
     value: &str,
-    pool: &mut stitch_apk::axml::StringPool,
+    pool: &mut reseam_apk::axml::StringPool,
 ) -> (TypedValue, Option<u32>) {
     if value == "true" {
         return (TypedValue::Bool(true), None);
@@ -143,10 +146,10 @@ fn parse_typed_value(
     if value == "@null" || value == "@empty" {
         return (TypedValue::Reference(0), None);
     }
-    if let Some((data_type, data)) = stitch_apk::axml::compiler::parse_color(value) {
+    if let Some((data_type, data)) = reseam_apk::axml::compiler::parse_color(value) {
         return (TypedValue::Other { data_type, data }, None);
     }
-    if let Some(data) = stitch_apk::axml::compiler::parse_dimension(value) {
+    if let Some(data) = reseam_apk::axml::compiler::parse_dimension(value) {
         return (
             TypedValue::Other {
                 data_type: 0x05,
@@ -224,7 +227,7 @@ fn resolve_attr_value(document: &mut AxmlDocument, value: &str) -> (TypedValue, 
 
 fn resolve_attr_ref(s: &str) -> Option<u32> {
     if let Some(name) = s.strip_prefix("android:attr/") {
-        return stitch_apk::axml::compiler::android_attr_res_id(name);
+        return reseam_apk::axml::compiler::android_attr_res_id(name);
     }
     let name = s.strip_prefix("attr/").unwrap_or(s);
     with_ctx(|ctx| ctx.find_resource_id("attr", name))
@@ -234,7 +237,7 @@ fn resolve_xml_resource_ref(s: &str) -> Option<u32> {
     let (namespace, type_name, entry_name, create_id) = parse_xml_resource_ref(s)?;
     match namespace {
         Some("android") if type_name == "attr" => {
-            stitch_apk::axml::compiler::android_attr_res_id(entry_name)
+            reseam_apk::axml::compiler::android_attr_res_id(entry_name)
         }
         Some(_) => None,
         None if create_id && type_name == "id" => {
@@ -839,7 +842,7 @@ pub fn xml_clone_element(doc: u32, el: u32, deep: bool) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use stitch_apk::axml::StringPool;
+    use reseam_apk::axml::StringPool;
 
     fn with_test_doc(f: impl FnOnce(u32)) -> AxmlDocument {
         let doc = AxmlDocument {
@@ -926,7 +929,7 @@ mod tests {
         assert!(matches!(
             attr("textColor").typed_value,
             TypedValue::Other { data_type: 0x02, data }
-                if data == stitch_apk::axml::compiler::android_attr_res_id("textColor").unwrap()
+                if data == reseam_apk::axml::compiler::android_attr_res_id("textColor").unwrap()
         ));
     }
 

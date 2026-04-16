@@ -1,8 +1,8 @@
 [package]
-name = "stitch-sign"
+name = "reseam-sign"
 version = "0.1.0"
 edition = "2021"
-description = "APK signing support for Stitch with Android Signature Scheme v2 and v3"
+description = "APK signing support for Reseam with Android Signature Scheme v2 and v3"
 readme = "README.md"
 
 [dependencies]

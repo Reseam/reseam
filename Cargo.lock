@@ -1326,6 +1326,104 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
+name = "reseam-apk"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "memmap2",
+ "pretty_assertions",
+ "quick-xml",
+ "rayon",
+ "reseam-dex",
+ "reseam-sign",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tracing",
+ "zip",
+]
+
+[[package]]
+name = "reseam-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "ed25519-dalek",
+ "hex",
+ "rand",
+ "reseam-apk",
+ "reseam-patcher",
+ "reseam-sign",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "time",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+ "zip",
+]
+
+[[package]]
+name = "reseam-dex"
+version = "0.1.0"
+dependencies = [
+ "adler",
+ "bitflags",
+ "criterion",
+ "memmap2",
+ "pretty_assertions",
+ "rayon",
+ "sha1",
+ "smallvec",
+ "thiserror 2.0.18",
+ "tracing",
+ "zip",
+]
+
+[[package]]
+name = "reseam-patcher"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "boltffi",
+ "cc",
+ "ed25519-dalek",
+ "hex",
+ "jni",
+ "reseam-apk",
+ "reseam-patcher-macros",
+ "serde",
+ "sha2",
+ "smallvec",
+ "tempfile",
+ "thiserror 2.0.18",
+ "toml",
+ "tracing",
+ "zip",
+]
+
+[[package]]
+name = "reseam-patcher-macros"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "reseam-sign"
+version = "0.1.0"
+dependencies = [
+ "ring",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tracing",
+ "zip",
+]
+
+[[package]]
 name = "ring"
 version = "0.17.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1509,102 +1607,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
-name = "stitch-apk"
-version = "0.1.0"
-dependencies = [
- "criterion",
- "memmap2",
- "pretty_assertions",
- "quick-xml",
- "rayon",
- "stitch-dex",
- "stitch-sign",
- "tempfile",
- "thiserror 2.0.18",
- "tracing",
- "zip",
-]
-
-[[package]]
-name = "stitch-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "ed25519-dalek",
- "hex",
- "rand",
- "serde",
- "sha2",
- "stitch-apk",
- "stitch-patcher",
- "stitch-sign",
- "tempfile",
- "toml",
- "tracing",
- "tracing-subscriber",
- "zip",
-]
-
-[[package]]
-name = "stitch-dex"
-version = "0.1.0"
-dependencies = [
- "adler",
- "bitflags",
- "criterion",
- "memmap2",
- "pretty_assertions",
- "rayon",
- "sha1",
- "smallvec",
- "thiserror 2.0.18",
- "tracing",
- "zip",
-]
-
-[[package]]
-name = "stitch-patcher"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "boltffi",
- "cc",
- "ed25519-dalek",
- "hex",
- "jni",
- "serde",
- "sha2",
- "smallvec",
- "stitch-apk",
- "stitch-patcher-macros",
- "tempfile",
- "thiserror 2.0.18",
- "toml",
- "tracing",
- "zip",
-]
-
-[[package]]
-name = "stitch-patcher-macros"
-version = "0.1.0"
-dependencies = [
- "quote",
- "syn",
-]
-
-[[package]]
-name = "stitch-sign"
-version = "0.1.0"
-dependencies = [
- "ring",
- "tempfile",
- "thiserror 2.0.18",
- "tracing",
- "zip",
-]
-
-[[package]]
 name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1707,10 +1709,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "743bd48c283afc0388f9b8827b976905fb217ad9e647fae3a379a9283c4def2c"
 dependencies = [
  "deranged",
+ "itoa",
  "num-conv",
  "powerfmt",
  "serde_core",
  "time-core",
+ "time-macros",
 ]
 
 [[package]]
@@ -1718,6 +1722,16 @@ name = "time-core"
 version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7694e1cfe791f8d31026952abf09c69ca6f6fa4e1a1229e18988f06a04a12dca"
+
+[[package]]
+name = "time-macros"
+version = "0.2.27"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e70e4c5a0e0a8a4823ad65dfe1a6930e4f4d756dcd9dd7939022b5e8c501215"
+dependencies = [
+ "num-conv",
+ "time-core",
+]
 
 [[package]]
 name = "tinystr"

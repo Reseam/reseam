@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 pub mod bundle;
 pub mod context;
 pub mod dependency;
@@ -9,8 +12,8 @@ pub mod log;
 pub mod options;
 pub mod patch;
 
-pub use stitch_apk;
-pub use stitch_apk::stitch_dex;
+pub use reseam_apk;
+pub use reseam_apk::reseam_dex;
 
 pub mod prelude {
     pub use crate::context::PatchContext;
@@ -19,7 +22,7 @@ pub mod prelude {
     pub use crate::log::{LogEntry, LogLevel, PatchLog};
     pub use crate::options::{OptionDeclaration, OptionType, OptionValue, PatchOptions};
     pub use crate::patch::{Compatibility, Patch};
-    pub use stitch_patcher_macros::stitch_patch;
+    pub use reseam_patcher_macros::reseam_patch;
 }
 
-pub use stitch_patcher_macros::stitch_patch;
+pub use reseam_patcher_macros::reseam_patch;

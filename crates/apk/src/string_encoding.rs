@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 /// Android binary string pool encoding.
 ///
 /// Used by both AXML string pools and resources.arsc string pools,

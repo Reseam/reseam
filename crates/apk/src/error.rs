@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -39,7 +42,7 @@ pub enum ApkError {
     Zip(#[from] ::zip::result::ZipError),
 
     #[error("DEX error: {0}")]
-    Dex(#[from] stitch_dex::DexError),
+    Dex(#[from] reseam_dex::DexError),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -77,5 +80,12 @@ pub(crate) fn invalid(section: &'static str, reason: impl Into<String>) -> ApkEr
     ApkError::Invalid {
         section,
         reason: reason.into(),
+    }
+}
+
+pub(crate) fn unsupported(feature: &'static str, detail: impl Into<String>) -> ApkError {
+    ApkError::Unsupported {
+        feature,
+        detail: detail.into(),
     }
 }

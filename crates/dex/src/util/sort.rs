@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use std::cmp::Ordering;
 
 /// Compare two strings using DEX string sort order (UTF-16 code unit comparison).

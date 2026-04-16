@@ -1,9 +1,12 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 plugins {
     kotlin("jvm") version "1.9.25"
     `maven-publish`
 }
 
-group = "dev.stitch"
+group = "app.reseam"
 version = "0.1.0"
 
 // `generated/` is the raw BoltFFI staging area. The publishable Kotlin sources live in `src/main`.
@@ -35,8 +38,8 @@ kotlin {
 publishing {
     publications {
         create<MavenPublication>("maven") {
-            groupId = "dev.stitch"
-            artifactId = "stitch-patch-sdk"
+            groupId = "app.reseam"
+            artifactId = "reseam-patch-sdk"
             version = project.version.toString()
             from(components["java"])
         }

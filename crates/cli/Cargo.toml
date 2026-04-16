@@ -1,18 +1,18 @@
 [package]
-name = "stitch-cli"
+name = "reseam-cli"
 version = "0.1.0"
 edition = "2021"
-description = "Command-line interface for the Stitch APK patching toolchain"
+description = "Command-line interface for the Reseam APK patching toolchain"
 readme = "README.md"
 
 [[bin]]
-name = "stitch"
+name = "reseam"
 path = "src/main.rs"
 
 [dependencies]
-stitch-patcher = { workspace = true, features = ["kotlin"] }
-stitch-sign    = { workspace = true }
-stitch-apk     = { workspace = true }
+reseam-patcher = { workspace = true, features = ["kotlin"] }
+reseam-sign    = { workspace = true }
+reseam-apk     = { workspace = true }
 clap           = { workspace = true }
 anyhow         = { workspace = true }
 tempfile       = { workspace = true }
@@ -24,4 +24,6 @@ hex            = { workspace = true }
 zip            = { workspace = true }
 toml           = { workspace = true }
 serde          = { workspace = true }
+serde_json     = { workspace = true }
+time           = { workspace = true }
 rand           = "0.8"

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::encoding::leb128::write_uleb128;
 use crate::types::encoded_value::{EncodedAnnotation, EncodedValue};
 

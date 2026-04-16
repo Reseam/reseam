@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::error::{invalid, malformed, Result};
 
 const APK_SIG_BLOCK_MAGIC: &[u8; 16] = b"APK Sig Block 42";

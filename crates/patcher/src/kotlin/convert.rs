@@ -1,4 +1,7 @@
-use stitch_apk::stitch_dex::{self, DexFile, FieldIdx, MethodIdx};
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+use reseam_apk::reseam_dex::{self, DexFile, FieldIdx, MethodIdx};
 
 use super::types::{
     Branch0Insn, Branch2Insn, BranchInsn, FieldRef, FillArrayInsn, FilledArrayInsn,
@@ -35,8 +38,8 @@ fn resolve_field_ref(dex: &DexFile, idx: FieldIdx) -> FieldRef {
     }
 }
 
-pub fn dex_to_kotlin(insn: &stitch_dex::Instruction, dex: &DexFile) -> Instruction {
-    use stitch_dex::Instruction as D;
+pub fn dex_to_kotlin(insn: &reseam_dex::Instruction, dex: &DexFile) -> Instruction {
+    use reseam_dex::Instruction as D;
     match insn {
         // Simple (opcode only)
         D::Nop => Instruction::Simple(SimpleInsn { opcode: 0x00 }),
@@ -1389,8 +1392,8 @@ pub fn dex_to_kotlin(insn: &stitch_dex::Instruction, dex: &DexFile) -> Instructi
     }
 }
 
-pub fn kotlin_to_dex(insn: &Instruction, dex: &mut DexFile) -> stitch_dex::Instruction {
-    use stitch_dex::Instruction as D;
+pub fn kotlin_to_dex(insn: &Instruction, dex: &mut DexFile) -> reseam_dex::Instruction {
+    use reseam_dex::Instruction as D;
     match insn {
         Instruction::Simple(s) => match s.opcode {
             0x00 => D::Nop,
@@ -2056,11 +2059,11 @@ pub fn kotlin_to_dex(insn: &Instruction, dex: &mut DexFile) -> stitch_dex::Instr
                 },
                 0xfe => D::ConstMethodHandle {
                     dest: a,
-                    method_handle: stitch_dex::MethodHandleIdx(r.literal as u32),
+                    method_handle: reseam_dex::MethodHandleIdx(r.literal as u32),
                 },
                 0xff => D::ConstMethodType {
                     dest: a,
-                    proto: stitch_dex::ProtoIdx(r.literal as u16),
+                    proto: reseam_dex::ProtoIdx(r.literal as u16),
                 },
                 _ => raw_from_opcode(r.opcode),
             }
@@ -2420,8 +2423,8 @@ fn intern_method(dex: &mut DexFile, method: &MethodRef) -> MethodIdx {
         .unwrap_or(MethodIdx(0))
 }
 
-fn raw_from_opcode(opcode: u16) -> stitch_dex::Instruction {
-    stitch_dex::Instruction::RawInstruction {
+fn raw_from_opcode(opcode: u16) -> reseam_dex::Instruction {
+    reseam_dex::Instruction::RawInstruction {
         code_units: smallvec::smallvec![opcode],
     }
 }

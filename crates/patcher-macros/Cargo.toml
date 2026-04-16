@@ -1,8 +1,8 @@
 [package]
-name = "stitch-patcher-macros"
+name = "reseam-patcher-macros"
 version = "0.1.0"
 edition = "2021"
-description = "Proc macros for authoring Stitch patches"
+description = "Proc macros for authoring Reseam patches"
 readme = "README.md"
 
 [lib]

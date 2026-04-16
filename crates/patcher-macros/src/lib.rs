@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
@@ -265,12 +268,12 @@ fn validate_signature(func: &ItemFn) -> syn::Result<()> {
 
 /// Generates a `Patch` trait impl and FFI export from an annotated function.
 ///
-/// Each `#[stitch_patch]` function compiles into its own shared library (.so/.dylib).
+/// Each `#[reseam_patch]` function compiles into its own shared library (.so/.dylib).
 /// The generated FFI symbol is derived from the function name to avoid collisions.
 ///
 /// # Example
 /// ```ignore
-/// #[stitch_patch(
+/// #[reseam_patch(
 ///     name = "Disable Ads",
 ///     description = "Hides sponsored ads",
 ///     packages = ["org.telegram.messenger"]
@@ -282,7 +285,7 @@ fn validate_signature(func: &ItemFn) -> syn::Result<()> {
 /// }
 /// ```
 #[proc_macro_attribute]
-pub fn stitch_patch(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn reseam_patch(attr: TokenStream, item: TokenStream) -> TokenStream {
     let attrs = syn::parse_macro_input!(attr as PatchAttr);
     let func = syn::parse_macro_input!(item as ItemFn);
 
@@ -291,8 +294,8 @@ pub fn stitch_patch(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 
     let func_name = &func.sig.ident;
-    let struct_name = format_ident!("__StitchPatch_{}", func_name);
-    let ffi_name = format_ident!("stitch_create_patch_{}", func_name);
+    let struct_name = format_ident!("__ReseamPatch_{}", func_name);
+    let ffi_name = format_ident!("reseam_create_patch_{}", func_name);
     let name_str = &attrs.name;
 
     let desc_impl = match &attrs.description {

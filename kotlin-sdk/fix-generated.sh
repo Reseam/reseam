@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+# SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-GEN="$SCRIPT_DIR/generated/dev/stitch/patch/StitchPatcher.kt"
-DST="$SCRIPT_DIR/src/main/kotlin/dev/stitch/patch/StitchPatcher.kt"
+GEN="$SCRIPT_DIR/generated/dev/reseam/patch/ReseamPatcher.kt"
+DST="$SCRIPT_DIR/src/main/kotlin/dev/reseam/patch/ReseamPatcher.kt"
 
 if [ ! -f "$GEN" ]; then
     echo "error: generated file not found: $GEN" >&2

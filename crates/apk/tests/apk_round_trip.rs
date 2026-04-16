@@ -1,6 +1,9 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use std::io::Read;
-use stitch_apk::dex;
-use stitch_dex::{InstructionPattern, OpcodeMatcher, ParseOptions};
+use reseam_apk::dex;
+use reseam_dex::{InstructionPattern, OpcodeMatcher, ParseOptions};
 
 const YOUTUBE_APK: &str = "../../test-apks/for_testing_com.google.android.youtube_21.10.494.apk";
 const INSTAGRAM_APK: &str = "../../test-apks/com.instagram.android_419.0.0.49.71-382508603_minAPI28(arm64-v8a)(360,400,420,480dpi)_apkmirror.com.apk";
@@ -43,7 +46,7 @@ fn test_parse_all_apk_dex_files() {
         assert!(!dex_files.is_empty(), "No DEX files found in {}", apk);
 
         for (name, buf) in &dex_files {
-            let dex = stitch_dex::parse(buf, ParseOptions::default())
+            let dex = reseam_dex::parse(buf, ParseOptions::default())
                 .unwrap_or_else(|e| panic!("Failed to parse {} in {}: {}", name, apk, e));
             eprintln!(
                 "  {}: {} strings, {} types, {} methods, {} classes ({} bytes)",
@@ -71,13 +74,13 @@ fn test_round_trip_all_apks() {
         let dex_files = extract_dex_files_from_apk(apk);
 
         for (name, buf) in &dex_files {
-            let mut dex = stitch_dex::parse(buf, ParseOptions::default())
+            let mut dex = reseam_dex::parse(buf, ParseOptions::default())
                 .unwrap_or_else(|e| panic!("Failed to parse {} in {}: {}", name, apk, e));
 
-            let output = stitch_dex::write(&mut dex)
+            let output = reseam_dex::write(&mut dex)
                 .unwrap_or_else(|e| panic!("Failed to write {} from {}: {}", name, apk, e));
 
-            let dex2 = stitch_dex::parse(&output, ParseOptions::default())
+            let dex2 = reseam_dex::parse(&output, ParseOptions::default())
                 .unwrap_or_else(|e| panic!("Failed to re-parse {} from {}: {}", name, apk, e));
 
             assert_eq!(
@@ -124,7 +127,7 @@ fn test_multi_dex_container() {
     let dex_files = extract_dex_files_from_apk(YOUTUBE_APK);
     let buffers: Vec<&[u8]> = dex_files.iter().map(|(_, b)| b.as_slice()).collect();
 
-    let mut container = stitch_dex::MultiDexContainer::parse(&buffers, ParseOptions::default())
+    let mut container = reseam_dex::MultiDexContainer::parse(&buffers, ParseOptions::default())
         .expect("Failed to parse multi-dex");
 
     assert_eq!(container.len(), dex_files.len());
@@ -138,7 +141,7 @@ fn test_multi_dex_container() {
     assert_eq!(outputs.len(), dex_files.len());
 
     for (i, output) in outputs.iter().enumerate() {
-        let reparsed = stitch_dex::parse(output, ParseOptions::default())
+        let reparsed = reseam_dex::parse(output, ParseOptions::default())
             .unwrap_or_else(|_| panic!("Failed to re-parse multi-dex {}", i));
         let original = container.dex(i).unwrap();
         assert_eq!(
@@ -176,7 +179,7 @@ fn test_intern_method_and_field() {
     let dex_files = extract_dex_files_from_apk(YOUTUBE_APK);
     let (_, buf) = &dex_files[0];
 
-    let mut dex = stitch_dex::parse(buf, ParseOptions::default()).expect("Failed to parse");
+    let mut dex = reseam_dex::parse(buf, ParseOptions::default()).expect("Failed to parse");
 
     let original_method_count = dex.methods.len();
     let original_field_count = dex.fields.len();
@@ -201,8 +204,8 @@ fn test_intern_method_and_field() {
     assert_eq!(field_idx, field_idx2);
     assert_eq!(dex.fields.len(), original_field_count + 1);
 
-    let output = stitch_dex::write(&mut dex).expect("Failed to write");
-    let dex2 = stitch_dex::parse(&output, ParseOptions::default()).expect("Failed to re-parse");
+    let output = reseam_dex::write(&mut dex).expect("Failed to write");
+    let dex2 = reseam_dex::parse(&output, ParseOptions::default()).expect("Failed to re-parse");
     assert_eq!(dex2.methods.len(), original_method_count + 1);
     assert_eq!(dex2.fields.len(), original_field_count + 1);
 }
@@ -216,7 +219,7 @@ fn test_fingerprint_search() {
 
     let dex_files = extract_dex_files_from_apk(YOUTUBE_APK);
     let (_, buf) = &dex_files[0];
-    let dex = stitch_dex::parse(buf, ParseOptions::default()).expect("Failed to parse");
+    let dex = reseam_dex::parse(buf, ParseOptions::default()).expect("Failed to parse");
 
     let init_methods =
         dex.find_methods_by(|method_id, _class, _em| dex.string(method_id.name) == "<init>");
@@ -246,7 +249,7 @@ fn test_mutation_write_reparse() {
 
     let dex_files = extract_dex_files_from_apk(YOUTUBE_APK);
     let (_, buf) = &dex_files[0];
-    let mut dex = stitch_dex::parse(buf, ParseOptions::default()).expect("Failed to parse");
+    let mut dex = reseam_dex::parse(buf, ParseOptions::default()).expect("Failed to parse");
 
     let mut patched_count = 0;
     for class in &mut dex.classes {
@@ -270,8 +273,8 @@ fn test_mutation_write_reparse() {
     }
     assert_eq!(patched_count, 3);
 
-    let output = stitch_dex::write(&mut dex).expect("Failed to write");
-    let dex2 = stitch_dex::parse(&output, ParseOptions::default()).expect("Failed to re-parse");
+    let output = reseam_dex::write(&mut dex).expect("Failed to write");
+    let dex2 = reseam_dex::parse(&output, ParseOptions::default()).expect("Failed to re-parse");
     assert_eq!(dex.classes.len(), dex2.classes.len());
     assert_eq!(dex.strings.len(), dex2.strings.len());
 }
@@ -285,7 +288,7 @@ fn test_raw_buffer_retained() {
 
     let dex_files = extract_dex_files_from_apk(YOUTUBE_APK);
     let (_, buf) = &dex_files[0];
-    let dex = stitch_dex::parse(buf, ParseOptions::default()).expect("Failed to parse");
+    let dex = reseam_dex::parse(buf, ParseOptions::default()).expect("Failed to parse");
     assert!(dex.raw.is_some());
     assert_eq!(dex.raw_buffer().unwrap().len(), buf.len());
 }
@@ -300,7 +303,7 @@ fn test_lazy_parsing() {
     let dex_files = extract_dex_files_from_apk(YOUTUBE_APK);
     let (_, buf) = &dex_files[0];
 
-    let mut dex = stitch_dex::parse(
+    let mut dex = reseam_dex::parse(
         buf,
         ParseOptions {
             lazy: true,
@@ -329,7 +332,7 @@ fn test_lazy_parsing() {
         .count();
     assert!(classes_with_data > 0);
 
-    let output = stitch_dex::write(&mut dex).expect("Failed to write");
-    let dex2 = stitch_dex::parse(&output, ParseOptions::default()).expect("Failed to re-parse");
+    let output = reseam_dex::write(&mut dex).expect("Failed to write");
+    let dex2 = reseam_dex::parse(&output, ParseOptions::default()).expect("Failed to re-parse");
     assert_eq!(dex.classes.len(), dex2.classes.len());
 }

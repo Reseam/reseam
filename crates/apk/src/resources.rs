@@ -1,5 +1,8 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::buf::{read_u16_le, read_u32_le, require_len};
-use crate::error::{invalid, malformed, Result};
+use crate::error::{invalid, malformed, unsupported, Result};
 
 const RES_TABLE_TYPE: u16 = 0x0002;
 const RES_STRING_POOL_TYPE: u16 = 0x0001;
@@ -13,6 +16,7 @@ const MAX_UTF16_CODE_UNITS: usize = 1_000_000;
 #[derive(Debug, Clone)]
 pub struct ResourceTable {
     pub global_strings: Vec<String>,
+    pub global_strings_utf8: bool,
     pub packages: Vec<ResPackage>,
 }
 
@@ -21,7 +25,12 @@ pub struct ResPackage {
     pub id: u32,
     pub name: String,
     pub type_strings: Vec<String>,
+    pub type_strings_utf8: bool,
     pub key_strings: Vec<String>,
+    pub key_strings_utf8: bool,
+    pub last_public_type: u32,
+    pub last_public_key: u32,
+    pub type_id_offset: u32,
     pub type_specs: Vec<TypeSpec>,
     pub types: Vec<ResType>,
 }
@@ -66,6 +75,11 @@ pub struct MapEntry {
 
 const VALUE_TYPE_STRING: u8 = 0x03;
 
+struct ParsedStringPool {
+    strings: Vec<String>,
+    is_utf8: bool,
+}
+
 impl ResourceTable {
     pub fn parse(data: &[u8]) -> Result<Self> {
         require_len(data, 0, 12, "resource table")?;
@@ -83,6 +97,7 @@ impl ResourceTable {
         let _package_count = read_u32_le(data, 8, "resource table")?;
 
         let mut global_strings = Vec::new();
+        let mut global_strings_utf8 = true;
         let mut packages = Vec::new();
         let mut pos = header_size;
 
@@ -91,7 +106,7 @@ impl ResourceTable {
             let hs = read_u16_le(data, pos + 2, "resource chunk")? as usize;
             let cs = read_u32_le(data, pos + 4, "resource chunk")? as usize;
 
-            if cs < 8 || pos + cs > data.len() {
+            if cs < 8 || hs < 8 || hs > cs || pos + cs > data.len() {
                 return Err(malformed(
                     "resource chunk",
                     pos,
@@ -101,7 +116,9 @@ impl ResourceTable {
 
             match ct {
                 RES_STRING_POOL_TYPE if global_strings.is_empty() => {
-                    global_strings = parse_res_string_pool(&data[pos..pos + cs])?;
+                    let pool = parse_res_string_pool(&data[pos..pos + cs])?;
+                    global_strings = pool.strings;
+                    global_strings_utf8 = pool.is_utf8;
                 }
                 RES_TABLE_PACKAGE_TYPE => {
                     packages.push(parse_package(&data[pos..pos + cs], hs)?);
@@ -114,6 +131,7 @@ impl ResourceTable {
 
         Ok(ResourceTable {
             global_strings,
+            global_strings_utf8,
             packages,
         })
     }
@@ -383,7 +401,7 @@ impl ResourceTable {
     }
 
     pub fn serialize(&self) -> Result<Vec<u8>> {
-        let string_pool_chunk = serialize_res_string_pool(&self.global_strings);
+        let string_pool_chunk = serialize_res_string_pool(&self.global_strings, self.global_strings_utf8);
         let mut package_chunks = Vec::new();
         for pkg in &self.packages {
             package_chunks.extend_from_slice(&serialize_package(pkg)?);
@@ -436,7 +454,7 @@ pub struct ResourceRef {
     pub key_name: String,
 }
 
-fn parse_res_string_pool(data: &[u8]) -> Result<Vec<String>> {
+fn parse_res_string_pool(data: &[u8]) -> Result<ParsedStringPool> {
     require_len(data, 0, 28, "res string pool")?;
 
     let header_size = read_u16_le(data, 2, "res string pool")? as usize;
@@ -447,7 +465,13 @@ fn parse_res_string_pool(data: &[u8]) -> Result<Vec<String>> {
             "string count exceeds safety limit",
         ));
     }
-    let _style_count = read_u32_le(data, 12, "res string pool")?;
+    let style_count = read_u32_le(data, 12, "res string pool")?;
+    if style_count != 0 {
+        return Err(unsupported(
+            "resource string pool styles",
+            "styled resource string pools are not supported for mutation or serialization",
+        ));
+    }
     let flags = read_u32_le(data, 16, "res string pool")?;
     let strings_start = read_u32_le(data, 20, "res string pool")? as usize;
 
@@ -483,7 +507,7 @@ fn parse_res_string_pool(data: &[u8]) -> Result<Vec<String>> {
         strings.push(s);
     }
 
-    Ok(strings)
+    Ok(ParsedStringPool { strings, is_utf8 })
 }
 
 // Uses MUTF-8 (Modified UTF-8) decoding because resources.arsc string pools
@@ -527,7 +551,7 @@ fn decode_res_utf8(data: &[u8], offset: usize) -> Result<String> {
         ));
     }
 
-    stitch_dex::encoding::mutf8::decode_mutf8(&data[pos..pos + byte_len])
+    reseam_dex::encoding::mutf8::decode_mutf8(&data[pos..pos + byte_len])
         .map_err(|_| invalid("res utf8 string", "invalid UTF-8/MUTF-8"))
 }
 
@@ -592,21 +616,47 @@ fn parse_package(data: &[u8], header_size: usize) -> Result<ResPackage> {
     };
 
     let type_strings_offset = read_u32_le(data, 268, "resource package")? as usize;
-    let _last_public_type = read_u32_le(data, 272, "resource package")?;
+    let last_public_type = read_u32_le(data, 272, "resource package")?;
     let key_strings_offset = read_u32_le(data, 276, "resource package")? as usize;
+    let last_public_key = read_u32_le(data, 280, "resource package")?;
+    let type_id_offset = if header_size >= 288 {
+        read_u32_le(data, 284, "resource package")?
+    } else {
+        0
+    };
 
-    let type_strings = if type_strings_offset > 0 && type_strings_offset < data.len() {
+    let type_strings = if type_strings_offset > 0 {
+        if type_strings_offset >= data.len() {
+            return Err(malformed(
+                "resource package",
+                type_strings_offset,
+                "type string pool offset is outside package",
+            ));
+        }
         let end = find_chunk_end(data, type_strings_offset)?;
         parse_res_string_pool(&data[type_strings_offset..end])?
     } else {
-        Vec::new()
+        ParsedStringPool {
+            strings: Vec::new(),
+            is_utf8: true,
+        }
     };
 
-    let key_strings = if key_strings_offset > 0 && key_strings_offset < data.len() {
+    let key_strings = if key_strings_offset > 0 {
+        if key_strings_offset >= data.len() {
+            return Err(malformed(
+                "resource package",
+                key_strings_offset,
+                "key string pool offset is outside package",
+            ));
+        }
         let end = find_chunk_end(data, key_strings_offset)?;
         parse_res_string_pool(&data[key_strings_offset..end])?
     } else {
-        Vec::new()
+        ParsedStringPool {
+            strings: Vec::new(),
+            is_utf8: true,
+        }
     };
 
     let mut type_specs = Vec::new();
@@ -628,36 +678,33 @@ fn parse_package(data: &[u8], header_size: usize) -> Result<ResPackage> {
         let hs = read_u16_le(data, pos + 2, "package chunk")? as usize;
         let cs = read_u32_le(data, pos + 4, "package chunk")? as usize;
 
-        if cs < 8 || pos + cs > data.len() {
+        if cs < 8 || hs < 8 || hs > cs || pos + cs > data.len() {
             return Err(malformed(
                 "package chunk",
                 pos,
                 "chunk extends past end of package",
             ));
         }
+        let chunk = &data[pos..pos + cs];
 
         match ct {
             RES_TABLE_TYPE_SPEC => {
-                if hs >= 8 && pos + hs <= data.len() {
-                    let type_id = data.get(pos + 8).copied().unwrap_or(0);
-                    let entry_count = read_u32_le(data, pos + 12, "type spec")? as usize;
-                    if entry_count > MAX_TYPE_ENTRIES {
-                        return Err(invalid("type spec", "entry count exceeds safety limit"));
-                    }
-                    let mut flags = Vec::with_capacity(entry_count);
-                    for i in 0..entry_count {
-                        let fpos = pos + hs + i * 4;
-                        if fpos + 4 <= pos + cs {
-                            flags.push(read_u32_le(data, fpos, "type spec flags")?);
-                        }
-                    }
-                    type_specs.push(TypeSpec { id: type_id, flags });
+                require_len(chunk, 0, hs.max(16), "type spec")?;
+                let type_id = chunk[8];
+                let entry_count = read_u32_le(chunk, 12, "type spec")? as usize;
+                if entry_count > MAX_TYPE_ENTRIES {
+                    return Err(invalid("type spec", "entry count exceeds safety limit"));
                 }
+                require_len(chunk, hs, entry_count * 4, "type spec flags")?;
+                let mut flags = Vec::with_capacity(entry_count);
+                for i in 0..entry_count {
+                    let fpos = hs + i * 4;
+                    flags.push(read_u32_le(chunk, fpos, "type spec flags")?);
+                }
+                type_specs.push(TypeSpec { id: type_id, flags });
             }
             RES_TABLE_TYPE_TYPE => {
-                if let Ok(t) = parse_res_type(&data[pos..pos + cs], hs) {
-                    types.push(t);
-                }
+                types.push(parse_res_type(chunk, hs)?);
             }
             _ => {}
         }
@@ -668,8 +715,13 @@ fn parse_package(data: &[u8], header_size: usize) -> Result<ResPackage> {
     Ok(ResPackage {
         id,
         name,
-        type_strings,
-        key_strings,
+        type_strings: type_strings.strings,
+        type_strings_utf8: type_strings.is_utf8,
+        key_strings: key_strings.strings,
+        key_strings_utf8: key_strings.is_utf8,
+        last_public_type,
+        last_public_key,
+        type_id_offset,
         type_specs,
         types,
     })
@@ -678,15 +730,30 @@ fn parse_package(data: &[u8], header_size: usize) -> Result<ResPackage> {
 fn parse_res_type(data: &[u8], header_size: usize) -> Result<ResType> {
     require_len(data, 0, header_size.max(20), "res type")?;
 
-    let id = data.get(8).copied().unwrap_or(0);
+    let id = data[8];
     let entry_count = read_u32_le(data, 12, "res type")? as usize;
     if entry_count > MAX_TYPE_ENTRIES {
         return Err(invalid("res type", "entry count exceeds safety limit"));
     }
     let entries_start = read_u32_le(data, 16, "res type")? as usize;
+    if entries_start > data.len() {
+        return Err(malformed(
+            "res type",
+            16,
+            "entries start is outside type chunk",
+        ));
+    }
+    require_len(data, header_size, entry_count * 4, "res type offsets")?;
 
     let config_start = 20;
     let config_end = header_size.min(data.len());
+    if config_end > config_start && config_end - config_start < 4 {
+        return Err(malformed(
+            "res type",
+            config_start,
+            "config data is shorter than the size field",
+        ));
+    }
     let config = ResConfig {
         data: data[config_start..config_end].to_vec(),
     };
@@ -696,11 +763,6 @@ fn parse_res_type(data: &[u8], header_size: usize) -> Result<ResType> {
 
     for i in 0..entry_count {
         let off_pos = offset_table_start + i * 4;
-        if off_pos + 4 > data.len() {
-            entries.push(None);
-            continue;
-        }
-
         let offset = read_u32_le(data, off_pos, "res type offset")?;
         if offset == 0xFFFF_FFFF {
             entries.push(None);
@@ -709,8 +771,11 @@ fn parse_res_type(data: &[u8], header_size: usize) -> Result<ResType> {
 
         let entry_pos = entries_start + offset as usize;
         if entry_pos + 8 > data.len() {
-            entries.push(None);
-            continue;
+            return Err(malformed(
+                "res type entry",
+                entry_pos,
+                "entry header extends past type chunk",
+            ));
         }
 
         let _entry_size = read_u16_le(data, entry_pos, "res entry")?;
@@ -720,24 +785,21 @@ fn parse_res_type(data: &[u8], header_size: usize) -> Result<ResType> {
         let is_complex = (entry_flags & 0x0001) != 0;
 
         let value = if is_complex {
-            let parent = if entry_pos + 12 <= data.len() {
-                read_u32_le(data, entry_pos + 8, "res entry parent")?
-            } else {
-                0
-            };
-            let count = if entry_pos + 16 <= data.len() {
-                read_u32_le(data, entry_pos + 12, "res entry count")? as usize
-            } else {
-                0
-            };
+            require_len(data, entry_pos, 16, "complex res entry")?;
+            let parent = read_u32_le(data, entry_pos + 8, "res entry parent")?;
+            let count = read_u32_le(data, entry_pos + 12, "res entry count")? as usize;
             let mut map_entries = Vec::with_capacity(count);
             for j in 0..count {
                 let me_pos = entry_pos + 16 + j * 12;
                 if me_pos + 12 > data.len() {
-                    break;
+                    return Err(malformed(
+                        "map entry",
+                        me_pos,
+                        "map entry extends past type chunk",
+                    ));
                 }
                 let name = read_u32_le(data, me_pos, "map entry")?;
-                let dt = data.get(me_pos + 7).copied().unwrap_or(0);
+                let dt = data[me_pos + 7];
                 let d = read_u32_le(data, me_pos + 8, "map entry")?;
                 map_entries.push(MapEntry {
                     name,
@@ -749,17 +811,13 @@ fn parse_res_type(data: &[u8], header_size: usize) -> Result<ResType> {
                 parent,
                 entries: map_entries,
             }
-        } else if entry_pos + 16 <= data.len() {
-            let dt = data.get(entry_pos + 11).copied().unwrap_or(0);
+        } else {
+            require_len(data, entry_pos, 16, "simple res entry")?;
+            let dt = data[entry_pos + 11];
             let d = read_u32_le(data, entry_pos + 12, "res value")?;
             ResValue::Simple {
                 data_type: dt,
                 data: d,
-            }
-        } else {
-            ResValue::Simple {
-                data_type: 0,
-                data: 0,
             }
         };
 
@@ -778,14 +836,19 @@ fn parse_res_type(data: &[u8], header_size: usize) -> Result<ResType> {
 }
 
 fn find_chunk_end(data: &[u8], offset: usize) -> Result<usize> {
-    if offset + 8 > data.len() {
-        return Ok(data.len());
-    }
+    require_len(data, offset, 8, "chunk header")?;
     let cs = read_u32_le(data, offset + 4, "chunk size")? as usize;
-    Ok((offset + cs).min(data.len()))
+    if cs < 8 || offset + cs > data.len() {
+        return Err(malformed(
+            "chunk header",
+            offset,
+            "chunk extends past end of containing buffer",
+        ));
+    }
+    Ok(offset + cs)
 }
 
-fn serialize_res_string_pool(strings: &[String]) -> Vec<u8> {
+fn serialize_res_string_pool(strings: &[String], is_utf8: bool) -> Vec<u8> {
     let header_size: usize = 28;
     let offsets_size = strings.len() * 4;
 
@@ -794,7 +857,11 @@ fn serialize_res_string_pool(strings: &[String]) -> Vec<u8> {
 
     for s in strings {
         offsets.push(string_data.len() as u32);
-        encode_utf8(&mut string_data, s);
+        if is_utf8 {
+            encode_utf8(&mut string_data, s);
+        } else {
+            crate::string_encoding::encode_utf16(&mut string_data, s);
+        }
     }
 
     let strings_start = header_size + offsets_size;
@@ -807,7 +874,7 @@ fn serialize_res_string_pool(strings: &[String]) -> Vec<u8> {
     write_u32(&mut out, padded as u32);
     write_u32(&mut out, strings.len() as u32);
     write_u32(&mut out, 0); // style count
-    write_u32(&mut out, 1 << 8); // flags: UTF-8
+    write_u32(&mut out, if is_utf8 { 1 << 8 } else { 0 });
     write_u32(&mut out, strings_start as u32);
     write_u32(&mut out, 0); // styles start
 
@@ -824,8 +891,8 @@ fn serialize_res_string_pool(strings: &[String]) -> Vec<u8> {
 }
 
 fn serialize_package(pkg: &ResPackage) -> Result<Vec<u8>> {
-    let type_pool = serialize_res_string_pool(&pkg.type_strings);
-    let key_pool = serialize_res_string_pool(&pkg.key_strings);
+    let type_pool = serialize_res_string_pool(&pkg.type_strings, pkg.type_strings_utf8);
+    let key_pool = serialize_res_string_pool(&pkg.key_strings, pkg.key_strings_utf8);
 
     let mut body_chunks = Vec::new();
     for spec in &pkg.type_specs {
@@ -854,10 +921,10 @@ fn serialize_package(pkg: &ResPackage) -> Result<Vec<u8>> {
     }
 
     write_u32(&mut out, type_strings_offset as u32);
-    write_u32(&mut out, 0); // last_public_type
+    write_u32(&mut out, pkg.last_public_type);
     write_u32(&mut out, key_strings_offset as u32);
-    write_u32(&mut out, 0); // last_public_key
-    write_u32(&mut out, 0); // type_id_offset
+    write_u32(&mut out, pkg.last_public_key);
+    write_u32(&mut out, pkg.type_id_offset);
 
     out.extend_from_slice(&type_pool);
     out.extend_from_slice(&key_pool);
@@ -961,7 +1028,7 @@ fn serialize_entry(out: &mut Vec<u8>, entry: &ResEntry) {
 }
 
 fn is_default_config(config: &ResConfig) -> bool {
-    config.data.is_empty() || config.data[4..].iter().all(|&b| b == 0)
+    config.data.len() <= 4 || config.data[4..].iter().all(|&b| b == 0)
 }
 
 use crate::buf::{write_u16, write_u32};

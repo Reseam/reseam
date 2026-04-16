@@ -1,4 +1,7 @@
-use stitch_apk::stitch_dex::{AccessFlags, DexFile, EncodedValue, Fingerprint, InstructionPattern};
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+use reseam_apk::reseam_dex::{AccessFlags, DexFile, EncodedValue, Fingerprint, InstructionPattern};
 
 use boltffi::export;
 
@@ -379,7 +382,7 @@ fn convert_fingerprint(fp: &FingerprintDef) -> Fingerprint {
 
 fn collect_fields(
     dex: &DexFile,
-    class: &stitch_apk::stitch_dex::ClassDef,
+    class: &reseam_apk::reseam_dex::ClassDef,
     statics: bool,
     instances: bool,
 ) -> Vec<FieldInfo> {

@@ -1,12 +1,13 @@
-# stitch-dex
+# reseam-dex
 
-DEX file parser, writer, and mutator. Handles the full Dalvik Executable format: reading all sections (header, string/type/proto/field/method IDs, class defs, code items, annotations, debug info, encoded values), mutating the in-memory representation, and writing valid DEX files back out with correct checksums and offsets.
+DEX file parser, writer, and mutator. Reads and writes the DEX sections Reseam currently supports (header, string/type/proto/field/method IDs, class defs, code items, annotations, debug info, encoded values), mutates the in-memory representation, and writes valid DEX files back out with correct checksums and offsets.
 
 ## Key capabilities
 
 - **Parse** DEX files from bytes or memory-mapped files into a full `DexFile` representation
 - **Multi-DEX** support via `MultiDexContainer` for APKs with multiple `classes*.dex` files
 - **Write** modified `DexFile` back to bytes with proper section ordering, string sorting, and checksum/signature computation
+- **Strict parsing options** for MUTF-8 and LEB128 decoding when malformed input should be rejected rather than normalized
 - **Fingerprinting** — pattern-based method matching using `Fingerprint` and `OpcodeMatcher` for locating injection points without hardcoding offsets
 - **Lookup tables** for fast class/method/field resolution by name
 - **MUTF-8 and LEB128** encoding/decoding
@@ -25,7 +26,7 @@ DEX file parser, writer, and mutator. Handles the full Dalvik Executable format:
 ## Usage
 
 ```rust
-use stitch_dex::{parse, write, ParseOptions};
+use reseam_dex::{parse, write, ParseOptions};
 
 // Round-trip: parse and rewrite
 let bytes = std::fs::read("classes.dex")?;
@@ -34,7 +35,7 @@ let output = write(&mut dex)?;
 ```
 
 ```rust
-use stitch_dex::{DexFile, Fingerprint, FingerprintBuilder, InstructionPattern};
+use reseam_dex::{DexFile, Fingerprint, FingerprintBuilder, InstructionPattern};
 
 // Find methods by opcode pattern
 let fingerprint = FingerprintBuilder::new()

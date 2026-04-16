@@ -1,4 +1,7 @@
-use stitch_apk::stitch_dex::{
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+use reseam_apk::reseam_dex::{
     AccessFlags, AnnotationElement as DexAnnotationElement, AnnotationItem as DexAnnotationItem,
     AnnotationVisibility as DexAnnotationVisibility, AnnotationsDirectory,
     CatchHandler as DexCatchHandler, CodeItem, DexFile, EncodedField, EncodedMethod, EncodedValue,
@@ -439,58 +442,6 @@ pub fn clone_method(m: u32, new_name: Option<String>) -> u32 {
 }
 
 #[export]
-pub fn clone_method_preserve_parameters(m: u32) -> u32 {
-    with_ctx(|ctx| {
-        let mh = match with_handles(|h| h.get_method(m)) {
-            Some(mh) => mh,
-            None => return 0,
-        };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
-            Some(d) => d,
-            None => return 0,
-        };
-        let method = match get_method_ref(dex, mh) {
-            Some(m) => m,
-            None => return 0,
-        };
-        let code = match &method.code {
-            Some(c) => c,
-            None => return 0,
-        };
-
-        let ins_size = code.ins_size;
-        let additional = ins_size as u16;
-        let new_registers_size = code.registers_size + additional;
-
-        let mut cloned_code = code.clone();
-        cloned_code.registers_size = new_registers_size;
-
-        let cloned = EncodedMethod {
-            method: method.method,
-            access_flags: method.access_flags,
-            code: Some(cloned_code),
-        };
-
-        let class = &mut dex.classes[mh.class_idx];
-        if mh.is_virtual {
-            if let Some(data) = &mut class.class_data {
-                if mh.method_idx < data.virtual_methods.len() {
-                    data.virtual_methods[mh.method_idx] = cloned;
-                }
-            }
-        } else {
-            if let Some(data) = &mut class.class_data {
-                if mh.method_idx < data.direct_methods.len() {
-                    data.direct_methods[mh.method_idx] = cloned;
-                }
-            }
-        }
-
-        m
-    })
-}
-
-#[export]
 pub fn superclass_chain(c: u32) -> Vec<u32> {
     let ch = match with_handles(|h| h.get_class(c)) {
         Some(ch) => ch,
@@ -653,7 +604,7 @@ pub fn get_type_descriptor(d: u32, idx: u32) -> String {
             Some(d) => d,
             None => return String::new(),
         };
-        use stitch_apk::stitch_dex::TypeIdx;
+        use reseam_apk::reseam_dex::TypeIdx;
         dex.type_descriptor(TypeIdx(idx)).to_string()
     })
 }

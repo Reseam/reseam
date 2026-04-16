@@ -1,10 +1,26 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::error::{invalid_mutf8, Result};
+use crate::types::header::ParseOptions;
 
 pub fn decode_mutf8(bytes: &[u8]) -> Result<String> {
-    decode_mutf8_at(bytes, 0)
+    decode_mutf8_with_opts(bytes, 0, &ParseOptions::default())
+}
+
+pub fn decode_mutf8_with_opts(bytes: &[u8], offset: usize, opts: &ParseOptions) -> Result<String> {
+    decode_mutf8_at_with_opts(bytes, offset, opts)
 }
 
 pub fn decode_mutf8_at(bytes: &[u8], offset: usize) -> Result<String> {
+    decode_mutf8_at_with_opts(bytes, offset, &ParseOptions::default())
+}
+
+pub fn decode_mutf8_at_with_opts(
+    bytes: &[u8],
+    offset: usize,
+    opts: &ParseOptions,
+) -> Result<String> {
     let mut result = String::new();
     let mut i = 0;
     while i < bytes.len() {
@@ -22,13 +38,24 @@ pub fn decode_mutf8_at(bytes: &[u8], offset: usize) -> Result<String> {
                 return Err(invalid_mutf8(offset + i - 1, "truncated 2-byte sequence"));
             }
             let b1 = bytes[i];
+            if b1 & 0xC0 != 0x80 {
+                if opts.lenient_mutf8 {
+                    result.push('\u{FFFD}');
+                    continue;
+                };
+                return Err(invalid_mutf8(offset + i, "invalid 2-byte continuation"));
+            }
             i += 1;
             let cp = ((b0 as u32 & 0x1F) << 6) | (b1 as u32 & 0x3F);
             // MUTF-8: 0xC0 0x80 encodes U+0000
             if let Some(c) = char::from_u32(cp) {
                 result.push(c);
             } else {
-                result.push('\u{FFFD}');
+                if opts.lenient_mutf8 {
+                    result.push('\u{FFFD}');
+                } else {
+                    return Err(invalid_mutf8(offset + i - 2, "invalid 2-byte code point"));
+                }
             }
         } else if b0 & 0xF0 == 0xE0 {
             // Three bytes: 1110xxxx 10xxxxxx 10xxxxxx
@@ -37,6 +64,13 @@ pub fn decode_mutf8_at(bytes: &[u8], offset: usize) -> Result<String> {
             }
             let b1 = bytes[i];
             let b2 = bytes[i + 1];
+            if b1 & 0xC0 != 0x80 || b2 & 0xC0 != 0x80 {
+                if opts.lenient_mutf8 {
+                    result.push('\u{FFFD}');
+                    continue;
+                }
+                return Err(invalid_mutf8(offset + i, "invalid 3-byte continuation"));
+            }
             i += 2;
             let cp = ((b0 as u32 & 0x0F) << 12) | ((b1 as u32 & 0x3F) << 6) | (b2 as u32 & 0x3F);
 
@@ -47,6 +81,13 @@ pub fn decode_mutf8_at(bytes: &[u8], offset: usize) -> Result<String> {
                     let b3 = bytes[i];
                     let b4 = bytes[i + 1];
                     let b5 = bytes[i + 2];
+                    if b4 & 0xC0 != 0x80 || b5 & 0xC0 != 0x80 {
+                        if opts.lenient_mutf8 {
+                            result.push('\u{FFFD}');
+                            continue;
+                        }
+                        return Err(invalid_mutf8(offset + i, "invalid surrogate continuation"));
+                    }
                     let cp2 =
                         ((b3 as u32 & 0x0F) << 12) | ((b4 as u32 & 0x3F) << 6) | (b5 as u32 & 0x3F);
                     if (0xDC00..=0xDFFF).contains(&cp2) {
@@ -55,24 +96,43 @@ pub fn decode_mutf8_at(bytes: &[u8], offset: usize) -> Result<String> {
                         if let Some(c) = char::from_u32(supplementary) {
                             result.push(c);
                         } else {
-                            result.push('\u{FFFD}');
+                            if opts.lenient_mutf8 {
+                                result.push('\u{FFFD}');
+                            } else {
+                                return Err(invalid_mutf8(offset + i - 3, "invalid supplementary code point"));
+                            }
                         }
                         continue;
                     }
                 }
                 // Lone high surrogate
-                result.push('\u{FFFD}');
+                if opts.lenient_mutf8 {
+                    result.push('\u{FFFD}');
+                } else {
+                    return Err(invalid_mutf8(offset + i - 3, "unpaired high surrogate"));
+                }
             } else if (0xDC00..=0xDFFF).contains(&cp) {
                 // Lone low surrogate
-                result.push('\u{FFFD}');
+                if opts.lenient_mutf8 {
+                    result.push('\u{FFFD}');
+                } else {
+                    return Err(invalid_mutf8(offset + i - 3, "unpaired low surrogate"));
+                }
             } else if let Some(c) = char::from_u32(cp) {
                 result.push(c);
             } else {
-                result.push('\u{FFFD}');
+                if opts.lenient_mutf8 {
+                    result.push('\u{FFFD}');
+                } else {
+                    return Err(invalid_mutf8(offset + i - 3, "invalid 3-byte code point"));
+                }
             }
         } else {
-            // Invalid start byte — be lenient
-            result.push('\u{FFFD}');
+            if opts.lenient_mutf8 {
+                result.push('\u{FFFD}');
+            } else {
+                return Err(invalid_mutf8(offset + i - 1, "invalid start byte"));
+            }
         }
     }
     Ok(result)

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -44,10 +47,10 @@ pub enum PatcherError {
     MissingRequiredOption { patch: String, key: String },
 
     #[error("DEX error: {0}")]
-    Dex(#[from] stitch_apk::stitch_dex::DexError),
+    Dex(#[from] reseam_apk::reseam_dex::DexError),
 
     #[error("APK error: {0}")]
-    Apk(#[from] stitch_apk::error::ApkError),
+    Apk(#[from] reseam_apk::error::ApkError),
 
     #[error("JVM error: {reason}")]
     Jvm { reason: String },

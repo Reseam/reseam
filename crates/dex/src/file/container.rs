@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::error::Result;
 use crate::file::DexFile;
 use crate::types::header::{DexHeader, DexVersion, ParseOptions};

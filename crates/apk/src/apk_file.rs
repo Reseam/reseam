@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::axml::reader::AxmlDocument;
 use crate::dex;
 use crate::error::{invalid, Result};
@@ -8,7 +11,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
-use stitch_dex::{MultiDexContainer, ParseOptions};
+use reseam_dex::{MultiDexContainer, ParseOptions};
 use tracing::{debug, info, instrument};
 
 /// The kind of APK: single or split bundle.
@@ -16,6 +19,19 @@ use tracing::{debug, info, instrument};
 pub enum ApkKind {
     Single,
     Split,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ApkWriteOptions {
+    pub strip_signatures: bool,
+}
+
+impl Default for ApkWriteOptions {
+    fn default() -> Self {
+        Self {
+            strip_signatures: false,
+        }
+    }
 }
 
 /// Metadata for a single APK component (base or split).
@@ -526,16 +542,24 @@ impl ApkFile {
     /// All DEX goes into the base APK. Split APKs have their DEX entries removed.
     #[instrument(level = "info", skip_all, fields(output_dir = %output_dir.as_ref().display(), component_count = self.components.len()))]
     pub fn write_to(&mut self, output_dir: impl AsRef<Path>) -> Result<()> {
+        self.write_to_with_options(output_dir, ApkWriteOptions::default())
+    }
+
+    #[instrument(level = "info", skip_all, fields(output_dir = %output_dir.as_ref().display(), component_count = self.components.len(), strip_signatures = options.strip_signatures))]
+    pub fn write_to_with_options(
+        &mut self,
+        output_dir: impl AsRef<Path>,
+        options: ApkWriteOptions,
+    ) -> Result<()> {
         let output_dir = output_dir.as_ref();
         std::fs::create_dir_all(output_dir)?;
 
-        let strip_signatures = true;
         let dex_entries = dex::dex_to_entries(&mut self.dex)?;
         self.dex_dirty = false;
 
         info!(
             dex_entry_count = dex_entries.len(),
-            strip_signatures,
+            strip_signatures = options.strip_signatures,
             "serializing APK output"
         );
 
@@ -549,7 +573,13 @@ impl ApkFile {
                     .unwrap_or_else(|| std::ffi::OsStr::new("output.apk")),
             );
 
-            Self::write_component(component, is_base, &dex_entries, &output_path, strip_signatures)?;
+            Self::write_component(
+                component,
+                is_base,
+                &dex_entries,
+                &output_path,
+                options.strip_signatures,
+            )?;
             component.manifest_dirty = false;
             component.resources_dirty = false;
         }

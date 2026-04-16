@@ -1,4 +1,4 @@
-# Stitch
+# Reseam
 
 A high-performance APK patching engine in Rust. Replaces the ReVanced toolchain (Java/Kotlin) with native code for DEX parsing, mutation, signing, and patch execution. Patches are written in Kotlin using a typed DSL and executed via an embedded JVM — no smali text parsing, no runtime dexlib dependency.
 
@@ -6,26 +6,26 @@ A high-performance APK patching engine in Rust. Replaces the ReVanced toolchain 
 
 | Crate | Purpose |
 |-------|---------|
-| [`stitch-dex`](crates/dex/) | DEX parser, writer, and mutator — handles the full Dalvik Executable format |
-| [`stitch-apk`](crates/apk/) | APK container: ZIP handling, Android Binary XML (AXML), resource tables, DEX extraction |
-| [`stitch-sign`](crates/sign/) | APK Signature Scheme v2/v3, ECDSA P-256 key generation |
-| [`stitch-patcher`](crates/patcher/) | Patch engine — bundle loading, dependency resolution, execution, Kotlin JNI host |
-| [`stitch-patcher-macros`](crates/patcher-macros/) | `#[stitch_patch]` proc macro for Rust-native patches |
-| [`stitch-cli`](crates/cli/) | `stitch` binary — `patch`, `list`, `info` commands |
+| [`reseam-dex`](crates/dex/) | DEX parser, writer, and mutator for the Dalvik Executable sections Reseam currently supports |
+| [`reseam-apk`](crates/apk/) | APK container: ZIP handling, Android Binary XML (AXML), resource tables, DEX extraction |
+| [`reseam-sign`](crates/sign/) | APK Signature Scheme v2 signing and ECDSA P-256 key generation |
+| [`reseam-patcher`](crates/patcher/) | Patch engine — bundle loading, dependency resolution, execution, Kotlin JNI host |
+| [`reseam-patcher-macros`](crates/patcher-macros/) | `#[reseam_patch]` proc macro for Rust-native patches |
+| [`reseam-cli`](crates/cli/) | `reseam` binary — `patch`, `list`, `info` commands |
 | [`kotlin-sdk`](kotlin-sdk/) | Kotlin patch SDK — DSL, fingerprints, instruction builder, manifest/resource scopes |
 
 ### Dependency graph
 
 ```
-stitch-cli
-├── stitch-patcher
-│   ├── stitch-apk
-│   │   └── stitch-dex
-│   ├── stitch-patcher-macros (proc macro)
+reseam-cli
+├── reseam-patcher
+│   ├── reseam-apk
+│   │   └── reseam-dex
+│   ├── reseam-patcher-macros (proc macro)
 │   ├── boltffi (optional, feature = "kotlin")
 │   └── jni (optional, feature = "kotlin")
-├── stitch-sign
-└── stitch-apk
+├── reseam-sign
+└── reseam-apk
 ```
 
 ## Building
@@ -35,20 +35,20 @@ stitch-cli
 ```bash
 cargo build                           # all crates (debug)
 cargo build --release                 # all crates (release)
-cargo build -p stitch-patcher         # patcher cdylib only
+cargo build -p reseam-patcher         # patcher cdylib only
 ```
 
-`cargo build -p stitch-patcher` produces `target/debug/libstitch_patcher.so`, which exports `boltffi_*` C-ABI symbols used by the JNI layer.
+`cargo build -p reseam-patcher` produces `target/debug/libreseam_patcher.so`, which exports `boltffi_*` C-ABI symbols used by the JNI layer.
 
 ### JNI wrapper library
 
 ```bash
 ./kotlin-sdk/regenerate.sh
-cargo build -p stitch-patcher
+cargo build -p reseam-patcher
 JAVA_HOME=/usr/lib/jvm/java-21-temurin-jdk kotlin-sdk/build-jni.sh
 ```
 
-Compiles `jni_glue.c` and links against the cdylib → `target/debug/libstitch_patcher_jni.so` (exports `Java_*` JNI symbols).
+Compiles `jni_glue.c` and links against the cdylib → `target/debug/libreseam_patcher_jni.so` (exports `Java_*` JNI symbols).
 
 ### Kotlin SDK
 
@@ -56,14 +56,14 @@ Compiles `jni_glue.c` and links against the cdylib → `target/debug/libstitch_p
 cd kotlin-sdk && ./gradlew build
 ```
 
-Requires Kotlin 1.9.25, JVM 17. Publishes as `dev.stitch:stitch-patch-sdk:0.1.0` via `maven-publish`.
+Requires Kotlin 1.9.25, JVM 17. Publishes as `dev.reseam:reseam-patch-sdk:0.1.0` via `maven-publish`.
 The supported SDK maintenance workflow is documented in [`kotlin-sdk/README.md`](kotlin-sdk/README.md).
 
 ### Full build (all three layers)
 
 ```bash
 ./kotlin-sdk/regenerate.sh
-cargo build -p stitch-patcher
+cargo build -p reseam-patcher
 JAVA_HOME=/usr/lib/jvm/java-21-temurin-jdk kotlin-sdk/build-jni.sh
 cd kotlin-sdk && ./gradlew build
 ```
@@ -73,21 +73,70 @@ cd kotlin-sdk && ./gradlew build
 ### Patch an APK
 
 ```bash
-stitch patch app.apk --bundle patches/ --output patched.apk
+reseam patch app.apk --bundle patches/ --output patched.apk
 ```
 
-Auto-generates a signing key if `--key`/`--cert` are omitted. Use `--enable`/`--disable` to toggle patches, `--option PATCH.KEY=VALUE` to configure them, `--dry-run` to validate without applying.
+For split APKs:
+
+```bash
+reseam patch base.apk \
+  --split config.arm64_v8a.apk \
+  --split config.xxhdpi.apk \
+  --bundle patches/ \
+  --output-dir patched/
+```
+
+If `--key`/`--cert` are omitted, Reseam reuses or generates key material next to the output:
+
+- single APK output: `<output>.pk8` and `<output>.der`
+- split APK output directory: `<output-dir>/reseam.pk8` and `<output-dir>/reseam.der`
+
+Use `--enable`/`--disable` to toggle patches, `--option PATCH.KEY=VALUE` to configure them, and `--dry-run` to resolve and validate without applying patches.
+
+### CLI arguments
+
+`reseam patch`:
+
+- `<apk>` — base APK path
+- `--bundle <PATH>` — patch bundle to load
+- `--split <APK>` — repeatable split APK input
+- `--output <FILE>` — output file for single-APK mode
+- `--output-dir <DIR>` — output directory for split-APK mode
+- `--key <PK8>` — PKCS#8 signing key path
+- `--cert <DER>` — X.509 certificate path
+- `--enable <PATCH>` — repeatable patch enable override
+- `--disable <PATCH>` — repeatable patch disable override
+- `--option PATCH.KEY=VALUE` — repeatable patch option assignment
+- `--dry-run` — validate only; do not execute patches, mutate APK state, write outputs, or sign
+
+`reseam list`:
+
+- `--bundle <PATH>` — patch bundle to inspect
+
+`reseam info`:
+
+- `<apk>` — APK path to inspect
+
+`reseam bundle keygen`:
+
+- `--out <PATH>` — output path for the Ed25519 bundle signing seed
+
+`reseam bundle pack`:
+
+- `<dir>` — bundle staging directory
+- `--key <PATH>` — Ed25519 private seed path
+- `--out <PATH>` — output `.reseam` bundle path
 
 ### List patches in a bundle
 
 ```bash
-stitch list patches/
+reseam list patches/
 ```
 
 ### Inspect an APK
 
 ```bash
-stitch info app.apk
+reseam info app.apk
 ```
 
 ## Patch bundles
@@ -100,7 +149,9 @@ my-patches/
     └── helper.dex            # auto-discovered (extensions/*.dex)
 ```
 
-Patches are `.kt` files compiled to JARs. At runtime the engine spins up an embedded JVM, loads JARs via `URLClassLoader`, and scans for `StitchPatch` instances. Each patch's `execute()` calls back into Rust through JNI for all DEX/manifest/resource operations.
+Patches are `.kt` files compiled to JARs. At runtime the engine spins up an embedded JVM, loads JARs via `URLClassLoader`, and scans for `ReseamPatch` instances. Each patch's `execute()` calls back into Rust through JNI for all DEX/manifest/resource operations.
+
+Bundle signature verification is already enforced when a bundle is loaded. `reseam patch` and `reseam list` both fail if the bundle signing key is not trusted or the manifest signature check fails.
 
 ### Execution model
 
@@ -114,9 +165,9 @@ Patches are `.kt` files compiled to JARs. At runtime the engine spins up an embe
 Patches use a DSL that compiles to typed instruction sequences — no smali strings.
 
 ```kotlin
-package dev.stitch.patches.example
+package dev.reseam.patches.example
 
-import dev.stitch.patch.*
+import dev.reseam.patch.*
 
 internal val targetFingerprint = fingerprint {
     accessFlags(AccessFlags.PUBLIC or AccessFlags.FINAL)
@@ -146,7 +197,7 @@ val examplePatch = patch(
 
 | File | Purpose |
 |------|---------|
-| `StitchPatch.kt` | Patch interface — metadata plus `execute(ctx: PatchRuntime)` |
+| `ReseamPatch.kt` | Patch interface — metadata plus `execute(ctx: PatchRuntime)` |
 | `PatchRuntime.kt` | Runtime-rooted SDK surface — `manifest`, `resources`, `bytecode`, `files`, `options`, `log` |
 | `Dsl.kt` | `patch {}` and `fingerprint {}` entry points |
 | `Fingerprint.kt` | Builder for method matching by access flags, return type, parameter types, strings, opcodes, literals, custom predicates |
@@ -169,9 +220,9 @@ The FFI boundary between Rust and Kotlin uses [BoltFFI](https://crates.io/crates
 
 ### Architecture (Rust → C → Kotlin)
 
-1. **Rust cdylib** (`libstitch_patcher.so`): `#[export]` functions in `crates/patcher/src/kotlin/` generate `boltffi_*` C-ABI symbols
-2. **JNI wrapper** (`libstitch_patcher_jni.so`): Generated `jni_glue.c` compiled separately via `build-jni.sh`, contains `JNIEXPORT Java_dev_stitch_patch_Native_boltffi_1*` functions
-3. **Kotlin bridge** (`StitchPatcher.kt`): `private object Native` loads `stitch_patcher_jni` via `System.loadLibrary`, public functions handle wire encoding/decoding
+1. **Rust cdylib** (`libreseam_patcher.so`): `#[export]` functions in `crates/patcher/src/kotlin/` generate `boltffi_*` C-ABI symbols
+2. **JNI wrapper** (`libreseam_patcher_jni.so`): Generated `jni_glue.c` compiled separately via `build-jni.sh`, contains `JNIEXPORT Java_dev_reseam_patch_Native_boltffi_1*` functions
+3. **Kotlin bridge** (`ReseamPatcher.kt`): `private object Native` loads `reseam_patcher_jni` via `System.loadLibrary`, public functions handle wire encoding/decoding
 
 ### File locations
 
@@ -185,12 +236,12 @@ The FFI boundary between Rust and Kotlin uses [BoltFFI](https://crates.io/crates
 | BoltFFI config | `crates/patcher/boltffi.toml` |
 | JNI build script | `kotlin-sdk/build-jni.sh` |
 | Generated C glue | `kotlin-sdk/generated/jni/jni_glue.c` |
-| Generated Kotlin (raw) | `kotlin-sdk/generated/dev/stitch/patch/StitchPatcher.kt` |
-| Published Kotlin (post-processed) | `kotlin-sdk/src/main/kotlin/dev/stitch/patch/StitchPatcher.kt` |
+| Generated Kotlin (raw) | `kotlin-sdk/generated/dev/reseam/patch/ReseamPatcher.kt` |
+| Published Kotlin (post-processed) | `kotlin-sdk/src/main/kotlin/dev/reseam/patch/ReseamPatcher.kt` |
 | Regeneration script | `kotlin-sdk/regenerate.sh` |
 | Post-processing script | `kotlin-sdk/fix-generated.sh` |
-| Handwritten SDK surface | `kotlin-sdk/src/main/kotlin/dev/stitch/patch/*.kt` except `StitchPatcher.kt` |
-| Integration test | `kotlin-sdk/src/test/kotlin/dev/stitch/patch/IntegrationTest.kt` |
+| Handwritten SDK surface | `kotlin-sdk/src/main/kotlin/dev/reseam/patch/*.kt` except `ReseamPatcher.kt` |
+| Integration test | `kotlin-sdk/src/test/kotlin/dev/reseam/patch/IntegrationTest.kt` |
 
 ### Regeneration (after Rust type/export changes)
 
@@ -198,7 +249,7 @@ The FFI boundary between Rust and Kotlin uses [BoltFFI](https://crates.io/crates
 ./kotlin-sdk/regenerate.sh
 ```
 
-`regenerate.sh` is the supported codegen entrypoint. It runs BoltFFI with `STITCH_SKIP_JNI_GLUE=1` so type generation does not depend on the current JNI bridge being compilable, then runs `fix-generated.sh` to copy the sanitized Kotlin source into the published SDK tree.
+`regenerate.sh` is the supported codegen entrypoint. It runs BoltFFI with `RESEAM_SKIP_JNI_GLUE=1` so type generation does not depend on the current JNI bridge being compilable, then runs `fix-generated.sh` to copy the sanitized Kotlin source into the published SDK tree.
 
 ### Adding a new exported function
 
@@ -206,16 +257,18 @@ Example: adding `file_inject`.
 
 1. Add `#[export] fn file_inject(apk_path: String, data: Vec<u8>)` in `crates/patcher/src/kotlin/files.rs`
 2. Run `./kotlin-sdk/regenerate.sh`
-3. Rebuild: `cargo build -p stitch-patcher && JAVA_HOME=... kotlin-sdk/build-jni.sh`
+3. Rebuild: `cargo build -p reseam-patcher && JAVA_HOME=... kotlin-sdk/build-jni.sh`
 4. Expose from the handwritten SDK: `ctx.files.write(apkPath, data)` in `FileScope.kt`
 
 ### Generated source policy
 
 Two layers:
 - `kotlin-sdk/generated/` — raw BoltFFI output, fully replaceable
-- `kotlin-sdk/src/main/kotlin/dev/stitch/patch/StitchPatcher.kt` — canonical source shipped in the SDK
+- `kotlin-sdk/src/main/kotlin/dev/reseam/patch/ReseamPatcher.kt` — canonical source shipped in the SDK
 
 Handwritten files such as `ContextGuards.kt`, `ManifestScope.kt`, `ResourceScope.kt`, `XmlScope.kt`, and `Options.kt` are the stable SDK layer. Regeneration must not be the only place where API policy or ergonomics live.
+
+Ignored build artifacts under `kotlin-sdk/generated/` and `kotlin-sdk/dev/` are not source-review targets and should not be committed back as canonical SDK source.
 
 Regeneration flow: `regenerate.sh` generates raw artifacts with JNI compilation disabled for that step only, then `fix-generated.sh` updates the published Kotlin source. Normal Cargo builds still compile the JNI glue.
 
@@ -230,14 +283,14 @@ Regeneration flow: `regenerate.sh` generates raw artifacts with JNI compilation 
 ## Design decisions
 
 - **No app-specific code in this repo** — patches are distributed separately as bundles
-- **Kotlin over WASM/Lua** — familiar language for Android patch authors, compiled by Stitch, DSL-like API
+- **Kotlin over WASM/Lua** — familiar language for Android patch authors, compiled by Reseam, DSL-like API
 - **BoltFFI for JNI codegen** — no manual JNI boilerplate
 - **Handle-based FFI** — opaque `u32` handles avoid passing complex structures across the JNI boundary
 - **No smali text parsing** — instructions are structured enums, not strings. This is the core performance win over ReVanced
 - **In-place sort** — `sort_for_write` handles YouTube-sized DEX (35k classes) without allocating a copy
 - **Dirty-flag bypass** — only re-serializes manifest/resources.arsc if actually modified
 - **ZIP pass-through** — unchanged APK entries copied raw, no recompression
-- **No panics** — proper error propagation throughout, no `unwrap`/`expect`/`todo!`
+- **Error-first mutation/parsing** — malformed input and invalid mutation requests are expected to return errors rather than silently producing wrong output
 
 ## License
 

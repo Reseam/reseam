@@ -1,6 +1,9 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #![no_main]
 use libfuzzer_sys::fuzz_target;
-use stitch_dex::ParseOptions;
+use reseam_dex::ParseOptions;
 
 fuzz_target!(|data: &[u8]| {
     let opts = ParseOptions {
@@ -12,8 +15,8 @@ fuzz_target!(|data: &[u8]| {
     };
 
     // If parse succeeds, write must not panic
-    if let Ok(mut dex) = stitch_dex::parse(data, opts) {
-        if let Ok(output) = stitch_dex::write(&mut dex) {
+    if let Ok(mut dex) = reseam_dex::parse(data, opts) {
+        if let Ok(output) = reseam_dex::write(&mut dex) {
             // Re-parse the output — must not panic
             let opts2 = ParseOptions {
                 skip_checksum: true,
@@ -22,7 +25,7 @@ fuzz_target!(|data: &[u8]| {
                 lenient_mutf8: true,
                 lazy: false,
             };
-            let _ = stitch_dex::parse(&output, opts2);
+            let _ = reseam_dex::parse(&output, opts2);
         }
     }
 });

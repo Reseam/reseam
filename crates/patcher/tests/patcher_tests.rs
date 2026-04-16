@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use std::fs;
 use std::fs::File;
 use std::io::Write;
@@ -5,13 +8,13 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
-use stitch_apk::resources::{ResConfig, ResEntry, ResPackage, ResType, ResValue, TypeSpec};
-use stitch_apk::stitch_dex::ParseOptions;
-use stitch_apk::{ApkFile, AxmlEvent, ResourceTable};
-use stitch_patcher::bundle::PatchBundle;
-use stitch_patcher::context::PatchContext;
-use stitch_patcher::engine::{self, ExecutionPlan, PatchStatus};
-use stitch_patcher::options::{OptionValue, PatchOptions};
+use reseam_apk::resources::{ResConfig, ResEntry, ResPackage, ResType, ResValue, TypeSpec};
+use reseam_apk::reseam_dex::ParseOptions;
+use reseam_apk::{ApkFile, AxmlEvent, ResourceTable};
+use reseam_patcher::bundle::PatchBundle;
+use reseam_patcher::context::PatchContext;
+use reseam_patcher::engine::{self, ExecutionPlan, PatchStatus};
+use reseam_patcher::options::{OptionValue, PatchOptions};
 
 static FIXTURE_JAR: OnceLock<PathBuf> = OnceLock::new();
 
@@ -46,14 +49,14 @@ fn build_fixture_jar() -> PathBuf {
 
             run_checked(
                 Command::new(&gradle).arg("-p").arg(&sdk_dir).arg("jar"),
-                "build stitch patch sdk jar",
+                "build reseam patch sdk jar",
             );
             run_checked(
                 Command::new(&gradle).arg("-p").arg(&fixture_dir).arg("jar"),
                 "build kotlin runtime test bundle",
             );
 
-            fixture_dir.join("build/libs/stitch-test-patches.jar")
+            fixture_dir.join("build/libs/reseam-test-patches.jar")
         })
         .clone()
 }
@@ -66,15 +69,15 @@ struct TestBundle {
     pubkey: [u8; 32],
 }
 
-fn write_bundle_stitch() -> TestBundle {
+fn write_bundle_reseam() -> TestBundle {
     use sha2::{Digest, Sha256};
     use std::io::Write as _;
 
     let tmp = tempfile::tempdir().expect("tempdir failed");
-    let out_path = tmp.path().join("runtime-test-bundle.stitch");
+    let out_path = tmp.path().join("runtime-test-bundle.reseam");
 
     let jar_bytes = fs::read(build_fixture_jar()).expect("read fixture jar");
-    let jar_name = "stitch-test-patches.jar";
+    let jar_name = "reseam-test-patches.jar";
     let jar_sha = hex::encode(Sha256::digest(&jar_bytes));
 
     let manifest = format!(
@@ -92,7 +95,7 @@ format_version = 1
     let pubkey = signing_key.verifying_key().to_bytes();
     let signature = ed25519_dalek::Signer::sign(&signing_key, &manifest_bytes).to_bytes();
 
-    let file = File::create(&out_path).expect("create .stitch");
+    let file = File::create(&out_path).expect("create .reseam");
     let mut zip = zip::ZipWriter::new(file);
     let stored = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Stored);
@@ -100,7 +103,7 @@ format_version = 1
         .compression_method(zip::CompressionMethod::Deflated);
 
     zip.start_file("mimetype", stored).unwrap();
-    zip.write_all(stitch_patcher::bundle::BUNDLE_MIMETYPE.as_bytes())
+    zip.write_all(reseam_patcher::bundle::BUNDLE_MIMETYPE.as_bytes())
         .unwrap();
     zip.start_file("manifest.toml", deflated).unwrap();
     zip.write_all(&manifest_bytes).unwrap();
@@ -123,7 +126,7 @@ fn manifest_bytes(version_name: &str, split_name: Option<&str>) -> Vec<u8> {
     let split_attr = split_name
         .map(|name| format!(r#" split="{name}""#))
         .unwrap_or_default();
-    stitch_apk::axml::compile_xml(&format!(
+    reseam_apk::axml::compile_xml(&format!(
         r#"<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.test" android:versionCode="1" android:versionName="{version_name}"{split_attr} />"#
     ))
     .expect("compile manifest")
@@ -132,11 +135,17 @@ fn manifest_bytes(version_name: &str, split_name: Option<&str>) -> Vec<u8> {
 fn resource_table_bytes(entry_name: &str, value: &str) -> Vec<u8> {
     ResourceTable {
         global_strings: vec![value.to_string()],
+        global_strings_utf8: true,
         packages: vec![ResPackage {
             id: 0x7F,
             name: "com.example.test".to_string(),
             type_strings: vec!["string".to_string()],
+            type_strings_utf8: true,
             key_strings: vec![entry_name.to_string()],
+            key_strings_utf8: true,
+            last_public_type: 0,
+            last_public_key: 0,
+            type_id_offset: 0,
             type_specs: vec![TypeSpec {
                 id: 1,
                 flags: vec![0],
@@ -234,7 +243,7 @@ fn manifest_contains_permission(apk: &ApkFile, permission: &str) -> bool {
 
 #[test]
 fn kotlin_bundle_executes_against_runtime_api() {
-    let bundle_file = write_bundle_stitch();
+    let bundle_file = write_bundle_reseam();
     let bundle = PatchBundle::load_with_trust_anchors(&bundle_file.path, &[bundle_file.pubkey])
         .expect("load runtime bundle");
     let (_apk_dir, mut apk) = open_split_test_apk();
@@ -307,7 +316,7 @@ fn kotlin_bundle_executes_against_runtime_api() {
 
 #[test]
 fn kotlin_bundle_required_option_is_enforced() {
-    let bundle_file = write_bundle_stitch();
+    let bundle_file = write_bundle_reseam();
     let bundle = PatchBundle::load_with_trust_anchors(&bundle_file.path, &[bundle_file.pubkey])
         .expect("load runtime bundle");
     let (_apk_dir, mut apk) = open_split_test_apk();

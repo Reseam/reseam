@@ -1,7 +1,11 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use super::header::{u16_at, u32_at};
-use crate::encoding::leb128::read_uleb128;
-use crate::encoding::mutf8::decode_mutf8;
-use crate::error::Result;
+use crate::encoding::leb128::read_uleb128_with_opts;
+use crate::encoding::mutf8::{decode_mutf8_with_opts, utf16_len};
+use crate::error::{invalid, invalid_mutf8, Result};
+use crate::types::header::ParseOptions;
 use crate::types::{DexString, FieldId, MethodId, ProtoIdx, Prototype, StringIdx, TypeIdx};
 
 pub fn read_string_ids(buf: &[u8], off: u32, count: u32) -> Result<Vec<u32>> {
@@ -13,9 +17,13 @@ pub fn read_string_ids(buf: &[u8], off: u32, count: u32) -> Result<Vec<u32>> {
     Ok(offsets)
 }
 
-pub fn read_string_data(buf: &[u8], string_data_off: u32) -> Result<DexString> {
+pub fn read_string_data(
+    buf: &[u8],
+    string_data_off: u32,
+    opts: &ParseOptions,
+) -> Result<DexString> {
     let pos = string_data_off as usize;
-    let (_utf16_size, leb_size) = read_uleb128(buf, pos)?;
+    let (utf16_size, leb_size) = read_uleb128_with_opts(buf, pos, opts)?;
     let data_start = pos + leb_size;
 
     // Find null terminator
@@ -23,8 +31,20 @@ pub fn read_string_data(buf: &[u8], string_data_off: u32) -> Result<DexString> {
     while end < buf.len() && buf[end] != 0 {
         end += 1;
     }
+    if end == buf.len() {
+        return Err(invalid_mutf8(data_start, "missing NUL terminator"));
+    }
 
-    let s = decode_mutf8(&buf[data_start..end])?;
+    let s = decode_mutf8_with_opts(&buf[data_start..end], data_start, opts)?;
+    let actual_utf16_len = utf16_len(&s);
+    if actual_utf16_len != utf16_size {
+        return Err(invalid(
+            "string data",
+            format!(
+                "declared UTF-16 length {utf16_size} does not match decoded length {actual_utf16_len}"
+            ),
+        ));
+    }
     Ok(DexString::new(s))
 }
 

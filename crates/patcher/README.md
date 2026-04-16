@@ -1,4 +1,4 @@
-# stitch-patcher
+# reseam-patcher
 
 Patch execution engine. Loads patch bundles, resolves dependencies, validates options, and applies patches to APKs. The current bundle loader executes Kotlin patches from compiled JARs via an embedded JVM.
 
@@ -8,7 +8,7 @@ Patch execution engine. Loads patch bundles, resolves dependencies, validates op
 - **Dependency resolution** — topological ordering of patches with cycle detection
 - **Execution engine** — applies patches in order, tracks status (applied/skipped/failed), collects logs
 - **Options system** — typed patch options (string, bool, int, float, string list, path) with validation and defaults
-- **Kotlin patches** — spins up a JVM via JNI to execute Kotlin-authored patches that use the Stitch SDK API. Handles bytecode manipulation, manifest editing, resource copying, and XML patching through a bridge layer
+- **Kotlin patches** — spins up a JVM via JNI to execute Kotlin-authored patches that use the Reseam SDK API. Handles bytecode manipulation, manifest editing, resource copying, and XML patching through a bridge layer
 - **Patch context** — provides patches access to the APK's DEX files, manifest, and resources
 
 ## Modules
@@ -30,17 +30,17 @@ The Kotlin integration has three separate concerns:
 
 - Rust exports in `src/kotlin/**/*.rs` define the host API with `#[export]`
 - `kotlin-sdk/generated/` contains raw BoltFFI output and is fully replaceable
-- handwritten files in `kotlin-sdk/src/main/kotlin/dev/stitch/patch/` provide stable SDK ergonomics and policy
+- handwritten files in `kotlin-sdk/src/main/kotlin/dev/reseam/patch/` provide stable SDK ergonomics and policy
 
-Regeneration is done through `kotlin-sdk/regenerate.sh`. Normal Cargo builds remain strict and still compile the JNI glue; regeneration uses `STITCH_SKIP_JNI_GLUE=1` only to prevent stale generated JNI code from blocking type generation.
+Regeneration is done through `kotlin-sdk/regenerate.sh`. Normal Cargo builds remain strict and still compile the JNI glue; regeneration uses `RESEAM_SKIP_JNI_GLUE=1` only to prevent stale generated JNI code from blocking type generation.
 
 ## Usage
 
 ```rust
-use stitch_patcher::prelude::*;
-use stitch_patcher::bundle::PatchBundle;
+use reseam_patcher::prelude::*;
+use reseam_patcher::bundle::PatchBundle;
 
 let bundle = PatchBundle::load("patches/")?;
 let plan = ExecutionPlan::default();
-let results = stitch_patcher::engine::apply_patches_with_plan(&mut context, &bundle.patches, &plan)?;
+let results = reseam_patcher::engine::apply_patches_with_plan(&mut context, &bundle.patches, &plan)?;
 ```

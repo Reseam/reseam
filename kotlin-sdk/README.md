@@ -1,10 +1,10 @@
 # kotlin-sdk
 
-Kotlin patch authoring SDK for Stitch. This directory intentionally mixes generated transport code with handwritten DSL code, but the boundary is strict:
+Kotlin patch authoring SDK for Reseam. This directory intentionally mixes generated transport code with handwritten DSL code, but the boundary is strict:
 
 - `generated/` is raw BoltFFI output and is always replaceable
-- `src/main/kotlin/dev/stitch/patch/StitchPatcher.kt` is generated bridge code copied from `generated/` by `fix-generated.sh`
-- `src/main/kotlin/dev/stitch/patch/*.kt` excluding `StitchPatcher.kt` are handwritten SDK surface files and must remain stable across regeneration
+- `src/main/kotlin/dev/reseam/patch/ReseamPatcher.kt` is generated bridge code copied from `generated/` by `fix-generated.sh`
+- `src/main/kotlin/dev/reseam/patch/*.kt` excluding `ReseamPatcher.kt` are handwritten SDK surface files and must remain stable across regeneration
 
 ## Supported workflow
 
@@ -14,7 +14,7 @@ Regenerate bridge artifacts after changing Rust `#[export]` functions:
 ./regenerate.sh
 ```
 
-This runs BoltFFI with `STITCH_SKIP_JNI_GLUE=1` so type generation is not blocked by the current JNI bridge, then post-processes the Kotlin bridge into the publishable source tree.
+This runs BoltFFI with `RESEAM_SKIP_JNI_GLUE=1` so type generation is not blocked by the current JNI bridge, then post-processes the Kotlin bridge into the publishable source tree.
 
 Build the JNI wrapper library:
 
@@ -31,5 +31,5 @@ Run SDK tests:
 ## Editing rules
 
 - Do not hand-edit files under `generated/`
-- Do not hand-edit `src/main/kotlin/dev/stitch/patch/StitchPatcher.kt`
+- Do not hand-edit `src/main/kotlin/dev/reseam/patch/ReseamPatcher.kt`
 - Put guards, runtime ergonomics, and stable wrapper APIs in separate handwritten files such as `PatchRuntime.kt`, `FileScope.kt`, `ResourceScope.kt`, `ManifestScope.kt`, `XmlScope.kt`, and `Options.kt`

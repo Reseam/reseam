@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::file::DexFile;
 use crate::types::annotation::{AnnotationItem, AnnotationsDirectory};
 use crate::types::class::{ClassData, ClassDef, EncodedMethod};
@@ -32,7 +35,7 @@ pub fn sort_in_place(dex: &mut DexFile) -> crate::error::Result<()> {
 
     let type_remap = build_remap(&type_order);
 
-    let mut proto_order: Vec<u16> = (0..dex.prototypes.len() as u16).collect();
+    let mut proto_order: Vec<u32> = (0..dex.prototypes.len() as u32).collect();
     proto_order.sort_by(|&a, &b| {
         let pa = &dex.prototypes[a as usize];
         let pb = &dex.prototypes[b as usize];
@@ -46,7 +49,7 @@ pub fn sort_in_place(dex: &mut DexFile) -> crate::error::Result<()> {
         })
     });
 
-    let proto_remap = build_remap_u16(&proto_order);
+    let proto_remap = build_remap(&proto_order);
 
     let mut field_order: Vec<u32> = (0..dex.fields.len() as u32).collect();
     field_order.sort_by(|&a, &b| {
@@ -74,7 +77,7 @@ pub fn sort_in_place(dex: &mut DexFile) -> crate::error::Result<()> {
 
     let already_sorted = is_identity(&string_remap)
         && is_identity(&type_remap)
-        && is_identity_u16(&proto_remap)
+        && is_identity(&proto_remap)
         && is_identity(&field_remap)
         && is_identity(&method_remap);
 
@@ -165,7 +168,7 @@ pub fn sort_in_place(dex: &mut DexFile) -> crate::error::Result<()> {
 pub(crate) struct Remap<'a> {
     pub(crate) string: &'a [u32],
     pub(crate) type_: &'a [u32],
-    pub(crate) proto: &'a [u16],
+    pub(crate) proto: &'a [u32],
     pub(crate) field: &'a [u32],
     pub(crate) method: &'a [u32],
 }
@@ -180,7 +183,7 @@ impl<'a> Remap<'a> {
     }
 
     pub(crate) fn remap_proto(&self, idx: ProtoIdx) -> ProtoIdx {
-        ProtoIdx(self.proto[idx.0 as usize])
+        ProtoIdx(self.proto[idx.0 as usize] as u16)
     }
 
     pub(crate) fn remap_field(&self, idx: FieldIdx) -> FieldIdx {
@@ -463,20 +466,8 @@ fn build_remap(order: &[u32]) -> Vec<u32> {
     remap
 }
 
-fn build_remap_u16(order: &[u16]) -> Vec<u16> {
-    let mut remap = vec![0u16; order.len()];
-    for (new_idx, &old_idx) in order.iter().enumerate() {
-        remap[old_idx as usize] = new_idx as u16;
-    }
-    remap
-}
-
 fn is_identity(remap: &[u32]) -> bool {
     remap.iter().enumerate().all(|(i, &v)| v == i as u32)
-}
-
-fn is_identity_u16(remap: &[u16]) -> bool {
-    remap.iter().enumerate().all(|(i, &v)| v == i as u16)
 }
 
 fn fixup_instructions(dex: &mut DexFile) -> crate::error::Result<()> {

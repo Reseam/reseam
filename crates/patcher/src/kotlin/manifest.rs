@@ -1,5 +1,8 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use boltffi::export;
-use stitch_apk::AxmlDocument;
+use reseam_apk::AxmlDocument;
 
 use super::XML_DOCUMENTS;
 use super::with_ctx;
@@ -473,7 +476,7 @@ pub fn manifest_copy_intent_filters(from_activity: String, to_activity: String) 
             let mut filter_ranges = Vec::new();
             let mut i = from_idx + 1;
             while i < from_end {
-                if let stitch_apk::axml::AxmlEvent::StartElement { name, .. } =
+                if let reseam_apk::axml::AxmlEvent::StartElement { name, .. } =
                     &manifest.elements[i]
                 {
                     if manifest
@@ -550,7 +553,7 @@ pub fn manifest_copy_intent_filters_in_component(
             let mut filter_ranges = Vec::new();
             let mut i = from_idx + 1;
             while i < from_end {
-                if let stitch_apk::axml::AxmlEvent::StartElement { name, .. } = &manifest.elements[i] {
+                if let reseam_apk::axml::AxmlEvent::StartElement { name, .. } = &manifest.elements[i] {
                     if manifest.string(*name).map_or(false, |s| s == "intent-filter") {
                         if let Some(end) = manifest.find_end_element(i) {
                             let events: Vec<_> = manifest.elements[i..=end].to_vec();

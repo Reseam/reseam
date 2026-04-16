@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use boltffi::export;
 
 use super::types::ResourceRef;
@@ -72,10 +75,8 @@ pub fn res_get_string_in_component(component: String, name: String) -> Option<St
 }
 
 #[export]
-pub fn res_set_string(name: String, value: String) {
-    with_ctx(|ctx| {
-        ctx.set_string_resource_value(&name, &value);
-    });
+pub fn res_set_string(name: String, value: String) -> bool {
+    with_ctx(|ctx| ctx.set_string_resource_value(&name, &value))
 }
 
 #[export]

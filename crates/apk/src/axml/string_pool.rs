@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::buf::{read_u16_le, read_u32_le, read_u8};
 use crate::error::{invalid, malformed, Result};
 
@@ -130,7 +133,7 @@ fn decode_utf8_string(data: &[u8], offset: usize) -> Result<String> {
 
     let bytes = &data[pos..pos + byte_len];
     String::from_utf8(bytes.to_vec())
-        .or_else(|_| stitch_dex::encoding::mutf8::decode_mutf8(bytes))
+        .or_else(|_| reseam_dex::encoding::mutf8::decode_mutf8(bytes))
         .map_err(|_| invalid("axml utf8 string", "invalid UTF-8/MUTF-8 in string pool"))
 }
 

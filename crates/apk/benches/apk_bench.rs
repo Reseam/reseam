@@ -1,6 +1,9 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::io::Read;
-use stitch_dex::{InstructionPattern, OpcodeMatcher, ParseOptions};
+use reseam_dex::{InstructionPattern, OpcodeMatcher, ParseOptions};
 
 const YOUTUBE_APK: &str = "../../test-apks/for_testing_com.google.android.youtube_21.10.494.apk";
 const INSTAGRAM_APK: &str = "../../test-apks/com.instagram.android_419.0.0.49.71-382508603_minAPI28(arm64-v8a)(360,400,420,480dpi)_apkmirror.com.apk";
@@ -49,7 +52,7 @@ fn bench_parse(c: &mut Criterion) {
     let mut group = c.benchmark_group("parse");
     for (name, buf) in &dex_files {
         group.bench_with_input(BenchmarkId::new("full_parse", name), buf, |b, buf| {
-            b.iter(|| stitch_dex::parse(buf, default_opts()).unwrap());
+            b.iter(|| reseam_dex::parse(buf, default_opts()).unwrap());
         });
     }
     let (name, buf) = &dex_files[0];
@@ -57,7 +60,7 @@ fn bench_parse(c: &mut Criterion) {
         BenchmarkId::new("parse_skip_verify", name),
         buf,
         |b, buf| {
-            b.iter(|| stitch_dex::parse(buf, skip_verify_opts()).unwrap());
+            b.iter(|| reseam_dex::parse(buf, skip_verify_opts()).unwrap());
         },
     );
     let total_size: usize = dex_files.iter().map(|(_, b)| b.len()).sum();
@@ -66,7 +69,7 @@ fn bench_parse(c: &mut Criterion) {
         |b| {
             b.iter(|| {
                 for (_, buf) in &dex_files {
-                    stitch_dex::parse(buf, skip_verify_opts()).unwrap();
+                    reseam_dex::parse(buf, skip_verify_opts()).unwrap();
                 }
             });
         },
@@ -85,7 +88,7 @@ fn bench_write(c: &mut Criterion) {
         .map(|(name, buf)| {
             (
                 name.clone(),
-                stitch_dex::parse(buf, default_opts()).unwrap(),
+                reseam_dex::parse(buf, default_opts()).unwrap(),
             )
         })
         .collect();
@@ -93,7 +96,7 @@ fn bench_write(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("write", name), dex, |b, dex| {
             b.iter_batched(
                 || dex.clone(),
-                |mut d| stitch_dex::write(&mut d).unwrap(),
+                |mut d| reseam_dex::write(&mut d).unwrap(),
                 criterion::BatchSize::LargeInput,
             );
         });
@@ -103,7 +106,7 @@ fn bench_write(c: &mut Criterion) {
             || parsed.iter().map(|(_, d)| d.clone()).collect::<Vec<_>>(),
             |mut ds| {
                 for d in &mut ds {
-                    stitch_dex::write(d).unwrap();
+                    reseam_dex::write(d).unwrap();
                 }
             },
             criterion::BatchSize::LargeInput,
@@ -120,8 +123,8 @@ fn bench_round_trip(c: &mut Criterion) {
     let (name, buf) = &dex_files[0];
     c.bench_function(&format!("round_trip/{}", name), |b| {
         b.iter(|| {
-            let mut dex = stitch_dex::parse(buf, skip_verify_opts()).unwrap();
-            let output = stitch_dex::write(&mut dex).unwrap();
+            let mut dex = reseam_dex::parse(buf, skip_verify_opts()).unwrap();
+            let output = reseam_dex::write(&mut dex).unwrap();
             std::hint::black_box(output.len());
         });
     });
@@ -133,7 +136,7 @@ fn bench_search(c: &mut Criterion) {
     }
     let dex_files = extract_dex_files_from_apk(YOUTUBE_APK);
     let (_, buf) = &dex_files[0];
-    let dex = stitch_dex::parse(buf, default_opts()).unwrap();
+    let dex = reseam_dex::parse(buf, default_opts()).unwrap();
     let mut group = c.benchmark_group("search");
     group.bench_function("find_method_by_name", |b| {
         b.iter(|| {
@@ -172,7 +175,7 @@ fn bench_mutation(c: &mut Criterion) {
     }
     let dex_files = extract_dex_files_from_apk(YOUTUBE_APK);
     let (_, buf) = &dex_files[0];
-    let dex = stitch_dex::parse(buf, default_opts()).unwrap();
+    let dex = reseam_dex::parse(buf, default_opts()).unwrap();
     let mut group = c.benchmark_group("mutation");
     group.bench_function("intern_string_new", |b| {
         b.iter_batched(
@@ -242,9 +245,9 @@ fn bench_multi_dex(c: &mut Criterion) {
     let dex_files = extract_dex_files_from_apk(YOUTUBE_APK);
     let buffers: Vec<&[u8]> = dex_files.iter().map(|(_, b)| b.as_slice()).collect();
     c.bench_function("multi_dex/parse_all", |b| {
-        b.iter(|| stitch_dex::MultiDexContainer::parse(&buffers, skip_verify_opts()).unwrap());
+        b.iter(|| reseam_dex::MultiDexContainer::parse(&buffers, skip_verify_opts()).unwrap());
     });
-    let container = stitch_dex::MultiDexContainer::parse(&buffers, default_opts()).unwrap();
+    let container = reseam_dex::MultiDexContainer::parse(&buffers, default_opts()).unwrap();
     c.bench_function("multi_dex/write_all", |b| {
         b.iter_batched(
             || container.clone(),
@@ -272,7 +275,7 @@ fn bench_instagram(c: &mut Criterion) {
         ),
         largest_buf,
         |b, buf| {
-            b.iter(|| stitch_dex::parse(buf, skip_verify_opts()).unwrap());
+            b.iter(|| reseam_dex::parse(buf, skip_verify_opts()).unwrap());
         },
     );
     group.bench_function(
@@ -280,23 +283,23 @@ fn bench_instagram(c: &mut Criterion) {
         |b| {
             b.iter(|| {
                 for (_, buf) in &dex_files {
-                    stitch_dex::parse(buf, skip_verify_opts()).unwrap();
+                    reseam_dex::parse(buf, skip_verify_opts()).unwrap();
                 }
             });
         },
     );
-    let largest_dex = stitch_dex::parse(largest_buf, default_opts()).unwrap();
+    let largest_dex = reseam_dex::parse(largest_buf, default_opts()).unwrap();
     group.bench_function(BenchmarkId::new("write_largest", largest_name), |b| {
         b.iter_batched(
             || largest_dex.clone(),
-            |mut d| stitch_dex::write(&mut d).unwrap(),
+            |mut d| reseam_dex::write(&mut d).unwrap(),
             criterion::BatchSize::LargeInput,
         );
     });
     group.bench_function(BenchmarkId::new("round_trip_largest", largest_name), |b| {
         b.iter(|| {
-            let mut dex = stitch_dex::parse(largest_buf, skip_verify_opts()).unwrap();
-            let out = stitch_dex::write(&mut dex).unwrap();
+            let mut dex = reseam_dex::parse(largest_buf, skip_verify_opts()).unwrap();
+            let out = reseam_dex::write(&mut dex).unwrap();
             std::hint::black_box(out.len());
         });
     });
@@ -304,10 +307,10 @@ fn bench_instagram(c: &mut Criterion) {
     group.bench_function(
         BenchmarkId::new("multi_dex_parse", format!("{} files", dex_files.len())),
         |b| {
-            b.iter(|| stitch_dex::MultiDexContainer::parse(&buffers, skip_verify_opts()).unwrap());
+            b.iter(|| reseam_dex::MultiDexContainer::parse(&buffers, skip_verify_opts()).unwrap());
         },
     );
-    let container = stitch_dex::MultiDexContainer::parse(&buffers, default_opts()).unwrap();
+    let container = reseam_dex::MultiDexContainer::parse(&buffers, default_opts()).unwrap();
     group.bench_function(
         BenchmarkId::new("multi_dex_write", format!("{} files", dex_files.len())),
         |b| {
@@ -320,7 +323,7 @@ fn bench_instagram(c: &mut Criterion) {
     );
     group.bench_function(BenchmarkId::new("lazy_parse_largest", largest_name), |b| {
         b.iter(|| {
-            stitch_dex::parse(
+            reseam_dex::parse(
                 largest_buf,
                 ParseOptions {
                     lazy: true,

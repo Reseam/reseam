@@ -11,11 +11,11 @@ members = [
 
 [workspace.dependencies]
 # Internal crates
-stitch-dex     = { path = "crates/dex" }
-stitch-apk     = { path = "crates/apk" }
-stitch-sign    = { path = "crates/sign" }
-stitch-patcher = { path = "crates/patcher" }
-stitch-patcher-macros = { path = "crates/patcher-macros" }
+reseam-dex     = { path = "crates/dex" }
+reseam-apk     = { path = "crates/apk" }
+reseam-sign    = { path = "crates/sign" }
+reseam-patcher = { path = "crates/patcher" }
+reseam-patcher-macros = { path = "crates/patcher-macros" }
 
 # Shared external dependencies (pinned versions for all crates)
 thiserror   = "2"
@@ -34,6 +34,8 @@ hex         = "0.4"
 tempfile    = "3"
 toml        = "0.8"
 serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
+time        = { version = "0.3", features = ["formatting", "parsing"] }
 boltffi     = "0.2"
 jni         = { version = "0.21", features = ["invocation"] }
 clap        = { version = "4", features = ["derive"] }

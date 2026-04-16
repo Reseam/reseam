@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -64,5 +67,12 @@ pub(crate) fn internal(operation: &'static str, reason: impl Into<String>) -> Si
     SignError::Internal {
         operation,
         reason: reason.into(),
+    }
+}
+
+pub(crate) fn unsupported(feature: &'static str, detail: impl Into<String>) -> SignError {
+    SignError::Unsupported {
+        feature,
+        detail: detail.into(),
     }
 }

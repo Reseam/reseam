@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use super::DexWriter;
 use super::{annotations, class_data, code, encoded_arrays, finalize};
 use crate::encoding::leb128::write_uleb128;

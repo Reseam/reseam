@@ -1,16 +1,16 @@
 [package]
-name = "stitch-patcher"
+name = "reseam-patcher"
 version = "0.1.0"
 edition = "2021"
-description = "Patch execution engine for Stitch with Kotlin JVM bridge support"
+description = "Patch execution engine for Reseam with Kotlin JVM bridge support"
 readme = "README.md"
 
 [lib]
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
-stitch-apk          = { workspace = true }
-stitch-patcher-macros = { workspace = true }
+reseam-apk          = { workspace = true }
+reseam-patcher-macros = { workspace = true }
 thiserror   = { workspace = true }
 serde       = { workspace = true }
 toml        = { workspace = true }

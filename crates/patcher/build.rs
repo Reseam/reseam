@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -44,7 +47,7 @@ fn main() {
         // parameter shape even when some exports do not use `env`/`cls`.
         build.flag_if_supported("-Wno-unused-parameter");
 
-        build.compile("stitch_jni_glue");
+        build.compile("reseam_jni_glue");
     }
 
     let content = fs::read_to_string(&glue_path).unwrap();
@@ -84,7 +87,7 @@ struct JniNative {
 
 fn parse_jni_exports(content: &str) -> Vec<JniNative> {
     let mut natives = Vec::new();
-    let prefix = "Java_dev_stitch_patch_Native_";
+    let prefix = "Java_app_reseam_patch_Native_";
 
     for line in content.lines() {
         if !line.starts_with("JNIEXPORT ") || !line.contains("JNICALL") {
@@ -178,7 +181,7 @@ fn ret_to_jni_sig(ret: &str) -> String {
 }
 
 fn should_compile_jni_glue() -> bool {
-    env::var_os("STITCH_SKIP_JNI_GLUE").is_none()
+    env::var_os("RESEAM_SKIP_JNI_GLUE").is_none()
 }
 
 fn find_java_home() -> String {

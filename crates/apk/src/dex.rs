@@ -1,7 +1,10 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::error::Result;
 use crate::zip::reader::ApkReader;
 use std::io::{Read, Seek};
-use stitch_dex::{MultiDexContainer, ParseOptions};
+use reseam_dex::{MultiDexContainer, ParseOptions};
 use tracing::{debug, instrument};
 
 /// Extract and parse all DEX files from a single APK reader.
@@ -89,7 +92,7 @@ pub fn from_apk(apk_bytes: &[u8], opts: ParseOptions) -> Result<MultiDexContaine
         let mut entry = archive.by_name(name)?;
         let mut buf = Vec::new();
         entry.read_to_end(&mut buf)?;
-        dex_files.push(stitch_dex::parse(&buf, opts.clone())?);
+        dex_files.push(reseam_dex::parse(&buf, opts.clone())?);
     }
 
     let mut container = MultiDexContainer::new();

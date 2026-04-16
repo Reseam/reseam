@@ -1,6 +1,9 @@
-use stitch_sign::keystore::{GeneratedKey, SigningKey};
-use stitch_sign::signing_block;
-use stitch_sign::v2;
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+use reseam_sign::keystore::{GeneratedKey, SigningKey};
+use reseam_sign::signing_block;
+use reseam_sign::v2;
 
 /// Create a minimal valid ZIP/APK in memory for testing.
 fn create_test_apk() -> Vec<u8> {
@@ -223,14 +226,14 @@ fn test_v3_sign() {
     let key = SigningKey::generate().unwrap();
     let apk = create_test_apk();
 
-    let signed = stitch_sign::v3::sign(&apk, &key).unwrap();
-    assert!(signed.len() > apk.len());
-
-    // Should have signing block magic
-    let (_, cd_offset, _) = signing_block::find_eocd(&signed).unwrap();
-    let cd_off = cd_offset as usize;
-    let magic = &signed[cd_off - 16..cd_off];
-    assert_eq!(magic, b"APK Sig Block 42");
+    let error = reseam_sign::v3::sign(&apk, &key).unwrap_err();
+    assert!(matches!(
+        error,
+        reseam_sign::SignError::Unsupported {
+            feature: "apk signature scheme v3",
+            ..
+        }
+    ));
 }
 
 #[test]

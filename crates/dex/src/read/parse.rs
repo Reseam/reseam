@@ -1,8 +1,11 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use super::class::read_class_defs;
-use super::encoded_value::read_encoded_array;
+use super::encoded_value::read_encoded_array_with_opts;
 use super::header::{read_header, read_header_at, u16_at, u32_at};
 use super::ids::*;
-use crate::encoding::leb128::read_uleb128;
+use crate::encoding::leb128::read_uleb128_with_opts;
 use crate::error::{
     invalid_call_site, invalid_hidden_api_flag, invalid_method_handle_type, Result,
 };
@@ -78,7 +81,7 @@ fn parse_single(buf: &[u8], opts: &ParseOptions, header_off: Option<usize>) -> R
     if header.string_ids_size > 0 {
         let string_offsets = read_string_ids(buf, header.string_ids_off, header.string_ids_size)?;
         for &off in &string_offsets {
-            let s = read_string_data(buf, off)?;
+            let s = read_string_data(buf, off, opts)?;
             dex.strings.push(s);
         }
     }
@@ -101,15 +104,12 @@ fn parse_single(buf: &[u8], opts: &ParseOptions, header_off: Option<usize>) -> R
 
     if header.class_defs_size > 0 {
         if lazy {
-            let (classes, offsets) = super::class::read_class_defs_lazy(
-                buf,
-                header.class_defs_off,
-                header.class_defs_size,
-            )?;
+            let (classes, offsets) =
+                super::class::read_class_defs_lazy(buf, header.class_defs_off, header.class_defs_size, opts)?;
             dex.classes = classes;
             dex.lazy_class_data_offsets = Some(offsets);
         } else {
-            dex.classes = read_class_defs(buf, header.class_defs_off, header.class_defs_size)?;
+            dex.classes = read_class_defs(buf, header.class_defs_off, header.class_defs_size, opts)?;
         }
     }
 
@@ -136,12 +136,12 @@ fn parse_single(buf: &[u8], opts: &ParseOptions, header_off: Option<usize>) -> R
 
     if header.version.supports_call_sites() {
         read_method_handles(buf, method_handle_off, &mut dex)?;
-        read_call_sites(buf, call_site_off, &mut dex)?;
+        read_call_sites(buf, call_site_off, &mut dex, opts)?;
     }
 
     if header.version.supports_hidden_api() {
         if let Some((off, _)) = hidden_api_off {
-            dex.hidden_api = Some(read_hidden_api(buf, off as usize, &dex)?);
+            dex.hidden_api = Some(read_hidden_api(buf, off as usize, &dex, opts)?);
         }
     }
 
@@ -186,11 +186,16 @@ fn read_method_handles(
     Ok(())
 }
 
-fn read_call_sites(buf: &[u8], call_site_off: Option<(u32, u32)>, dex: &mut DexFile) -> Result<()> {
+fn read_call_sites(
+    buf: &[u8],
+    call_site_off: Option<(u32, u32)>,
+    dex: &mut DexFile,
+    opts: &ParseOptions,
+) -> Result<()> {
     if let Some((off, count)) = call_site_off {
         for i in 0..count as usize {
             let cs_off = u32_at(buf, off as usize + i * 4)?;
-            let (values, _) = read_encoded_array(buf, cs_off as usize)?;
+            let (values, _) = read_encoded_array_with_opts(buf, cs_off as usize, opts)?;
 
             if values.len() < 3 {
                 return Err(invalid_call_site(
@@ -238,7 +243,12 @@ fn read_call_sites(buf: &[u8], call_site_off: Option<(u32, u32)>, dex: &mut DexF
     Ok(())
 }
 
-fn read_hidden_api(buf: &[u8], off: usize, dex: &DexFile) -> Result<HiddenApiData> {
+fn read_hidden_api(
+    buf: &[u8],
+    off: usize,
+    dex: &DexFile,
+    opts: &ParseOptions,
+) -> Result<HiddenApiData> {
     let class_count = dex.classes.len();
     let mut class_flags = Vec::with_capacity(class_count);
 
@@ -268,7 +278,7 @@ fn read_hidden_api(buf: &[u8], off: usize, dex: &DexFile) -> Result<HiddenApiDat
         let mut read_flags = |count: usize| -> Result<Vec<HiddenApiFlag>> {
             let mut flags = Vec::with_capacity(count);
             for _ in 0..count {
-                let (v, consumed) = read_uleb128(buf, pos)?;
+                let (v, consumed) = read_uleb128_with_opts(buf, pos, opts)?;
                 pos += consumed;
                 flags.push(HiddenApiFlag::from_u32(v).ok_or_else(|| invalid_hidden_api_flag(v))?);
             }
@@ -297,7 +307,7 @@ mod tests {
     use crate::types::access_flags::AccessFlags;
     use crate::types::class::{ClassData, ClassDef, EncodedField};
     use crate::types::encoded_value::EncodedValue;
-    use crate::types::header::{DexHeader, DexVersion};
+    use crate::types::header::{DexHeader, DexVersion, ParseOptions};
     use crate::types::method_handle::MethodHandleIdx;
     use crate::types::StringIdx;
     use crate::types::TypeIdx;
@@ -347,7 +357,7 @@ mod tests {
         );
 
         let mut dex = DexFile::new(empty_header());
-        let error = read_call_sites(&buf, Some((0, 1)), &mut dex).unwrap_err();
+        let error = read_call_sites(&buf, Some((0, 1)), &mut dex, &ParseOptions::default()).unwrap_err();
 
         assert!(matches!(
             error,
@@ -381,7 +391,7 @@ mod tests {
         });
 
         let buf = [4, 0, 0, 0, 99];
-        let error = read_hidden_api(&buf, 0, &dex).unwrap_err();
+        let error = read_hidden_api(&buf, 0, &dex, &ParseOptions::default()).unwrap_err();
 
         assert_eq!(
             error.to_string(),

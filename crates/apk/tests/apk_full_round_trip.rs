@@ -1,5 +1,8 @@
-use stitch_apk::stitch_dex::ParseOptions;
-use stitch_apk::ApkFile;
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+use reseam_apk::reseam_dex::ParseOptions;
+use reseam_apk::ApkFile;
 
 const YOUTUBE_APK: &str = "../../test-apks/for_testing_com.google.android.youtube_21.10.494.apk";
 const INSTAGRAM_APK: &str = "../../test-apks/com.instagram.android_419.0.0.49.71-382508603_minAPI28(arm64-v8a)(360,400,420,480dpi)_apkmirror.com.apk";
@@ -125,14 +128,14 @@ fn test_apk_full_round_trip() {
         // --- Phase 4: mutate manifest, write, reparse ---
         let mut apk4 = open_apk_lazy(apk_path);
         apk4.manifest_mut().set_version_code(99999);
-        apk4.manifest_mut().set_version_name("99.0.0-stitch");
+        apk4.manifest_mut().set_version_name("99.0.0-reseam");
 
         let tmp4 = tempfile::tempdir().expect("tempdir failed");
         apk4.write_to(tmp4.path()).expect("write_to failed");
         let out4 = find_apk_in_dir(tmp4.path());
         let apk4r = open_apk_lazy(out4.to_str().expect("utf-8 output path"));
         assert_eq!(apk4r.version_code(), Some(99999));
-        assert_eq!(apk4r.version_name(), Some("99.0.0-stitch"));
+        assert_eq!(apk4r.version_name(), Some("99.0.0-reseam"));
         drop(apk4);
         drop(apk4r);
 
@@ -147,8 +150,8 @@ fn test_apk_full_round_trip() {
         let out5 = find_apk_in_dir(tmp5.path());
         let unsigned_bytes = std::fs::read(&out5).expect("read failed");
 
-        let key = stitch_sign::SigningKey::generate().expect("keygen failed");
-        let signed_bytes = stitch_sign::v2::sign(&unsigned_bytes, &key).expect("signing failed");
+        let key = reseam_sign::SigningKey::generate().expect("keygen failed");
+        let signed_bytes = reseam_sign::v2::sign(&unsigned_bytes, &key).expect("signing failed");
 
         assert!(signed_bytes.len() > unsigned_bytes.len());
 
@@ -207,8 +210,8 @@ fn test_apk_full_round_trip() {
         let out6 = find_apk_in_dir(tmp6.path());
         let unsigned6 = std::fs::read(&out6).expect("read failed");
 
-        let key6 = stitch_sign::SigningKey::generate().expect("keygen failed");
-        let signed6 = stitch_sign::v2::sign(&unsigned6, &key6).expect("signing failed");
+        let key6 = reseam_sign::SigningKey::generate().expect("keygen failed");
+        let signed6 = reseam_sign::v2::sign(&unsigned6, &key6).expect("signing failed");
 
         let signed_path = tmp6.path().join("signed.apk");
         std::fs::write(&signed_path, &signed6).expect("write signed failed");

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use std::collections::{HashMap, HashSet};
 
 use crate::file::DexFile;
@@ -396,11 +399,7 @@ pub(crate) fn transplant_class(
     // Build remaps by interning referenced entries into dest
     let string_remap = build_string_remap(&refs.strings, source, dest);
     let type_remap = build_type_remap(&refs.types, source, dest);
-    let proto_remap_u32 = build_proto_remap(&refs.protos, source, dest)?;
-    let proto_remap: Vec<u16> = proto_remap_u32
-        .iter()
-        .map(|&v| if v == u32::MAX { u16::MAX } else { v as u16 })
-        .collect();
+    let proto_remap = build_proto_remap(&refs.protos, source, dest)?;
     let method_remap = build_method_remap(&refs.methods, source, dest)?;
     let field_remap = build_field_remap(&refs.fields, source, dest)?;
 
@@ -773,16 +772,11 @@ pub(crate) fn compact_tables(dex: &mut DexFile) {
 
     let string_remap = build_compact_remap(&refs.strings, dex.strings.len());
     let type_remap = build_compact_remap(&refs.types, dex.types.len());
-    let proto_remap_u32 = build_compact_remap(&refs.protos, dex.prototypes.len());
+    let proto_remap = build_compact_remap(&refs.protos, dex.prototypes.len());
     let field_remap = build_compact_remap(&refs.fields, dex.fields.len());
     let method_remap = build_compact_remap(&refs.methods, dex.methods.len());
     let cs_remap = build_compact_remap(&refs.call_sites, dex.call_sites.len());
     let mh_remap = build_compact_remap(&refs.method_handles, dex.method_handles.len());
-
-    let proto_remap: Vec<u16> = proto_remap_u32
-        .iter()
-        .map(|&v| if v == u32::MAX { u16::MAX } else { v as u16 })
-        .collect();
 
     dex.strings = filter_indexed(&dex.strings, &refs.strings);
     dex.types = filter_indexed(&dex.types, &refs.types);
@@ -809,7 +803,7 @@ pub(crate) fn compact_tables(dex: &mut DexFile) {
     }
     for m in &mut dex.methods {
         m.class = TypeIdx(type_remap[m.class.0 as usize]);
-        m.proto = ProtoIdx(proto_remap[m.proto.0 as usize]);
+        m.proto = ProtoIdx(proto_remap[m.proto.0 as usize] as u16);
         m.name = StringIdx(string_remap[m.name.0 as usize]);
     }
     for cs in &mut dex.call_sites {

@@ -1,9 +1,12 @@
-package dev.stitch.test
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-import dev.stitch.patch.compatibleWith
-import dev.stitch.patch.optionsOf
-import dev.stitch.patch.patch
-import dev.stitch.patch.stringOption
+package app.reseam.test
+
+import app.reseam.patch.compatibleWith
+import app.reseam.patch.optionsOf
+import app.reseam.patch.patch
+import app.reseam.patch.stringOption
 
 val finalizeOwner = patch(
     name = "finalize-owner",

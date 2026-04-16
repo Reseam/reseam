@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 fn type_descriptor_len(desc: &str, allow_void: bool) -> Option<usize> {
     let bytes = desc.as_bytes();
     if bytes.is_empty() {

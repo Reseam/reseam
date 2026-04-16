@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+# SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -18,10 +20,10 @@ if [ ! -f "$JNI_SRC" ]; then
     exit 1
 fi
 
-CDYLIB="$OUTPUT_DIR/libstitch_patcher.so"
+CDYLIB="$OUTPUT_DIR/libreseam_patcher.so"
 if [ ! -f "$CDYLIB" ]; then
     echo "error: cdylib not found at $CDYLIB" >&2
-    echo "Run 'JAVA_HOME=$JAVA_HOME cargo build -p stitch-patcher' first" >&2
+    echo "Run 'JAVA_HOME=$JAVA_HOME cargo build -p reseam-patcher' first" >&2
     exit 1
 fi
 
@@ -52,12 +54,12 @@ cc -c -fPIC \
     -o "$OUTPUT_DIR/jni_glue.o" \
     "$JNI_SRC"
 
-echo "Linking libstitch_patcher_jni.$EXT..."
+echo "Linking libreseam_patcher_jni.$EXT..."
 cc -shared \
-    -o "$OUTPUT_DIR/libstitch_patcher_jni.$EXT" \
+    -o "$OUTPUT_DIR/libreseam_patcher_jni.$EXT" \
     "$OUTPUT_DIR/jni_glue.o" \
-    -L"$OUTPUT_DIR" -lstitch_patcher \
+    -L"$OUTPUT_DIR" -lreseam_patcher \
     "$RPATH_FLAG"
 
 rm -f "$OUTPUT_DIR/jni_glue.o"
-echo "Built: $OUTPUT_DIR/libstitch_patcher_jni.$EXT"
+echo "Built: $OUTPUT_DIR/libreseam_patcher_jni.$EXT"

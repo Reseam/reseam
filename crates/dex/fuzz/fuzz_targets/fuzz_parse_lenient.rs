@@ -1,6 +1,9 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #![no_main]
 use libfuzzer_sys::fuzz_target;
-use stitch_dex::ParseOptions;
+use reseam_dex::ParseOptions;
 
 fuzz_target!(|data: &[u8]| {
     // Parse with lenient options — must not panic on any input
@@ -11,5 +14,5 @@ fuzz_target!(|data: &[u8]| {
         lenient_mutf8: true,
         lazy: false,
     };
-    let _ = stitch_dex::parse(data, opts);
+    let _ = reseam_dex::parse(data, opts);
 });

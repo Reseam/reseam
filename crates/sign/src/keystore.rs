@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::der;
 use crate::error::{internal, invalid, Result};
 use ring::rand::SystemRandom;
@@ -107,7 +110,7 @@ fn build_self_signed_cert(
     public_key: &[u8],
     rng: &SystemRandom,
 ) -> Result<Vec<u8>> {
-    let issuer = der::name("stitch", "stitch");
+    let issuer = der::name("reseam", "reseam");
     let validity = der::validity("240101000000Z", "490101000000Z");
     let spki = der::ec_subject_public_key_info(public_key);
     let sig_algo = der::ecdsa_sha256_algorithm();

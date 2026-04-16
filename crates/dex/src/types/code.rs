@@ -1,6 +1,10 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use super::debug::DebugInfo;
 use super::instruction::Instruction;
 use super::TypeIdx;
+use crate::error::invalid;
 use crate::error::Result;
 
 #[derive(Debug, Clone)]
@@ -29,6 +33,7 @@ impl CodeItem {
     }
 
     pub fn replace_instruction(&mut self, index: usize, insn: Instruction) -> Result<()> {
+        self.ensure_existing_instruction(index)?;
         let old_size = self.instructions[index].code_units() as i32;
         let new_size = insn.code_units() as i32;
         let mut delta = new_size - old_size;
@@ -50,6 +55,7 @@ impl CodeItem {
     }
 
     pub fn insert_instructions(&mut self, index: usize, insns: &[Instruction]) -> Result<()> {
+        self.ensure_insert_index(index)?;
         let mut delta: i32 = insns.iter().map(|i| i.code_units() as i32).sum();
         let insert_addr = self.code_unit_offset(index);
 
@@ -68,6 +74,7 @@ impl CodeItem {
     }
 
     pub fn remove_instruction(&mut self, index: usize) -> Result<()> {
+        self.ensure_existing_instruction(index)?;
         let delta = -(self.instructions[index].code_units() as i32);
         let remove_addr = self.code_unit_offset(index);
         self.instructions.remove(index);
@@ -122,6 +129,34 @@ impl CodeItem {
             .iter()
             .map(|i| i.code_units())
             .sum()
+    }
+
+    fn ensure_insert_index(&self, index: usize) -> Result<()> {
+        if index <= self.instructions.len() {
+            Ok(())
+        } else {
+            Err(invalid(
+                "code item",
+                format!(
+                    "insert index {index} is out of bounds for instruction count {}",
+                    self.instructions.len()
+                ),
+            ))
+        }
+    }
+
+    fn ensure_existing_instruction(&self, index: usize) -> Result<()> {
+        if index < self.instructions.len() {
+            Ok(())
+        } else {
+            Err(invalid(
+                "code item",
+                format!(
+                    "instruction index {index} is out of bounds for instruction count {}",
+                    self.instructions.len()
+                ),
+            ))
+        }
     }
 
     fn has_payload_after(&self, addr: u32) -> bool {
@@ -298,4 +333,48 @@ pub struct CatchHandler {
 pub struct TypedCatch {
     pub exception_type: TypeIdx,
     pub addr: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CatchHandler, CodeItem, Instruction, TryItem};
+
+    fn code_item() -> CodeItem {
+        CodeItem {
+            registers_size: 0,
+            ins_size: 0,
+            outs_size: 0,
+            debug_info: None,
+            instructions: vec![Instruction::ReturnVoid],
+            tries: Vec::<TryItem>::new(),
+            catch_handlers: Vec::<CatchHandler>::new(),
+        }
+    }
+
+    #[test]
+    fn insert_instruction_rejects_out_of_bounds_index() {
+        let mut code = code_item();
+        let err = code
+            .insert_instruction(2, Instruction::Nop)
+            .expect_err("out-of-bounds insert should fail");
+        assert!(err.to_string().contains("insert index 2"));
+    }
+
+    #[test]
+    fn replace_instruction_rejects_out_of_bounds_index() {
+        let mut code = code_item();
+        let err = code
+            .replace_instruction(1, Instruction::Nop)
+            .expect_err("out-of-bounds replace should fail");
+        assert!(err.to_string().contains("instruction index 1"));
+    }
+
+    #[test]
+    fn remove_instruction_rejects_out_of_bounds_index() {
+        let mut code = code_item();
+        let err = code
+            .remove_instruction(1)
+            .expect_err("out-of-bounds remove should fail");
+        assert!(err.to_string().contains("instruction index 1"));
+    }
 }

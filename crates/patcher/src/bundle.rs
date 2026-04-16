@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::error::{PatcherError, Result};
 use crate::patch::Patch;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
@@ -11,7 +14,7 @@ use tempfile::TempDir;
 use tracing::{debug, info};
 use zip::ZipArchive;
 
-pub const BUNDLE_MIMETYPE: &str = "application/vnd.stitch.bundle";
+pub const BUNDLE_MIMETYPE: &str = "application/vnd.reseam.bundle";
 pub const BUNDLE_FORMAT_VERSION: u32 = 1;
 
 pub const TRUSTED_KEYS: &[[u8; 32]] = &[
@@ -58,7 +61,7 @@ impl PatchBundle {
         trusted_keys: &[[u8; 32]],
     ) -> Result<Self> {
         let path = path.as_ref();
-        info!(bundle_path = %path.display(), "loading .stitch bundle");
+        info!(bundle_path = %path.display(), "loading .reseam bundle");
 
         let file = File::open(path).map_err(|e| PatcherError::Bundle {
             reason: format!("failed to open {}: {e}", path.display()),

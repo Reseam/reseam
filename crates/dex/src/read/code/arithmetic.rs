@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use super::format::u16_at;
 
 pub fn decode_23x(buf: &[u8], off: usize) -> (u8, u8, u8) {

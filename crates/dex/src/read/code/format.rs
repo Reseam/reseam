@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Little-endian byte readers used by code-item decoding.
 
 pub fn u16_at(buf: &[u8], off: usize) -> u16 {

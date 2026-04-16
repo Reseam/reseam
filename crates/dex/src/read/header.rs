@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::error::{
     checksum_mismatch, invalid, invalid_magic, read_u16_le, read_u32_le, require_len,
     signature_mismatch, slice, truncated, unsupported, Result,

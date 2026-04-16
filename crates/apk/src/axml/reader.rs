@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::axml::string_pool::StringPool;
 use crate::axml::{
     CHUNK_END_ELEMENT, CHUNK_END_NAMESPACE, CHUNK_RESOURCE_IDS, CHUNK_START_ELEMENT,
@@ -83,64 +86,72 @@ impl AxmlDocument {
             let hs = read_u16_le(data, pos + 2, "axml chunk")? as usize;
             let cs = read_u32_le(data, pos + 4, "axml chunk")? as usize;
 
-            if cs < 8 || pos + cs > data.len() {
+            if cs < 8 || hs < 8 || hs > cs || pos + cs > data.len() {
                 return Err(malformed(
                     "axml chunk",
                     pos,
                     "chunk extends past end of document",
                 ));
             }
+            let chunk = &data[pos..pos + cs];
 
             match ct {
                 CHUNK_STRING_POOL => {
-                    let chunk_body = &data[pos + 8..pos + cs];
+                    let chunk_body = &chunk[8..];
                     string_pool = Some(StringPool::parse(chunk_body, pos)?);
                 }
                 CHUNK_RESOURCE_IDS => {
                     let count = (cs.saturating_sub(hs)) / 4;
                     let mut ids = Vec::with_capacity(count);
                     for i in 0..count {
-                        ids.push(read_u32_le(data, pos + hs + i * 4, "axml resource ids")?);
+                        ids.push(read_u32_le(chunk, hs + i * 4, "axml resource ids")?);
                     }
                     resource_ids = ids;
                 }
                 CHUNK_START_NAMESPACE => {
-                    require_len(data, pos + hs, 8, "axml namespace")?;
-                    let prefix = optional_idx(read_u32_le(data, pos + hs, "axml namespace")?);
-                    let uri = read_u32_le(data, pos + hs + 4, "axml namespace")?;
+                    require_len(chunk, hs, 8, "axml namespace")?;
+                    let prefix = optional_idx(read_u32_le(chunk, hs, "axml namespace")?);
+                    let uri = read_u32_le(chunk, hs + 4, "axml namespace")?;
                     elements.push(AxmlEvent::StartNamespace { prefix, uri });
                 }
                 CHUNK_END_NAMESPACE => {
-                    require_len(data, pos + hs, 8, "axml namespace")?;
-                    let prefix = optional_idx(read_u32_le(data, pos + hs, "axml namespace")?);
-                    let uri = read_u32_le(data, pos + hs + 4, "axml namespace")?;
+                    require_len(chunk, hs, 8, "axml namespace")?;
+                    let prefix = optional_idx(read_u32_le(chunk, hs, "axml namespace")?);
+                    let uri = read_u32_le(chunk, hs + 4, "axml namespace")?;
                     elements.push(AxmlEvent::EndNamespace { prefix, uri });
                 }
                 CHUNK_START_ELEMENT => {
-                    require_len(data, pos + hs, 20, "axml start element")?;
-                    let namespace =
-                        optional_idx(read_u32_le(data, pos + hs, "axml start element")?);
-                    let name = read_u32_le(data, pos + hs + 4, "axml start element")?;
-                    let attr_start =
-                        read_u16_le(data, pos + hs + 8, "axml start element")? as usize;
-                    let attr_size =
-                        read_u16_le(data, pos + hs + 10, "axml start element")? as usize;
-                    let attr_count =
-                        read_u16_le(data, pos + hs + 12, "axml start element")? as usize;
+                    require_len(chunk, hs, 20, "axml start element")?;
+                    let namespace = optional_idx(read_u32_le(chunk, hs, "axml start element")?);
+                    let name = read_u32_le(chunk, hs + 4, "axml start element")?;
+                    let attr_start = read_u16_le(chunk, hs + 8, "axml start element")? as usize;
+                    let attr_size = read_u16_le(chunk, hs + 10, "axml start element")? as usize;
+                    let attr_count = read_u16_le(chunk, hs + 12, "axml start element")? as usize;
 
                     let attr_size = if attr_size == 0 { 20 } else { attr_size };
-                    let attrs_offset = pos + hs + attr_start;
+                    if attr_size < 20 {
+                        return Err(malformed(
+                            "axml start element",
+                            pos + hs + 10,
+                            "attribute size is smaller than 20 bytes",
+                        ));
+                    }
+                    let attrs_offset = hs + attr_start;
+                    let attrs_len = attr_count.checked_mul(attr_size).ok_or_else(|| {
+                        malformed("axml start element", pos + hs + 12, "attribute data overflows chunk size")
+                    })?;
+                    require_len(chunk, attrs_offset, attrs_len, "axml attributes")?;
                     let mut attributes = Vec::with_capacity(attr_count);
                     for j in 0..attr_count {
                         let ao = attrs_offset + j * attr_size;
-                        require_len(data, ao, 20, "axml attribute")?;
-                        let attr_ns = optional_idx(read_u32_le(data, ao, "axml attribute")?);
-                        let attr_name = read_u32_le(data, ao + 4, "axml attribute")?;
-                        let attr_raw = optional_idx(read_u32_le(data, ao + 8, "axml attribute")?);
-                        let _tv_size = read_u16_le(data, ao + 12, "axml attribute")?;
-                        let _tv_res0 = read_u8(data, ao + 14, "axml attribute")?;
-                        let tv_type = read_u8(data, ao + 15, "axml attribute")?;
-                        let tv_data = read_u32_le(data, ao + 16, "axml attribute")?;
+                        require_len(chunk, ao, 20, "axml attribute")?;
+                        let attr_ns = optional_idx(read_u32_le(chunk, ao, "axml attribute")?);
+                        let attr_name = read_u32_le(chunk, ao + 4, "axml attribute")?;
+                        let attr_raw = optional_idx(read_u32_le(chunk, ao + 8, "axml attribute")?);
+                        let _tv_size = read_u16_le(chunk, ao + 12, "axml attribute")?;
+                        let _tv_res0 = read_u8(chunk, ao + 14, "axml attribute")?;
+                        let tv_type = read_u8(chunk, ao + 15, "axml attribute")?;
+                        let tv_data = read_u32_le(chunk, ao + 16, "axml attribute")?;
 
                         let typed_value = match tv_type {
                             TYPE_STRING => TypedValue::String(tv_data),
@@ -169,9 +180,9 @@ impl AxmlDocument {
                     });
                 }
                 CHUNK_END_ELEMENT => {
-                    require_len(data, pos + hs, 8, "axml end element")?;
-                    let namespace = optional_idx(read_u32_le(data, pos + hs, "axml end element")?);
-                    let name = read_u32_le(data, pos + hs + 4, "axml end element")?;
+                    require_len(chunk, hs, 8, "axml end element")?;
+                    let namespace = optional_idx(read_u32_le(chunk, hs, "axml end element")?);
+                    let name = read_u32_le(chunk, hs + 4, "axml end element")?;
                     elements.push(AxmlEvent::EndElement { namespace, name });
                 }
                 _ => {}

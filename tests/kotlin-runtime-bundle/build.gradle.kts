@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 plugins {
     kotlin("jvm") version "1.9.25"
 }
@@ -11,7 +14,7 @@ dependencies {
     implementation(
         files(
             fileTree("${projectDir}/../../kotlin-sdk/build/libs") {
-                include("stitch-patch-sdk-*.jar")
+                include("reseam-patch-sdk-*.jar")
             }
         )
     )
@@ -22,7 +25,7 @@ kotlin {
 }
 
 tasks.jar {
-    archiveBaseName.set("stitch-test-patches")
+    archiveBaseName.set("reseam-test-patches")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from(
         configurations.runtimeClasspath.get()

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #[derive(Debug, Clone)]
 pub struct HiddenApiData {
     pub class_flags: Vec<Option<ClassHiddenApiFlags>>,

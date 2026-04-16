@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::encoding::leb128::{write_sleb128, write_uleb128, write_uleb128p1};
 use crate::types::debug::{DebugBytecode, DebugInfo};
 

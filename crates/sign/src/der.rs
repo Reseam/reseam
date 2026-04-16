@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Minimal DER encoder for the subset needed by self-signed ECDSA certs.
 
 const TAG_INTEGER: u8 = 0x02;

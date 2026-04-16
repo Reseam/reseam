@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use std::collections::{HashMap, HashSet};
 use std::panic::{self, AssertUnwindSafe};
 
@@ -323,6 +326,100 @@ pub fn apply_patches_with_plan(
     }
 
     info!(result_count = results.len(), "patch application finished");
+    Ok(results)
+}
+
+pub fn validate_patches_with_plan(
+    patches: &[Box<dyn Patch>],
+    plan: &ExecutionPlan,
+    package: Option<&str>,
+    version: Option<&str>,
+) -> Result<Vec<PatchResult>> {
+    info!(
+        patch_count = patches.len(),
+        configured_patches = plan.options.len(),
+        selected_patches = plan.selected.len(),
+        disabled_patches = plan.disabled.len(),
+        "starting patch validation"
+    );
+    let order = dependency::sort_patches(patches)?;
+    let name_to_idx: HashMap<&str, usize> = patches
+        .iter()
+        .enumerate()
+        .map(|(i, p)| (p.name(), i))
+        .collect();
+    validate_execution_plan(patches, &name_to_idx, plan)?;
+    let desired = resolve_desired_patches(patches, &name_to_idx, plan)?;
+    validate_plan_options(patches, &desired, plan)?;
+
+    let mut results = Vec::with_capacity(patches.len());
+    let mut applied: Vec<bool> = vec![false; patches.len()];
+    let mut result_map: HashMap<usize, usize> = HashMap::new();
+
+    for &idx in &order {
+        let patch = &patches[idx];
+
+        if !desired.contains(&idx) {
+            let r = PatchResult {
+                name: patch.name().to_owned(),
+                status: PatchStatus::Skipped {
+                    reason: "not selected".to_owned(),
+                },
+                logs: Vec::new(),
+            };
+            result_map.insert(idx, results.len());
+            results.push(r);
+            continue;
+        }
+
+        if plan.disabled.contains(patch.name()) {
+            let r = PatchResult {
+                name: patch.name().to_owned(),
+                status: PatchStatus::Skipped {
+                    reason: "disabled explicitly".to_owned(),
+                },
+                logs: Vec::new(),
+            };
+            result_map.insert(idx, results.len());
+            results.push(r);
+            continue;
+        }
+
+        if let Some(reason) =
+            dependency_skip_reason(patches, &name_to_idx, &applied, &result_map, &results, idx)
+        {
+            let r = PatchResult {
+                name: patch.name().to_owned(),
+                status: PatchStatus::Skipped { reason },
+                logs: Vec::new(),
+            };
+            result_map.insert(idx, results.len());
+            results.push(r);
+            continue;
+        }
+
+        if let Some(reason) = check_compatibility(patch.as_ref(), package, version) {
+            let r = PatchResult {
+                name: patch.name().to_owned(),
+                status: PatchStatus::Skipped { reason },
+                logs: Vec::new(),
+            };
+            result_map.insert(idx, results.len());
+            results.push(r);
+            continue;
+        }
+
+        applied[idx] = true;
+        let r = PatchResult {
+            name: patch.name().to_owned(),
+            status: PatchStatus::Applied,
+            logs: Vec::new(),
+        };
+        result_map.insert(idx, results.len());
+        results.push(r);
+    }
+
+    info!(result_count = results.len(), "patch validation finished");
     Ok(results)
 }
 

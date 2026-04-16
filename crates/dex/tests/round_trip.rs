@@ -1,4 +1,7 @@
-use stitch_dex::ParseOptions;
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+use reseam_dex::ParseOptions;
 
 #[test]
 fn test_parse_truncated_input_returns_error_instead_of_panicking() {
@@ -10,7 +13,7 @@ fn test_parse_truncated_input_returns_error_instead_of_panicking() {
     buf[0x34..0x38].copy_from_slice(&(200u32).to_le_bytes());
 
     assert!(matches!(
-        stitch_dex::parse(
+        reseam_dex::parse(
             &buf,
             ParseOptions {
                 skip_checksum: true,
@@ -18,6 +21,6 @@ fn test_parse_truncated_input_returns_error_instead_of_panicking() {
                 ..ParseOptions::default()
             },
         ),
-        Err(stitch_dex::DexError::Truncated { .. })
+        Err(reseam_dex::DexError::Truncated { .. })
     ));
 }

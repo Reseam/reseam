@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::error::Result;
 use std::collections::{BTreeMap, HashSet};
 use std::io::{Read, Seek, Write};

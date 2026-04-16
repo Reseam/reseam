@@ -1,22 +1,36 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use super::annotation::read_annotations_directory;
 use super::code::read_code_item;
-use super::encoded_value::read_encoded_array;
+use super::encoded_value::read_encoded_array_with_opts;
 use super::header::u32_at;
 use super::ids::read_type_list;
-use crate::encoding::leb128::read_uleb128;
+use crate::encoding::leb128::read_uleb128_with_opts;
 use crate::error::Result;
 use crate::types::access_flags::AccessFlags;
 use crate::types::class::{ClassData, ClassDef, EncodedField, EncodedMethod, NO_INDEX};
+use crate::types::header::ParseOptions;
 use crate::types::{FieldIdx, MethodIdx, StringIdx, TypeIdx};
 
-pub fn read_class_defs(buf: &[u8], off: u32, count: u32) -> Result<Vec<ClassDef>> {
-    read_class_defs_impl(buf, off, count, false).map(|(classes, _)| classes)
+pub fn read_class_defs(
+    buf: &[u8],
+    off: u32,
+    count: u32,
+    opts: &ParseOptions,
+) -> Result<Vec<ClassDef>> {
+    read_class_defs_impl(buf, off, count, false, opts).map(|(classes, _)| classes)
 }
 
 /// Parse class defs with optional lazy mode. Returns (classes, class_data_offsets).
 /// When lazy=true, class_data is not parsed; offsets are returned for later resolution.
-pub fn read_class_defs_lazy(buf: &[u8], off: u32, count: u32) -> Result<(Vec<ClassDef>, Vec<u32>)> {
-    read_class_defs_impl(buf, off, count, true)
+pub fn read_class_defs_lazy(
+    buf: &[u8],
+    off: u32,
+    count: u32,
+    opts: &ParseOptions,
+) -> Result<(Vec<ClassDef>, Vec<u32>)> {
+    read_class_defs_impl(buf, off, count, true, opts)
 }
 
 fn read_class_defs_impl(
@@ -24,6 +38,7 @@ fn read_class_defs_impl(
     off: u32,
     count: u32,
     lazy: bool,
+    opts: &ParseOptions,
 ) -> Result<(Vec<ClassDef>, Vec<u32>)> {
     let mut classes = Vec::with_capacity(count as usize);
     let mut class_data_offsets = Vec::with_capacity(count as usize);
@@ -59,7 +74,7 @@ fn read_class_defs_impl(
         };
 
         let annotations = if annotations_off != 0 {
-            Some(read_annotations_directory(buf, annotations_off)?)
+            Some(read_annotations_directory(buf, annotations_off, opts)?)
         } else {
             None
         };
@@ -70,13 +85,13 @@ fn read_class_defs_impl(
             // Defer parsing — will be resolved on demand
             None
         } else if class_data_off != 0 {
-            Some(read_class_data(buf, class_data_off)?)
+            Some(read_class_data(buf, class_data_off, opts)?)
         } else {
             None
         };
 
         let static_values = if static_values_off != 0 {
-            let (values, _) = read_encoded_array(buf, static_values_off as usize)?;
+            let (values, _) = read_encoded_array_with_opts(buf, static_values_off as usize, opts)?;
             values
         } else {
             Vec::new()
@@ -99,28 +114,28 @@ fn read_class_defs_impl(
 
 /// Parse class data at a specific offset. Used by lazy resolution.
 pub fn read_class_data_at(buf: &[u8], off: usize) -> Result<ClassData> {
-    read_class_data(buf, off as u32)
+    read_class_data(buf, off as u32, &ParseOptions::default())
 }
 
-fn read_class_data(buf: &[u8], off: u32) -> Result<ClassData> {
+fn read_class_data(buf: &[u8], off: u32, opts: &ParseOptions) -> Result<ClassData> {
     let mut pos = off as usize;
 
-    let (static_fields_size, n) = read_uleb128(buf, pos)?;
+    let (static_fields_size, n) = read_uleb128_with_opts(buf, pos, opts)?;
     pos += n;
-    let (instance_fields_size, n) = read_uleb128(buf, pos)?;
+    let (instance_fields_size, n) = read_uleb128_with_opts(buf, pos, opts)?;
     pos += n;
-    let (direct_methods_size, n) = read_uleb128(buf, pos)?;
+    let (direct_methods_size, n) = read_uleb128_with_opts(buf, pos, opts)?;
     pos += n;
-    let (virtual_methods_size, n) = read_uleb128(buf, pos)?;
+    let (virtual_methods_size, n) = read_uleb128_with_opts(buf, pos, opts)?;
     pos += n;
 
-    let (static_fields, new_pos) = read_encoded_fields(buf, pos, static_fields_size)?;
+    let (static_fields, new_pos) = read_encoded_fields(buf, pos, static_fields_size, opts)?;
     pos = new_pos;
-    let (instance_fields, new_pos) = read_encoded_fields(buf, pos, instance_fields_size)?;
+    let (instance_fields, new_pos) = read_encoded_fields(buf, pos, instance_fields_size, opts)?;
     pos = new_pos;
-    let (direct_methods, new_pos) = read_encoded_methods(buf, pos, direct_methods_size)?;
+    let (direct_methods, new_pos) = read_encoded_methods(buf, pos, direct_methods_size, opts)?;
     pos = new_pos;
-    let (virtual_methods, _) = read_encoded_methods(buf, pos, virtual_methods_size)?;
+    let (virtual_methods, _) = read_encoded_methods(buf, pos, virtual_methods_size, opts)?;
 
     Ok(ClassData {
         static_fields,
@@ -134,16 +149,17 @@ fn read_encoded_fields(
     buf: &[u8],
     mut pos: usize,
     count: u32,
+    opts: &ParseOptions,
 ) -> Result<(Vec<EncodedField>, usize)> {
     let mut fields = Vec::with_capacity(count as usize);
     let mut field_idx: u32 = 0;
 
     for _ in 0..count {
-        let (diff, n) = read_uleb128(buf, pos)?;
+        let (diff, n) = read_uleb128_with_opts(buf, pos, opts)?;
         pos += n;
         field_idx = field_idx.wrapping_add(diff);
 
-        let (access, n) = read_uleb128(buf, pos)?;
+        let (access, n) = read_uleb128_with_opts(buf, pos, opts)?;
         pos += n;
 
         fields.push(EncodedField {
@@ -159,23 +175,24 @@ fn read_encoded_methods(
     buf: &[u8],
     mut pos: usize,
     count: u32,
+    opts: &ParseOptions,
 ) -> Result<(Vec<EncodedMethod>, usize)> {
     let mut methods = Vec::with_capacity(count as usize);
     let mut method_idx: u32 = 0;
 
     for _ in 0..count {
-        let (diff, n) = read_uleb128(buf, pos)?;
+        let (diff, n) = read_uleb128_with_opts(buf, pos, opts)?;
         pos += n;
         method_idx = method_idx.wrapping_add(diff);
 
-        let (access, n) = read_uleb128(buf, pos)?;
+        let (access, n) = read_uleb128_with_opts(buf, pos, opts)?;
         pos += n;
 
-        let (code_off, n) = read_uleb128(buf, pos)?;
+        let (code_off, n) = read_uleb128_with_opts(buf, pos, opts)?;
         pos += n;
 
         let code = if code_off != 0 {
-            Some(read_code_item(buf, code_off)?)
+            Some(read_code_item(buf, code_off, opts)?)
         } else {
             None
         };

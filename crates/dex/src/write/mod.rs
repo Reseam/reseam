@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! DEX serialization entrypoints and helpers.
 
 use self::orchestration::DexWriterWriteExt;

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::axml::reader::{AxmlAttribute, AxmlDocument, AxmlEvent, TypedValue};
 use crate::axml::string_pool::StringPool;
 use crate::error::{invalid, Result};
@@ -55,10 +58,14 @@ pub fn build_axml_document_with_resources(
                             )
                         })?;
                         if let Some(local) = key.strip_prefix("android:") {
-                            if let Some(res_id) = android_attr_res_id(local) {
-                                if !attr_names_with_res_id.iter().any(|(n, _)| n == local) {
-                                    attr_names_with_res_id.push((local.to_string(), res_id));
-                                }
+                            let Some(res_id) = android_attr_res_id(local) else {
+                                return Err(invalid(
+                                    "axml compiler",
+                                    format!("unknown android attribute `{local}`"),
+                                ));
+                            };
+                            if !attr_names_with_res_id.iter().any(|(n, _)| n == local) {
+                                attr_names_with_res_id.push((local.to_string(), res_id));
                             }
                         }
                     }
@@ -232,7 +239,8 @@ fn emit_start_element(
         };
 
         let attr_name_idx = pool.intern(attr_local);
-        let (typed_value, raw_value) = parse_attr_value(&value, pool, resources.as_deref_mut());
+        let (typed_value, raw_value) =
+            parse_attr_value(&value, pool, resources.as_deref_mut())?;
 
         attributes.push(AxmlAttribute {
             namespace,
@@ -277,109 +285,128 @@ fn parse_attr_value(
     value: &str,
     pool: &mut StringPool,
     mut resources: Option<&mut ResourceTable>,
-) -> (TypedValue, Option<u32>) {
+) -> Result<(TypedValue, Option<u32>)> {
     if value == "true" {
-        return (TypedValue::Bool(true), None);
+        return Ok((TypedValue::Bool(true), None));
     }
     if value == "false" {
-        return (TypedValue::Bool(false), None);
+        return Ok((TypedValue::Bool(false), None));
     }
 
     if value == "match_parent" || value == "fill_parent" {
-        return (TypedValue::Int(-1), None);
+        return Ok((TypedValue::Int(-1), None));
     }
     if value == "wrap_content" {
-        return (TypedValue::Int(-2), None);
+        return Ok((TypedValue::Int(-2), None));
     }
 
     if value == "@null" || value == "@empty" {
-        return (TypedValue::Reference(0), None);
+        return Ok((TypedValue::Reference(0), None));
     }
 
     if let Some(color) = parse_color(value) {
-        return (
+        return Ok((
             TypedValue::Other {
                 data_type: color.0,
                 data: color.1,
             },
             None,
-        );
+        ));
     }
 
     if let Some(dim) = parse_dimension(value) {
-        return (
+        return Ok((
             TypedValue::Other {
                 data_type: 0x05,
                 data: dim,
             },
             None,
-        );
+        ));
     }
 
     if let Some(hex) = value.strip_prefix("0x") {
         if let Ok(v) = u32::from_str_radix(hex, 16) {
-            return (TypedValue::Hex(v), None);
+            return Ok((TypedValue::Hex(v), None));
         }
     }
 
     if let Ok(v) = value.parse::<i32>() {
-        return (TypedValue::Int(v), None);
+        return Ok((TypedValue::Int(v), None));
     }
 
     if let Ok(v) = value.parse::<f32>() {
-        return (
+        return Ok((
             TypedValue::Other {
                 data_type: 0x04,
                 data: v.to_bits(),
             },
             None,
-        );
+        ));
     }
 
     if let Some(rest) = value.strip_prefix('?') {
-        if let Some(attr_id) = resolve_attribute_ref(rest, resources.as_deref()) {
-            return (
+        if let Some(attr_id) = resolve_attribute_ref(rest, resources.as_deref())? {
+            return Ok((
                 TypedValue::Other {
                     data_type: 0x02,
                     data: attr_id,
                 },
                 None,
-            );
+            ));
         }
     }
 
     if let Some(rest) = value.strip_prefix('@') {
-        if let Some(id) = resolve_resource_ref(rest, resources.as_deref_mut()) {
-            return (TypedValue::Reference(id), None);
+        if let Some(id) = resolve_resource_ref(rest, resources.as_deref_mut())? {
+            return Ok((TypedValue::Reference(id), None));
         }
     }
 
     let idx = pool.intern(value);
-    (TypedValue::String(idx), Some(idx))
+    Ok((TypedValue::String(idx), Some(idx)))
 }
 
-fn resolve_resource_ref(s: &str, resources: Option<&mut ResourceTable>) -> Option<u32> {
-    let (namespace, type_name, entry_name, create_id) = parse_resource_ref(s)?;
-    match namespace {
-        Some("android") if type_name == "attr" => android_attr_res_id(entry_name),
+fn resolve_resource_ref(s: &str, resources: Option<&mut ResourceTable>) -> Result<Option<u32>> {
+    let Some((namespace, type_name, entry_name, create_id)) = parse_resource_ref(s) else {
+        return Ok(None);
+    };
+    Ok(match namespace {
+        Some("android") if type_name == "attr" => {
+            let Some(res_id) = android_attr_res_id(entry_name) else {
+                return Err(invalid(
+                    "axml compiler",
+                    format!("unknown android attribute reference `{entry_name}`"),
+                ));
+            };
+            Some(res_id)
+        }
         Some(_) => None,
         None => {
-            let res = resources?;
-            if create_id && type_name == "id" {
-                res.ensure_id(entry_name)
+            if let Some(res) = resources {
+                if create_id && type_name == "id" {
+                    res.ensure_id(entry_name)
+                } else {
+                    res.find_resource_id(type_name, entry_name)
+                }
             } else {
-                res.find_resource_id(type_name, entry_name)
+                None
             }
         }
-    }
+    })
 }
 
-fn resolve_attribute_ref(s: &str, resources: Option<&ResourceTable>) -> Option<u32> {
+fn resolve_attribute_ref(s: &str, resources: Option<&ResourceTable>) -> Result<Option<u32>> {
     if let Some(name) = s.strip_prefix("android:attr/") {
-        return android_attr_res_id(name);
+        let Some(res_id) = android_attr_res_id(name) else {
+            return Err(invalid(
+                "axml compiler",
+                format!("unknown android attribute reference `{name}`"),
+            ));
+        };
+        return Ok(Some(res_id));
     }
     let name = s.strip_prefix("attr/").unwrap_or(s);
-    resources?.find_resource_id("attr", name)
+    Ok(resources.and_then(|r| r.find_resource_id("attr", name)))
 }
 
 fn parse_resource_ref(s: &str) -> Option<(Option<&str>, &str, &str, bool)> {

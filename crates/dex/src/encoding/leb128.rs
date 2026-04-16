@@ -1,6 +1,14 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::error::{buffer_exhausted, invalid_leb128, Result};
+use crate::types::header::ParseOptions;
 
 pub fn read_uleb128(buf: &[u8], pos: usize) -> Result<(u32, usize)> {
+    read_uleb128_with_opts(buf, pos, &ParseOptions::default())
+}
+
+pub fn read_uleb128_with_opts(buf: &[u8], pos: usize, opts: &ParseOptions) -> Result<(u32, usize)> {
     let mut value: u32 = 0;
     let mut shift: u32 = 0;
     let mut i = 0;
@@ -19,10 +27,17 @@ pub fn read_uleb128(buf: &[u8], pos: usize) -> Result<(u32, usize)> {
             return Err(invalid_leb128(pos));
         }
     }
+    if !opts.lenient_leb128 && i != minimal_uleb128_len(value) {
+        return Err(invalid_leb128(pos));
+    }
     Ok((value, i))
 }
 
 pub fn read_sleb128(buf: &[u8], pos: usize) -> Result<(i32, usize)> {
+    read_sleb128_with_opts(buf, pos, &ParseOptions::default())
+}
+
+pub fn read_sleb128_with_opts(buf: &[u8], pos: usize, opts: &ParseOptions) -> Result<(i32, usize)> {
     let mut value: u32 = 0;
     let mut shift: u32 = 0;
     let mut i = 0;
@@ -45,11 +60,23 @@ pub fn read_sleb128(buf: &[u8], pos: usize) -> Result<(i32, usize)> {
     if shift < 32 && (byte & 0x40) != 0 {
         value |= !0u32 << shift;
     }
-    Ok((value as i32, i))
+    let value = value as i32;
+    if !opts.lenient_leb128 && i != minimal_sleb128_len(value) {
+        return Err(invalid_leb128(pos));
+    }
+    Ok((value, i))
 }
 
 pub fn read_uleb128p1(buf: &[u8], pos: usize) -> Result<(Option<u32>, usize)> {
-    let (raw, size) = read_uleb128(buf, pos)?;
+    read_uleb128p1_with_opts(buf, pos, &ParseOptions::default())
+}
+
+pub fn read_uleb128p1_with_opts(
+    buf: &[u8],
+    pos: usize,
+    opts: &ParseOptions,
+) -> Result<(Option<u32>, usize)> {
+    let (raw, size) = read_uleb128_with_opts(buf, pos, opts)?;
     if raw == 0 {
         Ok((None, size))
     } else {
@@ -97,6 +124,16 @@ pub fn write_uleb128p1(buf: &mut Vec<u8>, value: Option<u32>) -> usize {
         None => write_uleb128(buf, 0),
         Some(v) => write_uleb128(buf, v + 1),
     }
+}
+
+fn minimal_uleb128_len(value: u32) -> usize {
+    let mut tmp = Vec::new();
+    write_uleb128(&mut tmp, value)
+}
+
+fn minimal_sleb128_len(value: i32) -> usize {
+    let mut tmp = Vec::new();
+    write_sleb128(&mut tmp, value)
 }
 
 #[cfg(test)]

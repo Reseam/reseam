@@ -1,5 +1,8 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use std::collections::HashMap;
-use stitch_dex::ParseOptions;
+use reseam_dex::ParseOptions;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ResolvedMethod {
@@ -9,7 +12,7 @@ struct ResolvedMethod {
     params: Vec<String>,
 }
 
-fn resolve_methods(dex: &stitch_dex::DexFile) -> Vec<ResolvedMethod> {
+fn resolve_methods(dex: &reseam_dex::DexFile) -> Vec<ResolvedMethod> {
     dex.methods
         .iter()
         .map(|m| {
@@ -32,7 +35,7 @@ fn resolve_methods(dex: &stitch_dex::DexFile) -> Vec<ResolvedMethod> {
         .collect()
 }
 
-fn resolve_fields(dex: &stitch_dex::DexFile) -> Vec<(String, String, String)> {
+fn resolve_fields(dex: &reseam_dex::DexFile) -> Vec<(String, String, String)> {
     dex.fields
         .iter()
         .map(|f| {
@@ -45,7 +48,7 @@ fn resolve_fields(dex: &stitch_dex::DexFile) -> Vec<(String, String, String)> {
         .collect()
 }
 
-fn resolve_class_methods(dex: &stitch_dex::DexFile) -> HashMap<String, Vec<(String, String)>> {
+fn resolve_class_methods(dex: &reseam_dex::DexFile) -> HashMap<String, Vec<(String, String)>> {
     let mut result: HashMap<String, Vec<(String, String)>> = HashMap::new();
     for class in &dex.classes {
         let class_desc = dex.type_descriptor(class.class_type).to_owned();
@@ -94,14 +97,14 @@ fn sort_roundtrip_preserves_method_ids() {
             ..ParseOptions::default()
         };
 
-        let mut dex = stitch_dex::parse(&dex_bytes, opts.clone()).expect("parse original");
+        let mut dex = reseam_dex::parse(&dex_bytes, opts.clone()).expect("parse original");
         dex.resolve_all_class_data().expect("resolve class data");
 
         let before_methods = resolve_methods(&dex);
         let before_class_methods = resolve_class_methods(&dex);
 
-        let written = stitch_dex::write(&mut dex).expect("write");
-        let dex2 = stitch_dex::parse(&written, opts).expect("parse written");
+        let written = reseam_dex::write(&mut dex).expect("write");
+        let dex2 = reseam_dex::parse(&written, opts).expect("parse written");
 
         let after_methods = resolve_methods(&dex2);
         let after_fields = resolve_fields(&dex2);
@@ -142,7 +145,7 @@ fn sort_roundtrip_preserves_method_ids() {
         }
 
         // Check class_data method references point to correct classes
-        let mut dex2_resolved = stitch_dex::parse(
+        let mut dex2_resolved = reseam_dex::parse(
             &written,
             ParseOptions {
                 skip_checksum: true,
@@ -230,26 +233,26 @@ fn sort_roundtrip_after_interning_preserves_method_ids() {
         ..ParseOptions::default()
     };
 
-    let mut dex = stitch_dex::parse(&dex_bytes, opts.clone()).expect("parse");
+    let mut dex = reseam_dex::parse(&dex_bytes, opts.clone()).expect("parse");
     dex.resolve_all_class_data().expect("resolve");
 
     let before_methods = resolve_methods(&dex);
     let before_class_methods = resolve_class_methods(&dex);
 
     // Simulate patching: intern new strings, types, methods
-    dex.intern_string("Lstitch/Extension;");
-    dex.intern_type("Lstitch/Extension;");
+    dex.intern_string("Lreseam/Extension;");
+    dex.intern_type("Lreseam/Extension;");
     dex.intern_string("extensionMethod");
-    let _ = dex.intern_method("Lstitch/Extension;", "extensionMethod", "()V");
+    let _ = dex.intern_method("Lreseam/Extension;", "extensionMethod", "()V");
     let _ = dex.intern_method(
-        "Lstitch/Extension;",
+        "Lreseam/Extension;",
         "anotherMethod",
         "(Ljava/lang/String;I)Z",
     );
-    let _ = dex.intern_field("Lstitch/Extension;", "extensionField", "Ljava/lang/String;");
+    let _ = dex.intern_field("Lreseam/Extension;", "extensionField", "Ljava/lang/String;");
 
-    let written = stitch_dex::write(&mut dex).expect("write");
-    let mut dex2 = stitch_dex::parse(&written, opts).expect("parse written");
+    let written = reseam_dex::write(&mut dex).expect("write");
+    let mut dex2 = reseam_dex::parse(&written, opts).expect("parse written");
     dex2.resolve_all_class_data().expect("resolve");
 
     let after_methods = resolve_methods(&dex2);
@@ -348,14 +351,14 @@ fn sort_roundtrip_after_code_modification_preserves_refs() {
         ..ParseOptions::default()
     };
 
-    let mut dex = stitch_dex::parse(&dex_bytes, opts.clone()).expect("parse");
+    let mut dex = reseam_dex::parse(&dex_bytes, opts.clone()).expect("parse");
     dex.resolve_all_class_data().expect("resolve");
 
     let before_class_methods = resolve_class_methods(&dex);
 
     // Intern an extension method and string before modifying code
     let ext_method = dex
-        .intern_method("Lstitch/Extension;", "hook", "(Ljava/lang/String;)V")
+        .intern_method("Lreseam/Extension;", "hook", "(Ljava/lang/String;)V")
         .expect("intern method");
     let new_str = dex.intern_string("hooked!");
 
@@ -376,11 +379,11 @@ fn sort_roundtrip_after_code_modification_preserves_refs() {
                         code.insert_instructions(
                             0,
                             &[
-                                stitch_dex::Instruction::ConstString {
+                                reseam_dex::Instruction::ConstString {
                                     dest: 0,
                                     string: new_str,
                                 },
-                                stitch_dex::Instruction::InvokeStatic {
+                                reseam_dex::Instruction::InvokeStatic {
                                     method: ext_method,
                                     args: smallvec::smallvec![0],
                                 },
@@ -397,8 +400,8 @@ fn sort_roundtrip_after_code_modification_preserves_refs() {
 
     eprintln!("Modified class: {:?}", modified_class);
 
-    let written = stitch_dex::write(&mut dex).expect("write");
-    let mut dex2 = stitch_dex::parse(&written, opts).expect("parse written");
+    let written = reseam_dex::write(&mut dex).expect("write");
+    let mut dex2 = reseam_dex::parse(&written, opts).expect("parse written");
     dex2.resolve_all_class_data().expect("resolve");
 
     let after_class_methods = resolve_class_methods(&dex2);
@@ -483,12 +486,12 @@ fn sort_double_roundtrip_is_stable() {
     };
 
     // First round-trip
-    let mut dex1 = stitch_dex::parse(&dex_bytes, opts.clone()).expect("parse");
-    let written1 = stitch_dex::write(&mut dex1).expect("write1");
+    let mut dex1 = reseam_dex::parse(&dex_bytes, opts.clone()).expect("parse");
+    let written1 = reseam_dex::write(&mut dex1).expect("write1");
 
     // Second round-trip
-    let mut dex2 = stitch_dex::parse(&written1, opts.clone()).expect("parse written1");
-    let written2 = stitch_dex::write(&mut dex2).expect("write2");
+    let mut dex2 = reseam_dex::parse(&written1, opts.clone()).expect("parse written1");
+    let written2 = reseam_dex::write(&mut dex2).expect("write2");
 
     // The two outputs should be byte-identical (sort is stable/idempotent)
     if written1 != written2 {
@@ -499,8 +502,8 @@ fn sort_double_roundtrip_is_stable() {
         );
 
         // Parse both and compare method tables
-        let d1 = stitch_dex::parse(&written1, opts.clone()).expect("parse w1");
-        let d2 = stitch_dex::parse(&written2, opts.clone()).expect("parse w2");
+        let d1 = reseam_dex::parse(&written1, opts.clone()).expect("parse w1");
+        let d2 = reseam_dex::parse(&written2, opts.clone()).expect("parse w2");
 
         let m1 = resolve_methods(&d1);
         let m2 = resolve_methods(&d2);
@@ -579,7 +582,7 @@ fn compare_patched_vs_original() {
         };
 
         let mut patched_dex =
-            stitch_dex::parse(&patched_dex_bytes, opts.clone()).expect("parse patched");
+            reseam_dex::parse(&patched_dex_bytes, opts.clone()).expect("parse patched");
         patched_dex
             .resolve_all_class_data()
             .expect("resolve patched");
@@ -614,7 +617,7 @@ fn compare_patched_vs_original() {
             orig_entry
                 .read_to_end(&mut orig_dex_bytes)
                 .expect("read orig");
-            let orig_dex = stitch_dex::parse(&orig_dex_bytes, opts.clone()).expect("parse orig");
+            let orig_dex = reseam_dex::parse(&orig_dex_bytes, opts.clone()).expect("parse orig");
             eprintln!(
                 "[{dex_name}] ORIGINAL: {} methods, {} fields, {} types",
                 orig_dex.methods.len(),
@@ -631,7 +634,7 @@ fn compare_patched_vs_original() {
                 .read_to_end(&mut orig_dex_bytes)
                 .expect("read orig");
             let mut orig_dex =
-                stitch_dex::parse(&orig_dex_bytes, opts.clone()).expect("parse orig");
+                reseam_dex::parse(&orig_dex_bytes, opts.clone()).expect("parse orig");
             orig_dex.resolve_all_class_data().expect("resolve orig");
 
             let orig_class_methods = resolve_class_methods(&orig_dex);

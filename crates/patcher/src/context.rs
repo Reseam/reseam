@@ -1,14 +1,17 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use stitch_apk::stitch_dex::{
+use reseam_apk::reseam_dex::{
     find_free_register, find_free_registers, ClassDef, CodeItem, DexFile, EncodedMethod,
     Fingerprint, FingerprintMatch, Instruction, InstructionPattern, MethodMatch, MultiDexContainer,
     ParseOptions, StringIdx,
 };
-use stitch_apk::ApkFile;
-use stitch_apk::AxmlDocument;
-use stitch_apk::ResourceTable;
+use reseam_apk::ApkFile;
+use reseam_apk::AxmlDocument;
+use reseam_apk::ResourceTable;
 
 use crate::error::{PatcherError, Result as PatcherResult};
 use crate::log::{LogEntry, PatchLog};
@@ -312,7 +315,7 @@ impl<'a> PatchContext<'a> {
                 reason: format!("failed to read extension DEX {}: {e}", path.display()),
             })?;
             let dex =
-                stitch_apk::stitch_dex::parse(&bytes, ParseOptions::default()).map_err(|e| {
+                reseam_apk::reseam_dex::parse(&bytes, ParseOptions::default()).map_err(|e| {
                     PatcherError::Bundle {
                         reason: format!("failed to parse extension DEX {}: {e}", path.display()),
                     }
@@ -446,13 +449,13 @@ impl<'a> PatchContext<'a> {
         let mut results = Vec::new();
         for (dex_idx, dex) in self.apk.dex().iter().enumerate() {
             // Build a set of MethodIdx values that match any target
-            let mut target_map: HashMap<stitch_apk::stitch_dex::MethodIdx, usize> = HashMap::new();
+            let mut target_map: HashMap<reseam_apk::reseam_dex::MethodIdx, usize> = HashMap::new();
             for (target_idx, (class_desc, method_name)) in targets.iter().enumerate() {
                 for (i, mid) in dex.methods.iter().enumerate() {
                     if dex.type_descriptor(mid.class) == *class_desc
                         && dex.string(mid.name) == *method_name
                     {
-                        target_map.insert(stitch_apk::stitch_dex::MethodIdx(i as u32), target_idx);
+                        target_map.insert(reseam_apk::reseam_dex::MethodIdx(i as u32), target_idx);
                     }
                 }
             }
@@ -496,13 +499,13 @@ impl<'a> PatchContext<'a> {
     pub fn find_field_access_sites(&self, targets: &[(String, String)]) -> Vec<FieldAccessSiteHit> {
         let mut results = Vec::new();
         for (dex_idx, dex) in self.apk.dex().iter().enumerate() {
-            let mut target_map: HashMap<stitch_apk::stitch_dex::FieldIdx, usize> = HashMap::new();
+            let mut target_map: HashMap<reseam_apk::reseam_dex::FieldIdx, usize> = HashMap::new();
             for (target_idx, (class_desc, field_name)) in targets.iter().enumerate() {
                 for (i, fid) in dex.fields.iter().enumerate() {
                     if dex.type_descriptor(fid.class) == *class_desc
                         && dex.string(fid.name) == *field_name
                     {
-                        target_map.insert(stitch_apk::stitch_dex::FieldIdx(i as u32), target_idx);
+                        target_map.insert(reseam_apk::reseam_dex::FieldIdx(i as u32), target_idx);
                     }
                 }
             }
@@ -638,7 +641,7 @@ impl<'a> PatchContext<'a> {
             return;
         };
         if apk_path == "AndroidManifest.xml" {
-            match stitch_apk::AxmlDocument::parse(&data) {
+            match reseam_apk::AxmlDocument::parse(&data) {
                 Ok(document) => {
                     *self.apk.manifest_mut() = document;
                 }
@@ -663,7 +666,7 @@ impl<'a> PatchContext<'a> {
             return;
         };
         if apk_path == "AndroidManifest.xml" {
-            match stitch_apk::AxmlDocument::parse(&data) {
+            match reseam_apk::AxmlDocument::parse(&data) {
                 Ok(document) => {
                     if let Some(manifest) = self.apk.component_manifest_mut(component_index) {
                         *manifest = document;
@@ -684,12 +687,12 @@ impl<'a> PatchContext<'a> {
         if !apk_path.ends_with(".xml") {
             return Some(data);
         }
-        if stitch_apk::axml::compiler::is_compiled_axml(&data) {
+        if reseam_apk::axml::compiler::is_compiled_axml(&data) {
             return Some(data);
         }
         match std::str::from_utf8(&data) {
             Ok(text) => {
-                let result = stitch_apk::axml::compiler::compile_xml_with_resources(
+                let result = reseam_apk::axml::compiler::compile_xml_with_resources(
                     text,
                     self.apk.resources_mut(),
                 );
@@ -723,12 +726,12 @@ impl<'a> PatchContext<'a> {
         if !apk_path.ends_with(".xml") {
             return Some(data);
         }
-        if stitch_apk::axml::compiler::is_compiled_axml(&data) {
+        if reseam_apk::axml::compiler::is_compiled_axml(&data) {
             return Some(data);
         }
         match std::str::from_utf8(&data) {
             Ok(text) => {
-                let result = stitch_apk::axml::compiler::compile_xml_with_resources(
+                let result = reseam_apk::axml::compiler::compile_xml_with_resources(
                     text,
                     self.apk.component_resources_mut(component_index),
                 );

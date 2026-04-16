@@ -1,10 +1,13 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use boltffi::export;
-use stitch_apk::stitch_dex::find_contiguous_free_registers as dex_find_contiguous_free_registers;
+use reseam_apk::reseam_dex::find_contiguous_free_registers as dex_find_contiguous_free_registers;
 
 use crate::kotlin::{get_method_mut, get_method_ref, with_ctx, with_handles};
 
 #[export]
-pub fn set_registers(m: u32, registers_size: u16, outs_size: u16) {
+pub fn ensure_outs_size(m: u32, min_outs_size: u16) {
     with_ctx(|ctx| {
         let mh = match with_handles(|h| h.get_method(m)) {
             Some(mh) => mh,
@@ -19,8 +22,7 @@ pub fn set_registers(m: u32, registers_size: u16, outs_size: u16) {
             None => return,
         };
         if let Some(code) = &mut method.code {
-            code.registers_size = registers_size;
-            code.outs_size = outs_size;
+            code.outs_size = code.outs_size.max(min_outs_size);
         }
     });
 }

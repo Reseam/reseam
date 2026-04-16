@@ -1,15 +1,18 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
-use stitch_apk::stitch_dex::ParseOptions;
-use stitch_apk::{ApkFile, ResourceTable};
+use reseam_apk::reseam_dex::ParseOptions;
+use reseam_apk::{ApkFile, ResourceTable};
 
 fn manifest_bytes(version_name: &str, split_name: Option<&str>) -> Vec<u8> {
     let split_attr = split_name
         .map(|name| format!(r#" split="{name}""#))
         .unwrap_or_default();
-    stitch_apk::axml::compile_xml(&format!(
+    reseam_apk::axml::compile_xml(&format!(
         r#"<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.test" android:versionCode="1" android:versionName="{version_name}"{split_attr} />"#
     ))
     .expect("compile manifest")
@@ -18,6 +21,7 @@ fn manifest_bytes(version_name: &str, split_name: Option<&str>) -> Vec<u8> {
 fn resource_table_bytes() -> Vec<u8> {
     ResourceTable {
         global_strings: Vec::new(),
+        global_strings_utf8: true,
         packages: Vec::new(),
     }
     .serialize()

@@ -1,12 +1,12 @@
 [package]
-name = "stitch-apk"
+name = "reseam-apk"
 version = "0.1.0"
 edition = "2021"
-description = "APK container support for Stitch: ZIP, AXML, resources, and DEX extraction"
+description = "APK container support for Reseam: ZIP, AXML, resources, and DEX extraction"
 readme = "README.md"
 
 [dependencies]
-stitch-dex = { workspace = true }
+reseam-dex = { workspace = true }
 thiserror  = { workspace = true }
 zip        = { workspace = true }
 quick-xml  = { workspace = true }
@@ -18,12 +18,12 @@ tracing    = { workspace = true }
 pretty_assertions = { workspace = true }
 tempfile          = { workspace = true }
 criterion         = { workspace = true }
-stitch-sign       = { workspace = true }
+reseam-sign       = { workspace = true }
 
 [features]
 default = ["parallel"]
-parallel = ["dep:rayon", "stitch-dex/parallel"]
-mmap = ["dep:memmap2", "stitch-dex/mmap"]
+parallel = ["dep:rayon", "reseam-dex/parallel"]
+mmap = ["dep:memmap2", "reseam-dex/mmap"]
 
 [[bench]]
 name = "apk_bench"

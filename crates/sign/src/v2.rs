@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::error::{invalid, malformed, Result};
 use crate::keystore::SigningKey;
 use crate::signing_block::{self, ApkSections, BLOCK_ID_V2};
@@ -50,12 +53,6 @@ pub(crate) fn build_v2_block_from_digest(digest: &[u8], key: &SigningKey) -> Res
     let mut block = Vec::new();
     write_lp(&mut block, &signers_seq);
     Ok(block)
-}
-
-pub(crate) fn build_signer_from_digest(digest: &[u8], key: &SigningKey) -> Result<Vec<u8>> {
-    let signed_data = build_signed_data(digest, key.certificate_der());
-    let signature = key.sign(&signed_data)?;
-    Ok(build_signer(&signed_data, &signature, key))
 }
 
 /// Chunked Merkle digest: each 1MB chunk hashed with 0xa5 prefix,

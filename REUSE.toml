@@ -1,0 +1,35 @@
+version = 1
+
+# ── Project source (default) ────────────────────────────────────────────────
+
+[[annotations]]
+path = [
+    "Cargo.toml",
+    "Cargo.lock",
+    "crates/**",
+    "kotlin-sdk/build.gradle.kts",
+    "kotlin-sdk/settings.gradle.kts",
+    "kotlin-sdk/src/**",
+    "kotlin-sdk/app/**",
+    "kotlin-sdk/build-jni.sh",
+    "kotlin-sdk/fix-generated.sh",
+    "kotlin-sdk/regenerate.sh",
+    "tests/**",
+    ".gitignore",
+    "README.md",
+    "kotlin-sdk/README.md",
+]
+SPDX-FileCopyrightText = "2026 AunAli K. <hello@auna.li>"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# ── Gradle wrapper (Apache-2.0, from the Gradle project) ────────────────────
+
+[[annotations]]
+path = [
+    "kotlin-sdk/gradle/wrapper/gradle-wrapper.jar",
+    "kotlin-sdk/gradle/wrapper/gradle-wrapper.properties",
+    "kotlin-sdk/gradlew",
+    "kotlin-sdk/gradlew.bat",
+]
+SPDX-FileCopyrightText = "2015-2024 the original authors"
+SPDX-License-Identifier = "Apache-2.0"

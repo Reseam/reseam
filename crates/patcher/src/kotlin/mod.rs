@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 pub(crate) mod bytecode;
 pub(crate) mod convert;
 mod log_host;
@@ -16,8 +19,8 @@ use std::sync::OnceLock;
 use boltffi::export;
 use jni::objects::{JObject, JObjectArray, JValue};
 use jni::{InitArgsBuilder, JNIVersion, JavaVM};
-use stitch_apk::stitch_dex::{DexFile, EncodedMethod};
-use stitch_apk::AxmlDocument;
+use reseam_apk::reseam_dex::{DexFile, EncodedMethod};
+use reseam_apk::AxmlDocument;
 use tracing::warn;
 
 use crate::context::PatchContext;
@@ -127,7 +130,7 @@ include!(concat!(env!("OUT_DIR"), "/jni_natives.rs"));
 
 fn register_jni_natives(env: &mut jni::JNIEnv<'_>, loader: &JObject<'_>) -> Result<()> {
     let name = env
-        .new_string("dev.stitch.patch.Native")
+        .new_string("app.reseam.patch.Native")
         .map_err(|e| jvm_err(format!("new_string: {e}")))?;
     let native_class = env
         .call_method(
@@ -239,7 +242,7 @@ pub(crate) fn find_method_location(
 pub(crate) fn method_match_location(
     ctx: &PatchContext<'_>,
     dex_idx: usize,
-    mm: &stitch_apk::stitch_dex::MethodMatch<'_>,
+    mm: &reseam_apk::reseam_dex::MethodMatch<'_>,
 ) -> Option<(usize, usize, bool)> {
     find_method_location(ctx, dex_idx, mm.method)
 }
@@ -334,7 +337,7 @@ fn get_or_init_jvm() -> Result<&'static JavaVM> {
                 .version(JNIVersion::V8)
                 .option(format!(
                     "-Xmx{}",
-                    std::env::var("STITCH_JVM_HEAP").unwrap_or_else(|_| "256m".into())
+                    std::env::var("RESEAM_JVM_HEAP").unwrap_or_else(|_| "256m".into())
                 ))
                 .option(format!("-Djava.library.path={}", lib_path.display()))
                 .build()
@@ -362,9 +365,9 @@ fn detect_runtime_library_dir() -> Option<PathBuf> {
     })?;
 
     for dir in candidates {
-        let so = dir.join("libstitch_patcher_jni.so");
-        let dylib = dir.join("libstitch_patcher_jni.dylib");
-        let dll = dir.join("stitch_patcher_jni.dll");
+        let so = dir.join("libreseam_patcher_jni.so");
+        let dylib = dir.join("libreseam_patcher_jni.dylib");
+        let dll = dir.join("reseam_patcher_jni.dll");
         if so.exists() || dylib.exists() || dll.exists() {
             return Some(dir);
         }
@@ -482,7 +485,7 @@ fn invoke_patch_method(
         .and_then(|v| v.l())
         .map_err(|e| jvm_err(format!("patch class loader: {e}")))?;
     let runtime_name = env
-        .new_string("dev.stitch.patch.PatchRuntime")
+        .new_string("app.reseam.patch.PatchRuntime")
         .map_err(|e| jvm_err(format!("PatchRuntime name: {e}")))?;
     let runtime_class = env
         .call_method(
@@ -504,7 +507,7 @@ fn invoke_patch_method(
     env.call_method(
         patch,
         method_name,
-        "(Ldev/stitch/patch/PatchRuntime;)V",
+        "(Lapp/reseam/patch/PatchRuntime;)V",
         &[JValue::Object(&runtime)],
     )
         .map_err(|e| {
@@ -538,22 +541,23 @@ fn create_class_loader<'a>(
         .map_err(|e| jvm_err(format!("URL array: {e}")))?;
 
     for (i, jar_path) in jar_paths.iter().enumerate() {
-        let jar_url = format!("file:{}", jar_path.display());
-        let url_str = env
-            .new_string(&jar_url)
+        let path_str = env
+            .new_string(jar_path.to_string_lossy().as_ref())
             .map_err(|e| jvm_err(format!("new_string: {e}")))?;
-        let url_obj = env
-            .call_static_method(
-                "java/net/URI",
-                "create",
-                "(Ljava/lang/String;)Ljava/net/URI;",
-                &[JValue::Object(&url_str)],
+        let file_obj = env
+            .new_object(
+                "java/io/File",
+                "(Ljava/lang/String;)V",
+                &[JValue::Object(&path_str)],
             )
-            .map_err(|e| jvm_err(format!("URI.create: {e}")))?
+            .map_err(|e| jvm_err(format!("File(path): {e}")))?;
+        let uri_obj = env
+            .call_method(&file_obj, "toURI", "()Ljava/net/URI;", &[])
+            .map_err(|e| jvm_err(format!("File.toURI: {e}")))?
             .l()
             .map_err(|e| jvm_err(format!("URI obj: {e}")))?;
         let url = env
-            .call_method(&url_obj, "toURL", "()Ljava/net/URL;", &[])
+            .call_method(&uri_obj, "toURL", "()Ljava/net/URL;", &[])
             .map_err(|e| jvm_err(format!("URI.toURL: {e}")))?
             .l()
             .map_err(|e| jvm_err(format!("URL obj: {e}")))?;
@@ -790,7 +794,7 @@ fn read_option_type(
     obj: &JObject<'_>,
 ) -> Result<crate::options::OptionType> {
     let kind = env
-        .call_method(obj, "getType", "()Ldev/stitch/patch/PatchOptionType;", &[])
+        .call_method(obj, "getType", "()Lapp/reseam/patch/PatchOptionType;", &[])
         .map_err(|e| jvm_err(format!("getType(): {e}")))?
         .l()
         .map_err(|e| jvm_err(format!("getType obj: {e}")))?;
@@ -984,7 +988,7 @@ pub fn load_kotlin_patches(
     register_jni_natives(&mut env, &loader)?;
 
     let patch_iface_name = env
-        .new_string("dev.stitch.patch.StitchPatch")
+        .new_string("app.reseam.patch.ReseamPatch")
         .map_err(|e| jvm_err(format!("new_string: {e}")))?;
     let patch_class = env
         .call_method(
@@ -993,9 +997,9 @@ pub fn load_kotlin_patches(
             "(Ljava/lang/String;)Ljava/lang/Class;",
             &[JValue::Object(&patch_iface_name)],
         )
-        .map_err(|e| jvm_err(format!("loadClass(StitchPatch): {e}")))?
+        .map_err(|e| jvm_err(format!("loadClass(ReseamPatch): {e}")))?
         .l()
-        .map_err(|e| jvm_err(format!("StitchPatch class: {e}")))?;
+        .map_err(|e| jvm_err(format!("ReseamPatch class: {e}")))?;
 
     let modifier_class = env
         .find_class("java/lang/reflect/Modifier")
@@ -1026,7 +1030,7 @@ pub fn load_kotlin_patches(
             }
         };
 
-        // Scan public static fields for StitchPatch instances.
+        // Scan public static fields for ReseamPatch instances.
         let fields = match env
             .call_method(&cls, "getFields", "()[Ljava/lang/reflect/Field;", &[])
             .and_then(|v| v.l())
@@ -1083,7 +1087,7 @@ pub fn load_kotlin_patches(
             }
         }
 
-        // Scan public static no-arg methods returning StitchPatch.
+        // Scan public static no-arg methods returning ReseamPatch.
         let methods = match env
             .call_method(&cls, "getMethods", "()[Ljava/lang/reflect/Method;", &[])
             .and_then(|v| v.l())

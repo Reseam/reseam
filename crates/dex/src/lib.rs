@@ -1,4 +1,7 @@
-//! `stitch-dex` parses, inspects, mutates, and writes Dalvik DEX files.
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+//! `reseam-dex` parses, inspects, mutates, and writes Dalvik DEX files.
 //!
 //! Typical entrypoints are [`parse`], [`parse_file`], and [`write`].
 //!
@@ -6,22 +9,22 @@
 //!
 //! Parse a single DEX buffer:
 //! ```no_run
-//! use stitch_dex::{parse, ParseOptions};
+//! use reseam_dex::{parse, ParseOptions};
 //!
 //! let bytes = std::fs::read("classes.dex")?;
 //! let dex = parse(&bytes, ParseOptions::default())?;
 //! println!("{} classes", dex.classes.len());
-//! # Ok::<(), stitch_dex::DexError>(())
+//! # Ok::<(), reseam_dex::DexError>(())
 //! ```
 //!
 //! Parse and rewrite an on-disk DEX file:
 //! ```no_run
-//! use stitch_dex::{parse_file, write, ParseOptions};
+//! use reseam_dex::{parse_file, write, ParseOptions};
 //!
 //! let mut dex = parse_file("classes.dex", ParseOptions::default())?;
 //! let rewritten = write(&mut dex)?;
 //! std::fs::write("classes-rewritten.dex", rewritten)?;
-//! # Ok::<(), stitch_dex::DexError>(())
+//! # Ok::<(), reseam_dex::DexError>(())
 //! ```
 
 pub mod encoding;

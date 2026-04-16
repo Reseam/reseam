@@ -1,5 +1,8 @@
-use stitch_apk::axml::{AxmlAttribute, AxmlDocument, AxmlEvent, StringPool, TypedValue};
-use stitch_apk::resources::{
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+use reseam_apk::axml::{AxmlAttribute, AxmlDocument, AxmlEvent, StringPool, TypedValue};
+use reseam_apk::resources::{
     MapEntry, ResConfig, ResEntry, ResPackage, ResType, ResValue, ResourceTable, TypeSpec,
 };
 
@@ -154,11 +157,17 @@ fn make_test_arsc() -> ResourceTable {
             "World".to_string(),
             "app_name".to_string(),
         ],
+        global_strings_utf8: true,
         packages: vec![ResPackage {
             id: 0x7F,
             name: "com.example.test".to_string(),
             type_strings: vec!["string".to_string()],
+            type_strings_utf8: true,
             key_strings: vec!["hello".to_string(), "world".to_string()],
+            key_strings_utf8: true,
+            last_public_type: 0,
+            last_public_key: 0,
+            type_id_offset: 0,
             type_specs: vec![TypeSpec {
                 id: 1,
                 flags: vec![0, 0],
@@ -198,7 +207,12 @@ fn test_find_resource_id_across_packages() {
             id: 0x7E,
             name: "empty.pkg".to_string(),
             type_strings: vec![],
+            type_strings_utf8: true,
             key_strings: vec![],
+            key_strings_utf8: true,
+            last_public_type: 0,
+            last_public_key: 0,
+            type_id_offset: 0,
             type_specs: vec![],
             types: vec![],
         },
@@ -217,7 +231,7 @@ fn test_xml_compiler_resolves_typed_resource_values() {
         .add_resource("attr", "titleText", 0, 0)
         .expect("attr id");
     let android_attr_id =
-        stitch_apk::axml::compiler::android_attr_res_id("textColor").expect("android attr id");
+        reseam_apk::axml::compiler::android_attr_res_id("textColor").expect("android attr id");
     let xml = r#"
         <TextView
             xmlns:android="http://schemas.android.com/apk/res/android"
@@ -229,7 +243,7 @@ fn test_xml_compiler_resolves_typed_resource_values() {
             android:alpha="0.5" />
     "#;
 
-    let doc = stitch_apk::axml::compiler::build_axml_document_with_resources(xml, Some(&mut table))
+    let doc = reseam_apk::axml::compiler::build_axml_document_with_resources(xml, Some(&mut table))
         .expect("build axml");
     let element = doc
         .elements
@@ -317,11 +331,17 @@ fn test_arsc_round_trip_synthetic() {
 fn test_arsc_round_trip_complex_entries() {
     let table = ResourceTable {
         global_strings: vec!["test".to_string()],
+        global_strings_utf8: true,
         packages: vec![ResPackage {
             id: 0x7F,
             name: "com.example".to_string(),
             type_strings: vec!["style".to_string()],
+            type_strings_utf8: true,
             key_strings: vec!["AppTheme".to_string()],
+            key_strings_utf8: true,
+            last_public_type: 0,
+            last_public_key: 0,
+            type_id_offset: 0,
             type_specs: vec![TypeSpec {
                 id: 1,
                 flags: vec![0],
@@ -545,7 +565,7 @@ fn test_arsc_mutation_preserves_real_type_header_sizes() {
 
         let original_headers = collect_type_header_sizes(&arsc_bytes).expect("header scan failed");
         let mut table = ResourceTable::parse(&arsc_bytes).expect("parse failed");
-        table.add_global_string("stitch mutation sentinel");
+        table.add_global_string("reseam mutation sentinel");
         let serialized = table.serialize().expect("serialize failed");
         let mutated_headers =
             collect_type_header_sizes(&serialized).expect("mutated header scan failed");
