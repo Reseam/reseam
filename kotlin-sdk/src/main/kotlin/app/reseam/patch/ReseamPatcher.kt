@@ -3514,7 +3514,123 @@ private object Native {
         if (isAndroidRuntime) {
             System.loadLibrary(fallbackLibrary)
         } else {
-            System.loadLibrary(preferredLibrary)
+            loadDesktopLibraries(preferredLibrary, fallbackLibrary)
+        }
+    }
+    @Volatile
+    private var bundledLibraryDirectory: java.io.File? = null
+
+    private fun loadDesktopLibraries(preferredLibrary: String, fallbackLibrary: String) {
+        var preferredFailure = tryLoadDesktopLibrary(preferredLibrary)
+        if (preferredFailure == null) {
+            return
+        }
+
+        if (tryLoadOptionalDesktopLibrary(fallbackLibrary)) {
+            preferredFailure = tryLoadDesktopLibrary(preferredLibrary)
+            if (preferredFailure == null) {
+                return
+            }
+        }
+
+        throw preferredFailure
+    }
+
+    private fun tryLoadDesktopLibrary(libraryName: String): UnsatisfiedLinkError? {
+        try {
+            if (loadBundledLibraryIfPresent(libraryName) || loadExternalLibraryIfPresent(libraryName)) {
+                return null
+            }
+            return UnsatisfiedLinkError("Could not load native library '$libraryName'")
+        } catch (error: UnsatisfiedLinkError) {
+            return error
+        }
+    }
+
+    private fun tryLoadOptionalDesktopLibrary(libraryName: String): Boolean {
+        return try {
+            loadBundledLibraryIfPresent(libraryName) || loadExternalLibraryIfPresent(libraryName)
+        } catch (_: UnsatisfiedLinkError) {
+            false
+        }
+    }
+
+    private fun loadExternalLibraryIfPresent(libraryName: String): Boolean {
+        return try {
+            System.loadLibrary(libraryName)
+            true
+        } catch (_: UnsatisfiedLinkError) {
+            false
+        }
+    }
+
+    private fun loadBundledLibraryIfPresent(libraryName: String): Boolean {
+        val mappedName = System.mapLibraryName(libraryName)
+        for (resourcePath in bundledLibraryResourceCandidates(mappedName)) {
+            Native::class.java.getResourceAsStream(resourcePath)?.use { input ->
+                val extracted = extractBundledLibrary(resourcePath, input)
+                System.load(extracted.absolutePath)
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun extractBundledLibrary(
+        resourcePath: String,
+        input: java.io.InputStream,
+    ): java.io.File {
+        val fileName = resourcePath.substringAfterLast('/')
+        val extracted = java.io.File(bundledLibraryDirectory(), fileName)
+        if (!extracted.isFile) {
+            java.io.FileOutputStream(extracted).use { output ->
+                input.copyTo(output)
+            }
+            extracted.deleteOnExit()
+        }
+        return extracted
+    }
+
+    private fun bundledLibraryDirectory(): java.io.File {
+        bundledLibraryDirectory?.let { return it }
+        synchronized(this) {
+            bundledLibraryDirectory?.let { return it }
+            val created = java.io.File.createTempFile("boltffi-native-", "")
+            if (!created.delete() || !created.mkdir()) {
+                throw java.io.IOException("failed to create temp directory for bundled native extraction")
+            }
+            created.deleteOnExit()
+            bundledLibraryDirectory = created
+            return created
+        }
+    }
+
+    private fun bundledLibraryResourceCandidates(mappedName: String): List<String> {
+        val candidates = mutableListOf<String>()
+        for (directory in desktopNativeDirectories()) {
+            candidates += "/$directory/$mappedName"
+            candidates += "/native/$directory/$mappedName"
+        }
+        candidates += "/$mappedName"
+        return candidates
+    }
+
+    private fun desktopNativeDirectories(): List<String> {
+        val osName = System.getProperty("os.name").orEmpty().lowercase()
+        val osArch = System.getProperty("os.arch").orEmpty().lowercase()
+        return when {
+            (osName.contains("mac") || osName.contains("darwin")) &&
+                (osArch == "aarch64" || osArch == "arm64") ->
+                listOf("darwin-arm64", "darwin-aarch64")
+            (osName.contains("mac") || osName.contains("darwin")) && osArch == "x86_64" ->
+                listOf("darwin-x86_64", "darwin-x86-64")
+            osName.contains("linux") && (osArch == "x86_64" || osArch == "amd64") ->
+                listOf("linux-x86_64", "linux-x86-64")
+            osName.contains("linux") && (osArch == "aarch64" || osArch == "arm64") ->
+                listOf("linux-aarch64", "linux-arm64")
+            osName.contains("windows") && (osArch == "x86_64" || osArch == "amd64") ->
+                listOf("windows-x86_64", "windows-x86-64", "win32-x86_64")
+            else -> emptyList()
         }
     }
 

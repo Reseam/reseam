@@ -4,8 +4,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-GEN="$SCRIPT_DIR/generated/dev/reseam/patch/ReseamPatcher.kt"
-DST="$SCRIPT_DIR/src/main/kotlin/dev/reseam/patch/ReseamPatcher.kt"
+GEN="$SCRIPT_DIR/generated/app/reseam/patch/ReseamPatcher.kt"
+DST="$SCRIPT_DIR/src/main/kotlin/app/reseam/patch/ReseamPatcher.kt"
 
 if [ ! -f "$GEN" ]; then
     echo "error: generated file not found: $GEN" >&2
@@ -17,6 +17,10 @@ cp "$GEN" "$DST"
 python3 -c "
 with open('$DST') as f:
     s = f.read()
+
+header = '// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>\n// SPDX-License-Identifier: GPL-3.0-or-later\n\n'
+if not s.startswith('// SPDX-FileCopyrightText:'):
+    s = header + s
 
 # Remove unused imports that BoltFFI emits unconditionally
 for imp in [
