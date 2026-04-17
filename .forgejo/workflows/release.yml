@@ -11,7 +11,7 @@ jobs:
     container:
       image: rust:1-bookworm
     steps:
-      - run: apt-get update && apt-get install -y --no-install-recommends ca-certificates nodejs openjdk-17-jdk-headless
+      - run: apt-get update && apt-get install -y --no-install-recommends ca-certificates nodejs openjdk-17-jdk-headless zstd
 
       - uses: actions/checkout@v4
 
@@ -20,10 +20,28 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            ~/.cargo/bin/boltffi
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
             target
-          key: cargo-${{ hashFiles('Cargo.lock') }}
+          key: cargo-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            cargo-${{ hashFiles('Cargo.lock') }}-
+            cargo-
 
-      - run: cargo install boltffi_cli --version 0.23.1 --locked
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('kotlin-sdk/**/*.gradle.kts', 'kotlin-sdk/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-
+
+      - run: |
+          if ! cargo install --list | grep -q '^boltffi_cli v0\.23\.1:'; then
+            cargo install boltffi_cli --version 0.23.1 --locked
+          fi
 
       - run: ./kotlin-sdk/regenerate.sh
         env:
@@ -32,6 +50,13 @@ jobs:
       - run: cargo build --release -p reseam-cli
         env:
           JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+
+      - run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          ./gradlew publishAllPublicationsToForgejoRepository -PreseamSdkVersion="${TAG#v}" --no-daemon
+        working-directory: kotlin-sdk
+        env:
+          FORGEJO_PACKAGES_TOKEN: ${{ secrets.FORGEJO_PACKAGES_TOKEN }}
 
       - run: install -D -m 0755 target/release/reseam dist/reseam-linux-x64
 
