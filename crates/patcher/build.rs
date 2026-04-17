@@ -2,33 +2,31 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::env;
+use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-changed=build.rs");
 
     if env::var("CARGO_FEATURE_KOTLIN").is_err() {
-        // Generate an empty file so the include! doesn't break
-        let out = PathBuf::from(env::var("OUT_DIR").unwrap());
-        fs::write(out.join("jni_natives.rs"), "").unwrap();
-        return;
+        write_empty_jni_natives()?;
+        return Ok(());
     }
 
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
     let jni_dir = manifest_dir.join("../../kotlin-sdk/generated/jni");
     let glue_path = jni_dir.join("jni_glue.c");
 
     if !glue_path.exists() {
-        let out = PathBuf::from(env::var("OUT_DIR").unwrap());
-        fs::write(out.join("jni_natives.rs"), "").unwrap();
-        return;
+        write_empty_jni_natives()?;
+        return Ok(());
     }
 
     println!("cargo:rerun-if-changed={}", glue_path.display());
 
     if should_compile_jni_glue() {
-        let java_home = find_java_home();
+        let java_home = find_java_home()?;
         let jni_include = PathBuf::from(&java_home).join("include");
         let jni_platform = if cfg!(target_os = "macos") {
             jni_include.join("darwin")
@@ -50,10 +48,10 @@ fn main() {
         build.compile("reseam_jni_glue");
     }
 
-    let content = fs::read_to_string(&glue_path).unwrap();
-    let natives = parse_jni_exports(&content);
+    let content = fs::read_to_string(&glue_path)?;
+    let natives = parse_jni_exports(&content)?;
 
-    let out = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let out = PathBuf::from(env::var("OUT_DIR")?);
     let mut code = String::new();
 
     code.push_str("extern \"C\" {\n");
@@ -76,7 +74,17 @@ fn main() {
     }
     code.push_str("    ]\n}\n");
 
-    fs::write(out.join("jni_natives.rs"), code).unwrap();
+    fs::write(out.join("jni_natives.rs"), code)?;
+    Ok(())
+}
+
+fn write_empty_jni_natives() -> Result<(), Box<dyn Error>> {
+    let out = PathBuf::from(env::var("OUT_DIR")?);
+    fs::write(
+        out.join("jni_natives.rs"),
+        "fn jni_native_methods() -> Vec<jni::NativeMethod> { Vec::new() }\n",
+    )?;
+    Ok(())
 }
 
 struct JniNative {
@@ -85,7 +93,7 @@ struct JniNative {
     jni_sig: String,
 }
 
-fn parse_jni_exports(content: &str) -> Vec<JniNative> {
+fn parse_jni_exports(content: &str) -> Result<Vec<JniNative>, String> {
     let mut natives = Vec::new();
     let prefix = "Java_app_reseam_patch_Native_";
 
@@ -128,10 +136,10 @@ fn parse_jni_exports(content: &str) -> Vec<JniNative> {
 
         let mut sig = String::from("(");
         for param in &params {
-            sig.push_str(&c_type_to_jni_sig(param));
+            sig.push_str(c_type_to_jni_sig(param)?);
         }
         sig.push(')');
-        sig.push_str(&ret_to_jni_sig(ret_type));
+        sig.push_str(ret_to_jni_sig(ret_type)?);
 
         natives.push(JniNative {
             c_name,
@@ -140,7 +148,7 @@ fn parse_jni_exports(content: &str) -> Vec<JniNative> {
         });
     }
 
-    natives
+    Ok(natives)
 }
 
 fn decode_jni_name(encoded: &str) -> String {
@@ -150,44 +158,42 @@ fn decode_jni_name(encoded: &str) -> String {
         .replace('\x00', "_")
 }
 
-fn c_type_to_jni_sig(param: &str) -> String {
+fn c_type_to_jni_sig(param: &str) -> Result<&'static str, String> {
     let ty = param.split_whitespace().next().unwrap_or("");
     match ty {
-        "jbyte" => "B",
-        "jint" => "I",
-        "jlong" => "J",
-        "jshort" => "S",
-        "jboolean" => "Z",
-        "jbyteArray" => "[B",
-        "jintArray" => "[I",
-        "jshortArray" => "[S",
-        "jobject" => "Ljava/nio/ByteBuffer;",
-        other => panic!("unknown JNI param type: {other}"),
+        "jbyte" => Ok("B"),
+        "jint" => Ok("I"),
+        "jlong" => Ok("J"),
+        "jshort" => Ok("S"),
+        "jboolean" => Ok("Z"),
+        "jbyteArray" => Ok("[B"),
+        "jintArray" => Ok("[I"),
+        "jshortArray" => Ok("[S"),
+        "jobject" => Ok("Ljava/nio/ByteBuffer;"),
+        other => Err(format!("unknown JNI param type: {other}")),
     }
-    .to_string()
 }
 
-fn ret_to_jni_sig(ret: &str) -> String {
+fn ret_to_jni_sig(ret: &str) -> Result<&'static str, String> {
     match ret {
-        "void" => "V",
-        "jbyteArray" => "[B",
-        "jint" => "I",
-        "jlong" => "J",
-        "jshort" => "S",
-        "jboolean" => "Z",
-        other => panic!("unknown JNI return type: {other}"),
+        "void" => Ok("V"),
+        "jbyteArray" => Ok("[B"),
+        "jint" => Ok("I"),
+        "jlong" => Ok("J"),
+        "jshort" => Ok("S"),
+        "jboolean" => Ok("Z"),
+        other => Err(format!("unknown JNI return type: {other}")),
     }
-    .to_string()
 }
 
 fn should_compile_jni_glue() -> bool {
     env::var_os("RESEAM_SKIP_JNI_GLUE").is_none()
 }
 
-fn find_java_home() -> String {
+fn find_java_home() -> Result<String, Box<dyn Error>> {
     if let Ok(home) = env::var("JAVA_HOME") {
         if Path::new(&home).is_dir() {
-            return home;
+            return Ok(home);
         }
     }
     if let Ok(output) = std::process::Command::new("java")
@@ -202,11 +208,11 @@ fn find_java_home() -> String {
                 if let Some(val) = trimmed.split('=').nth(1) {
                     let path = val.trim();
                     if Path::new(path).is_dir() {
-                        return path.to_string();
+                        return Ok(path.to_string());
                     }
                 }
             }
         }
     }
-    panic!("JAVA_HOME not set and java not found on PATH");
+    Err("JAVA_HOME not set and java not found on PATH".into())
 }
