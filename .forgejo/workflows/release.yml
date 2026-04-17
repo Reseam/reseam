@@ -7,6 +7,7 @@ on:
 
 jobs:
   build:
+    if: ${{ !github.event.deleted }}
     runs-on: docker
     container:
       image: rust:1-bookworm
