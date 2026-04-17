@@ -54,17 +54,26 @@ jobs:
 
       - run: |
           TAG="${GITHUB_REF#refs/tags/}"
-          ./gradlew publishAllPublicationsToForgejoRepository -PreseamSdkVersion="${TAG#v}" --no-daemon
+          SDK_VERSION="${TAG#v}"
+          SDK_POM="https://git.reseam.app/api/packages/reseam/maven/app/reseam/reseam-patch-sdk/${SDK_VERSION}/reseam-patch-sdk-${SDK_VERSION}.pom"
+          if curl -fsS -H "Authorization: token ${FORGEJO_PACKAGES_TOKEN}" -o /dev/null "$SDK_POM"; then
+            echo "app.reseam:reseam-patch-sdk:${SDK_VERSION} already exists; skipping publish"
+          else
+            ./gradlew publishAllPublicationsToForgejoRepository -PreseamSdkVersion="${SDK_VERSION}" --no-daemon
+          fi
         working-directory: kotlin-sdk
         env:
           FORGEJO_PACKAGES_TOKEN: ${{ secrets.FORGEJO_PACKAGES_TOKEN }}
 
       - run: install -D -m 0755 target/release/reseam dist/reseam-linux-x64
 
-      - uses: https://code.forgejo.org/actions/forgejo-release@v2
+      - uses: https://code.forgejo.org/actions/forgejo-release@v2.11.1
         with:
           direction: upload
           url: https://git.reseam.app
+          repo: reseam/reseam
+          tag: ${{ github.ref_name }}
+          sha: ${{ github.sha }}
           token: ${{ secrets.RELEASE_TOKEN }}
           release-dir: dist
           override: true
