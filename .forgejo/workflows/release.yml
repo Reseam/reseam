@@ -11,7 +11,7 @@ jobs:
     container:
       image: rust:1-bookworm
     steps:
-      - run: apt-get update && apt-get install -y --no-install-recommends nodejs
+      - run: apt-get update && apt-get install -y --no-install-recommends ca-certificates nodejs openjdk-17-jdk-headless
 
       - uses: actions/checkout@v4
 
@@ -23,7 +23,15 @@ jobs:
             target
           key: cargo-${{ hashFiles('Cargo.lock') }}
 
+      - run: cargo install boltffi_cli --version 0.23.1 --locked
+
+      - run: ./kotlin-sdk/regenerate.sh
+        env:
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+
       - run: cargo build --release -p reseam-cli
+        env:
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
 
       - run: install -D -m 0755 target/release/reseam dist/reseam-linux-x64
 
