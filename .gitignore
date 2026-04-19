@@ -3,6 +3,7 @@
 *.apk
 *.md
 !README.md
+!crates/cli/docs/*.md
 temp
 kotlin-sdk/build/
 kotlin-sdk/.gradle/
