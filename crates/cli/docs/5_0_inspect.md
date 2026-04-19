@@ -32,4 +32,4 @@ Missing fields (for example, an APK without a version name) are omitted.
 |----------|---------|
 | `<apk>` | APK path to inspect. |
 
-To inspect a bundle instead of an APK, see [`reseam bundle list`](3_bundle.md).
+To inspect a bundle instead of an APK, see [`reseam bundle list`](3_0_bundle.md).
