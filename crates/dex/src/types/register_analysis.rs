@@ -62,7 +62,7 @@ pub fn find_contiguous_free_registers(
         }
 
         if run_len == count {
-            let start = run_start.unwrap();
+            let start = run_start?;
             return Some((start..start + count as u16).collect());
         }
     }

@@ -13,7 +13,7 @@ description: Terms used by the CLI, bundles, and the patch engine.
 
 **Bundle manifest**: `manifest.toml` inside the bundle. Holds the bundle name, author, description, format version, and the hash of every payload file. Signed by the bundle author's Ed25519 key.
 
-**Trusted key**: an Ed25519 public key the patch engine recognizes as a valid bundle signer. Defined in `reseam_patcher::bundle::TRUSTED_KEYS`. `reseam bundle keygen` prints the byte literal to paste into that list.
+**Trusted key**: an Ed25519 public key a client accepts as a valid bundle signer. Bundles carry their signer key inside the archive; the client verifies the signature, then applies its own trust policy for that key.
 
 **Signing key (APK)**: the PKCS#8 keypair used to sign the patched APK with Signature Scheme v2. Separate from the bundle signing key. Supplied via `--key` and `--cert`, or generated automatically next to the output.
 

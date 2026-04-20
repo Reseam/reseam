@@ -56,7 +56,7 @@ pub fn res_exists_in_component(component: String, res_type: String, res_name: St
             return false;
         };
         ctx.component_resources(index)
-            .map_or(false, |r| r.resource_exists(&res_type, &res_name))
+            .is_some_and(|r| r.resource_exists(&res_type, &res_name))
     })
 }
 
@@ -324,7 +324,7 @@ pub fn res_pool_find_refs(string_index: u32) -> Vec<ResourceRef> {
             .map(|e| ResourceRef {
                 res_id: e.res_id,
                 package_id: e.package_id as u8,
-                type_id: e.type_id as u8,
+                type_id: e.type_id,
                 entry_index: e.entry_index as u16,
                 key_name: e.key_name,
             })
@@ -374,7 +374,7 @@ pub fn res_pool_find_refs_in_component(component: String, string_index: u32) -> 
             .map(|e| ResourceRef {
                 res_id: e.res_id,
                 package_id: e.package_id as u8,
-                type_id: e.type_id as u8,
+                type_id: e.type_id,
                 entry_index: e.entry_index as u16,
                 key_name: e.key_name,
             })

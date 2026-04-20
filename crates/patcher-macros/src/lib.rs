@@ -238,7 +238,7 @@ fn validate_signature(func: &ItemFn) -> syn::Result<()> {
 
     if let FnArg::Receiver(_) = &params[0] {
         return Err(syn::Error::new_spanned(
-            &params[0],
+            params[0],
             "patch function cannot be a method (no `self` parameter)",
         ));
     }
@@ -253,7 +253,7 @@ fn validate_signature(func: &ItemFn) -> syn::Result<()> {
         ReturnType::Type(_, ty) => {
             if let Type::Path(tp) = ty.as_ref() {
                 let last = tp.path.segments.last();
-                if !last.is_some_and(|s| s.ident == "Result") {
+                if last.is_none_or(|s| s.ident != "Result") {
                     return Err(syn::Error::new_spanned(
                         ty,
                         "patch function must return Result<()>",

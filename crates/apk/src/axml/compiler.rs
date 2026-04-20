@@ -121,7 +121,7 @@ pub fn build_axml_document_with_resources(
             Ok(quick_xml::events::Event::End(ref e)) => {
                 let name_bytes = e.name();
                 let raw_name = std::str::from_utf8(name_bytes.as_ref()).unwrap_or("");
-                let local = raw_name.split(':').last().unwrap_or(raw_name);
+                let local = raw_name.split(':').next_back().unwrap_or(raw_name);
                 let name_idx = pool.intern(local);
                 events.push(AxmlEvent::EndElement {
                     namespace: None,
@@ -206,7 +206,7 @@ fn emit_start_element(
 
     let name_bytes = e.name();
     let raw_name = std::str::from_utf8(name_bytes.as_ref()).unwrap_or("");
-    let local = raw_name.split(':').last().unwrap_or(raw_name);
+    let local = raw_name.split(':').next_back().unwrap_or(raw_name);
     let name_idx = pool.intern(local);
 
     let mut attributes = Vec::new();
@@ -284,7 +284,7 @@ fn emit_start_element(
 fn parse_attr_value(
     value: &str,
     pool: &mut StringPool,
-    mut resources: Option<&mut ResourceTable>,
+    resources: Option<&mut ResourceTable>,
 ) -> Result<(TypedValue, Option<u32>)> {
     if value == "true" {
         return Ok((TypedValue::Bool(true), None));
@@ -357,7 +357,7 @@ fn parse_attr_value(
     }
 
     if let Some(rest) = value.strip_prefix('@') {
-        if let Some(id) = resolve_resource_ref(rest, resources.as_deref_mut())? {
+        if let Some(id) = resolve_resource_ref(rest, resources)? {
             return Ok((TypedValue::Reference(id), None));
         }
     }

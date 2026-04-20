@@ -236,8 +236,8 @@ fn read_fixed_bytes<'a>(
 fn read_signed_int(buf: &[u8], pos: usize, size: usize) -> Result<i64> {
     let bytes = read_fixed_bytes(buf, pos, size, "encoded value")?;
     let mut result: i64 = 0;
-    for i in 0..size {
-        result |= (bytes[i] as i64) << (i * 8);
+    for (index, byte) in bytes.iter().copied().enumerate().take(size) {
+        result |= (byte as i64) << (index * 8);
     }
     // Sign extend
     let shift = (size * 8) as u32;
@@ -255,8 +255,8 @@ fn read_signed_long(buf: &[u8], pos: usize, size: usize) -> Result<i64> {
 fn read_unsigned_int(buf: &[u8], pos: usize, size: usize) -> Result<u64> {
     let bytes = read_fixed_bytes(buf, pos, size, "encoded value")?;
     let mut result: u64 = 0;
-    for i in 0..size {
-        result |= (bytes[i] as u64) << (i * 8);
+    for (index, byte) in bytes.iter().copied().enumerate().take(size) {
+        result |= (byte as u64) << (index * 8);
     }
     Ok(result)
 }

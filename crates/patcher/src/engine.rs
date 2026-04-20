@@ -26,6 +26,13 @@ pub enum PatchStatus {
     Failed { reason: String },
 }
 
+#[derive(Debug, Clone)]
+pub enum ProgressEvent {
+    PatchStarted { patch: String },
+    PatchLog(LogEntry),
+    PatchFinished { patch: String, status: PatchStatus },
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ExecutionPlan {
     selected: HashSet<String>,
@@ -87,6 +94,18 @@ pub fn apply_patches_with_plan(
     patches: &[Box<dyn Patch>],
     plan: &ExecutionPlan,
 ) -> Result<Vec<PatchResult>> {
+    apply_patches_with_plan_and_observer(ctx, patches, plan, |_| {})
+}
+
+pub fn apply_patches_with_plan_and_observer<F>(
+    ctx: &mut PatchContext,
+    patches: &[Box<dyn Patch>],
+    plan: &ExecutionPlan,
+    mut observer: F,
+) -> Result<Vec<PatchResult>>
+where
+    F: FnMut(ProgressEvent),
+{
     info!(
         patch_count = patches.len(),
         configured_patches = plan.options.len(),
@@ -128,6 +147,10 @@ pub fn apply_patches_with_plan(
                 },
                 logs: Vec::new(),
             };
+            observer(ProgressEvent::PatchFinished {
+                patch: r.name.clone(),
+                status: r.status.clone(),
+            });
             result_map.insert(idx, results.len());
             results.push(r);
             continue;
@@ -142,6 +165,10 @@ pub fn apply_patches_with_plan(
                 },
                 logs: Vec::new(),
             };
+            observer(ProgressEvent::PatchFinished {
+                patch: r.name.clone(),
+                status: r.status.clone(),
+            });
             result_map.insert(idx, results.len());
             results.push(r);
             continue;
@@ -156,6 +183,10 @@ pub fn apply_patches_with_plan(
                 status: PatchStatus::Skipped { reason },
                 logs: Vec::new(),
             };
+            observer(ProgressEvent::PatchFinished {
+                patch: r.name.clone(),
+                status: r.status.clone(),
+            });
             result_map.insert(idx, results.len());
             results.push(r);
             continue;
@@ -170,6 +201,10 @@ pub fn apply_patches_with_plan(
                 status: PatchStatus::Skipped { reason },
                 logs: Vec::new(),
             };
+            observer(ProgressEvent::PatchFinished {
+                patch: r.name.clone(),
+                status: r.status.clone(),
+            });
             result_map.insert(idx, results.len());
             results.push(r);
             continue;
@@ -182,6 +217,9 @@ pub fn apply_patches_with_plan(
         }
 
         ctx.set_log(PatchLog::new(patch.name().to_owned()));
+        observer(ProgressEvent::PatchStarted {
+            patch: patch.name().to_owned(),
+        });
 
         // Merge extension DEX files declared by this patch (deduplicated).
         let ext_paths = patch.extension_dex();
@@ -205,6 +243,13 @@ pub fn apply_patches_with_plan(
                         },
                         logs: ctx.take_log_entries(),
                     };
+                    for log in &r.logs {
+                        observer(ProgressEvent::PatchLog(log.clone()));
+                    }
+                    observer(ProgressEvent::PatchFinished {
+                        patch: r.name.clone(),
+                        status: r.status.clone(),
+                    });
                     result_map.insert(idx, results.len());
                     results.push(r);
                     continue;
@@ -215,6 +260,9 @@ pub fn apply_patches_with_plan(
         let exec_result = panic::catch_unwind(AssertUnwindSafe(|| patch.execute(ctx)));
 
         let logs = ctx.take_log_entries();
+        for log in &logs {
+            observer(ProgressEvent::PatchLog(log.clone()));
+        }
 
         match exec_result {
             Ok(Ok(())) => {
@@ -225,6 +273,10 @@ pub fn apply_patches_with_plan(
                     status: PatchStatus::Applied,
                     logs,
                 };
+                observer(ProgressEvent::PatchFinished {
+                    patch: r.name.clone(),
+                    status: r.status.clone(),
+                });
                 result_map.insert(idx, results.len());
                 results.push(r);
             }
@@ -237,6 +289,10 @@ pub fn apply_patches_with_plan(
                     },
                     logs,
                 };
+                observer(ProgressEvent::PatchFinished {
+                    patch: r.name.clone(),
+                    status: r.status.clone(),
+                });
                 result_map.insert(idx, results.len());
                 results.push(r);
                 continue;
@@ -257,6 +313,10 @@ pub fn apply_patches_with_plan(
                     },
                     logs,
                 };
+                observer(ProgressEvent::PatchFinished {
+                    patch: r.name.clone(),
+                    status: r.status.clone(),
+                });
                 result_map.insert(idx, results.len());
                 results.push(r);
                 continue;
@@ -266,7 +326,7 @@ pub fn apply_patches_with_plan(
 
     // Run afterDependents hooks after ALL patches have been processed.
     // This ensures that skipped/disabled dependents don't block the hook.
-    for (&dep_idx, _dep_list) in &dependents {
+    for &dep_idx in dependents.keys() {
         if after_dependents_fired[dep_idx] {
             continue;
         }
@@ -288,6 +348,9 @@ pub fn apply_patches_with_plan(
 
         let after_logs = ctx.take_log_entries();
         if let Some(&ri) = result_map.get(&dep_idx) {
+            for log in &after_logs {
+                observer(ProgressEvent::PatchLog(log.clone()));
+            }
             results[ri].logs.extend(after_logs);
         }
 
@@ -303,6 +366,10 @@ pub fn apply_patches_with_plan(
                     reason: format!("after_dependents: {e}"),
                 };
                 applied[dep_idx] = false;
+                observer(ProgressEvent::PatchFinished {
+                    patch: results[result_idx].name.clone(),
+                    status: results[result_idx].status.clone(),
+                });
             }
             Err(panic_info) => {
                 let reason = if let Some(s) = panic_info.downcast_ref::<String>() {
@@ -321,6 +388,10 @@ pub fn apply_patches_with_plan(
                     reason: format!("after_dependents panic: {reason}"),
                 };
                 applied[dep_idx] = false;
+                observer(ProgressEvent::PatchFinished {
+                    patch: results[result_idx].name.clone(),
+                    status: results[result_idx].status.clone(),
+                });
             }
         }
     }
@@ -524,7 +595,7 @@ fn validate_plan_options(
             patch.options(),
             plan.options.get(patch.name()),
         )?;
-        if !resolved.iter().next().is_none() || !patch.options().is_empty() {
+        if resolved.iter().next().is_some() || !patch.options().is_empty() {
             validated.insert(patch.name().to_owned(), resolved);
         }
     }

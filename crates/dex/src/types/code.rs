@@ -173,15 +173,15 @@ impl CodeItem {
         }
         let mut cur: u32 = 0;
         for insn in &self.instructions {
-            if cur > addr {
-                if matches!(
+            if cur > addr
+                && matches!(
                     insn,
                     Instruction::PackedSwitchPayload { .. }
                         | Instruction::SparseSwitchPayload { .. }
                         | Instruction::FillArrayDataPayload { .. }
-                ) {
-                    return true;
-                }
+                )
+            {
+                return true;
             }
             cur += insn.code_units();
         }

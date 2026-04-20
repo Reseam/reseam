@@ -6,6 +6,7 @@ members = [
     "crates/sign",
     "crates/patcher",
     "crates/patcher-macros",
+    "crates/library",
     "crates/cli"
 ]
 
@@ -16,6 +17,7 @@ reseam-apk     = { path = "crates/apk" }
 reseam-sign    = { path = "crates/sign" }
 reseam-patcher = { path = "crates/patcher" }
 reseam-patcher-macros = { path = "crates/patcher-macros" }
+reseam-library = { path = "crates/library" }
 
 # Shared external dependencies (pinned versions for all crates)
 thiserror   = "2"

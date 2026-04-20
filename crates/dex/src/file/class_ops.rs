@@ -79,12 +79,7 @@ impl DexFile {
         let mut chain = Vec::new();
         let mut current = class_idx;
 
-        loop {
-            let superclass_type = match self.classes.get(current).and_then(|c| c.superclass) {
-                Some(t) => t,
-                None => break,
-            };
-
+        while let Some(superclass_type) = self.classes.get(current).and_then(|c| c.superclass) {
             match self.class_lookup.get(&superclass_type) {
                 Some(&pos) => {
                     if chain.contains(&pos) {

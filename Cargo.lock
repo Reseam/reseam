@@ -1352,6 +1352,7 @@ dependencies = [
  "hex",
  "rand",
  "reseam-apk",
+ "reseam-library",
  "reseam-patcher",
  "reseam-sign",
  "serde",
@@ -1380,6 +1381,20 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "zip",
+]
+
+[[package]]
+name = "reseam-library"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "hex",
+ "reseam-apk",
+ "reseam-patcher",
+ "reseam-sign",
+ "serde",
+ "tempfile",
+ "tracing",
 ]
 
 [[package]]

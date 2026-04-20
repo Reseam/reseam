@@ -510,6 +510,7 @@ pub fn insert_invoke_static(
 }
 
 #[export]
+#[allow(clippy::too_many_arguments)]
 pub fn insert_invoke_static_with_move_result(
     m: u32,
     index: u32,

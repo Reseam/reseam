@@ -1,0 +1,15 @@
+[package]
+name = "reseam-library"
+version = "0.1.0"
+edition = "2021"
+description = "Shared application-layer orchestration for Reseam clients"
+
+[dependencies]
+reseam-apk     = { workspace = true }
+reseam-sign    = { workspace = true }
+reseam-patcher = { workspace = true }
+anyhow         = { workspace = true }
+serde          = { workspace = true }
+tempfile       = { workspace = true }
+tracing        = { workspace = true }
+hex            = { workspace = true }

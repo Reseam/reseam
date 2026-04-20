@@ -4,6 +4,7 @@
 *.md
 !README.md
 !crates/cli/docs/*.md
+!docs/*
 temp
 kotlin-sdk/build/
 kotlin-sdk/.gradle/

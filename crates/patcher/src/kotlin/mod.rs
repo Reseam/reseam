@@ -96,9 +96,9 @@ impl HandleTable {
 thread_local! {
     static CTX_PTR: Cell<*mut ()> = const { Cell::new(std::ptr::null_mut()) };
     pub(crate) static HANDLES: RefCell<HandleTable> = RefCell::new(HandleTable::default());
-    pub(crate) static XML_DOCUMENTS: RefCell<Vec<Option<(AxmlDocument, String)>>> = RefCell::new(Vec::new());
-    pub(crate) static PENDING_ELEMENTS: RefCell<Vec<xml::PendingElement>> = RefCell::new(Vec::new());
-    pub(crate) static BUNDLE_DIR: RefCell<Option<PathBuf>> = RefCell::new(None);
+    pub(crate) static XML_DOCUMENTS: RefCell<Vec<Option<(AxmlDocument, String)>>> = const { RefCell::new(Vec::new()) };
+    pub(crate) static PENDING_ELEMENTS: RefCell<Vec<xml::PendingElement>> = const { RefCell::new(Vec::new()) };
+    pub(crate) static BUNDLE_DIR: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
 }
 
 struct CtxGuard;
@@ -339,6 +339,7 @@ fn get_or_init_jvm() -> Result<&'static JavaVM> {
                     "-Xmx{}",
                     std::env::var("RESEAM_JVM_HEAP").unwrap_or_else(|_| "256m".into())
                 ))
+                .option("-Dreseam.native.bootstrap=host-registered")
                 .option(format!("-Djava.library.path={}", lib_path.display()))
                 .build()
                 .map_err(|e| format!("JVM args: {e}"))?;
@@ -537,7 +538,7 @@ fn create_class_loader<'a>(
         .find_class("java/net/URL")
         .map_err(|e| jvm_err(format!("find URL class: {e}")))?;
     let url_array = env
-        .new_object_array(jar_paths.len() as i32, &url_class, &JObject::null())
+        .new_object_array(jar_paths.len() as i32, &url_class, JObject::null())
         .map_err(|e| jvm_err(format!("URL array: {e}")))?;
 
     for (i, jar_path) in jar_paths.iter().enumerate() {

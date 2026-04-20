@@ -5,7 +5,6 @@
 ///
 /// Used by both AXML string pools and resources.arsc string pools,
 /// which share the same length-prefixed encoding format.
-
 pub(crate) fn encode_utf8(out: &mut Vec<u8>, s: &str) {
     let char_len = s.chars().count();
     let byte_len = s.len();

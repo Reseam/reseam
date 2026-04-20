@@ -189,10 +189,8 @@ impl ReferencedIndices {
     }
 
     fn collect_debug(&mut self, debug: &DebugInfo) {
-        for name in &debug.parameter_names {
-            if let Some(n) = name {
-                self.strings.insert(n.0);
-            }
+        for name in debug.parameter_names.iter().flatten() {
+            self.strings.insert(name.0);
         }
         for bc in &debug.bytecodes {
             match bc {
@@ -220,10 +218,8 @@ impl ReferencedIndices {
                         self.strings.insert(s.0);
                     }
                 }
-                DebugBytecode::SetFile { name } => {
-                    if let Some(n) = name {
-                        self.strings.insert(n.0);
-                    }
+                DebugBytecode::SetFile { name: Some(name) } => {
+                    self.strings.insert(name.0);
                 }
                 _ => {}
             }

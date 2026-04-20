@@ -209,10 +209,7 @@ impl DexFile {
 
         let matched_indices = if let Some(ref opcodes) = fp.opcodes {
             let code = method.code.as_ref()?;
-            match find_pattern_indices(&code.instructions, opcodes) {
-                Some(indices) => indices,
-                None => return None,
-            }
+            find_pattern_indices(&code.instructions, opcodes)?
         } else {
             Vec::new()
         };

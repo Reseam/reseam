@@ -254,7 +254,7 @@ impl ResourceTable {
             if let Some(existing) = res_type
                 .entries
                 .iter()
-                .position(|e| e.as_ref().map_or(false, |e| e.key == key_idx))
+                .position(|e| e.as_ref().is_some_and(|e| e.key == key_idx))
             {
                 if let Some(Some(entry)) = res_type.entries.get_mut(existing) {
                     entry.value = ResValue::Simple { data_type, data };
@@ -663,11 +663,9 @@ fn parse_package(data: &[u8], header_size: usize) -> Result<ResPackage> {
     let mut types = Vec::new();
 
     let body_start = if key_strings_offset > 0 {
-        let end = find_chunk_end(data, key_strings_offset)?;
-        end
+        find_chunk_end(data, key_strings_offset)?
     } else if type_strings_offset > 0 {
-        let end = find_chunk_end(data, type_strings_offset)?;
-        end
+        find_chunk_end(data, type_strings_offset)?
     } else {
         header_size
     };

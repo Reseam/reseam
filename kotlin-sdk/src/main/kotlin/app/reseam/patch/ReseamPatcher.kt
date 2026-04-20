@@ -3508,12 +3508,13 @@ private object Native {
         val preferredLibrary = "reseam_patcher_jni"
         val fallbackLibrary = "reseam_patcher"
         val vmName = System.getProperty("java.vm.name").orEmpty()
+        val bootstrapMode = System.getProperty("reseam.native.bootstrap").orEmpty()
         val isAndroidRuntime =
             vmName.contains("dalvik", ignoreCase = true) ||
             vmName.contains("art", ignoreCase = true)
         if (isAndroidRuntime) {
             System.loadLibrary(fallbackLibrary)
-        } else {
+        } else if (bootstrapMode != "host-registered") {
             loadDesktopLibraries(preferredLibrary, fallbackLibrary)
         }
     }

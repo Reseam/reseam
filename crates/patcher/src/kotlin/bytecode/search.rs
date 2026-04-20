@@ -216,7 +216,7 @@ pub fn index_of_first_method_call(
                 .enumerate()
                 .skip(start as usize)
                 .find(|(_, insn)| {
-                    insn.method_ref().map_or(false, |mr| {
+                    insn.method_ref().is_some_and(|mr| {
                         let mid = &dex.methods[mr.0 as usize];
                         dex.type_descriptor(mid.class) == defining_class
                             && dex.string(mid.name) == method_name
@@ -251,7 +251,7 @@ pub fn index_of_first_field_access(
                             return false;
                         }
                     }
-                    insn.field_ref().map_or(false, |fr| {
+                    insn.field_ref().is_some_and(|fr| {
                         let fid = &dex.fields[fr.0 as usize];
                         if let Some(ref ft) = field_type {
                             if dex.type_descriptor(fid.type_) != ft.as_str() {

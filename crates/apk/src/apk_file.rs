@@ -21,17 +21,9 @@ pub enum ApkKind {
     Split,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct ApkWriteOptions {
     pub strip_signatures: bool,
-}
-
-impl Default for ApkWriteOptions {
-    fn default() -> Self {
-        Self {
-            strip_signatures: false,
-        }
-    }
 }
 
 /// Metadata for a single APK component (base or split).

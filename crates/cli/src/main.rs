@@ -7,12 +7,12 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use reseam_apk::{ApkFile, ApkWriteOptions};
-use reseam_patcher::bundle::PatchBundle;
-use reseam_patcher::context::PatchContext;
-use reseam_patcher::engine::{self, ExecutionPlan, PatchStatus};
-use reseam_patcher::options::{OptionDeclaration, PatchOptions};
-use reseam_sign::{GeneratedKey, SigningKey};
+use reseam_library::{
+    built_in_trust_store, inspect_apk as inspect_apk_with_library, inspect_with_trust,
+    load_bundle_with_trust, patch as patch_with_library, selection_from_cli, ArtifactKind,
+    PatchOutput as LibraryPatchOutput, PatchRequest, RunEvent,
+};
+use reseam_patcher::engine::PatchStatus;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
@@ -120,19 +120,19 @@ fn main() -> Result<()> {
             disable,
             option,
             dry_run,
-        } => cmd_patch(
-            &apk,
-            &split,
-            &bundle,
-            output.as_deref(),
-            output_dir.as_deref(),
-            key.as_deref(),
-            cert.as_deref(),
-            &enable,
-            &disable,
-            &option,
+        } => cmd_patch(PatchCommandArgs {
+            apk_path: &apk,
+            split_paths: &split,
+            bundle_path: &bundle,
+            output: output.as_deref(),
+            output_dir: output_dir.as_deref(),
+            key_path: key.as_deref(),
+            cert_path: cert.as_deref(),
+            enabled_patches: &enable,
+            disabled_patches: &disable,
+            option_args: &option,
             dry_run,
-        ),
+        }),
         Commands::Info { apk } => cmd_info(&apk),
         Commands::Bundle { command } => match command {
             BundleCommands::Keygen { out } => cmd_bundle_keygen(&out),
@@ -179,106 +179,111 @@ fn init_logging() -> Result<()> {
         .map_err(|e| anyhow::anyhow!("failed to initialize logging: {e}"))
 }
 
-fn cmd_patch(
-    apk_path: &Path,
-    split_paths: &[PathBuf],
-    bundle_path: &Path,
-    output: Option<&Path>,
-    output_dir: Option<&Path>,
-    key_path: Option<&Path>,
-    cert_path: Option<&Path>,
-    enabled_patches: &[String],
-    disabled_patches: &[String],
-    option_args: &[String],
+struct PatchCommandArgs<'a> {
+    apk_path: &'a Path,
+    split_paths: &'a [PathBuf],
+    bundle_path: &'a Path,
+    output: Option<&'a Path>,
+    output_dir: Option<&'a Path>,
+    key_path: Option<&'a Path>,
+    cert_path: Option<&'a Path>,
+    enabled_patches: &'a [String],
+    disabled_patches: &'a [String],
+    option_args: &'a [String],
     dry_run: bool,
-) -> Result<()> {
-    let split_mode = !split_paths.is_empty();
-    if split_mode && output.is_some() {
+}
+
+fn cmd_patch(args: PatchCommandArgs<'_>) -> Result<()> {
+    let split_mode = !args.split_paths.is_empty();
+    if split_mode && args.output.is_some() {
         bail!("--output cannot be used with --split; use --output-dir instead");
     }
-    if !split_mode && output_dir.is_some() {
+    if !split_mode && args.output_dir.is_some() {
         bail!("--output-dir can only be used with --split");
     }
 
     let output_target = if split_mode {
-        let dir = match output_dir {
+        let dir = match args.output_dir {
             Some(dir) => dir.to_path_buf(),
             None => {
-                let stem = apk_path
+                let stem = args
+                    .apk_path
                     .file_stem()
                     .context("invalid APK path")?
                     .to_string_lossy();
-                apk_path.with_file_name(format!("{stem}-patched"))
+                args.apk_path.with_file_name(format!("{stem}-patched"))
             }
         };
         PatchOutput::SplitDir(dir)
     } else {
-        let path = match output {
+        let path = match args.output {
             Some(p) => p.to_path_buf(),
             None => {
-                let stem = apk_path
+                let stem = args
+                    .apk_path
                     .file_stem()
                     .context("invalid APK path")?
                     .to_string_lossy();
-                apk_path.with_file_name(format!("{stem}-patched.apk"))
+                args.apk_path.with_file_name(format!("{stem}-patched.apk"))
             }
         };
         PatchOutput::SingleFile(path)
     };
 
-    info!(
-        apk_path = %apk_path.display(),
-        split_count = split_paths.len(),
-        "opening APK"
-    );
-    let mut apk = if split_mode {
-        ApkFile::open_split(apk_path, split_paths).context("failed to open split APK set")?
-    } else {
-        ApkFile::open(apk_path).context("failed to open APK")?
+    let trust_store = built_in_trust_store();
+    let patch_bundle = load_bundle_with_trust(args.bundle_path, &trust_store)?;
+    let selection =
+        selection_from_cli(
+            args.enabled_patches,
+            args.disabled_patches,
+            args.option_args,
+            &patch_bundle,
+        )?;
+    let request = PatchRequest {
+        apk_path: args.apk_path.to_path_buf(),
+        split_paths: args.split_paths.to_vec(),
+        bundle_paths: vec![args.bundle_path.to_path_buf()],
+        trust_store,
+        selection,
+        output: match output_target {
+            PatchOutput::SingleFile(path) => LibraryPatchOutput::SingleFile(path),
+            PatchOutput::SplitDir(path) => LibraryPatchOutput::SplitDir(path),
+        },
+        key_path: args.key_path.map(Path::to_path_buf),
+        cert_path: args.cert_path.map(Path::to_path_buf),
+        dry_run: args.dry_run,
     };
 
-    if apk.is_split() {
-        info!(components = apk.component_count(), splits = ?apk.split_names(), "loaded split APK set");
-    } else {
-        info!("loaded single APK");
-    }
+    let outcome = patch_with_library(&request, |event| match event {
+        RunEvent::Info { message } => info!(message),
+        RunEvent::PatchStarted { patch } => info!(patch, "patch started"),
+        RunEvent::PatchFinished {
+            patch,
+            status,
+            reason,
+        } => match status {
+            reseam_library::PatchRunStatus::Applied => info!(patch, "patch completed"),
+            reseam_library::PatchRunStatus::Skipped => {
+                warn!(patch, reason = reason.unwrap_or_default(), "patch skipped")
+            }
+            reseam_library::PatchRunStatus::Failed => {
+                error!(patch, reason = reason.unwrap_or_default(), "patch failed")
+            }
+        },
+        RunEvent::PatchLog {
+            patch,
+            level,
+            message,
+        } => info!(patch, level, message, "patch log"),
+    })?;
 
-    if let Some(pkg) = apk.package_name() {
-        info!(package = pkg, "loaded APK package");
-    }
-    if let Some(ver) = apk.version_name() {
-        info!(version = ver, "loaded APK version");
-    }
-    info!(dex_files = apk.dex().len(), "APK ready for patching");
+    let failed_count = outcome
+        .results
+        .iter()
+        .filter(|result| matches!(result.status, PatchStatus::Failed { .. }))
+        .count();
 
-    info!(bundle_path = %bundle_path.display(), "loading patch bundle");
-    let patch_bundle = PatchBundle::load(bundle_path).context("failed to load patch bundle")?;
-    info!(
-        bundle = %patch_bundle.name,
-        patch_count = patch_bundle.patches.len(),
-        "patch bundle loaded"
-    );
-    let plan = build_execution_plan(
-        &patch_bundle,
-        enabled_patches,
-        disabled_patches,
-        option_args,
-    )?;
-
-    if dry_run {
-        let results = engine::validate_patches_with_plan(
-            &patch_bundle.patches,
-            &plan,
-            apk.package_name(),
-            apk.version_name(),
-        )
-        .context("patch validation failed")?;
-
-        log_patch_results(&results, "validated", "validation completed");
-        let failed_count = results
-            .iter()
-            .filter(|r| matches!(r.status, PatchStatus::Failed { .. }))
-            .count();
+    if args.dry_run {
         if failed_count > 0 {
             bail!("{failed_count} patch(es) failed validation");
         }
@@ -286,72 +291,70 @@ fn cmd_patch(
         return Ok(());
     }
 
-    let mut ctx = PatchContext::new(&mut apk);
-
-    let results = engine::apply_patches_with_plan(&mut ctx, &patch_bundle.patches, &plan)
-        .context("patch application failed")?;
-    drop(ctx);
-
-    let failed_count = log_patch_results(&results, "applied", "patch run completed");
-    if failed_count > 0 {
-        bail!("{failed_count} patch(es) failed");
-    }
-
-    match output_target {
-        PatchOutput::SingleFile(output_path) => {
-            write_signed_single_apk(&mut apk, &output_path, key_path, cert_path)
-        }
-        PatchOutput::SplitDir(output_dir) => {
-            write_signed_split_apks(&mut apk, &output_dir, key_path, cert_path)
+    if let Some(artifact) = outcome.artifact {
+        match artifact.kind {
+            ArtifactKind::Apk => info!(path = %artifact.path.display(), "patched APK ready"),
+            ArtifactKind::SplitDirectory => {
+                info!(path = %artifact.path.display(), "patched split APK set ready")
+            }
         }
     }
+
+    Ok(())
 }
 
 fn cmd_list(bundle_path: &Path) -> Result<()> {
-    let bundle = PatchBundle::load(bundle_path).context("failed to load patch bundle")?;
-    println!("bundle: {}", bundle.name);
-    if !bundle.author.is_empty() {
-        println!("author: {}", bundle.author);
+    let response = inspect_with_trust(
+        &[bundle_path.to_path_buf()],
+        None,
+        &[],
+        &built_in_trust_store(),
+    )?;
+    let metadata = response
+        .bundles
+        .into_iter()
+        .next()
+        .context("bundle metadata missing from inspect response")?;
+    println!("bundle: {}", metadata.name);
+    if !metadata.author.is_empty() {
+        println!("author: {}", metadata.author);
     }
-    if !bundle.description.is_empty() {
-        println!("description: {}", bundle.description);
+    if !metadata.description.is_empty() {
+        println!("description: {}", metadata.description);
     }
     println!();
-    for (i, patch) in bundle.patches.iter().enumerate() {
-        let p: &dyn reseam_patcher::patch::Patch = patch.as_ref();
-        let enabled = if p.enabled_by_default() { "on" } else { "off" };
+    for (i, patch) in response.patches.iter().enumerate() {
+        let enabled = if patch.enabled_by_default { "on" } else { "off" };
         println!(
             "  {:>3}. [{}] {} - {}",
             i + 1,
             enabled,
-            p.name(),
-            p.description()
+            patch.name,
+            patch.description
         );
 
-        let compat = p.compatible_with();
-        if !compat.is_empty() {
-            let formatted: Vec<String> = compat
+        if !patch.compatible_with.is_empty() {
+            let formatted: Vec<String> = patch
+                .compatible_with
                 .iter()
                 .map(|c| {
                     if c.versions.is_empty() {
-                        c.package.clone()
+                        c.package_name.clone()
                     } else {
-                        format!("{} ({})", c.package, c.versions.join(", "))
+                        format!("{} ({})", c.package_name, c.versions.join(", "))
                     }
                 })
                 .collect();
             println!("       packages: {}", formatted.join(", "));
         }
 
-        let deps = p.depends_on();
-        if !deps.is_empty() {
-            println!("       depends: {}", deps.join(", "));
+        if !patch.dependencies.is_empty() {
+            println!("       depends: {}", patch.dependencies.join(", "));
         }
 
-        let options = p.options();
-        if !options.is_empty() {
+        if !patch.options.is_empty() {
             println!("       options:");
-            for option in options {
+            for option in &patch.options {
                 let required = if option.required {
                     "required"
                 } else {
@@ -365,11 +368,11 @@ fn cmd_list(bundle_path: &Path) -> Result<()> {
         }
     }
 
-    if !bundle.extension_dex.is_empty() {
+    if !metadata.extension_dex.is_empty() {
         println!();
         println!("extension DEX:");
-        for dex_path in &bundle.extension_dex {
-            println!("  - {}", dex_path.display());
+        for dex_path in &metadata.extension_dex {
+            println!("  - {}", dex_path);
         }
     }
 
@@ -377,28 +380,25 @@ fn cmd_list(bundle_path: &Path) -> Result<()> {
 }
 
 fn cmd_info(apk_path: &Path) -> Result<()> {
-    let apk = ApkFile::open(apk_path).context("failed to open APK")?;
+    let apk = inspect_apk_with_library(apk_path, &[])?;
 
     println!("APK: {}", apk_path.display());
-    if let Some(pkg) = apk.package_name() {
+    if let Some(pkg) = apk.package_name {
         println!("  package:    {pkg}");
     }
-    if let Some(ver) = apk.version_name() {
+    if let Some(ver) = apk.version_name {
         println!("  version:    {ver}");
     }
-    if let Some(code) = apk.version_code() {
+    if let Some(code) = apk.version_code {
         println!("  versionCode: {code}");
     }
-    println!("  dex files:  {}", apk.dex().len());
-    println!("  components: {}", apk.component_count());
-    if apk.is_split() {
-        println!("  splits:     {}", apk.split_names().join(", "));
+    println!("  dex files:  {}", apk.dex_files);
+    println!("  components: {}", apk.component_count);
+    if !apk.split_names.is_empty() {
+        println!("  splits:     {}", apk.split_names.join(", "));
     }
-
-    let total_classes: usize = apk.dex().iter().map(|d| d.classes.len()).sum();
-    let total_methods: usize = apk.dex().iter().map(|d| d.methods.len()).sum();
-    println!("  classes:    {total_classes}");
-    println!("  methods:    {total_methods}");
+    println!("  classes:    {}", apk.class_count);
+    println!("  methods:    {}", apk.method_count);
 
     Ok(())
 }
@@ -645,257 +645,6 @@ enum PatchOutput {
     SplitDir(PathBuf),
 }
 
-fn log_patch_results(
-    results: &[engine::PatchResult],
-    applied_verb: &str,
-    complete_message: &str,
-) -> usize {
-    for result in results {
-        match &result.status {
-            PatchStatus::Applied => {
-                info!(patch = %result.name, verb = applied_verb, "patch completed")
-            }
-            PatchStatus::Skipped { reason } => {
-                warn!(patch = %result.name, reason, "patch skipped")
-            }
-            PatchStatus::Failed { reason } => {
-                error!(patch = %result.name, reason, "patch failed")
-            }
-        }
-        for log in &result.logs {
-            info!(
-                patch = %log.patch,
-                level = %log.level,
-                message = %log.message,
-                "patch log"
-            );
-        }
-    }
-
-    let applied_count = results
-        .iter()
-        .filter(|r| matches!(r.status, PatchStatus::Applied))
-        .count();
-    let failed_count = results
-        .iter()
-        .filter(|r| matches!(r.status, PatchStatus::Failed { .. }))
-        .count();
-    info!(
-        applied_count,
-        total = results.len(),
-        failed_count,
-        summary = complete_message,
-        "patch summary"
-    );
-    failed_count
-}
-
-fn write_signed_single_apk(
-    apk: &mut ApkFile,
-    output_path: &Path,
-    key_path: Option<&Path>,
-    cert_path: Option<&Path>,
-) -> Result<()> {
-    if let Some(parent) = output_path.parent().filter(|p| !p.as_os_str().is_empty()) {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create output directory {}", parent.display()))?;
-    }
-
-    info!(output_path = %output_path.display(), "writing patched APK");
-    let tmp_dir = tempfile::tempdir().context("failed to create temp directory")?;
-    apk.write_to_with_options(
-        tmp_dir.path(),
-        ApkWriteOptions {
-            strip_signatures: true,
-        },
-    )
-    .context("failed to write patched APK")?;
-
-    let tmp_apk_path = find_output_apks(tmp_dir.path())?
-        .into_iter()
-        .next()
-        .context("no APK file found in output directory")?;
-    let signing_key = load_or_generate_key(
-        output_path.with_extension("pk8"),
-        output_path.with_extension("der"),
-        key_path,
-        cert_path,
-    )?;
-    sign_apk_to_path(&tmp_apk_path, output_path, &signing_key)?;
-
-    Ok(())
-}
-
-fn write_signed_split_apks(
-    apk: &mut ApkFile,
-    output_dir: &Path,
-    key_path: Option<&Path>,
-    cert_path: Option<&Path>,
-) -> Result<()> {
-    std::fs::create_dir_all(output_dir)
-        .with_context(|| format!("failed to create output directory {}", output_dir.display()))?;
-
-    info!(output_dir = %output_dir.display(), "writing patched split APK set");
-    let tmp_dir = tempfile::tempdir().context("failed to create temp directory")?;
-    apk.write_to_with_options(
-        tmp_dir.path(),
-        ApkWriteOptions {
-            strip_signatures: true,
-        },
-    )
-    .context("failed to write patched split APK set")?;
-
-    let signing_key = load_or_generate_key(
-        output_dir.join("reseam.pk8"),
-        output_dir.join("reseam.der"),
-        key_path,
-        cert_path,
-    )?;
-
-    for unsigned_apk in find_output_apks(tmp_dir.path())? {
-        let file_name = unsigned_apk
-            .file_name()
-            .context("temporary APK output is missing a filename")?;
-        let output_path = output_dir.join(file_name);
-        sign_apk_to_path(&unsigned_apk, &output_path, &signing_key)?;
-    }
-
-    info!(output_dir = %output_dir.display(), "patched split APK set written");
-    Ok(())
-}
-
-fn find_output_apks(dir: &Path) -> Result<Vec<PathBuf>> {
-    let mut apks = Vec::new();
-    for entry in std::fs::read_dir(dir).context("failed to read temp directory")? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.extension().is_some_and(|ext| ext == "apk") {
-            apks.push(path);
-        }
-    }
-    apks.sort();
-    Ok(apks)
-}
-
-fn sign_apk_to_path(
-    unsigned_path: &Path,
-    output_path: &Path,
-    signing_key: &SigningKey,
-) -> Result<()> {
-    let unsigned_bytes = std::fs::read(unsigned_path)
-        .with_context(|| format!("failed to read {}", unsigned_path.display()))?;
-    info!(
-        unsigned_path = %unsigned_path.display(),
-        unsigned_size = unsigned_bytes.len(),
-        "loaded patched APK bytes"
-    );
-
-    info!("signing APK with Signature Scheme v2");
-    let signed_bytes =
-        reseam_sign::v2::sign(&unsigned_bytes, signing_key).context("v2 signing failed")?;
-
-    std::fs::write(output_path, &signed_bytes)
-        .with_context(|| format!("failed to write {}", output_path.display()))?;
-
-    info!(
-        output_path = %output_path.display(),
-        size_mb = signed_bytes.len() as f64 / (1024.0 * 1024.0),
-        "patched APK written"
-    );
-    Ok(())
-}
-
-fn load_or_generate_key(
-    default_key_path: PathBuf,
-    default_cert_path: PathBuf,
-    key_path: Option<&Path>,
-    cert_path: Option<&Path>,
-) -> Result<SigningKey> {
-    let key_path = key_path.map(Path::to_path_buf);
-    let cert_path = cert_path.map(Path::to_path_buf);
-
-    let (key_path, cert_path) = match (key_path, cert_path) {
-        (Some(k), Some(c)) => (k, c),
-        (None, None) => (default_key_path, default_cert_path),
-        _ => bail!("--key and --cert must both be provided"),
-    };
-
-    if key_path.exists() && cert_path.exists() {
-        info!(
-            key = %key_path.display(),
-            cert = %cert_path.display(),
-            "using existing signing keypair"
-        );
-    } else {
-        info!(
-            key = %key_path.display(),
-            cert = %cert_path.display(),
-            "generating signing keypair"
-        );
-        let generated = GeneratedKey::generate().context("failed to generate signing key")?;
-        generated
-            .save(&key_path, &cert_path)
-            .context("failed to save signing key")?;
-    }
-
-    let key_bytes = std::fs::read(&key_path)
-        .with_context(|| format!("failed to read key {}", key_path.display()))?;
-    let cert_bytes = std::fs::read(&cert_path)
-        .with_context(|| format!("failed to read cert {}", cert_path.display()))?;
-    SigningKey::from_pkcs8(&key_bytes, cert_bytes).context("failed to load signing key")
-}
-
-fn build_execution_plan(
-    bundle: &PatchBundle,
-    enabled_patches: &[String],
-    disabled_patches: &[String],
-    option_args: &[String],
-) -> Result<ExecutionPlan> {
-    let mut plan = ExecutionPlan::new();
-
-    for patch in enabled_patches {
-        plan.select_patch(patch.clone());
-    }
-    for patch in disabled_patches {
-        plan.disable_patch(patch.clone());
-    }
-
-    for raw in option_args {
-        let (patch_name, option_key, value) = parse_option_arg(raw)?;
-        let declaration = find_option_declaration(bundle, &patch_name, &option_key)?;
-        let parsed_value = declaration
-            .parse_value(&value)
-            .with_context(|| format!("failed to parse --option {raw}"))?;
-
-        let mut patch_options = plan
-            .options()
-            .get(&patch_name)
-            .cloned()
-            .unwrap_or_else(PatchOptions::new);
-        patch_options.set(option_key, parsed_value);
-        plan.set_patch_options(patch_name, patch_options);
-    }
-
-    Ok(plan)
-}
-
-fn parse_option_arg(raw: &str) -> Result<(String, String, String)> {
-    let (lhs, value) = raw
-        .split_once('=')
-        .with_context(|| format!("invalid option '{raw}': expected PATCH.KEY=VALUE"))?;
-    let (patch_name, option_key) = lhs
-        .split_once('.')
-        .with_context(|| format!("invalid option '{raw}': expected PATCH.KEY=VALUE"))?;
-    if patch_name.is_empty() || option_key.is_empty() {
-        bail!("invalid option '{raw}': patch and key must be non-empty");
-    }
-    Ok((
-        patch_name.to_string(),
-        option_key.to_string(),
-        value.to_string(),
-    ))
-}
-
 fn cmd_bundle_keygen(out: &Path) -> Result<()> {
     use rand::RngCore;
     use std::os::unix::fs::OpenOptionsExt;
@@ -927,16 +676,7 @@ fn cmd_bundle_keygen(out: &Path) -> Result<()> {
     println!("Ed25519 keypair generated");
     println!("  private seed: {}", out.display());
     println!("  public key (hex): {}", hex::encode(pubkey));
-    println!();
-    println!("Paste this into reseam_patcher::bundle::TRUSTED_KEYS:");
-    print!("    [");
-    for (i, b) in pubkey.iter().enumerate() {
-        if i > 0 {
-            print!(", ");
-        }
-        print!("0x{b:02x}");
-    }
-    println!("],");
+    println!("  trust this signer in your client before loading its bundles");
     Ok(())
 }
 
@@ -1034,7 +774,10 @@ fn cmd_bundle_pack(dir: &Path, key_path: &Path, out_path: &Path) -> Result<()> {
     if seed.len() != 32 {
         bail!("signing key must be exactly 32 bytes, got {}", seed.len());
     }
-    let seed: [u8; 32] = seed.as_slice().try_into().unwrap();
+    let seed: [u8; 32] = seed
+        .as_slice()
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("signing key must be exactly 32 bytes"))?;
     let signing_key = ed25519_dalek::SigningKey::from_bytes(&seed);
     let pubkey = signing_key.verifying_key().to_bytes();
     let signature = ed25519_dalek::Signer::sign(&signing_key, &manifest_bytes).to_bytes();
@@ -1091,21 +834,4 @@ fn toml_string(s: &str) -> String {
     }
     out.push('"');
     out
-}
-
-fn find_option_declaration<'a>(
-    bundle: &'a PatchBundle,
-    patch_name: &str,
-    option_key: &str,
-) -> Result<&'a OptionDeclaration> {
-    let patch = bundle
-        .patches
-        .iter()
-        .find(|patch| patch.name() == patch_name)
-        .with_context(|| format!("unknown patch '{patch_name}'"))?;
-    patch
-        .options()
-        .iter()
-        .find(|decl| decl.key == option_key)
-        .with_context(|| format!("unknown option '{option_key}' for patch '{patch_name}'"))
 }

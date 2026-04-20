@@ -79,7 +79,7 @@ fn resolve_namespace<'a>(document: &AxmlDocument, name: &'a str) -> (Option<u32>
     if let Some(local) = name.strip_prefix("android:") {
         let ns_idx = document.elements.iter().find_map(|e| {
             if let AxmlEvent::StartNamespace { uri, .. } = e {
-                if document.string(*uri).map_or(false, |s| s == ANDROID_NS_URI) {
+                if document.string(*uri) == Some(ANDROID_NS_URI) {
                     return Some(*uri);
                 }
             }
@@ -97,7 +97,7 @@ fn attr_matches(
     ns: Option<u32>,
     local: &str,
 ) -> bool {
-    let name_matches = document.string(attr.name).map_or(false, |s| s == local);
+    let name_matches = document.string(attr.name) == Some(local);
     let ns_matches = match (attr.namespace, ns) {
         (None, None) => true,
         (Some(a), Some(b)) => a == b,
@@ -355,7 +355,7 @@ pub fn xml_find_by_tag(doc: u32, tag: String) -> Vec<u32> {
         if let Some(Some((document, _))) = docs.get(idx) {
             for (i, event) in document.elements.iter().enumerate() {
                 if let AxmlEvent::StartElement { name, .. } = event {
-                    if document.string(*name).map_or(false, |s| s == tag) {
+                    if document.string(*name).is_some_and(|s| s == tag) {
                         results.push(i as u32);
                     }
                 }

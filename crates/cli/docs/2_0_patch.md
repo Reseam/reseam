@@ -50,7 +50,7 @@ If you pass `--key` and `--cert`, the CLI uses that PKCS#8 key and DER-encoded X
 - Single-APK mode: Reseam looks for `<output>.pk8` and `<output>.der` next to the output. If both exist, it reuses them; otherwise it generates a fresh ECDSA P-256 keypair with a self-signed certificate and writes them to those paths.
 - Split-APK mode: Reseam looks for `reseam.pk8` and `reseam.der` inside `--output-dir`. Same reuse-or-generate behavior. All splits are signed with the same key.
 
-Bundle signatures are verified on load against the trusted key list in `reseam_patcher::bundle::TRUSTED_KEYS`. An unsigned bundle, a bundle signed by an untrusted key, or a tampered manifest stops the run before any patching happens.
+Bundle signatures are verified on load against the bundle's embedded public key, then the CLI checks whether that signer is trusted. An unsigned bundle, a bundle signed by an untrusted key, or a tampered manifest stops the run before any patching happens.
 
 ## Dry run
 

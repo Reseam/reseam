@@ -17,7 +17,7 @@ pub use reseam_apk::reseam_dex;
 
 pub mod prelude {
     pub use crate::context::PatchContext;
-    pub use crate::engine::ExecutionPlan;
+    pub use crate::engine::{ExecutionPlan, ProgressEvent};
     pub use crate::error::{PatcherError, Result};
     pub use crate::log::{LogEntry, LogLevel, PatchLog};
     pub use crate::options::{OptionDeclaration, OptionType, OptionValue, PatchOptions};

@@ -6,7 +6,7 @@ use crate::patch::Patch;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -42,6 +42,14 @@ struct BundleInfo {
     format_version: u32,
 }
 
+#[derive(Debug, Clone)]
+pub struct BundleInspection {
+    pub name: String,
+    pub author: String,
+    pub description: String,
+    pub public_key: [u8; 32],
+}
+
 pub struct PatchBundle {
     pub name: String,
     pub author: String,
@@ -51,9 +59,25 @@ pub struct PatchBundle {
     _extracted: TempDir,
 }
 
+pub struct BundleKeepAlive {
+    _extracted: TempDir,
+}
+
 impl PatchBundle {
     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
         Self::load_with_trust_anchors(path, TRUSTED_KEYS)
+    }
+
+    pub fn inspect(path: impl AsRef<Path>) -> Result<BundleInspection> {
+        let mut archive = open_bundle_archive(path.as_ref())?;
+        scan_payload_entries(&mut archive.archive, &archive.manifest, |_, _| Ok(()))?;
+
+        Ok(BundleInspection {
+            name: archive.manifest.bundle.name,
+            author: archive.manifest.bundle.author,
+            description: archive.manifest.bundle.description,
+            public_key: archive.public_key,
+        })
     }
 
     pub fn load_with_trust_anchors(
@@ -62,65 +86,10 @@ impl PatchBundle {
     ) -> Result<Self> {
         let path = path.as_ref();
         info!(bundle_path = %path.display(), "loading .reseam bundle");
-
-        let file = File::open(path).map_err(|e| PatcherError::Bundle {
-            reason: format!("failed to open {}: {e}", path.display()),
-        })?;
-        let mut archive = ZipArchive::new(file).map_err(|e| PatcherError::Bundle {
-            reason: format!("failed to open zip {}: {e}", path.display()),
-        })?;
-
-        let mimetype = read_entry(&mut archive, "mimetype")?;
-        if mimetype != BUNDLE_MIMETYPE.as_bytes() {
-            return Err(PatcherError::Bundle {
-                reason: format!("invalid mimetype marker (expected {BUNDLE_MIMETYPE})"),
-            });
-        }
-
-        let manifest_bytes = read_entry(&mut archive, "manifest.toml")?;
-        let pubkey_bytes = read_entry(&mut archive, "manifest.pubkey")?;
-        let sig_bytes = read_entry(&mut archive, "manifest.sig")?;
-
-        let pubkey_arr: [u8; 32] =
-            pubkey_bytes
-                .as_slice()
-                .try_into()
-                .map_err(|_| PatcherError::Bundle {
-                    reason: format!(
-                        "manifest.pubkey has wrong length: {} (expected 32)",
-                        pubkey_bytes.len()
-                    ),
-                })?;
-        if !trusted_keys.iter().any(|k| k == &pubkey_arr) {
+        let mut archive = open_bundle_archive(path)?;
+        if !trusted_keys.iter().any(|key| key == &archive.public_key) {
             return Err(PatcherError::Bundle {
                 reason: "signing key is not in the trusted anchor list".into(),
-            });
-        }
-        let verifying_key =
-            VerifyingKey::from_bytes(&pubkey_arr).map_err(|e| PatcherError::Bundle {
-                reason: format!("invalid Ed25519 public key: {e}"),
-            })?;
-        let signature = Signature::from_slice(&sig_bytes).map_err(|e| PatcherError::Bundle {
-            reason: format!("invalid Ed25519 signature: {e}"),
-        })?;
-        verifying_key
-            .verify(&manifest_bytes, &signature)
-            .map_err(|_| PatcherError::Bundle {
-                reason: "manifest signature verification failed".into(),
-            })?;
-
-        let manifest: BundleManifest =
-            toml::from_str(std::str::from_utf8(&manifest_bytes).map_err(|e| {
-                PatcherError::Bundle {
-                    reason: format!("manifest.toml not UTF-8: {e}"),
-                }
-            })?)?;
-        if manifest.bundle.format_version != BUNDLE_FORMAT_VERSION {
-            return Err(PatcherError::Bundle {
-                reason: format!(
-                    "unsupported bundle format_version: {} (patcher supports {})",
-                    manifest.bundle.format_version, BUNDLE_FORMAT_VERSION
-                ),
             });
         }
 
@@ -129,43 +98,10 @@ impl PatchBundle {
         })?;
         let mut jar_files = Vec::new();
         let mut extension_dex = Vec::new();
-        let mut seen_payload: BTreeMap<String, ()> = BTreeMap::new();
-
-        for i in 0..archive.len() {
-            let mut entry = archive.by_index(i).map_err(|e| PatcherError::Bundle {
-                reason: format!("zip entry {i}: {e}"),
-            })?;
-            let name = entry.name().to_string();
-            if entry.is_dir() {
-                continue;
-            }
-            if matches!(
-                name.as_str(),
-                "mimetype" | "manifest.toml" | "manifest.pubkey" | "manifest.sig"
-            ) {
-                continue;
-            }
-
-            let mut contents = Vec::with_capacity(entry.size() as usize);
-            entry
-                .read_to_end(&mut contents)
-                .map_err(|e| PatcherError::Bundle {
-                    reason: format!("read {name}: {e}"),
-                })?;
-
-            let expected = manifest.files.get(&name).ok_or_else(|| PatcherError::Bundle {
-                reason: format!("file {name} is not declared in manifest [files]"),
-            })?;
-            let actual = hex::encode(Sha256::digest(&contents));
-            if actual != *expected {
-                return Err(PatcherError::Bundle {
-                    reason: format!("hash mismatch for {name}"),
-                });
-            }
-
-            let out = tempdir.path().join(&name);
-            std::fs::write(&out, &contents).map_err(|e| PatcherError::Bundle {
-                reason: format!("write {}: {e}", out.display()),
+        scan_payload_entries(&mut archive.archive, &archive.manifest, |name, contents| {
+            let out = tempdir.path().join(name);
+            std::fs::write(&out, contents).map_err(|error| PatcherError::Bundle {
+                reason: format!("write {}: {error}", out.display()),
             })?;
 
             if name.ends_with(".jar") {
@@ -173,18 +109,8 @@ impl PatchBundle {
             } else if name.ends_with(".dex") || name.ends_with(".rve") {
                 extension_dex.push(out);
             }
-            seen_payload.insert(name, ());
-        }
-
-        for declared in manifest.files.keys() {
-            if !seen_payload.contains_key(declared) {
-                return Err(PatcherError::Bundle {
-                    reason: format!(
-                        "manifest declares {declared} but it is missing from the archive"
-                    ),
-                });
-            }
-        }
+            Ok(())
+        })?;
 
         jar_files.sort();
         extension_dex.sort();
@@ -203,21 +129,154 @@ impl PatchBundle {
         }
 
         info!(
-            bundle_name = %manifest.bundle.name,
+            bundle_name = %archive.manifest.bundle.name,
             patch_count = patches.len(),
             extension_dex_count = extension_dex.len(),
             "patch bundle loaded"
         );
 
         Ok(Self {
-            name: manifest.bundle.name,
-            author: manifest.bundle.author,
-            description: manifest.bundle.description,
+            name: archive.manifest.bundle.name,
+            author: archive.manifest.bundle.author,
+            description: archive.manifest.bundle.description,
             patches,
             extension_dex,
             _extracted: tempdir,
         })
     }
+
+    pub fn into_patches_and_keepalive(self) -> (Vec<Box<dyn Patch>>, BundleKeepAlive) {
+        (
+            self.patches,
+            BundleKeepAlive {
+                _extracted: self._extracted,
+            },
+        )
+    }
+}
+
+struct OpenBundleArchive<R> {
+    archive: ZipArchive<R>,
+    manifest: BundleManifest,
+    public_key: [u8; 32],
+}
+
+fn open_bundle_archive(path: &Path) -> Result<OpenBundleArchive<File>> {
+    let file = File::open(path).map_err(|e| PatcherError::Bundle {
+        reason: format!("failed to open {}: {e}", path.display()),
+    })?;
+    let mut archive = ZipArchive::new(file).map_err(|e| PatcherError::Bundle {
+        reason: format!("failed to open zip {}: {e}", path.display()),
+    })?;
+
+    let mimetype = read_entry(&mut archive, "mimetype")?;
+    if mimetype != BUNDLE_MIMETYPE.as_bytes() {
+        return Err(PatcherError::Bundle {
+            reason: format!("invalid mimetype marker (expected {BUNDLE_MIMETYPE})"),
+        });
+    }
+
+    let manifest_bytes = read_entry(&mut archive, "manifest.toml")?;
+    let pubkey_bytes = read_entry(&mut archive, "manifest.pubkey")?;
+    let sig_bytes = read_entry(&mut archive, "manifest.sig")?;
+
+    let public_key: [u8; 32] = pubkey_bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| PatcherError::Bundle {
+            reason: format!(
+                "manifest.pubkey has wrong length: {} (expected 32)",
+                pubkey_bytes.len()
+            ),
+        })?;
+    let verifying_key = VerifyingKey::from_bytes(&public_key).map_err(|e| PatcherError::Bundle {
+        reason: format!("invalid Ed25519 public key: {e}"),
+    })?;
+    let signature = Signature::from_slice(&sig_bytes).map_err(|e| PatcherError::Bundle {
+        reason: format!("invalid Ed25519 signature: {e}"),
+    })?;
+    verifying_key
+        .verify(&manifest_bytes, &signature)
+        .map_err(|_| PatcherError::Bundle {
+            reason: "manifest signature verification failed".into(),
+        })?;
+
+    let manifest: BundleManifest =
+        toml::from_str(std::str::from_utf8(&manifest_bytes).map_err(|e| PatcherError::Bundle {
+            reason: format!("manifest.toml not UTF-8: {e}"),
+        })?)?;
+    if manifest.bundle.format_version != BUNDLE_FORMAT_VERSION {
+        return Err(PatcherError::Bundle {
+            reason: format!(
+                "unsupported bundle format_version: {} (patcher supports {})",
+                manifest.bundle.format_version, BUNDLE_FORMAT_VERSION
+            ),
+        });
+    }
+
+    Ok(OpenBundleArchive {
+        archive,
+        manifest,
+        public_key,
+    })
+}
+
+fn scan_payload_entries<R, F>(
+    archive: &mut ZipArchive<R>,
+    manifest: &BundleManifest,
+    mut on_entry: F,
+) -> Result<()>
+where
+    R: Read + std::io::Seek,
+    F: FnMut(&str, &[u8]) -> Result<()>,
+{
+    let mut seen_payload = BTreeSet::new();
+
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index).map_err(|e| PatcherError::Bundle {
+            reason: format!("zip entry {index}: {e}"),
+        })?;
+        let name = entry.name().to_string();
+        if entry.is_dir() {
+            continue;
+        }
+        if matches!(
+            name.as_str(),
+            "mimetype" | "manifest.toml" | "manifest.pubkey" | "manifest.sig"
+        ) {
+            continue;
+        }
+
+        let mut contents = Vec::with_capacity(entry.size() as usize);
+        entry
+            .read_to_end(&mut contents)
+            .map_err(|e| PatcherError::Bundle {
+                reason: format!("read {name}: {e}"),
+            })?;
+
+        let expected = manifest.files.get(&name).ok_or_else(|| PatcherError::Bundle {
+            reason: format!("file {name} is not declared in manifest [files]"),
+        })?;
+        let actual = hex::encode(Sha256::digest(&contents));
+        if actual != *expected {
+            return Err(PatcherError::Bundle {
+                reason: format!("hash mismatch for {name}"),
+            });
+        }
+
+        on_entry(&name, &contents)?;
+        seen_payload.insert(name);
+    }
+
+    for declared in manifest.files.keys() {
+        if !seen_payload.contains(declared) {
+            return Err(PatcherError::Bundle {
+                reason: format!("manifest declares {declared} but it is missing from the archive"),
+            });
+        }
+    }
+
+    Ok(())
 }
 
 fn read_entry<R: Read + std::io::Seek>(

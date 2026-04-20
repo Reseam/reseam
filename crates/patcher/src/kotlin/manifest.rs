@@ -479,10 +479,7 @@ pub fn manifest_copy_intent_filters(from_activity: String, to_activity: String) 
                 if let reseam_apk::axml::AxmlEvent::StartElement { name, .. } =
                     &manifest.elements[i]
                 {
-                    if manifest
-                        .string(*name)
-                        .map_or(false, |s| s == "intent-filter")
-                    {
+                    if manifest.string(*name) == Some("intent-filter") {
                         if let Some(end) = manifest.find_end_element(i) {
                             let events: Vec<_> = manifest.elements[i..=end].to_vec();
                             filter_ranges.push(events);
@@ -554,7 +551,7 @@ pub fn manifest_copy_intent_filters_in_component(
             let mut i = from_idx + 1;
             while i < from_end {
                 if let reseam_apk::axml::AxmlEvent::StartElement { name, .. } = &manifest.elements[i] {
-                    if manifest.string(*name).map_or(false, |s| s == "intent-filter") {
+                    if manifest.string(*name) == Some("intent-filter") {
                         if let Some(end) = manifest.find_end_element(i) {
                             let events: Vec<_> = manifest.elements[i..=end].to_vec();
                             filter_ranges.push(events);

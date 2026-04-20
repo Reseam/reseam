@@ -9,7 +9,7 @@ Command-line interface for Reseam. Provides the `reseam` binary.
 Apply a patch bundle to an APK.
 
 ```bash
-reseam patch app.apk --bundle patches/ --output patched.apk
+reseam patch app.apk --bundle patches.reseam --output patched.apk
 ```
 
 For split APKs:
@@ -18,7 +18,7 @@ For split APKs:
 reseam patch base.apk \
   --split config.arm64_v8a.apk \
   --split config.xxhdpi.apk \
-  --bundle patches/ \
+  --bundle patches.reseam \
   --output-dir patched/
 ```
 
@@ -30,7 +30,7 @@ Options:
 - `--enable` / `--disable` — toggle specific patches by name
 - `--option PATCH.KEY=VALUE` — set patch options
 - `--dry-run` — resolve and validate without applying patches
-- bundle signatures are verified automatically when the bundle is loaded; patching fails if the signing key is not trusted or the manifest signature is invalid
+- bundle signatures are verified automatically when the bundle is loaded; patching fails if the signer is not trusted or the manifest signature is invalid
 
 Argument summary:
 - `<apk>` — base APK path

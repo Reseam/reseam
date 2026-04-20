@@ -15,14 +15,13 @@ Generate an Ed25519 signing seed for bundle packing.
 reseam bundle keygen --out reseam.key
 ```
 
-Writes a raw 32-byte seed with mode `0600`. The public key is printed as hex and in the form expected by `reseam_patcher::bundle::TRUSTED_KEYS`:
+Writes a raw 32-byte seed with mode `0600`. The public key is printed as hex so clients can identify and trust the signer:
 
 ```
 Ed25519 keypair generated
   private seed: reseam.key
   public key (hex): 1f3c...
-Paste this into reseam_patcher::bundle::TRUSTED_KEYS:
-    [0x1f, 0x3c, ...],
+  trust this signer in your client before loading its bundles
 ```
 
 The command refuses to overwrite an existing file.
@@ -77,7 +76,7 @@ description: YouTube and YouTube Music patches
          - mode (Enum, optional)
 ```
 
-The bundle is loaded through the same path `reseam patch` uses: its signature is verified against a trusted key in `reseam_patcher::bundle::TRUSTED_KEYS`, and its `format_version` must match. A bundle that doesn't verify fails before any patch metadata is printed.
+The bundle is loaded through the same path `reseam patch` uses: its signature is verified against the bundle's embedded public key, then the CLI applies its trust policy for that signer. A bundle with an invalid signature, an untrusted signer, or the wrong `format_version` fails before any patch metadata is printed.
 
 | Argument | Purpose |
 |----------|---------|
