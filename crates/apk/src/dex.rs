@@ -3,8 +3,8 @@
 
 use crate::error::Result;
 use crate::zip::reader::ApkReader;
-use std::io::{Read, Seek};
 use reseam_dex::{MultiDexContainer, ParseOptions};
+use std::io::{Read, Seek};
 use tracing::{debug, instrument};
 
 /// Extract and parse all DEX files from a single APK reader.
@@ -13,9 +13,8 @@ pub fn extract_dex<R: Read + Seek>(
     reader: &mut ApkReader<R>,
     opts: ParseOptions,
 ) -> Result<MultiDexContainer> {
-    let dex_entries = reader.read_all_dex()?;
-    let buffers: Vec<&[u8]> = dex_entries.iter().map(|(_, buf)| buf.as_slice()).collect();
-    let container = MultiDexContainer::parse(&buffers, opts)?;
+    let mut container = MultiDexContainer::new();
+    append_reader_dex(reader, &mut container, &opts)?;
     debug!(dex_count = container.len(), "extracted DEX files from APK");
     Ok(container)
 }
@@ -29,17 +28,10 @@ pub fn extract_dex_unified<R: Read + Seek>(
     readers: &mut [&mut ApkReader<R>],
     opts: ParseOptions,
 ) -> Result<MultiDexContainer> {
-    let mut all_buffers: Vec<Vec<u8>> = Vec::new();
-
+    let mut container = MultiDexContainer::new();
     for reader in readers.iter_mut() {
-        let dex_entries = reader.read_all_dex()?;
-        for (_, buf) in dex_entries {
-            all_buffers.push(buf);
-        }
+        append_reader_dex(reader, &mut container, &opts)?;
     }
-
-    let refs: Vec<&[u8]> = all_buffers.iter().map(|b| b.as_slice()).collect();
-    let container = MultiDexContainer::parse(&refs, opts)?;
     debug!(
         dex_count = container.len(),
         "extracted unified DEX container"
@@ -92,7 +84,7 @@ pub fn from_apk(apk_bytes: &[u8], opts: ParseOptions) -> Result<MultiDexContaine
         let mut entry = archive.by_name(name)?;
         let mut buf = Vec::new();
         entry.read_to_end(&mut buf)?;
-        dex_files.push(reseam_dex::parse(&buf, opts.clone())?);
+        dex_files.push(reseam_dex::parse_owned(buf, opts.clone())?);
     }
 
     let mut container = MultiDexContainer::new();
@@ -104,6 +96,19 @@ pub fn from_apk(apk_bytes: &[u8], opts: ParseOptions) -> Result<MultiDexContaine
         "parsed DEX entries from APK bytes"
     );
     Ok(container)
+}
+
+fn append_reader_dex<R: Read + Seek>(
+    reader: &mut ApkReader<R>,
+    container: &mut MultiDexContainer,
+    opts: &ParseOptions,
+) -> Result<()> {
+    let dex_names = reader.dex_entry_names();
+    for name in dex_names {
+        let buffer = reader.read_entry(&name)?;
+        container.add_dex(reseam_dex::parse_owned(buffer, opts.clone())?);
+    }
+    Ok(())
 }
 
 /// Sort key for DEX entry names. Android convention:

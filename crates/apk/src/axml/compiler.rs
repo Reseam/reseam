@@ -239,8 +239,7 @@ fn emit_start_element(
         };
 
         let attr_name_idx = pool.intern(attr_local);
-        let (typed_value, raw_value) =
-            parse_attr_value(&value, pool, resources.as_deref_mut())?;
+        let (typed_value, raw_value) = parse_attr_value(&value, pool, resources.as_deref_mut())?;
 
         attributes.push(AxmlAttribute {
             namespace,

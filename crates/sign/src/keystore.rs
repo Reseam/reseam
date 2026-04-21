@@ -5,6 +5,7 @@ use crate::der;
 use crate::error::{internal, invalid, Result};
 use ring::rand::SystemRandom;
 use ring::signature::{self, EcdsaKeyPair, KeyPair};
+use std::path::Path;
 use tracing::{debug, instrument};
 
 pub struct SigningKey {
@@ -46,6 +47,13 @@ impl SigningKey {
             key_pair,
             certificate_der,
         })
+    }
+
+    #[instrument(level = "info", skip_all, fields(key_path = %key_path.display(), cert_path = %cert_path.display()))]
+    pub fn from_files(key_path: &Path, cert_path: &Path) -> Result<Self> {
+        let pkcs8_der = std::fs::read(key_path)?;
+        let certificate_der = std::fs::read(cert_path)?;
+        Self::from_pkcs8(&pkcs8_der, certificate_der)
     }
 
     #[instrument(level = "debug", skip(self, data), fields(payload_len = data.len()))]

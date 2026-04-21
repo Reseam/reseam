@@ -143,6 +143,24 @@ impl MultiDexContainer {
         self.dex_files.get_mut(index)
     }
 
+    pub fn dex_resolved(&mut self, index: usize) -> Result<Option<&DexFile>> {
+        let dex = match self.dex_files.get_mut(index) {
+            Some(dex) => dex,
+            None => return Ok(None),
+        };
+        dex.resolve_all_class_data()?;
+        Ok(Some(dex))
+    }
+
+    pub fn dex_resolved_mut(&mut self, index: usize) -> Result<Option<&mut DexFile>> {
+        let dex = match self.dex_files.get_mut(index) {
+            Some(dex) => dex,
+            None => return Ok(None),
+        };
+        dex.resolve_all_class_data()?;
+        Ok(Some(dex))
+    }
+
     pub fn find_class(&self, descriptor: &str) -> Option<(usize, &crate::types::class::ClassDef)> {
         for (i, dex) in self.dex_files.iter().enumerate() {
             if let Some(class) = dex.find_class(descriptor) {
@@ -166,6 +184,10 @@ impl MultiDexContainer {
 
     pub fn add_dex(&mut self, dex: DexFile) {
         self.dex_files.push(dex);
+    }
+
+    pub fn extend(&mut self, mut other: Self) {
+        self.dex_files.append(&mut other.dex_files);
     }
 
     pub fn remove_dex(&mut self, index: usize) -> DexFile {

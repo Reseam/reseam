@@ -3,10 +3,10 @@
 
 pub(crate) mod bytecode;
 pub(crate) mod convert;
+mod files;
 mod log_host;
 mod manifest;
 mod options;
-mod files;
 mod resources;
 pub mod types;
 mod xml;
@@ -26,7 +26,7 @@ use tracing::warn;
 use crate::context::PatchContext;
 use crate::error::{PatcherError, Result};
 use crate::options::OptionDeclaration;
-use crate::patch::{Compatibility, Patch};
+use crate::patch::{Compatibility, Patch, PatchId, PatchSpec};
 
 #[derive(Clone, Copy)]
 pub(crate) struct MethodHandle {
@@ -216,39 +216,8 @@ pub(crate) fn get_method_mut(dex: &mut DexFile, mh: MethodHandle) -> Option<&mut
     result
 }
 
-pub(crate) fn find_method_location(
-    ctx: &PatchContext<'_>,
-    dex_idx: usize,
-    method: &EncodedMethod,
-) -> Option<(usize, usize, bool)> {
-    let dex = ctx.dex_file(dex_idx)?;
-    for (ci, class) in dex.classes.iter().enumerate() {
-        if let Some(data) = &class.class_data {
-            for (mi, m) in data.direct_methods.iter().enumerate() {
-                if std::ptr::eq(m, method) {
-                    return Some((ci, mi, false));
-                }
-            }
-            for (mi, m) in data.virtual_methods.iter().enumerate() {
-                if std::ptr::eq(m, method) {
-                    return Some((ci, mi, true));
-                }
-            }
-        }
-    }
-    None
-}
-
-pub(crate) fn method_match_location(
-    ctx: &PatchContext<'_>,
-    dex_idx: usize,
-    mm: &reseam_apk::reseam_dex::MethodMatch<'_>,
-) -> Option<(usize, usize, bool)> {
-    find_method_location(ctx, dex_idx, mm.method)
-}
-
 pub(crate) fn scan_location(
-    ctx: &PatchContext<'_>,
+    ctx: &mut PatchContext<'_>,
     dex_idx: usize,
     class_idx: usize,
     method_idx: usize,
@@ -331,8 +300,7 @@ fn get_or_init_jvm() -> Result<&'static JavaVM> {
                 setup_jvm_library_path(&jvm_lib).map_err(|e| format!("{e}"))?;
             }
 
-            let lib_path = detect_runtime_library_dir()
-                .unwrap_or_else(|| PathBuf::from("."));
+            let lib_path = detect_runtime_library_dir().unwrap_or_else(|| PathBuf::from("."));
             let jvm_args = InitArgsBuilder::new()
                 .version(JNIVersion::V8)
                 .option(format!(
@@ -393,13 +361,7 @@ unsafe fn setup_jvm_library_path(path: &Path) -> Result<()> {
 }
 
 pub struct KotlinPatch {
-    name: String,
-    description: String,
-    compatible_with: Vec<Compatibility>,
-    enabled_by_default: bool,
-    depends_on: Vec<String>,
-    extension_dex: Vec<String>,
-    options: Vec<OptionDeclaration>,
+    spec: PatchSpec,
     patch_ref: jni::objects::GlobalRef,
     bundle_dir: PathBuf,
 }
@@ -411,32 +373,8 @@ unsafe impl Send for KotlinPatch {}
 unsafe impl Sync for KotlinPatch {}
 
 impl Patch for KotlinPatch {
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn description(&self) -> &str {
-        &self.description
-    }
-
-    fn compatible_with(&self) -> &[Compatibility] {
-        &self.compatible_with
-    }
-
-    fn enabled_by_default(&self) -> bool {
-        self.enabled_by_default
-    }
-
-    fn depends_on(&self) -> &[String] {
-        &self.depends_on
-    }
-
-    fn extension_dex(&self) -> &[String] {
-        &self.extension_dex
-    }
-
-    fn options(&self) -> &[OptionDeclaration] {
-        &self.options
+    fn spec(&self) -> &PatchSpec {
+        &self.spec
     }
 
     fn execute(&self, ctx: &mut PatchContext) -> Result<()> {
@@ -482,7 +420,12 @@ fn invoke_patch_method(
         .and_then(|v| v.l())
         .map_err(|e| jvm_err(format!("patch.getClass(): {e}")))?;
     let loader = env
-        .call_method(&patch_class, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])
+        .call_method(
+            &patch_class,
+            "getClassLoader",
+            "()Ljava/lang/ClassLoader;",
+            &[],
+        )
         .and_then(|v| v.l())
         .map_err(|e| jvm_err(format!("patch class loader: {e}")))?;
     let runtime_name = env
@@ -498,11 +441,7 @@ fn invoke_patch_method(
         .and_then(|v| v.l())
         .map_err(|e| jvm_err(format!("loadClass(PatchRuntime): {e}")))?;
     let runtime = env
-        .new_object(
-            jni::objects::JClass::from(runtime_class),
-            "()V",
-            &[],
-        )
+        .new_object(jni::objects::JClass::from(runtime_class), "()V", &[])
         .map_err(|e| jvm_err(format!("construct PatchRuntime: {e}")))?;
 
     env.call_method(
@@ -511,13 +450,13 @@ fn invoke_patch_method(
         "(Lapp/reseam/patch/PatchRuntime;)V",
         &[JValue::Object(&runtime)],
     )
-        .map_err(|e| {
-            if env.exception_check().unwrap_or(false) {
-                env.exception_describe().ok();
-                env.exception_clear().ok();
-            }
-            jvm_err(format!("{method_name}(PatchRuntime): {e}"))
-        })?;
+    .map_err(|e| {
+        if env.exception_check().unwrap_or(false) {
+            env.exception_describe().ok();
+            env.exception_clear().ok();
+        }
+        jvm_err(format!("{method_name}(PatchRuntime): {e}"))
+    })?;
 
     if env.exception_check().unwrap_or(false) {
         env.exception_describe().ok();
@@ -870,7 +809,7 @@ fn read_option_declarations(
         };
 
         result.push(OptionDeclaration {
-            key: read_string_field(env, &elem, "getKey")?,
+            key: read_string_field(env, &elem, "getKey")?.into(),
             title: read_string_field(env, &elem, "getTitle")?,
             description: read_string_field(env, &elem, "getDescription")?,
             option_type,
@@ -941,13 +880,9 @@ fn collect_patch_obj<'a>(
     let compat = read_compatibility_list(env, patch_obj)?;
     let mut ext_dex = read_string_list(env, patch_obj, "getExtensionDex")?
         .into_iter()
-        .map(|path| bundle_dir.join(path).to_string_lossy().into_owned())
+        .map(|path| bundle_dir.join(path))
         .collect::<Vec<_>>();
-    ext_dex.extend(
-        bundle_extensions
-            .iter()
-            .map(|path| path.to_string_lossy().into_owned()),
-    );
+    ext_dex.extend(bundle_extensions.iter().cloned());
     ext_dex.sort();
     ext_dex.dedup();
     let options = read_option_declarations(env, patch_obj)?;
@@ -957,13 +892,15 @@ fn collect_patch_obj<'a>(
         .map_err(|e| jvm_err(format!("global ref: {e}")))?;
 
     Ok(KotlinPatch {
-        name,
-        description,
-        compatible_with: compat,
-        enabled_by_default: enabled,
-        depends_on: deps,
-        extension_dex: ext_dex,
-        options,
+        spec: PatchSpec {
+            id: PatchId::from(name),
+            description: description.into(),
+            enabled_by_default: enabled,
+            dependencies: deps.into_iter().map(PatchId::from).collect(),
+            compatibility: compat,
+            options,
+            extension_dex: ext_dex,
+        },
         patch_ref: patch_global,
         bundle_dir: bundle_dir.to_path_buf(),
     })
@@ -1081,7 +1018,7 @@ pub fn load_kotlin_patches(
             };
             if is_patch_type(&mut env, &value, &patch_class) {
                 if let Ok(p) = collect_patch_obj(&mut env, &value, bundle_dir, bundle_extensions) {
-                    if !p.name.is_empty() {
+                    if !p.name().is_empty() {
                         patches.push(Box::new(p));
                     }
                 }
@@ -1171,7 +1108,7 @@ pub fn load_kotlin_patches(
                 }
             };
             if let Ok(p) = collect_patch_obj(&mut env, &value, bundle_dir, bundle_extensions) {
-                if !p.name.is_empty() {
+                if !p.name().is_empty() {
                     patches.push(Box::new(p));
                 }
             }

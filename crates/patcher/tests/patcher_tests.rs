@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
-use reseam_apk::resources::{ResConfig, ResEntry, ResPackage, ResType, ResValue, TypeSpec};
 use reseam_apk::reseam_dex::ParseOptions;
+use reseam_apk::resources::{ResConfig, ResEntry, ResPackage, ResType, ResValue, TypeSpec};
 use reseam_apk::{ApkFile, AxmlEvent, ResourceTable};
 use reseam_patcher::bundle::PatchBundle;
 use reseam_patcher::context::PatchContext;
@@ -28,7 +28,9 @@ fn workspace_root() -> PathBuf {
 }
 
 fn run_checked(cmd: &mut Command, context: &str) {
-    let output = cmd.output().unwrap_or_else(|e| panic!("{context}: failed to spawn: {e}"));
+    let output = cmd
+        .output()
+        .unwrap_or_else(|e| panic!("{context}: failed to spawn: {e}"));
     if !output.status.success() {
         panic!(
             "{context} failed\nstatus: {}\nstdout:\n{}\nstderr:\n{}",
@@ -97,8 +99,8 @@ format_version = 1
 
     let file = File::create(&out_path).expect("create .reseam");
     let mut zip = zip::ZipWriter::new(file);
-    let stored = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Stored);
+    let stored =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
     let deflated = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
 
@@ -221,9 +223,7 @@ fn open_split_test_apk() -> (tempfile::TempDir, ApkFile) {
 fn manifest_contains_permission(apk: &ApkFile, permission: &str) -> bool {
     apk.manifest().elements.iter().any(|event| {
         let AxmlEvent::StartElement {
-            name,
-            attributes,
-            ..
+            name, attributes, ..
         } = event
         else {
             return false;
@@ -233,10 +233,7 @@ fn manifest_contains_permission(apk: &ApkFile, permission: &str) -> bool {
         }
         attributes.iter().any(|attr| {
             apk.manifest().string(attr.name) == Some("name")
-                && attr
-                    .raw_value
-                    .and_then(|idx| apk.manifest().string(idx))
-                    == Some(permission)
+                && attr.raw_value.and_then(|idx| apk.manifest().string(idx)) == Some(permission)
         })
     })
 }
@@ -272,7 +269,10 @@ fn kotlin_bundle_executes_against_runtime_api() {
         .collect::<std::collections::HashMap<_, _>>();
     assert_eq!(statuses.get("finalize-owner"), Some(&&PatchStatus::Applied));
     assert_eq!(statuses.get("runtime-api"), Some(&&PatchStatus::Applied));
-    assert_eq!(statuses.get("dependent-runtime"), Some(&&PatchStatus::Applied));
+    assert_eq!(
+        statuses.get("dependent-runtime"),
+        Some(&&PatchStatus::Applied)
+    );
     assert!(matches!(
         statuses.get("required-option"),
         Some(&PatchStatus::Skipped { .. })
@@ -280,10 +280,14 @@ fn kotlin_bundle_executes_against_runtime_api() {
 
     assert_eq!(apk.version_name(), Some("9.9-base"));
     assert_eq!(
-        apk.component_manifest(1).and_then(|manifest| manifest.version_name()),
+        apk.component_manifest(1)
+            .and_then(|manifest| manifest.version_name()),
         Some("9.9-split")
     );
-    assert!(manifest_contains_permission(&apk, "android.permission.INTERNET"));
+    assert!(manifest_contains_permission(
+        &apk,
+        "android.permission.INTERNET"
+    ));
 
     assert_eq!(
         apk.component_resources(1)
@@ -311,7 +315,9 @@ fn kotlin_bundle_executes_against_runtime_api() {
             .expect("dependent marker"),
         b"dependent".to_vec()
     );
-    assert!(apk.read_entry_from_component(0, "assets/split-marker.txt").is_err());
+    assert!(apk
+        .read_entry_from_component(0, "assets/split-marker.txt")
+        .is_err());
 }
 
 #[test]
@@ -328,6 +334,9 @@ fn kotlin_bundle_required_option_is_enforced() {
     let err = engine::apply_patches_with_plan(&mut ctx, &bundle.patches, &plan)
         .expect_err("missing required option should fail");
     let message = err.to_string();
-    assert!(message.contains("missing required option"), "got: {message}");
+    assert!(
+        message.contains("missing required option"),
+        "got: {message}"
+    );
     assert!(message.contains("token"), "got: {message}");
 }

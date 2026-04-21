@@ -303,8 +303,9 @@ pub fn xml_close(doc: u32) {
                     with_ctx(|ctx| {
                         if let Some((component_index, apk_path)) = parse_xml_slot_id(&path) {
                             ctx.inject_file_into_component(component_index, apk_path, data);
-                        } else if let Some(component_index) =
-                            path.strip_prefix("@manifest:").and_then(|s| s.parse::<usize>().ok())
+                        } else if let Some(component_index) = path
+                            .strip_prefix("@manifest:")
+                            .and_then(|s| s.parse::<usize>().ok())
                         {
                             if let Some(manifest) = ctx.component_manifest_mut(component_index) {
                                 *manifest = document.clone();

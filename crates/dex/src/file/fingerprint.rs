@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use super::pattern::InstructionPattern;
+use super::pattern::{find_pattern_span, InstructionPattern};
 use super::DexFile;
 use crate::types::access_flags::AccessFlags;
 use crate::types::class::{ClassDef, EncodedMethod};
@@ -209,7 +209,8 @@ impl DexFile {
 
         let matched_indices = if let Some(ref opcodes) = fp.opcodes {
             let code = method.code.as_ref()?;
-            find_pattern_indices(&code.instructions, opcodes)?
+            let span = find_pattern_span(&code.instructions, opcodes)?;
+            span.map(|index| index as u32).collect()
         } else {
             Vec::new()
         };
@@ -236,36 +237,4 @@ fn param_matches(actual: &str, expected: &str) -> bool {
         return actual.starts_with('[');
     }
     false
-}
-
-fn find_pattern_indices(
-    instructions: &[Instruction],
-    pattern: &[InstructionPattern],
-) -> Option<Vec<u32>> {
-    if pattern.is_empty() {
-        return Some(Vec::new());
-    }
-    if instructions.len() < pattern.len() {
-        return None;
-    }
-    'outer: for start in 0..=instructions.len() - pattern.len() {
-        for (i, pat) in pattern.iter().enumerate() {
-            match pat {
-                InstructionPattern::Any => {}
-                InstructionPattern::Opcode(matcher) => {
-                    if !matcher.matches(&instructions[start + i]) {
-                        continue 'outer;
-                    }
-                }
-                InstructionPattern::OpcodeValue(op) => {
-                    if instructions[start + i].opcode() != Some(*op) {
-                        continue 'outer;
-                    }
-                }
-            }
-        }
-        let indices: Vec<u32> = (start..start + pattern.len()).map(|i| i as u32).collect();
-        return Some(indices);
-    }
-    None
 }

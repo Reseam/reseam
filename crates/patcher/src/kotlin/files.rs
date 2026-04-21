@@ -16,7 +16,13 @@ pub fn file_component_names() -> Vec<String> {
 
 #[export]
 pub fn file_list() -> Vec<String> {
-    with_ctx(|ctx| ctx.list_files_in_component(0).unwrap_or(&[]).to_vec())
+    with_ctx(|ctx| {
+        ctx.list_files_in_component(0)
+            .unwrap_or(&[])
+            .iter()
+            .map(ToString::to_string)
+            .collect()
+    })
 }
 
 #[export]
@@ -25,7 +31,11 @@ pub fn file_list_in_component(component: String) -> Vec<String> {
         let Some(index) = component_index(ctx, &component) else {
             return Vec::new();
         };
-        ctx.list_files_in_component(index).unwrap_or(&[]).to_vec()
+        ctx.list_files_in_component(index)
+            .unwrap_or(&[])
+            .iter()
+            .map(ToString::to_string)
+            .collect()
     })
 }
 

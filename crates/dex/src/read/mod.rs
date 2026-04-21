@@ -14,6 +14,7 @@ pub mod parse;
 
 pub use parse::parse;
 pub use parse::parse_container;
+pub use parse::parse_owned;
 use tracing::debug;
 
 /// Parse a DEX file from a filesystem path.

@@ -2,44 +2,37 @@
 
 ## Prerequisites
 
-- **JDK 17.**
-- **Android SDK.** Set `ANDROID_HOME` to the SDK root.
-- **The `reseam` CLI.** Built from the Reseam repo or installed from a release.
-- **Git.**
-
-## Starting a new bundle
-
-Clone the patch bundle template, detach from its history, and rename:
-
-```bash
-git clone <template-url> my-bundle
-cd my-bundle
-rm -rf .git
-git init
-```
-
-- Edit `manifest.toml`: set `name`, `author`, and `description`.
-- Edit `settings.gradle.kts`: change `rootProject.name`.
-- Rename `apps/<example>/` to your target app's short name and update the `include(...)` lines in `settings.gradle.kts`.
+- JDK 17.
+- Android SDK with `ANDROID_HOME` set to its root. Extension modules invoke `d8` from `$ANDROID_HOME/build-tools/*/` and link against the latest `platforms/android-*/android.jar`.
+- The `reseam` CLI, built from the Reseam repo or installed from a release.
+- Git.
 
 ## First build
 
+Generate a bundle signing key the first time:
+
 ```bash
 reseam bundle keygen --out bundle-signing.key
+```
+
+Keep it private and store it outside the repository. The corresponding public key is embedded in `patches.json` so clients can verify the bundles you publish.
+
+Build:
+
+```bash
 export RESEAM_BUNDLE_KEY=$PWD/bundle-signing.key
 ./gradlew bundle
 ```
 
-Verify:
+Output: `build/bundle/<name>.reseam`.
+
+Inspect and apply to a local APK to check:
 
 ```bash
-reseam bundle list build/bundle/<bundle-name>.reseam
-```
-
-Apply to an APK during development:
-
-```bash
+reseam bundle list build/bundle/<name>.reseam
 reseam patch target.apk \
-  --bundle build/bundle/<bundle-name>.reseam \
+  --bundle build/bundle/<name>.reseam \
   --output patched.apk
 ```
+
+For the project layout itself, see [Bundles](2_bundles.md). For the full release flow, see [Publishing](5_publish.md).

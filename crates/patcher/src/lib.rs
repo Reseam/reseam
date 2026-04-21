@@ -12,16 +12,17 @@ pub mod log;
 pub mod options;
 pub mod patch;
 
+pub use crate::patch::{Compatibility, CompatibilitySpec, Patch, PatchId, PatchSpec};
 pub use reseam_apk;
 pub use reseam_apk::reseam_dex;
 
 pub mod prelude {
     pub use crate::context::PatchContext;
-    pub use crate::engine::{ExecutionPlan, ProgressEvent};
+    pub use crate::engine::{ExecutionPlan, PatchSelection, ProgressEvent, ResolvedPatchPlan};
     pub use crate::error::{PatcherError, Result};
     pub use crate::log::{LogEntry, LogLevel, PatchLog};
-    pub use crate::options::{OptionDeclaration, OptionType, OptionValue, PatchOptions};
-    pub use crate::patch::{Compatibility, Patch};
+    pub use crate::options::{OptionDeclaration, OptionKey, OptionType, OptionValue, PatchOptions};
+    pub use crate::patch::{Compatibility, CompatibilitySpec, Patch, PatchId, PatchSpec};
     pub use reseam_patcher_macros::reseam_patch;
 }
 

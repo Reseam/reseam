@@ -115,7 +115,8 @@ pub fn res_add_bool(name: String, value: bool) -> Option<u32> {
 pub fn res_add_bool_in_component(component: String, name: String, value: bool) -> Option<u32> {
     with_ctx(|ctx| {
         let index = component_index(ctx, &component)?;
-        ctx.component_resources_mut(index)?.add_bool_resource(&name, value)
+        ctx.component_resources_mut(index)?
+            .add_bool_resource(&name, value)
     })
 }
 
@@ -239,8 +240,8 @@ pub fn res_list(prefix: String) -> Vec<String> {
     with_ctx(|ctx| {
         ctx.list_files()
             .iter()
-            .filter(|f| f.starts_with(&prefix))
-            .cloned()
+            .filter(|f| f.as_str().starts_with(&prefix))
+            .map(ToString::to_string)
             .collect()
     })
 }
@@ -280,7 +281,11 @@ pub fn res_get_raw(res_type: String, res_name: String) -> Option<i64> {
 }
 
 #[export]
-pub fn res_get_raw_in_component(component: String, res_type: String, res_name: String) -> Option<i64> {
+pub fn res_get_raw_in_component(
+    component: String,
+    res_type: String,
+    res_name: String,
+) -> Option<i64> {
     with_ctx(|ctx| {
         let index = component_index(ctx, &component)?;
         let (_, data) = ctx
@@ -356,7 +361,10 @@ pub fn res_pool_set_in_component(component: String, index: u32, value: String) {
 pub fn res_pool_add_in_component(component: String, value: String) -> Option<u32> {
     with_ctx(|ctx| {
         let index_component = component_index(ctx, &component)?;
-        Some(ctx.component_resources_mut(index_component)?.add_global_string(&value))
+        Some(
+            ctx.component_resources_mut(index_component)?
+                .add_global_string(&value),
+        )
     })
 }
 

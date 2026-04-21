@@ -5,8 +5,8 @@ use crate::encoding::leb128::{
     read_sleb128_with_opts, read_uleb128_with_opts, read_uleb128p1_with_opts,
 };
 use crate::error::{truncated, Result};
-use crate::types::header::ParseOptions;
 use crate::types::debug::{DebugBytecode, DebugInfo};
+use crate::types::header::ParseOptions;
 use crate::types::{StringIdx, TypeIdx};
 
 pub fn read_debug_info(buf: &[u8], off: u32, opts: &ParseOptions) -> Result<DebugInfo> {

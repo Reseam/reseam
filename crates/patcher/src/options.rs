@@ -1,10 +1,67 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::fmt;
 use std::path::{Path, PathBuf};
 
 use crate::error::{PatcherError, Result};
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct OptionKey(Box<str>);
+
+impl OptionKey {
+    pub fn new(value: impl Into<Box<str>>) -> Self {
+        Self(value.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Borrow<str> for OptionKey {
+    fn borrow(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl AsRef<str> for OptionKey {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl fmt::Display for OptionKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl From<&str> for OptionKey {
+    fn from(value: &str) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<String> for OptionKey {
+    fn from(value: String) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<Box<str>> for OptionKey {
+    fn from(value: Box<str>) -> Self {
+        Self(value)
+    }
+}
+
+impl From<OptionKey> for String {
+    fn from(value: OptionKey) -> Self {
+        value.0.into()
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OptionType {
@@ -18,7 +75,7 @@ pub enum OptionType {
 
 #[derive(Debug, Clone)]
 pub struct OptionDeclaration {
-    pub key: String,
+    pub key: OptionKey,
     pub title: String,
     pub description: String,
     pub option_type: OptionType,
@@ -94,7 +151,7 @@ impl OptionValue {
 
 #[derive(Debug, Clone, Default)]
 pub struct PatchOptions {
-    values: HashMap<String, OptionValue>,
+    values: HashMap<OptionKey, OptionValue>,
 }
 
 impl PatchOptions {
@@ -102,7 +159,7 @@ impl PatchOptions {
         Self::default()
     }
 
-    pub fn set(&mut self, key: impl Into<String>, value: OptionValue) {
+    pub fn set(&mut self, key: impl Into<OptionKey>, value: OptionValue) {
         self.values.insert(key.into(), value);
     }
 
@@ -114,8 +171,8 @@ impl PatchOptions {
         self.values.contains_key(key)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&str, &OptionValue)> {
-        self.values.iter().map(|(k, v)| (k.as_str(), v))
+    pub fn iter(&self) -> impl Iterator<Item = (&OptionKey, &OptionValue)> {
+        self.values.iter()
     }
 
     pub fn get_string(&self, key: &str) -> Option<&str> {
@@ -173,10 +230,7 @@ impl PatchOptions {
         let base = base.canonicalize()?;
         let full = base.join(relative);
         let full = full.canonicalize().map_err(|e| {
-            PatcherError::NotFound(format!(
-                "file not found: {} ({e})",
-                full.display()
-            ))
+            PatcherError::NotFound(format!("file not found: {} ({e})", full.display()))
         })?;
         if !full.starts_with(&base) {
             return Err(PatcherError::InvalidOptionValue {
@@ -206,21 +260,21 @@ impl OptionDeclaration {
             OptionType::Bool => OptionValue::Bool(raw.parse::<bool>().map_err(|_| {
                 PatcherError::InvalidOptionValue {
                     patch: String::new(),
-                    key: self.key.clone(),
+                    key: self.key.to_string(),
                     reason: format!("expected bool, got '{raw}'"),
                 }
             })?),
             OptionType::Int => OptionValue::Int(raw.parse::<i64>().map_err(|_| {
                 PatcherError::InvalidOptionValue {
                     patch: String::new(),
-                    key: self.key.clone(),
+                    key: self.key.to_string(),
                     reason: format!("expected int, got '{raw}'"),
                 }
             })?),
             OptionType::Float => OptionValue::Float(raw.parse::<f64>().map_err(|_| {
                 PatcherError::InvalidOptionValue {
                     patch: String::new(),
-                    key: self.key.clone(),
+                    key: self.key.to_string(),
                     reason: format!("expected float, got '{raw}'"),
                 }
             })?),
@@ -250,7 +304,7 @@ impl OptionDeclaration {
         if !type_matches {
             return Err(PatcherError::InvalidOptionValue {
                 patch: String::new(),
-                key: self.key.clone(),
+                key: self.key.to_string(),
                 reason: format!("expected {:?}, got {}", self.option_type, value.type_name()),
             });
         }
@@ -267,7 +321,7 @@ impl OptionDeclaration {
                     if !valid_values.iter().any(|allowed| allowed == candidate) {
                         return Err(PatcherError::InvalidOptionValue {
                             patch: String::new(),
-                            key: self.key.clone(),
+                            key: self.key.to_string(),
                             reason: format!(
                                 "'{candidate}' is not in [{}]",
                                 valid_values.join(", ")
@@ -282,7 +336,7 @@ impl OptionDeclaration {
             if !path.exists() {
                 return Err(PatcherError::InvalidOptionValue {
                     patch: String::new(),
-                    key: self.key.clone(),
+                    key: self.key.to_string(),
                     reason: format!("path does not exist: {}", path.display()),
                 });
             }
@@ -301,7 +355,7 @@ pub fn validate_patch_options(
     let provided = provided.cloned().unwrap_or_default();
 
     for (key, _) in provided.iter() {
-        if !declarations.iter().any(|decl| decl.key == key) {
+        if !declarations.iter().any(|decl| decl.key == *key) {
             return Err(PatcherError::UnknownOption {
                 patch: patch_name.to_string(),
                 key: key.to_string(),
@@ -310,12 +364,12 @@ pub fn validate_patch_options(
     }
 
     for decl in declarations {
-        if let Some(value) = provided.get(&decl.key) {
+        if let Some(value) = provided.get(decl.key.as_str()) {
             decl.validate_value(value).map_err(|err| match err {
                 PatcherError::InvalidOptionValue { reason, .. } => {
                     PatcherError::InvalidOptionValue {
                         patch: patch_name.to_string(),
-                        key: decl.key.clone(),
+                        key: decl.key.to_string(),
                         reason,
                     }
                 }
@@ -331,7 +385,7 @@ pub fn validate_patch_options(
                     PatcherError::InvalidOptionValue { reason, .. } => {
                         PatcherError::InvalidOptionValue {
                             patch: patch_name.to_string(),
-                            key: decl.key.clone(),
+                            key: decl.key.to_string(),
                             reason,
                         }
                     }
@@ -344,7 +398,7 @@ pub fn validate_patch_options(
         if decl.required {
             return Err(PatcherError::MissingRequiredOption {
                 patch: patch_name.to_string(),
-                key: decl.key.clone(),
+                key: decl.key.to_string(),
             });
         }
     }

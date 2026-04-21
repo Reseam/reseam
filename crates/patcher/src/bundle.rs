@@ -23,6 +23,11 @@ pub const TRUSTED_KEYS: &[[u8; 32]] = &[
         0x35, 0xbb, 0x80, 0x7e, 0x94, 0x46, 0x6b, 0x43, 0xa8, 0x8c, 0x56, 0x6b, 0xcd, 0xae, 0x9c,
         0x37, 0x53,
     ],
+    [
+        0x55, 0x6c, 0x1b, 0x22, 0xf4, 0xe0, 0x33, 0x98, 0x21, 0x2b, 0xa1, 0x0f, 0xe6, 0xa3, 0x1d,
+        0xb2, 0x52, 0xdf, 0x49, 0xf5, 0x99, 0xb9, 0x38, 0xd2, 0x4a, 0x9f, 0x2b, 0x6b, 0xae, 0xc4,
+        0x1a, 0x1d,
+    ],
 ];
 
 #[derive(Debug, Deserialize)]
@@ -180,18 +185,20 @@ fn open_bundle_archive(path: &Path) -> Result<OpenBundleArchive<File>> {
     let pubkey_bytes = read_entry(&mut archive, "manifest.pubkey")?;
     let sig_bytes = read_entry(&mut archive, "manifest.sig")?;
 
-    let public_key: [u8; 32] = pubkey_bytes
-        .as_slice()
-        .try_into()
-        .map_err(|_| PatcherError::Bundle {
-            reason: format!(
-                "manifest.pubkey has wrong length: {} (expected 32)",
-                pubkey_bytes.len()
-            ),
+    let public_key: [u8; 32] =
+        pubkey_bytes
+            .as_slice()
+            .try_into()
+            .map_err(|_| PatcherError::Bundle {
+                reason: format!(
+                    "manifest.pubkey has wrong length: {} (expected 32)",
+                    pubkey_bytes.len()
+                ),
+            })?;
+    let verifying_key =
+        VerifyingKey::from_bytes(&public_key).map_err(|e| PatcherError::Bundle {
+            reason: format!("invalid Ed25519 public key: {e}"),
         })?;
-    let verifying_key = VerifyingKey::from_bytes(&public_key).map_err(|e| PatcherError::Bundle {
-        reason: format!("invalid Ed25519 public key: {e}"),
-    })?;
     let signature = Signature::from_slice(&sig_bytes).map_err(|e| PatcherError::Bundle {
         reason: format!("invalid Ed25519 signature: {e}"),
     })?;
@@ -202,8 +209,10 @@ fn open_bundle_archive(path: &Path) -> Result<OpenBundleArchive<File>> {
         })?;
 
     let manifest: BundleManifest =
-        toml::from_str(std::str::from_utf8(&manifest_bytes).map_err(|e| PatcherError::Bundle {
-            reason: format!("manifest.toml not UTF-8: {e}"),
+        toml::from_str(std::str::from_utf8(&manifest_bytes).map_err(|e| {
+            PatcherError::Bundle {
+                reason: format!("manifest.toml not UTF-8: {e}"),
+            }
         })?)?;
     if manifest.bundle.format_version != BUNDLE_FORMAT_VERSION {
         return Err(PatcherError::Bundle {
@@ -254,9 +263,12 @@ where
                 reason: format!("read {name}: {e}"),
             })?;
 
-        let expected = manifest.files.get(&name).ok_or_else(|| PatcherError::Bundle {
-            reason: format!("file {name} is not declared in manifest [files]"),
-        })?;
+        let expected = manifest
+            .files
+            .get(&name)
+            .ok_or_else(|| PatcherError::Bundle {
+                reason: format!("file {name} is not declared in manifest [files]"),
+            })?;
         let actual = hex::encode(Sha256::digest(&contents));
         if actual != *expected {
             return Err(PatcherError::Bundle {
@@ -279,10 +291,7 @@ where
     Ok(())
 }
 
-fn read_entry<R: Read + std::io::Seek>(
-    archive: &mut ZipArchive<R>,
-    name: &str,
-) -> Result<Vec<u8>> {
+fn read_entry<R: Read + std::io::Seek>(archive: &mut ZipArchive<R>, name: &str) -> Result<Vec<u8>> {
     let mut entry = archive.by_name(name).map_err(|_| PatcherError::Bundle {
         reason: format!("required entry `{name}` missing from bundle"),
     })?;

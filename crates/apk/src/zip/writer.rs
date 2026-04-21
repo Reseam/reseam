@@ -15,6 +15,11 @@ pub struct ApkWriter<W: Write + Seek> {
     writer: zip::ZipWriter<W>,
 }
 
+pub struct ApkReplacement<'a> {
+    pub data: &'a [u8],
+    pub compression: zip::CompressionMethod,
+}
+
 impl<W: Write + Seek> ApkWriter<W> {
     pub fn new(dest: W) -> Self {
         Self {
@@ -47,7 +52,7 @@ impl<W: Write + Seek> ApkWriter<W> {
     pub fn rewrite_apk<R: Read + Seek>(
         &mut self,
         source: &mut zip::ZipArchive<R>,
-        replacements: &BTreeMap<String, (Vec<u8>, zip::CompressionMethod)>,
+        replacements: &BTreeMap<&str, ApkReplacement<'_>>,
         removals: &HashSet<String>,
     ) -> Result<()> {
         // Track which replacement entries we've written (so we can append new ones at the end)
@@ -64,8 +69,8 @@ impl<W: Write + Seek> ApkWriter<W> {
                 continue;
             }
 
-            if let Some((data, compression)) = replacements.get(&name) {
-                self.write_entry(&name, data, *compression)?;
+            if let Some(replacement) = replacements.get(name.as_str()) {
+                self.write_entry(&name, replacement.data, replacement.compression)?;
                 written_replacements.insert(name);
             } else if needs_stored_alignment(&name) {
                 // resources.arsc must be stored uncompressed + aligned (Android API 30+)
@@ -82,9 +87,9 @@ impl<W: Write + Seek> ApkWriter<W> {
         }
 
         // Append any replacement entries that didn't exist in the source
-        for (name, (data, compression)) in replacements {
-            if !written_replacements.contains(name) {
-                self.write_entry(name, data, *compression)?;
+        for (name, replacement) in replacements {
+            if !written_replacements.contains(*name) {
+                self.write_entry(name, replacement.data, replacement.compression)?;
             }
         }
 

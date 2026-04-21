@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use boltffi::export;
-use reseam_apk::reseam_dex::find_contiguous_free_registers as dex_find_contiguous_free_registers;
+use reseam_apk::reseam_dex::{
+    find_contiguous_free_registers as dex_find_contiguous_free_registers,
+    find_free_register as dex_find_free_register, find_free_registers as dex_find_free_registers,
+};
 
 use crate::kotlin::{get_method_mut, get_method_ref, with_ctx, with_handles};
 
@@ -99,7 +102,7 @@ pub fn find_free_register(m: u32, at_index: u32, exclude: Vec<u16>) -> u16 {
         method
             .code
             .as_ref()
-            .and_then(|c| ctx.find_free_register(c, at_index as usize, &exclude))
+            .and_then(|c| dex_find_free_register(c, at_index as usize, &exclude))
             .unwrap_or(0)
     })
 }
@@ -122,7 +125,7 @@ pub fn find_free_registers(m: u32, at_index: u32, count: u32, exclude: Vec<u16>)
         method
             .code
             .as_ref()
-            .and_then(|c| ctx.find_free_registers(c, at_index as usize, count as usize, &exclude))
+            .and_then(|c| dex_find_free_registers(c, at_index as usize, count as usize, &exclude))
             .unwrap_or_default()
     })
 }
@@ -150,7 +153,9 @@ pub fn find_contiguous_free_registers(
         method
             .code
             .as_ref()
-            .and_then(|c| dex_find_contiguous_free_registers(c, at_index as usize, count as usize, &exclude))
+            .and_then(|c| {
+                dex_find_contiguous_free_registers(c, at_index as usize, count as usize, &exclude)
+            })
             .unwrap_or_default()
     })
 }

@@ -9,9 +9,9 @@ use reseam_patcher::bundle::{BundleInspection, PatchBundle, TRUSTED_KEYS};
 use reseam_patcher::options::OptionDeclaration;
 use reseam_patcher::patch::Patch;
 
-use crate::types::{
-    ApkMetadata, BundleMetadata, CompatibilityMetadata, InspectResponse, OptionKind, OptionMetadata,
-    PatchMetadata, TrustStatus, TrustStore,
+use crate::dto::{
+    ApkMetadata, BundleMetadata, CompatibilityMetadata, InspectResponse, OptionKind,
+    OptionMetadata, PatchMetadata, TrustStatus, TrustStore,
 };
 
 pub fn built_in_trust_store() -> TrustStore {
@@ -96,9 +96,20 @@ pub fn inspect_with_trust(
 
 pub(crate) fn open_apk(apk_path: &Path, split_paths: &[PathBuf]) -> Result<ApkFile> {
     if split_paths.is_empty() {
-        ApkFile::open(apk_path).with_context(|| format!("failed to open APK {}", apk_path.display()))
+        ApkFile::open(apk_path)
+            .with_context(|| format!("failed to open APK {}", apk_path.display()))
     } else {
         ApkFile::open_split(apk_path, split_paths)
+            .with_context(|| format!("failed to open split APK set {}", apk_path.display()))
+    }
+}
+
+pub(crate) fn open_patch_apk(apk_path: &Path, split_paths: &[PathBuf]) -> Result<ApkFile> {
+    if split_paths.is_empty() {
+        ApkFile::open_for_patching(apk_path)
+            .with_context(|| format!("failed to open APK {}", apk_path.display()))
+    } else {
+        ApkFile::open_split_for_patching(apk_path, split_paths)
             .with_context(|| format!("failed to open split APK set {}", apk_path.display()))
     }
 }
@@ -106,7 +117,11 @@ pub(crate) fn open_apk(apk_path: &Path, split_paths: &[PathBuf]) -> Result<ApkFi
 fn inspect_bundle_file(bundle_path: &Path, trust_store: &TrustStore) -> Result<BundleMetadata> {
     let inspection = PatchBundle::inspect(bundle_path)
         .with_context(|| format!("failed to load patch bundle {}", bundle_path.display()))?;
-    Ok(bundle_metadata_from_inspection(bundle_path, inspection, trust_store))
+    Ok(bundle_metadata_from_inspection(
+        bundle_path,
+        inspection,
+        trust_store,
+    ))
 }
 
 fn bundle_metadata_from_inspection(
@@ -156,7 +171,7 @@ fn apk_metadata(apk: &ApkFile) -> ApkMetadata {
 
 fn option_metadata(option: &OptionDeclaration) -> OptionMetadata {
     OptionMetadata {
-        key: option.key.clone(),
+        key: option.key.to_string(),
         title: option.title.clone(),
         description: option.description.clone(),
         option_type: OptionKind::from(&option.option_type),
@@ -166,9 +181,13 @@ fn option_metadata(option: &OptionDeclaration) -> OptionMetadata {
     }
 }
 
-fn patch_metadata(bundle_name: &str, patch: &dyn Patch, apk: Option<&ApkMetadata>) -> PatchMetadata {
-    let incompatibility_reason = compatibility_reason(
-        patch,
+fn patch_metadata(
+    bundle_name: &str,
+    patch: &dyn Patch,
+    apk: Option<&ApkMetadata>,
+) -> PatchMetadata {
+    let spec = patch.spec();
+    let incompatibility_reason = spec.compatibility_reason(
         apk.and_then(|meta| meta.package_name.as_deref()),
         apk.and_then(|meta| meta.version_name.as_deref()),
     );
@@ -176,49 +195,19 @@ fn patch_metadata(bundle_name: &str, patch: &dyn Patch, apk: Option<&ApkMetadata
     PatchMetadata {
         source_bundle: bundle_name.to_string(),
         name: patch.name().to_string(),
-        description: patch.description().to_string(),
-        enabled_by_default: patch.enabled_by_default(),
-        dependencies: patch.depends_on().to_vec(),
-        compatible_with: patch
-            .compatible_with()
+        description: spec.description.to_string(),
+        enabled_by_default: spec.enabled_by_default,
+        dependencies: spec.dependencies.iter().map(ToString::to_string).collect(),
+        compatible_with: spec
+            .compatibility
             .iter()
             .map(|entry| CompatibilityMetadata {
-                package_name: entry.package.clone(),
-                versions: entry.versions.clone(),
+                package_name: entry.package.to_string(),
+                versions: entry.versions.iter().map(ToString::to_string).collect(),
             })
             .collect(),
-        options: patch.options().iter().map(option_metadata).collect(),
+        options: spec.options.iter().map(option_metadata).collect(),
         is_compatible: incompatibility_reason.is_none(),
         incompatibility_reason,
-    }
-}
-
-fn compatibility_reason(
-    patch: &dyn Patch,
-    package: Option<&str>,
-    version: Option<&str>,
-) -> Option<String> {
-    let compat = patch.compatible_with();
-    if compat.is_empty() {
-        return None;
-    }
-
-    let package = package?;
-
-    let Some(entry) = compat.iter().find(|entry| entry.package == package) else {
-        return Some(format!("Incompatible package: {package}"));
-    };
-
-    if entry.versions.is_empty() {
-        return None;
-    }
-
-    match version {
-        Some(version) if entry.versions.iter().any(|allowed| allowed == version) => None,
-        Some(version) => Some(format!(
-            "Expected one of [{}], got {version}",
-            entry.versions.join(", ")
-        )),
-        None => Some("APK has no version name".to_string()),
     }
 }

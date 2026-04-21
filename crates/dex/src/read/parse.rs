@@ -20,7 +20,13 @@ use tracing::{debug, instrument};
 
 #[instrument(level = "debug", skip(buf), fields(buffer_len = buf.len(), lazy = opts.lazy))]
 pub fn parse(buf: &[u8], opts: ParseOptions) -> Result<DexFile> {
-    parse_single(buf, &opts, None)
+    parse_single_with_raw(buf, Some(Arc::new(buf.to_vec())), &opts, None)
+}
+
+#[instrument(level = "debug", skip(buf), fields(buffer_len = buf.len(), lazy = opts.lazy))]
+pub fn parse_owned(buf: Vec<u8>, opts: ParseOptions) -> Result<DexFile> {
+    let raw = Arc::new(buf);
+    parse_single_with_raw(raw.as_slice(), Some(Arc::clone(&raw)), &opts, None)
 }
 
 /// Parses a v41 container buffer into its constituent logical DEX files.
@@ -29,7 +35,7 @@ pub fn parse(buf: &[u8], opts: ParseOptions) -> Result<DexFile> {
 #[instrument(level = "debug", skip(buf), fields(buffer_len = buf.len(), lazy = opts.lazy))]
 pub fn parse_container(buf: &[u8], opts: ParseOptions) -> Result<Vec<DexFile>> {
     if buf.len() < 8 {
-        let dex = parse_single(buf, &opts, None)?;
+        let dex = parse_single_with_raw(buf, Some(Arc::new(buf.to_vec())), &opts, None)?;
         return Ok(vec![dex]);
     }
 
@@ -39,11 +45,11 @@ pub fn parse_container(buf: &[u8], opts: ParseOptions) -> Result<Vec<DexFile>> {
 
     let is_container = version.is_some_and(|v| v.is_container_format());
     if !is_container {
-        let dex = parse_single(buf, &opts, None)?;
+        let dex = parse_single_with_raw(buf, Some(Arc::new(buf.to_vec())), &opts, None)?;
         return Ok(vec![dex]);
     }
 
-    let shared_buf = Arc::from(buf);
+    let shared_buf = Arc::new(buf.to_vec());
     let mut dex_files = Vec::new();
     let mut offset = 0usize;
 
@@ -57,7 +63,8 @@ pub fn parse_container(buf: &[u8], opts: ParseOptions) -> Result<Vec<DexFile>> {
             break;
         }
 
-        let mut dex = parse_single(buf, &opts, Some(offset))?;
+        let mut dex =
+            parse_single_with_raw(buf, Some(Arc::clone(&shared_buf)), &opts, Some(offset))?;
         dex.raw = Some(Arc::clone(&shared_buf));
         dex_files.push(dex);
 
@@ -68,7 +75,12 @@ pub fn parse_container(buf: &[u8], opts: ParseOptions) -> Result<Vec<DexFile>> {
     Ok(dex_files)
 }
 
-fn parse_single(buf: &[u8], opts: &ParseOptions, header_off: Option<usize>) -> Result<DexFile> {
+fn parse_single_with_raw(
+    buf: &[u8],
+    raw: Option<Arc<Vec<u8>>>,
+    opts: &ParseOptions,
+    header_off: Option<usize>,
+) -> Result<DexFile> {
     let header = match header_off {
         Some(off) => read_header_at(buf, off, buf.len() as u32, opts)?,
         None => read_header(buf, opts)?,
@@ -76,7 +88,7 @@ fn parse_single(buf: &[u8], opts: &ParseOptions, header_off: Option<usize>) -> R
 
     let lazy = opts.lazy;
     let mut dex = DexFile::new(header.clone());
-    dex.raw = Some(Arc::from(buf));
+    dex.raw = raw;
 
     if header.string_ids_size > 0 {
         let string_offsets = read_string_ids(buf, header.string_ids_off, header.string_ids_size)?;
@@ -104,12 +116,17 @@ fn parse_single(buf: &[u8], opts: &ParseOptions, header_off: Option<usize>) -> R
 
     if header.class_defs_size > 0 {
         if lazy {
-            let (classes, offsets) =
-                super::class::read_class_defs_lazy(buf, header.class_defs_off, header.class_defs_size, opts)?;
+            let (classes, offsets) = super::class::read_class_defs_lazy(
+                buf,
+                header.class_defs_off,
+                header.class_defs_size,
+                opts,
+            )?;
             dex.classes = classes;
             dex.lazy_class_data_offsets = Some(offsets);
         } else {
-            dex.classes = read_class_defs(buf, header.class_defs_off, header.class_defs_size, opts)?;
+            dex.classes =
+                read_class_defs(buf, header.class_defs_off, header.class_defs_size, opts)?;
         }
     }
 
@@ -357,7 +374,8 @@ mod tests {
         );
 
         let mut dex = DexFile::new(empty_header());
-        let error = read_call_sites(&buf, Some((0, 1)), &mut dex, &ParseOptions::default()).unwrap_err();
+        let error =
+            read_call_sites(&buf, Some((0, 1)), &mut dex, &ParseOptions::default()).unwrap_err();
 
         assert!(matches!(
             error,

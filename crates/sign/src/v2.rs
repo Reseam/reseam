@@ -5,6 +5,7 @@ use crate::error::{invalid, malformed, Result};
 use crate::keystore::SigningKey;
 use crate::signing_block::{self, ApkSections, BLOCK_ID_V2};
 use ring::digest::{self, SHA256};
+use std::io::Write;
 use tracing::{debug, instrument};
 
 const SIG_ECDSA_SHA256: u32 = 0x0201;
@@ -16,6 +17,25 @@ const MAX_ECDSA_DER_SIGNATURE_LEN: usize = 72;
 pub fn sign(apk: &[u8], key: &SigningKey) -> Result<Vec<u8>> {
     let sections = signing_block::split_apk(apk)?;
     let target_len = target_signing_block_len(key)?;
+    let mut output = Vec::with_capacity(
+        sections.contents.len() + target_len + sections.central_dir.len() + sections.eocd.len(),
+    );
+    sign_sections_to_writer(&sections, key, &mut output)?;
+    Ok(output)
+}
+
+#[instrument(level = "info", skip(apk, key, output), fields(apk_size = apk.len()))]
+pub fn sign_to_writer<W: Write>(apk: &[u8], key: &SigningKey, output: W) -> Result<()> {
+    let sections = signing_block::split_apk(apk)?;
+    sign_sections_to_writer(&sections, key, output)
+}
+
+fn sign_sections_to_writer<W: Write>(
+    sections: &ApkSections<'_>,
+    key: &SigningKey,
+    output: W,
+) -> Result<()> {
+    let target_len = target_signing_block_len(key)?;
     let _new_cd_offset = checked_cd_offset(sections.contents.len(), target_len)?;
     let v2_block = build_v2_block_from_sections(&sections, key)?;
     let signing_block =
@@ -24,11 +44,12 @@ pub fn sign(apk: &[u8], key: &SigningKey) -> Result<Vec<u8>> {
         target_signing_block_len = target_len,
         "built APK v2 signing block"
     );
-    signing_block::reassemble_apk(
+    signing_block::write_reassembled_apk(
         sections.contents,
         &signing_block,
         sections.central_dir,
         sections.eocd,
+        output,
     )
 }
 

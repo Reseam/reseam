@@ -78,7 +78,8 @@ fn split_apk_supports_split_resource_tables_and_component_state() {
     assert_eq!(apk.split_names(), vec!["config.test"]);
     assert!(apk.component_resources(1).is_some());
     assert_eq!(
-        apk.component_manifest(1).and_then(|manifest| manifest.version_name()),
+        apk.component_manifest(1)
+            .and_then(|manifest| manifest.version_name()),
         Some("1.0-split")
     );
 
@@ -146,13 +147,17 @@ fn split_apk_file_changes_are_component_scoped() {
     let base_archive = zip::ZipArchive::new(base_file).expect("base zip archive");
     assert!(base_archive.index_for_name("assets/new.txt").is_some());
     assert!(base_archive.index_for_name("assets/old.txt").is_none());
-    assert!(base_archive.index_for_name("assets/split-only.txt").is_none());
+    assert!(base_archive
+        .index_for_name("assets/split-only.txt")
+        .is_none());
 
     let split_file = File::open(out_dir.join("config.apk")).expect("open split output");
     let split_archive = zip::ZipArchive::new(split_file).expect("split zip archive");
     assert!(split_archive.index_for_name("assets/new.txt").is_none());
     assert!(split_archive.index_for_name("assets/old.txt").is_some());
-    assert!(split_archive.index_for_name("assets/split-only.txt").is_some());
+    assert!(split_archive
+        .index_for_name("assets/split-only.txt")
+        .is_some());
 }
 
 #[test]

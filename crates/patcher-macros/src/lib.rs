@@ -298,10 +298,11 @@ pub fn reseam_patch(attr: TokenStream, item: TokenStream) -> TokenStream {
     let ffi_name = format_ident!("reseam_create_patch_{}", func_name);
     let name_str = &attrs.name;
 
-    let desc_impl = match &attrs.description {
-        Some(d) => quote! { fn description(&self) -> &str { #d } },
-        None => quote! {},
-    };
+    let description = attrs
+        .description
+        .as_ref()
+        .map(|value| quote! { #value.into() })
+        .unwrap_or_else(|| quote! { "".into() });
 
     let compat_items: Vec<_> = attrs
         .packages
@@ -318,70 +319,21 @@ pub fn reseam_patch(attr: TokenStream, item: TokenStream) -> TokenStream {
         })
         .collect();
 
-    let compat_field = if compat_items.is_empty() {
-        quote! {}
-    } else {
-        quote! { compat: Vec<Compatibility>, }
-    };
-
-    let compat_init = if compat_items.is_empty() {
-        quote! {}
-    } else {
-        quote! { compat: vec![#(#compat_items),*], }
-    };
-
-    let compat_impl = if compat_items.is_empty() {
-        quote! {}
-    } else {
-        quote! {
-            fn compatible_with(&self) -> &[Compatibility] {
-                &self.compat
-            }
-        }
-    };
-
-    let enabled_impl = match attrs.enabled_by_default {
-        Some(v) => quote! { fn enabled_by_default(&self) -> bool { #v } },
-        None => quote! {},
-    };
+    let enabled_by_default = attrs.enabled_by_default.unwrap_or(true);
 
     let deps = &attrs.depends_on;
-    let deps_impl = if deps.is_empty() {
-        quote! {}
-    } else {
-        quote! {
-            fn depends_on(&self) -> &[String] {
-                &self.deps
-            }
-        }
-    };
-
-    let deps_field = if deps.is_empty() {
-        quote! {}
-    } else {
-        quote! { deps: Vec<String>, }
-    };
-
-    let deps_init = if deps.is_empty() {
-        quote! {}
-    } else {
-        quote! { deps: vec![#(#deps.to_string()),*], }
-    };
 
     let expanded = quote! {
         #func
 
         struct #struct_name {
-            #compat_field
-            #deps_field
+            spec: PatchSpec,
         }
 
         impl Patch for #struct_name {
-            fn name(&self) -> &str { #name_str }
-            #desc_impl
-            #compat_impl
-            #enabled_impl
-            #deps_impl
+            fn spec(&self) -> &PatchSpec {
+                &self.spec
+            }
 
             fn execute(&self, ctx: &mut PatchContext) -> Result<()> {
                 #func_name(ctx)
@@ -391,8 +343,15 @@ pub fn reseam_patch(attr: TokenStream, item: TokenStream) -> TokenStream {
         #[unsafe(no_mangle)]
         pub extern "C" fn #ffi_name() -> *mut Box<dyn Patch> {
             Box::into_raw(Box::new(Box::new(#struct_name {
-                #compat_init
-                #deps_init
+                spec: PatchSpec {
+                    id: PatchId::from(#name_str),
+                    description: #description,
+                    enabled_by_default: #enabled_by_default,
+                    dependencies: vec![#(PatchId::from(#deps)),*],
+                    compatibility: vec![#(#compat_items),*],
+                    options: Vec::new(),
+                    extension_dex: Vec::new(),
+                },
             }) as Box<dyn Patch>))
         }
     };

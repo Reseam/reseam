@@ -8,54 +8,56 @@ use boltffi::export;
 use crate::kotlin::types::{
     ClassInfo, EncodedVal, FieldInfo, FingerprintDef, FingerprintResult, MethodInfo,
 };
-use crate::kotlin::{
-    find_method_location, get_method_ref, method_match_location, with_ctx, with_handles,
-};
+use crate::kotlin::{get_method_ref, with_ctx, with_handles};
 
 #[export]
 pub fn find_method(class_descriptor: String, method_name: String) -> Option<u32> {
     with_ctx(|ctx| {
-        let result = ctx.find_method(&class_descriptor, &method_name);
-        match result {
-            Some((dex_idx, method)) => {
-                let (ci, mi, iv) = find_method_location(ctx, dex_idx, method)?;
-                Some(with_handles(|h| h.alloc_method(dex_idx, ci, mi, iv)))
-            }
-            None => None,
-        }
+        let location = ctx.find_method(&class_descriptor, &method_name)?;
+        Some(with_handles(|h| {
+            h.alloc_method(
+                location.dex_idx,
+                location.class_idx,
+                location.method_idx,
+                location.is_virtual,
+            )
+        }))
     })
 }
 
 #[export]
 pub fn find_method_by_name(name: String) -> Option<u32> {
     with_ctx(|ctx| {
-        let result = ctx.find_method_by_name(&name);
-        match result {
-            Some((dex_idx, mm)) => {
-                let (ci, mi, iv) = method_match_location(ctx, dex_idx, &mm)?;
-                Some(with_handles(|h| h.alloc_method(dex_idx, ci, mi, iv)))
-            }
-            None => None,
-        }
+        let location = ctx.find_method_by_name(&name)?;
+        Some(with_handles(|h| {
+            h.alloc_method(
+                location.dex_idx,
+                location.class_idx,
+                location.method_idx,
+                location.is_virtual,
+            )
+        }))
     })
 }
 
 #[export]
 pub fn find_methods_by_strings(strings: Vec<String>) -> Vec<u32> {
-    let locations: Vec<(usize, usize, usize, bool)> = with_ctx(|ctx| {
+    let locations = with_ctx(|ctx| {
         let str_refs: Vec<&str> = strings.iter().map(|s| s.as_str()).collect();
-        let matches = ctx.find_methods_by_strings(&str_refs);
-        matches
-            .iter()
-            .filter_map(|(dex_idx, mm)| {
-                let (ci, mi, iv) = method_match_location(ctx, *dex_idx, mm)?;
-                Some((*dex_idx, ci, mi, iv))
-            })
-            .collect()
+        ctx.find_methods_by_strings(&str_refs)
     });
     locations
         .into_iter()
-        .map(|(di, ci, mi, iv)| with_handles(|h| h.alloc_method(di, ci, mi, iv)))
+        .map(|location| {
+            with_handles(|h| {
+                h.alloc_method(
+                    location.dex_idx,
+                    location.class_idx,
+                    location.method_idx,
+                    location.is_virtual,
+                )
+            })
+        })
         .collect()
 }
 
@@ -71,56 +73,58 @@ pub fn find_methods_by_opcodes(pattern: Vec<i32>) -> Vec<u32> {
             }
         })
         .collect();
-    let locations: Vec<(usize, usize, usize, bool)> = with_ctx(|ctx| {
-        let matches = ctx.find_methods_with_opcodes(&ip);
-        matches
-            .iter()
-            .filter_map(|(dex_idx, mm)| {
-                let (ci, mi, iv) = method_match_location(ctx, *dex_idx, mm)?;
-                Some((*dex_idx, ci, mi, iv))
-            })
-            .collect()
-    });
+    let locations = with_ctx(|ctx| ctx.find_methods_with_opcodes(&ip));
     locations
         .into_iter()
-        .map(|(di, ci, mi, iv)| with_handles(|h| h.alloc_method(di, ci, mi, iv)))
+        .map(|location| {
+            with_handles(|h| {
+                h.alloc_method(
+                    location.dex_idx,
+                    location.class_idx,
+                    location.method_idx,
+                    location.is_virtual,
+                )
+            })
+        })
         .collect()
 }
 
 #[export]
 pub fn find_method_by_fingerprint(fp: FingerprintDef) -> Option<FingerprintResult> {
     let dex_fp = convert_fingerprint(&fp);
-    let (dex_idx, ci, mi, iv, matched_count) = with_ctx(|ctx| {
-        let (dex_idx, fm) = ctx.find_method_by_fingerprint(&dex_fp)?;
-        let (ci, mi, iv) = find_method_location(ctx, dex_idx, fm.method)?;
-        Some((dex_idx, ci, mi, iv, fm.matched_indices.len() as u32))
-    })?;
-    let mh = with_handles(|h| h.alloc_method(dex_idx, ci, mi, iv));
+    let fingerprint = with_ctx(|ctx| ctx.find_method_by_fingerprint(&dex_fp))?;
+    let mh = with_handles(|h| {
+        h.alloc_method(
+            fingerprint.method.dex_idx,
+            fingerprint.method.class_idx,
+            fingerprint.method.method_idx,
+            fingerprint.method.is_virtual,
+        )
+    });
     Some(FingerprintResult {
         method: mh,
-        matched_count,
+        matched_count: fingerprint.matched_indices.len() as u32,
     })
 }
 
 #[export]
 pub fn find_methods_by_fingerprint(fp: FingerprintDef) -> Vec<FingerprintResult> {
     let dex_fp = convert_fingerprint(&fp);
-    let locs: Vec<(usize, usize, usize, bool, u32)> = with_ctx(|ctx| {
-        let matches = ctx.find_methods_by_fingerprint(&dex_fp);
-        matches
-            .iter()
-            .filter_map(|(dex_idx, fm)| {
-                let (ci, mi, iv) = find_method_location(ctx, *dex_idx, fm.method)?;
-                Some((*dex_idx, ci, mi, iv, fm.matched_indices.len() as u32))
-            })
-            .collect()
-    });
-    locs.into_iter()
-        .map(|(di, ci, mi, iv, count)| {
-            let mh = with_handles(|h| h.alloc_method(di, ci, mi, iv));
+    let fingerprints = with_ctx(|ctx| ctx.find_methods_by_fingerprint(&dex_fp));
+    fingerprints
+        .into_iter()
+        .map(|fingerprint| {
+            let mh = with_handles(|h| {
+                h.alloc_method(
+                    fingerprint.method.dex_idx,
+                    fingerprint.method.class_idx,
+                    fingerprint.method.method_idx,
+                    fingerprint.method.is_virtual,
+                )
+            });
             FingerprintResult {
                 method: mh,
-                matched_count: count,
+                matched_count: fingerprint.matched_indices.len() as u32,
             }
         })
         .collect()
@@ -128,13 +132,11 @@ pub fn find_methods_by_fingerprint(fp: FingerprintDef) -> Vec<FingerprintResult>
 
 #[export]
 pub fn find_class(descriptor: String) -> Option<u32> {
-    with_ctx(|ctx| match ctx.find_class(&descriptor) {
-        Some((dex_idx, class)) => {
-            let dex = ctx.dex_file(dex_idx)?;
-            let class_idx = dex.classes.iter().position(|c| std::ptr::eq(c, class))?;
-            Some(with_handles(|h| h.alloc_class(dex_idx, class_idx)))
-        }
-        None => None,
+    with_ctx(|ctx| {
+        let location = ctx.find_class(&descriptor)?;
+        Some(with_handles(|h| {
+            h.alloc_class(location.dex_idx, location.class_idx)
+        }))
     })
 }
 

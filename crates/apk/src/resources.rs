@@ -401,7 +401,8 @@ impl ResourceTable {
     }
 
     pub fn serialize(&self) -> Result<Vec<u8>> {
-        let string_pool_chunk = serialize_res_string_pool(&self.global_strings, self.global_strings_utf8);
+        let string_pool_chunk =
+            serialize_res_string_pool(&self.global_strings, self.global_strings_utf8);
         let mut package_chunks = Vec::new();
         for pkg in &self.packages {
             package_chunks.extend_from_slice(&serialize_package(pkg)?);

@@ -39,7 +39,7 @@ pub struct DexFile {
     pub call_sites: Vec<CallSiteItem>,
     pub method_handles: Vec<MethodHandle>,
     pub hidden_api: Option<crate::types::hidden_api::HiddenApiData>,
-    pub raw: Option<Arc<[u8]>>,
+    pub raw: Option<Arc<Vec<u8>>>,
     pub(crate) lazy_class_data_offsets: Option<Vec<u32>>,
     string_lookup: HashMap<String, StringIdx>,
     type_lookup: HashMap<StringIdx, TypeIdx>,
@@ -104,7 +104,7 @@ impl DexFile {
     }
 
     pub fn raw_buffer(&self) -> Option<&[u8]> {
-        self.raw.as_deref()
+        self.raw.as_deref().map(Vec::as_slice)
     }
 
     pub fn method_count(&self) -> usize {
@@ -158,7 +158,7 @@ impl DexFile {
             .raw
             .as_ref()
             .ok_or_else(|| invalid_offset("lazy class data", offset, 0))?;
-        let class_data = crate::read::class::read_class_data_at(raw, offset as usize)?;
+        let class_data = crate::read::class::read_class_data_at(raw.as_slice(), offset as usize)?;
         self.classes[class_idx].class_data = Some(class_data);
         Ok(true)
     }

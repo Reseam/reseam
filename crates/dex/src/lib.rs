@@ -44,6 +44,7 @@ pub use file::{
 pub use read::parse;
 pub use read::parse_container;
 pub use read::parse_file;
+pub use read::parse_owned;
 pub use types::access_flags::AccessFlags;
 pub use types::annotation::{
     AnnotationElement, AnnotationItem, AnnotationVisibility, AnnotationsDirectory,

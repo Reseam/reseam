@@ -8,6 +8,8 @@ use reseam_patcher::engine::{self};
 use reseam_patcher::options::{OptionType, OptionValue};
 use serde::{Deserialize, Serialize};
 
+use crate::metrics::PatchMetrics;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApkMetadata {
     pub package_name: Option<String>,
@@ -196,13 +198,18 @@ pub struct PatchArtifact {
 pub struct PatchOutcome {
     pub results: Vec<engine::PatchResult>,
     pub artifact: Option<PatchArtifact>,
+    pub metrics: PatchMetrics,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RunEvent {
-    Info { message: String },
-    PatchStarted { patch: String },
+    Info {
+        message: String,
+    },
+    PatchStarted {
+        patch: String,
+    },
     PatchFinished {
         patch: String,
         status: PatchRunStatus,

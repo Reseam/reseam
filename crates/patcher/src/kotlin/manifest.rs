@@ -4,8 +4,8 @@
 use boltffi::export;
 use reseam_apk::AxmlDocument;
 
-use super::XML_DOCUMENTS;
 use super::with_ctx;
+use super::XML_DOCUMENTS;
 
 fn manifest_slot_id(component_index: usize) -> String {
     format!("@manifest:{component_index}")
@@ -32,7 +32,9 @@ fn with_manifest<R>(
         {
             return f(document);
         }
-        f(ctx.component_manifest(component_index).unwrap_or_else(|| ctx.manifest()))
+        f(ctx
+            .component_manifest(component_index)
+            .unwrap_or_else(|| ctx.manifest()))
     })
 }
 
@@ -338,16 +340,19 @@ pub fn manifest_add_intent_filter_in_component(
         };
         let mut warning = None;
         with_manifest_mut(ctx, index, |manifest| {
-            let act_idx =
-                match manifest.find_element_with_attr("activity", 0x01010003, &activity_name) {
-                    Some(idx) => idx,
-                    None => {
-                        warning = Some(format!(
+            let act_idx = match manifest.find_element_with_attr(
+                "activity",
+                0x01010003,
+                &activity_name,
+            ) {
+                Some(idx) => idx,
+                None => {
+                    warning = Some(format!(
                             "manifest_add_intent_filter_in_component: activity '{activity_name}' not found in {component}"
                         ));
-                        return;
-                    }
-                };
+                    return;
+                }
+            };
             manifest.insert_child_element(act_idx, "intent-filter", Vec::new());
             let filter_idx = act_idx + 1;
             if let Some(action_name) = action {
@@ -441,19 +446,16 @@ pub fn manifest_copy_intent_filters(from_activity: String, to_activity: String) 
     with_ctx(|ctx| {
         let mut warning = None;
         with_base_manifest_mut(ctx, |manifest| {
-            let from_idx = match manifest.find_element_with_attr(
-                "activity",
-                0x01010003,
-                &from_activity,
-            ) {
-                Some(idx) => idx,
-                None => {
-                    warning = Some(format!(
+            let from_idx =
+                match manifest.find_element_with_attr("activity", 0x01010003, &from_activity) {
+                    Some(idx) => idx,
+                    None => {
+                        warning = Some(format!(
                         "manifest_copy_intent_filters: source activity '{from_activity}' not found"
                     ));
-                    return;
-                }
-            };
+                        return;
+                    }
+                };
             let to_idx = match manifest.find_element_with_attr("activity", 0x01010003, &to_activity)
             {
                 Some(idx) => idx,
@@ -550,7 +552,9 @@ pub fn manifest_copy_intent_filters_in_component(
             let mut filter_ranges = Vec::new();
             let mut i = from_idx + 1;
             while i < from_end {
-                if let reseam_apk::axml::AxmlEvent::StartElement { name, .. } = &manifest.elements[i] {
+                if let reseam_apk::axml::AxmlEvent::StartElement { name, .. } =
+                    &manifest.elements[i]
+                {
                     if manifest.string(*name) == Some("intent-filter") {
                         if let Some(end) = manifest.find_end_element(i) {
                             let events: Vec<_> = manifest.elements[i..=end].to_vec();
@@ -627,7 +631,9 @@ pub fn manifest_version_code_in_component(component: String) -> Option<u32> {
 pub fn manifest_version_name_in_component(component: String) -> Option<String> {
     with_ctx(|ctx| {
         let index = manifest_component_index(ctx, &component)?;
-        with_manifest(ctx, index, |manifest| manifest.version_name().map(str::to_string))
+        with_manifest(ctx, index, |manifest| {
+            manifest.version_name().map(str::to_string)
+        })
     })
 }
 
@@ -643,7 +649,9 @@ pub fn manifest_min_sdk_version_in_component(component: String) -> Option<u32> {
 pub fn manifest_split_name_in_component(component: String) -> Option<String> {
     with_ctx(|ctx| {
         let index = manifest_component_index(ctx, &component)?;
-        with_manifest(ctx, index, |manifest| manifest.split_name().map(str::to_string))
+        with_manifest(ctx, index, |manifest| {
+            manifest.split_name().map(str::to_string)
+        })
     })
 }
 

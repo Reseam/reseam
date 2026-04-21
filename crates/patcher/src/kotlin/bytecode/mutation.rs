@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use smallvec::SmallVec;
 use reseam_apk::reseam_dex::{
     find_contiguous_free_registers, CodeItem, Instruction as DexInsn, MethodIdx,
 };
+use smallvec::SmallVec;
 use tracing::warn;
 
 use boltffi::export;
@@ -601,9 +601,7 @@ fn lower_static_invoke(
     if expected_words != registers.len() {
         warn!(
             register_count = registers.len(),
-            expected_words,
-            proto,
-            "invoke-static registers do not match method prototype"
+            expected_words, proto, "invoke-static registers do not match method prototype"
         );
         return None;
     }
@@ -613,8 +611,7 @@ fn lower_static_invoke(
         None => {
             warn!(
                 register_count = registers.len(),
-                index,
-                "no contiguous scratch registers available for invoke-static lowering"
+                index, "no contiguous scratch registers available for invoke-static lowering"
             );
             return None;
         }
@@ -628,7 +625,10 @@ fn lower_static_invoke(
         let src = registers[src_index];
         if word_count == 2 {
             let Some(&src_hi) = registers.get(src_index + 1) else {
-                warn!(proto, "missing second register word for wide invoke-static arg");
+                warn!(
+                    proto,
+                    "missing second register word for wide invoke-static arg"
+                );
                 return None;
             };
             if src_hi != src + 1 {
@@ -766,14 +766,28 @@ fn build_move_result(result_register: u16, is_object: bool) -> Option<DexInsn> {
 
 fn set_insn_literal(insn: &mut DexInsn, value: i64) -> std::result::Result<(), &'static str> {
     match insn {
-        DexInsn::Const4 { value: v, .. } => *v = i8::try_from(value).map_err(|_| "literal does not fit const/4")?,
-        DexInsn::Const16 { value: v, .. } => *v = i16::try_from(value).map_err(|_| "literal does not fit const/16")?,
-        DexInsn::Const { value: v, .. } => *v = i32::try_from(value).map_err(|_| "literal does not fit const")?,
-        DexInsn::ConstHigh16 { value: v, .. } => *v = i16::try_from(value).map_err(|_| "literal does not fit const/high16")?,
-        DexInsn::ConstWide16 { value: v, .. } => *v = i16::try_from(value).map_err(|_| "literal does not fit const-wide/16")?,
-        DexInsn::ConstWide32 { value: v, .. } => *v = i32::try_from(value).map_err(|_| "literal does not fit const-wide/32")?,
+        DexInsn::Const4 { value: v, .. } => {
+            *v = i8::try_from(value).map_err(|_| "literal does not fit const/4")?
+        }
+        DexInsn::Const16 { value: v, .. } => {
+            *v = i16::try_from(value).map_err(|_| "literal does not fit const/16")?
+        }
+        DexInsn::Const { value: v, .. } => {
+            *v = i32::try_from(value).map_err(|_| "literal does not fit const")?
+        }
+        DexInsn::ConstHigh16 { value: v, .. } => {
+            *v = i16::try_from(value).map_err(|_| "literal does not fit const/high16")?
+        }
+        DexInsn::ConstWide16 { value: v, .. } => {
+            *v = i16::try_from(value).map_err(|_| "literal does not fit const-wide/16")?
+        }
+        DexInsn::ConstWide32 { value: v, .. } => {
+            *v = i32::try_from(value).map_err(|_| "literal does not fit const-wide/32")?
+        }
         DexInsn::ConstWide { value: v, .. } => *v = value,
-        DexInsn::ConstWideHigh16 { value: v, .. } => *v = i16::try_from(value).map_err(|_| "literal does not fit const-wide/high16")?,
+        DexInsn::ConstWideHigh16 { value: v, .. } => {
+            *v = i16::try_from(value).map_err(|_| "literal does not fit const-wide/high16")?
+        }
         DexInsn::AddIntLit16 { literal, .. }
         | DexInsn::RsubIntLit16 { literal, .. }
         | DexInsn::MulIntLit16 { literal, .. }
@@ -781,7 +795,9 @@ fn set_insn_literal(insn: &mut DexInsn, value: i64) -> std::result::Result<(), &
         | DexInsn::RemIntLit16 { literal, .. }
         | DexInsn::AndIntLit16 { literal, .. }
         | DexInsn::OrIntLit16 { literal, .. }
-        | DexInsn::XorIntLit16 { literal, .. } => *literal = i16::try_from(value).map_err(|_| "literal does not fit lit16 opcode")?,
+        | DexInsn::XorIntLit16 { literal, .. } => {
+            *literal = i16::try_from(value).map_err(|_| "literal does not fit lit16 opcode")?
+        }
         DexInsn::AddIntLit8 { literal, .. }
         | DexInsn::RsubIntLit8 { literal, .. }
         | DexInsn::MulIntLit8 { literal, .. }
@@ -792,7 +808,9 @@ fn set_insn_literal(insn: &mut DexInsn, value: i64) -> std::result::Result<(), &
         | DexInsn::XorIntLit8 { literal, .. }
         | DexInsn::ShlIntLit8 { literal, .. }
         | DexInsn::ShrIntLit8 { literal, .. }
-        | DexInsn::UshrIntLit8 { literal, .. } => *literal = i8::try_from(value).map_err(|_| "literal does not fit lit8 opcode")?,
+        | DexInsn::UshrIntLit8 { literal, .. } => {
+            *literal = i8::try_from(value).map_err(|_| "literal does not fit lit8 opcode")?
+        }
         _ => return Err("instruction does not carry a writable literal"),
     }
     Ok(())

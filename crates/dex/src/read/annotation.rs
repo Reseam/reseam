@@ -4,10 +4,10 @@
 use super::encoded_value::read_encoded_annotation_with_opts;
 use super::header::u32_at;
 use crate::error::{invalid_annotation_visibility, read_u8, Result};
-use crate::types::header::ParseOptions;
 use crate::types::annotation::{
     AnnotationElement, AnnotationItem, AnnotationVisibility, AnnotationsDirectory,
 };
+use crate::types::header::ParseOptions;
 use crate::types::{FieldIdx, MethodIdx};
 
 pub fn read_annotations_directory(
@@ -64,7 +64,11 @@ pub fn read_annotations_directory(
     })
 }
 
-pub fn read_annotation_set(buf: &[u8], off: u32, opts: &ParseOptions) -> Result<Vec<AnnotationItem>> {
+pub fn read_annotation_set(
+    buf: &[u8],
+    off: u32,
+    opts: &ParseOptions,
+) -> Result<Vec<AnnotationItem>> {
     let base = off as usize;
     let size = u32_at(buf, base)? as usize;
     let mut items = Vec::with_capacity(size);

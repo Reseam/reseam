@@ -138,7 +138,11 @@ impl AxmlDocument {
                     }
                     let attrs_offset = hs + attr_start;
                     let attrs_len = attr_count.checked_mul(attr_size).ok_or_else(|| {
-                        malformed("axml start element", pos + hs + 12, "attribute data overflows chunk size")
+                        malformed(
+                            "axml start element",
+                            pos + hs + 12,
+                            "attribute data overflows chunk size",
+                        )
                     })?;
                     require_len(chunk, attrs_offset, attrs_len, "axml attributes")?;
                     let mut attributes = Vec::with_capacity(attr_count);

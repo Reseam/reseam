@@ -99,7 +99,10 @@ pub fn decode_mutf8_at_with_opts(
                             if opts.lenient_mutf8 {
                                 result.push('\u{FFFD}');
                             } else {
-                                return Err(invalid_mutf8(offset + i - 3, "invalid supplementary code point"));
+                                return Err(invalid_mutf8(
+                                    offset + i - 3,
+                                    "invalid supplementary code point",
+                                ));
                             }
                         }
                         continue;

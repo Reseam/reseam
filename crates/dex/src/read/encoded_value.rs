@@ -3,8 +3,8 @@
 
 use crate::encoding::leb128::read_uleb128_with_opts;
 use crate::error::{invalid_encoded_value_type, malformed, read_u8, slice, Result};
-use crate::types::header::ParseOptions;
 use crate::types::encoded_value::{EncodedAnnotation, EncodedAnnotationElement, EncodedValue};
+use crate::types::header::ParseOptions;
 use crate::types::method_handle::MethodHandleIdx;
 use crate::types::{FieldIdx, MethodIdx, ProtoIdx, StringIdx, TypeIdx};
 

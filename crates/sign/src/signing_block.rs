@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::error::{invalid, malformed, Result};
+use std::io::Write;
 
 const APK_SIG_BLOCK_MAGIC: &[u8; 16] = b"APK Sig Block 42";
 const EOCD_SIGNATURE: &[u8; 4] = b"PK\x05\x06";
@@ -188,6 +189,28 @@ pub fn reassemble_apk(
     output.extend_from_slice(&patched_eocd);
 
     Ok(output)
+}
+
+pub fn write_reassembled_apk<W: Write>(
+    contents: &[u8],
+    signing_block: &[u8],
+    central_dir: &[u8],
+    eocd: &[u8],
+    mut output: W,
+) -> Result<()> {
+    let new_cd_offset = contents.len() + signing_block.len();
+    if eocd.len() < 22 {
+        return Err(malformed("eocd", 0, "EOCD record too short (< 22 bytes)"));
+    }
+
+    output.write_all(contents)?;
+    output.write_all(signing_block)?;
+    output.write_all(central_dir)?;
+
+    let mut patched_eocd = eocd.to_vec();
+    patched_eocd[16..20].copy_from_slice(&(new_cd_offset as u32).to_le_bytes());
+    output.write_all(&patched_eocd)?;
+    Ok(())
 }
 
 fn read_u16_le(data: &[u8], offset: usize) -> Option<u16> {

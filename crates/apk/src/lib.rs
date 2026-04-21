@@ -10,7 +10,7 @@ pub mod resources;
 pub(crate) mod string_encoding;
 pub mod zip;
 
-pub use apk_file::{ApkComponent, ApkFile, ApkKind, ApkWriteOptions};
+pub use apk_file::{ApkComponent, ApkEntryPath, ApkFile, ApkKind, ApkWriteOptions, ComponentName};
 pub use axml::{AxmlAttribute, AxmlDocument, AxmlEvent, TypedValue};
 pub use dex::{dex_to_entries, extract_dex, extract_dex_unified, from_apk};
 pub use error::{ApkError, Result};
