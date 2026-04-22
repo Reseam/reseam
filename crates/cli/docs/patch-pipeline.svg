@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 380" font-family="'InterVariable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+	<style>
+		.card { fill: #121212; stroke: #262626; stroke-width: 1.5; }
+		.card-accent { fill: #121212; stroke: oklch(0.8808 0.0969 156.04); stroke-width: 1.5; }
+		.inner { fill: #171717; stroke: none; }
+		.chip { fill: #0a0a0a; stroke: #262626; stroke-width: 1; }
+		.title { fill: #ededed; font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+		.label { fill: #a3a3a3; font-size: 11px; }
+		.caption { fill: #a3a3a3; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; }
+		.mono { fill: #a3a3a3; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.bar { fill: #262626; }
+		.bar-accent { fill: oklch(0.8808 0.0969 156.04); opacity: 0.4; }
+		.accent-fill { fill: oklch(0.8808 0.0969 156.04); }
+		.accent-stroke { stroke: oklch(0.8808 0.0969 156.04); stroke-width: 1.5; fill: none; }
+		.link { stroke: #3f3f46; stroke-width: 1.5; fill: none; }
+		.arrowhead { fill: #3f3f46; }
+		.arrowhead-accent { fill: oklch(0.8808 0.0969 156.04); }
+	</style>
+	<defs>
+		<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+			<path d="M0,0 L10,5 L0,10 z" class="arrowhead" />
+		</marker>
+		<marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+			<path d="M0,0 L10,5 L0,10 z" class="arrowhead-accent" />
+		</marker>
+	</defs>
+
+	<g transform="translate(40,60)">
+		<rect class="card" x="0" y="0" width="180" height="110" rx="16" />
+		<text class="caption" x="20" y="26">Input</text>
+		<rect class="inner" x="16" y="40" width="148" height="58" rx="8" />
+		<rect class="bar" x="28" y="54" width="60" height="4" rx="2" />
+		<rect class="bar" x="28" y="64" width="84" height="4" rx="2" />
+		<rect class="bar" x="28" y="74" width="48" height="4" rx="2" />
+		<text class="mono" x="20" y="108" font-size="10">app.apk (+ splits)</text>
+	</g>
+
+	<g transform="translate(40,200)">
+		<rect class="card" x="0" y="0" width="180" height="110" rx="16" />
+		<text class="caption" x="20" y="26">Input</text>
+		<rect class="inner" x="16" y="40" width="148" height="58" rx="8" />
+		<circle class="accent-fill" cx="36" cy="70" r="4" />
+		<text class="mono" x="48" y="62">manifest.toml</text>
+		<text class="mono" x="48" y="78">manifest.sig</text>
+		<text class="mono" x="48" y="94">payload</text>
+		<text class="mono" x="20" y="108" font-size="10">patches.reseam</text>
+	</g>
+
+	<g transform="translate(310,90)">
+		<rect class="card-accent" x="0" y="0" width="320" height="200" rx="22" />
+		<text class="caption" x="20" y="28">Patch engine</text>
+		<rect class="chip" x="20" y="46" width="280" height="36" rx="10" />
+		<circle class="accent-fill" cx="38" cy="64" r="4" />
+		<text class="title" x="52" y="68">verify bundle signature</text>
+		<rect class="chip" x="20" y="92" width="280" height="36" rx="10" />
+		<circle class="accent-fill" cx="38" cy="110" r="4" />
+		<text class="title" x="52" y="114">resolve enable/disable/options</text>
+		<rect class="chip" x="20" y="138" width="280" height="36" rx="10" />
+		<circle class="accent-fill" cx="38" cy="156" r="4" />
+		<text class="title" x="52" y="160">run patches in order</text>
+	</g>
+
+	<line class="link" x1="224" y1="116" x2="306" y2="146" marker-end="url(#arrow)" />
+	<line class="link" x1="224" y1="250" x2="306" y2="208" marker-end="url(#arrow)" />
+
+	<line class="accent-stroke" x1="634" y1="190" x2="696" y2="190" marker-end="url(#arrow-accent)" />
+
+	<g transform="translate(700,60)">
+		<rect class="card-accent" x="0" y="0" width="220" height="110" rx="16" />
+		<text class="caption" x="20" y="26">Output</text>
+		<rect class="inner" x="16" y="40" width="188" height="58" rx="8" />
+		<rect class="bar" x="28" y="54" width="60" height="4" rx="2" />
+		<rect class="bar" x="28" y="64" width="84" height="4" rx="2" />
+		<rect class="bar-accent" x="28" y="74" width="104" height="4" rx="2" />
+		<text class="mono" x="20" y="108" font-size="10">patched.apk (v2-signed)</text>
+	</g>
+
+	<g transform="translate(700,200)">
+		<rect class="card" x="0" y="0" width="220" height="110" rx="16" />
+		<text class="caption" x="20" y="26">Sidecar</text>
+		<rect class="inner" x="16" y="40" width="188" height="58" rx="8" />
+		<circle class="accent-fill" cx="36" cy="60" r="3" />
+		<text class="mono" x="48" y="64">.pk8  (signing key)</text>
+		<circle class="accent-fill" cx="36" cy="80" r="3" />
+		<text class="mono" x="48" y="84">.der  (certificate)</text>
+		<text class="label" x="20" y="108">reused on next run</text>
+	</g>
+</svg>

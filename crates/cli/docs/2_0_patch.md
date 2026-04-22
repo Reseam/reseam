@@ -5,6 +5,8 @@ description: Apply a signed bundle to an APK.
 
 # `reseam patch`
 
+![Diagram: the reseam patch pipeline. Inputs are the base APK (plus optional splits) and a signed .reseam bundle. The patch engine verifies the bundle signature, resolves enable/disable/options, and runs patches in order. Output is a v2-signed patched APK. A sidecar .pk8 private key and .der certificate are written next to the output (or reused from the previous run) so the same signing identity persists across invocations.](patch-pipeline.svg)
+
 Applies patches from a signed bundle to an APK and writes a new, v2-signed APK (or split APK set).
 
 ## Single APK

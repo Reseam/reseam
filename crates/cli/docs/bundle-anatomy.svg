@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" font-family="'InterVariable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+	<style>
+		.card { fill: #121212; stroke: #262626; stroke-width: 1.5; }
+		.card-accent { fill: #121212; stroke: oklch(0.8808 0.0969 156.04); stroke-width: 1.5; }
+		.inner { fill: #171717; stroke: none; }
+		.title { fill: #ededed; font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+		.label { fill: #a3a3a3; font-size: 11px; }
+		.caption { fill: #a3a3a3; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; }
+		.mono { fill: #ededed; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.mono-muted { fill: #a3a3a3; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.accent-fill { fill: oklch(0.8808 0.0969 156.04); }
+		.accent-stroke { stroke: oklch(0.8808 0.0969 156.04); stroke-width: 1.5; fill: none; }
+		.link-dashed { stroke: oklch(0.8808 0.0969 156.04); stroke-width: 1.2; fill: none; stroke-dasharray: 4 4; opacity: 0.7; }
+		.arrowhead-accent { fill: oklch(0.8808 0.0969 156.04); }
+	</style>
+	<defs>
+		<marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+			<path d="M0,0 L10,5 L0,10 z" class="arrowhead-accent" />
+		</marker>
+	</defs>
+
+	<g transform="translate(200,30)">
+		<rect class="card-accent" x="0" y="0" width="420" height="340" rx="22" />
+		<text class="caption" x="20" y="28">patches.reseam (zip)</text>
+
+		<rect class="inner" x="16" y="44" width="388" height="44" rx="10" />
+		<circle class="accent-fill" cx="36" cy="66" r="4" />
+		<text class="mono" x="50" y="70">mimetype</text>
+		<text class="label" x="384" y="70" text-anchor="end">stored, first entry</text>
+
+		<rect class="inner" x="16" y="96" width="388" height="60" rx="10" />
+		<circle class="accent-fill" cx="36" cy="120" r="4" />
+		<text class="mono" x="50" y="118">manifest.toml</text>
+		<text class="mono-muted" x="50" y="140">[bundle] + [files] (SHA-256 per entry)</text>
+		<text class="label" x="384" y="118" text-anchor="end">deflated</text>
+
+		<rect class="inner" x="16" y="164" width="388" height="44" rx="10" />
+		<circle class="accent-fill" cx="36" cy="186" r="4" />
+		<text class="mono" x="50" y="190">manifest.pubkey</text>
+		<text class="label" x="384" y="190" text-anchor="end">stored</text>
+
+		<rect class="inner" x="16" y="216" width="388" height="44" rx="10" />
+		<circle class="accent-fill" cx="36" cy="238" r="4" />
+		<text class="mono" x="50" y="242">manifest.sig</text>
+		<text class="label" x="384" y="242" text-anchor="end">Ed25519, stored</text>
+
+		<line class="accent-stroke" x1="30" y1="276" x2="390" y2="276" />
+
+		<rect class="inner" x="16" y="284" width="388" height="44" rx="10" />
+		<circle class="accent-fill" cx="36" cy="306" r="4" opacity="0.5" />
+		<text class="mono-muted" x="50" y="310">payload: *.jar, *.dex, *.rve</text>
+		<text class="label" x="384" y="310" text-anchor="end">deflated</text>
+	</g>
+
+	<g transform="translate(660,80)">
+		<rect class="card" x="0" y="0" width="250" height="120" rx="16" />
+		<text class="caption" x="20" y="26">Verify on load</text>
+		<rect class="inner" x="16" y="40" width="218" height="64" rx="8" />
+		<circle class="accent-fill" cx="32" cy="62" r="3" />
+		<text class="label" x="44" y="66">check sig against pubkey</text>
+		<circle class="accent-fill" cx="32" cy="82" r="3" />
+		<text class="label" x="44" y="86">check pubkey vs trust list</text>
+	</g>
+
+	<g transform="translate(660,220)">
+		<rect class="card" x="0" y="0" width="250" height="120" rx="16" />
+		<text class="caption" x="20" y="26">Hash check</text>
+		<rect class="inner" x="16" y="40" width="218" height="64" rx="8" />
+		<circle class="accent-fill" cx="32" cy="62" r="3" />
+		<text class="label" x="44" y="66">re-hash every payload file</text>
+		<circle class="accent-fill" cx="32" cy="82" r="3" />
+		<text class="label" x="44" y="86">compare to [files] table</text>
+	</g>
+
+	<path class="link-dashed" d="M 620 180 C 640 180, 640 140, 660 140" marker-end="url(#arrow-accent)" />
+	<path class="link-dashed" d="M 620 235 C 640 235, 640 280, 660 280" marker-end="url(#arrow-accent)" />
+
+	<g transform="translate(40,140)">
+		<rect class="card" x="0" y="0" width="140" height="120" rx="16" />
+		<text class="caption" x="20" y="26">Input</text>
+		<rect class="inner" x="16" y="40" width="108" height="64" rx="8" />
+		<text class="mono" x="28" y="62">reseam.key</text>
+		<text class="label" x="28" y="82">Ed25519 seed,</text>
+		<text class="label" x="28" y="96">mode 0600</text>
+	</g>
+	<line class="accent-stroke" x1="184" y1="200" x2="196" y2="200" marker-end="url(#arrow-accent)" />
+
+	<text class="label" x="480" y="388" text-anchor="middle">reseam bundle pack orders these entries, signs the manifest, and writes the zip.</text>
+</svg>

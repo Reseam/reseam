@@ -5,6 +5,8 @@ description: Generate signing keys, pack bundles, and list their contents.
 
 # `reseam bundle`
 
+![Diagram: the inside of a .reseam zip archive in order. First the mimetype entry (stored, uncompressed, first in the zip). Then manifest.toml (deflated) carrying the [bundle] table and a [files] table of SHA-256 hashes per payload entry. Then manifest.pubkey (stored) and manifest.sig (stored) holding the Ed25519 public key and signature over the manifest. Below a divider, the payload: every .jar, .dex, and .rve file in the bundle, deflated. On load the engine verifies the signature against the public key, checks the public key against the client's trust list, then re-hashes every payload file and compares against the [files] table.](bundle-anatomy.svg)
+
 Subcommands for building and inspecting `.reseam` bundles.
 
 ## `reseam bundle keygen`

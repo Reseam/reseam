@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 440" font-family="'InterVariable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+	<style>
+		.card { fill: #121212; stroke: #262626; stroke-width: 1.5; }
+		.card-accent { fill: #121212; stroke: oklch(0.8808 0.0969 156.04); stroke-width: 1.5; }
+		.inner { fill: #171717; stroke: none; }
+		.chip { fill: #0a0a0a; stroke: #262626; stroke-width: 1; }
+		.title { fill: #ededed; font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+		.label { fill: #a3a3a3; font-size: 11px; }
+		.caption { fill: #a3a3a3; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; }
+		.mono { fill: #ededed; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.mono-muted { fill: #a3a3a3; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.mono-dim { fill: #6b6b6b; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.accent-fill { fill: oklch(0.8808 0.0969 156.04); }
+		.accent-stroke { stroke: oklch(0.8808 0.0969 156.04); stroke-width: 1.5; fill: none; }
+		.link { stroke: #3f3f46; stroke-width: 1.5; fill: none; }
+		.arrowhead { fill: #3f3f46; }
+		.arrowhead-accent { fill: oklch(0.8808 0.0969 156.04); }
+	</style>
+	<defs>
+		<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+			<path d="M0,0 L10,5 L0,10 z" class="arrowhead" />
+		</marker>
+		<marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+			<path d="M0,0 L10,5 L0,10 z" class="arrowhead-accent" />
+		</marker>
+	</defs>
+
+	<g transform="translate(40,40)">
+		<rect class="card" x="0" y="0" width="300" height="360" rx="20" />
+		<text class="caption" x="150" y="26" text-anchor="middle">Bundle project</text>
+		<rect class="inner" x="20" y="44" width="260" height="296" rx="10" />
+		<text class="mono" x="36" y="68">my-bundle/</text>
+		<text class="mono" x="52" y="86">manifest.toml</text>
+		<text class="mono-muted" x="52" y="104">settings.gradle.kts</text>
+		<text class="mono-muted" x="52" y="122">build.gradle.kts</text>
+		<text class="mono-muted" x="52" y="140">gradlew</text>
+		<text class="mono" x="52" y="164">apps/youtube/</text>
+		<text class="mono" x="74" y="182">patch/</text>
+		<text class="mono-muted" x="96" y="200">src/main/kotlin/</text>
+		<text class="mono-dim" x="118" y="218">BlockAds.kt</text>
+		<text class="mono-dim" x="118" y="236">AmoledDark.kt</text>
+		<text class="mono" x="74" y="258">extensions/</text>
+		<text class="mono" x="96" y="276">downloader/</text>
+		<text class="mono-muted" x="118" y="294">build.gradle.kts</text>
+		<text class="mono-dim" x="118" y="312">src/main/java/</text>
+		<text class="mono" x="36" y="332">shared/util/</text>
+	</g>
+
+	<g transform="translate(400,180)">
+		<rect class="chip" x="0" y="0" width="160" height="80" rx="12" />
+		<circle class="accent-fill" cx="20" cy="24" r="4" />
+		<text class="title" x="32" y="28">reseam bundle pack</text>
+		<text class="label" x="14" y="48">• hash payload (SHA-256)</text>
+		<text class="label" x="14" y="62">• sign manifest (Ed25519)</text>
+	</g>
+
+	<line class="accent-stroke" x1="344" y1="220" x2="396" y2="220" marker-end="url(#arrow-accent)" />
+	<line class="accent-stroke" x1="564" y1="220" x2="616" y2="220" marker-end="url(#arrow-accent)" />
+
+	<g transform="translate(620,60)">
+		<rect class="card-accent" x="0" y="0" width="300" height="320" rx="20" />
+		<text class="caption" x="150" y="26" text-anchor="middle">Signed .reseam archive</text>
+		<rect class="inner" x="20" y="44" width="260" height="256" rx="10" />
+
+		<circle class="accent-fill" cx="42" cy="72" r="3.5" />
+		<text class="mono" x="54" y="76">mimetype</text>
+		<text class="label" x="184" y="76">stored</text>
+
+		<circle class="accent-fill" cx="42" cy="102" r="3.5" />
+		<text class="mono" x="54" y="106">manifest.toml</text>
+		<text class="label" x="170" y="106">+ [files]</text>
+
+		<circle class="accent-fill" cx="42" cy="132" r="3.5" />
+		<text class="mono" x="54" y="136">manifest.pubkey</text>
+
+		<circle class="accent-fill" cx="42" cy="162" r="3.5" />
+		<text class="mono" x="54" y="166">manifest.sig</text>
+
+		<line class="link" x1="36" y1="186" x2="264" y2="186" />
+
+		<circle class="accent-fill" cx="42" cy="212" r="3.5" opacity="0.5" />
+		<text class="mono-muted" x="54" y="216">youtube-patches.jar</text>
+
+		<circle class="accent-fill" cx="42" cy="240" r="3.5" opacity="0.5" />
+		<text class="mono-muted" x="54" y="244">youtube-downloader.dex</text>
+
+		<circle class="accent-fill" cx="42" cy="268" r="3.5" opacity="0.5" />
+		<text class="mono-muted" x="54" y="272">shared-util.dex</text>
+	</g>
+
+	<text class="label" x="480" y="400" text-anchor="middle">Sources, Gradle files, and build scripts stay out of the archive.</text>
+</svg>

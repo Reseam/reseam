@@ -1,5 +1,7 @@
 # Runtime surface
 
+![Diagram: the ctx parameter passed to every patch is a PatchRuntime with six named scopes. Bytecode exposes classes, methods, instructions, and fingerprint lookups. Manifest exposes the AndroidManifest AXML with helpers like addPermission and setVersion. Resources exposes the resource table and string pool with helpers like addString and replaceEntry. Files exposes the raw APK entries with read, write, copy, and delete. Options exposes the values the caller supplied. Log exposes per-patch structured output via info, warn, and debug. Each scope offers a .component(name) variant for split-APK targeting.](runtime-surface.svg)
+
 `ctx` (type `PatchRuntime`) is passed to `execute` and `afterDependents`. It exposes five scopes and a logger:
 
 | Scope | Access |

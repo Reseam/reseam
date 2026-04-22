@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 320" font-family="'InterVariable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+	<style>
+		.card { fill: #121212; stroke: #262626; stroke-width: 1.5; }
+		.card-accent { fill: #121212; stroke: oklch(0.8808 0.0969 156.04); stroke-width: 1.5; }
+		.inner { fill: #171717; stroke: none; }
+		.chip { fill: #0a0a0a; stroke: #262626; stroke-width: 1; }
+		.title { fill: #ededed; font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+		.label { fill: #a3a3a3; font-size: 11px; }
+		.caption { fill: #a3a3a3; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; }
+		.mono { fill: #a3a3a3; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.mono-accent { fill: oklch(0.8808 0.0969 156.04); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.bar { fill: #262626; }
+		.accent-fill { fill: oklch(0.8808 0.0969 156.04); }
+		.accent-stroke { stroke: oklch(0.8808 0.0969 156.04); stroke-width: 1.5; fill: none; }
+		.link { stroke: #3f3f46; stroke-width: 1.5; fill: none; }
+		.arrowhead { fill: #3f3f46; }
+		.arrowhead-accent { fill: oklch(0.8808 0.0969 156.04); }
+	</style>
+	<defs>
+		<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+			<path d="M0,0 L10,5 L0,10 z" class="arrowhead" />
+		</marker>
+		<marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+			<path d="M0,0 L10,5 L0,10 z" class="arrowhead-accent" />
+		</marker>
+	</defs>
+
+	<g transform="translate(40,70)">
+		<rect class="card" x="0" y="0" width="200" height="180" rx="18" />
+		<text class="caption" x="20" y="26">Extension module</text>
+		<rect class="inner" x="16" y="40" width="168" height="124" rx="8" />
+		<text class="mono" x="28" y="62">downloader/</text>
+		<text class="mono" x="44" y="80">src/main/java/</text>
+		<text class="mono" x="60" y="98">Activity.java</text>
+		<text class="mono" x="60" y="116">Service.java</text>
+		<text class="mono" x="44" y="138">src/main/kotlin/</text>
+		<text class="mono" x="60" y="156">Worker.kt</text>
+	</g>
+
+	<g transform="translate(300,120)">
+		<rect class="chip" x="0" y="0" width="100" height="80" rx="12" />
+		<circle class="accent-fill" cx="20" cy="22" r="4" />
+		<text class="title" x="32" y="26">d8</text>
+		<text class="label" x="18" y="48">ANDROID_HOME</text>
+		<text class="label" x="18" y="62">build-tools/</text>
+	</g>
+
+	<line class="link" x1="242" y1="160" x2="296" y2="160" marker-end="url(#arrow)" />
+
+	<g transform="translate(450,120)">
+		<rect class="card" x="0" y="0" width="140" height="80" rx="12" />
+		<text class="caption" x="70" y="24" text-anchor="middle">one DEX file</text>
+		<rect class="bar" x="20" y="38" width="100" height="4" rx="2" />
+		<rect class="bar" x="20" y="48" width="76" height="4" rx="2" />
+		<rect class="bar" x="20" y="58" width="88" height="4" rx="2" />
+		<text class="mono-accent" x="70" y="76" text-anchor="middle" font-size="10">youtube-downloader.dex</text>
+	</g>
+
+	<line class="link" x1="402" y1="160" x2="446" y2="160" marker-end="url(#arrow)" />
+
+	<g transform="translate(680,50)">
+		<rect class="card-accent" x="0" y="0" width="240" height="220" rx="20" />
+		<text class="caption" x="20" y="28">Patch</text>
+		<rect class="inner" x="16" y="44" width="208" height="60" rx="8" />
+		<text class="mono" x="30" y="66">patch(...) {</text>
+		<text class="mono-accent" x="46" y="84">extendWith(</text>
+		<text class="mono-accent" x="62" y="98">"youtube-downloader.dex"</text>
+
+		<line class="link" x1="120" y1="124" x2="120" y2="144" marker-end="url(#arrow)" />
+
+		<rect class="inner" x="16" y="148" width="208" height="56" rx="8" />
+		<text class="caption" x="120" y="168" text-anchor="middle">Target APK</text>
+		<circle class="accent-fill" cx="40" cy="188" r="3" />
+		<text class="mono" x="52" y="192">classes.dex (patched)</text>
+	</g>
+
+	<line class="link" x1="592" y1="160" x2="676" y2="160" marker-end="url(#arrow)" />
+
+	<text class="label" x="480" y="302" text-anchor="middle">Gradle compiles extensions to DEX at bundle time. Patches inject them into the target APK at patch time.</text>
+</svg>

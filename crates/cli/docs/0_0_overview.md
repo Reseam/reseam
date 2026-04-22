@@ -5,6 +5,8 @@ description: What the Reseam CLI is and what it does.
 
 # Overview
 
+![Diagram: four cards representing the Reseam CLI's surfaces. reseam patch applies a bundle to an APK. reseam bundle handles keygen, pack, and list for signed .reseam archives. reseam publish writes or updates a patches.json release index. reseam info prints APK metadata.](commands-palette.svg)
+
 `reseam` is the command-line patch engine. Patch authors use it to build and sign bundles; advanced users run it on a laptop to patch APKs without Reseam Manager.
 
 The binary is named `reseam` and ships from the `reseam-cli` crate.

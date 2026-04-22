@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" font-family="'InterVariable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+	<style>
+		.card { fill: #121212; stroke: #262626; stroke-width: 1.5; }
+		.card-accent { fill: #121212; stroke: oklch(0.8808 0.0969 156.04); stroke-width: 1.5; }
+		.inner { fill: #171717; stroke: none; }
+		.chip { fill: #0a0a0a; stroke: #262626; stroke-width: 1; }
+		.title { fill: #ededed; font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+		.label { fill: #a3a3a3; font-size: 11px; }
+		.caption { fill: #a3a3a3; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; }
+		.mono { fill: #ededed; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.mono-muted { fill: #a3a3a3; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.mono-dim { fill: #6b6b6b; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-decoration: line-through; }
+		.accent-fill { fill: oklch(0.8808 0.0969 156.04); }
+		.accent-stroke { stroke: oklch(0.8808 0.0969 156.04); stroke-width: 1.5; fill: none; }
+		.link { stroke: #3f3f46; stroke-width: 1.5; fill: none; }
+		.arrowhead { fill: #3f3f46; }
+		.arrowhead-accent { fill: oklch(0.8808 0.0969 156.04); }
+	</style>
+	<defs>
+		<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+			<path d="M0,0 L10,5 L0,10 z" class="arrowhead" />
+		</marker>
+		<marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+			<path d="M0,0 L10,5 L0,10 z" class="arrowhead-accent" />
+		</marker>
+	</defs>
+
+	<g transform="translate(40,40)">
+		<rect class="card" x="0" y="0" width="260" height="150" rx="18" />
+		<text class="caption" x="20" y="26">App v19.42</text>
+		<rect class="inner" x="16" y="40" width="228" height="94" rx="8" />
+		<text class="mono-dim" x="28" y="60">method: xyz()</text>
+		<text class="mono" x="28" y="82">strings: "app_launch_reported"</text>
+		<text class="mono" x="62" y="98">"session_id"</text>
+		<text class="mono" x="28" y="118">returnType: Z</text>
+	</g>
+
+	<g transform="translate(40,220)">
+		<rect class="card" x="0" y="0" width="260" height="150" rx="18" />
+		<text class="caption" x="20" y="26">App v20.08 (renamed)</text>
+		<rect class="inner" x="16" y="40" width="228" height="94" rx="8" />
+		<text class="mono-dim" x="28" y="60">method: q()</text>
+		<text class="mono" x="28" y="82">strings: "app_launch_reported"</text>
+		<text class="mono" x="62" y="98">"session_id"</text>
+		<text class="mono" x="28" y="118">returnType: Z</text>
+	</g>
+
+	<g transform="translate(600,120)">
+		<rect class="card-accent" x="0" y="0" width="320" height="170" rx="20" />
+		<text class="caption" x="20" y="28">Fingerprint</text>
+		<rect class="inner" x="16" y="44" width="288" height="112" rx="8" />
+		<text class="mono" x="32" y="68">fingerprint {</text>
+		<text class="mono" x="52" y="88">strings(</text>
+		<text class="mono" x="70" y="104">"app_launch_reported",</text>
+		<text class="mono" x="70" y="120">"session_id",</text>
+		<text class="mono" x="52" y="136">)</text>
+		<text class="mono" x="52" y="152">returnType("Z")</text>
+	</g>
+
+	<path class="accent-stroke" d="M 304 110 C 440 110, 520 170, 596 180" marker-end="url(#arrow-accent)" />
+	<text class="label" x="440" y="130">matches</text>
+
+	<path class="accent-stroke" d="M 304 290 C 440 290, 520 240, 596 230" marker-end="url(#arrow-accent)" />
+	<text class="label" x="440" y="280">matches</text>
+
+	<text class="label" x="480" y="388" text-anchor="middle">Names change across releases. Strings, return type, opcode shape, and parameters usually don't.</text>
+</svg>

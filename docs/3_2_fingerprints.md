@@ -1,5 +1,7 @@
 # Fingerprints
 
+![Diagram: the same method in two different app releases. Version 19 has it named xyz(); version 20 has it renamed to q(). Both methods still reference the string literals "app_launch_reported" and "session_id" and return type Z. A fingerprint block declaring those strings and that return type matches both versions, so a patch keyed on the fingerprint keeps working across the rename.](fingerprint-match.svg)
+
 Obfuscated method names change between app versions. A fingerprint matches a method by stable properties (strings it references, return type, parameters, opcode shape) so patches survive renames.
 
 ```kotlin

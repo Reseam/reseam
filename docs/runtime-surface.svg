@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 360" font-family="'InterVariable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+	<style>
+		.card { fill: #121212; stroke: #262626; stroke-width: 1.5; }
+		.card-accent { fill: #121212; stroke: oklch(0.8808 0.0969 156.04); stroke-width: 1.5; }
+		.chip { fill: #0a0a0a; stroke: #262626; stroke-width: 1; }
+		.title { fill: #ededed; font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+		.label { fill: #a3a3a3; font-size: 11px; }
+		.caption { fill: #a3a3a3; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; }
+		.mono { fill: #a3a3a3; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.accent-fill { fill: oklch(0.8808 0.0969 156.04); }
+	</style>
+
+	<g transform="translate(80,40)">
+		<rect class="card-accent" x="0" y="0" width="800" height="280" rx="22" />
+		<text class="caption" x="28" y="30">Passed to every patch</text>
+		<text class="title" x="28" y="54" font-size="18">ctx : PatchRuntime</text>
+
+		<g transform="translate(28,90)">
+			<rect class="chip" x="0" y="0" width="230" height="80" rx="12" />
+			<circle class="accent-fill" cx="18" cy="22" r="4" />
+			<text class="title" x="32" y="26">bytecode</text>
+			<text class="label" x="18" y="50">classes, methods, instructions</text>
+			<text class="mono" x="18" y="66">findClass / fingerprints</text>
+		</g>
+
+		<g transform="translate(284,90)">
+			<rect class="chip" x="0" y="0" width="230" height="80" rx="12" />
+			<circle class="accent-fill" cx="18" cy="22" r="4" />
+			<text class="title" x="32" y="26">manifest</text>
+			<text class="label" x="18" y="50">AndroidManifest AXML</text>
+			<text class="mono" x="18" y="66">addPermission / setVersion</text>
+		</g>
+
+		<g transform="translate(540,90)">
+			<rect class="chip" x="0" y="0" width="230" height="80" rx="12" />
+			<circle class="accent-fill" cx="18" cy="22" r="4" />
+			<text class="title" x="32" y="26">resources</text>
+			<text class="label" x="18" y="50">resource table, string pool</text>
+			<text class="mono" x="18" y="66">addString / replaceEntry</text>
+		</g>
+
+		<g transform="translate(28,182)">
+			<rect class="chip" x="0" y="0" width="230" height="80" rx="12" />
+			<circle class="accent-fill" cx="18" cy="22" r="4" />
+			<text class="title" x="32" y="26">files</text>
+			<text class="label" x="18" y="50">raw APK entries</text>
+			<text class="mono" x="18" y="66">read / write / copy / delete</text>
+		</g>
+
+		<g transform="translate(284,182)">
+			<rect class="chip" x="0" y="0" width="230" height="80" rx="12" />
+			<circle class="accent-fill" cx="18" cy="22" r="4" />
+			<text class="title" x="32" y="26">options</text>
+			<text class="label" x="18" y="50">values the caller supplied</text>
+			<text class="mono" x="18" y="66">options.string / .bool / ...</text>
+		</g>
+
+		<g transform="translate(540,182)">
+			<rect class="chip" x="0" y="0" width="230" height="80" rx="12" />
+			<circle class="accent-fill" cx="18" cy="22" r="4" />
+			<text class="title" x="32" y="26">log</text>
+			<text class="label" x="18" y="50">per-patch structured output</text>
+			<text class="mono" x="18" y="66">info / warn / debug</text>
+		</g>
+	</g>
+
+	<text class="label" x="480" y="346" text-anchor="middle">Each scope offers a .component(name) variant for split-APK targeting.</text>
+</svg>

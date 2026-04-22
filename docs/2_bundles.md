@@ -2,6 +2,8 @@
 
 A bundle is a Gradle project that builds into a signed `.reseam` archive.
 
+![Diagram: a bundle project directory (manifest.toml, gradle files, apps/<app>/patch, apps/<app>/extensions, shared/) on the left. The reseam bundle pack command hashes every payload file with SHA-256 and signs the manifest with Ed25519, producing the .reseam archive on the right containing mimetype, a rewritten manifest.toml with a [files] table, manifest.pubkey, manifest.sig, and the compiled patch JAR plus extension DEX files. Sources and build scripts stay out of the archive.](bundle-layout.svg)
+
 ## Project layout
 
 ```
