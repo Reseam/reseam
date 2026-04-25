@@ -9,7 +9,7 @@ These docs are for patch authors. Read in order:
 3. Patches. Writing Kotlin patches.
    1. [Overview](3_patches.md). The `patch(...)` DSL, metadata, lifecycle, options, dependencies.
    2. [Runtime](3_1_runtime.md). What `PatchRuntime` exposes: bytecode, manifest, resources, files, log.
-   3. [Fingerprints](3_2_fingerprints.md). Matching methods by stable properties to survive obfuscation renames.
+   3. [Queries And Bindings](3_2_queries.md). Structural matching, runtime extraction, diagnostics, and mutation.
    4. [Instructions](3_3_instructions.md). Building DEX bytecode sequences with labels and branches.
 4. [Extensions](4_extensions.md). Java or Kotlin code compiled to DEX and injected at patch time.
 5. [Publishing](5_publish.md). Build, apply locally, benchmark, generate `patches.json`, host.

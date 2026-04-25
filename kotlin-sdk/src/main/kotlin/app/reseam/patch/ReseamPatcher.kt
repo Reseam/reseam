@@ -16,12 +16,12 @@ import java.net.URI
 
 class FfiException(val code: Int, message: String) : Exception(message)
 
+private fun takeLastErrorMessage(): String =
+    Native.boltffi_last_error_message().toString(Charsets.UTF_8)
+
 private inline fun <T> useWireBytes(bytes: ByteArray, block: (java.nio.ByteBuffer) -> T): T {
     return block(java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN))
 }
-
-private fun takeLastErrorMessage(): String =
-    Native.boltffi_last_error_message().toString(Charsets.UTF_8)
 
 interface WireCodable {
     fun encode(writer: WireWriter)

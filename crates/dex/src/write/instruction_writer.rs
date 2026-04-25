@@ -263,8 +263,10 @@ pub(super) fn pack_aa_op(op: u16, aa: u8) -> u16 {
     op | ((aa as u16) << 8)
 }
 
-pub(super) fn pack_12x(op: u16, a: u8, b: u8) -> u16 {
-    op | ((a as u16 & 0xF) << 8) | ((b as u16 & 0xF) << 12)
+pub(super) fn pack_12x(op: u16, a: u8, b: u8) -> Result<u16> {
+    validate_u4_register(a, "A")?;
+    validate_u4_register(b, "B")?;
+    Ok(op | ((a as u16) << 8) | ((b as u16) << 12))
 }
 
 pub(super) fn encode_23x(code: &mut Vec<u16>, op: u16, aa: u8, bb: u8, cc: u8) {
@@ -305,6 +307,16 @@ pub(super) fn validate_35c_args(args: &[u8]) -> Result<()> {
     Ok(())
 }
 
+pub(super) fn validate_u4_register(register: u8, operand: &str) -> Result<()> {
+    if register > 15 {
+        return Err(crate::error::invalid(
+            "instruction",
+            format!("register v{register} exceeds nibble range (0-15) for operand {operand}"),
+        ));
+    }
+    Ok(())
+}
+
 pub(super) fn unpack_args(args: &[u8]) -> (u8, u8, u8, u8, u8) {
     let c = args.first().copied().unwrap_or(0);
     let d = args.get(1).copied().unwrap_or(0);
@@ -312,4 +324,30 @@ pub(super) fn unpack_args(args: &[u8]) -> (u8, u8, u8, u8, u8) {
     let f = args.get(3).copied().unwrap_or(0);
     let g = args.get(4).copied().unwrap_or(0);
     (c, d, e, f, g)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::encode_instructions;
+    use crate::types::instruction::Instruction;
+
+    #[test]
+    fn rejects_out_of_range_12x_registers() {
+        let err = encode_instructions(&[Instruction::Move { dest: 16, src: 0 }])
+            .expect_err("v16 must not be accepted for a 12x register");
+        assert!(
+            err.to_string().contains("nibble range"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn rejects_out_of_range_const4_literals() {
+        let err = encode_instructions(&[Instruction::Const4 { dest: 0, value: 8 }])
+            .expect_err("8 must not fit const/4");
+        assert!(
+            err.to_string().contains("const/4"),
+            "unexpected error: {err}"
+        );
+    }
 }

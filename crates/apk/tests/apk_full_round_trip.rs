@@ -69,7 +69,7 @@ fn test_apk_full_round_trip() {
         }
 
         // --- Phase 2: reopen and verify resources preserved ---
-        let apk2 = open_apk_lazy(output_path.to_str().expect("utf-8 output path"));
+        let mut apk2 = open_apk_lazy(output_path.to_str().expect("utf-8 output path"));
         assert_eq!(apk2.package_name().map(|s| s.to_owned()), original_package);
         assert_eq!(apk2.dex().len(), original_dex_count);
         assert_eq!(
@@ -87,8 +87,10 @@ fn test_apk_full_round_trip() {
         // --- Phase 3: mutate DEX, write, reparse ---
         let mut apk3 = ApkFile::open(apk_path).expect("open for dex mutation failed");
         let mut patched = 0;
-        for i in 0..apk3.dex().len() {
-            let dex = apk3.dex_mut().dex_mut(i).expect("dex access failed");
+        let dex_count = apk3.dex().len();
+        let mut dexes = apk3.dex_mut();
+        for i in 0..dex_count {
+            let dex = dexes.dex_mut(i).expect("dex access failed");
             for class in &mut dex.classes {
                 if let Some(ref mut data) = class.class_data {
                     for m in data
@@ -181,7 +183,8 @@ fn test_apk_full_round_trip() {
         apk6.manifest_mut().set_version_name("1.0.0-test");
 
         let mut patched6 = 0;
-        if let Some(dex) = apk6.dex_mut().dex_mut(0) {
+        let mut dexes = apk6.dex_mut();
+        if let Some(dex) = dexes.dex_mut(0) {
             for class in &mut dex.classes {
                 if let Some(ref mut data) = class.class_data {
                     for m in data

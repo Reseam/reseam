@@ -1,0 +1,22 @@
+[package]
+name = "reseam_manager"
+crate = "reseam-manager-ffi"
+
+[targets.apple]
+enabled = false
+
+[targets.wasm]
+enabled = false
+
+[targets.android]
+enabled = true
+
+[targets.android.kotlin]
+package = "app.reseam.manager"
+output = "../../manager-sdk/generated"
+module_name = "ReseamManager"
+library_name = "reseam_manager_ffi"
+desktop_loader = "system"
+
+[targets.android.pack]
+output = "../../manager-sdk/jniLibs"

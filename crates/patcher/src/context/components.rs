@@ -14,7 +14,7 @@ impl<'a> PatchContext<'a> {
         self.apk.manifest_mut()
     }
 
-    pub fn resources(&self) -> Option<&ResourceTable> {
+    pub fn resources(&mut self) -> Option<&ResourceTable> {
         self.apk.resources()
     }
 
@@ -24,7 +24,7 @@ impl<'a> PatchContext<'a> {
 
     pub fn resource_component_names(&self) -> Vec<String> {
         (0..self.apk.component_count())
-            .filter(|&index| self.apk.component_resources(index).is_some())
+            .filter(|&index| self.apk.component_has_resources(index))
             .filter_map(|index| {
                 self.apk
                     .component_meta(index)
@@ -43,7 +43,7 @@ impl<'a> PatchContext<'a> {
         self.apk.component_index_by_name(name)
     }
 
-    pub fn component_resources(&self, index: usize) -> Option<&ResourceTable> {
+    pub fn component_resources(&mut self, index: usize) -> Option<&ResourceTable> {
         self.apk.component_resources(index)
     }
 

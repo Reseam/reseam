@@ -6,7 +6,7 @@ mod source;
 mod types;
 mod write;
 
-use reseam_dex::MultiDexContainer;
+use reseam_dex::{DexFile, MultiDexContainer};
 
 use crate::axml::reader::AxmlDocument;
 use crate::error::{invalid, Result};
@@ -43,9 +43,51 @@ impl Default for ApkWriteOptions {
 pub struct ApkFile {
     kind: ApkKind,
     dex: MultiDexContainer,
-    dex_dirty: bool,
+    dex_sessions: Vec<DexSessionEntry>,
     components: Vec<ApkComponentSession>,
     entry_names: Vec<ApkEntryPath>,
+}
+
+#[derive(Debug, Clone)]
+struct DexEntryOrigin {
+    component_index: usize,
+    entry_name: ApkEntryPath,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DexEntryState {
+    Clean,
+    Modified,
+    Added,
+}
+
+#[derive(Debug, Clone)]
+struct DexSessionEntry {
+    origin: Option<DexEntryOrigin>,
+    state: DexEntryState,
+}
+
+impl DexSessionEntry {
+    fn existing(component_index: usize, entry_name: ApkEntryPath) -> Self {
+        Self {
+            origin: Some(DexEntryOrigin {
+                component_index,
+                entry_name,
+            }),
+            state: DexEntryState::Clean,
+        }
+    }
+
+    fn added() -> Self {
+        Self {
+            origin: None,
+            state: DexEntryState::Added,
+        }
+    }
+}
+
+pub struct ApkDexMut<'a> {
+    apk: &'a mut ApkFile,
 }
 
 impl ApkFile {
@@ -83,6 +125,21 @@ impl ApkFile {
         }
     }
 
+    fn mark_dex_modified(&mut self, index: usize) {
+        let Some(entry) = self.dex_sessions.get_mut(index) else {
+            return;
+        };
+        if entry.state == DexEntryState::Clean {
+            entry.state = DexEntryState::Modified;
+        }
+    }
+
+    fn any_dex_dirty(&self) -> bool {
+        self.dex_sessions
+            .iter()
+            .any(|entry| entry.state != DexEntryState::Clean)
+    }
+
     /// Get a reference to the unified DEX container.
     pub fn dex(&self) -> &MultiDexContainer {
         &self.dex
@@ -95,14 +152,13 @@ impl ApkFile {
 
     /// Resolve the target DEX's lazy class data, then return it mutably.
     pub fn resolved_dex_mut(&mut self, index: usize) -> Result<Option<&mut reseam_dex::DexFile>> {
-        self.dex_dirty = true;
+        self.mark_dex_modified(index);
         Ok(self.dex.dex_resolved_mut(index)?)
     }
 
-    /// Get a mutable reference to the unified DEX container.
-    pub fn dex_mut(&mut self) -> &mut MultiDexContainer {
-        self.dex_dirty = true;
-        &mut self.dex
+    /// Get tracked mutable access to the unified DEX container.
+    pub fn dex_mut(&mut self) -> ApkDexMut<'_> {
+        ApkDexMut { apk: self }
     }
 
     pub fn manifest(&self) -> &AxmlDocument {
@@ -115,14 +171,12 @@ impl ApkFile {
         &mut component.manifest
     }
 
-    pub fn resources(&self) -> Option<&ResourceTable> {
-        self.base_component().resources.as_ref()
+    pub fn resources(&mut self) -> Option<&ResourceTable> {
+        self.base_component_mut().resources()
     }
 
     pub fn resources_mut(&mut self) -> Option<&mut ResourceTable> {
-        let component = self.base_component_mut();
-        component.resources_dirty = true;
-        component.resources.as_mut()
+        self.base_component_mut().resources_mut()
     }
 
     pub fn component_meta(&self, index: usize) -> Option<&ApkComponent> {
@@ -139,15 +193,17 @@ impl ApkFile {
         Some(&mut component.manifest)
     }
 
-    pub fn component_resources(&self, index: usize) -> Option<&ResourceTable> {
+    pub fn component_has_resources(&self, index: usize) -> bool {
         self.component(index)
-            .and_then(|component| component.resources.as_ref())
+            .is_some_and(ApkComponentSession::has_resource_entry)
+    }
+
+    pub fn component_resources(&mut self, index: usize) -> Option<&ResourceTable> {
+        self.component_mut(index)?.resources()
     }
 
     pub fn component_resources_mut(&mut self, index: usize) -> Option<&mut ResourceTable> {
-        let component = self.component_mut(index)?;
-        component.resources_dirty = true;
-        component.resources.as_mut()
+        self.component_mut(index)?.resources_mut()
     }
 
     pub fn component_entry_names(&self, index: usize) -> Option<&[ApkEntryPath]> {
@@ -161,53 +217,67 @@ impl ApkFile {
             .position(|component| component.meta.name.as_str() == name)
     }
 
-    pub fn find_resource_component(&self, type_name: &str, entry_name: &str) -> Option<usize> {
-        self.components
-            .iter()
-            .enumerate()
-            .find_map(|(index, component)| {
-                component
-                    .resources
-                    .as_ref()
-                    .and_then(|resources| resources.find_resource_id(type_name, entry_name))
-                    .map(|_| index)
-            })
+    pub fn find_resource_component(&mut self, type_name: &str, entry_name: &str) -> Option<usize> {
+        for index in 0..self.components.len() {
+            let Some(resources) = self
+                .component_mut(index)
+                .and_then(|component| component.resources())
+            else {
+                continue;
+            };
+            if resources.find_resource_id(type_name, entry_name).is_some() {
+                return Some(index);
+            }
+        }
+        None
     }
 
-    pub fn find_resource_component_by_id(&self, res_id: u32) -> Option<usize> {
-        self.components
-            .iter()
-            .enumerate()
-            .find_map(|(index, component)| {
-                component
-                    .resources
-                    .as_ref()
-                    .filter(|resources| resources.contains_resource_id(res_id))
-                    .map(|_| index)
-            })
+    pub fn find_resource_component_by_id(&mut self, res_id: u32) -> Option<usize> {
+        for index in 0..self.components.len() {
+            let Some(resources) = self
+                .component_mut(index)
+                .and_then(|component| component.resources())
+            else {
+                continue;
+            };
+            if resources.contains_resource_id(res_id) {
+                return Some(index);
+            }
+        }
+        None
     }
 
-    pub fn find_resource_id(&self, type_name: &str, entry_name: &str) -> Option<u32> {
-        self.components.iter().find_map(|component| {
-            component
-                .resources
-                .as_ref()
-                .and_then(|resources| resources.find_resource_id(type_name, entry_name))
-        })
+    pub fn find_resource_id(&mut self, type_name: &str, entry_name: &str) -> Option<u32> {
+        for index in 0..self.components.len() {
+            let Some(resources) = self
+                .component_mut(index)
+                .and_then(|component| component.resources())
+            else {
+                continue;
+            };
+            if let Some(res_id) = resources.find_resource_id(type_name, entry_name) {
+                return Some(res_id);
+            }
+        }
+        None
     }
 
-    pub fn resource_exists(&self, type_name: &str, entry_name: &str) -> bool {
+    pub fn resource_exists(&mut self, type_name: &str, entry_name: &str) -> bool {
         self.find_resource_component(type_name, entry_name)
             .is_some()
     }
 
-    pub fn get_string_resource_value(&self, name: &str) -> Option<&str> {
-        self.components.iter().find_map(|component| {
-            component
-                .resources
-                .as_ref()
+    pub fn get_string_resource_value(&mut self, name: &str) -> Option<&str> {
+        let component_index = (0..self.components.len()).find(|&index| {
+            self.component_mut(index)
+                .and_then(|component| component.resources())
                 .and_then(|resources| resources.get_string_value(name))
-        })
+                .is_some()
+        })?;
+
+        self.component_mut(component_index)
+            .and_then(|component| component.resources())
+            .and_then(|resources| resources.get_string_value(name))
     }
 
     pub fn set_string_resource_value(&mut self, name: &str, value: &str) -> bool {
@@ -215,22 +285,21 @@ impl ApkFile {
         let Some(component) = self.component_mut(component_index) else {
             return false;
         };
-        let Some(resources) = component.resources.as_mut() else {
+        let Some(resources) = component.resources_mut() else {
             return false;
         };
-        component.resources_dirty = true;
         resources.set_string_value(name, value)
     }
 
     pub fn component_find_resource_id(
-        &self,
+        &mut self,
         component_index: usize,
         type_name: &str,
         entry_name: &str,
     ) -> Option<u32> {
-        self.component(component_index)
-            .and_then(|component| component.resources.as_ref())
-            .and_then(|resources| resources.find_resource_id(type_name, entry_name))
+        self.component_mut(component_index)
+            .and_then(|component| component.resources())?
+            .find_resource_id(type_name, entry_name)
     }
 
     /// Get the package name from the base manifest.
@@ -347,5 +416,30 @@ impl ApkFile {
             component.delete_file(path);
             self.remove_entry_name_if_absent(path);
         }
+    }
+}
+
+impl<'a> ApkDexMut<'a> {
+    pub fn dex_mut(&mut self, index: usize) -> Option<&mut DexFile> {
+        self.apk.mark_dex_modified(index);
+        self.apk.dex.dex_mut(index)
+    }
+
+    pub fn dex_resolved_mut(&mut self, index: usize) -> Result<Option<&mut DexFile>> {
+        self.apk.mark_dex_modified(index);
+        Ok(self.apk.dex.dex_resolved_mut(index)?)
+    }
+
+    pub fn add_dex(&mut self, dex: DexFile) {
+        self.apk.dex.add_dex(dex);
+        self.apk.dex_sessions.push(DexSessionEntry::added());
+    }
+
+    pub fn len(&self) -> usize {
+        self.apk.dex.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.apk.dex.is_empty()
     }
 }

@@ -20,7 +20,7 @@ impl<'a> PatchContext<'a> {
         self.apk.dex()
     }
 
-    pub fn dex_container_mut(&mut self) -> &mut MultiDexContainer {
+    pub fn dex_container_mut(&mut self) -> reseam_apk::apk_file::ApkDexMut<'_> {
         self.apk.dex_mut()
     }
 

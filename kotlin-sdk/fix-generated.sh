@@ -14,35 +14,55 @@ fi
 
 cp "$GEN" "$DST"
 
-python3 -c "
-with open('$DST') as f:
+python3 - "$DST" <<'PY'
+import sys
+
+dst = sys.argv[1]
+with open(dst) as f:
     s = f.read()
 
 header = '// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>\n// SPDX-License-Identifier: GPL-3.0-or-later\n\n'
 if not s.startswith('// SPDX-FileCopyrightText:'):
     s = header + s
 
-# Remove unused imports that BoltFFI emits unconditionally
-for imp in [
-    'java.util.concurrent.ConcurrentHashMap',
-    'java.util.concurrent.atomic.AtomicBoolean',
-    'java.util.concurrent.atomic.AtomicLong',
+# Remove imports that this generated file does not actually use.
+for imp, symbol in [
+    ('java.util.concurrent.ConcurrentHashMap', 'ConcurrentHashMap'),
+    ('java.util.concurrent.atomic.AtomicBoolean', 'AtomicBoolean'),
+    ('java.util.concurrent.atomic.AtomicLong', 'AtomicLong'),
 ]:
-    s = s.replace('import ' + imp + '\n', '')
+    body = s.replace('import ' + imp + '\n', '')
+    if symbol not in body:
+        s = body
 
-# BoltFFI v0.22 bug: useWireBytes is referenced but not defined
-if 'useWireBytes' in s and 'fun useWireBytes' not in s:
-    # Insert after the FfiException class
-    marker = 'class FfiException(val code: Int, message: String) : Exception(message)\n'
-    helper = '''
-private inline fun <T> useWireBytes(bytes: ByteArray, block: (java.nio.ByteBuffer) -> T): T {
-    return block(java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN))
-}
+old_loader = '''        val vmName = System.getProperty("java.vm.name").orEmpty()
+        val isAndroidRuntime =
+            vmName.contains("dalvik", ignoreCase = true) ||
+            vmName.contains("art", ignoreCase = true)
+        if (isAndroidRuntime) {
+            System.loadLibrary(fallbackLibrary)
+        } else {
+            loadDesktopLibraries(preferredLibrary, fallbackLibrary)
+        }
 '''
-    s = s.replace(marker, marker + helper)
+new_loader = '''        val vmName = System.getProperty("java.vm.name").orEmpty()
+        val bootstrapMode = System.getProperty("reseam.native.bootstrap").orEmpty()
+        val isAndroidRuntime =
+            vmName.contains("dalvik", ignoreCase = true) ||
+            vmName.contains("art", ignoreCase = true)
+        if (isAndroidRuntime) {
+            System.loadLibrary(fallbackLibrary)
+        } else if (bootstrapMode != "host-registered") {
+            loadDesktopLibraries(preferredLibrary, fallbackLibrary)
+        }
+'''
+if old_loader in s:
+    s = s.replace(old_loader, new_loader)
+elif new_loader not in s:
+    raise SystemExit('error: BoltFFI native loader template changed; update host-registered bootstrap integration')
 
-with open('$DST', 'w') as f:
+with open(dst, 'w') as f:
     f.write(s)
-"
+PY
 
 echo "Fixed: $DST"

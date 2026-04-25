@@ -10,6 +10,8 @@ class PatchRuntime {
     val files: FileScope = FileScope()
     val options: RuntimeOptions = RuntimeOptions()
     val log: PatchLogger = PatchLogger()
+
+    internal val apiState: PatchApiState by lazy { PatchApiState(this) }
 }
 
 class BytecodeScope internal constructor() {
@@ -18,9 +20,6 @@ class BytecodeScope internal constructor() {
 
     fun findClass(descriptor: String): DexClass? =
         app.reseam.patch.findClass(descriptor)?.let { DexClass(it) }
-
-    fun fingerprint(block: FingerprintBuilder.() -> Unit): Fingerprint =
-        app.reseam.patch.fingerprint(block)
 }
 
 class PatchLogger internal constructor() {

@@ -42,59 +42,59 @@ pub(super) fn encode_instruction(code: &mut Vec<u16>, instruction: &Instruction)
         }
 
         Instruction::Iget { dest, obj, field } => {
-            code.push(pack_12x(0x52, *dest, *obj));
+            code.push(pack_12x(0x52, *dest, *obj)?);
             code.push(field.0 as u16);
         }
         Instruction::IgetWide { dest, obj, field } => {
-            code.push(pack_12x(0x53, *dest, *obj));
+            code.push(pack_12x(0x53, *dest, *obj)?);
             code.push(field.0 as u16);
         }
         Instruction::IgetObject { dest, obj, field } => {
-            code.push(pack_12x(0x54, *dest, *obj));
+            code.push(pack_12x(0x54, *dest, *obj)?);
             code.push(field.0 as u16);
         }
         Instruction::IgetBoolean { dest, obj, field } => {
-            code.push(pack_12x(0x55, *dest, *obj));
+            code.push(pack_12x(0x55, *dest, *obj)?);
             code.push(field.0 as u16);
         }
         Instruction::IgetByte { dest, obj, field } => {
-            code.push(pack_12x(0x56, *dest, *obj));
+            code.push(pack_12x(0x56, *dest, *obj)?);
             code.push(field.0 as u16);
         }
         Instruction::IgetChar { dest, obj, field } => {
-            code.push(pack_12x(0x57, *dest, *obj));
+            code.push(pack_12x(0x57, *dest, *obj)?);
             code.push(field.0 as u16);
         }
         Instruction::IgetShort { dest, obj, field } => {
-            code.push(pack_12x(0x58, *dest, *obj));
+            code.push(pack_12x(0x58, *dest, *obj)?);
             code.push(field.0 as u16);
         }
         Instruction::Iput { src, obj, field } => {
-            code.push(pack_12x(0x59, *src, *obj));
+            code.push(pack_12x(0x59, *src, *obj)?);
             code.push(field.0 as u16);
         }
         Instruction::IputWide { src, obj, field } => {
-            code.push(pack_12x(0x5a, *src, *obj));
+            code.push(pack_12x(0x5a, *src, *obj)?);
             code.push(field.0 as u16);
         }
         Instruction::IputObject { src, obj, field } => {
-            code.push(pack_12x(0x5b, *src, *obj));
+            code.push(pack_12x(0x5b, *src, *obj)?);
             code.push(field.0 as u16);
         }
         Instruction::IputBoolean { src, obj, field } => {
-            code.push(pack_12x(0x5c, *src, *obj));
+            code.push(pack_12x(0x5c, *src, *obj)?);
             code.push(field.0 as u16);
         }
         Instruction::IputByte { src, obj, field } => {
-            code.push(pack_12x(0x5d, *src, *obj));
+            code.push(pack_12x(0x5d, *src, *obj)?);
             code.push(field.0 as u16);
         }
         Instruction::IputChar { src, obj, field } => {
-            code.push(pack_12x(0x5e, *src, *obj));
+            code.push(pack_12x(0x5e, *src, *obj)?);
             code.push(field.0 as u16);
         }
         Instruction::IputShort { src, obj, field } => {
-            code.push(pack_12x(0x5f, *src, *obj));
+            code.push(pack_12x(0x5f, *src, *obj)?);
             code.push(field.0 as u16);
         }
 

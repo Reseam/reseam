@@ -9,7 +9,10 @@ use std::path::Path;
 use reseam_dex::{MultiDexContainer, ParseOptions};
 use tracing::{info, instrument, warn};
 
-use super::{ApkComponent, ApkComponentSession, ApkEntryPath, ApkFile, ApkKind, ComponentName};
+use super::{
+    ApkComponent, ApkComponentSession, ApkEntryPath, ApkFile, ApkKind, ComponentName,
+    DexSessionEntry,
+};
 use crate::axml::reader::AxmlDocument;
 use crate::dex;
 use crate::error::ApkError;
@@ -35,20 +38,24 @@ impl ApkFile {
     pub fn open_with_options(path: impl AsRef<Path>, opts: ParseOptions) -> Result<Self> {
         let path = path.as_ref();
         let component = Self::load_component(path, "base".to_string(), &opts)?;
-        let dex = Self::load_component_dex(&component.meta.path, opts)?;
+        let (dex, dex_names) = Self::load_component_dex(&component.meta.path, opts)?;
+        let dex_sessions = dex_names
+            .into_iter()
+            .map(|name| DexSessionEntry::existing(0, name))
+            .collect();
 
         info!(
             package = component.manifest.package_name(),
             version = component.manifest.version_name(),
             dex_files = dex.len(),
-            has_resources = component.resources.is_some(),
+            has_resources = component.has_resource_entry(),
             "opened APK"
         );
 
         Ok(Self {
             kind: ApkKind::Single,
             dex,
-            dex_dirty: false,
+            dex_sessions,
             entry_names: component.entry_names.clone(),
             components: vec![component],
         })
@@ -80,7 +87,11 @@ impl ApkFile {
         let mut components = Vec::with_capacity(1 + splits.len());
         let base_component = Self::load_component(base_path, "base".to_string(), &opts)?;
         let mut entry_names = base_component.entry_names.clone();
-        let mut dex = Self::load_component_dex(base_path, opts.clone())?;
+        let (mut dex, base_dex_names) = Self::load_component_dex(base_path, opts.clone())?;
+        let mut dex_sessions: Vec<DexSessionEntry> = base_dex_names
+            .into_iter()
+            .map(|name| DexSessionEntry::existing(0, name))
+            .collect();
         components.push(base_component);
 
         for split_path in splits {
@@ -88,7 +99,14 @@ impl ApkFile {
             let split_name = Self::derive_split_name(split_path);
             let component = Self::load_component(split_path, split_name, &opts)?;
             entry_names.extend(component.entry_names.iter().cloned());
-            dex.extend(Self::load_component_dex(split_path, opts.clone())?);
+            let component_index = components.len();
+            let (split_dex, split_dex_names) = Self::load_component_dex(split_path, opts.clone())?;
+            dex.extend(split_dex);
+            dex_sessions.extend(
+                split_dex_names
+                    .into_iter()
+                    .map(|name| DexSessionEntry::existing(component_index, name)),
+            );
             components.push(component);
         }
 
@@ -101,7 +119,7 @@ impl ApkFile {
         Ok(Self {
             kind: ApkKind::Split,
             dex,
-            dex_dirty: false,
+            dex_sessions,
             components,
             entry_names: dedupe_preserve_order(entry_names),
         })
@@ -117,26 +135,28 @@ impl ApkFile {
         let manifest_bytes = reader.read_manifest()?;
         let manifest = AxmlDocument::parse(&manifest_bytes)?;
         let resources = if reader.contains("resources.arsc") {
-            let arsc_bytes = reader.read_entry("resources.arsc")?;
-            match ResourceTable::parse(&arsc_bytes) {
-                Ok(resources) => Some(resources),
-                Err(ApkError::Unsupported { feature, detail })
-                    if feature == "resource string pool styles" =>
-                {
-                    let mode = if opts.lazy { "lazy" } else { "eager" };
-                    warn!(
-                        component = %name,
-                        mode,
-                        feature,
-                        detail,
-                        "opening APK without mutable resource table support"
-                    );
-                    None
+            if opts.lazy {
+                super::component::ResourceSession::Deferred
+            } else {
+                let arsc_bytes = reader.read_entry("resources.arsc")?;
+                match ResourceTable::parse(&arsc_bytes) {
+                    Ok(resources) => super::component::ResourceSession::Loaded(resources),
+                    Err(ApkError::Unsupported { feature, detail })
+                        if feature == "resource string pool styles" =>
+                    {
+                        warn!(
+                            component = %name,
+                            feature,
+                            detail,
+                            "opening APK without mutable resource table support"
+                        );
+                        super::component::ResourceSession::Unavailable
+                    }
+                    Err(error) => return Err(error),
                 }
-                Err(error) => return Err(error),
             }
         } else {
-            None
+            super::component::ResourceSession::Absent
         };
         let entry_names = reader.entry_names();
         let original_dex_names = reader.dex_entry_names();
@@ -160,10 +180,18 @@ impl ApkFile {
         })
     }
 
-    fn load_component_dex(path: &Path, opts: ParseOptions) -> Result<MultiDexContainer> {
+    fn load_component_dex(
+        path: &Path,
+        opts: ParseOptions,
+    ) -> Result<(MultiDexContainer, Vec<ApkEntryPath>)> {
         let file = File::open(path)?;
         let mut reader = ApkReader::new(BufReader::new(file))?;
-        dex::extract_dex(&mut reader, opts)
+        let dex_names = reader
+            .dex_entry_names()
+            .into_iter()
+            .map(ApkEntryPath::from)
+            .collect();
+        Ok((dex::extract_dex(&mut reader, opts)?, dex_names))
     }
 
     fn derive_split_name(path: &Path) -> String {
