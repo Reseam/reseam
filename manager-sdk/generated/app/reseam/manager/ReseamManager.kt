@@ -700,6 +700,14 @@ private object Native {
     @Volatile
     private var bundledLibraryDirectory: java.io.File? = null
 
+    @JvmStatic
+    fun boltffiFutureContinuationCallback(handle: Long, pollResult: Byte) {
+        // The JNI glue currently caches this callback whenever callback traits
+        // are present, even for purely synchronous callback traits. This manager
+        // surface has no async functions, so there is no continuation map to
+        // resume and the callback is not expected to be invoked.
+    }
+
     private fun loadDesktopLibraries(preferredLibrary: String, fallbackLibrary: String) {
         var preferredFailure = tryLoadDesktopLibrary(preferredLibrary)
         if (preferredFailure == null) {
