@@ -26,20 +26,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-changed={}", glue_path.display());
 
     if should_compile_jni_glue() {
-        let java_home = find_java_home()?;
-        let jni_include = PathBuf::from(&java_home).join("include");
-        let jni_platform = if cfg!(target_os = "macos") {
-            jni_include.join("darwin")
-        } else {
-            jni_include.join("linux")
-        };
+        let jni_includes = jni_include_dirs()?;
 
         let mut build = cc::Build::new();
-        build
-            .file(&glue_path)
-            .include(&jni_dir)
-            .include(&jni_include)
-            .include(&jni_platform);
+        build.file(&glue_path).include(&jni_dir);
+        for include in jni_includes {
+            build.include(include);
+        }
 
         // The JNI glue is generated and intentionally keeps the standard JNI
         // parameter shape even when some exports do not use `env`/`cls`.
@@ -188,6 +181,65 @@ fn ret_to_jni_sig(ret: &str) -> Result<&'static str, String> {
 
 fn should_compile_jni_glue() -> bool {
     env::var_os("RESEAM_SKIP_JNI_GLUE").is_none()
+}
+
+fn jni_include_dirs() -> Result<Vec<PathBuf>, Box<dyn Error>> {
+    let target = env::var("TARGET").unwrap_or_default();
+    if target.contains("android") {
+        return android_jni_include_dirs();
+    }
+
+    let java_home = find_java_home()?;
+    let jni_include = PathBuf::from(&java_home).join("include");
+    let jni_platform = if target.contains("apple-darwin") {
+        jni_include.join("darwin")
+    } else if target.contains("windows") {
+        jni_include.join("win32")
+    } else {
+        jni_include.join("linux")
+    };
+    Ok(vec![jni_include, jni_platform])
+}
+
+fn android_jni_include_dirs() -> Result<Vec<PathBuf>, Box<dyn Error>> {
+    let ndk = resolve_android_ndk()
+        .ok_or("Android NDK not found; set ANDROID_NDK_HOME or ANDROID_HOME/ANDROID_SDK_ROOT")?;
+    let prebuilt = ndk.join("toolchains").join("llvm").join("prebuilt");
+    let host = std::fs::read_dir(&prebuilt)?
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .find(|path| path.join("sysroot").join("usr").join("include").is_dir())
+        .ok_or_else(|| format!("Android NDK sysroot not found under {}", prebuilt.display()))?;
+    Ok(vec![host.join("sysroot").join("usr").join("include")])
+}
+
+fn resolve_android_ndk() -> Option<PathBuf> {
+    env::var_os("ANDROID_NDK_HOME")
+        .map(PathBuf::from)
+        .filter(|path| is_android_ndk(path))
+        .or_else(|| {
+            let sdk = env::var_os("ANDROID_HOME")
+                .or_else(|| env::var_os("ANDROID_SDK_ROOT"))
+                .map(PathBuf::from)?;
+            let ndk_bundle = sdk.join("ndk-bundle");
+            if is_android_ndk(&ndk_bundle) {
+                return Some(ndk_bundle);
+            }
+            let ndk_dir = sdk.join("ndk");
+            let mut versions = std::fs::read_dir(ndk_dir)
+                .ok()?
+                .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+                .filter(|path| is_android_ndk(path))
+                .collect::<Vec<_>>();
+            versions.sort();
+            versions.pop()
+        })
+}
+
+fn is_android_ndk(path: &Path) -> bool {
+    path.join("toolchains")
+        .join("llvm")
+        .join("prebuilt")
+        .is_dir()
 }
 
 fn find_java_home() -> Result<String, Box<dyn Error>> {

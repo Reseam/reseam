@@ -4,16 +4,16 @@
 use crate::error::Result;
 use crate::types::instruction::Instruction;
 
-use super::{pack_12x, pack_aa_op};
+use super::{pack_12x, pack_aa_op, validate_u4_register};
 
 pub(super) fn encode_instruction(code: &mut Vec<u16>, instruction: &Instruction) -> Result<()> {
     match instruction {
         Instruction::Nop => code.push(0x0000),
 
-        Instruction::Move { dest, src } => code.push(pack_12x(0x01, *dest, *src)),
-        Instruction::MoveWide { dest, src } => code.push(pack_12x(0x04, *dest, *src)),
-        Instruction::MoveObject { dest, src } => code.push(pack_12x(0x07, *dest, *src)),
-        Instruction::ArrayLength { dest, array } => code.push(pack_12x(0x21, *dest, *array)),
+        Instruction::Move { dest, src } => code.push(pack_12x(0x01, *dest, *src)?),
+        Instruction::MoveWide { dest, src } => code.push(pack_12x(0x04, *dest, *src)?),
+        Instruction::MoveObject { dest, src } => code.push(pack_12x(0x07, *dest, *src)?),
+        Instruction::ArrayLength { dest, array } => code.push(pack_12x(0x21, *dest, *array)?),
 
         Instruction::MoveFrom16 { dest, src } => {
             code.push(pack_aa_op(0x02, *dest));
@@ -55,6 +55,13 @@ pub(super) fn encode_instruction(code: &mut Vec<u16>, instruction: &Instruction)
         Instruction::ReturnObject { src } => code.push(pack_aa_op(0x11, *src)),
 
         Instruction::Const4 { dest, value } => {
+            validate_u4_register(*dest, "A")?;
+            if !(-8..=7).contains(value) {
+                return Err(crate::error::invalid(
+                    "instruction",
+                    format!("literal {value} does not fit const/4 signed nibble range (-8..7)"),
+                ));
+            }
             let value = (*value as u8) & 0xF;
             code.push(0x12 | ((*dest as u16) << 8) | ((value as u16) << 12));
         }
@@ -131,7 +138,7 @@ pub(super) fn encode_instruction(code: &mut Vec<u16>, instruction: &Instruction)
         }
 
         Instruction::InstanceOf { dest, ref_, type_ } => {
-            code.push(pack_12x(0x20, *dest, *ref_));
+            code.push(pack_12x(0x20, *dest, *ref_)?);
             code.push(type_.0 as u16);
         }
         Instruction::NewInstance { dest, type_ } => {
@@ -139,7 +146,7 @@ pub(super) fn encode_instruction(code: &mut Vec<u16>, instruction: &Instruction)
             code.push(type_.0 as u16);
         }
         Instruction::NewArray { dest, size, type_ } => {
-            code.push(pack_12x(0x23, *dest, *size));
+            code.push(pack_12x(0x23, *dest, *size)?);
             code.push(type_.0 as u16);
         }
 
@@ -183,27 +190,27 @@ pub(super) fn encode_instruction(code: &mut Vec<u16>, instruction: &Instruction)
         }
 
         Instruction::IfEq { a, b, offset } => {
-            code.push(pack_12x(0x32, *a, *b));
+            code.push(pack_12x(0x32, *a, *b)?);
             code.push(*offset as u16);
         }
         Instruction::IfNe { a, b, offset } => {
-            code.push(pack_12x(0x33, *a, *b));
+            code.push(pack_12x(0x33, *a, *b)?);
             code.push(*offset as u16);
         }
         Instruction::IfLt { a, b, offset } => {
-            code.push(pack_12x(0x34, *a, *b));
+            code.push(pack_12x(0x34, *a, *b)?);
             code.push(*offset as u16);
         }
         Instruction::IfGe { a, b, offset } => {
-            code.push(pack_12x(0x35, *a, *b));
+            code.push(pack_12x(0x35, *a, *b)?);
             code.push(*offset as u16);
         }
         Instruction::IfGt { a, b, offset } => {
-            code.push(pack_12x(0x36, *a, *b));
+            code.push(pack_12x(0x36, *a, *b)?);
             code.push(*offset as u16);
         }
         Instruction::IfLe { a, b, offset } => {
-            code.push(pack_12x(0x37, *a, *b));
+            code.push(pack_12x(0x37, *a, *b)?);
             code.push(*offset as u16);
         }
 

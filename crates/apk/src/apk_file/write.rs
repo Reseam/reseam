@@ -4,15 +4,51 @@
 use std::collections::{BTreeMap, HashSet};
 use std::fs::File;
 use std::io::BufReader;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use tracing::{debug, info, instrument};
 
-use super::{ApkComponentSession, ApkFile, ApkWriteOptions};
+use super::{
+    ApkComponentSession, ApkEntryPath, ApkFile, ApkWriteOptions, DexEntryOrigin, DexSessionEntry,
+};
 use crate::dex;
-use crate::zip::writer::ApkReplacement;
-use crate::zip::writer::ApkWriter;
-use crate::Result;
+use crate::error::{invalid, Result};
+use crate::zip::writer::{ApkReplacement, ApkWriter};
+
+struct DexReplacementOwned {
+    name: ApkEntryPath,
+    data: Vec<u8>,
+}
+
+enum DexWritePlan {
+    Passthrough,
+    Mixed {
+        by_component: Vec<Vec<DexReplacementOwned>>,
+        origins_after_write: Vec<DexEntryOrigin>,
+    },
+    FullSerialize {
+        base_entries: Vec<DexReplacementOwned>,
+        origins_after_write: Vec<DexEntryOrigin>,
+    },
+}
+
+impl DexWritePlan {
+    fn mode(&self) -> &'static str {
+        match self {
+            Self::Passthrough => "passthrough",
+            Self::Mixed { .. } => "partial",
+            Self::FullSerialize { .. } => "full",
+        }
+    }
+
+    fn replacement_count(&self) -> usize {
+        match self {
+            Self::Passthrough => 0,
+            Self::Mixed { by_component, .. } => by_component.iter().map(Vec::len).sum(),
+            Self::FullSerialize { base_entries, .. } => base_entries.len(),
+        }
+    }
+}
 
 impl ApkFile {
     /// Write the (possibly modified) APK to an output directory.
@@ -20,7 +56,10 @@ impl ApkFile {
     /// For single APKs: writes one file at `output_dir/<original_name>`.
     /// For split bundles: writes base + all splits into `output_dir/`.
     ///
-    /// All DEX goes into the base APK. Split APKs have their DEX entries removed.
+    /// Unchanged DEX and resources are copied through from the current source
+    /// APKs. Modified DEX entries are rewritten back to their source component
+    /// and name when possible; full base-only DEX serialization is only used
+    /// when redistribution is required.
     #[instrument(level = "info", skip_all, fields(output_dir = %output_dir.as_ref().display(), component_count = self.components.len()))]
     pub fn write_to(&mut self, output_dir: impl AsRef<Path>) -> Result<()> {
         self.write_to_with_options(output_dir, ApkWriteOptions::default())
@@ -35,16 +74,18 @@ impl ApkFile {
         let output_dir = output_dir.as_ref();
         std::fs::create_dir_all(output_dir)?;
 
-        let dex_entries = dex::dex_to_entries(&mut self.dex)?;
-        self.dex_dirty = false;
+        let dex_plan = self.build_dex_write_plan()?;
 
         info!(
-            dex_entry_count = dex_entries.len(),
+            dex_entry_count = self.dex.len(),
+            dex_rewrite_count = dex_plan.replacement_count(),
+            dex_write_mode = dex_plan.mode(),
             strip_signatures = options.strip_signatures,
             "serializing APK output"
         );
 
-        for (idx, component) in self.components.iter_mut().enumerate() {
+        let mut output_paths = Vec::with_capacity(self.components.len());
+        for (idx, component) in self.components.iter().enumerate() {
             let is_base = idx == 0;
             let output_path = output_dir.join(
                 component
@@ -56,23 +97,163 @@ impl ApkFile {
 
             Self::write_component(
                 component,
+                idx,
                 is_base,
-                &dex_entries,
+                &dex_plan,
                 &output_path,
                 options.strip_signatures,
             )?;
-            component.manifest_dirty = false;
-            component.resources_dirty = false;
+            output_paths.push(output_path);
         }
+
+        self.commit_after_write(output_paths, dex_plan)?;
 
         info!("APK write completed");
         Ok(())
     }
 
+    fn build_dex_write_plan(&mut self) -> Result<DexWritePlan> {
+        if !self.any_dex_dirty() {
+            return Ok(DexWritePlan::Passthrough);
+        }
+
+        if self.dex.needs_redistribute() {
+            let dex_entries = dex::dex_to_entries(&mut self.dex)?;
+            let origins_after_write = dex_entries
+                .iter()
+                .map(|(name, _)| DexEntryOrigin {
+                    component_index: 0,
+                    entry_name: name.clone().into(),
+                })
+                .collect();
+            let base_entries = dex_entries
+                .into_iter()
+                .map(|(name, data)| DexReplacementOwned {
+                    name: name.into(),
+                    data,
+                })
+                .collect();
+            return Ok(DexWritePlan::FullSerialize {
+                base_entries,
+                origins_after_write,
+            });
+        }
+
+        let mut by_component: Vec<Vec<DexReplacementOwned>> =
+            (0..self.components.len()).map(|_| Vec::new()).collect();
+        let mut origins_after_write = Vec::with_capacity(self.dex_sessions.len());
+        let mut used_base_names: HashSet<String> = self
+            .components
+            .first()
+            .map(|component| {
+                component
+                    .meta
+                    .original_dex_names
+                    .iter()
+                    .map(|name| name.as_str().to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        for index in 0..self.dex_sessions.len() {
+            let session = &self.dex_sessions[index];
+            match session.state {
+                super::DexEntryState::Clean => {
+                    let Some(origin) = session.origin.clone() else {
+                        return Err(invalid(
+                            "dex session",
+                            format!("clean DEX entry {index} is missing an origin"),
+                        ));
+                    };
+                    origins_after_write.push(origin);
+                }
+                super::DexEntryState::Modified => {
+                    let Some(origin) = session.origin.clone() else {
+                        return Err(invalid(
+                            "dex session",
+                            format!("modified DEX entry {index} is missing an origin"),
+                        ));
+                    };
+                    let dex = self.dex.dex_mut(index).ok_or_else(|| {
+                        invalid("dex session", format!("DEX entry {index} is missing"))
+                    })?;
+                    by_component[origin.component_index].push(DexReplacementOwned {
+                        name: origin.entry_name.clone(),
+                        data: reseam_dex::write(dex)?,
+                    });
+                    origins_after_write.push(origin);
+                }
+                super::DexEntryState::Added => {
+                    let dex = self.dex.dex_mut(index).ok_or_else(|| {
+                        invalid("dex session", format!("DEX entry {index} is missing"))
+                    })?;
+                    let entry_name: ApkEntryPath =
+                        next_free_base_dex_name(&mut used_base_names).into();
+                    by_component[0].push(DexReplacementOwned {
+                        name: entry_name.clone(),
+                        data: reseam_dex::write(dex)?,
+                    });
+                    origins_after_write.push(DexEntryOrigin {
+                        component_index: 0,
+                        entry_name,
+                    });
+                }
+            }
+        }
+
+        Ok(DexWritePlan::Mixed {
+            by_component,
+            origins_after_write,
+        })
+    }
+
+    fn commit_after_write(
+        &mut self,
+        output_paths: Vec<PathBuf>,
+        dex_plan: DexWritePlan,
+    ) -> Result<()> {
+        for (component, output_path) in self.components.iter_mut().zip(output_paths) {
+            component.finalize_write(output_path)?;
+        }
+
+        match dex_plan {
+            DexWritePlan::Passthrough => {
+                for session in &mut self.dex_sessions {
+                    session.state = super::DexEntryState::Clean;
+                }
+            }
+            DexWritePlan::Mixed {
+                origins_after_write,
+                ..
+            }
+            | DexWritePlan::FullSerialize {
+                origins_after_write,
+                ..
+            } => {
+                self.dex_sessions = origins_after_write
+                    .into_iter()
+                    .map(|origin| DexSessionEntry {
+                        origin: Some(origin),
+                        state: super::DexEntryState::Clean,
+                    })
+                    .collect();
+            }
+        }
+
+        self.entry_names = dedupe_entry_names(
+            self.components
+                .iter()
+                .flat_map(|component| component.entry_names.iter().cloned())
+                .collect(),
+        );
+        Ok(())
+    }
+
     fn write_component(
         component: &ApkComponentSession,
+        component_index: usize,
         is_base: bool,
-        dex_entries: &[(String, Vec<u8>)],
+        dex_plan: &DexWritePlan,
         output_path: &Path,
         strip_signatures: bool,
     ) -> Result<()> {
@@ -98,17 +279,12 @@ impl ApkFile {
         };
         let resource_bytes = if component.resources_dirty {
             component
-                .resources
-                .as_ref()
+                .resources_loaded()
                 .map(|resources| resources.serialize())
                 .transpose()?
         } else {
             None
         };
-
-        for name in &component.meta.original_dex_names {
-            removals.insert(name.to_string());
-        }
 
         if strip_signatures {
             for index in 0..source.len() {
@@ -122,15 +298,35 @@ impl ApkFile {
             }
         }
 
-        if is_base {
-            for (name, data) in dex_entries {
-                replacements.insert(
-                    name.as_str(),
-                    ApkReplacement {
-                        data: data.as_slice(),
-                        compression: zip::CompressionMethod::Deflated,
-                    },
-                );
+        match dex_plan {
+            DexWritePlan::Passthrough => {}
+            DexWritePlan::Mixed { by_component, .. } => {
+                for replacement in &by_component[component_index] {
+                    replacements.insert(
+                        replacement.name.as_str(),
+                        ApkReplacement {
+                            data: replacement.data.as_slice(),
+                            compression: zip::CompressionMethod::Deflated,
+                        },
+                    );
+                }
+            }
+            DexWritePlan::FullSerialize { base_entries, .. } => {
+                for name in &component.meta.original_dex_names {
+                    removals.insert(name.to_string());
+                }
+
+                if is_base {
+                    for replacement in base_entries {
+                        replacements.insert(
+                            replacement.name.as_str(),
+                            ApkReplacement {
+                                data: replacement.data.as_slice(),
+                                compression: zip::CompressionMethod::Deflated,
+                            },
+                        );
+                    }
+                }
             }
         }
 
@@ -171,6 +367,31 @@ impl ApkFile {
         writer.finish()?;
         Ok(())
     }
+}
+
+fn next_free_base_dex_name(used_names: &mut HashSet<String>) -> String {
+    for index in 1u32.. {
+        let candidate = if index == 1 {
+            "classes.dex".to_string()
+        } else {
+            format!("classes{index}.dex")
+        };
+        if used_names.insert(candidate.clone()) {
+            return candidate;
+        }
+    }
+    unreachable!("DEX name search is unbounded");
+}
+
+fn dedupe_entry_names(entries: Vec<ApkEntryPath>) -> Vec<ApkEntryPath> {
+    let mut seen = HashSet::new();
+    let mut deduped = Vec::new();
+    for entry in entries {
+        if seen.insert(entry.clone()) {
+            deduped.push(entry);
+        }
+    }
+    deduped
 }
 
 fn is_signature_entry(name: &str) -> bool {

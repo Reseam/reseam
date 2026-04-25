@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#[cfg(target_os = "android")]
+mod android_host;
 pub(crate) mod bytecode;
 pub(crate) mod convert;
 mod files;
@@ -14,11 +16,14 @@ mod xml;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+#[cfg(not(target_os = "android"))]
 use std::sync::OnceLock;
 
 use boltffi::export;
 use jni::objects::{JObject, JObjectArray, JValue};
-use jni::{InitArgsBuilder, JNIVersion, JavaVM};
+use jni::JavaVM;
+#[cfg(not(target_os = "android"))]
+use jni::{InitArgsBuilder, JNIVersion};
 use reseam_apk::reseam_dex::{DexFile, EncodedMethod};
 use reseam_apk::AxmlDocument;
 use tracing::warn;
@@ -240,8 +245,10 @@ fn jvm_err(msg: impl std::fmt::Display) -> PatcherError {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 static JVM: OnceLock<std::result::Result<JavaVM, String>> = OnceLock::new();
 
+#[cfg(not(target_os = "android"))]
 fn find_java_home() -> Option<PathBuf> {
     if let Ok(home) = std::env::var("JAVA_HOME") {
         let path = PathBuf::from(home);
@@ -269,6 +276,7 @@ fn find_java_home() -> Option<PathBuf> {
     None
 }
 
+#[cfg(not(target_os = "android"))]
 fn find_jvm_lib(java_home: &Path) -> Option<PathBuf> {
     let candidates = [
         "lib/server/libjvm.so",
@@ -288,6 +296,7 @@ fn find_jvm_lib(java_home: &Path) -> Option<PathBuf> {
     None
 }
 
+#[cfg(not(target_os = "android"))]
 fn get_or_init_jvm() -> Result<&'static JavaVM> {
     let result = JVM.get_or_init(|| {
         let init = || -> std::result::Result<JavaVM, String> {
@@ -321,6 +330,12 @@ fn get_or_init_jvm() -> Result<&'static JavaVM> {
     }
 }
 
+#[cfg(target_os = "android")]
+fn get_or_init_jvm() -> Result<&'static JavaVM> {
+    android_host::java_vm().map_err(jvm_err)
+}
+
+#[cfg(not(target_os = "android"))]
 fn detect_runtime_library_dir() -> Option<PathBuf> {
     let candidates = std::env::current_exe().ok().map(|exe| {
         let mut dirs = Vec::new();
@@ -345,6 +360,7 @@ fn detect_runtime_library_dir() -> Option<PathBuf> {
     None
 }
 
+#[cfg(not(target_os = "android"))]
 unsafe fn setup_jvm_library_path(path: &Path) -> Result<()> {
     let parent = path
         .parent()
@@ -473,44 +489,85 @@ fn create_class_loader<'a>(
     env: &mut jni::JNIEnv<'a>,
     jar_paths: &[PathBuf],
 ) -> Result<JObject<'a>> {
-    let url_class = env
-        .find_class("java/net/URL")
-        .map_err(|e| jvm_err(format!("find URL class: {e}")))?;
-    let url_array = env
-        .new_object_array(jar_paths.len() as i32, &url_class, JObject::null())
-        .map_err(|e| jvm_err(format!("URL array: {e}")))?;
-
-    for (i, jar_path) in jar_paths.iter().enumerate() {
-        let path_str = env
-            .new_string(jar_path.to_string_lossy().as_ref())
-            .map_err(|e| jvm_err(format!("new_string: {e}")))?;
-        let file_obj = env
-            .new_object(
-                "java/io/File",
-                "(Ljava/lang/String;)V",
-                &[JValue::Object(&path_str)],
-            )
-            .map_err(|e| jvm_err(format!("File(path): {e}")))?;
-        let uri_obj = env
-            .call_method(&file_obj, "toURI", "()Ljava/net/URI;", &[])
-            .map_err(|e| jvm_err(format!("File.toURI: {e}")))?
-            .l()
-            .map_err(|e| jvm_err(format!("URI obj: {e}")))?;
-        let url = env
-            .call_method(&uri_obj, "toURL", "()Ljava/net/URL;", &[])
-            .map_err(|e| jvm_err(format!("URI.toURL: {e}")))?
-            .l()
-            .map_err(|e| jvm_err(format!("URL obj: {e}")))?;
-        env.set_object_array_element(&url_array, i as i32, &url)
-            .map_err(|e| jvm_err(format!("set URL[{i}]: {e}")))?;
+    #[cfg(target_os = "android")]
+    {
+        let _ = jar_paths;
+        return create_android_class_loader(env);
     }
 
-    env.new_object(
-        "java/net/URLClassLoader",
-        "([Ljava/net/URL;)V",
-        &[JValue::Object(&url_array)],
-    )
-    .map_err(|e| jvm_err(format!("URLClassLoader: {e}")))
+    #[cfg(not(target_os = "android"))]
+    {
+        let url_class = env
+            .find_class("java/net/URL")
+            .map_err(|e| jvm_err(format!("find URL class: {e}")))?;
+        let url_array = env
+            .new_object_array(jar_paths.len() as i32, &url_class, JObject::null())
+            .map_err(|e| jvm_err(format!("URL array: {e}")))?;
+
+        for (i, jar_path) in jar_paths.iter().enumerate() {
+            let path_str = env
+                .new_string(jar_path.to_string_lossy().as_ref())
+                .map_err(|e| jvm_err(format!("new_string: {e}")))?;
+            let file_obj = env
+                .new_object(
+                    "java/io/File",
+                    "(Ljava/lang/String;)V",
+                    &[JValue::Object(&path_str)],
+                )
+                .map_err(|e| jvm_err(format!("File(path): {e}")))?;
+            let uri_obj = env
+                .call_method(&file_obj, "toURI", "()Ljava/net/URI;", &[])
+                .map_err(|e| jvm_err(format!("File.toURI: {e}")))?
+                .l()
+                .map_err(|e| jvm_err(format!("URI obj: {e}")))?;
+            let url = env
+                .call_method(&uri_obj, "toURL", "()Ljava/net/URL;", &[])
+                .map_err(|e| jvm_err(format!("URI.toURL: {e}")))?
+                .l()
+                .map_err(|e| jvm_err(format!("URL obj: {e}")))?;
+            env.set_object_array_element(&url_array, i as i32, &url)
+                .map_err(|e| jvm_err(format!("set URL[{i}]: {e}")))?;
+        }
+
+        env.new_object(
+            "java/net/URLClassLoader",
+            "([Ljava/net/URL;)V",
+            &[JValue::Object(&url_array)],
+        )
+        .map_err(|e| jvm_err(format!("URLClassLoader: {e}")))
+    }
+}
+
+#[cfg(target_os = "android")]
+fn create_android_class_loader<'a>(env: &mut jni::JNIEnv<'a>) -> Result<JObject<'a>> {
+    if let Some(loader) = android_host::configured_class_loader(env).map_err(jvm_err)? {
+        return Ok(loader);
+    }
+
+    let thread = env
+        .call_static_method(
+            "java/lang/Thread",
+            "currentThread",
+            "()Ljava/lang/Thread;",
+            &[],
+        )
+        .and_then(|value| value.l())
+        .map_err(|e| jvm_err(format!("Thread.currentThread(): {e}")))?;
+    let loader = env
+        .call_method(
+            &thread,
+            "getContextClassLoader",
+            "()Ljava/lang/ClassLoader;",
+            &[],
+        )
+        .and_then(|value| value.l())
+        .map_err(|e| jvm_err(format!("Thread.contextClassLoader: {e}")))?;
+    if loader.is_null() {
+        return Err(jvm_err(
+            "Android context ClassLoader is null; install a DexClassLoader before loading patches",
+        ));
+    }
+    Ok(loader)
 }
 
 fn read_string_field(env: &mut jni::JNIEnv<'_>, obj: &JObject<'_>, getter: &str) -> Result<String> {

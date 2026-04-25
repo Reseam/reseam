@@ -53,7 +53,7 @@ impl MultiDexContainer {
             dex.resolve_all_class_data()?;
         }
 
-        let needs_redistribute = self.dex_files.iter().any(has_overflowed);
+        let needs_redistribute = self.needs_redistribute();
         if needs_redistribute {
             self.redistribute()?;
         }
@@ -63,6 +63,10 @@ impl MultiDexContainer {
             buffers.push(crate::write::write(dex)?);
         }
         Ok(buffers)
+    }
+
+    pub fn needs_redistribute(&self) -> bool {
+        self.dex_files.iter().any(has_overflowed)
     }
 
     /// Flatten all classes from all DEX files, then redistribute them across

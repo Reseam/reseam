@@ -72,13 +72,6 @@ impl<W: Write + Seek> ApkWriter<W> {
             if let Some(replacement) = replacements.get(name.as_str()) {
                 self.write_entry(&name, replacement.data, replacement.compression)?;
                 written_replacements.insert(name);
-            } else if needs_stored_alignment(&name) {
-                // resources.arsc must be stored uncompressed + aligned (Android API 30+)
-                let mut entry = source.by_index(i)?;
-                let mut data = Vec::new();
-                std::io::copy(&mut entry, &mut data)?;
-                drop(entry);
-                self.write_entry(&name, &data, zip::CompressionMethod::Stored)?;
             } else {
                 // Pass-through: copy compressed bytes as-is
                 let entry = source.by_index_raw(i)?;
@@ -109,9 +102,4 @@ fn entry_alignment(name: &str) -> u16 {
     } else {
         ALIGNMENT_DEFAULT
     }
-}
-
-/// Whether an entry must be stored uncompressed + aligned regardless of source compression.
-fn needs_stored_alignment(name: &str) -> bool {
-    name == "resources.arsc"
 }

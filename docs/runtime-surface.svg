@@ -20,7 +20,7 @@
 			<circle class="accent-fill" cx="18" cy="22" r="4" />
 			<text class="title" x="32" y="26">bytecode</text>
 			<text class="label" x="18" y="50">classes, methods, instructions</text>
-			<text class="mono" x="18" y="66">findClass / fingerprints</text>
+			<text class="mono" x="18" y="66">findClass / queries</text>
 		</g>
 
 		<g transform="translate(284,90)">

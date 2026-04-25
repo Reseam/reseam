@@ -59,9 +59,13 @@ class InstructionBuilder {
 
     fun move(dest: Int, src: Int) = add(Instruction.Reg2(Reg2Insn(Opcodes.MOVE.toUShort(), dest.toUShort(), src.toUShort())))
     fun moveFrom16(dest: Int, src: Int) = add(Instruction.Reg2(Reg2Insn(Opcodes.MOVE_FROM16.toUShort(), dest.toUShort(), src.toUShort())))
+    fun move16(dest: Int, src: Int) = add(Instruction.Reg2(Reg2Insn(Opcodes.MOVE_16.toUShort(), dest.toUShort(), src.toUShort())))
     fun moveWide(dest: Int, src: Int) = add(Instruction.Reg2(Reg2Insn(Opcodes.MOVE_WIDE.toUShort(), dest.toUShort(), src.toUShort())))
+    fun moveWideFrom16(dest: Int, src: Int) = add(Instruction.Reg2(Reg2Insn(Opcodes.MOVE_WIDE_FROM16.toUShort(), dest.toUShort(), src.toUShort())))
+    fun moveWide16(dest: Int, src: Int) = add(Instruction.Reg2(Reg2Insn(Opcodes.MOVE_WIDE_16.toUShort(), dest.toUShort(), src.toUShort())))
     fun moveObject(dest: Int, src: Int) = add(Instruction.Reg2(Reg2Insn(Opcodes.MOVE_OBJECT.toUShort(), dest.toUShort(), src.toUShort())))
     fun moveObjectFrom16(dest: Int, src: Int) = add(Instruction.Reg2(Reg2Insn(Opcodes.MOVE_OBJECT_FROM16.toUShort(), dest.toUShort(), src.toUShort())))
+    fun moveObject16(dest: Int, src: Int) = add(Instruction.Reg2(Reg2Insn(Opcodes.MOVE_OBJECT_16.toUShort(), dest.toUShort(), src.toUShort())))
     fun moveResult(dest: Int) = add(Instruction.Reg1(Reg1Insn(Opcodes.MOVE_RESULT.toUShort(), dest.toUShort())))
     fun moveResultWide(dest: Int) = add(Instruction.Reg1(Reg1Insn(Opcodes.MOVE_RESULT_WIDE.toUShort(), dest.toUShort())))
     fun moveResultObject(dest: Int) = add(Instruction.Reg1(Reg1Insn(Opcodes.MOVE_RESULT_OBJECT.toUShort(), dest.toUShort())))

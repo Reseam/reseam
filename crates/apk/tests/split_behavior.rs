@@ -5,7 +5,8 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
-use reseam_apk::reseam_dex::ParseOptions;
+use reseam_apk::reseam_dex::{DexFile, DexHeader, DexVersion, ParseOptions};
+use reseam_apk::resources::ResPackage;
 use reseam_apk::{ApkFile, ResourceTable};
 
 fn manifest_bytes(version_name: &str, split_name: Option<&str>) -> Vec<u8> {
@@ -28,6 +29,28 @@ fn resource_table_bytes() -> Vec<u8> {
     .expect("serialize resources")
 }
 
+fn mutable_resource_table_bytes() -> Vec<u8> {
+    ResourceTable {
+        global_strings: Vec::new(),
+        global_strings_utf8: true,
+        packages: vec![ResPackage {
+            id: 0x7F,
+            name: "com.example.test".to_string(),
+            type_strings: Vec::new(),
+            type_strings_utf8: true,
+            key_strings: Vec::new(),
+            key_strings_utf8: true,
+            last_public_type: 0,
+            last_public_key: 0,
+            type_id_offset: 0,
+            type_specs: Vec::new(),
+            types: Vec::new(),
+        }],
+    }
+    .serialize()
+    .expect("serialize mutable resources")
+}
+
 fn write_apk(path: &Path, manifest: &[u8], extra_entries: &[(&str, &[u8])]) {
     let file = File::create(path).expect("create apk");
     let mut writer = zip::ZipWriter::new(file);
@@ -45,6 +68,39 @@ fn write_apk(path: &Path, manifest: &[u8], extra_entries: &[(&str, &[u8])]) {
     }
 
     writer.finish().expect("finish apk");
+}
+
+fn empty_dex_header(version: DexVersion) -> DexHeader {
+    DexHeader {
+        version,
+        checksum: 0,
+        signature: [0; 20],
+        file_size: 0,
+        link_size: 0,
+        link_off: 0,
+        map_off: 0,
+        string_ids_size: 0,
+        string_ids_off: 0,
+        type_ids_size: 0,
+        type_ids_off: 0,
+        proto_ids_size: 0,
+        proto_ids_off: 0,
+        field_ids_size: 0,
+        field_ids_off: 0,
+        method_ids_size: 0,
+        method_ids_off: 0,
+        class_defs_size: 0,
+        class_defs_off: 0,
+        data_size: 0,
+        data_off: 0,
+        container_size: 0,
+        header_offset: 0,
+    }
+}
+
+fn minimal_dex_bytes() -> Vec<u8> {
+    let mut dex = DexFile::new(empty_dex_header(DexVersion::V035));
+    reseam_apk::reseam_dex::write(&mut dex).expect("write minimal dex")
 }
 
 #[test]
@@ -90,7 +146,7 @@ fn split_apk_supports_split_resource_tables_and_component_state() {
     let out_dir = tmp.path().join("out");
     apk.write_to(&out_dir).expect("write split output");
 
-    let reparsed = ApkFile::open_split_with_options(
+    let mut reparsed = ApkFile::open_split_with_options(
         out_dir.join("base.apk"),
         &[out_dir.join("config.apk")],
         ParseOptions {
@@ -195,4 +251,237 @@ fn write_to_strips_stale_signature_entries() {
     assert!(archive.index_for_name("META-INF/CERT.SF").is_none());
     assert!(archive.index_for_name("META-INF/CERT.RSA").is_none());
     assert!(archive.index_for_name("assets/data.txt").is_some());
+}
+
+#[test]
+fn manifest_only_write_preserves_untouched_dex_metadata() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let apk_path = tmp.path().join("app.apk");
+    let dex_bytes = minimal_dex_bytes();
+    let dex_time = zip::DateTime::from_date_and_time(2004, 5, 6, 7, 8, 10).expect("dex time");
+
+    let file = File::create(&apk_path).expect("create apk");
+    let mut writer = zip::ZipWriter::new(file);
+    let stored =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    let deflated = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .last_modified_time(dex_time);
+
+    writer
+        .start_file("AndroidManifest.xml", stored)
+        .expect("manifest entry");
+    writer
+        .write_all(&manifest_bytes("1.0-base", None))
+        .expect("write manifest");
+    writer
+        .start_file("classes.dex", deflated)
+        .expect("dex entry");
+    writer.write_all(&dex_bytes).expect("write dex");
+    writer.finish().expect("finish apk");
+
+    let mut apk = ApkFile::open_with_options(
+        &apk_path,
+        ParseOptions {
+            lazy: true,
+            ..ParseOptions::default()
+        },
+    )
+    .expect("open apk");
+    apk.manifest_mut().set_version_name("2.0-base");
+
+    let out_dir = tmp.path().join("out");
+    apk.write_to(&out_dir).expect("write output");
+
+    let file = File::open(out_dir.join("app.apk")).expect("open output");
+    let mut archive = zip::ZipArchive::new(file).expect("zip archive");
+    let mut dex_entry = archive.by_name("classes.dex").expect("classes.dex");
+    let mut output_dex = Vec::new();
+    std::io::Read::read_to_end(&mut dex_entry, &mut output_dex).expect("read output dex");
+
+    assert_eq!(output_dex, dex_bytes);
+    assert_eq!(dex_entry.compression(), zip::CompressionMethod::Deflated);
+    assert_eq!(dex_entry.last_modified(), Some(dex_time));
+}
+
+#[test]
+fn split_write_preserves_untouched_dex_component_placement() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let base = tmp.path().join("base.apk");
+    let split = tmp.path().join("config.apk");
+    let dex_bytes = minimal_dex_bytes();
+
+    write_apk(&base, &manifest_bytes("1.0-base", None), &[]);
+    write_apk(
+        &split,
+        &manifest_bytes("1.0-split", Some("config.test")),
+        &[("classes.dex", &dex_bytes)],
+    );
+
+    let mut apk = ApkFile::open_split_with_options(
+        &base,
+        &[split.as_path()],
+        ParseOptions {
+            lazy: true,
+            ..ParseOptions::default()
+        },
+    )
+    .expect("open split apk");
+
+    apk.component_manifest_mut(1)
+        .expect("split manifest")
+        .set_version_name("2.0-split");
+
+    let out_dir = tmp.path().join("out");
+    apk.write_to(&out_dir).expect("write split output");
+
+    let base_file = File::open(out_dir.join("base.apk")).expect("open base output");
+    let base_archive = zip::ZipArchive::new(base_file).expect("base zip archive");
+    assert!(base_archive.index_for_name("classes.dex").is_none());
+
+    let split_file = File::open(out_dir.join("config.apk")).expect("open split output");
+    let split_archive = zip::ZipArchive::new(split_file).expect("split zip archive");
+    assert!(split_archive.index_for_name("classes.dex").is_some());
+}
+
+#[test]
+fn repeated_write_preserves_added_dex_without_reopen() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let apk_path = tmp.path().join("app.apk");
+
+    write_apk(&apk_path, &manifest_bytes("1.0-base", None), &[]);
+
+    let mut apk = ApkFile::open_with_options(
+        &apk_path,
+        ParseOptions {
+            lazy: true,
+            ..ParseOptions::default()
+        },
+    )
+    .expect("open apk");
+    apk.dex_mut()
+        .add_dex(DexFile::new(empty_dex_header(DexVersion::V035)));
+
+    let out_one = tmp.path().join("out-one");
+    apk.write_to(&out_one).expect("write first output");
+
+    let out_two = tmp.path().join("out-two");
+    apk.write_to(&out_two).expect("write second output");
+
+    let file = File::open(out_two.join("app.apk")).expect("open second output");
+    let mut archive = zip::ZipArchive::new(file).expect("zip archive");
+    let mut dex_entry = archive.by_name("classes.dex").expect("classes.dex");
+    let mut output_dex = Vec::new();
+    std::io::Read::read_to_end(&mut dex_entry, &mut output_dex).expect("read output dex");
+
+    assert_eq!(output_dex, minimal_dex_bytes());
+
+    let reparsed = ApkFile::open(out_two.join("app.apk")).expect("reopen second output");
+    assert_eq!(reparsed.dex().len(), 1);
+}
+
+#[test]
+fn repeated_write_preserves_modified_resources_without_reopen() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let apk_path = tmp.path().join("app.apk");
+
+    write_apk(
+        &apk_path,
+        &manifest_bytes("1.0-base", None),
+        &[("resources.arsc", &mutable_resource_table_bytes())],
+    );
+
+    let mut apk = ApkFile::open_with_options(
+        &apk_path,
+        ParseOptions {
+            lazy: true,
+            ..ParseOptions::default()
+        },
+    )
+    .expect("open apk");
+    let res_id = apk
+        .resources_mut()
+        .expect("resources")
+        .add_string_resource("greeting", "hello")
+        .expect("add string resource");
+
+    let out_one = tmp.path().join("out-one");
+    apk.write_to(&out_one).expect("write first output");
+
+    let out_two = tmp.path().join("out-two");
+    apk.write_to(&out_two).expect("write second output");
+
+    let mut reparsed = ApkFile::open_with_options(
+        out_two.join("app.apk"),
+        ParseOptions {
+            lazy: true,
+            ..ParseOptions::default()
+        },
+    )
+    .expect("reopen second output");
+
+    assert_eq!(
+        reparsed.find_resource_id("string", "greeting"),
+        Some(res_id)
+    );
+    assert_eq!(
+        reparsed.get_string_resource_value("greeting"),
+        Some("hello")
+    );
+}
+
+#[test]
+fn manifest_only_write_preserves_untouched_resource_metadata() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let apk_path = tmp.path().join("app.apk");
+    let resource_bytes = mutable_resource_table_bytes();
+    let resource_time =
+        zip::DateTime::from_date_and_time(2005, 6, 7, 8, 9, 10).expect("resource time");
+
+    let file = File::create(&apk_path).expect("create apk");
+    let mut writer = zip::ZipWriter::new(file);
+    let stored =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    let deflated = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .last_modified_time(resource_time);
+
+    writer
+        .start_file("AndroidManifest.xml", stored)
+        .expect("manifest entry");
+    writer
+        .write_all(&manifest_bytes("1.0-base", None))
+        .expect("write manifest");
+    writer
+        .start_file("resources.arsc", deflated)
+        .expect("resources entry");
+    writer.write_all(&resource_bytes).expect("write resources");
+    writer.finish().expect("finish apk");
+
+    let mut apk = ApkFile::open_with_options(
+        &apk_path,
+        ParseOptions {
+            lazy: true,
+            ..ParseOptions::default()
+        },
+    )
+    .expect("open apk");
+    apk.manifest_mut().set_version_name("2.0-base");
+
+    let out_dir = tmp.path().join("out");
+    apk.write_to(&out_dir).expect("write output");
+
+    let file = File::open(out_dir.join("app.apk")).expect("open output");
+    let mut archive = zip::ZipArchive::new(file).expect("zip archive");
+    let mut resources_entry = archive.by_name("resources.arsc").expect("resources.arsc");
+    let mut output_resources = Vec::new();
+    std::io::Read::read_to_end(&mut resources_entry, &mut output_resources)
+        .expect("read output resources");
+
+    assert_eq!(output_resources, resource_bytes);
+    assert_eq!(
+        resources_entry.compression(),
+        zip::CompressionMethod::Deflated
+    );
+    assert_eq!(resources_entry.last_modified(), Some(resource_time));
 }
