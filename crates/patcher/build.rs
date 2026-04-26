@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
-    let jni_dir = manifest_dir.join("../../kotlin-sdk/generated/jni");
+    let jni_dir = manifest_dir.join("../../patch-api/generated/jni");
     let glue_path = jni_dir.join("jni_glue.c");
 
     if !glue_path.exists() {
@@ -159,6 +159,7 @@ fn c_type_to_jni_sig(param: &str) -> Result<&'static str, String> {
         "jlong" => Ok("J"),
         "jshort" => Ok("S"),
         "jboolean" => Ok("Z"),
+        "jstring" => Ok("Ljava/lang/String;"),
         "jbyteArray" => Ok("[B"),
         "jintArray" => Ok("[I"),
         "jshortArray" => Ok("[S"),
@@ -175,6 +176,7 @@ fn ret_to_jni_sig(ret: &str) -> Result<&'static str, String> {
         "jlong" => Ok("J"),
         "jshort" => Ok("S"),
         "jboolean" => Ok("Z"),
+        "jstring" => Ok("Ljava/lang/String;"),
         other => Err(format!("unknown JNI return type: {other}")),
     }
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use anyhow::Result;
-use reseam_library::inspect_apk as inspect_apk_with_library;
+use reseam_sdk::inspect_apk as inspect_apk_with_library;
 
 use crate::app::InfoCommand;
 

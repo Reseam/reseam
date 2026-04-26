@@ -1,6 +1,6 @@
 # Reseam
 
-Reseam is a Rust APK patching engine. Patches are written in Kotlin against the Reseam SDK, while APK parsing, DEX mutation, serialization, and signing run natively in Rust.
+Reseam is a Rust APK patching engine. Patches are written in Kotlin against the Reseam Patch API, while APK parsing, DEX mutation, serialization, and signing run natively in Rust.
 
 ## Workspace
 
@@ -10,23 +10,23 @@ Reseam is a Rust APK patching engine. Patches are written in Kotlin against the 
 | `reseam-apk` | APK container handling, AXML, resources, and DEX extraction |
 | `reseam-sign` | APK Signature Scheme v2 signing |
 | `reseam-patcher` | Bundle loading, patch execution, and Kotlin host |
-| `reseam-library` | Shared application-facing patch service used by clients |
+| `reseam-sdk` | Shared application-facing patch service used by clients |
 | `reseam-cli` | `reseam` command-line interface |
-| `kotlin-sdk` | Kotlin patch SDK |
+| `patch-api` | Kotlin patch-author API |
 
 ## Build
 
 ```bash
 cargo build --release
-cd kotlin-sdk && ./gradlew build
+cd patch-api && ./gradlew build
 ```
 
 If you are working on the generated JNI boundary:
 
 ```bash
-./kotlin-sdk/regenerate.sh
+./patch-api/regenerate.sh
 cargo build -p reseam-patcher
-JAVA_HOME=/path/to/jdk kotlin-sdk/build-jni.sh
+JAVA_HOME=/path/to/jdk patch-api/build-jni.sh
 ```
 
 ## CLI
@@ -85,7 +85,7 @@ Use `reseam bundle list` to inspect bundle contents before publishing or testing
 ## Documentation
 
 - `docs/README.md` contains the patch-author guide.
-- `kotlin-sdk/README.md` covers SDK maintenance and regeneration workflow.
+- `patch-api/README.md` covers SDK maintenance and regeneration workflow.
 
 ## License
 

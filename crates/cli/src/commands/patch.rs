@@ -4,11 +4,11 @@
 use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
-use reseam_library::{
+use reseam_patcher::engine::PatchStatus;
+use reseam_sdk::{
     built_in_trust_store, load_bundle_with_trust, patch as patch_with_library, selection_from_cli,
     ArtifactKind, PatchOutput as LibraryPatchOutput, PatchRequest, PatchRunStatus, RunEvent,
 };
-use reseam_patcher::engine::PatchStatus;
 use tracing::{error, info, warn};
 
 use crate::app::{PatchCommand, PatchRequestArgs};

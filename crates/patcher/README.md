@@ -29,10 +29,10 @@ Patch execution engine. Loads patch bundles, resolves dependencies, validates op
 The Kotlin integration has three separate concerns:
 
 - Rust exports in `src/kotlin/**/*.rs` define the host API with `#[export]`
-- `kotlin-sdk/generated/` contains raw BoltFFI output and is fully replaceable
-- handwritten files in `kotlin-sdk/src/main/kotlin/dev/reseam/patch/` provide stable SDK ergonomics and policy
+- `patch-api/generated/` contains raw BoltFFI output and is fully replaceable
+- handwritten files in `patch-api/src/main/kotlin/dev/reseam/patch/` provide stable SDK ergonomics and policy
 
-Regeneration is done through `kotlin-sdk/regenerate.sh`. Normal Cargo builds remain strict and still compile the JNI glue; regeneration uses `RESEAM_SKIP_JNI_GLUE=1` only to prevent stale generated JNI code from blocking type generation.
+Regeneration is done through `patch-api/regenerate.sh`. Normal Cargo builds remain strict and still compile the JNI glue; regeneration uses `RESEAM_SKIP_JNI_GLUE=1` only to prevent stale generated JNI code from blocking type generation.
 
 ## Usage
 

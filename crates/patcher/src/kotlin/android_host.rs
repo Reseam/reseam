@@ -34,6 +34,10 @@ pub(super) fn configured_class_loader<'a>(
         .map_err(|error| format!("configured Android classLoader: {error}"))
 }
 
+pub fn install_class_loader(env: &mut jni::JNIEnv<'_>, loader: JObject<'_>) -> Result<(), String> {
+    set_patch_class_loader(env, loader)
+}
+
 fn current_patch_class_loader() -> Result<Option<PatchClassLoader>, String> {
     class_loader_slot()
         .lock()

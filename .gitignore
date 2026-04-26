@@ -6,10 +6,10 @@
 !crates/cli/docs/*.md
 !docs/*
 temp
-kotlin-sdk/build/
-kotlin-sdk/.gradle/
-kotlin-sdk/generated/
-kotlin-sdk/app/
+patch-api/build/
+patch-api/.gradle/
+patch-api/generated/
+patch-api/app/
 tests/kotlin-runtime-bundle/build
 tests/kotlin-runtime-bundle/.gradle
 reseam.pk8

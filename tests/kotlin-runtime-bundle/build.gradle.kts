@@ -13,7 +13,7 @@ dependencies {
     implementation(kotlin("stdlib"))
     implementation(
         files(
-            fileTree("${projectDir}/../../kotlin-sdk/build/libs") {
+            fileTree("${projectDir}/../../patch-api/build/libs") {
                 include("reseam-patch-sdk-*.jar")
             }
         )

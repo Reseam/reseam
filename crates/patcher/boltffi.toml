@@ -12,6 +12,6 @@ enabled = true
 
 [targets.android.kotlin]
 package = "app.reseam.patch"
-output = "../../kotlin-sdk/generated"
+output = "../../patch-api/generated"
 module_name = "ReseamPatcher"
 library_name = "reseam_patcher"

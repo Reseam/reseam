@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use anyhow::{bail, Result};
-use reseam_library::{measure_patch, PatchMetrics, PatchPhase, PatchPhaseMetrics};
+use reseam_sdk::{measure_patch, PatchMetrics, PatchPhase, PatchPhaseMetrics};
 use serde::Serialize;
 
 use crate::app::PerfCommand;
@@ -131,11 +131,11 @@ pub fn run_perf(command: &PerfCommand) -> Result<()> {
 fn perf_output(
     split_paths: &[std::path::PathBuf],
     temp_dir: &std::path::Path,
-) -> reseam_library::PatchOutput {
+) -> reseam_sdk::PatchOutput {
     if split_paths.is_empty() {
-        reseam_library::PatchOutput::SingleFile(temp_dir.join("patched.apk"))
+        reseam_sdk::PatchOutput::SingleFile(temp_dir.join("patched.apk"))
     } else {
-        reseam_library::PatchOutput::SplitDir(temp_dir.join("patched"))
+        reseam_sdk::PatchOutput::SplitDir(temp_dir.join("patched"))
     }
 }
 

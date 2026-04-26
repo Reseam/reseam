@@ -7,17 +7,18 @@ path = [
     "Cargo.toml",
     "Cargo.lock",
     "crates/**",
-    "kotlin-sdk/build.gradle.kts",
-    "kotlin-sdk/settings.gradle.kts",
-    "kotlin-sdk/src/**",
-    "kotlin-sdk/app/**",
-    "kotlin-sdk/build-jni.sh",
-    "kotlin-sdk/fix-generated.sh",
-    "kotlin-sdk/regenerate.sh",
+    "sdk/**",
+    "patch-api/build.gradle.kts",
+    "patch-api/settings.gradle.kts",
+    "patch-api/src/**",
+    "patch-api/app/**",
+    "patch-api/build-jni.sh",
+    "patch-api/fix-generated.sh",
+    "patch-api/regenerate.sh",
     "tests/**",
     ".gitignore",
     "README.md",
-    "kotlin-sdk/README.md",
+    "patch-api/README.md",
 ]
 SPDX-FileCopyrightText = "2026 AunAli K. <hello@auna.li>"
 SPDX-License-Identifier = "GPL-3.0-or-later"
@@ -26,10 +27,10 @@ SPDX-License-Identifier = "GPL-3.0-or-later"
 
 [[annotations]]
 path = [
-    "kotlin-sdk/gradle/wrapper/gradle-wrapper.jar",
-    "kotlin-sdk/gradle/wrapper/gradle-wrapper.properties",
-    "kotlin-sdk/gradlew",
-    "kotlin-sdk/gradlew.bat",
+    "patch-api/gradle/wrapper/gradle-wrapper.jar",
+    "patch-api/gradle/wrapper/gradle-wrapper.properties",
+    "patch-api/gradlew",
+    "patch-api/gradlew.bat",
 ]
 SPDX-FileCopyrightText = "2015-2024 the original authors"
 SPDX-License-Identifier = "Apache-2.0"

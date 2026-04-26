@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use anyhow::{bail, Context, Result};
-use reseam_library::{built_in_trust_store, inspect_with_trust};
+use reseam_sdk::{built_in_trust_store, inspect_with_trust};
 use tracing::info;
 
 use crate::app::{BundleKeygenCommand, BundleListCommand, BundlePackCommand};
@@ -189,6 +189,9 @@ pub fn run_bundle_pack(command: &BundlePackCommand) -> Result<()> {
             continue;
         }
         let bytes = std::fs::read(&path).with_context(|| format!("read {}", path.display()))?;
+        if lowercase.ends_with(".jar") {
+            validate_universal_patch_jar(&name, &bytes)?;
+        }
         payload.push((name, bytes));
     }
     payload.sort_by(|left, right| left.0.cmp(&right.0));
@@ -293,4 +296,43 @@ fn toml_string(value: &str) -> String {
     }
     output.push('"');
     output
+}
+
+fn validate_universal_patch_jar(name: &str, bytes: &[u8]) -> Result<()> {
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+        .with_context(|| format!("{name} is not a valid jar"))?;
+    let mut has_class = false;
+    let mut has_dex = false;
+
+    for index in 0..archive.len() {
+        let entry = archive
+            .by_index(index)
+            .with_context(|| format!("read {name} entry {index}"))?;
+        let entry_name = entry.name();
+        if entry_name.ends_with(".class") && !entry_name.starts_with("META-INF/") {
+            has_class = true;
+        }
+        if is_classes_dex(entry_name) {
+            has_dex = true;
+        }
+    }
+
+    if !has_class {
+        bail!("{name} is missing JVM .class files");
+    }
+    if !has_dex {
+        bail!("{name} is missing classes.dex; build patch jars as universal JVM/Android jars");
+    }
+
+    Ok(())
+}
+
+fn is_classes_dex(name: &str) -> bool {
+    name == "classes.dex"
+        || name
+            .strip_prefix("classes")
+            .and_then(|suffix| suffix.strip_suffix(".dex"))
+            .is_some_and(|number| {
+                !number.is_empty() && number.chars().all(|ch| ch.is_ascii_digit())
+            })
 }

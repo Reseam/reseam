@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #[cfg(target_os = "android")]
-mod android_host;
+pub mod android_host;
 pub(crate) mod bytecode;
 pub(crate) mod convert;
 mod files;
@@ -491,8 +491,7 @@ fn create_class_loader<'a>(
 ) -> Result<JObject<'a>> {
     #[cfg(target_os = "android")]
     {
-        let _ = jar_paths;
-        return create_android_class_loader(env);
+        return create_android_class_loader(env, jar_paths);
     }
 
     #[cfg(not(target_os = "android"))]
@@ -539,7 +538,51 @@ fn create_class_loader<'a>(
 }
 
 #[cfg(target_os = "android")]
-fn create_android_class_loader<'a>(env: &mut jni::JNIEnv<'a>) -> Result<JObject<'a>> {
+fn create_android_class_loader<'a>(
+    env: &mut jni::JNIEnv<'a>,
+    jar_paths: &[PathBuf],
+) -> Result<JObject<'a>> {
+    let parent = android_parent_class_loader(env)?;
+    let dex_paths = jar_paths
+        .iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join(":");
+    let optimized_dir = jar_paths
+        .first()
+        .and_then(|path| path.parent())
+        .map(|path| path.join("dex-cache"))
+        .ok_or_else(|| jvm_err("no patch jars available for Android DexClassLoader"))?;
+
+    std::fs::create_dir_all(&optimized_dir).map_err(|error| {
+        jvm_err(format!(
+            "create DexClassLoader optimized directory {}: {error}",
+            optimized_dir.display()
+        ))
+    })?;
+
+    let dex_path = env
+        .new_string(dex_paths)
+        .map_err(|e| jvm_err(format!("DexClassLoader dexPath: {e}")))?;
+    let optimized_path = env
+        .new_string(optimized_dir.to_string_lossy().as_ref())
+        .map_err(|e| jvm_err(format!("DexClassLoader optimizedDirectory: {e}")))?;
+
+    env.new_object(
+        "dalvik/system/DexClassLoader",
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/ClassLoader;)V",
+        &[
+            JValue::Object(&dex_path),
+            JValue::Object(&optimized_path),
+            JValue::Object(&JObject::null()),
+            JValue::Object(&parent),
+        ],
+    )
+    .map_err(|e| jvm_err(format!("DexClassLoader: {e}")))
+}
+
+#[cfg(target_os = "android")]
+fn android_parent_class_loader<'a>(env: &mut jni::JNIEnv<'a>) -> Result<JObject<'a>> {
     if let Some(loader) = android_host::configured_class_loader(env).map_err(jvm_err)? {
         return Ok(loader);
     }
@@ -909,6 +952,56 @@ fn scan_class_names(jar_paths: &[PathBuf]) -> Vec<String> {
     class_names
 }
 
+#[cfg(target_os = "android")]
+fn jar_contains_dex(jar_path: &Path) -> bool {
+    let file = match std::fs::File::open(jar_path) {
+        Ok(file) => file,
+        Err(_) => return false,
+    };
+    let mut archive = match zip::ZipArchive::new(file) {
+        Ok(archive) => archive,
+        Err(_) => return false,
+    };
+    for i in 0..archive.len() {
+        let entry = match archive.by_index(i) {
+            Ok(entry) => entry,
+            Err(_) => continue,
+        };
+        let name = entry.name();
+        if is_classes_dex(name) {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(target_os = "android")]
+fn is_classes_dex(name: &str) -> bool {
+    name == "classes.dex"
+        || name
+            .strip_prefix("classes")
+            .and_then(|suffix| suffix.strip_suffix(".dex"))
+            .is_some_and(|number| !number.is_empty() && number.chars().all(|c| c.is_ascii_digit()))
+}
+
+#[cfg(target_os = "android")]
+fn class_loader_jars(jar_paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
+    for jar_path in jar_paths {
+        if !jar_contains_dex(jar_path) {
+            return Err(jvm_err(format!(
+                "Android patch jar {} does not contain classes.dex; rebuild patch jars as universal JVM/Android jars",
+                jar_path.display()
+            )));
+        }
+    }
+    Ok(jar_paths.to_vec())
+}
+
+#[cfg(not(target_os = "android"))]
+fn class_loader_jars(jar_paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
+    Ok(jar_paths.to_vec())
+}
+
 fn is_patch_type(env: &mut jni::JNIEnv<'_>, obj: &JObject<'_>, patch_class: &JObject<'_>) -> bool {
     let obj_class = match env.get_object_class(obj) {
         Ok(c) => c,
@@ -978,7 +1071,8 @@ pub fn load_kotlin_patches(
         .attach_current_thread_permanently()
         .map_err(|e| jvm_err(format!("attach thread: {e}")))?;
 
-    let loader = create_class_loader(&mut env, jar_paths)?;
+    let loader_jars = class_loader_jars(jar_paths)?;
+    let loader = create_class_loader(&mut env, &loader_jars)?;
 
     register_jni_natives(&mut env, &loader)?;
 

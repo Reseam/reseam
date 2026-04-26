@@ -1,0 +1,22 @@
+[package]
+name = "reseam_sdk"
+crate = "reseam-sdk"
+
+[targets.apple]
+enabled = false
+
+[targets.wasm]
+enabled = false
+
+[targets.android]
+enabled = true
+
+[targets.android.kotlin]
+package = "app.reseam.sdk"
+output = "generated"
+module_name = "ReseamSdk"
+library_name = "reseam_sdk"
+desktop_loader = "system"
+
+[targets.android.pack]
+output = "jniLibs"

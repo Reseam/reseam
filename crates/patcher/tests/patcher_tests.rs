@@ -45,8 +45,8 @@ fn build_fixture_jar() -> PathBuf {
     FIXTURE_JAR
         .get_or_init(|| {
             let root = workspace_root();
-            let gradle = root.join("kotlin-sdk/gradlew");
-            let sdk_dir = root.join("kotlin-sdk");
+            let gradle = root.join("patch-api/gradlew");
+            let sdk_dir = root.join("patch-api");
             let fixture_dir = root.join("tests/kotlin-runtime-bundle");
 
             run_checked(
