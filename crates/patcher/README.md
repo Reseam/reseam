@@ -32,7 +32,7 @@ The Kotlin integration has three separate concerns:
 - `patch-api/generated/` contains raw BoltFFI output and is fully replaceable
 - handwritten files in `patch-api/src/main/kotlin/dev/reseam/patch/` provide stable SDK ergonomics and policy
 
-Regeneration is done through `patch-api/regenerate.sh`. Normal Cargo builds remain strict and still compile the JNI glue; regeneration uses `RESEAM_SKIP_JNI_GLUE=1` only to prevent stale generated JNI code from blocking type generation.
+Regeneration is done through `cargo xtask regen patch-api`. Normal Cargo builds remain strict and still compile the JNI glue; regeneration uses `RESEAM_SKIP_JNI_GLUE=1` only to prevent stale generated JNI code from blocking type generation.
 
 ## Usage
 

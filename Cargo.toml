@@ -7,7 +7,12 @@ members = [
     "crates/patcher",
     "crates/patcher-macros",
     "sdk",
-    "crates/cli"
+    "crates/cli",
+    "xtask",
+]
+exclude = [
+    "crates/patcher/target/boltffi_bindgen_type_resolution",
+    "sdk/target/boltffi_bindgen_type_resolution",
 ]
 
 [workspace.dependencies]

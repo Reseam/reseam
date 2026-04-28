@@ -13,6 +13,7 @@ Reseam is a Rust APK patching engine. Patches are written in Kotlin against the 
 | `reseam-sdk` | Shared application-facing patch service used by clients |
 | `reseam-cli` | `reseam` command-line interface |
 | `patch-api` | Kotlin patch-author API |
+| `xtask` | Build orchestration tasks (`cargo xtask …`) |
 
 ## Build
 
@@ -24,9 +25,9 @@ cd patch-api && ./gradlew build
 If you are working on the generated JNI boundary:
 
 ```bash
-./patch-api/regenerate.sh
+cargo xtask regen patch-api
 cargo build -p reseam-patcher
-JAVA_HOME=/path/to/jdk patch-api/build-jni.sh
+JAVA_HOME=/path/to/jdk cargo xtask jni-host
 ```
 
 ## CLI

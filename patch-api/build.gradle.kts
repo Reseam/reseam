@@ -29,11 +29,6 @@ tasks.test {
     environment("LD_LIBRARY_PATH", libDir)
 }
 
-tasks.register<Exec>("syncPublishedBridge") {
-    workingDir = projectDir
-    commandLine("./fix-generated.sh")
-}
-
 kotlin {
     jvmToolchain(17)
 }

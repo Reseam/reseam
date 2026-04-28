@@ -1,0 +1,14 @@
+[package]
+name = "xtask"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Reseam build orchestration tasks"
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }

@@ -37,8 +37,7 @@ cargo check -p reseam-sdk --target aarch64-linux-android
 Generate Kotlin bindings and package Android `jniLibs`:
 
 ```bash
-cd sdk
-./regenerate.sh
+cargo xtask regen sdk
 ```
 
 Outputs are written to:

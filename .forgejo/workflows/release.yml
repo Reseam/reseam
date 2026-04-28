@@ -35,16 +35,16 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('kotlin-sdk/**/*.gradle.kts', 'kotlin-sdk/gradle/wrapper/gradle-wrapper.properties') }}
+          key: gradle-${{ hashFiles('patch-api/**/*.gradle.kts', 'patch-api/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: |
             gradle-
 
       - run: |
-          if ! cargo install --list | grep -q '^boltffi_cli v0\.23\.1:'; then
-            cargo install boltffi_cli --version 0.23.1 --locked
+          if ! cargo install --list | grep -q '^boltffi_cli v0\.24\.1:'; then
+            cargo install boltffi_cli --version 0.24.1 --locked
           fi
 
-      - run: ./kotlin-sdk/regenerate.sh
+      - run: cargo xtask regen patch-api
         env:
           JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
 
@@ -61,7 +61,7 @@ jobs:
           else
             ./gradlew publishAllPublicationsToForgejoRepository -PreseamSdkVersion="${SDK_VERSION}" --no-daemon
           fi
-        working-directory: kotlin-sdk
+        working-directory: patch-api
         env:
           FORGEJO_PACKAGES_TOKEN: ${{ secrets.FORGEJO_PACKAGES_TOKEN }}
 
