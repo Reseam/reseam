@@ -15,16 +15,14 @@ jobs:
       LZMA_API_STATIC: "1"
       HOST_CLASSIFIER: linux-x86_64
     steps:
-      - name: Install base apt packages
-        run: apt-get update && apt-get install -y --no-install-recommends ca-certificates curl unzip zstd
+      - name: Install base apt packages and Node.js 22
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends ca-certificates curl unzip zstd
+          curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+          apt-get install -y nodejs
 
       - name: Checkout sources
         uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: https://github.com/actions/setup-node@v6
-        with:
-          node-version: '24'
 
       - name: Set up JDK 17
         uses: https://github.com/actions/setup-java@v5
