@@ -12,71 +12,65 @@ jobs:
     container:
       image: rust:1-bookworm
     env:
-      ANDROID_HOME: /opt/android-sdk
-      ANDROID_PLATFORM_VERSION: "36"
-      ANDROID_BUILD_TOOLS_VERSION: "34.0.0"
-      ANDROID_NDK_VERSION: "29.0.14206865"
-      JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+      LZMA_API_STATIC: "1"
       HOST_CLASSIFIER: linux-x86_64
     steps:
-      - run: apt-get update && apt-get install -y --no-install-recommends ca-certificates curl nodejs openjdk-17-jdk-headless unzip zstd
+      - name: Install base apt packages
+        run: apt-get update && apt-get install -y --no-install-recommends ca-certificates curl nodejs unzip zstd
 
-      - uses: actions/checkout@v4
+      - name: Checkout sources
+        uses: actions/checkout@v4
 
-      - uses: actions/cache@v4
-        id: android-sdk-cache
+      - name: Set up JDK 17
+        uses: https://github.com/actions/setup-java@v5
         with:
-          path: ${{ env.ANDROID_HOME }}
-          key: android-platform-${{ env.ANDROID_PLATFORM_VERSION }}-buildtools-${{ env.ANDROID_BUILD_TOOLS_VERSION }}-ndk-${{ env.ANDROID_NDK_VERSION }}
+          distribution: temurin
+          java-version: '17'
 
-      - if: steps.android-sdk-cache.outputs.cache-hit != 'true'
+      - name: Set up Android SDK
+        uses: https://github.com/android-actions/setup-android@v4
+        with:
+          cmdline-tools-version: 11076708
+          packages: 'platforms;android-36 build-tools;34.0.0 ndk;29.0.14206865'
+
+      - name: Add Rust Android targets
+        run: rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+
+      - name: Cache cargo build
+        uses: https://github.com/Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('.cargo/config.toml') }}
+
+      - name: Cache boltffi_cli binary
+        id: boltffi-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/boltffi
+          key: boltffi-cli-0.24.1
+
+      - name: Install boltffi_cli
+        if: steps.boltffi-cache.outputs.cache-hit != 'true'
+        run: cargo install boltffi_cli --version 0.24.1 --locked
+
+      - name: Set up Gradle
+        uses: https://github.com/gradle/actions/setup-gradle@v5
+
+      - name: Regenerate patch-api bindings
+        run: cargo xtask regen patch-api
+
+      - name: Regenerate SDK bindings and Android jniLibs
+        run: cargo xtask regen sdk
+
+      - name: Build reseam-cli release binary
+        run: cargo build --release -p reseam-cli
+
+      - name: Build desktop JNI shim
+        run: cargo xtask jni-host --crate sdk
+
+      - name: Publish artifacts to Forgejo Maven
+        env:
+          FORGEJO_PACKAGES_TOKEN: ${{ secrets.FORGEJO_PACKAGES_TOKEN }}
         run: |
-          mkdir -p "$ANDROID_HOME/cmdline-tools"
-          curl -sSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o /tmp/cmdline-tools.zip
-          unzip -q /tmp/cmdline-tools.zip -d "$ANDROID_HOME/cmdline-tools"
-          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
-          (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            "platforms;android-${ANDROID_PLATFORM_VERSION}" \
-            "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" \
-            "ndk;${ANDROID_NDK_VERSION}"
-
-      - run: rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            ~/.cargo/bin/boltffi
-            ~/.cargo/.crates.toml
-            ~/.cargo/.crates2.json
-            target
-          key: cargo-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
-          restore-keys: |
-            cargo-${{ hashFiles('Cargo.lock') }}-
-            cargo-
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('patch-api/**/*.gradle.kts', 'sdk-android/**/*.gradle.kts', 'sdk-jvm/**/*.gradle.kts', 'patch-api/gradle/wrapper/gradle-wrapper.properties', 'sdk-android/gradle/wrapper/gradle-wrapper.properties', 'sdk-jvm/gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-
-
-      - run: |
-          if ! cargo install --list | grep -q '^boltffi_cli v0\.24\.1:'; then
-            cargo install boltffi_cli --version 0.24.1 --locked
-          fi
-
-      - run: cargo xtask regen patch-api
-      - run: cargo xtask regen sdk
-      - run: cargo build --release -p reseam-cli
-      - run: cargo xtask jni-host --crate sdk
-
-      - run: |
           TAG="${GITHUB_REF#refs/tags/}"
           SDK_VERSION="${TAG#v}"
 
@@ -106,12 +100,12 @@ jobs:
           publish_pom_keyed "reseam-patch-sdk" "patch-api"
           publish_pom_keyed "reseam-sdk-android" "sdk-android"
           publish_jar_keyed "reseam-sdk-jvm" "sdk-jvm" "${HOST_CLASSIFIER}"
-        env:
-          FORGEJO_PACKAGES_TOKEN: ${{ secrets.FORGEJO_PACKAGES_TOKEN }}
 
-      - run: install -D -m 0755 target/release/reseam dist/reseam-linux-x64
+      - name: Stage CLI binary for release
+        run: install -D -m 0755 target/release/reseam dist/reseam-linux-x64
 
-      - uses: https://code.forgejo.org/actions/forgejo-release@v2.11.1
+      - name: Upload to Forgejo release
+        uses: https://code.forgejo.org/actions/forgejo-release@v2.11.1
         with:
           direction: upload
           url: https://git.reseam.app
