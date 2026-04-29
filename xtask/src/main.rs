@@ -23,7 +23,10 @@ enum Cmd {
         #[arg(value_enum)]
         target: RegenTarget,
     },
-    JniHost,
+    JniHost {
+        #[arg(long = "crate", value_enum, default_value_t = JniCrate::Patcher)]
+        which: JniCrate,
+    },
 }
 
 #[derive(Copy, Clone, ValueEnum)]
@@ -31,6 +34,12 @@ enum RegenTarget {
     PatchApi,
     Sdk,
     All,
+}
+
+#[derive(Copy, Clone, ValueEnum)]
+pub enum JniCrate {
+    Patcher,
+    Sdk,
 }
 
 fn main() -> Result<()> {
@@ -44,7 +53,10 @@ fn main() -> Result<()> {
                 sdk::regen()?;
             }
         },
-        Cmd::JniHost => patch_api::build_jni_host()?,
+        Cmd::JniHost { which } => match which {
+            JniCrate::Patcher => patch_api::build_jni_host()?,
+            JniCrate::Sdk => sdk::build_jni_host()?,
+        },
     }
     Ok(())
 }

@@ -10,6 +10,10 @@ patch-api/build/
 patch-api/.gradle/
 patch-api/generated/
 patch-api/app/
+sdk-android/build/
+sdk-android/.gradle/
+sdk-jvm/build/
+sdk-jvm/.gradle/
 tests/kotlin-runtime-bundle/build
 tests/kotlin-runtime-bundle/.gradle
 reseam.pk8
