@@ -14,6 +14,8 @@ linker = "x86_64-linux-android21-clang"
 linker = "i686-linux-android21-clang"
 
 [env]
+LZMA_API_STATIC = "1"
+
 CC_aarch64_linux_android = "aarch64-linux-android21-clang"
 CXX_aarch64_linux_android = "aarch64-linux-android21-clang++"
 AR_aarch64_linux_android = "llvm-ar"
