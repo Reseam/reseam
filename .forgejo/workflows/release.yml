@@ -10,34 +10,22 @@ jobs:
     if: ${{ !github.event.deleted }}
     runs-on: docker
     container:
-      image: rust:1-bookworm
+      image: cimg/android:2026.03-node
     env:
       LZMA_API_STATIC: "1"
       HOST_CLASSIFIER: linux-x86_64
     steps:
-      - name: Install base apt packages and Node.js 22
-        run: |
-          apt-get update && apt-get install -y --no-install-recommends ca-certificates curl unzip zstd
-          curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-          apt-get install -y nodejs
+      - name: Install Rust toolchain
+        uses: https://github.com/dtolnay/rust-toolchain@stable
 
-      - name: Checkout sources
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: https://github.com/actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Android SDK
-        uses: https://github.com/android-actions/setup-android@v4
-        with:
-          cmdline-tools-version: 11076708
-          packages: 'platforms;android-36 build-tools;34.0.0 ndk;29.0.14206865'
+      - name: Install Android NDK
+        run: sdkmanager "ndk;29.0.14206865"
 
       - name: Add Rust Android targets
         run: rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+
+      - name: Checkout sources
+        uses: actions/checkout@v4
 
       - name: Cache cargo build
         uses: https://github.com/Swatinem/rust-cache@v2
