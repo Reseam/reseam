@@ -68,15 +68,15 @@ By default, every patch in the bundle runs if its `enabled_by_default` flag is s
 
 ```bash
 reseam patch app.apk --bundle patches.reseam \
-  --enable amoled-dark \
-  --disable background-play
+  --enable example-patch \
+  --disable other-patch
 ```
 
 Set a patch option:
 
 ```bash
 reseam patch app.apk --bundle patches.reseam \
-  --option block-ads.mode=aggressive
+  --option example-patch.mode=fast
 ```
 
 The value is parsed against the option's declared type (string, bool, int, enum). An unknown patch or key fails the run before any DEX work starts.

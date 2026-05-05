@@ -35,6 +35,15 @@ val myPatch = patch(
 - `dependsOn`: other patches in the same bundle that must run first. Accepts `ReseamPatch` references or name strings.
 - `enabledByDefault`: whether the patch is on unless the user disables it. Defaults to `true`.
 - `options`: user-configurable parameters. See below.
+- `settingsHost`: the patch (by `ReseamPatch` reference or name) that owns the on-device settings schema this patch contributes to. Optional.
+- `settings`: a list of `SettingsSection` entries the host patch should expose as runtime toggles in Reseam Manager. Empty by default.
+
+## Body helpers
+
+Inside the trailing `patch { ... }` block, alongside `execute` and `afterDependents`, the builder also exposes:
+
+- `dependsOn(...)`, `compatibleWith(...)`, `option(...)`, `settings(...)`, `settingsHost(...)`: append to the list-shaped parameters above.
+- `extendWith("name.dex", ...)`: declare extension DEX files this patch injects. See [Extensions](4_extensions.md).
 
 ## Lifecycle
 

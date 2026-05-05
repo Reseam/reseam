@@ -5,7 +5,7 @@ description: What the Reseam CLI is and what it does.
 
 # Overview
 
-![Diagram: four cards representing the Reseam CLI's surfaces. reseam patch applies a bundle to an APK. reseam bundle handles keygen, pack, and list for signed .reseam archives. reseam publish writes or updates a patches.json release index. reseam info prints APK metadata.](commands-palette.svg)
+![Diagram: five cards representing the Reseam CLI's surfaces. reseam patch applies a bundle to an APK. reseam perf benchmarks the same pipeline into a temp location and reports per-phase timings. reseam bundle handles keygen, pack, and list for signed .reseam archives. reseam publish writes or updates a patches.json release index. reseam info prints APK metadata.](commands-palette.svg)
 
 `reseam` is the command-line patch engine. Patch authors use it to build and sign bundles; advanced users run it on a laptop to patch APKs without Reseam Manager.
 
@@ -15,6 +15,7 @@ The binary is named `reseam` and ships from the `reseam-cli` crate.
 
 - Applies a signed patch bundle to an APK (single or split) and signs the output with APK Signature Scheme v2.
 - Validates a bundle against an APK without writing anything (`--dry-run`).
+- Benchmarks the patch pipeline into a temp location and prints per-phase timings (`reseam perf`).
 - Prints APK metadata: package, version, DEX file count, splits, class and method totals.
 - Generates Ed25519 bundle signing seeds.
 - Packs and signs a bundle staging directory into a `.reseam` archive.

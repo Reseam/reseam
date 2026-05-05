@@ -47,9 +47,9 @@
 
 	<g transform="translate(600,120)">
 		<rect class="card-accent" x="0" y="0" width="320" height="170" rx="20" />
-		<text class="caption" x="20" y="28">Fingerprint</text>
+		<text class="caption" x="20" y="28">Structural query</text>
 		<rect class="inner" x="16" y="44" width="288" height="112" rx="8" />
-		<text class="mono" x="32" y="68">fingerprint {</text>
+		<text class="mono" x="32" y="68">ctx.findMethod {</text>
 		<text class="mono" x="52" y="88">strings(</text>
 		<text class="mono" x="70" y="104">"app_launch_reported",</text>
 		<text class="mono" x="70" y="120">"session_id",</text>

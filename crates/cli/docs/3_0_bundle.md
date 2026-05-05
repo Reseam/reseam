@@ -67,16 +67,21 @@ reseam bundle list patches.reseam
 Output shape:
 
 ```
-bundle: ytm-patches
-author: reseam
-description: YouTube and YouTube Music patches
+bundle: example-bundle
+author: example
+description: Example patches
 
-    1. [on] block-ads - Remove ads from the timeline.
-       packages: com.google.android.youtube (19.x, 20.x)
-       depends: block-ads-core
+    1. [on] example-patch - One-line description.
+       packages: com.example.app (1.0.0, 1.1.0)
+       depends: example-core
        options:
-         - mode (Enum, optional)
+         - mode (String, optional)
+
+extension DEX:
+  - example-extension.dex
 ```
+
+`(String, optional)` is the option's declared type and required flag. The `extension DEX:` block is shown only when the bundle ships extension DEX files; it lists their archive paths.
 
 The bundle is loaded through the same path `reseam patch` uses: its signature is verified against the bundle's embedded public key, then the CLI applies its trust policy for that signer. A bundle with an invalid signature, an untrusted signer, or the wrong `format_version` fails before any patch metadata is printed.
 

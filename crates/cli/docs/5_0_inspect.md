@@ -15,9 +15,9 @@ Output:
 
 ```
 APK: app.apk
-  package:    com.google.android.youtube
-  version:    19.42.38
-  versionCode: 194238000
+  package:    com.example.app
+  version:    1.4.2
+  versionCode: 14200
   dex files:  12
   components: 1
   classes:    24183

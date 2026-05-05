@@ -34,13 +34,13 @@
 		<text class="mono-muted" x="52" y="104">settings.gradle.kts</text>
 		<text class="mono-muted" x="52" y="122">build.gradle.kts</text>
 		<text class="mono-muted" x="52" y="140">gradlew</text>
-		<text class="mono" x="52" y="164">apps/youtube/</text>
+		<text class="mono" x="52" y="164">apps/example/</text>
 		<text class="mono" x="74" y="182">patch/</text>
 		<text class="mono-muted" x="96" y="200">src/main/kotlin/</text>
-		<text class="mono-dim" x="118" y="218">BlockAds.kt</text>
-		<text class="mono-dim" x="118" y="236">AmoledDark.kt</text>
+		<text class="mono-dim" x="118" y="218">FirstPatch.kt</text>
+		<text class="mono-dim" x="118" y="236">SecondPatch.kt</text>
 		<text class="mono" x="74" y="258">extensions/</text>
-		<text class="mono" x="96" y="276">downloader/</text>
+		<text class="mono" x="96" y="276">addon/</text>
 		<text class="mono-muted" x="118" y="294">build.gradle.kts</text>
 		<text class="mono-dim" x="118" y="312">src/main/java/</text>
 		<text class="mono" x="36" y="332">shared/util/</text>
@@ -79,10 +79,10 @@
 		<line class="link" x1="36" y1="186" x2="264" y2="186" />
 
 		<circle class="accent-fill" cx="42" cy="212" r="3.5" opacity="0.5" />
-		<text class="mono-muted" x="54" y="216">youtube-patches.jar</text>
+		<text class="mono-muted" x="54" y="216">example-patches.jar</text>
 
 		<circle class="accent-fill" cx="42" cy="240" r="3.5" opacity="0.5" />
-		<text class="mono-muted" x="54" y="244">youtube-downloader.dex</text>
+		<text class="mono-muted" x="54" y="244">example-addon.dex</text>
 
 		<circle class="accent-fill" cx="42" cy="268" r="3.5" opacity="0.5" />
 		<text class="mono-muted" x="54" y="272">shared-util.dex</text>

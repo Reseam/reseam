@@ -64,5 +64,5 @@
 		</g>
 	</g>
 
-	<text class="label" x="480" y="346" text-anchor="middle">Each scope offers a .component(name) variant for split-APK targeting.</text>
+	<text class="label" x="480" y="346" text-anchor="middle">manifest, resources, and files offer a .component(name) variant for split-APK targeting.</text>
 </svg>

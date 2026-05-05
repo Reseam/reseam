@@ -41,9 +41,9 @@ reseam publish patches \
 ```json
 {
   "bundle": {
-    "name": "ytm-patches",
-    "author": "reseam",
-    "description": "YouTube and YouTube Music patches",
+    "name": "example-bundle",
+    "author": "example",
+    "description": "Example patches",
     "homepage": "https://reseam.app",
     "public_key": "1f3c..."
   },
@@ -52,7 +52,7 @@ reseam publish patches \
       "version": "v0.1.0",
       "created_at": "2026-04-19T12:00:00Z",
       "description": "Initial release.",
-      "download_url": "https://reseam.app/releases/reseam-patches-v0.1.0.reseam",
+      "download_url": "https://reseam.app/releases/example-bundle-v0.1.0.reseam",
       "prerelease": false
     }
   ]
