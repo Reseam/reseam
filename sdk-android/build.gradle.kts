@@ -33,7 +33,7 @@ abstract class StageJniLibs : DefaultTask() {
                 "Missing $patcherSo. Run `cargo xtask regen sdk` first."
             }
             val abiOut = out.resolve(spec.abi).also { it.mkdirs() }
-            sdkSo.copyTo(abiOut.resolve("libreseam-sdk.so"), overwrite = true)
+            sdkSo.copyTo(abiOut.resolve("libreseam_sdk.so"), overwrite = true)
             patcherSo.copyTo(abiOut.resolve("libreseam_patcher.so"), overwrite = true)
         }
     }
