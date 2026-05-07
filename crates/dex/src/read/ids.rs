@@ -6,7 +6,7 @@ use crate::encoding::leb128::read_uleb128_with_opts;
 use crate::encoding::mutf8::{decode_mutf8_with_opts, utf16_len};
 use crate::error::{invalid, invalid_mutf8, Result};
 use crate::types::header::ParseOptions;
-use crate::types::{DexString, FieldId, MethodId, ProtoIdx, Prototype, StringIdx, TypeIdx};
+use crate::types::{DexString, FieldId, MethodId, ProtoIdx, Prototype, StringIdx, TypeIdx, TypeList};
 
 pub fn read_string_ids(buf: &[u8], off: u32, count: u32) -> Result<Vec<u32>> {
     let mut offsets = Vec::with_capacity(count as usize);
@@ -69,7 +69,7 @@ pub fn read_proto_ids(buf: &[u8], off: u32, count: u32) -> Result<Vec<Prototype>
         let parameters = if params_off != 0 {
             read_type_list(buf, params_off)?
         } else {
-            Vec::new()
+            TypeList::new()
         };
 
         protos.push(Prototype {
@@ -81,10 +81,10 @@ pub fn read_proto_ids(buf: &[u8], off: u32, count: u32) -> Result<Vec<Prototype>
     Ok(protos)
 }
 
-pub fn read_type_list(buf: &[u8], off: u32) -> Result<Vec<TypeIdx>> {
+pub fn read_type_list(buf: &[u8], off: u32) -> Result<TypeList> {
     let base = off as usize;
     let size = u32_at(buf, base)? as usize;
-    let mut list = Vec::with_capacity(size);
+    let mut list = TypeList::with_capacity(size);
     for i in 0..size {
         list.push(TypeIdx(u16_at(buf, base + 4 + i * 2)? as u32));
     }

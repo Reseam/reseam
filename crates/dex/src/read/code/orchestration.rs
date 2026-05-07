@@ -24,7 +24,7 @@ pub fn read_code_item(buf: &[u8], off: u32, opts: &ParseOptions) -> Result<CodeI
     let insns_start = base + 16;
     let instructions = decode_instructions(buf, insns_start, insns_size)?;
 
-    let debug_info = if debug_info_off != 0 {
+    let debug_info = if debug_info_off != 0 && opts.include_debug_info {
         Some(read_debug_info(buf, debug_info_off, opts)?)
     } else {
         None

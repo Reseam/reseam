@@ -125,12 +125,23 @@ where
         .context("patch application failed")?;
     drop(ctx);
 
-    let failed_count = results
+    let failures = results
         .iter()
-        .filter(|result| matches!(result.status, PatchStatus::Failed { .. }))
-        .count();
-    if failed_count > 0 {
-        bail!("{failed_count} patch(es) failed");
+        .filter_map(|result| match &result.status {
+            PatchStatus::Failed { reason } => Some(format!(
+                "{}: {}",
+                result.name,
+                concise_failure_reason(reason)
+            )),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if !failures.is_empty() {
+        bail!(
+            "{} patch(es) failed:\n{}",
+            failures.len(),
+            failures.join("\n")
+        );
     }
 
     let artifact = match &request.output {
@@ -216,6 +227,20 @@ fn patch_status_reason(status: &PatchStatus) -> Option<String> {
     match status {
         PatchStatus::Applied => None,
         PatchStatus::Skipped { reason } | PatchStatus::Failed { reason } => Some(reason.clone()),
+    }
+}
+
+fn concise_failure_reason(reason: &str) -> String {
+    let mut lines = reason
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with("at "));
+    let first = lines.next().unwrap_or(reason).to_string();
+    let details =
+        lines.find(|line| line.starts_with("Reasons:") || line.starts_with("Near misses:"));
+    match details {
+        Some(details) => format!("{first}; {details}"),
+        None => first,
     }
 }
 

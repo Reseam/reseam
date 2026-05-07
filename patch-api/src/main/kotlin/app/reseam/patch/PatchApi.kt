@@ -393,7 +393,7 @@ internal class PatchApiState(private val ctx: PatchRuntime) {
         for (method in candidatesToCheck) {
             val failureReasons = mutableListOf<String>()
             if (!methodMatches(method, spec, failureReasons)) {
-                rejected += RejectedMethodCandidate(method, failureReasons)
+                rejected.addBoundedNearMiss(RejectedMethodCandidate(method, failureReasons))
                 continue
             }
 
@@ -435,7 +435,7 @@ internal class PatchApiState(private val ctx: PatchRuntime) {
             considered = pool.considered,
             noMatchReasons = buildList {
                 addAll(pool.pipeline)
-                pool.exhaustedBy?.let { add("index intersection exhausted at $it") }
+                pool.exhaustedBy?.let { add("candidate intersection exhausted at $it") }
                 if (rejected.isNotEmpty()) {
                     add("no candidate satisfied the full structural query")
                 }
@@ -453,11 +453,11 @@ internal class PatchApiState(private val ctx: PatchRuntime) {
     }
 
     private fun methodMatches(method: Method, spec: MethodQuerySpec, failures: MutableList<String>): Boolean {
-        if (spec.stringValues.any { value -> method.handle !in index.methodsWithString(value) }) {
+        if (spec.stringValues.any { value -> !index.methodHasString(method, value) }) {
             failures += "missing required string"
             return false
         }
-        if (spec.literalValues.any { value -> method.handle !in index.methodsWithLiteral(value) }) {
+        if (spec.literalValues.any { value -> !index.methodHasLiteral(method, value) }) {
             failures += "missing required literal"
             return false
         }
@@ -529,7 +529,7 @@ internal class PatchApiState(private val ctx: PatchRuntime) {
         for (classDef in candidatesToCheck) {
             val failures = mutableListOf<String>()
             if (!classMatches(classDef, spec, failures)) {
-                rejected += RejectedClassCandidate(classDef, failures)
+                rejected.addBoundedNearMiss(RejectedClassCandidate(classDef, failures))
                 continue
             }
 
@@ -562,7 +562,7 @@ internal class PatchApiState(private val ctx: PatchRuntime) {
             considered = pool.considered,
             noMatchReasons = buildList {
                 addAll(pool.pipeline)
-                pool.exhaustedBy?.let { add("index intersection exhausted at $it") }
+                pool.exhaustedBy?.let { add("candidate intersection exhausted at $it") }
                 if (rejected.isNotEmpty()) {
                     add("no candidate satisfied the full structural query")
                 }
@@ -580,14 +580,11 @@ internal class PatchApiState(private val ctx: PatchRuntime) {
     }
 
     private fun classMatches(classDef: DexClass, spec: ClassQuerySpec, failures: MutableList<String>): Boolean {
-        if (spec.stringValues.any { value -> classDef !in index.classesWithString(value) }) {
+        if (spec.stringValues.any { value -> !index.classHasString(classDef, value) }) {
             failures += "missing required string"
             return false
         }
-        if (spec.instanceFieldTypes.any { fieldType ->
-                classDef !in index.classesWithInstanceFieldType(fieldType)
-            }
-        ) {
+        if (spec.instanceFieldTypes.any { fieldType -> !index.classHasInstanceFieldType(classDef, fieldType) }) {
             failures += "missing instance field"
             return false
         }
@@ -634,9 +631,9 @@ internal class PatchApiState(private val ctx: PatchRuntime) {
             append(kind)
             append(" matched '")
             append(report.name)
-            append("'. Considered ")
+            append("'. Searched ")
             append(report.considered)
-            append(" indexed candidates.")
+            append(if (kind == "method") " method candidate(s)." else " class candidate(s).")
             if (report.reasons.isNotEmpty()) {
                 append("\nReasons: ")
                 append(report.reasons.joinToString("; "))
@@ -693,6 +690,31 @@ private data class RejectedClassCandidate(
     val classDef: DexClass,
     val failures: List<String>,
 )
+
+private const val MAX_REJECTED_NEAR_MISSES = 32
+
+private fun MutableList<RejectedMethodCandidate>.addBoundedNearMiss(candidate: RejectedMethodCandidate) {
+    add(candidate)
+    if (size <= MAX_REJECTED_NEAR_MISSES) return
+    sortWith(
+        compareBy<RejectedMethodCandidate> { it.failures.size }
+            .thenBy { rejectedMethodName(it.method) }
+    )
+    subList(MAX_REJECTED_NEAR_MISSES, size).clear()
+}
+
+private fun MutableList<RejectedClassCandidate>.addBoundedNearMiss(candidate: RejectedClassCandidate) {
+    add(candidate)
+    if (size <= MAX_REJECTED_NEAR_MISSES) return
+    sortWith(
+        compareBy<RejectedClassCandidate> { it.failures.size }
+            .thenBy { it.classDef.info.descriptor }
+    )
+    subList(MAX_REJECTED_NEAR_MISSES, size).clear()
+}
+
+private fun rejectedMethodName(method: Method): String =
+    "${method.info.classDescriptor}->${method.info.methodName}${method.info.proto}"
 
 private data class EvaluatedMethodQuery(
     val accepted: List<EvaluatedMethodCandidate>,

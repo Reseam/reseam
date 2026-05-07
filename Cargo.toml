@@ -28,6 +28,7 @@ reseam-sdk     = { path = "sdk" }
 thiserror   = "2"
 bitflags    = "2"
 smallvec    = "1"
+rustc-hash  = "2"
 sha1        = "0.10"
 adler       = "1"
 rayon       = "1.10"

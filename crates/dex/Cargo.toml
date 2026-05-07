@@ -10,6 +10,7 @@ readme = "README.md"
 thiserror = { workspace = true }
 bitflags  = { workspace = true }
 smallvec  = { workspace = true }
+rustc-hash = { workspace = true }
 sha1      = { workspace = true }
 adler     = { workspace = true }
 memmap2   = { workspace = true, optional = true }

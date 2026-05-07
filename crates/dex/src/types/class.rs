@@ -5,7 +5,7 @@ use super::access_flags::AccessFlags;
 use super::annotation::AnnotationsDirectory;
 use super::code::CodeItem;
 use super::encoded_value::EncodedValue;
-use super::{DexString, FieldIdx, MethodId, MethodIdx, StringIdx, TypeIdx};
+use super::{DexString, FieldIdx, MethodId, MethodIdx, StringIdx, TypeIdx, TypeList};
 
 pub const NO_INDEX: u32 = 0xFFFFFFFF;
 
@@ -14,7 +14,7 @@ pub struct ClassDef {
     pub class_type: TypeIdx,
     pub access_flags: AccessFlags,
     pub superclass: Option<TypeIdx>,
-    pub interfaces: Vec<TypeIdx>,
+    pub interfaces: TypeList,
     pub source_file: Option<StringIdx>,
     pub annotations: Option<AnnotationsDirectory>,
     pub class_data: Option<ClassData>,

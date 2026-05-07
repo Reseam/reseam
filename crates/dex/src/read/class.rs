@@ -64,7 +64,7 @@ fn read_class_defs_impl(
         let interfaces = if interfaces_off != 0 {
             read_type_list(buf, interfaces_off)?
         } else {
-            Vec::new()
+            crate::types::TypeList::new()
         };
 
         let source_file = if source_file_idx == NO_INDEX {
@@ -73,7 +73,7 @@ fn read_class_defs_impl(
             Some(StringIdx(source_file_idx))
         };
 
-        let annotations = if annotations_off != 0 {
+        let annotations = if annotations_off != 0 && opts.include_annotations {
             Some(read_annotations_directory(buf, annotations_off, opts)?)
         } else {
             None

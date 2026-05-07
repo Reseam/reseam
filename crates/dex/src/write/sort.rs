@@ -161,7 +161,7 @@ pub fn sort_in_place(dex: &mut DexFile) -> crate::error::Result<()> {
 
     fixup_instructions(dex)?;
 
-    dex.build_lookups();
+    dex.invalidate_lookups();
     Ok(())
 }
 

@@ -8,7 +8,7 @@ use crate::error::Result;
 use crate::file::DexFile;
 use crate::types::encoded_value::EncodedValue;
 use crate::types::map::*;
-use crate::types::TypeIdx;
+use crate::types::TypeList;
 use std::collections::HashMap;
 
 pub(crate) mod annotations;
@@ -147,7 +147,7 @@ pub fn write_container(dex_files: &mut [DexFile]) -> Result<Vec<u8>> {
 pub(crate) struct DexWriter {
     pub(crate) buf: Vec<u8>,
     pub(crate) string_data_offsets: Vec<u32>,
-    pub(crate) type_list_cache: HashMap<Vec<TypeIdx>, u32>,
+    pub(crate) type_list_cache: HashMap<TypeList, u32>,
     pub(crate) code_item_offsets: Vec<u32>,
     pub(crate) debug_info_offsets: Vec<u32>,
     pub(crate) class_data_offsets: Vec<u32>,

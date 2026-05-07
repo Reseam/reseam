@@ -36,140 +36,139 @@ private data class InvokeSite(
     val index: Int,
 )
 
-internal class PatchSearchIndex(ctx: PatchRuntime) {
-    val allClasses: List<DexClass> = ctx.bytecode.classes
-    val allMethods: List<Method> = allMethodHandles().map { Method(it.toUInt()) }
+internal class PatchSearchIndex(private val ctx: PatchRuntime) {
+    val allClasses: List<DexClass> by lazy { ctx.bytecode.classes }
+    val allMethods: List<Method> by lazy { allMethodHandles().map { Method(it.toUInt()) } }
 
-    private val classByDescriptor: Map<String, DexClass> = allClasses.associateBy { it.info.descriptor }
-    private val methodByHandle: Map<UInt, Method> = allMethods.associateBy { it.handle }
-    private val methodBySignature: Map<MethodSignature, Method> = allMethods.associateBy(::signatureOf)
-
-    private val methodsByClass = mutableMapOf<String, MutableSet<UInt>>()
-    private val methodsByReturnType = mutableMapOf<String, MutableSet<UInt>>()
-    private val methodsByExactParameters = mutableMapOf<List<String>, MutableSet<UInt>>()
-    private val methodsByParameterType = mutableMapOf<String, MutableSet<UInt>>()
-    private val methodsByOpcode = mutableMapOf<Int, MutableSet<UInt>>()
-    private val methodsByString = mutableMapOf<String, MutableSet<UInt>>()
-    private val methodsByLiteral = mutableMapOf<Long, MutableSet<UInt>>()
-    private val classesByString = mutableMapOf<String, MutableSet<String>>()
-    private val classesByInstanceFieldType = mutableMapOf<String, MutableSet<String>>()
-    private val callersByTarget = mutableMapOf<MethodSignature, MutableSet<UInt>>()
-    private val invokeSitesByTarget = mutableMapOf<MethodSignature, MutableList<InvokeSite>>()
-    private val calleesByMethod = mutableMapOf<UInt, MutableSet<MethodSignature>>()
+    private val classByDescriptor = mutableMapOf<String, DexClass?>()
+    private val methodBySignature = mutableMapOf<MethodSignature, Method?>()
+    private val methodsByClass = mutableMapOf<String, List<Method>>()
+    private val methodsByStrings = mutableMapOf<List<String>, Set<UInt>>()
+    private val methodsByLiteral = mutableMapOf<Long, Set<UInt>>()
+    private val methodsByOpcode = mutableMapOf<Int, Set<UInt>>()
+    private val classesByString = mutableMapOf<String, Set<DexClass>>()
+    private val classesByInstanceFieldType = mutableMapOf<String, Set<DexClass>>()
+    private val callersByTarget = mutableMapOf<MethodSignature, List<Method>>()
+    private val invokeSitesByTarget = mutableMapOf<MethodSignature, List<InvokeSite>>()
+    private val calleesByMethod = mutableMapOf<UInt, List<Method>>()
     private val followedByCastCache = mutableMapOf<CallSiteCastKey, Int>()
 
-    init {
-        for (cls in allClasses) {
-            val descriptor = cls.info.descriptor
-            for (field in cls.instanceFields) {
-                classesByInstanceFieldType.getOrPut(field.fieldType) { linkedSetOf() }.add(descriptor)
+    fun classFor(descriptor: String): DexClass? =
+        classByDescriptor.getOrPut(descriptor) {
+            findClass(descriptor)?.let { DexClass(it) }
+        }
+
+    fun methodFor(signature: MethodSignature): Method? =
+        methodBySignature.getOrPut(signature) {
+            methodsInClass(signature.owner).firstOrNull { method ->
+                val info = method.info
+                info.methodName == signature.name && info.proto == signature.proto
             }
         }
 
-        for (method in allMethods) {
-            val info = method.info
-            val handle = method.handle
-            val descriptor = info.classDescriptor
-            val params = info.parameterTypes
+    fun methodsInClass(descriptor: String): List<Method> =
+        methodsByClass.getOrPut(descriptor) {
+            classFor(descriptor)?.methods.orEmpty()
+        }
 
-            methodsByClass.getOrPut(descriptor) { linkedSetOf() }.add(handle)
-            methodsByReturnType.getOrPut(info.returnType) { linkedSetOf() }.add(handle)
-            methodsByExactParameters.getOrPut(params) { linkedSetOf() }.add(handle)
-            params.distinct().forEach { param ->
-                methodsByParameterType.getOrPut(param) { linkedSetOf() }.add(handle)
-            }
+    fun methodsWithReturnType(type: String): Set<UInt> =
+        allMethods.asSequence()
+            .filter { it.returnType == type }
+            .mapTo(linkedSetOf(), Method::handle)
 
-            val seenOpcodes = hashSetOf<Int>()
-            val seenStrings = linkedSetOf<String>()
-            val seenLiterals = linkedSetOf<Long>()
-            val seenCallees = linkedSetOf<MethodSignature>()
+    fun methodsWithExactParameters(types: List<String>): Set<UInt> =
+        allMethods.asSequence()
+            .filter { it.parameterTypes == types }
+            .mapTo(linkedSetOf(), Method::handle)
 
-            method.instructions.forEachIndexed { index, instruction ->
-                val opcode = instruction.opcode()
-                if (opcode >= 0 && seenOpcodes.add(opcode)) {
-                    methodsByOpcode.getOrPut(opcode) { linkedSetOf() }.add(handle)
-                }
+    fun methodsWithParameter(type: String): Set<UInt> =
+        allMethods.asSequence()
+            .filter { type in it.parameterTypes }
+            .mapTo(linkedSetOf(), Method::handle)
 
-                instruction.stringValue()?.let { value ->
-                    if (seenStrings.add(value)) {
-                        methodsByString.getOrPut(value) { linkedSetOf() }.add(handle)
-                        classesByString.getOrPut(value) { linkedSetOf() }.add(descriptor)
-                    }
-                }
+    fun methodsWithOpcode(opcode: Int): Set<UInt> =
+        methodsByOpcode.getOrPut(opcode) {
+            findMethodsByOpcodes(intArrayOf(opcode)).mapTo(linkedSetOf()) { it.toUInt() }
+        }
 
-                if (instruction is Instruction.RegLiteral) {
-                    val literal = instruction.value0.literal
-                    if (seenLiterals.add(literal)) {
-                        methodsByLiteral.getOrPut(literal) { linkedSetOf() }.add(handle)
-                    }
-                }
+    fun methodsWithString(value: String): Set<UInt> =
+        methodsWithStrings(listOf(value))
 
-                instruction.methodRef()?.let { ref ->
-                    val signature = MethodSignature(ref.definingClass, ref.name, ref.proto)
-                    callersByTarget.getOrPut(signature) { linkedSetOf() }.add(handle)
-                    invokeSitesByTarget.getOrPut(signature) { mutableListOf() }.add(InvokeSite(handle, index))
-                    seenCallees.add(signature)
-                }
-            }
-
-            if (seenCallees.isNotEmpty()) {
-                calleesByMethod[handle] = seenCallees
-            }
+    fun methodsWithStrings(values: List<String>): Set<UInt> {
+        val key = normalizedStrings(values)
+        if (key.isEmpty()) return emptySet()
+        return methodsByStrings.getOrPut(key) {
+            findMethodsByStrings(key).mapTo(linkedSetOf()) { it.toUInt() }
         }
     }
 
-    fun classFor(descriptor: String): DexClass? =
-        classByDescriptor[descriptor]
-
-    fun methodFor(signature: MethodSignature): Method? =
-        methodBySignature[signature]
-
-    fun methodsInClass(descriptor: String): List<Method> =
-        methodsByClass[descriptor].orEmpty().mapNotNull(methodByHandle::get)
-
-    fun methodsWithReturnType(type: String): Set<UInt> =
-        methodsByReturnType[type].orEmpty()
-
-    fun methodsWithExactParameters(types: List<String>): Set<UInt> =
-        methodsByExactParameters[types].orEmpty()
-
-    fun methodsWithParameter(type: String): Set<UInt> =
-        methodsByParameterType[type].orEmpty()
-
-    fun methodsWithOpcode(opcode: Int): Set<UInt> =
-        methodsByOpcode[opcode].orEmpty()
-
-    fun methodsWithString(value: String): Set<UInt> =
-        methodsByString[value].orEmpty()
-
     fun methodsWithLiteral(value: Long): Set<UInt> =
-        methodsByLiteral[value].orEmpty()
+        methodsByLiteral.getOrPut(value) {
+            findInstructionsByLiteral(value).mapTo(linkedSetOf()) { it.method }
+        }
 
     fun classesWithString(value: String): Set<DexClass> =
-        classesByString[value].orEmpty().mapNotNull(classByDescriptor::get).toSet()
+        classesByString.getOrPut(value) {
+            methodsWithString(value).asSequence()
+                .map { Method(it).info.classDescriptor }
+                .distinct()
+                .mapNotNull(::classFor)
+                .toCollection(linkedSetOf())
+        }
 
     fun classesWithInstanceFieldType(type: String): Set<DexClass> =
-        classesByInstanceFieldType[type].orEmpty().mapNotNull(classByDescriptor::get).toSet()
+        classesByInstanceFieldType.getOrPut(type) {
+            allClasses.asSequence()
+                .filter { classHasInstanceFieldType(it, type) }
+                .toCollection(linkedSetOf())
+        }
 
-    fun callersOf(target: Method): List<Method> =
-        callersByTarget[signatureOf(target)].orEmpty().mapNotNull(methodByHandle::get)
+    fun methodHasString(method: Method, value: String): Boolean =
+        method.indexOfFirstString(value) != null
 
-    fun calleesOf(target: Method): List<Method> =
-        calleesByMethod[target.handle].orEmpty().mapNotNull(methodBySignature::get)
+    fun methodHasLiteral(method: Method, value: Long): Boolean =
+        method.containsLiteral(value)
 
     fun methodHasOpcode(method: Method, opcode: Int): Boolean =
-        method.handle in methodsByOpcode[opcode].orEmpty()
+        method.indexOfFirst(opcode) != null
+
+    fun classHasString(classDef: DexClass, value: String): Boolean =
+        classDef.methods.any { methodHasString(it, value) }
+
+    fun classHasInstanceFieldType(classDef: DexClass, type: String): Boolean =
+        classDef.instanceFields.any { it.fieldType == type }
+
+    fun callersOf(target: Method): List<Method> {
+        val signature = signatureOf(target)
+        return callersByTarget.getOrPut(signature) {
+            invokeSitesFor(signature).asSequence()
+                .map { Method(it.methodHandle) }
+                .distinctBy { it.handle }
+                .sortedBy(::describeMethod)
+                .toList()
+        }
+    }
+
+    fun calleesOf(target: Method): List<Method> =
+        calleesByMethod.getOrPut(target.handle) {
+            val signatures = linkedSetOf<MethodSignature>()
+            for (index in 0 until target.instructionCount) {
+                target.methodRef(index)?.let { ref ->
+                    signatures += MethodSignature(ref.definingClass, ref.name, ref.proto)
+                }
+            }
+            signatures.mapNotNull(::methodFor)
+        }
 
     fun followedByCheckCast(target: Method, type: String, lookAhead: Int): Int {
         val key = CallSiteCastKey(signatureOf(target), type, lookAhead)
         return followedByCastCache.getOrPut(key) {
-            val sites = invokeSitesByTarget[signatureOf(target)].orEmpty()
-            sites.count { site ->
-                val caller = methodByHandle[site.methodHandle] ?: return@count false
+            invokeSitesFor(signatureOf(target)).count { site ->
+                val caller = Method(site.methodHandle)
                 val start = site.index + 1
                 val end = minOf(caller.instructionCount, start + lookAhead)
                 (start until end).any { index ->
-                    val instruction = caller.instructions[index]
+                    val instruction = getInstruction(caller.handle, index.toUInt())
                     instruction.opcode() == Opcodes.CHECK_CAST && instruction.typeRef() == type
                 }
             }
@@ -200,31 +199,36 @@ internal class PatchSearchIndex(ctx: PatchRuntime) {
         spec.calledBy.forEach { caller ->
             seeds += MethodSeed("calledBy(${describeMethod(caller.method)})", calleesOf(caller.method).map(Method::handle).toSet())
         }
-        spec.stringValues.forEach { value ->
-            seeds += MethodSeed("strings(\"$value\")", methodsWithString(value))
+        val opcodeValues = spec.opcodes.map { opcode ->
+            opcode to (OPCODE_NAMES[opcode] ?: error("Unknown opcode name '$opcode'"))
+        }
+
+        if (spec.stringValues.isNotEmpty()) {
+            seeds += MethodSeed("strings(${spec.stringValues.joinToString(transform = ::quoted)})", methodsWithStrings(spec.stringValues))
         }
         spec.literalValues.forEach { value ->
             seeds += MethodSeed("literals($value)", methodsWithLiteral(value))
         }
-        spec.returnType?.let { type ->
-            seeds += MethodSeed("returnType($type)", methodsWithReturnType(type))
-        }
-        spec.parameterTypes?.let { types ->
-            seeds += MethodSeed("parameterTypes(${types.joinToString()})", methodsWithExactParameters(types))
-        }
-        spec.hasParameters.forEach { type ->
-            seeds += MethodSeed("hasParameter($type)", methodsWithParameter(type))
-        }
-        spec.opcodes.forEach { opcode ->
-            val opcodeValue = OPCODE_NAMES[opcode]
-                ?: error("Unknown opcode name '$opcode'")
-            seeds += MethodSeed("hasOpcode($opcode)", methodsWithOpcode(opcodeValue))
+
+        if (seeds.isEmpty()) {
+            spec.returnType?.let { type ->
+                seeds += MethodSeed("returnType($type)", methodsWithReturnType(type))
+            }
+            spec.parameterTypes?.let { types ->
+                seeds += MethodSeed("parameterTypes(${types.joinToString()})", methodsWithExactParameters(types))
+            }
+            spec.hasParameters.forEach { type ->
+                seeds += MethodSeed("hasParameter($type)", methodsWithParameter(type))
+            }
+            opcodeValues.forEach { (opcode, opcodeValue) ->
+                seeds += MethodSeed("hasOpcode($opcode)", methodsWithOpcode(opcodeValue))
+            }
         }
 
         if (seeds.isEmpty()) {
             return MethodCandidatePool(
                 candidates = allMethods,
-                pipeline = listOf("no indexed constraints; considering all ${allMethods.size} methods"),
+                pipeline = listOf("no selective constraints; considering all ${allMethods.size} methods"),
                 considered = allMethods.size,
                 nearMissSeed = allMethods.take(12),
                 exhaustedBy = null,
@@ -237,16 +241,19 @@ internal class PatchSearchIndex(ctx: PatchRuntime) {
     fun initialClassCandidates(spec: ClassQuerySpec): ClassCandidatePool {
         val seeds = mutableListOf<ClassSeed>()
         spec.stringValues.forEach { value ->
-            seeds += ClassSeed("strings(\"$value\")", classesWithString(value))
+            seeds += ClassSeed("strings(${quoted(value)})", classesWithString(value))
         }
-        spec.instanceFieldTypes.forEach { type ->
-            seeds += ClassSeed("hasInstanceField($type)", classesWithInstanceFieldType(type))
+
+        if (seeds.isEmpty()) {
+            spec.instanceFieldTypes.forEach { type ->
+                seeds += ClassSeed("hasInstanceField($type)", classesWithInstanceFieldType(type))
+            }
         }
 
         if (seeds.isEmpty()) {
             return ClassCandidatePool(
                 candidates = allClasses,
-                pipeline = listOf("no indexed constraints; considering all ${allClasses.size} classes"),
+                pipeline = listOf("no selective constraints; considering all ${allClasses.size} classes"),
                 considered = allClasses.size,
                 nearMissSeed = allClasses.take(12),
                 exhaustedBy = null,
@@ -264,7 +271,7 @@ internal class PatchSearchIndex(ctx: PatchRuntime) {
 
         for (seed in seeds.sortedBy { it.candidates.size }) {
             val next = current?.intersect(seed.candidates) ?: seed.candidates
-            pipeline += "${seed.label}: ${seed.candidates.size} indexed candidates"
+            pipeline += "${seed.label}: ${seed.candidates.size} candidate method(s)"
             if (next.isEmpty()) {
                 exhaustedBy = seed.label
                 break
@@ -277,18 +284,18 @@ internal class PatchSearchIndex(ctx: PatchRuntime) {
         val nearMissSeed = when {
             winnerSeed.isNotEmpty() -> winnerSeed
             lastNonEmpty != null -> lastNonEmpty
-            else -> allMethods.map(Method::handle).toSet()
+            else -> emptySet()
         }
 
         return MethodCandidatePool(
-            candidates = winnerSeed.mapNotNull(methodByHandle::get),
+            candidates = winnerSeed.map(::Method),
             pipeline = pipeline,
             considered = when {
                 winnerSeed.isNotEmpty() -> winnerSeed.size
                 exhaustedBy != null && lastNonEmpty == null -> 0
                 else -> nearMissSeed.size
             },
-            nearMissSeed = nearMissSeed.mapNotNull(methodByHandle::get),
+            nearMissSeed = nearMissSeed.map(::Method),
             exhaustedBy = exhaustedBy,
         )
     }
@@ -301,7 +308,7 @@ internal class PatchSearchIndex(ctx: PatchRuntime) {
 
         for (seed in seeds.sortedBy { it.candidates.size }) {
             val next = current?.intersect(seed.candidates) ?: seed.candidates
-            pipeline += "${seed.label}: ${seed.candidates.size} indexed candidates"
+            pipeline += "${seed.label}: ${seed.candidates.size} candidate class(es)"
             if (next.isEmpty()) {
                 exhaustedBy = seed.label
                 break
@@ -314,7 +321,7 @@ internal class PatchSearchIndex(ctx: PatchRuntime) {
         val nearMissSeed = when {
             winnerSeed.isNotEmpty() -> winnerSeed
             lastNonEmpty != null -> lastNonEmpty
-            else -> allClasses.toSet()
+            else -> emptySet()
         }
 
         return ClassCandidatePool(
@@ -332,6 +339,26 @@ internal class PatchSearchIndex(ctx: PatchRuntime) {
 
     private fun signatureOf(method: Method): MethodSignature =
         MethodSignature(method.info.classDescriptor, method.info.methodName, method.info.proto)
+
+    private fun invokeSitesFor(signature: MethodSignature): List<InvokeSite> =
+        invokeSitesByTarget.getOrPut(signature) {
+            findInstructionsByInvoke(signature.owner, signature.name).asSequence()
+                .filter { hit ->
+                    Method(hit.method).methodRef(hit.index.toInt())?.let { ref ->
+                        ref.definingClass == signature.owner &&
+                            ref.name == signature.name &&
+                            ref.proto == signature.proto
+                    } == true
+                }
+                .map { InvokeSite(it.method, it.index.toInt()) }
+                .toList()
+        }
+
+    private fun normalizedStrings(values: List<String>): List<String> =
+        values.distinct().sorted()
+
+    private fun quoted(value: String): String =
+        "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
     private fun describeMethod(method: Method): String =
         "${method.info.classDescriptor}->${method.info.methodName}${method.info.proto}"

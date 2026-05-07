@@ -104,6 +104,8 @@ class Method(val handle: UInt) {
         indexOfOpcodeSequence(handle, opcodes, start.toUInt())?.toInt()
 
     fun ensureOutsSize(minOutsSize: Int) = ensureOutsSize(handle, minOutsSize.toUShort())
+    fun growLocalRegisters(additionalLocals: Int): Boolean =
+        growLocalRegisters(handle, additionalLocals.toUShort())
     fun findFreeRegister(atIndex: Int, exclude: List<Int> = emptyList()): Int =
         findFreeRegister(handle, atIndex.toUInt(), ShortArray(exclude.size) { exclude[it].toShort() }).toInt()
     fun findFreeRegisters(atIndex: Int, count: Int, exclude: List<Int> = emptyList()): List<Int> =

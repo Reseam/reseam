@@ -192,11 +192,11 @@ private class BindingImpl<T : Any>(
                 is RuntimePathStep.ObjectSlot -> {
                     current = emitter.lowRegister(nullChecked(current, nullLabel))
                     val slotDone = emitter.nextLabel("slot_done")
-                    val slotValue = emitter.allocTemp()
+                    val slotValue = emitter.allocTemp(constraint = RegisterConstraint.LOW)
                     emitter.builder.const4(slotValue, 0)
                     for ((index, field) in step.fields.withIndex()) {
-                        val probe = emitter.allocTemp()
-                        val probeType = emitter.allocTemp()
+                        val probe = emitter.allocTemp(constraint = RegisterConstraint.LOW)
+                        val probeType = emitter.allocTemp(constraint = RegisterConstraint.LOW)
                         val nextLabel = emitter.nextLabel("slot_next_$index")
                         emitter.builder.igetObject(probe, current.register, field.field)
                         emitter.builder.instanceOf(probeType, probe, step.targetType)

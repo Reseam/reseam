@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod bytes;
 mod class_ops;
 pub mod container;
 mod fingerprint;
@@ -12,8 +13,7 @@ mod search;
 mod tests;
 mod version;
 
-use std::collections::HashMap;
-use std::sync::Arc;
+pub use bytes::DexBytes;
 
 use crate::error::{index_out_of_bounds, invalid_offset};
 use crate::types::class::ClassDef;
@@ -27,7 +27,9 @@ pub use fingerprint::{Fingerprint, FingerprintBuilder, FingerprintMatch};
 pub use pattern::{InstructionPattern, OpcodeMatcher};
 pub use search::MethodMatch;
 
-#[derive(Debug, Clone)]
+use lookup::{LazyMap, ProtoLookup, StringLookup};
+
+#[derive(Debug)]
 pub struct DexFile {
     pub header: DexHeader,
     pub strings: Vec<DexString>,
@@ -39,14 +41,14 @@ pub struct DexFile {
     pub call_sites: Vec<CallSiteItem>,
     pub method_handles: Vec<MethodHandle>,
     pub hidden_api: Option<crate::types::hidden_api::HiddenApiData>,
-    pub raw: Option<Arc<Vec<u8>>>,
+    pub raw: Option<DexBytes>,
     pub(crate) lazy_class_data_offsets: Option<Vec<u32>>,
-    string_lookup: HashMap<String, StringIdx>,
-    type_lookup: HashMap<StringIdx, TypeIdx>,
-    class_lookup: HashMap<TypeIdx, usize>,
-    proto_lookup: HashMap<(TypeIdx, Vec<TypeIdx>), ProtoIdx>,
-    method_lookup: HashMap<(TypeIdx, StringIdx, ProtoIdx), MethodIdx>,
-    field_lookup: HashMap<(TypeIdx, StringIdx, TypeIdx), FieldIdx>,
+    pub(crate) string_lookup: StringLookup,
+    pub(crate) type_lookup: LazyMap<StringIdx, TypeIdx>,
+    pub(crate) class_lookup: LazyMap<TypeIdx, usize>,
+    pub(crate) proto_lookup: ProtoLookup,
+    pub(crate) method_lookup: LazyMap<(TypeIdx, StringIdx, ProtoIdx), MethodIdx>,
+    pub(crate) field_lookup: LazyMap<(TypeIdx, StringIdx, TypeIdx), FieldIdx>,
 }
 
 #[cfg(test)]
@@ -94,17 +96,17 @@ impl DexFile {
             hidden_api: None,
             raw: None,
             lazy_class_data_offsets: None,
-            string_lookup: HashMap::new(),
-            type_lookup: HashMap::new(),
-            class_lookup: HashMap::new(),
-            proto_lookup: HashMap::new(),
-            method_lookup: HashMap::new(),
-            field_lookup: HashMap::new(),
+            string_lookup: StringLookup::default(),
+            type_lookup: LazyMap::default(),
+            class_lookup: LazyMap::default(),
+            proto_lookup: ProtoLookup::default(),
+            method_lookup: LazyMap::default(),
+            field_lookup: LazyMap::default(),
         }
     }
 
     pub fn raw_buffer(&self) -> Option<&[u8]> {
-        self.raw.as_deref().map(Vec::as_slice)
+        self.raw.as_ref().map(DexBytes::as_bytes)
     }
 
     pub fn method_count(&self) -> usize {
@@ -158,7 +160,7 @@ impl DexFile {
             .raw
             .as_ref()
             .ok_or_else(|| invalid_offset("lazy class data", offset, 0))?;
-        let class_data = crate::read::class::read_class_data_at(raw.as_slice(), offset as usize)?;
+        let class_data = crate::read::class::read_class_data_at(raw.as_bytes(), offset as usize)?;
         self.classes[class_idx].class_data = Some(class_data);
         Ok(true)
     }
@@ -173,5 +175,38 @@ impl DexFile {
         }
         self.lazy_class_data_offsets = None;
         Ok(())
+    }
+
+    pub fn release_raw(&mut self) -> crate::error::Result<()> {
+        if self.lazy_class_data_offsets.is_some() {
+            self.resolve_all_class_data()?;
+        }
+        self.raw = None;
+        Ok(())
+    }
+}
+
+impl Clone for DexFile {
+    fn clone(&self) -> Self {
+        Self {
+            header: self.header.clone(),
+            strings: self.strings.clone(),
+            types: self.types.clone(),
+            prototypes: self.prototypes.clone(),
+            fields: self.fields.clone(),
+            methods: self.methods.clone(),
+            classes: self.classes.clone(),
+            call_sites: self.call_sites.clone(),
+            method_handles: self.method_handles.clone(),
+            hidden_api: self.hidden_api.clone(),
+            raw: self.raw.clone(),
+            lazy_class_data_offsets: self.lazy_class_data_offsets.clone(),
+            string_lookup: StringLookup::default(),
+            type_lookup: LazyMap::default(),
+            class_lookup: LazyMap::default(),
+            proto_lookup: ProtoLookup::default(),
+            method_lookup: LazyMap::default(),
+            field_lookup: LazyMap::default(),
+        }
     }
 }

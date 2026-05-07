@@ -19,21 +19,17 @@ pub mod map;
 pub mod method_handle;
 pub mod register_analysis;
 
-use std::borrow::Cow;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct StringIdx(pub u32);
 
 #[derive(Debug, Clone)]
 pub struct DexString {
-    pub value: Cow<'static, str>,
+    pub value: Box<str>,
 }
 
 impl DexString {
-    pub fn new(s: String) -> Self {
-        Self {
-            value: Cow::Owned(s),
-        }
+    pub fn new(s: impl Into<Box<str>>) -> Self {
+        Self { value: s.into() }
     }
 
     pub fn as_str(&self) -> &str {
@@ -73,9 +69,11 @@ pub struct MethodId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ProtoIdx(pub u16);
 
+pub type TypeList = smallvec::SmallVec<[TypeIdx; 4]>;
+
 #[derive(Debug, Clone)]
 pub struct Prototype {
     pub shorty: StringIdx,
     pub return_type: TypeIdx,
-    pub parameters: Vec<TypeIdx>,
+    pub parameters: TypeList,
 }

@@ -19,8 +19,8 @@ use tracing::debug;
 
 /// Parse a DEX file from a filesystem path.
 ///
-/// With the `mmap` feature enabled, this avoids a separate read buffer before
-/// parsing. The parsed [`crate::DexFile`] still retains owned bytes for lazy access.
+/// With the `mmap` feature enabled, the resulting [`crate::DexFile`] holds the
+/// memory map directly so no extra heap copy of the file is made.
 ///
 /// # Examples
 ///
@@ -40,15 +40,16 @@ pub fn parse_file(
 
     #[cfg(feature = "mmap")]
     {
+        use std::sync::Arc;
         let file = std::fs::File::open(path).map_err(crate::error::DexError::Io)?;
         // SAFETY: The caller must not mutate the file while the mapping is live.
         let mmap = unsafe { memmap2::Mmap::map(&file) }.map_err(crate::error::DexError::Io)?;
-        parse::parse(&mmap, opts)
+        parse::parse_with_bytes(crate::file::DexBytes::from_mmap(Arc::new(mmap)), opts)
     }
 
     #[cfg(not(feature = "mmap"))]
     {
         let buf = std::fs::read(path).map_err(crate::error::DexError::Io)?;
-        parse::parse(&buf, opts)
+        parse::parse_owned(buf, opts)
     }
 }

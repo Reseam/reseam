@@ -90,6 +90,8 @@ pub struct ParseOptions {
     pub lenient_leb128: bool,
     pub lenient_mutf8: bool,
     pub lazy: bool,
+    pub include_debug_info: bool,
+    pub include_annotations: bool,
 }
 
 impl Default for ParseOptions {
@@ -100,6 +102,8 @@ impl Default for ParseOptions {
             lenient_leb128: true,
             lenient_mutf8: true,
             lazy: false,
+            include_debug_info: true,
+            include_annotations: true,
         }
     }
 }

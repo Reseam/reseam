@@ -5,17 +5,17 @@ use super::DexFile;
 use crate::error::{invalid_descriptor, Result};
 use crate::types::{
     DexString, FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx,
+    TypeList,
 };
 
 impl DexFile {
     pub fn intern_string(&mut self, s: &str) -> StringIdx {
-        if let Some(&idx) = self.string_lookup.get(s) {
+        if let Some(idx) = self.find_string_idx(s) {
             return idx;
         }
-
         let idx = StringIdx(self.strings.len() as u32);
-        self.strings.push(DexString::new(s.to_owned()));
-        self.string_lookup.insert(s.to_owned(), idx);
+        self.strings.push(DexString::new(s));
+        self.record_string(s, idx);
         idx
     }
 
@@ -23,13 +23,13 @@ impl DexFile {
         debug_assert!(crate::util::descriptor::is_type_descriptor(descriptor));
 
         let string_idx = self.intern_string(descriptor);
-        if let Some(&idx) = self.type_lookup.get(&string_idx) {
+        if let Some(idx) = self.find_type_idx(descriptor) {
             return idx;
         }
 
         let idx = TypeIdx(self.types.len() as u32);
         self.types.push(string_idx);
-        self.type_lookup.insert(string_idx, idx);
+        self.record_type(string_idx, idx);
         idx
     }
 
@@ -40,14 +40,13 @@ impl DexFile {
             .ok_or_else(|| invalid_descriptor("method descriptor", descriptor))?;
 
         let return_type = self.intern_type(ret_str);
-        let parameters: Vec<TypeIdx> = param_strs
+        let parameters: TypeList = param_strs
             .iter()
             .copied()
             .map(|p| self.intern_type(p))
             .collect();
 
-        let key = (return_type, parameters.clone());
-        if let Some(&idx) = self.proto_lookup.get(&key) {
+        if let Some(idx) = self.find_proto_idx(return_type, &parameters) {
             return Ok(idx);
         }
 
@@ -56,12 +55,12 @@ impl DexFile {
         let shorty = self.intern_string(&shorty_str);
 
         let idx = ProtoIdx(self.prototypes.len() as u16);
+        self.record_proto(return_type, &parameters, idx);
         self.prototypes.push(Prototype {
             shorty,
             return_type,
             parameters,
         });
-        self.proto_lookup.insert(key, idx);
         Ok(idx)
     }
 
@@ -72,8 +71,7 @@ impl DexFile {
         let name_idx = self.intern_string(name);
         let proto_idx = self.intern_proto(proto)?;
 
-        let key = (class_idx, name_idx, proto_idx);
-        if let Some(&idx) = self.method_lookup.get(&key) {
+        if let Some(idx) = self.find_method_idx(class_idx, name_idx, proto_idx) {
             return Ok(idx);
         }
 
@@ -83,7 +81,7 @@ impl DexFile {
             proto: proto_idx,
             name: name_idx,
         });
-        self.method_lookup.insert(key, idx);
+        self.record_method(class_idx, name_idx, proto_idx, idx);
         Ok(idx)
     }
 
@@ -95,8 +93,7 @@ impl DexFile {
         let name_idx = self.intern_string(name);
         let type_idx = self.intern_type(type_);
 
-        let key = (class_idx, name_idx, type_idx);
-        if let Some(&idx) = self.field_lookup.get(&key) {
+        if let Some(idx) = self.find_field_idx(class_idx, name_idx, type_idx) {
             return Ok(idx);
         }
 
@@ -106,7 +103,7 @@ impl DexFile {
             type_: type_idx,
             name: name_idx,
         });
-        self.field_lookup.insert(key, idx);
+        self.record_field(class_idx, name_idx, type_idx, idx);
         Ok(idx)
     }
 

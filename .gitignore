@@ -1,5 +1,5 @@
 **/target
-/test-apks/*.apk
+/test-apks/
 *.apk
 *.md
 !README.md

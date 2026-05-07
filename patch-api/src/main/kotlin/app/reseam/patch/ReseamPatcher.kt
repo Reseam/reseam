@@ -2491,6 +2491,10 @@ fun ensureOutsSize(m: UInt, minOutsSize: UShort) {
     Native.boltffi_ensure_outs_size(m.toInt(), minOutsSize.toShort())
 }
 
+fun growLocalRegisters(m: UInt, additionalLocals: UShort): Boolean {
+    return Native.boltffi_grow_local_registers(m.toInt(), additionalLocals.toShort())
+}
+
 fun registersSize(m: UInt): UShort {
     return Native.boltffi_registers_size(m.toInt()).toUShort()
 }
@@ -3699,6 +3703,7 @@ private object Native {
     @JvmStatic external fun boltffi_insert_invoke_static(m: Int, index: Int, class_name: ByteArray, name: ByteArray, proto: ByteArray, registers: ShortArray): Boolean
     @JvmStatic external fun boltffi_insert_invoke_static_with_move_result(m: Int, index: Int, class_name: ByteArray, name: ByteArray, proto: ByteArray, registers: ShortArray, result_register: Short, is_object: Boolean): Boolean
     @JvmStatic external fun boltffi_ensure_outs_size(m: Int, min_outs_size: Short): Unit
+    @JvmStatic external fun boltffi_grow_local_registers(m: Int, additional_locals: Short): Boolean
     @JvmStatic external fun boltffi_registers_size(m: Int): Short
     @JvmStatic external fun boltffi_ins_size(m: Int): Short
     @JvmStatic external fun boltffi_outs_size(m: Int): Short

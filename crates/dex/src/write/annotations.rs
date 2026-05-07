@@ -360,7 +360,7 @@ mod tests {
                 class_type: TypeIdx(0),
                 access_flags: AccessFlags::PUBLIC,
                 superclass: Some(TypeIdx(2)),
-                interfaces: Vec::new(),
+                interfaces: crate::types::TypeList::new(),
                 source_file: None,
                 annotations: Some(AnnotationsDirectory {
                     class_annotations: vec![class_one_annotation],
@@ -375,7 +375,7 @@ mod tests {
                 class_type: TypeIdx(1),
                 access_flags: AccessFlags::PUBLIC,
                 superclass: Some(TypeIdx(2)),
-                interfaces: Vec::new(),
+                interfaces: crate::types::TypeList::new(),
                 source_file: None,
                 annotations: Some(AnnotationsDirectory {
                     class_annotations: vec![class_two_annotation],

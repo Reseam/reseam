@@ -193,7 +193,7 @@ impl TableSnapshot {
         dex.classes.truncate(self.classes);
         dex.call_sites.truncate(self.call_sites);
         dex.method_handles.truncate(self.method_handles);
-        dex.build_lookups();
+        dex.invalidate_lookups();
     }
 }
 
@@ -290,5 +290,5 @@ pub(crate) fn compact_tables(dex: &mut DexFile) {
     }
 
     remap_all_exotic_indices(dex, &cs_remap, &mh_remap);
-    dex.build_lookups();
+    dex.invalidate_lookups();
 }

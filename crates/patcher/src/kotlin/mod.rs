@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use boltffi::export;
-use jni::objects::{JObject, JObjectArray, JValue};
+use jni::objects::{JObject, JObjectArray, JString, JThrowable, JValue};
 use jni::JavaVM;
 #[cfg(not(target_os = "android"))]
 use jni::{InitArgsBuilder, JNIVersion};
@@ -467,22 +467,122 @@ fn invoke_patch_method(
         &[JValue::Object(&runtime)],
     )
     .map_err(|e| {
-        if env.exception_check().unwrap_or(false) {
-            env.exception_describe().ok();
-            env.exception_clear().ok();
+        if let Some(exception) = take_pending_exception(env) {
+            return jvm_err(format!("{method_name}(PatchRuntime): {exception}"));
         }
         jvm_err(format!("{method_name}(PatchRuntime): {e}"))
     })?;
 
-    if env.exception_check().unwrap_or(false) {
-        env.exception_describe().ok();
-        env.exception_clear().ok();
-        return Err(jvm_err(format!(
-            "Kotlin patch threw an exception in {method_name}(PatchRuntime)"
-        )));
+    if let Some(exception) = take_pending_exception(env) {
+        return Err(jvm_err(format!("{method_name}(PatchRuntime): {exception}")));
     }
 
     Ok(())
+}
+
+fn take_pending_exception(env: &mut jni::JNIEnv<'_>) -> Option<String> {
+    if !env.exception_check().unwrap_or(false) {
+        return None;
+    }
+
+    let throwable = match env.exception_occurred() {
+        Ok(throwable) => throwable,
+        Err(error) => {
+            env.exception_clear().ok();
+            return Some(format!(
+                "Java exception was thrown; failed to read throwable: {error}"
+            ));
+        }
+    };
+    env.exception_clear().ok();
+
+    Some(describe_throwable(env, &throwable))
+}
+
+fn describe_throwable(env: &mut jni::JNIEnv<'_>, throwable: &JThrowable<'_>) -> String {
+    let summary = throwable_to_string(env, throwable)
+        .unwrap_or_else(|| "Java exception was thrown".to_string());
+
+    match throwable_stack_trace(env, throwable) {
+        Some(stack_trace) if stack_trace.trim().is_empty() => summary,
+        Some(stack_trace) if stack_trace.starts_with(&summary) => stack_trace,
+        Some(stack_trace) => format!("{summary}\n{stack_trace}"),
+        None => summary,
+    }
+}
+
+fn throwable_to_string(env: &mut jni::JNIEnv<'_>, throwable: &JThrowable<'_>) -> Option<String> {
+    let value = match env.call_method(throwable, "toString", "()Ljava/lang/String;", &[]) {
+        Ok(value) => value.l().ok()?,
+        Err(_) => {
+            clear_pending_exception(env);
+            return None;
+        }
+    };
+    object_to_rust_string(env, value)
+}
+
+fn throwable_stack_trace(env: &mut jni::JNIEnv<'_>, throwable: &JThrowable<'_>) -> Option<String> {
+    let writer = match env.new_object("java/io/StringWriter", "()V", &[]) {
+        Ok(writer) => writer,
+        Err(_) => {
+            clear_pending_exception(env);
+            return None;
+        }
+    };
+    let print_writer = match env.new_object(
+        "java/io/PrintWriter",
+        "(Ljava/io/Writer;)V",
+        &[JValue::Object(&writer)],
+    ) {
+        Ok(print_writer) => print_writer,
+        Err(_) => {
+            clear_pending_exception(env);
+            return None;
+        }
+    };
+    if env
+        .call_method(
+            throwable,
+            "printStackTrace",
+            "(Ljava/io/PrintWriter;)V",
+            &[JValue::Object(&print_writer)],
+        )
+        .is_err()
+    {
+        clear_pending_exception(env);
+        return None;
+    }
+    if env.call_method(&print_writer, "flush", "()V", &[]).is_err() {
+        clear_pending_exception(env);
+        return None;
+    }
+    let value = match env.call_method(&writer, "toString", "()Ljava/lang/String;", &[]) {
+        Ok(value) => value.l().ok()?,
+        Err(_) => {
+            clear_pending_exception(env);
+            return None;
+        }
+    };
+    object_to_rust_string(env, value)
+}
+
+fn object_to_rust_string(env: &mut jni::JNIEnv<'_>, value: JObject<'_>) -> Option<String> {
+    if value.is_null() {
+        return None;
+    }
+    let string = JString::from(value);
+    let result = env.get_string(&string).ok().map(Into::into);
+    if env.exception_check().unwrap_or(false) {
+        env.exception_clear().ok();
+    }
+    result
+}
+
+fn clear_pending_exception(env: &mut jni::JNIEnv<'_>) {
+    if env.exception_check().unwrap_or(false) {
+        env.exception_clear().ok();
+    }
 }
 
 fn create_class_loader<'a>(

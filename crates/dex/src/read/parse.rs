@@ -9,24 +9,28 @@ use crate::encoding::leb128::read_uleb128_with_opts;
 use crate::error::{
     invalid_call_site, invalid_hidden_api_flag, invalid_method_handle_type, Result,
 };
-use crate::file::DexFile;
+use crate::file::{DexBytes, DexFile};
 use crate::types::encoded_value::EncodedValue;
 use crate::types::header::ParseOptions;
 use crate::types::hidden_api::{ClassHiddenApiFlags, HiddenApiData, HiddenApiFlag};
 use crate::types::method_handle::{MethodHandle, MethodHandleMember, MethodHandleType};
 use crate::types::{FieldIdx, MethodIdx};
-use std::sync::Arc;
 use tracing::{debug, instrument};
 
 #[instrument(level = "debug", skip(buf), fields(buffer_len = buf.len(), lazy = opts.lazy))]
 pub fn parse(buf: &[u8], opts: ParseOptions) -> Result<DexFile> {
-    parse_single_with_raw(buf, Some(Arc::new(buf.to_vec())), &opts, None)
+    let raw = DexBytes::from_slice(buf);
+    parse_single_with_raw(raw.as_bytes(), Some(raw.clone()), &opts, None)
 }
 
 #[instrument(level = "debug", skip(buf), fields(buffer_len = buf.len(), lazy = opts.lazy))]
 pub fn parse_owned(buf: Vec<u8>, opts: ParseOptions) -> Result<DexFile> {
-    let raw = Arc::new(buf);
-    parse_single_with_raw(raw.as_slice(), Some(Arc::clone(&raw)), &opts, None)
+    let raw = DexBytes::from_vec(buf);
+    parse_single_with_raw(raw.as_bytes(), Some(raw.clone()), &opts, None)
+}
+
+pub(crate) fn parse_with_bytes(raw: DexBytes, opts: ParseOptions) -> Result<DexFile> {
+    parse_single_with_raw(raw.as_bytes(), Some(raw.clone()), &opts, None)
 }
 
 /// Parses a v41 container buffer into its constituent logical DEX files.
@@ -34,8 +38,16 @@ pub fn parse_owned(buf: Vec<u8>, opts: ParseOptions) -> Result<DexFile> {
 /// For non-container buffers (v40 and earlier), returns a single-element vec.
 #[instrument(level = "debug", skip(buf), fields(buffer_len = buf.len(), lazy = opts.lazy))]
 pub fn parse_container(buf: &[u8], opts: ParseOptions) -> Result<Vec<DexFile>> {
+    parse_container_with_bytes(DexBytes::from_slice(buf), opts)
+}
+
+pub(crate) fn parse_container_with_bytes(
+    raw: DexBytes,
+    opts: ParseOptions,
+) -> Result<Vec<DexFile>> {
+    let buf = raw.as_bytes();
     if buf.len() < 8 {
-        let dex = parse_single_with_raw(buf, Some(Arc::new(buf.to_vec())), &opts, None)?;
+        let dex = parse_single_with_raw(buf, Some(raw.clone()), &opts, None)?;
         return Ok(vec![dex]);
     }
 
@@ -45,11 +57,10 @@ pub fn parse_container(buf: &[u8], opts: ParseOptions) -> Result<Vec<DexFile>> {
 
     let is_container = version.is_some_and(|v| v.is_container_format());
     if !is_container {
-        let dex = parse_single_with_raw(buf, Some(Arc::new(buf.to_vec())), &opts, None)?;
+        let dex = parse_single_with_raw(buf, Some(raw.clone()), &opts, None)?;
         return Ok(vec![dex]);
     }
 
-    let shared_buf = Arc::new(buf.to_vec());
     let mut dex_files = Vec::new();
     let mut offset = 0usize;
 
@@ -63,12 +74,9 @@ pub fn parse_container(buf: &[u8], opts: ParseOptions) -> Result<Vec<DexFile>> {
             break;
         }
 
-        let mut dex =
-            parse_single_with_raw(buf, Some(Arc::clone(&shared_buf)), &opts, Some(offset))?;
-        dex.raw = Some(Arc::clone(&shared_buf));
+        let dex = parse_single_with_raw(buf, Some(raw.clone()), &opts, Some(offset))?;
+        offset += dex.header.file_size as usize;
         dex_files.push(dex);
-
-        offset += dex_files.last().map_or(0, |d| d.header.file_size as usize);
     }
 
     debug!(dex_count = dex_files.len(), "parsed DEX container");
@@ -77,7 +85,7 @@ pub fn parse_container(buf: &[u8], opts: ParseOptions) -> Result<Vec<DexFile>> {
 
 fn parse_single_with_raw(
     buf: &[u8],
-    raw: Option<Arc<Vec<u8>>>,
+    raw: Option<DexBytes>,
     opts: &ParseOptions,
     header_off: Option<usize>,
 ) -> Result<DexFile> {
@@ -162,7 +170,6 @@ fn parse_single_with_raw(
         }
     }
 
-    dex.build_lookups();
     debug!(
         version = ?dex.header.version,
         string_count = dex.strings.len(),
@@ -393,7 +400,7 @@ mod tests {
             class_type: TypeIdx(0),
             access_flags: AccessFlags::empty(),
             superclass: None,
-            interfaces: Vec::new(),
+            interfaces: crate::types::TypeList::new(),
             source_file: None,
             annotations: None,
             class_data: Some(ClassData {

@@ -12,17 +12,13 @@ impl DexFile {
         let idx = self.classes.len();
         let type_idx = class.class_type;
         self.classes.push(class);
-        self.class_lookup.insert(type_idx, idx);
+        self.record_class(type_idx, idx);
     }
 
     pub fn remove_class(&mut self, type_: TypeIdx) -> Option<ClassDef> {
-        let pos = self.class_lookup.remove(&type_)?;
+        let pos = self.find_class_index_by_type(type_)?;
         let removed = self.classes.remove(pos);
-        // Rebuild class_lookup since indices shifted
-        self.class_lookup.clear();
-        for (i, c) in self.classes.iter().enumerate() {
-            self.class_lookup.insert(c.class_type, i);
-        }
+        self.class_lookup.invalidate();
         Some(removed)
     }
 
@@ -45,7 +41,7 @@ impl DexFile {
             class_type,
             access_flags,
             superclass: superclass_idx,
-            interfaces: Vec::new(),
+            interfaces: crate::types::TypeList::new(),
             source_file: None,
             annotations: None,
             class_data: Some(ClassData {
@@ -56,8 +52,8 @@ impl DexFile {
             }),
             static_values: Vec::new(),
         };
-        self.class_lookup.insert(class_type, idx);
         self.classes.push(class);
+        self.record_class(class_type, idx);
         Ok(idx)
     }
 
@@ -80,8 +76,8 @@ impl DexFile {
         let mut current = class_idx;
 
         while let Some(superclass_type) = self.classes.get(current).and_then(|c| c.superclass) {
-            match self.class_lookup.get(&superclass_type) {
-                Some(&pos) => {
+            match self.class_lookup_get(superclass_type) {
+                Some(pos) => {
                     if chain.contains(&pos) {
                         break;
                     }
@@ -93,5 +89,9 @@ impl DexFile {
         }
 
         chain
+    }
+
+    fn find_class_index_by_type(&self, type_: TypeIdx) -> Option<usize> {
+        self.class_lookup_get(type_)
     }
 }
