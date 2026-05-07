@@ -130,6 +130,7 @@ internal data class CompiledCode(
 internal enum class RegisterConstraint(val maxRegister: Int) {
     LOW(15),
     BYTE(0xFF),
+    ANY(0xFFFF),
 }
 
 private data class TempAllocation(
@@ -310,11 +311,12 @@ internal class CodeEmitter private constructor(
     internal fun invoke(owner: String, name: String, proto: String, args: List<ValueRefImpl>, invokeKind: InvokeKind): ValueRef {
         val registers = args.flatMap { it.registerWords() }
         maxOutRegisters = maxOf(maxOutRegisters, registers.size)
-        when (invokeKind) {
-            InvokeKind.STATIC -> builder.invokeStatic(owner, name, proto, *registers.toIntArray())
-            InvokeKind.VIRTUAL -> builder.invokeVirtual(owner, name, proto, *registers.toIntArray())
-            InvokeKind.INTERFACE -> builder.invokeInterface(owner, name, proto, *registers.toIntArray())
+        val opcode = when (invokeKind) {
+            InvokeKind.STATIC -> Opcodes.INVOKE_STATIC
+            InvokeKind.VIRTUAL -> Opcodes.INVOKE_VIRTUAL
+            InvokeKind.INTERFACE -> Opcodes.INVOKE_INTERFACE
         }
+        emitInvoke(owner, name, proto, opcode, args, registers)
 
         val returnType = proto.substringAfter(')')
         return if (returnType == "V") {
@@ -328,6 +330,60 @@ internal class CodeEmitter private constructor(
             }
             ValueRefImpl(this, dest, returnType)
         }
+    }
+
+    private fun emitInvoke(
+        owner: String,
+        name: String,
+        proto: String,
+        opcode: Int,
+        args: List<ValueRefImpl>,
+        registers: List<Int>,
+    ) {
+        val resolvedRegisters = registers.map(::resolvedRegisterForConstraintCheck)
+        if (invokeIsDirectlyEncodable(resolvedRegisters)) {
+            builder.invoke(opcode, owner, name, proto, registers)
+            return
+        }
+
+        val rangeOpcode = invokeRangeOpcode(opcode)
+            ?: error("opcode 0x${opcode.toString(16)} does not support invoke/range lowering")
+        if (invokeRegistersAreConsecutive(resolvedRegisters)) {
+            builder.invokeRange(rangeOpcode, owner, name, proto, registers.firstOrNull() ?: 0, registers.size)
+            return
+        }
+
+        val sourceRegisters = resolvedRegisters
+            .filter { it >= 0 }
+            .toSet()
+        val scratchBase = allocTemp(
+            wordCount = registers.size,
+            constraint = RegisterConstraint.ANY,
+            excludeRegisters = sourceRegisters,
+        )
+        val scratchRegisters = registerWords(scratchBase, registers.size)
+        var destIndex = 0
+        for (arg in args) {
+            moveValue(scratchRegisters[destIndex], arg.register, arg.type)
+            destIndex += arg.wordCount
+        }
+
+        builder.invokeRange(rangeOpcode, owner, name, proto, scratchBase, registers.size)
+    }
+
+    private fun invokeIsDirectlyEncodable(registers: List<Int>): Boolean =
+        registers.size <= 5 && registers.all { it in 0..15 }
+
+    private fun invokeRegistersAreConsecutive(registers: List<Int>): Boolean =
+        registers.indices.all { index ->
+            index == 0 || registers[index] == registers[index - 1] + 1
+        }
+
+    private fun invokeRangeOpcode(opcode: Int): Int? = when (opcode) {
+        Opcodes.INVOKE_VIRTUAL -> Opcodes.INVOKE_VIRTUAL_RANGE
+        Opcodes.INVOKE_STATIC -> Opcodes.INVOKE_STATIC_RANGE
+        Opcodes.INVOKE_INTERFACE -> Opcodes.INVOKE_INTERFACE_RANGE
+        else -> null
     }
 
     internal fun listSize(value: ValueRefImpl): ValueRef =
@@ -353,6 +409,7 @@ internal class CodeEmitter private constructor(
     internal fun allocTemp(
         wordCount: Int = 1,
         constraint: RegisterConstraint = RegisterConstraint.BYTE,
+        excludeRegisters: Set<Int> = emptySet(),
     ): Int {
         require(wordCount > 0) { "wordCount must be positive" }
         val tempId = nextTempId++
@@ -366,14 +423,22 @@ internal class CodeEmitter private constructor(
             return register
         }
 
-        val allocation = allocateInsertionTemp(wordCount, constraint)
+        val allocation = allocateInsertionTemp(wordCount, constraint, excludeRegisters)
         tempAllocations[tempId] = TempAllocation(allocation, wordCount, constraint)
         return register
     }
 
-    private fun allocateInsertionTemp(wordCount: Int, constraint: RegisterConstraint): Int {
+    private fun allocateInsertionTemp(
+        wordCount: Int,
+        constraint: RegisterConstraint,
+        excludeRegisters: Set<Int>,
+    ): Int {
         val index = insertIndex ?: 0
-        val registers = method.findContiguousFreeRegisters(index, wordCount, usedRegisters.toList())
+        val registers = method.findContiguousFreeRegisters(
+            index,
+            wordCount,
+            (usedRegisters + excludeRegisters).toList(),
+        )
         if (registers.size == wordCount && registers.last() <= constraint.maxRegister) {
             usedRegisters += registers
             return registers.first()
@@ -506,18 +571,19 @@ private fun isReferenceValueType(type: String): Boolean =
     type.startsWith("L") || type.startsWith("[")
 
 private const val VOID_REGISTER = Int.MIN_VALUE
+private const val VIRTUAL_REGISTER_STRIDE = 0x10000
 
 private fun virtualRegister(tempId: Int, offset: Int = 0): Int =
-    -1 - (tempId * 2 + offset)
+    -1 - (tempId * VIRTUAL_REGISTER_STRIDE + offset)
 
 private fun isVirtualRegister(register: Int): Boolean =
     register < 0 && register != VOID_REGISTER
 
 private fun virtualRegisterId(register: Int): Int =
-    (-register - 1) / 2
+    (-register - 1) / VIRTUAL_REGISTER_STRIDE
 
 private fun virtualRegisterOffset(register: Int): Int =
-    (-register - 1) % 2
+    (-register - 1) % VIRTUAL_REGISTER_STRIDE
 
 internal class AllocatingInstructionBuilder {
     private val ops = mutableListOf<Op>()
@@ -538,6 +604,7 @@ internal class AllocatingInstructionBuilder {
     private data class Move(val dest: Int, val src: Int, val kind: ValueMoveKind) : Op
     private data class MoveResult(val dest: Int, val kind: ValueMoveKind) : Op
     private data class Invoke(val opcode: Int, val owner: String, val name: String, val proto: String, val registers: List<Int>) : Op
+    private data class InvokeRange(val opcode: Int, val owner: String, val name: String, val proto: String, val startReg: Int, val regCount: Int) : Op
     private data class IfEqz(val reg: Int, val label: String) : Op
     private data class IfNez(val reg: Int, val label: String) : Op
     private data class IfNe(val left: Int, val right: Int, val label: String) : Op
@@ -656,6 +723,14 @@ internal class AllocatingInstructionBuilder {
         ops += Invoke(Opcodes.INVOKE_INTERFACE, owner, name, proto, registers.toList())
     }
 
+    fun invoke(opcode: Int, owner: String, name: String, proto: String, registers: List<Int>) {
+        ops += Invoke(opcode, owner, name, proto, registers)
+    }
+
+    fun invokeRange(opcode: Int, owner: String, name: String, proto: String, startReg: Int, regCount: Int) {
+        ops += InvokeRange(opcode, owner, name, proto, startReg, regCount)
+    }
+
     fun ifEqz(reg: Int, label: String) {
         ops += IfEqz(reg, label)
     }
@@ -703,6 +778,7 @@ internal class AllocatingInstructionBuilder {
                 is Move -> emitMove(builder, op.kind, resolve(op.dest), resolve(op.src))
                 is MoveResult -> emitMoveResult(builder, op.kind, resolveByteRegister(op.dest, resolve, "move-result"))
                 is Invoke -> emitInvoke(builder, op, resolve)
+                is InvokeRange -> emitInvokeRange(builder, op, resolve)
                 is IfEqz -> builder.ifEqz(resolveByteRegister(op.reg, resolve, "if-eqz"), op.label)
                 is IfNez -> builder.ifNez(resolveByteRegister(op.reg, resolve, "if-nez"), op.label)
                 is IfNe -> builder.ifNe(
@@ -772,6 +848,21 @@ internal class AllocatingInstructionBuilder {
         }
     }
 
+    private fun emitInvokeRange(builder: InstructionBuilder, op: InvokeRange, resolve: (Int) -> Int) {
+        val startReg = resolveRangeStart(op.startReg, resolve)
+        val regCount = resolveRangeCount(op.regCount)
+        builder.add(
+            Instruction.InvokeRange(
+                InvokeRangeInsn(
+                    op.opcode.toUShort(),
+                    startReg.toUShort(),
+                    regCount.toUShort(),
+                    MethodRef(op.owner, op.name, op.proto),
+                )
+            )
+        )
+    }
+
     private fun resolveLowRegister(register: Int, resolve: (Int) -> Int, context: String): Int {
         val resolved = resolve(register)
         require(resolved in 0..15) { "$context requires a 4-bit register, got v$resolved" }
@@ -782,6 +873,17 @@ internal class AllocatingInstructionBuilder {
         val resolved = resolve(register)
         require(resolved in 0..0xFF) { "$context requires an 8-bit register, got v$resolved" }
         return resolved
+    }
+
+    private fun resolveRangeStart(register: Int, resolve: (Int) -> Int): Int {
+        val resolved = resolve(register)
+        require(resolved in 0..0xFFFF) { "invoke/range start requires a 16-bit register, got v$resolved" }
+        return resolved
+    }
+
+    private fun resolveRangeCount(regCount: Int): Int {
+        require(regCount in 0..0xFFFF) { "invoke/range count exceeds 16-bit limit: $regCount" }
+        return regCount
     }
 }
 
