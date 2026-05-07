@@ -398,8 +398,11 @@ impl ApkFile {
         component_index: usize,
         path: &str,
         data: Vec<u8>,
-        compression: zip::CompressionMethod,
+        mut compression: zip::CompressionMethod,
     ) {
+        if crate::zip::writer::is_native_library_entry(path) {
+            compression = zip::CompressionMethod::Stored;
+        }
         if let Some(component) = self.component_mut(component_index) {
             component.inject_file(path, data, compression);
             self.touch_entry_name(path);

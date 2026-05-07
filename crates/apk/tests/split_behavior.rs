@@ -7,6 +7,7 @@ use std::path::Path;
 
 use reseam_apk::reseam_dex::{DexFile, DexHeader, DexVersion, ParseOptions};
 use reseam_apk::resources::ResPackage;
+use reseam_apk::zip::writer::{ALIGNMENT_DEFAULT, ALIGNMENT_NATIVE_LIB};
 use reseam_apk::{ApkFile, ResourceTable};
 
 fn manifest_bytes(version_name: &str, split_name: Option<&str>) -> Vec<u8> {
@@ -68,6 +69,16 @@ fn write_apk(path: &Path, manifest: &[u8], extra_entries: &[(&str, &[u8])]) {
     }
 
     writer.finish().expect("finish apk");
+}
+
+fn entry_data_start_and_compression(
+    apk_path: &Path,
+    entry_name: &str,
+) -> (u64, zip::CompressionMethod) {
+    let file = File::open(apk_path).expect("open apk");
+    let mut archive = zip::ZipArchive::new(file).expect("zip archive");
+    let entry = archive.by_name(entry_name).expect("entry");
+    (entry.data_start(), entry.compression())
 }
 
 fn empty_dex_header(version: DexVersion) -> DexHeader {
@@ -251,6 +262,73 @@ fn write_to_strips_stale_signature_entries() {
     assert!(archive.index_for_name("META-INF/CERT.SF").is_none());
     assert!(archive.index_for_name("META-INF/CERT.RSA").is_none());
     assert!(archive.index_for_name("assets/data.txt").is_some());
+}
+
+#[test]
+fn apk_write_aligns_passthrough_native_libraries_for_16kb_pages() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let apk_path = tmp.path().join("app.apk");
+    let native_lib = vec![0x7F, b'E', b'L', b'F', 1, 2, 3, 4];
+
+    write_apk(
+        &apk_path,
+        &manifest_bytes("1.0-base", None),
+        &[
+            ("assets/raw.bin", b"raw-data"),
+            ("lib/arm64-v8a/libdemo.so", native_lib.as_slice()),
+        ],
+    );
+
+    let mut apk = ApkFile::open_with_options(
+        &apk_path,
+        ParseOptions {
+            lazy: true,
+            ..ParseOptions::default()
+        },
+    )
+    .expect("open apk");
+    apk.manifest_mut().set_version_name("2.0-base");
+
+    let out_dir = tmp.path().join("out");
+    apk.write_to(&out_dir).expect("write output");
+
+    let out_apk = out_dir.join("app.apk");
+    let (asset_start, asset_compression) =
+        entry_data_start_and_compression(&out_apk, "assets/raw.bin");
+    let (native_start, native_compression) =
+        entry_data_start_and_compression(&out_apk, "lib/arm64-v8a/libdemo.so");
+
+    assert_eq!(asset_compression, zip::CompressionMethod::Stored);
+    assert_eq!(asset_start % u64::from(ALIGNMENT_DEFAULT), 0);
+    assert_eq!(native_compression, zip::CompressionMethod::Stored);
+    assert_eq!(native_start % u64::from(ALIGNMENT_NATIVE_LIB), 0);
+}
+
+#[test]
+fn native_library_injection_is_stored_and_16kb_aligned() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let apk_path = tmp.path().join("app.apk");
+
+    write_apk(&apk_path, &manifest_bytes("1.0-base", None), &[]);
+
+    let mut apk = ApkFile::open_with_options(
+        &apk_path,
+        ParseOptions {
+            lazy: true,
+            ..ParseOptions::default()
+        },
+    )
+    .expect("open apk");
+    apk.inject_file("lib/arm64-v8a/libnew.so", vec![0x7F, b'E', b'L', b'F']);
+
+    let out_dir = tmp.path().join("out");
+    apk.write_to(&out_dir).expect("write output");
+
+    let (native_start, native_compression) =
+        entry_data_start_and_compression(&out_dir.join("app.apk"), "lib/arm64-v8a/libnew.so");
+
+    assert_eq!(native_compression, zip::CompressionMethod::Stored);
+    assert_eq!(native_start % u64::from(ALIGNMENT_NATIVE_LIB), 0);
 }
 
 #[test]
