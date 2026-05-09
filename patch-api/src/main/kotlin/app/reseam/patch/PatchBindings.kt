@@ -70,6 +70,10 @@ internal class BindingCompiler<T : Any>(
         members[name] = compileMemberPath(block)
     }
 
+    override fun intValue(name: String, block: PathQuery.() -> Unit) {
+        members[name] = compileMemberPath(block)
+    }
+
     override fun bind(name: String, target: Binding<*>, block: PathQuery.() -> Unit) {
         members[name] = compileMemberPath(block)
     }

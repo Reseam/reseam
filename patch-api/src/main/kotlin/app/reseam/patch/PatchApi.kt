@@ -125,6 +125,7 @@ interface BindingQuery<T : Any> {
     fun objectValue(name: String, block: PathQuery.() -> Unit)
     fun string(name: String, block: PathQuery.() -> Unit)
     fun context(name: String, block: PathQuery.() -> Unit)
+    fun intValue(name: String, block: PathQuery.() -> Unit)
     fun bind(name: String, target: Binding<*>, block: PathQuery.() -> Unit)
     fun list(name: String, element: Binding<*>, block: PathQuery.() -> Unit)
 }
@@ -196,6 +197,7 @@ interface CodeScope {
     fun returnTrue()
     fun returnFalse()
     fun returnObject(value: ValueRef)
+    fun returnInt(value: ValueRef)
 }
 
 interface ValueRef {
@@ -220,6 +222,9 @@ fun PatchRuntime.findClass(debug: String? = null, block: ClassQuery.() -> Unit):
 
 fun PatchRuntime.classHandle(descriptor: String, debug: String? = null): ClassHandle =
     apiState.classHandle(descriptor, debug)
+
+fun PatchRuntime.wrapField(field: FieldRef, debug: String? = null): FieldHandle =
+    apiState.wrapField(field, debug)
 
 fun <T : Any> PatchRuntime.bind(
     runtimeType: KClass<T>,

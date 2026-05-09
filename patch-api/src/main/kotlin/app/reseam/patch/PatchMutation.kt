@@ -276,6 +276,10 @@ internal class CodeEmitter private constructor(
         builder.returnObject(value.asImpl().asByteRegister().register)
     }
 
+    override fun returnInt(value: ValueRef) {
+        builder.return_(value.asImpl().asByteRegister().register)
+    }
+
     internal fun buildInsertedCode(): CompiledCode =
         CompiledCode(
             instructions = builder.build(::resolveRegister),
@@ -302,10 +306,20 @@ internal class CodeEmitter private constructor(
     }
 
     internal fun valueField(value: ValueRefImpl, field: FieldRef): ValueRef {
-        val dest = allocTemp(constraint = RegisterConstraint.LOW)
+        val type = field.fieldType
+        val wordCount = registerWordCount(type)
+        val dest = allocTemp(wordCount = wordCount, constraint = RegisterConstraint.LOW)
         val obj = value.asLowRegister()
-        builder.igetObject(dest, obj.register, field)
-        return ValueRefImpl(this, dest, field.fieldType)
+        when (type) {
+            "J", "D" -> builder.igetWide(dest, obj.register, field)
+            "Z" -> builder.igetBoolean(dest, obj.register, field)
+            "B" -> builder.igetByte(dest, obj.register, field)
+            "C" -> builder.igetChar(dest, obj.register, field)
+            "S" -> builder.igetShort(dest, obj.register, field)
+            "I", "F" -> builder.iget(dest, obj.register, field)
+            else -> builder.igetObject(dest, obj.register, field)
+        }
+        return ValueRefImpl(this, dest, type)
     }
 
     internal fun invoke(owner: String, name: String, proto: String, args: List<ValueRefImpl>, invokeKind: InvokeKind): ValueRef {
@@ -599,6 +613,12 @@ internal class AllocatingInstructionBuilder {
     private data class ConstString(val dest: Int, val value: String) : Op
     private data class SgetObject(val dest: Int, val field: FieldRef) : Op
     private data class IgetObject(val dest: Int, val obj: Int, val field: FieldRef) : Op
+    private data class Iget(val dest: Int, val obj: Int, val field: FieldRef) : Op
+    private data class IgetWide(val dest: Int, val obj: Int, val field: FieldRef) : Op
+    private data class IgetBoolean(val dest: Int, val obj: Int, val field: FieldRef) : Op
+    private data class IgetByte(val dest: Int, val obj: Int, val field: FieldRef) : Op
+    private data class IgetChar(val dest: Int, val obj: Int, val field: FieldRef) : Op
+    private data class IgetShort(val dest: Int, val obj: Int, val field: FieldRef) : Op
     private data class InstanceOf(val dest: Int, val ref: Int, val descriptor: String) : Op
     private data class CheckCast(val reg: Int, val descriptor: String) : Op
     private data class Move(val dest: Int, val src: Int, val kind: ValueMoveKind) : Op
@@ -653,6 +673,30 @@ internal class AllocatingInstructionBuilder {
 
     fun igetObject(dest: Int, obj: Int, field: FieldRef) {
         ops += IgetObject(dest, obj, field)
+    }
+
+    fun iget(dest: Int, obj: Int, field: FieldRef) {
+        ops += Iget(dest, obj, field)
+    }
+
+    fun igetWide(dest: Int, obj: Int, field: FieldRef) {
+        ops += IgetWide(dest, obj, field)
+    }
+
+    fun igetBoolean(dest: Int, obj: Int, field: FieldRef) {
+        ops += IgetBoolean(dest, obj, field)
+    }
+
+    fun igetByte(dest: Int, obj: Int, field: FieldRef) {
+        ops += IgetByte(dest, obj, field)
+    }
+
+    fun igetChar(dest: Int, obj: Int, field: FieldRef) {
+        ops += IgetChar(dest, obj, field)
+    }
+
+    fun igetShort(dest: Int, obj: Int, field: FieldRef) {
+        ops += IgetShort(dest, obj, field)
     }
 
     fun instanceOf(dest: Int, ref: Int, descriptor: String) {
@@ -767,6 +811,36 @@ internal class AllocatingInstructionBuilder {
                 is IgetObject -> builder.igetObject(
                     resolveLowRegister(op.dest, resolve, "iget-object A"),
                     resolveLowRegister(op.obj, resolve, "iget-object B"),
+                    op.field,
+                )
+                is Iget -> builder.iget(
+                    resolveLowRegister(op.dest, resolve, "iget A"),
+                    resolveLowRegister(op.obj, resolve, "iget B"),
+                    op.field,
+                )
+                is IgetWide -> builder.igetWide(
+                    resolveLowRegister(op.dest, resolve, "iget-wide A"),
+                    resolveLowRegister(op.obj, resolve, "iget-wide B"),
+                    op.field,
+                )
+                is IgetBoolean -> builder.igetBoolean(
+                    resolveLowRegister(op.dest, resolve, "iget-boolean A"),
+                    resolveLowRegister(op.obj, resolve, "iget-boolean B"),
+                    op.field,
+                )
+                is IgetByte -> builder.igetByte(
+                    resolveLowRegister(op.dest, resolve, "iget-byte A"),
+                    resolveLowRegister(op.obj, resolve, "iget-byte B"),
+                    op.field,
+                )
+                is IgetChar -> builder.igetChar(
+                    resolveLowRegister(op.dest, resolve, "iget-char A"),
+                    resolveLowRegister(op.obj, resolve, "iget-char B"),
+                    op.field,
+                )
+                is IgetShort -> builder.igetShort(
+                    resolveLowRegister(op.dest, resolve, "iget-short A"),
+                    resolveLowRegister(op.obj, resolve, "iget-short B"),
                     op.field,
                 )
                 is InstanceOf -> builder.instanceOf(

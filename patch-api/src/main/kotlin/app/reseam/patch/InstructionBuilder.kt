@@ -98,6 +98,15 @@ class InstructionBuilder {
     fun igetBoolean(dest: Int, obj: Int, field: FieldRef) =
         add(Instruction.RegField(RegFieldInsn(Opcodes.IGET_BOOLEAN.toUShort(), dest.toUShort(), obj.toUShort(), field)))
 
+    fun igetByte(dest: Int, obj: Int, field: FieldRef) =
+        add(Instruction.RegField(RegFieldInsn(Opcodes.IGET_BYTE.toUShort(), dest.toUShort(), obj.toUShort(), field)))
+
+    fun igetChar(dest: Int, obj: Int, field: FieldRef) =
+        add(Instruction.RegField(RegFieldInsn(Opcodes.IGET_CHAR.toUShort(), dest.toUShort(), obj.toUShort(), field)))
+
+    fun igetShort(dest: Int, obj: Int, field: FieldRef) =
+        add(Instruction.RegField(RegFieldInsn(Opcodes.IGET_SHORT.toUShort(), dest.toUShort(), obj.toUShort(), field)))
+
     fun iput(src: Int, obj: Int, field: FieldRef) =
         add(Instruction.RegField(RegFieldInsn(Opcodes.IPUT.toUShort(), src.toUShort(), obj.toUShort(), field)))
 
