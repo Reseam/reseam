@@ -216,7 +216,7 @@ fn patch_parse_options() -> ParseOptions {
     ParseOptions {
         lazy: true,
         include_debug_info: false,
-        include_annotations: false,
+        include_annotations: true,
         ..ParseOptions::default()
     }
 }
