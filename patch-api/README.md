@@ -11,10 +11,11 @@ Kotlin patch authoring SDK for Reseam. This directory intentionally mixes genera
 Regenerate bridge artifacts after changing Rust `#[export]` functions:
 
 ```bash
-cargo xtask regen patch-api
+cargo xtask regen patch-api      # this directory only
+cargo xtask regen all            # patch-api and sdk together (recommended)
 ```
 
-This runs BoltFFI with `RESEAM_SKIP_JNI_GLUE=1` so type generation is not blocked by the current JNI bridge, then post-processes the Kotlin bridge into the publishable source tree.
+This runs BoltFFI with `RESEAM_SKIP_JNI_GLUE=1` so type generation is not blocked by the current JNI bridge, then post-processes the Kotlin bridge into the publishable source tree. `regen all` also rebuilds and links the Android `jniLibs/*.so` under `sdk/`, which is what you want on a fresh clone or when those binaries have gone stale.
 
 Build the JNI wrapper library:
 

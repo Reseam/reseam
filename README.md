@@ -19,16 +19,23 @@ Reseam is a Rust APK patching engine. Patches are written in Kotlin against the 
 
 ```bash
 cargo build --release
-cd patch-api && ./gradlew build
 ```
 
-If you are working on the generated JNI boundary:
+This builds the `reseam` CLI plus the embedded patcher and SDK shim. The SDK's Android `jniLibs/*.so` files are produced by `cargo xtask regen all` (which also runs the BoltFFI codegen) — run it first on a fresh clone, or whenever you change a `#[export]` Rust function:
 
 ```bash
-cargo xtask regen patch-api
-cargo build -p reseam-patcher
+cargo xtask regen all
+cargo build --release
+```
+
+The Kotlin SDK side is published from `patch-api/` and `sdk/`. Build them only when you want to run their gradle tests, regenerate the JNI host glue, or publish to Maven:
+
+```bash
+cd patch-api && ./gradlew test       # SDK tests
 JAVA_HOME=/path/to/jdk cargo xtask jni-host
 ```
+
+`cargo xtask regen` also accepts `patch-api` and `sdk` if you want to regenerate just one side.
 
 ## CLI
 

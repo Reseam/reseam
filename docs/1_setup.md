@@ -24,6 +24,13 @@ export RESEAM_BUNDLE_KEY=$PWD/bundle-signing.key
 ./gradlew bundle
 ```
 
+Gradle needs to know which `reseam` CLI to use when packing the bundle. Pick one:
+
+- `-Preseam.workspace=/path/to/reseam` — point at a sibling Reseam checkout. Gradle uses `<workspace>/target/release/reseam` and pulls the patch SDK directly from `<workspace>/patch-api` via `includeBuild`, so any local SDK edits are picked up.
+- `RESEAM_BIN=/abs/path/to/reseam` — point at a prebuilt CLI binary. The patch SDK is resolved from Maven (released versions only).
+
+Without one of those the build fails with `RESEAM_BIN env var or -Preseam.workspace property required to locate the reseam CLI`.
+
 Output: `build/bundle/<name>.reseam`.
 
 Inspect and apply to a local APK to check:
@@ -34,5 +41,15 @@ reseam patch target.apk \
   --bundle build/bundle/<name>.reseam \
   --output patched.apk
 ```
+
+## Tuning the patcher
+
+The Kotlin patch host runs in an embedded JVM. Heap defaults to `256m` — fine for most APKs, but very large targets (Instagram, Facebook) can OOM during patch search-index construction. Bump it via `RESEAM_JVM_HEAP`:
+
+```bash
+RESEAM_JVM_HEAP=4g reseam patch target.apk --bundle ...
+```
+
+Don't set this preemptively; only when you actually see `OutOfMemoryError: Java heap space` from the patcher. Going past your machine's free RAM gets you a SIGKILL (exit 137), not a Java exception.
 
 For the project layout itself, see [Bundles](2_bundles.md). For the full release flow, see [Publishing](5_publish.md).
