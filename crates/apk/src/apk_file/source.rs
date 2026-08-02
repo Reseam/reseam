@@ -217,6 +217,10 @@ fn patch_parse_options() -> ParseOptions {
         lazy: true,
         include_debug_info: false,
         include_annotations: true,
+        // The ZIP CRC already validated each entry during extraction;
+        // re-hashing every DEX (Adler-32 + SHA-1) adds nothing here.
+        skip_checksum: true,
+        skip_signature: true,
         ..ParseOptions::default()
     }
 }

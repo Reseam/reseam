@@ -1,13 +1,15 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::Path;
 
 use reseam_apk::reseam_dex::{
-    find_free_register, find_free_registers, ClassDef, CodeItem, DexFile, EncodedMethod,
-    Fingerprint, Instruction, InstructionPattern, MultiDexContainer, ParseOptions, StringIdx,
+    find_free_register, find_free_registers, ClassDef, CodeItem, DexFile, EncodedField,
+    EncodedMethod, Fingerprint, FingerprintHit, InstructionPattern, InstructionSite, MemberCounts,
+    MethodHit, MethodIdx, MultiDexContainer, ParseOptions, StringIdx,
 };
+use tracing::warn;
 
 use super::{
     ClassLocation, FieldAccessSiteHit, FingerprintLocation, InstructionLocation, MethodCallSiteHit,
@@ -15,36 +17,94 @@ use super::{
 };
 use crate::error::{PatcherError, Result as PatcherResult};
 
+type DexResult<T> = reseam_apk::reseam_dex::Result<T>;
+
 impl<'a> PatchContext<'a> {
     pub fn dex(&self) -> &MultiDexContainer {
         self.apk.dex()
     }
 
-    pub fn dex_container_mut(&mut self) -> reseam_apk::apk_file::ApkDexMut<'_> {
-        self.apk.dex_mut()
+    pub fn dex_count(&self) -> usize {
+        self.apk.dex().len()
+    }
+
+    pub fn dex_file(&self, index: usize) -> Option<&DexFile> {
+        self.apk.dex().dex(index)
+    }
+
+    pub fn dex_file_mut(&mut self, index: usize) -> Option<&mut DexFile> {
+        self.apk.dex_mut_at(index)
+    }
+
+    pub fn dex_mut(&mut self, index: usize) -> PatcherResult<&mut DexFile> {
+        self.dex_file_mut(index)
+            .ok_or_else(|| PatcherError::NotFound(format!("dex index {index}")))
+    }
+
+    /// Materializes one located class and returns its DEX immutably.
+    pub fn class_dex(&mut self, dex_idx: usize, class_idx: usize) -> Option<&DexFile> {
+        self.apk.resolve_dex_class(dex_idx, class_idx).ok().flatten()
+    }
+
+    /// Reads one method for inspection without materializing its class. Returns
+    /// the (non-resolving) DEX plus an owned decode of the method, so read-only
+    /// FFIs never persist a class's IR just to look at one of its methods.
+    pub fn read_method(
+        &self,
+        dex_idx: usize,
+        class_idx: usize,
+        method_pos: usize,
+        is_virtual: bool,
+    ) -> Option<(&DexFile, EncodedMethod)> {
+        let dex = self.dex_file(dex_idx)?;
+        let method = dex
+            .decode_method_at(class_idx, method_pos, is_virtual)
+            .ok()
+            .flatten()?;
+        Some((dex, method))
+    }
+
+    /// Class member counts without materializing the class.
+    pub fn read_class_counts(&self, dex_idx: usize, class_idx: usize) -> Option<MemberCounts> {
+        self.dex_file(dex_idx)?
+            .class_member_counts(class_idx)
+            .ok()
+            .flatten()
+    }
+
+    /// Class fields `(static, instance)` for inspection without materializing
+    /// the class. Returns the non-resolving DEX alongside the owned fields.
+    pub fn read_class_fields(
+        &self,
+        dex_idx: usize,
+        class_idx: usize,
+    ) -> Option<(&DexFile, Vec<EncodedField>, Vec<EncodedField>)> {
+        let dex = self.dex_file(dex_idx)?;
+        let (statics, instances) = dex.decode_class_fields(class_idx).ok().flatten()?;
+        Some((dex, statics, instances))
+    }
+
+    /// Materializes one located class, marks its DEX modified, returns it mutably.
+    pub fn class_dex_mut(&mut self, dex_idx: usize, class_idx: usize) -> Option<&mut DexFile> {
+        self.apk
+            .resolve_dex_class_mut(dex_idx, class_idx)
+            .ok()
+            .flatten()
     }
 
     pub fn find_class(&self, descriptor: &str) -> Option<ClassLocation> {
-        let (dex_idx, class) = self.apk.dex().find_class(descriptor)?;
-        let dex = self.apk.dex().dex(dex_idx)?;
-        let class_idx = locate_class_ref(dex, class)?;
-        Some(ClassLocation { dex_idx, class_idx })
+        for dex_idx in 0..self.dex_count() {
+            let class_idx = self.apk.dex().dex(dex_idx)?.find_class_index(descriptor);
+            if let Some(class_idx) = class_idx {
+                return Some(ClassLocation { dex_idx, class_idx });
+            }
+        }
+        None
     }
 
     pub fn find_class_mut(&mut self, descriptor: &str) -> Option<(ClassLocation, &mut ClassDef)> {
-        let mut target = None;
-        for dex_idx in 0..self.dex_count() {
-            let Some(dex) = self.apk.dex().dex(dex_idx) else {
-                continue;
-            };
-            if let Some(class_idx) = dex.find_class_index(descriptor) {
-                target = Some(ClassLocation { dex_idx, class_idx });
-                break;
-            }
-        }
-
-        let location = target?;
-        let dex = self.dex_file_mut(location.dex_idx)?;
+        let location = self.find_class(descriptor)?;
+        let dex = self.class_dex_mut(location.dex_idx, location.class_idx)?;
         let class = dex.classes.get_mut(location.class_idx)?;
         Some((location, class))
     }
@@ -60,20 +120,22 @@ impl<'a> PatchContext<'a> {
         method_name: &str,
     ) -> Option<MethodLocation> {
         for dex_idx in 0..self.dex_count() {
-            let dex = self.dex_file(dex_idx)?;
-            let Some(class_idx) = dex.find_class_index(class_descriptor) else {
-                continue;
+            let class_idx = {
+                let dex = self.apk.dex().dex(dex_idx)?;
+                dex.find_class_index(class_descriptor)
             };
+            let Some(class_idx) = class_idx else { continue };
+
+            let dex = self.class_dex(dex_idx, class_idx)?;
             let class = dex.classes.get(class_idx)?;
-            let Some((method_idx, is_virtual)) = find_method_slot(class, dex, method_name) else {
-                continue;
-            };
-            return Some(MethodLocation {
-                dex_idx,
-                class_idx,
-                method_idx,
-                is_virtual,
-            });
+            if let Some((method_idx, is_virtual)) = find_method_slot(class, dex, method_name) {
+                return Some(MethodLocation {
+                    dex_idx,
+                    class_idx,
+                    method_idx,
+                    is_virtual,
+                });
+            }
         }
         None
     }
@@ -84,7 +146,7 @@ impl<'a> PatchContext<'a> {
         method_name: &str,
     ) -> Option<(MethodLocation, &mut EncodedMethod)> {
         let location = self.find_method(class_descriptor, method_name)?;
-        let dex = self.dex_file_mut(location.dex_idx)?;
+        let dex = self.class_dex_mut(location.dex_idx, location.class_idx)?;
         let method = method_mut_at(dex, location)?;
         Some((location, method))
     }
@@ -98,72 +160,37 @@ impl<'a> PatchContext<'a> {
             .ok_or_else(|| PatcherError::NotFound(format!("{class_descriptor}.{method_name}")))
     }
 
-    pub fn find_method_by_name(&mut self, method_name: &str) -> Option<MethodLocation> {
+    pub fn find_method_by_name(&self, method_name: &str) -> Option<MethodLocation> {
         for dex_idx in 0..self.dex_count() {
-            let dex = self.dex_file(dex_idx)?;
-            let result = dex.find_method_by(|method_id, _class, _method| {
-                dex.string(method_id.name) == method_name
-            });
-            let Some(method_match) = result else {
+            let Some(dex) = self.dex_file(dex_idx) else {
                 continue;
             };
-            let (class_idx, method_idx, is_virtual) = locate_method_ref(dex, method_match.method)?;
-            return Some(MethodLocation {
-                dex_idx,
-                class_idx,
-                method_idx,
-                is_virtual,
-            });
+            let hit = ok_or_warn(dex_idx, "find_method_by_name", dex.find_method_by_name(method_name));
+            if let Some(hit) = hit {
+                return Some(method_location(dex_idx, &hit));
+            }
         }
         None
     }
 
-    pub fn find_methods_by_strings(&mut self, strings: &[&str]) -> Vec<MethodLocation> {
+    pub fn find_methods_by_strings(&self, strings: &[&str]) -> Vec<MethodLocation> {
         let mut results = Vec::new();
         for dex_idx in 0..self.dex_count() {
             let Some(dex) = self.dex_file(dex_idx) else {
                 continue;
             };
-            let string_idxs: Vec<StringIdx> = strings
-                .iter()
-                .filter_map(|s| dex.find_string_idx(s))
-                .collect();
-            if string_idxs.len() != strings.len() {
-                continue;
-            }
-
-            let matches = dex.find_methods_by(|_method_id, _class, method| {
-                let code = match &method.code {
-                    Some(code) => code,
-                    None => return false,
-                };
-                string_idxs.iter().all(|target| {
-                    code.instructions.iter().any(|insn| match insn {
-                        Instruction::ConstString { string, .. }
-                        | Instruction::ConstStringJumbo { string, .. } => string == target,
-                        _ => false,
-                    })
-                })
-            });
-
-            for method_match in matches {
-                if let Some((class_idx, method_idx, is_virtual)) =
-                    locate_method_ref(dex, method_match.method)
-                {
-                    results.push(MethodLocation {
-                        dex_idx,
-                        class_idx,
-                        method_idx,
-                        is_virtual,
-                    });
-                }
-            }
+            let hits = ok_or_warn(
+                dex_idx,
+                "find_methods_by_strings",
+                dex.find_methods_by_strings(strings),
+            );
+            results.extend(hits.iter().map(|hit| method_location(dex_idx, hit)));
         }
         results
     }
 
     pub fn find_methods_with_opcodes(
-        &mut self,
+        &self,
         opcodes: &[InstructionPattern],
     ) -> Vec<MethodLocation> {
         let mut results = Vec::new();
@@ -171,37 +198,63 @@ impl<'a> PatchContext<'a> {
             let Some(dex) = self.dex_file(dex_idx) else {
                 continue;
             };
-            for method_match in dex.find_methods_with_opcodes(opcodes) {
-                if let Some((class_idx, method_idx, is_virtual)) =
-                    locate_method_ref(dex, method_match.method)
-                {
-                    results.push(MethodLocation {
-                        dex_idx,
-                        class_idx,
-                        method_idx,
-                        is_virtual,
-                    });
-                }
-            }
+            let hits = ok_or_warn(
+                dex_idx,
+                "find_methods_with_opcodes",
+                dex.find_methods_with_opcodes(opcodes),
+            );
+            results.extend(hits.iter().map(|hit| method_location(dex_idx, hit)));
         }
         results
     }
 
-    pub fn dex_file(&mut self, index: usize) -> Option<&DexFile> {
-        self.apk.resolved_dex(index).ok().flatten()
+    pub fn find_method_by_fingerprint(&self, fp: &Fingerprint) -> Option<FingerprintLocation> {
+        for dex_idx in 0..self.dex_count() {
+            let Some(dex) = self.dex_file(dex_idx) else {
+                continue;
+            };
+            let hit = ok_or_warn(
+                dex_idx,
+                "find_method_by_fingerprint",
+                dex.find_method_by_fingerprint(fp),
+            );
+            if let Some(hit) = hit {
+                return Some(fingerprint_location(dex_idx, hit));
+            }
+        }
+        None
     }
 
-    pub fn dex_file_mut(&mut self, index: usize) -> Option<&mut DexFile> {
-        self.apk.resolved_dex_mut(index).ok().flatten()
+    pub fn all_methods(&self) -> Vec<MethodLocation> {
+        let mut results = Vec::new();
+        for dex_idx in 0..self.dex_count() {
+            let Some(dex) = self.dex_file(dex_idx) else {
+                continue;
+            };
+            let hits = ok_or_warn(
+                dex_idx,
+                "all_methods",
+                dex.scan_methods_collect(|view| Ok(Some(view.hit()))),
+            );
+            results.extend(hits.iter().map(|hit| method_location(dex_idx, hit)));
+        }
+        results
     }
 
-    pub fn dex_mut(&mut self, index: usize) -> PatcherResult<&mut DexFile> {
-        self.dex_file_mut(index)
-            .ok_or_else(|| PatcherError::NotFound(format!("dex index {index}")))
-    }
-
-    pub fn dex_count(&self) -> usize {
-        self.apk.dex().len()
+    pub fn find_methods_by_fingerprint(&self, fp: &Fingerprint) -> Vec<FingerprintLocation> {
+        let mut results = Vec::new();
+        for dex_idx in 0..self.dex_count() {
+            let Some(dex) = self.dex_file(dex_idx) else {
+                continue;
+            };
+            let hits = ok_or_warn(
+                dex_idx,
+                "find_methods_by_fingerprint",
+                dex.find_methods_by_fingerprint(fp),
+            );
+            results.extend(hits.into_iter().map(|hit| fingerprint_location(dex_idx, hit)));
+        }
+        results
     }
 
     pub fn merge_extension_dex(&mut self, paths: &[impl AsRef<Path>]) -> PatcherResult<usize> {
@@ -220,52 +273,6 @@ impl<'a> PatchContext<'a> {
             count += 1;
         }
         Ok(count)
-    }
-
-    pub fn find_method_by_fingerprint(&mut self, fp: &Fingerprint) -> Option<FingerprintLocation> {
-        for dex_idx in 0..self.dex_count() {
-            let dex = self.dex_file(dex_idx)?;
-            let Some(fingerprint_match) = dex.find_method_by_fingerprint(fp) else {
-                continue;
-            };
-            let (class_idx, method_idx, is_virtual) =
-                locate_method_ref(dex, fingerprint_match.method)?;
-            return Some(FingerprintLocation {
-                method: MethodLocation {
-                    dex_idx,
-                    class_idx,
-                    method_idx,
-                    is_virtual,
-                },
-                matched_indices: fingerprint_match.matched_indices.clone(),
-            });
-        }
-        None
-    }
-
-    pub fn find_methods_by_fingerprint(&mut self, fp: &Fingerprint) -> Vec<FingerprintLocation> {
-        let mut results = Vec::new();
-        for dex_idx in 0..self.dex_count() {
-            let Some(dex) = self.dex_file(dex_idx) else {
-                continue;
-            };
-            for fingerprint_match in dex.find_methods_by_fingerprint(fp) {
-                if let Some((class_idx, method_idx, is_virtual)) =
-                    locate_method_ref(dex, fingerprint_match.method)
-                {
-                    results.push(FingerprintLocation {
-                        method: MethodLocation {
-                            dex_idx,
-                            class_idx,
-                            method_idx,
-                            is_virtual,
-                        },
-                        matched_indices: fingerprint_match.matched_indices.clone(),
-                    });
-                }
-            }
-        }
-        results
     }
 
     pub fn find_free_register(
@@ -287,86 +294,70 @@ impl<'a> PatchContext<'a> {
         find_free_registers(code, at_index, count, exclude)
     }
 
-    fn scan_instructions(
-        &mut self,
-        mut predicate: impl FnMut(usize, &DexFile, &Instruction) -> bool,
+    pub fn find_instructions_by_literal(&self, literal: i64) -> Vec<InstructionLocation> {
+        self.scan_instructions("find_instructions_by_literal", |dex_idx, _dex, site| {
+            (site.instruction.literal() == Some(literal)).then(|| instruction_location(dex_idx, site))
+        })
+    }
+
+    pub fn find_instructions_by_string(&self, target: &str) -> Vec<InstructionLocation> {
+        let mut results = Vec::new();
+        for dex_idx in 0..self.dex_count() {
+            let Some(dex) = self.dex_file(dex_idx) else {
+                continue;
+            };
+            let Some(target_idx) = dex.find_string_idx(target) else {
+                continue;
+            };
+            let hits = ok_or_warn(
+                dex_idx,
+                "find_instructions_by_string",
+                dex.scan_instructions(|site| {
+                    (site.instruction.string_ref() == Some(target_idx))
+                        .then(|| instruction_location(dex_idx, site))
+                }),
+            );
+            results.extend(hits);
+        }
+        results
+    }
+
+    pub fn find_instructions_by_string_contains(
+        &self,
+        substring: &str,
     ) -> Vec<InstructionLocation> {
         let mut results = Vec::new();
         for dex_idx in 0..self.dex_count() {
             let Some(dex) = self.dex_file(dex_idx) else {
                 continue;
             };
-            for (class_idx, class) in dex.classes.iter().enumerate() {
-                if let Some(data) = &class.class_data {
-                    for (method_idx, method) in data
-                        .direct_methods
-                        .iter()
-                        .chain(&data.virtual_methods)
-                        .enumerate()
-                    {
-                        if let Some(code) = &method.code {
-                            for (insn_idx, insn) in code.instructions.iter().enumerate() {
-                                if predicate(dex_idx, dex, insn) {
-                                    results.push(InstructionLocation {
-                                        dex_idx,
-                                        class_idx,
-                                        method_idx,
-                                        insn_idx,
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
+            let matches: Vec<StringIdx> = dex
+                .strings
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| s.value.contains(substring))
+                .map(|(i, _)| StringIdx(i as u32))
+                .collect();
+            if matches.is_empty() {
+                continue;
             }
+            let hits = ok_or_warn(
+                dex_idx,
+                "find_instructions_by_string_contains",
+                dex.scan_instructions(|site| {
+                    site.instruction
+                        .string_ref()
+                        .is_some_and(|sref| matches.contains(&sref))
+                        .then(|| instruction_location(dex_idx, site))
+                }),
+            );
+            results.extend(hits);
         }
         results
     }
 
-    pub fn find_instructions_by_literal(&mut self, literal: i64) -> Vec<InstructionLocation> {
-        self.scan_instructions(|_, _, insn| insn.literal() == Some(literal))
-    }
-
-    pub fn find_instructions_by_string(&mut self, target: &str) -> Vec<InstructionLocation> {
-        let mut idx_per_dex = Vec::with_capacity(self.dex_count());
-        for dex_idx in 0..self.dex_count() {
-            idx_per_dex.push(
-                self.dex_file(dex_idx)
-                    .and_then(|dex| dex.find_string_idx(target)),
-            );
-        }
-        self.scan_instructions(|dex_idx, _, insn| {
-            idx_per_dex[dex_idx].is_some_and(|target_idx| insn.string_ref() == Some(target_idx))
-        })
-    }
-
-    pub fn find_instructions_by_string_contains(
-        &mut self,
-        substring: &str,
-    ) -> Vec<InstructionLocation> {
-        let mut sets_per_dex: Vec<HashSet<StringIdx>> = Vec::with_capacity(self.dex_count());
-        for dex_idx in 0..self.dex_count() {
-            let matches = self
-                .dex_file(dex_idx)
-                .map(|dex| {
-                    dex.strings
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, s)| s.value.contains(substring))
-                        .map(|(i, _)| StringIdx(i as u32))
-                        .collect()
-                })
-                .unwrap_or_default();
-            sets_per_dex.push(matches);
-        }
-        self.scan_instructions(|dex_idx, _, insn| {
-            insn.string_ref()
-                .is_some_and(|sref| sets_per_dex[dex_idx].contains(&sref))
-        })
-    }
-
     pub fn find_method_call_sites(
-        &mut self,
+        &self,
         targets: &[(String, String)],
     ) -> Vec<MethodCallSiteHit> {
         let mut results = Vec::new();
@@ -374,53 +365,37 @@ impl<'a> PatchContext<'a> {
             let Some(dex) = self.dex_file(dex_idx) else {
                 continue;
             };
-            let mut target_map: HashMap<reseam_apk::reseam_dex::MethodIdx, usize> = HashMap::new();
+            let mut target_map: HashMap<MethodIdx, usize> = HashMap::new();
             for (target_idx, (class_desc, method_name)) in targets.iter().enumerate() {
                 for (i, mid) in dex.methods.iter().enumerate() {
                     if dex.type_descriptor(mid.class) == *class_desc
                         && dex.string(mid.name) == *method_name
                     {
-                        target_map.insert(reseam_apk::reseam_dex::MethodIdx(i as u32), target_idx);
+                        target_map.insert(MethodIdx(i as u32), target_idx);
                     }
                 }
             }
             if target_map.is_empty() {
                 continue;
             }
-            for (class_idx, class) in dex.classes.iter().enumerate() {
-                if let Some(data) = &class.class_data {
-                    for (method_idx, method) in data
-                        .direct_methods
-                        .iter()
-                        .chain(&data.virtual_methods)
-                        .enumerate()
-                    {
-                        if let Some(code) = &method.code {
-                            for (insn_idx, insn) in code.instructions.iter().enumerate() {
-                                if let Some(mr) = insn.method_ref() {
-                                    if let Some(&target_idx) = target_map.get(&mr) {
-                                        results.push(MethodCallSiteHit {
-                                            loc: InstructionLocation {
-                                                dex_idx,
-                                                class_idx,
-                                                method_idx,
-                                                insn_idx,
-                                            },
-                                            target_index: target_idx,
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            let hits = ok_or_warn(
+                dex_idx,
+                "find_method_call_sites",
+                dex.scan_instructions(|site| {
+                    let target_index = *target_map.get(&site.instruction.method_ref()?)?;
+                    Some(MethodCallSiteHit {
+                        loc: instruction_location(dex_idx, site),
+                        target_index,
+                    })
+                }),
+            );
+            results.extend(hits);
         }
         results
     }
 
     pub fn find_field_access_sites(
-        &mut self,
+        &self,
         targets: &[(String, String)],
     ) -> Vec<FieldAccessSiteHit> {
         let mut results = Vec::new();
@@ -441,34 +416,38 @@ impl<'a> PatchContext<'a> {
             if target_map.is_empty() {
                 continue;
             }
-            for (class_idx, class) in dex.classes.iter().enumerate() {
-                if let Some(data) = &class.class_data {
-                    for (method_idx, method) in data
-                        .direct_methods
-                        .iter()
-                        .chain(&data.virtual_methods)
-                        .enumerate()
-                    {
-                        if let Some(code) = &method.code {
-                            for (insn_idx, insn) in code.instructions.iter().enumerate() {
-                                if let Some(fr) = insn.field_ref() {
-                                    if let Some(&target_idx) = target_map.get(&fr) {
-                                        results.push(FieldAccessSiteHit {
-                                            loc: InstructionLocation {
-                                                dex_idx,
-                                                class_idx,
-                                                method_idx,
-                                                insn_idx,
-                                            },
-                                            target_index: target_idx,
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            let hits = ok_or_warn(
+                dex_idx,
+                "find_field_access_sites",
+                dex.scan_instructions(|site| {
+                    let target_index = *target_map.get(&site.instruction.field_ref()?)?;
+                    Some(FieldAccessSiteHit {
+                        loc: instruction_location(dex_idx, site),
+                        target_index,
+                    })
+                }),
+            );
+            results.extend(hits);
+        }
+        results
+    }
+
+    fn scan_instructions<T: Send>(
+        &self,
+        what: &str,
+        matcher: impl Fn(usize, &DexFile, &InstructionSite<'_>) -> Option<T> + Sync,
+    ) -> Vec<T> {
+        let mut results = Vec::new();
+        for dex_idx in 0..self.dex_count() {
+            let Some(dex) = self.dex_file(dex_idx) else {
+                continue;
+            };
+            let hits = ok_or_warn(
+                dex_idx,
+                what,
+                dex.scan_instructions(|site| matcher(dex_idx, dex, site)),
+            );
+            results.extend(hits);
         }
         results
     }
@@ -485,7 +464,7 @@ impl<'a> PatchContext<'a> {
         location: MethodLocation,
     ) -> PatcherResult<(String, String)> {
         let dex = self
-            .dex_file(location.dex_idx)
+            .class_dex(location.dex_idx, location.class_idx)
             .ok_or_else(|| PatcherError::NotFound(format!("dex {}", location.dex_idx)))?;
         let class = dex
             .classes
@@ -505,25 +484,52 @@ impl<'a> PatchContext<'a> {
         loc: &InstructionLocation,
     ) -> PatcherResult<(String, String)> {
         let dex = self
-            .dex_file(loc.dex_idx)
+            .class_dex(loc.dex_idx, loc.class_idx)
             .ok_or_else(|| PatcherError::NotFound(format!("dex {}", loc.dex_idx)))?;
         let class = dex
             .classes
             .get(loc.class_idx)
             .ok_or_else(|| PatcherError::NotFound(format!("class index {}", loc.class_idx)))?;
         let class_desc = dex.type_descriptor(class.class_type).to_string();
-        let method = method_ref_from_combined_index(class, loc.method_idx)
-            .ok_or_else(|| PatcherError::NotFound(format!("method index {}", loc.method_idx)))?;
+        let method = method_at(class, loc.method_pos, loc.is_virtual)
+            .ok_or_else(|| PatcherError::NotFound(format!("method index {}", loc.method_pos)))?;
         let method_id = &dex.methods[method.method.0 as usize];
         let method_name = dex.string(method_id.name).to_string();
         Ok((class_desc, method_name))
     }
 }
 
-fn locate_class_ref(dex: &DexFile, class: &ClassDef) -> Option<usize> {
-    dex.classes
-        .iter()
-        .position(|candidate| std::ptr::eq(candidate, class))
+fn ok_or_warn<T: Default>(dex_idx: usize, what: &str, result: DexResult<T>) -> T {
+    result.unwrap_or_else(|error| {
+        warn!(dex_idx, %error, operation = what, "dex scan failed");
+        T::default()
+    })
+}
+
+fn method_location(dex_idx: usize, hit: &MethodHit) -> MethodLocation {
+    MethodLocation {
+        dex_idx,
+        class_idx: hit.class_idx,
+        method_idx: hit.method_pos,
+        is_virtual: hit.is_virtual,
+    }
+}
+
+fn fingerprint_location(dex_idx: usize, hit: FingerprintHit) -> FingerprintLocation {
+    FingerprintLocation {
+        method: method_location(dex_idx, &hit.method),
+        matched_indices: hit.matched_indices,
+    }
+}
+
+fn instruction_location(dex_idx: usize, site: &InstructionSite<'_>) -> InstructionLocation {
+    InstructionLocation {
+        dex_idx,
+        class_idx: site.class_idx,
+        method_pos: site.method_pos,
+        is_virtual: site.is_virtual,
+        insn_idx: site.insn_idx,
+    }
 }
 
 fn find_method_slot(class: &ClassDef, dex: &DexFile, method_name: &str) -> Option<(usize, bool)> {
@@ -545,36 +551,17 @@ fn find_method_slot(class: &ClassDef, dex: &DexFile, method_name: &str) -> Optio
         .map(|method_idx| (method_idx, true))
 }
 
-fn locate_method_ref(dex: &DexFile, method: &EncodedMethod) -> Option<(usize, usize, bool)> {
-    for (class_idx, class) in dex.classes.iter().enumerate() {
-        let Some(data) = class.class_data.as_ref() else {
-            continue;
-        };
-
-        for (method_idx, candidate) in data.direct_methods.iter().enumerate() {
-            if std::ptr::eq(candidate, method) {
-                return Some((class_idx, method_idx, false));
-            }
-        }
-
-        for (method_idx, candidate) in data.virtual_methods.iter().enumerate() {
-            if std::ptr::eq(candidate, method) {
-                return Some((class_idx, method_idx, true));
-            }
-        }
+fn method_at(class: &ClassDef, method_pos: usize, is_virtual: bool) -> Option<&EncodedMethod> {
+    let data = class.class_data.as_ref()?;
+    if is_virtual {
+        data.virtual_methods.get(method_pos)
+    } else {
+        data.direct_methods.get(method_pos)
     }
-
-    None
 }
 
 fn method_ref_at(dex: &DexFile, location: MethodLocation) -> Option<&EncodedMethod> {
-    let class = dex.classes.get(location.class_idx)?;
-    let data = class.class_data.as_ref()?;
-    if location.is_virtual {
-        data.virtual_methods.get(location.method_idx)
-    } else {
-        data.direct_methods.get(location.method_idx)
-    }
+    method_at(dex.classes.get(location.class_idx)?, location.method_idx, location.is_virtual)
 }
 
 fn method_mut_at(dex: &mut DexFile, location: MethodLocation) -> Option<&mut EncodedMethod> {
@@ -584,15 +571,5 @@ fn method_mut_at(dex: &mut DexFile, location: MethodLocation) -> Option<&mut Enc
         data.virtual_methods.get_mut(location.method_idx)
     } else {
         data.direct_methods.get_mut(location.method_idx)
-    }
-}
-
-fn method_ref_from_combined_index(class: &ClassDef, method_idx: usize) -> Option<&EncodedMethod> {
-    let data = class.class_data.as_ref()?;
-    if method_idx < data.direct_methods.len() {
-        data.direct_methods.get(method_idx)
-    } else {
-        data.virtual_methods
-            .get(method_idx.saturating_sub(data.direct_methods.len()))
     }
 }

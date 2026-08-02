@@ -251,11 +251,9 @@ impl Instruction {
             | Self::InvokeCustomRange { .. } => 3,
             Self::InvokePolymorphic { .. } | Self::InvokePolymorphicRange { .. } => 4,
             Self::ConstWide { .. } => 5,
-            Self::PackedSwitchPayload { targets, .. } => (1 + 1 + 2 + targets.len() * 2) as u32,
-            Self::SparseSwitchPayload {
-                keys_and_targets, ..
-            } => (1 + 1 + keys_and_targets.len() * 4) as u32,
-            Self::FillArrayDataPayload { data, .. } => (4 + data.len().div_ceil(2)) as u32,
+            Self::PackedSwitchPayload(p) => (1 + 1 + 2 + p.targets.len() * 2) as u32,
+            Self::SparseSwitchPayload(p) => (1 + 1 + p.keys_and_targets.len() * 4) as u32,
+            Self::FillArrayDataPayload(p) => (4 + p.data.len().div_ceil(2)) as u32,
             Self::RawInstruction { code_units } => code_units.len() as u32,
         }
     }

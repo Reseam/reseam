@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use super::sort::RemapTables;
 use super::DexWriter;
 use super::{annotations, class_data, code, encoded_arrays, finalize};
 use crate::encoding::leb128::write_uleb128;
@@ -15,11 +16,11 @@ use crate::types::map::{
 
 /// Writes all sections of a DEX file in spec order, then backpatches offsets.
 pub(crate) trait DexWriterWriteExt {
-    fn write_dex(&mut self, dex: &DexFile) -> Result<()>;
+    fn write_dex(&mut self, dex: &DexFile, remap: Option<&RemapTables>) -> Result<()>;
 }
 
 impl DexWriterWriteExt for DexWriter {
-    fn write_dex(&mut self, dex: &DexFile) -> Result<()> {
+    fn write_dex(&mut self, dex: &DexFile, remap: Option<&RemapTables>) -> Result<()> {
         let header_off = self.pos();
         self.header_base = header_off;
         let header_size = dex.required_version().header_size() as usize;
@@ -169,10 +170,8 @@ impl DexWriterWriteExt for DexWriter {
 
         let class_ann_datas = annotations::write_annotations(self, dex);
 
-        let code_methods = super::methods_with_code(dex);
-        code::write_code_items(self, &code_methods)?;
-
-        class_data::write_class_data_items(self, dex);
+        let layouts = code::write_code_and_debug(self, dex, remap)?;
+        class_data::write_class_data_items(self, &layouts);
 
         let string_data_start = self.pos();
         self.string_data_offsets.clear();

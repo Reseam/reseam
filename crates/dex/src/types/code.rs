@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::collections::HashMap;
+
 use super::debug::DebugInfo;
 use super::instruction::Instruction;
 use super::TypeIdx;
@@ -189,10 +191,11 @@ impl CodeItem {
     }
 
     fn fixup_offsets(&mut self, addr: u32, delta: i32) -> Result<()> {
+        let mut switch_bases: HashMap<u32, SwitchBase> = HashMap::new();
         let mut total_growth: i32 = 0;
         let mut cur_addr: u32 = 0;
         for insn in &mut self.instructions {
-            let growth = fixup_branch(insn, cur_addr, addr, delta + total_growth)?;
+            let growth = fixup_branch(insn, cur_addr, addr, delta + total_growth, &mut switch_bases)?;
             total_growth += growth;
             cur_addr += insn.code_units();
         }
@@ -224,12 +227,22 @@ impl CodeItem {
     }
 }
 
+/// Address and relocation context of a switch instruction, keyed by the address of
+/// the payload it references. A switch payload encodes its case targets relative to
+/// the switch instruction, not to the payload, so the payload is relocated using the
+/// switch's address and the delta that applied when the switch itself was relocated.
+struct SwitchBase {
+    addr: u32,
+    delta: i32,
+}
+
 /// Returns additional code-unit growth if a goto was promoted to a wider form.
 fn fixup_branch(
     insn: &mut Instruction,
     insn_addr: u32,
     change_addr: u32,
     delta: i32,
+    switch_bases: &mut HashMap<u32, SwitchBase>,
 ) -> Result<i32> {
     match insn {
         Instruction::Goto { offset } => {
@@ -286,12 +299,38 @@ fn fixup_branch(
             }
         }
         Instruction::PackedSwitch { payload_offset, .. }
-        | Instruction::SparseSwitch { payload_offset, .. }
-        | Instruction::FillArrayData { payload_offset, .. } => {
+        | Instruction::SparseSwitch { payload_offset, .. } => {
+            *payload_offset = fixup_i32(*payload_offset, insn_addr, change_addr, delta);
+            let payload_addr = (insn_addr as i32 + *payload_offset) as u32;
+            switch_bases.insert(
+                payload_addr,
+                SwitchBase {
+                    addr: insn_addr,
+                    delta,
+                },
+            );
+            Ok(0)
+        }
+        Instruction::FillArrayData { payload_offset, .. } => {
             *payload_offset = fixup_i32(*payload_offset, insn_addr, change_addr, delta);
             Ok(0)
         }
-        Instruction::PackedSwitchPayload { .. } | Instruction::SparseSwitchPayload { .. } => Ok(0),
+        Instruction::PackedSwitchPayload(payload) => {
+            if let Some(base) = switch_bases.get(&insn_addr) {
+                for target in payload.targets.iter_mut() {
+                    *target = fixup_i32(*target, base.addr, change_addr, base.delta);
+                }
+            }
+            Ok(0)
+        }
+        Instruction::SparseSwitchPayload(payload) => {
+            if let Some(base) = switch_bases.get(&insn_addr) {
+                for (_, target) in payload.keys_and_targets.iter_mut() {
+                    *target = fixup_i32(*target, base.addr, change_addr, base.delta);
+                }
+            }
+            Ok(0)
+        }
         _ => Ok(0),
     }
 }
@@ -376,5 +415,114 @@ mod tests {
             .remove_instruction(1)
             .expect_err("out-of-bounds remove should fail");
         assert!(err.to_string().contains("instruction index 1"));
+    }
+
+    /// Packed switch at addr 0; case targets point at the Nops at addr 3 and 5.
+    fn packed_switch_method() -> CodeItem {
+        CodeItem {
+            registers_size: 1,
+            ins_size: 0,
+            outs_size: 0,
+            debug_info: None,
+            instructions: vec![
+                Instruction::PackedSwitch {
+                    test: 0,
+                    payload_offset: 8,
+                },
+                Instruction::Nop,
+                Instruction::ReturnVoid,
+                Instruction::Nop,
+                Instruction::ReturnVoid,
+                Instruction::Nop,
+                Instruction::PackedSwitchPayload(Box::new(
+                    crate::types::instruction::PackedSwitchData {
+                        first_key: 0,
+                        targets: vec![3, 5],
+                    },
+                )),
+            ],
+            tries: Vec::new(),
+            catch_handlers: Vec::new(),
+        }
+    }
+
+    fn packed_targets(code: &CodeItem) -> &Vec<i32> {
+        match code.instructions.last().expect("payload present") {
+            Instruction::PackedSwitchPayload(p) => &p.targets,
+            other => panic!("expected packed payload, got {other:?}"),
+        }
+    }
+
+    fn payload_offset(code: &CodeItem) -> i32 {
+        match &code.instructions[0] {
+            Instruction::PackedSwitch { payload_offset, .. }
+            | Instruction::SparseSwitch { payload_offset, .. } => *payload_offset,
+            other => panic!("expected switch, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn packed_switch_targets_relocate_when_insert_precedes_them() {
+        let mut code = packed_switch_method();
+        code.insert_instructions(1, &[Instruction::Nop, Instruction::Nop])
+            .expect("insert");
+        assert_eq!(payload_offset(&code), 10);
+        assert_eq!(packed_targets(&code), &vec![5, 7]);
+    }
+
+    #[test]
+    fn packed_switch_target_before_insert_is_unchanged() {
+        let mut code = packed_switch_method();
+        // Insert at addr 5: the addr-3 case stays, the addr-5 case shifts by 2.
+        code.insert_instructions(3, &[Instruction::Nop, Instruction::Nop])
+            .expect("insert");
+        assert_eq!(payload_offset(&code), 10);
+        assert_eq!(packed_targets(&code), &vec![3, 7]);
+    }
+
+    #[test]
+    fn packed_switch_targets_relocate_on_remove() {
+        let mut code = packed_switch_method();
+        // Remove the ReturnVoid at addr 4: both later case targets shift down by 1.
+        code.remove_instruction(2).expect("remove");
+        assert_eq!(payload_offset(&code), 7);
+        assert_eq!(packed_targets(&code), &vec![3, 4]);
+    }
+
+    #[test]
+    fn sparse_switch_targets_relocate_when_insert_precedes_them() {
+        let mut code = CodeItem {
+            registers_size: 1,
+            ins_size: 0,
+            outs_size: 0,
+            debug_info: None,
+            instructions: vec![
+                Instruction::SparseSwitch {
+                    test: 0,
+                    payload_offset: 8,
+                },
+                Instruction::Nop,
+                Instruction::ReturnVoid,
+                Instruction::Nop,
+                Instruction::ReturnVoid,
+                Instruction::Nop,
+                Instruction::SparseSwitchPayload(Box::new(
+                    crate::types::instruction::SparseSwitchData {
+                        keys_and_targets: vec![(10, 3), (20, 5)],
+                    },
+                )),
+            ],
+            tries: Vec::new(),
+            catch_handlers: Vec::new(),
+        };
+        code.insert_instructions(1, &[Instruction::Nop, Instruction::Nop])
+            .expect("insert");
+        assert_eq!(payload_offset(&code), 10);
+        match code.instructions.last().expect("payload") {
+            Instruction::SparseSwitchPayload(p) => {
+                assert_eq!(p.keys_and_targets, vec![(10, 5), (20, 7)]);
+            }
+            other => panic!("expected sparse payload, got {other:?}"),
+        }
     }
 }

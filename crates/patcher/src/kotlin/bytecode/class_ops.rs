@@ -99,7 +99,7 @@ pub fn add_method(c: u32, method: NewMethod) -> u32 {
             Some(ch) => ch,
             None => return 0,
         };
-        let dex = match ctx.dex_file_mut(ch.dex_idx) {
+        let dex = match ctx.class_dex_mut(ch.dex_idx, ch.class_idx) {
             Some(d) => d,
             None => return 0,
         };
@@ -194,7 +194,7 @@ pub fn remove_method(m: u32) {
             Some(mh) => mh,
             None => return,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return,
         };
@@ -218,7 +218,7 @@ pub fn set_method_access_flags(m: u32, flags: u32) {
             Some(mh) => mh,
             None => return,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return,
         };
@@ -237,7 +237,7 @@ pub fn add_field(c: u32, field: NewField) -> u32 {
             Some(ch) => ch,
             None => return 0,
         };
-        let dex = match ctx.dex_file_mut(ch.dex_idx) {
+        let dex = match ctx.class_dex_mut(ch.dex_idx, ch.class_idx) {
             Some(d) => d,
             None => return 0,
         };
@@ -285,7 +285,7 @@ pub fn remove_field(c: u32, name: String) {
             Some(ch) => ch,
             None => return,
         };
-        let dex = match ctx.dex_file_mut(ch.dex_idx) {
+        let dex = match ctx.class_dex_mut(ch.dex_idx, ch.class_idx) {
             Some(d) => d,
             None => return,
         };
@@ -317,7 +317,7 @@ pub fn set_field_access_flags(c: u32, field_name: String, flags: u32) {
             Some(ch) => ch,
             None => return,
         };
-        let dex = match ctx.dex_file_mut(ch.dex_idx) {
+        let dex = match ctx.class_dex_mut(ch.dex_idx, ch.class_idx) {
             Some(d) => d,
             None => return,
         };
@@ -356,7 +356,7 @@ pub fn set_static_field_value(c: u32, field_name: String, value: EncodedVal) {
             Some(ch) => ch,
             None => return,
         };
-        let dex = match ctx.dex_file_mut(ch.dex_idx) {
+        let dex = match ctx.class_dex_mut(ch.dex_idx, ch.class_idx) {
             Some(d) => d,
             None => return,
         };
@@ -384,7 +384,7 @@ pub fn clone_method(m: u32, new_name: Option<String>) -> u32 {
             Some(mh) => mh,
             None => return 0,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return 0,
         };
@@ -483,7 +483,7 @@ pub fn definal_class(c: u32) {
             Some(ch) => ch,
             None => return,
         };
-        let dex = match ctx.dex_file_mut(ch.dex_idx) {
+        let dex = match ctx.class_dex_mut(ch.dex_idx, ch.class_idx) {
             Some(d) => d,
             None => return,
         };
@@ -664,7 +664,7 @@ pub fn add_method_annotation(m: u32, annotation: AnnotationItem) {
             Some(mh) => mh,
             None => return,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return,
         };
@@ -701,7 +701,7 @@ pub fn add_field_annotation(c: u32, field_name: String, annotation: AnnotationIt
             Some(ch) => ch,
             None => return,
         };
-        let dex = match ctx.dex_file_mut(ch.dex_idx) {
+        let dex = match ctx.class_dex_mut(ch.dex_idx, ch.class_idx) {
             Some(d) => d,
             None => return,
         };

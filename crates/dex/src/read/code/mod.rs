@@ -3,7 +3,7 @@
 
 //! Code item decoding split into focused helper modules.
 
-pub use orchestration::read_code_item;
+pub use orchestration::{read_code_instructions_into, read_code_item};
 
 mod arithmetic;
 mod decode;

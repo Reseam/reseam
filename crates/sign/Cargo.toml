@@ -7,6 +7,7 @@ readme = "README.md"
 
 [dependencies]
 ring      = { workspace = true }
+rayon     = { workspace = true }
 thiserror = { workspace = true }
 tracing   = { workspace = true }
 

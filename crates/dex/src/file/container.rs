@@ -8,9 +8,46 @@ use crate::write::compact::{
     compact_tables, has_overflowed, is_near_full, transplant_class, TableSnapshot,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MultiDexContainer {
     pub dex_files: Vec<DexFile>,
+}
+
+/// How much class-data IR is currently materialized across all DEXes. Used to
+/// attribute apply-phase memory to decoded instructions vs everything else.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MaterializationStats {
+    pub total_classes: u64,
+    pub resolved_classes: u64,
+    pub methods: u64,
+    pub instructions: u64,
+}
+
+impl MaterializationStats {
+    /// Lower bound on heap held by materialized IR (ignores Vec overhead,
+    /// tries, and debug info). Uses live type sizes so it tracks layout changes.
+    pub fn estimated_ir_bytes(&self) -> u64 {
+        use crate::types::class::{ClassData, EncodedMethod};
+        use crate::types::instruction::Instruction;
+        use std::mem::size_of;
+
+        self.instructions * size_of::<Instruction>() as u64
+            + self.methods * size_of::<EncodedMethod>() as u64
+            + self.resolved_classes * size_of::<ClassData>() as u64
+    }
+}
+
+/// Full native heap attribution for a container, so RSS can be split into its
+/// contributors rather than guessed at. All figures are lower bounds (they
+/// exclude `Vec` capacity slack and allocator overhead).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MemoryBreakdown {
+    pub raw_buffer_bytes: u64,
+    pub string_pool_bytes: u64,
+    pub string_count: u64,
+    pub id_table_bytes: u64,
+    pub class_def_bytes: u64,
+    pub materialized: MaterializationStats,
 }
 
 impl MultiDexContainer {
@@ -21,26 +58,15 @@ impl MultiDexContainer {
     }
 
     pub fn parse(buffers: &[&[u8]], opts: ParseOptions) -> Result<Self> {
-        #[cfg(feature = "parallel")]
-        {
-            use rayon::prelude::*;
-            let results: std::result::Result<Vec<_>, _> = buffers
-                .par_iter()
-                .map(|buf| crate::read::parse::parse(buf, opts.clone()))
-                .collect();
-            Ok(Self {
-                dex_files: results?,
-            })
-        }
+        use rayon::prelude::*;
 
-        #[cfg(not(feature = "parallel"))]
-        {
-            let mut dex_files = Vec::with_capacity(buffers.len());
-            for buf in buffers {
-                dex_files.push(crate::read::parse::parse(buf, opts.clone())?);
-            }
-            Ok(Self { dex_files })
-        }
+        let results: std::result::Result<Vec<_>, _> = buffers
+            .par_iter()
+            .map(|buf| crate::read::parse::parse(buf, opts.clone()))
+            .collect();
+        Ok(Self {
+            dex_files: results?,
+        })
     }
 
     pub fn parse_container(buf: &[u8], opts: ParseOptions) -> Result<Self> {
@@ -58,11 +84,11 @@ impl MultiDexContainer {
             self.redistribute()?;
         }
 
-        let mut buffers = Vec::with_capacity(self.dex_files.len());
-        for dex in &mut self.dex_files {
-            buffers.push(crate::write::write(dex)?);
-        }
-        Ok(buffers)
+        use rayon::prelude::*;
+        self.dex_files
+            .par_iter_mut()
+            .map(crate::write::write)
+            .collect()
     }
 
     pub fn needs_redistribute(&self) -> bool {
@@ -131,6 +157,53 @@ impl MultiDexContainer {
         crate::write::write_container(&mut self.dex_files)
     }
 
+    pub fn memory_breakdown(&self) -> MemoryBreakdown {
+        use crate::types::class::ClassDef;
+        use crate::types::{DexString, FieldId, MethodId, Prototype, StringIdx};
+        use std::mem::size_of;
+
+        let mut breakdown = MemoryBreakdown::default();
+        for dex in &self.dex_files {
+            breakdown.raw_buffer_bytes += dex
+                .raw
+                .as_ref()
+                .map(|raw| raw.as_bytes().len() as u64)
+                .unwrap_or(0);
+            for string in &dex.strings {
+                breakdown.string_pool_bytes += string.value.len() as u64;
+            }
+            breakdown.string_pool_bytes += dex.strings.len() as u64 * size_of::<DexString>() as u64;
+            breakdown.string_count += dex.strings.len() as u64;
+            breakdown.id_table_bytes += dex.types.len() as u64 * size_of::<StringIdx>() as u64
+                + dex.prototypes.len() as u64 * size_of::<Prototype>() as u64
+                + dex.fields.len() as u64 * size_of::<FieldId>() as u64
+                + dex.methods.len() as u64 * size_of::<MethodId>() as u64;
+            breakdown.class_def_bytes += dex.classes.len() as u64 * size_of::<ClassDef>() as u64;
+        }
+        breakdown.materialized = self.materialization_stats();
+        breakdown
+    }
+
+    pub fn materialization_stats(&self) -> MaterializationStats {
+        let mut stats = MaterializationStats::default();
+        for dex in &self.dex_files {
+            stats.total_classes += dex.classes.len() as u64;
+            for class in &dex.classes {
+                let Some(data) = &class.class_data else {
+                    continue;
+                };
+                stats.resolved_classes += 1;
+                for method in data.direct_methods.iter().chain(&data.virtual_methods) {
+                    stats.methods += 1;
+                    if let Some(code) = &method.code {
+                        stats.instructions += code.instructions.len() as u64;
+                    }
+                }
+            }
+        }
+        stats
+    }
+
     pub fn len(&self) -> usize {
         self.dex_files.len()
     }
@@ -147,21 +220,30 @@ impl MultiDexContainer {
         self.dex_files.get_mut(index)
     }
 
-    pub fn dex_resolved(&mut self, index: usize) -> Result<Option<&DexFile>> {
-        let dex = match self.dex_files.get_mut(index) {
-            Some(dex) => dex,
-            None => return Ok(None),
-        };
-        dex.resolve_all_class_data()?;
-        Ok(Some(dex))
+    pub fn dex_class_resolved(
+        &mut self,
+        index: usize,
+        class_idx: usize,
+    ) -> Result<Option<&DexFile>> {
+        self.dex_class_resolved_mut(index, class_idx)
+            .map(|opt| opt.map(|dex| &*dex))
     }
 
-    pub fn dex_resolved_mut(&mut self, index: usize) -> Result<Option<&mut DexFile>> {
+    pub fn dex_class_resolved_mut(
+        &mut self,
+        index: usize,
+        class_idx: usize,
+    ) -> Result<Option<&mut DexFile>> {
         let dex = match self.dex_files.get_mut(index) {
             Some(dex) => dex,
             None => return Ok(None),
         };
-        dex.resolve_all_class_data()?;
+        if class_idx >= dex.classes.len() {
+            return Ok(None);
+        }
+        if dex.classes[class_idx].class_data.is_none() {
+            dex.resolve_class_data(class_idx)?;
+        }
         Ok(Some(dex))
     }
 

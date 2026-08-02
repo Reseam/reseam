@@ -23,20 +23,6 @@ pub(crate) mod instruction_writer;
 pub(crate) mod orchestration;
 pub(crate) mod sort;
 
-pub(crate) fn methods_with_code(
-    dex: &DexFile,
-) -> Vec<(
-    &crate::types::class::EncodedMethod,
-    &crate::types::code::CodeItem,
-)> {
-    dex.classes
-        .iter()
-        .filter_map(|c| c.class_data.as_ref())
-        .flat_map(|d| d.direct_methods.iter().chain(d.virtual_methods.iter()))
-        .filter_map(|m| m.code.as_ref().map(|c| (m, c)))
-        .collect()
-}
-
 /// Returns whether an encoded static value can be elided from the tail array.
 pub(crate) fn is_default_value(v: &EncodedValue) -> bool {
     matches!(
@@ -53,12 +39,16 @@ pub(crate) fn is_default_value(v: &EncodedValue) -> bool {
 }
 
 /// Serializes a [`DexFile`] back into canonical DEX bytes.
+///
+/// Classes a patch never touched are never materialized: they are decoded,
+/// remapped, and re-encoded one at a time straight from the original buffer,
+/// so the writer's peak memory is bounded by the mutated classes plus one
+/// in-flight class per worker rather than the whole DEX.
 pub fn write(dex: &mut DexFile) -> Result<Vec<u8>> {
-    dex.resolve_all_class_data()?;
     validate_index_limits(dex)?;
-    sort::sort_in_place(dex)?;
+    let remap = sort::sort_in_place(dex)?;
     let mut w = DexWriter::new();
-    w.write_dex(dex)?;
+    w.write_dex(dex, remap.as_ref())?;
     Ok(w.buf)
 }
 
@@ -101,17 +91,17 @@ pub fn write_container(dex_files: &mut [DexFile]) -> Result<Vec<u8>> {
 
     let mut w = DexWriter::new();
 
+    let mut remaps = Vec::with_capacity(dex_files.len());
     for dex in dex_files.iter_mut() {
-        dex.resolve_all_class_data()?;
         validate_index_limits(dex)?;
-        sort::sort_in_place(dex)?;
+        remaps.push(sort::sort_in_place(dex)?);
     }
 
     let total_count = dex_files.len();
     for (i, dex) in dex_files.iter().enumerate() {
         w.header_base = w.pos();
         w.container_size = 0;
-        w.write_dex(dex)?;
+        w.write_dex(dex, remaps[i].as_ref())?;
 
         if i + 1 < total_count {
             w.align(4);
@@ -149,9 +139,7 @@ pub(crate) struct DexWriter {
     pub(crate) string_data_offsets: Vec<u32>,
     pub(crate) type_list_cache: HashMap<TypeList, u32>,
     pub(crate) code_item_offsets: Vec<u32>,
-    pub(crate) debug_info_offsets: Vec<u32>,
     pub(crate) class_data_offsets: Vec<u32>,
-    pub(crate) debug_info_cache: HashMap<Vec<u8>, u32>,
     pub(crate) map_entries: Vec<MapItem>,
     pub(crate) header_base: u32,
     pub(crate) container_size: u32,
@@ -164,9 +152,7 @@ impl DexWriter {
             string_data_offsets: Vec::new(),
             type_list_cache: HashMap::new(),
             code_item_offsets: Vec::new(),
-            debug_info_offsets: Vec::new(),
             class_data_offsets: Vec::new(),
-            debug_info_cache: HashMap::new(),
             map_entries: Vec::new(),
             header_base: 0,
             container_size: 0,

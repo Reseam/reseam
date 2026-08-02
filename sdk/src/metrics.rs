@@ -41,12 +41,33 @@ pub struct PatchPhaseMetrics {
     pub peak_rss_bytes: Option<u64>,
 }
 
+/// Sampled right after `apply_patches`, at the apply-phase memory peak, to
+/// attribute RSS to materialized DEX IR vs the in-process JVM vs everything else.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplyDiagnostics {
+    pub rss_bytes: Option<u64>,
+    pub total_classes: u64,
+    pub resolved_classes: u64,
+    pub materialized_methods: u64,
+    pub materialized_instructions: u64,
+    pub estimated_ir_bytes: u64,
+    pub raw_buffer_bytes: u64,
+    pub string_pool_bytes: u64,
+    pub string_count: u64,
+    pub id_table_bytes: u64,
+    pub class_def_bytes: u64,
+    pub jvm_used_bytes: Option<u64>,
+    pub jvm_committed_bytes: Option<u64>,
+    pub jvm_max_bytes: Option<u64>,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PatchMetrics {
     pub total_duration_ms: u64,
     pub final_rss_bytes: Option<u64>,
     pub peak_rss_bytes: Option<u64>,
     pub phases: Vec<PatchPhaseMetrics>,
+    pub apply_diagnostics: Option<ApplyDiagnostics>,
 }
 
 #[derive(Debug)]
@@ -64,6 +85,7 @@ struct MemorySample {
 pub(crate) struct PatchProfiler {
     started_at: Instant,
     phases: Vec<PatchPhaseMetrics>,
+    apply_diagnostics: Option<ApplyDiagnostics>,
 }
 
 impl PatchProfiler {
@@ -71,7 +93,16 @@ impl PatchProfiler {
         Self {
             started_at: Instant::now(),
             phases: Vec::new(),
+            apply_diagnostics: None,
         }
+    }
+
+    pub(crate) fn set_apply_diagnostics(&mut self, diagnostics: ApplyDiagnostics) {
+        self.apply_diagnostics = Some(diagnostics);
+    }
+
+    pub(crate) fn current_rss_bytes() -> Option<u64> {
+        sample_memory().rss_bytes
     }
 
     pub(crate) fn measure<T, E>(
@@ -98,6 +129,7 @@ impl PatchProfiler {
             final_rss_bytes: memory.rss_bytes,
             peak_rss_bytes: memory.peak_rss_bytes,
             phases: self.phases,
+            apply_diagnostics: self.apply_diagnostics,
         }
     }
 }

@@ -1,14 +1,16 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use reseam_apk::reseam_dex::{AccessFlags, DexFile, EncodedValue, Fingerprint, InstructionPattern};
+use reseam_apk::reseam_dex::{
+    AccessFlags, DexFile, EncodedField, EncodedValue, Fingerprint, InstructionPattern,
+};
 
 use boltffi::export;
 
 use crate::kotlin::types::{
     ClassInfo, EncodedVal, FieldInfo, FingerprintDef, FingerprintResult, MethodInfo,
 };
-use crate::kotlin::{get_method_ref, with_ctx, with_handles};
+use crate::kotlin::{with_ctx, with_handles};
 
 #[export]
 pub fn find_method(class_descriptor: String, method_name: String) -> Option<u32> {
@@ -160,9 +162,8 @@ pub fn get_all_classes() -> Vec<u32> {
 pub fn get_method_info(m: u32) -> Option<MethodInfo> {
     with_ctx(|ctx| {
         let mh = with_handles(|h| h.get_method(m))?;
-        let dex = ctx.dex_file(mh.dex_idx)?;
+        let (dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
         let class = dex.classes.get(mh.class_idx)?;
-        let method = get_method_ref(dex, mh)?;
         let method_id = dex.methods.get(method.method.0 as usize)?;
         let class_desc = dex.type_descriptor(class.class_type).to_string();
         let name = dex.string(method_id.name).to_string();
@@ -201,6 +202,7 @@ pub fn get_method_info(m: u32) -> Option<MethodInfo> {
 pub fn get_class_info(c: u32) -> Option<ClassInfo> {
     with_ctx(|ctx| {
         let ch = with_handles(|h| h.get_class(c))?;
+        let counts = ctx.read_class_counts(ch.dex_idx, ch.class_idx)?;
         let dex = ctx.dex_file(ch.dex_idx)?;
         let class = dex.classes.get(ch.class_idx)?;
         let desc = dex.type_descriptor(class.class_type).to_string();
@@ -211,15 +213,6 @@ pub fn get_class_info(c: u32) -> Option<ClassInfo> {
             .map(|i| dex.type_descriptor(*i).to_string())
             .collect();
         let source_file = class.source_file.map(|idx| dex.string(idx).to_string());
-        let (dm, vm, sf, inf) = match &class.class_data {
-            Some(d) => (
-                d.direct_methods.len() as u32,
-                d.virtual_methods.len() as u32,
-                d.static_fields.len() as u32,
-                d.instance_fields.len() as u32,
-            ),
-            None => (0, 0, 0, 0),
-        };
         Some(ClassInfo {
             descriptor: desc,
             access_flags: class.access_flags.bits(),
@@ -227,10 +220,10 @@ pub fn get_class_info(c: u32) -> Option<ClassInfo> {
             interfaces,
             source_file,
             dex_index: ch.dex_idx as u32,
-            direct_method_count: dm,
-            virtual_method_count: vm,
-            static_field_count: sf,
-            instance_field_count: inf,
+            direct_method_count: counts.direct_methods,
+            virtual_method_count: counts.virtual_methods,
+            static_field_count: counts.static_fields,
+            instance_field_count: counts.instance_fields,
         })
     })
 }
@@ -241,27 +234,15 @@ pub fn class_methods(c: u32) -> Vec<u32> {
         Some(ch) => ch,
         None => return Vec::new(),
     };
-    let (dm_count, vm_count) = with_ctx(|ctx| {
-        let dex = match ctx.dex_file(ch.dex_idx) {
-            Some(d) => d,
-            None => return (0, 0),
-        };
-        match dex
-            .classes
-            .get(ch.class_idx)
-            .and_then(|c| c.class_data.as_ref())
-        {
-            Some(d) => (d.direct_methods.len(), d.virtual_methods.len()),
-            None => (0, 0),
-        }
-    });
-    let mut handles = Vec::with_capacity(dm_count + vm_count);
-    for i in 0..dm_count {
+    let counts = with_ctx(|ctx| ctx.read_class_counts(ch.dex_idx, ch.class_idx)).unwrap_or_default();
+    let mut handles =
+        Vec::with_capacity((counts.direct_methods + counts.virtual_methods) as usize);
+    for i in 0..counts.direct_methods as usize {
         handles.push(with_handles(|h| {
             h.alloc_method(ch.dex_idx, ch.class_idx, i, false)
         }));
     }
-    for i in 0..vm_count {
+    for i in 0..counts.virtual_methods as usize {
         handles.push(with_handles(|h| {
             h.alloc_method(ch.dex_idx, ch.class_idx, i, true)
         }));
@@ -275,14 +256,10 @@ pub fn class_direct_methods(c: u32) -> Vec<u32> {
         Some(ch) => ch,
         None => return Vec::new(),
     };
-    let dm_count = with_ctx(|ctx| {
-        ctx.dex_file(ch.dex_idx)
-            .and_then(|dex| dex.classes.get(ch.class_idx))
-            .and_then(|c| c.class_data.as_ref())
-            .map(|d| d.direct_methods.len())
-            .unwrap_or(0)
-    });
-    (0..dm_count)
+    let count = with_ctx(|ctx| ctx.read_class_counts(ch.dex_idx, ch.class_idx))
+        .map(|counts| counts.direct_methods)
+        .unwrap_or(0);
+    (0..count as usize)
         .map(|i| with_handles(|h| h.alloc_method(ch.dex_idx, ch.class_idx, i, false)))
         .collect()
 }
@@ -293,69 +270,41 @@ pub fn class_virtual_methods(c: u32) -> Vec<u32> {
         Some(ch) => ch,
         None => return Vec::new(),
     };
-    let vm_count = with_ctx(|ctx| {
-        ctx.dex_file(ch.dex_idx)
-            .and_then(|dex| dex.classes.get(ch.class_idx))
-            .and_then(|c| c.class_data.as_ref())
-            .map(|d| d.virtual_methods.len())
-            .unwrap_or(0)
-    });
-    (0..vm_count)
+    let count = with_ctx(|ctx| ctx.read_class_counts(ch.dex_idx, ch.class_idx))
+        .map(|counts| counts.virtual_methods)
+        .unwrap_or(0);
+    (0..count as usize)
         .map(|i| with_handles(|h| h.alloc_method(ch.dex_idx, ch.class_idx, i, true)))
         .collect()
 }
 
 #[export]
 pub fn class_fields(c: u32) -> Vec<FieldInfo> {
-    with_ctx(|ctx| {
-        let ch = match with_handles(|h| h.get_class(c)) {
-            Some(ch) => ch,
-            None => return Vec::new(),
-        };
-        let dex = match ctx.dex_file(ch.dex_idx) {
-            Some(d) => d,
-            None => return Vec::new(),
-        };
-        match dex.classes.get(ch.class_idx) {
-            Some(class) => collect_fields(dex, class, true, true),
-            None => Vec::new(),
-        }
-    })
+    class_fields_filtered(c, true, true)
 }
 
 #[export]
 pub fn class_static_fields(c: u32) -> Vec<FieldInfo> {
-    with_ctx(|ctx| {
-        let ch = match with_handles(|h| h.get_class(c)) {
-            Some(ch) => ch,
-            None => return Vec::new(),
-        };
-        let dex = match ctx.dex_file(ch.dex_idx) {
-            Some(d) => d,
-            None => return Vec::new(),
-        };
-        match dex.classes.get(ch.class_idx) {
-            Some(class) => collect_fields(dex, class, true, false),
-            None => Vec::new(),
-        }
-    })
+    class_fields_filtered(c, true, false)
 }
 
 #[export]
 pub fn class_instance_fields(c: u32) -> Vec<FieldInfo> {
+    class_fields_filtered(c, false, true)
+}
+
+fn class_fields_filtered(c: u32, want_static: bool, want_instance: bool) -> Vec<FieldInfo> {
     with_ctx(|ctx| {
-        let ch = match with_handles(|h| h.get_class(c)) {
-            Some(ch) => ch,
-            None => return Vec::new(),
+        let Some(ch) = with_handles(|h| h.get_class(c)) else {
+            return Vec::new();
         };
-        let dex = match ctx.dex_file(ch.dex_idx) {
-            Some(d) => d,
-            None => return Vec::new(),
+        let Some((dex, statics, instances)) = ctx.read_class_fields(ch.dex_idx, ch.class_idx) else {
+            return Vec::new();
         };
-        match dex.classes.get(ch.class_idx) {
-            Some(class) => collect_fields(dex, class, false, true),
-            None => Vec::new(),
-        }
+        let Some(class) = dex.classes.get(ch.class_idx) else {
+            return Vec::new();
+        };
+        collect_fields(dex, class, &statics, &instances, want_static, want_instance)
     })
 }
 
@@ -385,38 +334,38 @@ fn convert_fingerprint(fp: &FingerprintDef) -> Fingerprint {
 fn collect_fields(
     dex: &DexFile,
     class: &reseam_apk::reseam_dex::ClassDef,
-    statics: bool,
-    instances: bool,
+    static_fields: &[EncodedField],
+    instance_fields: &[EncodedField],
+    want_static: bool,
+    want_instance: bool,
 ) -> Vec<FieldInfo> {
     let mut fields = Vec::new();
-    if let Some(data) = &class.class_data {
-        if statics {
-            for (i, f) in data.static_fields.iter().enumerate() {
-                let field_id = &dex.fields[f.field.0 as usize];
-                let initial_value = class
-                    .static_values
-                    .get(i)
-                    .and_then(|v| encoded_val_from_dex(v, dex));
-                fields.push(FieldInfo {
-                    class_descriptor: dex.type_descriptor(class.class_type).to_string(),
-                    name: dex.string(field_id.name).to_string(),
-                    field_type: dex.type_descriptor(field_id.type_).to_string(),
-                    access_flags: f.access_flags.bits(),
-                    initial_value,
-                });
-            }
+    if want_static {
+        for (i, f) in static_fields.iter().enumerate() {
+            let field_id = &dex.fields[f.field.0 as usize];
+            let initial_value = class
+                .static_values
+                .get(i)
+                .and_then(|v| encoded_val_from_dex(v, dex));
+            fields.push(FieldInfo {
+                class_descriptor: dex.type_descriptor(class.class_type).to_string(),
+                name: dex.string(field_id.name).to_string(),
+                field_type: dex.type_descriptor(field_id.type_).to_string(),
+                access_flags: f.access_flags.bits(),
+                initial_value,
+            });
         }
-        if instances {
-            for f in &data.instance_fields {
-                let field_id = &dex.fields[f.field.0 as usize];
-                fields.push(FieldInfo {
-                    class_descriptor: dex.type_descriptor(class.class_type).to_string(),
-                    name: dex.string(field_id.name).to_string(),
-                    field_type: dex.type_descriptor(field_id.type_).to_string(),
-                    access_flags: f.access_flags.bits(),
-                    initial_value: None,
-                });
-            }
+    }
+    if want_instance {
+        for f in instance_fields {
+            let field_id = &dex.fields[f.field.0 as usize];
+            fields.push(FieldInfo {
+                class_descriptor: dex.type_descriptor(class.class_type).to_string(),
+                name: dex.string(field_id.name).to_string(),
+                field_type: dex.type_descriptor(field_id.type_).to_string(),
+                access_flags: f.access_flags.bits(),
+                initial_value: None,
+            });
         }
     }
     fields

@@ -8,7 +8,7 @@ mod fingerprint;
 mod interning;
 mod lookup;
 mod pattern;
-mod search;
+mod scan;
 #[cfg(test)]
 mod tests;
 mod version;
@@ -17,15 +17,15 @@ pub use bytes::DexBytes;
 
 use crate::error::{index_out_of_bounds, invalid_offset};
 use crate::types::class::ClassDef;
-use crate::types::header::DexHeader;
+use crate::types::header::{DexHeader, ParseOptions};
 use crate::types::method_handle::{CallSiteItem, MethodHandle};
 use crate::types::{
     DexString, FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx,
 };
 
-pub use fingerprint::{Fingerprint, FingerprintBuilder, FingerprintMatch};
+pub use fingerprint::{Fingerprint, FingerprintBuilder, FingerprintHit};
 pub use pattern::{InstructionPattern, OpcodeMatcher};
-pub use search::MethodMatch;
+pub use scan::{InstructionHit, InstructionSite, MemberCounts, MethodHit, MethodView};
 
 use lookup::{LazyMap, ProtoLookup, StringLookup};
 
@@ -42,6 +42,9 @@ pub struct DexFile {
     pub method_handles: Vec<MethodHandle>,
     pub hidden_api: Option<crate::types::hidden_api::HiddenApiData>,
     pub raw: Option<DexBytes>,
+    /// Options the file was parsed with; lazy class-data resolution reuses them
+    /// so deferred parsing behaves identically to eager parsing.
+    pub(crate) parse_options: ParseOptions,
     pub(crate) lazy_class_data_offsets: Option<Vec<u32>>,
     pub(crate) string_lookup: StringLookup,
     pub(crate) type_lookup: LazyMap<StringIdx, TypeIdx>,
@@ -95,6 +98,7 @@ impl DexFile {
             method_handles: Vec::new(),
             hidden_api: None,
             raw: None,
+            parse_options: ParseOptions::default(),
             lazy_class_data_offsets: None,
             string_lookup: StringLookup::default(),
             type_lookup: LazyMap::default(),
@@ -160,21 +164,44 @@ impl DexFile {
             .raw
             .as_ref()
             .ok_or_else(|| invalid_offset("lazy class data", offset, 0))?;
-        let class_data = crate::read::class::read_class_data_at(raw.as_bytes(), offset as usize)?;
+        let class_data = crate::read::class::read_class_data_at(
+            raw.as_bytes(),
+            offset as usize,
+            &self.parse_options,
+        )?;
         self.classes[class_idx].class_data = Some(class_data);
         Ok(true)
     }
 
     pub fn resolve_all_class_data(&mut self) -> crate::error::Result<()> {
-        if self.lazy_class_data_offsets.is_none() {
+        let Some(offsets) = self.lazy_class_data_offsets.take() else {
+            return Ok(());
+        };
+
+        let needs_raw = self
+            .classes
+            .iter()
+            .zip(&offsets)
+            .any(|(class, &off)| off != 0 && class.class_data.is_none());
+        if !needs_raw {
             return Ok(());
         }
 
-        for i in 0..self.classes.len() {
-            self.resolve_class_data(i)?;
+        let Some(raw) = self.raw.clone() else {
+            self.lazy_class_data_offsets = Some(offsets);
+            return Err(invalid_offset("lazy class data", 0, 0));
+        };
+
+        let result = crate::read::class::resolve_class_data_entries(
+            &mut self.classes,
+            &offsets,
+            raw.as_bytes(),
+            &self.parse_options,
+        );
+        if result.is_err() {
+            self.lazy_class_data_offsets = Some(offsets);
         }
-        self.lazy_class_data_offsets = None;
-        Ok(())
+        result
     }
 
     pub fn release_raw(&mut self) -> crate::error::Result<()> {
@@ -200,6 +227,7 @@ impl Clone for DexFile {
             method_handles: self.method_handles.clone(),
             hidden_api: self.hidden_api.clone(),
             raw: self.raw.clone(),
+            parse_options: self.parse_options.clone(),
             lazy_class_data_offsets: self.lazy_class_data_offsets.clone(),
             string_lookup: StringLookup::default(),
             type_lookup: LazyMap::default(),

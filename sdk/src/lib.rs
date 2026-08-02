@@ -13,7 +13,9 @@ pub use dto::{
     PatchOutput, PatchRequest, PatchRunStatus, PatchSelection, RunEvent, TrustStatus, TrustStore,
 };
 pub use inspect::{built_in_trust_store, inspect_apk, inspect_with_trust, load_bundle_with_trust};
-pub use metrics::{PatchExecutionReport, PatchMetrics, PatchPhase, PatchPhaseMetrics};
+pub use metrics::{
+    ApplyDiagnostics, PatchExecutionReport, PatchMetrics, PatchPhase, PatchPhaseMetrics,
+};
 pub use selection::{
     build_execution_plan, compile_patch_selection, parse_cli_option, selection_from_cli,
 };

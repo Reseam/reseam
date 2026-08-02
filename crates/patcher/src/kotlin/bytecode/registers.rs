@@ -8,7 +8,7 @@ use reseam_apk::reseam_dex::{
     Instruction as DexInsn,
 };
 
-use crate::kotlin::{get_method_mut, get_method_ref, with_ctx, with_handles};
+use crate::kotlin::{get_method_mut, with_ctx, with_handles};
 
 #[export]
 pub fn ensure_outs_size(m: u32, min_outs_size: u16) {
@@ -17,7 +17,7 @@ pub fn ensure_outs_size(m: u32, min_outs_size: u16) {
             Some(mh) => mh,
             None => return,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return,
         };
@@ -42,7 +42,7 @@ pub fn grow_local_registers(m: u32, additional_locals: u16) -> bool {
             Some(mh) => mh,
             None => return false,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return false,
         };
@@ -82,13 +82,8 @@ pub fn registers_size(m: u32) -> u16 {
             Some(mh) => mh,
             None => return 0,
         };
-        let dex = match ctx.dex_file(mh.dex_idx) {
-            Some(d) => d,
-            None => return 0,
-        };
-        get_method_ref(dex, mh)
-            .and_then(|m| m.code.as_ref())
-            .map(|c| c.registers_size)
+        ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)
+            .and_then(|(_, method)| method.code.map(|c| c.registers_size))
             .unwrap_or(0)
     })
 }
@@ -100,13 +95,8 @@ pub fn ins_size(m: u32) -> u16 {
             Some(mh) => mh,
             None => return 0,
         };
-        let dex = match ctx.dex_file(mh.dex_idx) {
-            Some(d) => d,
-            None => return 0,
-        };
-        get_method_ref(dex, mh)
-            .and_then(|m| m.code.as_ref())
-            .map(|c| c.ins_size)
+        ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)
+            .and_then(|(_, method)| method.code.map(|c| c.ins_size))
             .unwrap_or(0)
     })
 }
@@ -118,13 +108,8 @@ pub fn outs_size(m: u32) -> u16 {
             Some(mh) => mh,
             None => return 0,
         };
-        let dex = match ctx.dex_file(mh.dex_idx) {
-            Some(d) => d,
-            None => return 0,
-        };
-        get_method_ref(dex, mh)
-            .and_then(|m| m.code.as_ref())
-            .map(|c| c.outs_size)
+        ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)
+            .and_then(|(_, method)| method.code.map(|c| c.outs_size))
             .unwrap_or(0)
     })
 }
@@ -136,12 +121,8 @@ pub fn find_free_register(m: u32, at_index: u32, exclude: Vec<u16>) -> u16 {
             Some(mh) => mh,
             None => return 0,
         };
-        let dex = match ctx.dex_file(mh.dex_idx) {
-            Some(d) => d,
-            None => return 0,
-        };
-        let method = match get_method_ref(dex, mh) {
-            Some(m) => m,
+        let (_dex, method) = match ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual) {
+            Some(pair) => pair,
             None => return 0,
         };
         method
@@ -159,12 +140,8 @@ pub fn find_free_registers(m: u32, at_index: u32, count: u32, exclude: Vec<u16>)
             Some(mh) => mh,
             None => return Vec::new(),
         };
-        let dex = match ctx.dex_file(mh.dex_idx) {
-            Some(d) => d,
-            None => return Vec::new(),
-        };
-        let method = match get_method_ref(dex, mh) {
-            Some(m) => m,
+        let (_dex, method) = match ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual) {
+            Some(pair) => pair,
             None => return Vec::new(),
         };
         method
@@ -187,12 +164,8 @@ pub fn find_contiguous_free_registers(
             Some(mh) => mh,
             None => return Vec::new(),
         };
-        let dex = match ctx.dex_file(mh.dex_idx) {
-            Some(d) => d,
-            None => return Vec::new(),
-        };
-        let method = match get_method_ref(dex, mh) {
-            Some(m) => m,
+        let (_dex, method) = match ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual) {
+            Some(pair) => pair,
             None => return Vec::new(),
         };
         method
@@ -232,12 +205,8 @@ pub fn instruction_wide_literal(m: u32, index: u32) -> i64 {
             Some(mh) => mh,
             None => return 0,
         };
-        let dex = match ctx.dex_file(mh.dex_idx) {
-            Some(d) => d,
-            None => return 0,
-        };
-        let method = match get_method_ref(dex, mh) {
-            Some(m) => m,
+        let (_dex, method) = match ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual) {
+            Some(pair) => pair,
             None => return 0,
         };
         method
@@ -258,12 +227,8 @@ fn get_insn_register(m: u32, index: u32, reg_pos: usize) -> u16 {
             Some(mh) => mh,
             None => return 0,
         };
-        let dex = match ctx.dex_file(mh.dex_idx) {
-            Some(d) => d,
-            None => return 0,
-        };
-        let method = match get_method_ref(dex, mh) {
-            Some(m) => m,
+        let (_dex, method) = match ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual) {
+            Some(pair) => pair,
             None => return 0,
         };
         method

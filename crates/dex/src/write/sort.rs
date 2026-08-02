@@ -14,12 +14,41 @@ use crate::types::{
 };
 use crate::util::sort::dex_string_compare;
 
-/// Sort all index tables and remap all references in place.
-/// Prepares the DexFile for writing with correctly sorted tables.
-pub fn sort_in_place(dex: &mut DexFile) -> crate::error::Result<()> {
-    dex.raw = None;
-    dex.lazy_class_data_offsets = None;
+/// Owned index remap tables, retained after sorting so the writer can remap
+/// classes it decodes lazily (never-materialized classes) at emit time.
+pub(crate) struct RemapTables {
+    pub string: Vec<u32>,
+    pub type_: Vec<u32>,
+    pub proto: Vec<u32>,
+    pub field: Vec<u32>,
+    pub method: Vec<u32>,
+}
 
+impl RemapTables {
+    pub(crate) fn as_remap(&self) -> Remap<'_> {
+        Remap {
+            string: &self.string,
+            type_: &self.type_,
+            proto: &self.proto,
+            field: &self.field,
+            method: &self.method,
+        }
+    }
+}
+
+/// Sort all index tables and remap all references in place, preparing the
+/// DexFile for writing with correctly sorted tables.
+///
+/// Returns the remap tables when any pool was reordered, so the writer can
+/// apply the same remap to classes whose `class_data` is still deferred (raw).
+/// Returns `None` when every pool was already sorted (identity remap): resident
+/// classes are left untouched and deferred classes are written verbatim.
+///
+/// `raw` and `lazy_class_data_offsets` are intentionally retained so the writer
+/// can stream deferred classes straight from the original buffer. The class
+/// order (and the positional `lazy_class_data_offsets`) is permuted together so
+/// `offsets[i]` still belongs to `classes[i]` after sorting.
+pub fn sort_in_place(dex: &mut DexFile) -> crate::error::Result<Option<RemapTables>> {
     let mut string_order: Vec<u32> = (0..dex.strings.len() as u32).collect();
     string_order.sort_by(|&a, &b| {
         dex_string_compare(
@@ -82,7 +111,7 @@ pub fn sort_in_place(dex: &mut DexFile) -> crate::error::Result<()> {
         && is_identity(&method_remap);
 
     if already_sorted {
-        return Ok(());
+        return Ok(None);
     }
 
     let remap = Remap {
@@ -157,12 +186,37 @@ pub fn sort_in_place(dex: &mut DexFile) -> crate::error::Result<()> {
         remap.remap_method_handle(mh);
     }
 
-    dex.classes.sort_by_key(|c| c.class_type.0);
+    // Reorder classes by their (remapped) type index. `lazy_class_data_offsets`
+    // is positional to `dex.classes`, so it must follow the same permutation;
+    // classes appended after parse have no offset entry (they are always
+    // resident), so pad with 0 before permuting to keep the arrays aligned.
+    match dex.lazy_class_data_offsets.as_mut() {
+        Some(offsets) => {
+            offsets.resize(dex.classes.len(), 0);
+            let mut perm: Vec<usize> = (0..dex.classes.len()).collect();
+            perm.sort_by_key(|&i| dex.classes[i].class_type.0);
+            apply_permutation(&mut dex.classes, &perm);
+            apply_permutation(offsets, &perm);
+        }
+        None => dex.classes.sort_by_key(|c| c.class_type.0),
+    }
 
     fixup_instructions(dex)?;
 
     dex.invalidate_lookups();
-    Ok(())
+    Ok(Some(RemapTables {
+        string: string_remap,
+        type_: type_remap,
+        proto: proto_remap,
+        field: field_remap,
+        method: method_remap,
+    }))
+}
+
+/// Reorders `v` in place so that `v[new] = old_v[perm[new]]`.
+fn apply_permutation<T>(v: &mut Vec<T>, perm: &[usize]) {
+    let mut slots: Vec<Option<T>> = std::mem::take(v).into_iter().map(Some).collect();
+    *v = perm.iter().map(|&i| slots[i].take().unwrap()).collect();
 }
 
 pub(crate) struct Remap<'a> {
@@ -225,7 +279,7 @@ impl<'a> Remap<'a> {
         }
     }
 
-    fn remap_class_data(&self, data: &mut ClassData) {
+    pub(crate) fn remap_class_data(&self, data: &mut ClassData) {
         for f in &mut data.static_fields {
             f.field = self.remap_field(f.field);
         }
@@ -481,25 +535,31 @@ fn fixup_instructions(dex: &mut DexFile) -> crate::error::Result<()> {
             .iter_mut()
             .chain(data.virtual_methods.iter_mut())
         {
-            let code = match method.code.as_mut() {
-                Some(c) => c,
-                None => continue,
-            };
-            let mut i = 0;
-            while i < code.instructions.len() {
-                match &code.instructions[i] {
-                    Instruction::ConstString { dest, string } if string.0 > 0xFFFF => {
-                        let promoted = Instruction::ConstStringJumbo {
-                            dest: *dest,
-                            string: *string,
-                        };
-                        code.replace_instruction(i, promoted)?;
-                    }
-                    _ => {}
-                }
-                i += 1;
+            if let Some(code) = method.code.as_mut() {
+                fixup_code(code)?;
             }
         }
+    }
+    Ok(())
+}
+
+/// Promotes instructions whose remapped operand outgrew its encoded width
+/// (currently `const-string` → `const-string/jumbo` when the string index
+/// exceeds 16 bits). Shared by the resident-class fixup and the writer's lazy
+/// class emitter so both paths widen identically.
+pub(crate) fn fixup_code(code: &mut CodeItem) -> crate::error::Result<()> {
+    let mut i = 0;
+    while i < code.instructions.len() {
+        if let Instruction::ConstString { dest, string } = &code.instructions[i] {
+            if string.0 > 0xFFFF {
+                let promoted = Instruction::ConstStringJumbo {
+                    dest: *dest,
+                    string: *string,
+                };
+                code.replace_instruction(i, promoted)?;
+            }
+        }
+        i += 1;
     }
     Ok(())
 }

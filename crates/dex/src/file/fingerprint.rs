@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::pattern::{find_pattern_span, InstructionPattern};
+use super::scan::{MethodHit, MethodView};
 use super::DexFile;
+use crate::error::Result;
 use crate::types::access_flags::AccessFlags;
-use crate::types::class::{ClassDef, EncodedMethod};
 use crate::types::instruction::Instruction;
-use crate::types::{MethodIdx, StringIdx, TypeIdx};
+use crate::types::StringIdx;
 
 #[derive(Debug, Clone)]
 pub struct Fingerprint {
@@ -87,141 +88,149 @@ impl FingerprintBuilder {
     }
 }
 
-#[derive(Debug)]
-pub struct FingerprintMatch<'a> {
-    pub class_idx: TypeIdx,
-    pub method_idx: MethodIdx,
-    pub class: &'a ClassDef,
-    pub method: &'a EncodedMethod,
+#[derive(Debug, Clone)]
+pub struct FingerprintHit {
+    pub method: MethodHit,
     pub matched_indices: Vec<u32>,
 }
 
+/// A fingerprint with its required strings resolved to DEX indices once. `None`
+/// from [`DexFile::prepare_fingerprint`] means a required string is absent from
+/// the DEX, so no method can match and scanning is skipped entirely.
+struct PreparedFingerprint {
+    strings: Option<Vec<StringIdx>>,
+}
+
 impl DexFile {
-    pub fn find_method_by_fingerprint(&self, fp: &Fingerprint) -> Option<FingerprintMatch<'_>> {
-        for class in &self.classes {
-            if let Some(data) = class.class_data.as_ref() {
-                for method in data.direct_methods.iter().chain(&data.virtual_methods) {
-                    if let Some(m) = self.match_fingerprint(fp, class, method) {
-                        return Some(m);
-                    }
-                }
-            }
-        }
-        None
+    pub fn find_method_by_fingerprint(&self, fp: &Fingerprint) -> Result<Option<FingerprintHit>> {
+        let Some(prepared) = self.prepare_fingerprint(fp) else {
+            return Ok(None);
+        };
+        self.scan_methods_find(|view| self.match_fingerprint(fp, &prepared, view))
     }
 
-    pub fn find_methods_by_fingerprint(&self, fp: &Fingerprint) -> Vec<FingerprintMatch<'_>> {
-        let mut results = Vec::new();
-        for class in &self.classes {
-            if let Some(data) = class.class_data.as_ref() {
-                for method in data.direct_methods.iter().chain(&data.virtual_methods) {
-                    if let Some(m) = self.match_fingerprint(fp, class, method) {
-                        results.push(m);
-                    }
-                }
-            }
-        }
-        results
+    pub fn find_methods_by_fingerprint(&self, fp: &Fingerprint) -> Result<Vec<FingerprintHit>> {
+        let Some(prepared) = self.prepare_fingerprint(fp) else {
+            return Ok(Vec::new());
+        };
+        self.scan_methods_collect(|view| self.match_fingerprint(fp, &prepared, view))
     }
 
-    fn match_fingerprint<'a>(
-        &'a self,
+    fn prepare_fingerprint(&self, fp: &Fingerprint) -> Option<PreparedFingerprint> {
+        let strings = match &fp.strings {
+            None => None,
+            Some(list) => {
+                let indices: Vec<StringIdx> =
+                    list.iter().filter_map(|s| self.find_string_idx(s)).collect();
+                if indices.len() != list.len() {
+                    return None;
+                }
+                Some(indices)
+            }
+        };
+        Some(PreparedFingerprint { strings })
+    }
+
+    /// Checks a fingerprint against one method. Metadata criteria (defining
+    /// class, name, flags, prototype) are all id-table reads and run first;
+    /// instructions decode only if those pass and the fingerprint needs them.
+    fn match_fingerprint(
+        &self,
         fp: &Fingerprint,
-        class: &'a ClassDef,
-        method: &'a EncodedMethod,
-    ) -> Option<FingerprintMatch<'a>> {
-        let method_id = &self.methods[method.method.0 as usize];
+        prepared: &PreparedFingerprint,
+        view: &mut MethodView<'_>,
+    ) -> Result<Option<FingerprintHit>> {
+        let method_id = &self.methods[view.method.0 as usize];
 
         if let Some(ref defining_class) = fp.defining_class {
-            let desc = self.type_descriptor(class.class_type);
-            if desc != defining_class {
-                return None;
+            if self.type_descriptor(view.class_type) != defining_class {
+                return Ok(None);
             }
         }
 
         if let Some(ref name) = fp.name {
-            let method_name = self.string(method_id.name);
-            if method_name != name {
-                return None;
+            if self.string(method_id.name) != name {
+                return Ok(None);
             }
         }
 
         if let Some(ref flags) = fp.access_flags {
-            if !method.access_flags.contains(*flags) {
-                return None;
+            if !view.access_flags.contains(*flags) {
+                return Ok(None);
             }
         }
 
         let proto = &self.prototypes[method_id.proto.0 as usize];
 
         if let Some(ref return_type) = fp.return_type {
-            let ret_desc = self.type_descriptor(proto.return_type);
-            if !ret_desc.starts_with(return_type.as_str()) {
-                return None;
+            if !self
+                .type_descriptor(proto.return_type)
+                .starts_with(return_type.as_str())
+            {
+                return Ok(None);
             }
         }
 
         if let Some(ref parameters) = fp.parameters {
             if proto.parameters.len() != parameters.len() {
-                return None;
+                return Ok(None);
             }
             for (param_idx, expected) in proto.parameters.iter().zip(parameters) {
-                let param_desc = self.type_descriptor(*param_idx);
-                if !param_matches(param_desc, expected) {
-                    return None;
+                if !param_matches(self.type_descriptor(*param_idx), expected) {
+                    return Ok(None);
                 }
             }
         }
 
-        if let Some(ref strings) = fp.strings {
-            let code = method.code.as_ref()?;
-            let string_indices: Vec<StringIdx> = strings
-                .iter()
-                .filter_map(|s| self.find_string_idx(s))
-                .collect();
-            if string_indices.len() != strings.len() {
-                return None;
-            }
-            for &target_idx in &string_indices {
-                let found = code.instructions.iter().any(|insn| match insn {
+        let needs_instructions =
+            prepared.strings.is_some() || fp.literals.is_some() || fp.opcodes.is_some();
+        if !needs_instructions {
+            return Ok(Some(FingerprintHit {
+                method: view.hit(),
+                matched_indices: Vec::new(),
+            }));
+        }
+        if !view.has_code() {
+            return Ok(None);
+        }
+
+        let hit = view.hit();
+        let instructions = view.instructions()?;
+
+        if let Some(ref targets) = prepared.strings {
+            for &target_idx in targets {
+                let found = instructions.iter().any(|insn| match insn {
                     Instruction::ConstString { string, .. }
                     | Instruction::ConstStringJumbo { string, .. } => *string == target_idx,
                     _ => false,
                 });
                 if !found {
-                    return None;
+                    return Ok(None);
                 }
             }
         }
 
         if let Some(ref literals) = fp.literals {
-            let code = method.code.as_ref()?;
             for &target in literals {
-                let found = code
-                    .instructions
-                    .iter()
-                    .any(|insn| insn.literal() == Some(target));
-                if !found {
-                    return None;
+                if !instructions.iter().any(|insn| insn.literal() == Some(target)) {
+                    return Ok(None);
                 }
             }
         }
 
         let matched_indices = if let Some(ref opcodes) = fp.opcodes {
-            let code = method.code.as_ref()?;
-            let span = find_pattern_span(&code.instructions, opcodes)?;
-            span.map(|index| index as u32).collect()
+            match find_pattern_span(instructions, opcodes) {
+                Some(span) => span.map(|index| index as u32).collect(),
+                None => return Ok(None),
+            }
         } else {
             Vec::new()
         };
 
-        Some(FingerprintMatch {
-            class_idx: class.class_type,
-            method_idx: method.method,
-            class,
-            method,
+        Ok(Some(FingerprintHit {
+            method: hit,
             matched_indices,
-        })
+        }))
     }
 }
 

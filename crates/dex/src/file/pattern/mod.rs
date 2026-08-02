@@ -58,7 +58,6 @@ pub(super) fn find_pattern_span(
 
 #[cfg(test)]
 mod tests {
-    use smallvec::smallvec;
 
     use super::{find_pattern_span, matches_pattern, InstructionPattern, OpcodeMatcher};
     use crate::types::instruction::Instruction;
@@ -82,7 +81,7 @@ mod tests {
     #[test]
     fn matches_raw_instruction_by_variant() {
         let instructions = vec![Instruction::RawInstruction {
-            code_units: smallvec![0x1234, 0x5678],
+            code_units: Box::new([0x1234, 0x5678]),
         }];
         let pattern = [InstructionPattern::Opcode(OpcodeMatcher::RawInstruction)];
 

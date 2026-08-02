@@ -3,11 +3,12 @@
 
 use boltffi::export;
 
+use crate::context::{FieldAccessSiteHit, InstructionLocation, MethodCallSiteHit};
 use crate::kotlin::convert::dex_to_kotlin;
 use crate::kotlin::types::{
     FieldAccessSiteResult, Instruction, InstructionHit, MethodCallSiteResult, MethodRef,
 };
-use crate::kotlin::{get_method_ref, scan_location, with_ctx, with_handles};
+use crate::kotlin::{with_ctx, with_handles};
 
 #[export]
 pub fn get_instructions(m: u32) -> Vec<Instruction> {
@@ -16,12 +17,8 @@ pub fn get_instructions(m: u32) -> Vec<Instruction> {
             Some(mh) => mh,
             None => return Vec::new(),
         };
-        let dex = match ctx.dex_file(mh.dex_idx) {
-            Some(d) => d,
-            None => return Vec::new(),
-        };
-        let method = match get_method_ref(dex, mh) {
-            Some(m) => m,
+        let (dex, method) = match ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual) {
+            Some(pair) => pair,
             None => return Vec::new(),
         };
         match &method.code {
@@ -42,12 +39,8 @@ pub fn get_instruction(m: u32, index: u32) -> Instruction {
             Some(mh) => mh,
             None => return nop(),
         };
-        let dex = match ctx.dex_file(mh.dex_idx) {
-            Some(d) => d,
-            None => return nop(),
-        };
-        let method = match get_method_ref(dex, mh) {
-            Some(m) => m,
+        let (dex, method) = match ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual) {
+            Some(pair) => pair,
             None => return nop(),
         };
         match &method.code {
@@ -67,12 +60,8 @@ pub fn instruction_count(m: u32) -> u32 {
             Some(mh) => mh,
             None => return 0,
         };
-        let dex = match ctx.dex_file(mh.dex_idx) {
-            Some(d) => d,
-            None => return 0,
-        };
-        let method = match get_method_ref(dex, mh) {
-            Some(m) => m,
+        let (_dex, method) = match ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual) {
+            Some(pair) => pair,
             None => return 0,
         };
         method
@@ -87,8 +76,7 @@ pub fn instruction_count(m: u32) -> u32 {
 pub fn index_of_first(m: u32, start: u32, op: u16) -> Option<u32> {
     with_ctx(|ctx| {
         let mh = with_handles(|h| h.get_method(m))?;
-        let dex = ctx.dex_file(mh.dex_idx)?;
-        let method = get_method_ref(dex, mh)?;
+        let (_dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
         method.code.as_ref().and_then(|c| {
             c.instructions
                 .iter()
@@ -104,8 +92,7 @@ pub fn index_of_first(m: u32, start: u32, op: u16) -> Option<u32> {
 pub fn index_of_first_reversed(m: u32, start: u32, op: u16) -> Option<u32> {
     with_ctx(|ctx| {
         let mh = with_handles(|h| h.get_method(m))?;
-        let dex = ctx.dex_file(mh.dex_idx)?;
-        let method = get_method_ref(dex, mh)?;
+        let (_dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
         method.code.as_ref().and_then(|c| {
             let end = (start as usize).min(c.instructions.len());
             c.instructions[..end]
@@ -122,8 +109,7 @@ pub fn index_of_first_reversed(m: u32, start: u32, op: u16) -> Option<u32> {
 pub fn index_of_first_literal(m: u32, literal: i64) -> Option<u32> {
     with_ctx(|ctx| {
         let mh = with_handles(|h| h.get_method(m))?;
-        let dex = ctx.dex_file(mh.dex_idx)?;
-        let method = get_method_ref(dex, mh)?;
+        let (_dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
         method.code.as_ref().and_then(|c| {
             c.instructions
                 .iter()
@@ -137,8 +123,7 @@ pub fn index_of_first_literal(m: u32, literal: i64) -> Option<u32> {
 pub fn index_of_first_literal_reversed(m: u32, literal: i64) -> Option<u32> {
     with_ctx(|ctx| {
         let mh = with_handles(|h| h.get_method(m))?;
-        let dex = ctx.dex_file(mh.dex_idx)?;
-        let method = get_method_ref(dex, mh)?;
+        let (_dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
         method.code.as_ref().and_then(|c| {
             c.instructions
                 .iter()
@@ -159,9 +144,8 @@ pub fn contains_literal(m: u32, literal: i64) -> bool {
 pub fn index_of_first_string(m: u32, s: String) -> Option<u32> {
     with_ctx(|ctx| {
         let mh = with_handles(|h| h.get_method(m))?;
-        let dex = ctx.dex_file(mh.dex_idx)?;
+        let (dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
         let target_idx = dex.find_string_idx(&s)?;
-        let method = get_method_ref(dex, mh)?;
         method.code.as_ref().and_then(|c| {
             c.instructions
                 .iter()
@@ -178,12 +162,8 @@ pub fn find_all_indices(m: u32, op: u16) -> Vec<u32> {
             Some(mh) => mh,
             None => return Vec::new(),
         };
-        let dex = match ctx.dex_file(mh.dex_idx) {
-            Some(d) => d,
-            None => return Vec::new(),
-        };
-        let method = match get_method_ref(dex, mh) {
-            Some(m) => m,
+        let (_dex, method) = match ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual) {
+            Some(pair) => pair,
             None => return Vec::new(),
         };
         match &method.code {
@@ -208,8 +188,7 @@ pub fn index_of_first_method_call(
 ) -> Option<u32> {
     with_ctx(|ctx| {
         let mh = with_handles(|h| h.get_method(m))?;
-        let dex = ctx.dex_file(mh.dex_idx)?;
-        let method = get_method_ref(dex, mh)?;
+        let (dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
         method.code.as_ref().and_then(|c| {
             c.instructions
                 .iter()
@@ -237,8 +216,7 @@ pub fn index_of_first_field_access(
 ) -> Option<u32> {
     with_ctx(|ctx| {
         let mh = with_handles(|h| h.get_method(m))?;
-        let dex = ctx.dex_file(mh.dex_idx)?;
-        let method = get_method_ref(dex, mh)?;
+        let (dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
         let target_op = if op >= 0 { Some(op as u16) } else { None };
         method.code.as_ref().and_then(|c| {
             c.instructions
@@ -275,8 +253,7 @@ pub fn index_of_first_field_access(
 pub fn index_of_opcode_sequence(m: u32, opcodes: Vec<i32>, start: u32) -> Option<u32> {
     with_ctx(|ctx| {
         let mh = with_handles(|h| h.get_method(m))?;
-        let dex = ctx.dex_file(mh.dex_idx)?;
-        let method = get_method_ref(dex, mh)?;
+        let (_dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
         method.code.as_ref().and_then(|c| {
             let insns = &c.instructions;
             if opcodes.is_empty() || insns.len() < opcodes.len() {
@@ -305,64 +282,25 @@ pub fn index_of_opcode_sequence(m: u32, opcodes: Vec<i32>, start: u32) -> Option
 
 #[export]
 pub fn find_instructions_by_literal(literal: i64) -> Vec<InstructionHit> {
-    let locations: Vec<(usize, usize, usize, bool, usize)> = with_ctx(|ctx| {
-        let hits = ctx.find_instructions_by_literal(literal);
-        hits.iter()
-            .filter_map(|loc| {
-                let (actual, is_virtual) =
-                    scan_location(ctx, loc.dex_idx, loc.class_idx, loc.method_idx)?;
-                Some((loc.dex_idx, loc.class_idx, actual, is_virtual, loc.insn_idx))
-            })
-            .collect()
-    });
-    locations
+    with_ctx(|ctx| ctx.find_instructions_by_literal(literal))
         .into_iter()
-        .map(|(di, ci, mi, iv, ii)| InstructionHit {
-            method: with_handles(|h| h.alloc_method(di, ci, mi, iv)),
-            index: ii as u32,
-        })
+        .map(instruction_hit)
         .collect()
 }
 
 #[export]
 pub fn find_instructions_by_string(s: String) -> Vec<InstructionHit> {
-    let locations: Vec<(usize, usize, usize, bool, usize)> = with_ctx(|ctx| {
-        let hits = ctx.find_instructions_by_string(&s);
-        hits.iter()
-            .filter_map(|loc| {
-                let (actual, is_virtual) =
-                    scan_location(ctx, loc.dex_idx, loc.class_idx, loc.method_idx)?;
-                Some((loc.dex_idx, loc.class_idx, actual, is_virtual, loc.insn_idx))
-            })
-            .collect()
-    });
-    locations
+    with_ctx(|ctx| ctx.find_instructions_by_string(&s))
         .into_iter()
-        .map(|(di, ci, mi, iv, ii)| InstructionHit {
-            method: with_handles(|h| h.alloc_method(di, ci, mi, iv)),
-            index: ii as u32,
-        })
+        .map(instruction_hit)
         .collect()
 }
 
 #[export]
 pub fn find_instructions_by_string_contains(substring: String) -> Vec<InstructionHit> {
-    let locations: Vec<(usize, usize, usize, bool, usize)> = with_ctx(|ctx| {
-        let hits = ctx.find_instructions_by_string_contains(&substring);
-        hits.iter()
-            .filter_map(|loc| {
-                let (actual, is_virtual) =
-                    scan_location(ctx, loc.dex_idx, loc.class_idx, loc.method_idx)?;
-                Some((loc.dex_idx, loc.class_idx, actual, is_virtual, loc.insn_idx))
-            })
-            .collect()
-    });
-    locations
+    with_ctx(|ctx| ctx.find_instructions_by_string_contains(&substring))
         .into_iter()
-        .map(|(di, ci, mi, iv, ii)| InstructionHit {
-            method: with_handles(|h| h.alloc_method(di, ci, mi, iv)),
-            index: ii as u32,
-        })
+        .map(instruction_hit)
         .collect()
 }
 
@@ -375,29 +313,12 @@ pub fn find_method_call_sites(
         return Vec::new();
     }
     let targets: Vec<(String, String)> = class_names.into_iter().zip(method_names).collect();
-    let locations: Vec<(usize, usize, usize, bool, usize, usize)> = with_ctx(|ctx| {
-        let hits = ctx.find_method_call_sites(&targets);
-        hits.iter()
-            .filter_map(|hit| {
-                let (actual, is_virtual) =
-                    scan_location(ctx, hit.loc.dex_idx, hit.loc.class_idx, hit.loc.method_idx)?;
-                Some((
-                    hit.loc.dex_idx,
-                    hit.loc.class_idx,
-                    actual,
-                    is_virtual,
-                    hit.loc.insn_idx,
-                    hit.target_index,
-                ))
-            })
-            .collect()
-    });
-    locations
+    with_ctx(|ctx| ctx.find_method_call_sites(&targets))
         .into_iter()
-        .map(|(di, ci, mi, iv, ii, ti)| MethodCallSiteResult {
-            method: with_handles(|h| h.alloc_method(di, ci, mi, iv)),
-            index: ii as u32,
-            target_index: ti as u32,
+        .map(|hit: MethodCallSiteHit| MethodCallSiteResult {
+            method: alloc_method(hit.loc),
+            index: hit.loc.insn_idx as u32,
+            target_index: hit.target_index as u32,
         })
         .collect()
 }
@@ -411,31 +332,25 @@ pub fn find_field_access_sites(
         return Vec::new();
     }
     let targets: Vec<(String, String)> = class_names.into_iter().zip(field_names).collect();
-    let locations: Vec<(usize, usize, usize, bool, usize, usize)> = with_ctx(|ctx| {
-        let hits = ctx.find_field_access_sites(&targets);
-        hits.iter()
-            .filter_map(|hit| {
-                let (actual, is_virtual) =
-                    scan_location(ctx, hit.loc.dex_idx, hit.loc.class_idx, hit.loc.method_idx)?;
-                Some((
-                    hit.loc.dex_idx,
-                    hit.loc.class_idx,
-                    actual,
-                    is_virtual,
-                    hit.loc.insn_idx,
-                    hit.target_index,
-                ))
-            })
-            .collect()
-    });
-    locations
+    with_ctx(|ctx| ctx.find_field_access_sites(&targets))
         .into_iter()
-        .map(|(di, ci, mi, iv, ii, ti)| FieldAccessSiteResult {
-            method: with_handles(|h| h.alloc_method(di, ci, mi, iv)),
-            index: ii as u32,
-            target_index: ti as u32,
+        .map(|hit: FieldAccessSiteHit| FieldAccessSiteResult {
+            method: alloc_method(hit.loc),
+            index: hit.loc.insn_idx as u32,
+            target_index: hit.target_index as u32,
         })
         .collect()
+}
+
+fn alloc_method(loc: InstructionLocation) -> u32 {
+    with_handles(|h| h.alloc_method(loc.dex_idx, loc.class_idx, loc.method_pos, loc.is_virtual))
+}
+
+fn instruction_hit(loc: InstructionLocation) -> InstructionHit {
+    InstructionHit {
+        method: alloc_method(loc),
+        index: loc.insn_idx as u32,
+    }
 }
 
 #[export]
@@ -449,30 +364,12 @@ pub fn find_instructions_by_resource_id(res_type: String, res_name: String) -> V
 
 #[export]
 pub fn all_method_handles() -> Vec<u32> {
-    with_ctx(|ctx| {
-        let mut handles = Vec::new();
-        for dex_idx in 0..ctx.dex_count() {
-            let dex = match ctx.dex_file(dex_idx) {
-                Some(d) => d,
-                None => continue,
-            };
-            for (class_idx, class) in dex.classes.iter().enumerate() {
-                if let Some(data) = &class.class_data {
-                    for (mi, _) in data.direct_methods.iter().enumerate() {
-                        handles.push(with_handles(|h| {
-                            h.alloc_method(dex_idx, class_idx, mi, false)
-                        }));
-                    }
-                    for (mi, _) in data.virtual_methods.iter().enumerate() {
-                        handles.push(with_handles(|h| {
-                            h.alloc_method(dex_idx, class_idx, mi, true)
-                        }));
-                    }
-                }
-            }
-        }
-        handles
-    })
+    with_ctx(|ctx| ctx.all_methods())
+        .into_iter()
+        .map(|loc| {
+            with_handles(|h| h.alloc_method(loc.dex_idx, loc.class_idx, loc.method_idx, loc.is_virtual))
+        })
+        .collect()
 }
 
 #[export]
@@ -493,8 +390,7 @@ pub fn find_instructions_by_invoke(
 pub fn instruction_string_ref(m: u32, index: u32) -> Option<String> {
     with_ctx(|ctx| {
         let mh = with_handles(|h| h.get_method(m))?;
-        let dex = ctx.dex_file(mh.dex_idx)?;
-        let method = get_method_ref(dex, mh)?;
+        let (dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
         method.code.as_ref().and_then(|c| {
             c.instructions
                 .get(index as usize)
@@ -507,8 +403,7 @@ pub fn instruction_string_ref(m: u32, index: u32) -> Option<String> {
 pub fn instruction_method_ref(m: u32, index: u32) -> Option<MethodRef> {
     with_ctx(|ctx| {
         let mh = with_handles(|h| h.get_method(m))?;
-        let dex = ctx.dex_file(mh.dex_idx)?;
-        let method = get_method_ref(dex, mh)?;
+        let (dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
         method.code.as_ref().and_then(|c| {
             c.instructions.get(index as usize).and_then(|insn| {
                 insn.method_ref().map(|method_idx| {
@@ -537,8 +432,7 @@ pub fn instruction_method_ref(m: u32, index: u32) -> Option<MethodRef> {
 pub fn instruction_field_ref(m: u32, index: u32) -> Option<crate::kotlin::types::FieldRef> {
     with_ctx(|ctx| {
         let mh = with_handles(|h| h.get_method(m))?;
-        let dex = ctx.dex_file(mh.dex_idx)?;
-        let method = get_method_ref(dex, mh)?;
+        let (dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
         method.code.as_ref().and_then(|c| {
             c.instructions.get(index as usize).and_then(|insn| {
                 insn.field_ref().map(|field_idx| {
@@ -558,8 +452,7 @@ pub fn instruction_field_ref(m: u32, index: u32) -> Option<crate::kotlin::types:
 pub fn instruction_type_ref(m: u32, index: u32) -> Option<String> {
     with_ctx(|ctx| {
         let mh = with_handles(|h| h.get_method(m))?;
-        let dex = ctx.dex_file(mh.dex_idx)?;
-        let method = get_method_ref(dex, mh)?;
+        let (dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
         method.code.as_ref().and_then(|c| {
             c.instructions.get(index as usize).and_then(|insn| {
                 insn.type_ref()

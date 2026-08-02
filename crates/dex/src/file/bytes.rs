@@ -7,7 +7,6 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub enum DexBytes {
     Owned(Arc<Vec<u8>>),
-    #[cfg(feature = "mmap")]
     Mapped(Arc<memmap2::Mmap>),
 }
 
@@ -20,7 +19,6 @@ impl DexBytes {
         Self::Owned(Arc::new(buf))
     }
 
-    #[cfg(feature = "mmap")]
     pub fn from_mmap(mmap: Arc<memmap2::Mmap>) -> Self {
         Self::Mapped(mmap)
     }
@@ -28,7 +26,6 @@ impl DexBytes {
     pub fn as_bytes(&self) -> &[u8] {
         match self {
             Self::Owned(b) => b.as_slice(),
-            #[cfg(feature = "mmap")]
             Self::Mapped(m) => m.as_ref(),
         }
     }
@@ -52,7 +49,6 @@ impl std::fmt::Debug for DexBytes {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Owned(b) => f.debug_tuple("Owned").field(&b.len()).finish(),
-            #[cfg(feature = "mmap")]
             Self::Mapped(m) => f.debug_tuple("Mapped").field(&m.len()).finish(),
         }
     }

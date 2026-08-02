@@ -139,13 +139,15 @@ fn bench_search(c: &mut Criterion) {
     let dex = reseam_dex::parse(buf, default_opts()).unwrap();
     let mut group = c.benchmark_group("search");
     group.bench_function("find_method_by_name", |b| {
-        b.iter(|| {
-            dex.find_method_by(|method_id, _class, _em| dex.string(method_id.name) == "onCreate")
-        });
+        b.iter(|| dex.find_method_by_name("onCreate").unwrap());
     });
     group.bench_function("find_all_init_methods", |b| {
         b.iter(|| {
-            dex.find_methods_by(|method_id, _class, _em| dex.string(method_id.name) == "<init>")
+            dex.scan_methods_collect(|view| {
+                let name = dex.string(dex.methods[view.method.0 as usize].name);
+                Ok((name == "<init>").then(|| view.hit()))
+            })
+            .unwrap()
         });
     });
     group.bench_function("find_class", |b| {
@@ -156,7 +158,7 @@ fn bench_search(c: &mut Criterion) {
             InstructionPattern::Opcode(OpcodeMatcher::Const),
             InstructionPattern::Opcode(OpcodeMatcher::Return),
         ];
-        b.iter(|| dex.find_methods_with_opcodes(&pattern));
+        b.iter(|| dex.find_methods_with_opcodes(&pattern).unwrap());
     });
     group.bench_function("find_methods_wildcard_pattern", |b| {
         let pattern = [
@@ -164,7 +166,7 @@ fn bench_search(c: &mut Criterion) {
             InstructionPattern::Any,
             InstructionPattern::Opcode(OpcodeMatcher::ReturnObject),
         ];
-        b.iter(|| dex.find_methods_with_opcodes(&pattern));
+        b.iter(|| dex.find_methods_with_opcodes(&pattern).unwrap());
     });
     group.finish();
 }

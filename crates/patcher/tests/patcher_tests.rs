@@ -262,6 +262,15 @@ fn kotlin_bundle_executes_against_runtime_api() {
     let results =
         engine::apply_patches_with_plan(&mut ctx, &bundle.patches, &plan).expect("apply bundle");
 
+    let heap = reseam_patcher::jvm_heap_stats().expect("jvm heap stats after patch run");
+    assert!(heap.committed_bytes > 0, "committed heap should be nonzero");
+    assert!(
+        heap.used_bytes <= heap.committed_bytes,
+        "used {} exceeds committed {}",
+        heap.used_bytes,
+        heap.committed_bytes
+    );
+
     assert_eq!(results.len(), 4);
     let statuses = results
         .iter()

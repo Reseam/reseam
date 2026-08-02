@@ -16,6 +16,26 @@ pub use crate::patch::{Compatibility, CompatibilitySpec, Patch, PatchId, PatchSp
 pub use reseam_apk;
 pub use reseam_apk::reseam_dex;
 
+/// Java-heap usage of the in-process patch JVM. Part of this process's RSS, so
+/// it must be subtracted to attribute memory to the native side.
+#[derive(Debug, Clone, Copy)]
+pub struct JvmHeapStats {
+    pub used_bytes: u64,
+    pub committed_bytes: u64,
+    pub max_bytes: u64,
+}
+
+/// Java-heap stats of the running patch JVM, or `None` if no JVM is live.
+#[cfg(feature = "kotlin")]
+pub fn jvm_heap_stats() -> Option<JvmHeapStats> {
+    kotlin::jvm_heap_stats()
+}
+
+#[cfg(not(feature = "kotlin"))]
+pub fn jvm_heap_stats() -> Option<JvmHeapStats> {
+    None
+}
+
 pub mod prelude {
     pub use crate::context::PatchContext;
     pub use crate::engine::{ExecutionPlan, PatchSelection, ProgressEvent, ResolvedPatchPlan};

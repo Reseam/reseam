@@ -385,7 +385,7 @@ fn sort_roundtrip_after_code_modification_preserves_refs() {
                                 },
                                 reseam_dex::Instruction::InvokeStatic {
                                     method: ext_method,
-                                    args: smallvec::smallvec![0],
+                                    args: [0u8].into_iter().collect(),
                                 },
                             ],
                         )

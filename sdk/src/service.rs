@@ -16,7 +16,9 @@ use crate::dto::{
     ArtifactKind, PatchArtifact, PatchOutcome, PatchOutput, PatchRequest, PatchRunStatus, RunEvent,
 };
 use crate::inspect::{load_bundle_with_trust, open_patch_apk};
-use crate::metrics::{PatchExecutionReport, PatchMetrics, PatchPhase, PatchProfiler};
+use crate::metrics::{
+    ApplyDiagnostics, PatchExecutionReport, PatchMetrics, PatchPhase, PatchProfiler,
+};
 use crate::selection::compile_patch_selection;
 
 pub fn patch<F>(request: &PatchRequest, mut emit: F) -> Result<PatchOutcome>
@@ -123,6 +125,7 @@ where
             )
         })
         .context("patch application failed")?;
+    profiler.set_apply_diagnostics(capture_apply_diagnostics(&ctx));
     drop(ctx);
 
     let failures = results
@@ -241,6 +244,28 @@ fn concise_failure_reason(reason: &str) -> String {
     match details {
         Some(details) => format!("{first}; {details}"),
         None => first,
+    }
+}
+
+fn capture_apply_diagnostics(ctx: &PatchContext) -> ApplyDiagnostics {
+    let breakdown = ctx.apk().dex().memory_breakdown();
+    let stats = breakdown.materialized;
+    let jvm = reseam_patcher::jvm_heap_stats();
+    ApplyDiagnostics {
+        rss_bytes: PatchProfiler::current_rss_bytes(),
+        total_classes: stats.total_classes,
+        resolved_classes: stats.resolved_classes,
+        materialized_methods: stats.methods,
+        materialized_instructions: stats.instructions,
+        estimated_ir_bytes: stats.estimated_ir_bytes(),
+        raw_buffer_bytes: breakdown.raw_buffer_bytes,
+        string_pool_bytes: breakdown.string_pool_bytes,
+        string_count: breakdown.string_count,
+        id_table_bytes: breakdown.id_table_bytes,
+        class_def_bytes: breakdown.class_def_bytes,
+        jvm_used_bytes: jvm.map(|j| j.used_bytes),
+        jvm_committed_bytes: jvm.map(|j| j.committed_bytes),
+        jvm_max_bytes: jvm.map(|j| j.max_bytes),
     }
 }
 

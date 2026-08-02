@@ -79,16 +79,16 @@ pub fn from_apk(apk_bytes: &[u8], opts: ParseOptions) -> Result<MultiDexContaine
         .collect();
     dex_names.sort_by_key(|a| dex_sort_key(a));
 
-    let mut dex_files = Vec::with_capacity(dex_names.len());
+    let mut buffers = Vec::with_capacity(dex_names.len());
     for name in &dex_names {
         let mut entry = archive.by_name(name)?;
         let mut buf = Vec::new();
         entry.read_to_end(&mut buf)?;
-        dex_files.push(reseam_dex::parse_owned(buf, opts.clone())?);
+        buffers.push(buf);
     }
 
     let mut container = MultiDexContainer::new();
-    for dex in dex_files {
+    for dex in parse_dex_buffers(buffers, &opts)? {
         container.add_dex(dex);
     }
     debug!(
@@ -104,11 +104,30 @@ fn append_reader_dex<R: Read + Seek>(
     opts: &ParseOptions,
 ) -> Result<()> {
     let dex_names = reader.dex_entry_names();
+    let mut buffers = Vec::with_capacity(dex_names.len());
     for name in dex_names {
-        let buffer = reader.read_entry(&name)?;
-        container.add_dex(reseam_dex::parse_owned(buffer, opts.clone())?);
+        buffers.push(reader.read_entry(&name)?);
+    }
+    for dex in parse_dex_buffers(buffers, opts)? {
+        container.add_dex(dex);
     }
     Ok(())
+}
+
+/// Parse extracted DEX buffers in parallel.
+///
+/// Order is preserved: `result[i]` corresponds to `buffers[i]`.
+fn parse_dex_buffers(
+    buffers: Vec<Vec<u8>>,
+    opts: &ParseOptions,
+) -> Result<Vec<reseam_dex::DexFile>> {
+    use rayon::prelude::*;
+
+    let parsed: std::result::Result<Vec<_>, _> = buffers
+        .into_par_iter()
+        .map(|buf| reseam_dex::parse_owned(buf, opts.clone()))
+        .collect();
+    Ok(parsed?)
 }
 
 /// Sort key for DEX entry names. Android convention:

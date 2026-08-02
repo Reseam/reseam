@@ -221,24 +221,6 @@ pub(crate) fn get_method_mut(dex: &mut DexFile, mh: MethodHandle) -> Option<&mut
     result
 }
 
-pub(crate) fn scan_location(
-    ctx: &mut PatchContext<'_>,
-    dex_idx: usize,
-    class_idx: usize,
-    method_idx: usize,
-) -> Option<(usize, bool)> {
-    let dex = ctx.dex_file(dex_idx)?;
-    let class = dex.classes.get(class_idx)?;
-    let data = class.class_data.as_ref()?;
-    let is_virtual = method_idx >= data.direct_methods.len();
-    let actual = if is_virtual {
-        method_idx - data.direct_methods.len()
-    } else {
-        method_idx
-    };
-    Some((actual, is_virtual))
-}
-
 fn jvm_err(msg: impl std::fmt::Display) -> PatcherError {
     PatcherError::Jvm {
         reason: msg.to_string(),
@@ -333,6 +315,40 @@ fn get_or_init_jvm() -> Result<&'static JavaVM> {
 #[cfg(target_os = "android")]
 fn get_or_init_jvm() -> Result<&'static JavaVM> {
     android_host::java_vm().map_err(jvm_err)
+}
+
+/// Peeks the already-running JVM without initializing one.
+#[cfg(not(target_os = "android"))]
+fn current_jvm() -> Option<&'static JavaVM> {
+    JVM.get()?.as_ref().ok()
+}
+
+#[cfg(target_os = "android")]
+fn current_jvm() -> Option<&'static JavaVM> {
+    android_host::java_vm().ok()
+}
+
+pub(crate) fn jvm_heap_stats() -> Option<crate::JvmHeapStats> {
+    let vm = current_jvm()?;
+    let mut env = vm.attach_current_thread().ok()?;
+    let runtime = env
+        .call_static_method(
+            "java/lang/Runtime",
+            "getRuntime",
+            "()Ljava/lang/Runtime;",
+            &[],
+        )
+        .ok()?
+        .l()
+        .ok()?;
+    let total = env.call_method(&runtime, "totalMemory", "()J", &[]).ok()?.j().ok()? as u64;
+    let free = env.call_method(&runtime, "freeMemory", "()J", &[]).ok()?.j().ok()? as u64;
+    let max = env.call_method(&runtime, "maxMemory", "()J", &[]).ok()?.j().ok()? as u64;
+    Some(crate::JvmHeapStats {
+        used_bytes: total.saturating_sub(free),
+        committed_bytes: total,
+        max_bytes: max,
+    })
 }
 
 #[cfg(not(target_os = "android"))]

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use anyhow::{bail, Result};
-use reseam_sdk::{measure_patch, PatchMetrics, PatchPhase, PatchPhaseMetrics};
+use reseam_sdk::{ApplyDiagnostics, measure_patch, PatchMetrics, PatchPhase, PatchPhaseMetrics};
 use serde::Serialize;
 
 use crate::app::PerfCommand;
@@ -287,6 +287,82 @@ fn print_report(report: &PerfReport) {
                     .as_ref()
                     .map(|stats| format_bytes(stats.max))
                     .unwrap_or_else(|| "n/a".to_string()),
+            );
+        }
+    }
+
+    if let Some(diagnostics) = report
+        .iterations
+        .iter()
+        .rev()
+        .find(|iteration| iteration.success)
+        .and_then(|iteration| iteration.metrics.apply_diagnostics.as_ref())
+    {
+        print_apply_diagnostics(diagnostics);
+    }
+}
+
+fn print_apply_diagnostics(d: &ApplyDiagnostics) {
+    println!();
+    println!("apply_patches memory attribution (sampled at apply-phase peak):");
+    println!(
+        "  materialized classes:      {} / {}",
+        d.resolved_classes, d.total_classes
+    );
+    println!("  materialized methods:      {}", d.materialized_methods);
+    println!(
+        "  materialized instructions: {}",
+        d.materialized_instructions
+    );
+    println!();
+    println!("  native heap attribution (all lower bounds):");
+    println!(
+        "    materialized IR:         {}",
+        format_bytes(d.estimated_ir_bytes)
+    );
+    println!(
+        "    raw dex buffers:         {}",
+        format_bytes(d.raw_buffer_bytes)
+    );
+    println!(
+        "    string pool:             {} ({} strings)",
+        format_bytes(d.string_pool_bytes),
+        d.string_count
+    );
+    println!(
+        "    id tables:               {}",
+        format_bytes(d.id_table_bytes)
+    );
+    println!(
+        "    class-def structs:       {}",
+        format_bytes(d.class_def_bytes)
+    );
+    let accounted = d.estimated_ir_bytes
+        + d.raw_buffer_bytes
+        + d.string_pool_bytes
+        + d.id_table_bytes
+        + d.class_def_bytes;
+    println!("    sum accounted:           {}", format_bytes(accounted));
+    println!();
+    match (d.jvm_used_bytes, d.jvm_committed_bytes) {
+        (Some(used), Some(committed)) => println!(
+            "  jvm heap:                  used={} committed={} max={}",
+            format_bytes(used),
+            format_bytes(committed),
+            d.jvm_max_bytes
+                .map(format_bytes)
+                .unwrap_or_else(|| "n/a".to_string()),
+        ),
+        _ => println!("  jvm heap:                  n/a (no live JVM)"),
+    }
+    if let Some(rss) = d.rss_bytes {
+        println!("  rss at apply end:          {}", format_bytes(rss));
+        if let Some(committed) = d.jvm_committed_bytes {
+            let native = rss.saturating_sub(committed);
+            println!("  -> native (rss - jvm):     {}", format_bytes(native));
+            println!(
+                "  -> unaccounted (frag/etc): {}",
+                format_bytes(native.saturating_sub(accounted))
             );
         }
     }

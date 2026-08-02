@@ -37,7 +37,7 @@ fn sign_sections_to_writer<W: Write>(
 ) -> Result<()> {
     let target_len = target_signing_block_len(key)?;
     let _new_cd_offset = checked_cd_offset(sections.contents.len(), target_len)?;
-    let v2_block = build_v2_block_from_sections(&sections, key)?;
+    let v2_block = build_v2_block_from_sections(sections, key)?;
     let signing_block =
         signing_block::build_signing_block_with_padding(&[(BLOCK_ID_V2, v2_block)], target_len)?;
     debug!(
@@ -91,10 +91,9 @@ pub(crate) fn compute_content_digest(sections: &ApkSections<'_>) -> Result<Vec<u
     }
     patched_eocd[16..20].copy_from_slice(&cd_offset_for_digest.to_le_bytes());
 
-    let mut chunk_digests = Vec::new();
-    digest_section_chunks(sections.contents, &mut chunk_digests);
-    digest_section_chunks(sections.central_dir, &mut chunk_digests);
-    digest_section_chunks(&patched_eocd, &mut chunk_digests);
+    let mut chunk_digests = digest_section_chunks(sections.contents);
+    chunk_digests.extend(digest_section_chunks(sections.central_dir));
+    chunk_digests.extend(digest_section_chunks(&patched_eocd));
 
     let mut top_input = vec![0x5a];
     top_input.extend_from_slice(&(chunk_digests.len() as u32).to_le_bytes());
@@ -151,20 +150,22 @@ fn target_signing_block_len(key: &SigningKey) -> Result<usize> {
     Ok(signing_block::signing_block_len(&[max_block_len(key)?, 0]))
 }
 
-fn digest_section_chunks(data: &[u8], chunk_digests: &mut Vec<Vec<u8>>) {
-    let mut offset = 0;
-    while offset < data.len() {
-        let end = (offset + CHUNK_SIZE).min(data.len());
-        let chunk = &data[offset..end];
+/// Digest a section's 1 MB chunks in parallel; chunks are independent per the
+/// v2 scheme, and order is preserved.
+fn digest_section_chunks(data: &[u8]) -> Vec<[u8; DIGEST_LEN]> {
+    use rayon::prelude::*;
 
-        let mut ctx = digest::Context::new(&SHA256);
-        ctx.update(&[0xa5]);
-        ctx.update(&(chunk.len() as u32).to_le_bytes());
-        ctx.update(chunk);
-        chunk_digests.push(ctx.finish().as_ref().to_vec());
-
-        offset = end;
-    }
+    data.par_chunks(CHUNK_SIZE)
+        .map(|chunk| {
+            let mut ctx = digest::Context::new(&SHA256);
+            ctx.update(&[0xa5]);
+            ctx.update(&(chunk.len() as u32).to_le_bytes());
+            ctx.update(chunk);
+            let mut out = [0u8; DIGEST_LEN];
+            out.copy_from_slice(ctx.finish().as_ref());
+            out
+        })
+        .collect()
 }
 
 fn build_signed_data(digest: &[u8], certificate_der: &[u8]) -> Vec<u8> {

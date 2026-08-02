@@ -97,6 +97,7 @@ fn parse_single_with_raw(
     let lazy = opts.lazy;
     let mut dex = DexFile::new(header.clone());
     dex.raw = raw;
+    dex.parse_options = opts.clone();
 
     if header.string_ids_size > 0 {
         let string_offsets = read_string_ids(buf, header.string_ids_off, header.string_ids_size)?;

@@ -352,7 +352,9 @@ fn decode_nop_or_payload(buf: &[u8], unit_off: usize, unit0: u16) -> Result<Deco
                 targets.push(i32_at(buf, unit_off + 8 + i * 4));
             }
             DecodedInstruction::new(
-                Instruction::PackedSwitchPayload { first_key, targets },
+                Instruction::PackedSwitchPayload(Box::new(
+                    crate::types::instruction::PackedSwitchData { first_key, targets },
+                )),
                 1 + 1 + 2 + size * 2,
             )
         }
@@ -371,7 +373,9 @@ fn decode_nop_or_payload(buf: &[u8], unit_off: usize, unit0: u16) -> Result<Deco
                 keys_and_targets.push((key, target));
             }
             DecodedInstruction::new(
-                Instruction::SparseSwitchPayload { keys_and_targets },
+                Instruction::SparseSwitchPayload(Box::new(
+                    crate::types::instruction::SparseSwitchData { keys_and_targets },
+                )),
                 1 + 1 + size * 2 + size * 2,
             )
         }
@@ -388,10 +392,12 @@ fn decode_nop_or_payload(buf: &[u8], unit_off: usize, unit0: u16) -> Result<Deco
             require_len(buf, unit_off, 8 + data_bytes, "fill-array-data payload")?;
             let data = buf[unit_off + 8..unit_off + 8 + data_bytes].to_vec();
             DecodedInstruction::new(
-                Instruction::FillArrayDataPayload {
-                    element_width,
-                    data,
-                },
+                Instruction::FillArrayDataPayload(Box::new(
+                    crate::types::instruction::FillArrayPayloadData {
+                        element_width,
+                        data,
+                    },
+                )),
                 (8 + data_bytes).div_ceil(2),
             )
         }

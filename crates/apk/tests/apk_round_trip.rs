@@ -221,22 +221,28 @@ fn test_fingerprint_search() {
     let (_, buf) = &dex_files[0];
     let dex = reseam_dex::parse(buf, ParseOptions::default()).expect("Failed to parse");
 
-    let init_methods =
-        dex.find_methods_by(|method_id, _class, _em| dex.string(method_id.name) == "<init>");
+    let init_methods = dex
+        .scan_methods_collect(|view| {
+            let name = dex.string(dex.methods[view.method.0 as usize].name);
+            Ok((name == "<init>").then(|| view.hit()))
+        })
+        .expect("scan init methods");
     assert!(!init_methods.is_empty());
 
     let pattern = [
         InstructionPattern::Opcode(OpcodeMatcher::Const),
         InstructionPattern::Opcode(OpcodeMatcher::Return),
     ];
-    let matches = dex.find_methods_with_opcodes(&pattern);
+    let matches = dex.find_methods_with_opcodes(&pattern).expect("scan opcodes");
     eprintln!("Found {} methods matching [Const, Return]", matches.len());
 
     let pattern2 = [
         InstructionPattern::Any,
         InstructionPattern::Opcode(OpcodeMatcher::ReturnVoid),
     ];
-    let matches2 = dex.find_methods_with_opcodes(&pattern2);
+    let matches2 = dex
+        .find_methods_with_opcodes(&pattern2)
+        .expect("scan opcodes");
     assert!(!matches2.is_empty());
 }
 

@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::types::instruction::Instruction;
+use crate::types::instruction::{Instruction, RegList};
 use crate::types::method_handle::CallSiteIdx;
 use crate::types::{MethodIdx, ProtoIdx};
-use smallvec::SmallVec;
 
 use super::format::u16_at;
 
@@ -12,14 +11,14 @@ fn hi8(unit: u16) -> u8 {
     (unit >> 8) as u8
 }
 
-pub(crate) fn decode_35c_args(count: u8, reg_unit: u16, unit0: u16) -> SmallVec<[u8; 5]> {
+pub(crate) fn decode_35c_args(count: u8, reg_unit: u16, unit0: u16) -> RegList {
     let c = (reg_unit & 0xF) as u8;
     let d = ((reg_unit >> 4) & 0xF) as u8;
     let e = ((reg_unit >> 8) & 0xF) as u8;
     let f = ((reg_unit >> 12) & 0xF) as u8;
     let g = ((unit0 >> 8) & 0xF) as u8;
 
-    let mut args = SmallVec::new();
+    let mut args = RegList::new();
     let regs = [c, d, e, f, g];
     for reg in regs.iter().take(count as usize).copied() {
         args.push(reg);

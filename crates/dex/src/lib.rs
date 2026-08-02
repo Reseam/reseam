@@ -36,10 +36,10 @@ pub mod util;
 pub mod write;
 
 pub use error::{DexError, Result};
-pub use file::container::MultiDexContainer;
+pub use file::container::{MaterializationStats, MemoryBreakdown, MultiDexContainer};
 pub use file::{
-    DexFile, Fingerprint, FingerprintBuilder, FingerprintMatch, InstructionPattern, MethodMatch,
-    OpcodeMatcher,
+    DexFile, Fingerprint, FingerprintBuilder, FingerprintHit, InstructionHit, InstructionPattern,
+    InstructionSite, MemberCounts, MethodHit, MethodView, OpcodeMatcher,
 };
 pub use read::parse;
 pub use read::parse_container;
@@ -55,7 +55,9 @@ pub use types::debug::DebugInfo;
 pub use types::encoded_value::EncodedValue;
 pub use types::header::{DexHeader, DexVersion, ParseOptions};
 pub use types::hidden_api::{ClassHiddenApiFlags, HiddenApiData, HiddenApiFlag};
-pub use types::instruction::Instruction;
+pub use types::instruction::{
+    FillArrayPayloadData, Instruction, PackedSwitchData, RegList, SparseSwitchData,
+};
 pub use types::label::{CodeBuilder, Label};
 pub use types::map::MapItem;
 pub use types::method_handle::{CallSiteIdx, CallSiteItem, MethodHandle, MethodHandleIdx};

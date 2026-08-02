@@ -145,15 +145,29 @@ impl ApkFile {
         &self.dex
     }
 
-    /// Resolve the target DEX's lazy class data, then return it immutably.
-    pub fn resolved_dex(&mut self, index: usize) -> Result<Option<&reseam_dex::DexFile>> {
-        Ok(self.dex.dex_resolved(index)?)
+    pub fn resolve_dex_class(
+        &mut self,
+        index: usize,
+        class_idx: usize,
+    ) -> Result<Option<&reseam_dex::DexFile>> {
+        Ok(self.dex.dex_class_resolved(index, class_idx)?)
     }
 
-    /// Resolve the target DEX's lazy class data, then return it mutably.
-    pub fn resolved_dex_mut(&mut self, index: usize) -> Result<Option<&mut reseam_dex::DexFile>> {
+    pub fn resolve_dex_class_mut(
+        &mut self,
+        index: usize,
+        class_idx: usize,
+    ) -> Result<Option<&mut reseam_dex::DexFile>> {
         self.mark_dex_modified(index);
-        Ok(self.dex.dex_resolved_mut(index)?)
+        Ok(self.dex.dex_class_resolved_mut(index, class_idx)?)
+    }
+
+    /// Mutable access to one DEX without resolving deferred class data. Marks
+    /// the DEX modified. Used for whole-DEX operations (interning, adding
+    /// classes) that do not read existing class data.
+    pub fn dex_mut_at(&mut self, index: usize) -> Option<&mut reseam_dex::DexFile> {
+        self.mark_dex_modified(index);
+        self.dex.dex_mut(index)
     }
 
     /// Get tracked mutable access to the unified DEX container.
@@ -426,11 +440,6 @@ impl<'a> ApkDexMut<'a> {
     pub fn dex_mut(&mut self, index: usize) -> Option<&mut DexFile> {
         self.apk.mark_dex_modified(index);
         self.apk.dex.dex_mut(index)
-    }
-
-    pub fn dex_resolved_mut(&mut self, index: usize) -> Result<Option<&mut DexFile>> {
-        self.apk.mark_dex_modified(index);
-        Ok(self.apk.dex.dex_resolved_mut(index)?)
     }
 
     pub fn add_dex(&mut self, dex: DexFile) {

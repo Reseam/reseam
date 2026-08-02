@@ -34,6 +34,7 @@ adler       = "1"
 rayon       = "1.10"
 memmap2     = "0.9"
 zip         = "2"
+flate2      = { version = "1", features = ["zlib-rs"] }
 quick-xml   = "0.37"
 ring        = "0.17"
 ed25519-dalek = { version = "2", default-features = false, features = ["std"] }

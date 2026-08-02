@@ -1357,24 +1357,17 @@ pub fn dex_to_kotlin(insn: &reseam_dex::Instruction, dex: &DexFile) -> Instructi
         }),
 
         // Payload data
-        D::PackedSwitchPayload { first_key, targets } => {
-            Instruction::PackedSwitchData(PackedSwitchInsn {
-                first_key: *first_key,
-                targets: targets.clone(),
-            })
-        }
-        D::SparseSwitchPayload { keys_and_targets } => {
-            Instruction::SparseSwitchData(SparseSwitchInsn {
-                keys: keys_and_targets.iter().map(|(k, _)| *k).collect(),
-                targets: keys_and_targets.iter().map(|(_, t)| *t).collect(),
-            })
-        }
-        D::FillArrayDataPayload {
-            element_width,
-            data,
-        } => Instruction::FillArrayData(FillArrayInsn {
-            element_width: *element_width,
-            data: data.clone(),
+        D::PackedSwitchPayload(p) => Instruction::PackedSwitchData(PackedSwitchInsn {
+            first_key: p.first_key,
+            targets: p.targets.clone(),
+        }),
+        D::SparseSwitchPayload(p) => Instruction::SparseSwitchData(SparseSwitchInsn {
+            keys: p.keys_and_targets.iter().map(|(k, _)| *k).collect(),
+            targets: p.keys_and_targets.iter().map(|(_, t)| *t).collect(),
+        }),
+        D::FillArrayDataPayload(p) => Instruction::FillArrayData(FillArrayInsn {
+            element_width: p.element_width,
+            data: p.data.clone(),
         }),
 
         // Raw
@@ -2381,24 +2374,30 @@ pub fn kotlin_to_dex(insn: &Instruction, dex: &mut DexFile) -> reseam_dex::Instr
                 count: r.reg_count as u8,
             }
         }
-        Instruction::PackedSwitchData(r) => D::PackedSwitchPayload {
-            first_key: r.first_key,
-            targets: r.targets.clone(),
-        },
-        Instruction::SparseSwitchData(r) => D::SparseSwitchPayload {
-            keys_and_targets: r
-                .keys
-                .iter()
-                .zip(r.targets.iter())
-                .map(|(k, t)| (*k, *t))
-                .collect(),
-        },
-        Instruction::FillArrayData(r) => D::FillArrayDataPayload {
-            element_width: r.element_width,
-            data: r.data.clone(),
-        },
+        Instruction::PackedSwitchData(r) => {
+            D::PackedSwitchPayload(Box::new(reseam_dex::PackedSwitchData {
+                first_key: r.first_key,
+                targets: r.targets.clone(),
+            }))
+        }
+        Instruction::SparseSwitchData(r) => {
+            D::SparseSwitchPayload(Box::new(reseam_dex::SparseSwitchData {
+                keys_and_targets: r
+                    .keys
+                    .iter()
+                    .zip(r.targets.iter())
+                    .map(|(k, t)| (*k, *t))
+                    .collect(),
+            }))
+        }
+        Instruction::FillArrayData(r) => {
+            D::FillArrayDataPayload(Box::new(reseam_dex::FillArrayPayloadData {
+                element_width: r.element_width,
+                data: r.data.clone(),
+            }))
+        }
         Instruction::Raw(bytes) => {
-            let code_units: smallvec::SmallVec<[u16; 5]> = bytes
+            let code_units: Box<[u16]> = bytes
                 .chunks(2)
                 .map(|c| {
                     if c.len() == 2 {
@@ -2425,6 +2424,6 @@ fn intern_method(dex: &mut DexFile, method: &MethodRef) -> MethodIdx {
 
 fn raw_from_opcode(opcode: u16) -> reseam_dex::Instruction {
     reseam_dex::Instruction::RawInstruction {
-        code_units: smallvec::smallvec![opcode],
+        code_units: Box::new([opcode]),
     }
 }

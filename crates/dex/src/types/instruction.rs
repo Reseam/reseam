@@ -3,10 +3,101 @@
 
 use super::method_handle::{CallSiteIdx, MethodHandleIdx};
 use super::{FieldIdx, MethodIdx, ProtoIdx, StringIdx, TypeIdx};
-use smallvec::SmallVec;
 
 pub type U4 = u8;
 pub type I4 = i8;
+
+/// Register list for a 35c-form invocation: at most five args, stored inline
+/// with no heap allocation. Derefs to `[u8]` so callers read it like a slice.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RegList {
+    regs: [u8; 5],
+    len: u8,
+}
+
+impl RegList {
+    pub const fn new() -> Self {
+        Self {
+            regs: [0; 5],
+            len: 0,
+        }
+    }
+
+    pub fn push(&mut self, reg: u8) {
+        debug_assert!(
+            (self.len as usize) < self.regs.len(),
+            "a 35c invocation takes at most 5 register args"
+        );
+        self.regs[self.len as usize] = reg;
+        self.len += 1;
+    }
+
+    pub fn as_slice(&self) -> &[u8] {
+        &self.regs[..self.len as usize]
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut [u8] {
+        &mut self.regs[..self.len as usize]
+    }
+}
+
+impl core::ops::Deref for RegList {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        self.as_slice()
+    }
+}
+
+impl core::ops::DerefMut for RegList {
+    fn deref_mut(&mut self) -> &mut [u8] {
+        self.as_mut_slice()
+    }
+}
+
+impl FromIterator<u8> for RegList {
+    fn from_iter<I: IntoIterator<Item = u8>>(iter: I) -> Self {
+        let mut list = RegList::new();
+        for reg in iter {
+            list.push(reg);
+        }
+        list
+    }
+}
+
+impl From<&[u8]> for RegList {
+    fn from(slice: &[u8]) -> Self {
+        slice.iter().copied().collect()
+    }
+}
+
+impl<'a> IntoIterator for &'a RegList {
+    type Item = &'a u8;
+    type IntoIter = core::slice::Iter<'a, u8>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.as_slice().iter()
+    }
+}
+
+/// Payload of a `packed-switch`, boxed so the rare variant does not widen the
+/// common `Instruction` cases.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackedSwitchData {
+    pub first_key: i32,
+    pub targets: Vec<i32>,
+}
+
+/// Payload of a `sparse-switch`, boxed for the same reason.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SparseSwitchData {
+    pub keys_and_targets: Vec<(i32, i32)>,
+}
+
+/// Payload of a `fill-array-data`, boxed for the same reason.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FillArrayPayloadData {
+    pub element_width: u16,
+    pub data: Vec<u8>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -144,7 +235,7 @@ pub enum Instruction {
     },
     FilledNewArray {
         type_: TypeIdx,
-        args: SmallVec<[u8; 5]>,
+        args: RegList,
     },
     FilledNewArrayRange {
         type_: TypeIdx,
@@ -452,23 +543,23 @@ pub enum Instruction {
     },
     InvokeVirtual {
         method: MethodIdx,
-        args: SmallVec<[u8; 5]>,
+        args: RegList,
     },
     InvokeSuper {
         method: MethodIdx,
-        args: SmallVec<[u8; 5]>,
+        args: RegList,
     },
     InvokeDirect {
         method: MethodIdx,
-        args: SmallVec<[u8; 5]>,
+        args: RegList,
     },
     InvokeStatic {
         method: MethodIdx,
-        args: SmallVec<[u8; 5]>,
+        args: RegList,
     },
     InvokeInterface {
         method: MethodIdx,
-        args: SmallVec<[u8; 5]>,
+        args: RegList,
     },
     InvokeVirtualRange {
         method: MethodIdx,
@@ -498,7 +589,7 @@ pub enum Instruction {
     InvokePolymorphic {
         method: MethodIdx,
         proto: ProtoIdx,
-        args: SmallVec<[u8; 5]>,
+        args: RegList,
     },
     InvokePolymorphicRange {
         method: MethodIdx,
@@ -508,7 +599,7 @@ pub enum Instruction {
     },
     InvokeCustom {
         call_site: CallSiteIdx,
-        args: SmallVec<[u8; 5]>,
+        args: RegList,
     },
     InvokeCustomRange {
         call_site: CallSiteIdx,
@@ -990,18 +1081,10 @@ pub enum Instruction {
         src: u8,
         literal: i8,
     },
-    PackedSwitchPayload {
-        first_key: i32,
-        targets: Vec<i32>,
-    },
-    SparseSwitchPayload {
-        keys_and_targets: Vec<(i32, i32)>,
-    },
-    FillArrayDataPayload {
-        element_width: u16,
-        data: Vec<u8>,
-    },
+    PackedSwitchPayload(Box<PackedSwitchData>),
+    SparseSwitchPayload(Box<SparseSwitchData>),
+    FillArrayDataPayload(Box<FillArrayPayloadData>),
     RawInstruction {
-        code_units: SmallVec<[u16; 5]>,
+        code_units: Box<[u16]>,
     },
 }

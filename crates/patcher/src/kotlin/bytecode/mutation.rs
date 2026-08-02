@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use reseam_apk::reseam_dex::{
-    find_contiguous_free_registers, CodeItem, Instruction as DexInsn, MethodIdx,
+    find_contiguous_free_registers, CodeItem, Instruction as DexInsn, MethodIdx, RegList,
 };
-use smallvec::SmallVec;
 use tracing::warn;
 
 use boltffi::export;
@@ -20,7 +19,7 @@ pub fn set_instructions(m: u32, insns: Vec<Instruction>) {
             Some(mh) => mh,
             None => return,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return,
         };
@@ -42,7 +41,7 @@ pub fn replace_body(m: u32, registers_size: u16, outs_size: u16, insns: Vec<Inst
             Some(mh) => mh,
             None => return,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return,
         };
@@ -67,7 +66,7 @@ pub fn insert_instruction(m: u32, index: u32, insn: Instruction) {
             Some(mh) => mh,
             None => return,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return,
         };
@@ -91,7 +90,7 @@ pub fn insert_instructions(m: u32, index: u32, insns: Vec<Instruction>) {
             Some(mh) => mh,
             None => return,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return,
         };
@@ -115,7 +114,7 @@ pub fn replace_instruction(m: u32, index: u32, insn: Instruction) {
             Some(mh) => mh,
             None => return,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return,
         };
@@ -139,7 +138,7 @@ pub fn remove_instruction(m: u32, index: u32) {
             Some(mh) => mh,
             None => return,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return,
         };
@@ -162,7 +161,7 @@ pub fn remove_instructions(m: u32, index: u32, count: u32) {
             Some(mh) => mh,
             None => return,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return,
         };
@@ -190,7 +189,7 @@ pub fn return_early(m: u32) {
             Some(mh) => mh,
             None => return,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return,
         };
@@ -209,7 +208,7 @@ pub fn return_early_int(m: u32, value: i32) {
             Some(mh) => mh,
             None => return,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return,
         };
@@ -228,7 +227,7 @@ pub fn return_early_bool(m: u32, value: bool) {
             Some(mh) => mh,
             None => return,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return,
         };
@@ -247,7 +246,7 @@ pub fn return_early_object_null(m: u32) {
             Some(mh) => mh,
             None => return,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return,
         };
@@ -271,7 +270,7 @@ pub fn return_early_wide(m: u32, value: i64) {
             Some(mh) => mh,
             None => return,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return,
         };
@@ -295,7 +294,7 @@ pub fn replace_string(m: u32, old: String, new: String) -> bool {
             Some(mh) => mh,
             None => return false,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return false,
         };
@@ -331,7 +330,7 @@ pub fn replace_all_strings(m: u32, old: String, new: String) -> u32 {
             Some(mh) => mh,
             None => return 0,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return 0,
         };
@@ -368,7 +367,7 @@ pub fn replace_literal(m: u32, old: i64, new: i64) -> bool {
             Some(mh) => mh,
             None => return false,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return false,
         };
@@ -400,7 +399,7 @@ pub fn replace_all_literals(m: u32, old: i64, new: i64) -> u32 {
             Some(mh) => mh,
             None => return 0,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return 0,
         };
@@ -438,7 +437,7 @@ pub fn replace_method_call(
             Some(mh) => mh,
             None => return false,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return false,
         };
@@ -479,7 +478,7 @@ pub fn insert_invoke_static(
             Some(mh) => mh,
             None => return false,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return false,
         };
@@ -526,7 +525,7 @@ pub fn insert_invoke_static_with_move_result(
             Some(mh) => mh,
             None => return false,
         };
-        let dex = match ctx.dex_file_mut(mh.dex_idx) {
+        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
             Some(d) => d,
             None => return false,
         };
@@ -584,7 +583,7 @@ fn lower_static_invoke(
     }
 
     if invoke_is_directly_encodable(registers) {
-        let args: SmallVec<[u8; 5]> = registers.iter().map(|r| *r as u8).collect();
+        let args: RegList = registers.iter().map(|r| *r as u8).collect();
         return Some(vec![DexInsn::InvokeStatic { method, args }]);
     }
 

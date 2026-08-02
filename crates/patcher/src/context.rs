@@ -15,7 +15,8 @@ mod resources;
 pub struct InstructionLocation {
     pub dex_idx: usize,
     pub class_idx: usize,
-    pub method_idx: usize,
+    pub method_pos: usize,
+    pub is_virtual: bool,
     pub insn_idx: usize,
 }
 

@@ -113,8 +113,32 @@ fn read_class_defs_impl(
 }
 
 /// Parse class data at a specific offset. Used by lazy resolution.
-pub fn read_class_data_at(buf: &[u8], off: usize) -> Result<ClassData> {
-    read_class_data(buf, off as u32, &ParseOptions::default())
+pub fn read_class_data_at(buf: &[u8], off: usize, opts: &ParseOptions) -> Result<ClassData> {
+    read_class_data(buf, off as u32, opts)
+}
+
+/// Resolve deferred class data in parallel for every class that still needs it.
+///
+/// `offsets` is positional: `offsets[i]` belongs to `classes[i]`. Classes
+/// beyond `offsets.len()` were added after parsing and already carry their
+/// class data, so they are skipped.
+pub(crate) fn resolve_class_data_entries(
+    classes: &mut [ClassDef],
+    offsets: &[u32],
+    buf: &[u8],
+    opts: &ParseOptions,
+) -> Result<()> {
+    use rayon::prelude::*;
+
+    classes
+        .par_iter_mut()
+        .zip(offsets.par_iter())
+        .try_for_each(|(class, &off)| {
+            if off != 0 && class.class_data.is_none() {
+                class.class_data = Some(read_class_data(buf, off, opts)?);
+            }
+            Ok(())
+        })
 }
 
 fn read_class_data(buf: &[u8], off: u32, opts: &ParseOptions) -> Result<ClassData> {

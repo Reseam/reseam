@@ -547,7 +547,6 @@ impl Instruction {
 
 #[cfg(test)]
 mod tests {
-    use smallvec::smallvec;
 
     use super::Instruction;
     use crate::types::{MethodIdx, TypeIdx};
@@ -580,7 +579,7 @@ mod tests {
     fn collects_invoke_arg_registers() {
         let insn = Instruction::InvokeStatic {
             method: MethodIdx(0),
-            args: smallvec![1, 4, 7],
+            args: [1u8, 4, 7].into_iter().collect(),
         };
 
         assert_eq!(collected_reads(&insn), vec![1, 4, 7]);

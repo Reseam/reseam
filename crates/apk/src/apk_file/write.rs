@@ -139,6 +139,8 @@ impl ApkFile {
             });
         }
 
+        let mut serialized = serialize_dirty_dexes(&mut self.dex, &self.dex_sessions)?;
+
         let mut by_component: Vec<Vec<DexReplacementOwned>> =
             (0..self.components.len()).map(|_| Vec::new()).collect();
         let mut origins_after_write = Vec::with_capacity(self.dex_sessions.len());
@@ -174,24 +176,18 @@ impl ApkFile {
                             format!("modified DEX entry {index} is missing an origin"),
                         ));
                     };
-                    let dex = self.dex.dex_mut(index).ok_or_else(|| {
-                        invalid("dex session", format!("DEX entry {index} is missing"))
-                    })?;
                     by_component[origin.component_index].push(DexReplacementOwned {
                         name: origin.entry_name.clone(),
-                        data: reseam_dex::write(dex)?,
+                        data: take_serialized(&mut serialized, index)?,
                     });
                     origins_after_write.push(origin);
                 }
                 super::DexEntryState::Added => {
-                    let dex = self.dex.dex_mut(index).ok_or_else(|| {
-                        invalid("dex session", format!("DEX entry {index} is missing"))
-                    })?;
                     let entry_name: ApkEntryPath =
                         next_free_base_dex_name(&mut used_base_names).into();
                     by_component[0].push(DexReplacementOwned {
                         name: entry_name.clone(),
-                        data: reseam_dex::write(dex)?,
+                        data: take_serialized(&mut serialized, index)?,
                     });
                     origins_after_write.push(DexEntryOrigin {
                         component_index: 0,
@@ -367,6 +363,40 @@ impl ApkFile {
         writer.finish()?;
         Ok(())
     }
+}
+
+/// Serialize every non-clean DEX in parallel.
+///
+/// The result is positional: `result[i]` holds the serialized bytes for
+/// `sessions[i]` when that entry is dirty, `None` when it is clean.
+fn serialize_dirty_dexes(
+    dex: &mut reseam_dex::MultiDexContainer,
+    sessions: &[DexSessionEntry],
+) -> Result<Vec<Option<Vec<u8>>>> {
+    use rayon::prelude::*;
+
+    dex.dex_files
+        .par_iter_mut()
+        .zip(sessions.par_iter())
+        .map(|(dex, session)| match session.state {
+            super::DexEntryState::Clean => Ok(None),
+            super::DexEntryState::Modified | super::DexEntryState::Added => {
+                Ok(Some(reseam_dex::write(dex)?))
+            }
+        })
+        .collect()
+}
+
+fn take_serialized(serialized: &mut [Option<Vec<u8>>], index: usize) -> Result<Vec<u8>> {
+    serialized
+        .get_mut(index)
+        .and_then(Option::take)
+        .ok_or_else(|| {
+            invalid(
+                "dex session",
+                format!("dirty DEX entry {index} has no serialized data"),
+            )
+        })
 }
 
 fn next_free_base_dex_name(used_names: &mut HashSet<String>) -> String {
