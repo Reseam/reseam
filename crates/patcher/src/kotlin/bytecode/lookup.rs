@@ -63,6 +63,33 @@ pub fn find_methods_by_strings(strings: Vec<String>) -> Vec<u32> {
         .collect()
 }
 
+fn method_handles(locations: Vec<crate::context::MethodLocation>) -> Vec<u32> {
+    with_handles(|h| {
+        locations
+            .into_iter()
+            .map(|l| h.alloc_method(l.dex_idx, l.class_idx, l.method_idx, l.is_virtual))
+            .collect()
+    })
+}
+
+#[export]
+pub fn find_methods_by_return_type(return_type: String) -> Vec<u32> {
+    method_handles(with_ctx(|ctx| ctx.find_methods_by_return_type(&return_type)))
+}
+
+#[export]
+pub fn find_methods_by_parameter_types(parameter_types: Vec<String>) -> Vec<u32> {
+    method_handles(with_ctx(|ctx| {
+        let types: Vec<&str> = parameter_types.iter().map(String::as_str).collect();
+        ctx.find_methods_by_parameter_types(&types)
+    }))
+}
+
+#[export]
+pub fn find_methods_with_parameter(parameter_type: String) -> Vec<u32> {
+    method_handles(with_ctx(|ctx| ctx.find_methods_with_parameter(&parameter_type)))
+}
+
 #[export]
 pub fn find_methods_by_opcodes(pattern: Vec<i32>) -> Vec<u32> {
     let ip: Vec<InstructionPattern> = pattern
@@ -162,38 +189,21 @@ pub fn get_all_classes() -> Vec<u32> {
 pub fn get_method_info(m: u32) -> Option<MethodInfo> {
     with_ctx(|ctx| {
         let mh = with_handles(|h| h.get_method(m))?;
-        let (dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
-        let class = dex.classes.get(mh.class_idx)?;
-        let method_id = dex.methods.get(method.method.0 as usize)?;
-        let class_desc = dex.type_descriptor(class.class_type).to_string();
-        let name = dex.string(method_id.name).to_string();
-        let proto_def = dex.prototypes.get(method_id.proto.0 as usize)?;
-        let ret = dex.type_descriptor(proto_def.return_type);
-        let params: Vec<&str> = proto_def
-            .parameters
-            .iter()
-            .map(|p| dex.type_descriptor(*p))
-            .collect();
-        let proto = format!("({}){}", params.join(""), ret);
-        let (reg_count, ins, outs, insn_count) = match &method.code {
-            Some(c) => (
-                c.registers_size,
-                c.ins_size,
-                c.outs_size,
-                c.instructions.len() as u32,
-            ),
-            None => (0, 0, 0, 0),
-        };
+        let method =
+            ctx.read_method_summary(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
+        let dex = ctx.dex_file(mh.dex_idx)?;
+        let class_type = dex.class_header(mh.class_idx).class_type;
+        let method_id = dex.methods.try_get(method.method.0 as usize)?;
         Some(MethodInfo {
-            class_descriptor: class_desc,
-            method_name: name,
-            proto,
+            class_descriptor: dex.type_descriptor(class_type).into_owned(),
+            method_name: dex.string(method_id.name).into_owned(),
+            proto: dex.proto_descriptor(&dex.prototypes.try_get(method_id.proto.0 as usize)?),
             access_flags: method.access_flags.bits(),
             dex_index: mh.dex_idx as u32,
-            register_count: reg_count,
-            ins_size: ins,
-            outs_size: outs,
-            instruction_count: insn_count,
+            register_count: method.registers_size,
+            ins_size: method.ins_size,
+            outs_size: method.outs_size,
+            instruction_count: method.instruction_count,
         })
     })
 }
@@ -204,11 +214,12 @@ pub fn get_class_info(c: u32) -> Option<ClassInfo> {
         let ch = with_handles(|h| h.get_class(c))?;
         let counts = ctx.read_class_counts(ch.dex_idx, ch.class_idx)?;
         let dex = ctx.dex_file(ch.dex_idx)?;
-        let class = dex.classes.get(ch.class_idx)?;
+        let class = dex.class_header(ch.class_idx);
         let desc = dex.type_descriptor(class.class_type).to_string();
         let superclass = class.superclass.map(|s| dex.type_descriptor(s).to_string());
-        let interfaces: Vec<String> = class
-            .interfaces
+        let interfaces: Vec<String> = dex
+            .classes
+            .interfaces(ch.class_idx)
             .iter()
             .map(|i| dex.type_descriptor(*i).to_string())
             .collect();
@@ -301,10 +312,11 @@ fn class_fields_filtered(c: u32, want_static: bool, want_instance: bool) -> Vec<
         let Some((dex, statics, instances)) = ctx.read_class_fields(ch.dex_idx, ch.class_idx) else {
             return Vec::new();
         };
-        let Some(class) = dex.classes.get(ch.class_idx) else {
+        let Ok(static_values) = dex.class_static_values(ch.class_idx) else {
             return Vec::new();
         };
-        collect_fields(dex, class, &statics, &instances, want_static, want_instance)
+        let class_type = dex.class_header(ch.class_idx).class_type;
+        collect_fields(dex, class_type, &static_values, &statics, &instances, want_static, want_instance)
     })
 }
 
@@ -333,7 +345,8 @@ fn convert_fingerprint(fp: &FingerprintDef) -> Fingerprint {
 
 fn collect_fields(
     dex: &DexFile,
-    class: &reseam_apk::reseam_dex::ClassDef,
+    class_type: reseam_apk::reseam_dex::TypeIdx,
+    static_values: &[EncodedValue],
     static_fields: &[EncodedField],
     instance_fields: &[EncodedField],
     want_static: bool,
@@ -342,13 +355,10 @@ fn collect_fields(
     let mut fields = Vec::new();
     if want_static {
         for (i, f) in static_fields.iter().enumerate() {
-            let field_id = &dex.fields[f.field.0 as usize];
-            let initial_value = class
-                .static_values
-                .get(i)
-                .and_then(|v| encoded_val_from_dex(v, dex));
+            let field_id = dex.field_id(f.field);
+            let initial_value = static_values.get(i).and_then(|v| encoded_val_from_dex(v, dex));
             fields.push(FieldInfo {
-                class_descriptor: dex.type_descriptor(class.class_type).to_string(),
+                class_descriptor: dex.type_descriptor(class_type).to_string(),
                 name: dex.string(field_id.name).to_string(),
                 field_type: dex.type_descriptor(field_id.type_).to_string(),
                 access_flags: f.access_flags.bits(),
@@ -358,9 +368,9 @@ fn collect_fields(
     }
     if want_instance {
         for f in instance_fields {
-            let field_id = &dex.fields[f.field.0 as usize];
+            let field_id = dex.field_id(f.field);
             fields.push(FieldInfo {
-                class_descriptor: dex.type_descriptor(class.class_type).to_string(),
+                class_descriptor: dex.type_descriptor(class_type).to_string(),
                 name: dex.string(field_id.name).to_string(),
                 field_type: dex.type_descriptor(field_id.type_).to_string(),
                 access_flags: f.access_flags.bits(),

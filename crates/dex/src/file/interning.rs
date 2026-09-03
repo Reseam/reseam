@@ -3,20 +3,15 @@
 
 use super::DexFile;
 use crate::error::{invalid_descriptor, Result};
-use crate::types::{
-    DexString, FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx,
-    TypeList,
-};
+use crate::types::{FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx, TypeList};
 
 impl DexFile {
     pub fn intern_string(&mut self, s: &str) -> StringIdx {
-        if let Some(idx) = self.find_string_idx(s) {
+        if let Some(idx) = self.strings.find(s) {
             return idx;
         }
-        let idx = StringIdx(self.strings.len() as u32);
-        self.strings.push(DexString::new(s));
-        self.record_string(s, idx);
-        idx
+        self.touch();
+        self.strings.push(s)
     }
 
     pub fn intern_type(&mut self, descriptor: &str) -> TypeIdx {
@@ -26,11 +21,8 @@ impl DexFile {
         if let Some(idx) = self.find_type_idx(descriptor) {
             return idx;
         }
-
-        let idx = TypeIdx(self.types.len() as u32);
-        self.types.push(string_idx);
-        self.record_type(string_idx, idx);
-        idx
+        self.touch();
+        TypeIdx(self.types.push(string_idx) as u32)
     }
 
     pub fn intern_proto(&mut self, descriptor: &str) -> Result<ProtoIdx> {
@@ -53,15 +45,12 @@ impl DexFile {
         let shorty_str = shorty_from_descriptor(descriptor)
             .ok_or_else(|| invalid_descriptor("method shorty descriptor", descriptor))?;
         let shorty = self.intern_string(&shorty_str);
-
-        let idx = ProtoIdx(self.prototypes.len() as u16);
-        self.record_proto(return_type, &parameters, idx);
-        self.prototypes.push(Prototype {
+        self.touch();
+        Ok(ProtoIdx(self.prototypes.push(Prototype {
             shorty,
             return_type,
             parameters,
-        });
-        Ok(idx)
+        }) as u16))
     }
 
     pub fn intern_method(&mut self, class: &str, name: &str, proto: &str) -> Result<MethodIdx> {
@@ -74,15 +63,12 @@ impl DexFile {
         if let Some(idx) = self.find_method_idx(class_idx, name_idx, proto_idx) {
             return Ok(idx);
         }
-
-        let idx = MethodIdx(self.methods.len() as u32);
-        self.methods.push(MethodId {
+        self.touch();
+        Ok(MethodIdx(self.methods.push(MethodId {
             class: class_idx,
             proto: proto_idx,
             name: name_idx,
-        });
-        self.record_method(class_idx, name_idx, proto_idx, idx);
-        Ok(idx)
+        }) as u32))
     }
 
     pub fn intern_field(&mut self, class: &str, name: &str, type_: &str) -> Result<FieldIdx> {
@@ -96,15 +82,12 @@ impl DexFile {
         if let Some(idx) = self.find_field_idx(class_idx, name_idx, type_idx) {
             return Ok(idx);
         }
-
-        let idx = FieldIdx(self.fields.len() as u32);
-        self.fields.push(FieldId {
+        self.touch();
+        Ok(FieldIdx(self.fields.push(FieldId {
             class: class_idx,
             type_: type_idx,
             name: name_idx,
-        });
-        self.record_field(class_idx, name_idx, type_idx, idx);
-        Ok(idx)
+        }) as u32))
     }
 
     pub(crate) fn validate_type_descriptor(kind: &'static str, descriptor: &str) -> Result<()> {

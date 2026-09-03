@@ -6,6 +6,8 @@ mod source;
 mod types;
 mod write;
 
+use std::borrow::Cow;
+use std::num::NonZeroUsize;
 use reseam_dex::{DexFile, MultiDexContainer};
 
 use crate::axml::reader::AxmlDocument;
@@ -26,12 +28,21 @@ pub enum ApkKind {
 #[derive(Debug, Clone, Copy)]
 pub struct ApkWriteOptions {
     pub strip_signatures: bool,
+    /// Threads serializing and deflating dirty DEX files concurrently. Each
+    /// holds one DEX's writer state, so this bounds the write-phase memory.
+    pub dex_workers: NonZeroUsize,
+    /// Deflate level for rewritten DEX entries. Level 3 compresses within two
+    /// percent of level 6 in a quarter less time; level 1 is another 2x faster
+    /// at about 13 points larger.
+    pub dex_compression_level: i64,
 }
 
 impl Default for ApkWriteOptions {
     fn default() -> Self {
         Self {
             strip_signatures: true,
+            dex_workers: std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN),
+            dex_compression_level: 3,
         }
     }
 }
@@ -54,10 +65,11 @@ struct DexEntryOrigin {
     entry_name: ApkEntryPath,
 }
 
+/// Where a DEX in the container came from. Whether it needs rewriting is the
+/// DEX's own [`reseam_dex::DexFile::is_dirty`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DexEntryState {
-    Clean,
-    Modified,
+    Existing,
     Added,
 }
 
@@ -74,7 +86,7 @@ impl DexSessionEntry {
                 component_index,
                 entry_name,
             }),
-            state: DexEntryState::Clean,
+            state: DexEntryState::Existing,
         }
     }
 
@@ -125,19 +137,11 @@ impl ApkFile {
         }
     }
 
-    fn mark_dex_modified(&mut self, index: usize) {
-        let Some(entry) = self.dex_sessions.get_mut(index) else {
-            return;
-        };
-        if entry.state == DexEntryState::Clean {
-            entry.state = DexEntryState::Modified;
-        }
-    }
-
     fn any_dex_dirty(&self) -> bool {
         self.dex_sessions
             .iter()
-            .any(|entry| entry.state != DexEntryState::Clean)
+            .any(|entry| entry.state == DexEntryState::Added)
+            || self.dex.iter().any(reseam_dex::DexFile::is_dirty)
     }
 
     /// Get a reference to the unified DEX container.
@@ -158,15 +162,13 @@ impl ApkFile {
         index: usize,
         class_idx: usize,
     ) -> Result<Option<&mut reseam_dex::DexFile>> {
-        self.mark_dex_modified(index);
         Ok(self.dex.dex_class_resolved_mut(index, class_idx)?)
     }
 
-    /// Mutable access to one DEX without resolving deferred class data. Marks
-    /// the DEX modified. Used for whole-DEX operations (interning, adding
-    /// classes) that do not read existing class data.
+    /// Mutable access to one DEX without resolving deferred class data. Used
+    /// for whole-DEX operations (interning, adding classes) that do not read
+    /// existing class data.
     pub fn dex_mut_at(&mut self, index: usize) -> Option<&mut reseam_dex::DexFile> {
-        self.mark_dex_modified(index);
         self.dex.dex_mut(index)
     }
 
@@ -281,17 +283,13 @@ impl ApkFile {
             .is_some()
     }
 
-    pub fn get_string_resource_value(&mut self, name: &str) -> Option<&str> {
-        let component_index = (0..self.components.len()).find(|&index| {
+    pub fn get_string_resource_value(&mut self, name: &str) -> Option<String> {
+        (0..self.components.len()).find_map(|index| {
             self.component_mut(index)
                 .and_then(|component| component.resources())
                 .and_then(|resources| resources.get_string_value(name))
-                .is_some()
-        })?;
-
-        self.component_mut(component_index)
-            .and_then(|component| component.resources())
-            .and_then(|resources| resources.get_string_value(name))
+                .map(Cow::into_owned)
+        })
     }
 
     pub fn set_string_resource_value(&mut self, name: &str, value: &str) -> bool {
@@ -438,7 +436,6 @@ impl ApkFile {
 
 impl<'a> ApkDexMut<'a> {
     pub fn dex_mut(&mut self, index: usize) -> Option<&mut DexFile> {
-        self.apk.mark_dex_modified(index);
         self.apk.dex.dex_mut(index)
     }
 

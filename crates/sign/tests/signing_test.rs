@@ -268,3 +268,34 @@ fn test_sign_real_apk() {
         diff
     );
 }
+
+#[test]
+fn test_sign_in_place_matches_sign() {
+    let apk = create_test_apk();
+    let key = SigningKey::generate().unwrap();
+    let expected = v2::sign(&apk, &key).unwrap();
+
+    let file = tempfile::tempfile().unwrap();
+    {
+        use std::io::Write;
+        let mut writer = &file;
+        writer.write_all(&apk).unwrap();
+    }
+    v2::sign_file_in_place(&file, &key).unwrap();
+    let mut signed = Vec::new();
+    {
+        use std::io::{Read, Seek, SeekFrom};
+        let mut reader = &file;
+        reader.seek(SeekFrom::Start(0)).unwrap();
+        reader.read_to_end(&mut signed).unwrap();
+    }
+    // ECDSA signatures differ in length per signing and the block padding
+    // absorbs that, so compare everything around the signing block.
+    let contents_len = signing_block::split_apk(&apk).unwrap().contents.len();
+    let tail_len = apk.len() - contents_len;
+    assert_eq!(signed.len(), expected.len());
+    assert_eq!(extract_v2_digest(&signed), extract_v2_digest(&expected));
+    assert_eq!(signed[..contents_len], expected[..contents_len]);
+    assert_eq!(signed[signed.len() - tail_len..], expected[expected.len() - tail_len..]);
+    assert!(signing_block::split_apk(&signed).is_ok());
+}

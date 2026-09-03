@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::types::instruction::Instruction;
-
 macro_rules! define_opcode_matchers {
     ($($variant:ident => $opcode:expr),+ $(,)?) => {
         #[derive(Debug, Clone, Copy)]
@@ -11,11 +9,7 @@ macro_rules! define_opcode_matchers {
         }
 
         impl OpcodeMatcher {
-            pub(super) fn matches(self, instruction: &Instruction) -> bool {
-                instruction.opcode() == self.opcode()
-            }
-
-            const fn opcode(self) -> Option<u16> {
+            pub(super) const fn opcode(self) -> Option<u16> {
                 match self {
                     $(Self::$variant => $opcode,)+
                 }

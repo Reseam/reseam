@@ -7,12 +7,13 @@ pub(crate) mod buf;
 pub mod dex;
 pub mod error;
 pub mod resources;
+pub mod scratch;
 pub(crate) mod string_encoding;
 pub mod zip;
 
 pub use apk_file::{ApkComponent, ApkEntryPath, ApkFile, ApkKind, ApkWriteOptions, ComponentName};
 pub use axml::{AxmlAttribute, AxmlDocument, AxmlEvent, TypedValue};
-pub use dex::{dex_to_entries, extract_dex, extract_dex_unified, from_apk};
+pub use dex::extract_dex;
 pub use error::{ApkError, Result};
 pub use resources::ResourceTable;
 pub use zip::reader::ApkReader;

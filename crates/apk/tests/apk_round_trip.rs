@@ -137,7 +137,9 @@ fn test_multi_dex_container() {
         eprintln!("Found Fragment in dex {}", dex_idx);
     }
 
-    let outputs = container.write_all().expect("Failed to write multi-dex");
+    let outputs: Vec<Vec<u8>> = (0..container.len())
+        .map(|i| reseam_dex::write(container.dex_mut(i).unwrap()).expect("Failed to write multi-dex"))
+        .collect();
     assert_eq!(outputs.len(), dex_files.len());
 
     for (i, output) in outputs.iter().enumerate() {
@@ -155,18 +157,20 @@ fn test_multi_dex_container() {
 }
 
 #[test]
-fn test_from_apk() {
+fn test_extract_dex() {
     if !std::path::Path::new(YOUTUBE_APK).exists() {
         eprintln!("Skipping: APK not found");
         return;
     }
 
-    let apk_bytes = std::fs::read(YOUTUBE_APK).expect("Failed to read APK");
-    let container =
-        dex::from_apk(&apk_bytes, ParseOptions::default()).expect("Failed to parse from APK");
+    let (container, names) =
+        dex::extract_dex(std::path::Path::new(YOUTUBE_APK), ParseOptions::default())
+            .expect("Failed to extract DEX from APK");
 
     assert!(!container.is_empty(), "Should have found DEX files in APK");
-    eprintln!("from_apk: found {} DEX files", container.len());
+    assert_eq!(names.len(), container.len());
+    assert_eq!(names[0], "classes.dex");
+    eprintln!("extract_dex: found {} DEX files", container.len());
 }
 
 #[test]
@@ -222,8 +226,8 @@ fn test_fingerprint_search() {
     let dex = reseam_dex::parse(buf, ParseOptions::default()).expect("Failed to parse");
 
     let init_methods = dex
-        .scan_methods_collect(|view| {
-            let name = dex.string(dex.methods[view.method.0 as usize].name);
+        .scan_methods_collect(&reseam_dex::RefQuery::default(), |view| {
+            let name = dex.string(dex.method_id(view.method).name);
             Ok((name == "<init>").then(|| view.hit()))
         })
         .expect("scan init methods");
@@ -258,7 +262,8 @@ fn test_mutation_write_reparse() {
     let mut dex = reseam_dex::parse(buf, ParseOptions::default()).expect("Failed to parse");
 
     let mut patched_count = 0;
-    for class in &mut dex.classes {
+    dex.resolve_all_class_data().expect("resolve");
+    for class in dex.classes.iter_resident_mut() {
         if let Some(ref mut data) = class.class_data {
             for m in data
                 .direct_methods
@@ -323,7 +328,7 @@ fn test_lazy_parsing() {
     assert!(!dex.strings.is_empty());
     assert!(!dex.classes.is_empty());
 
-    let any_has_data = dex.classes.iter().any(|c| c.class_data.is_some());
+    let any_has_data = dex.classes.iter_resident().any(|c| c.class_data.is_some());
     assert!(!any_has_data);
 
     dex.resolve_class_data(0)
@@ -333,7 +338,7 @@ fn test_lazy_parsing() {
 
     let classes_with_data = dex
         .classes
-        .iter()
+        .iter_resident()
         .filter(|c| c.class_data.is_some())
         .count();
     assert!(classes_with_data > 0);

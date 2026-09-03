@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::error::Result;
+use std::fs::File;
 use std::collections::{BTreeMap, HashSet};
 use std::io::{self, Read, Seek, Write};
 
@@ -16,8 +17,14 @@ pub struct ApkWriter<W: Write + Seek> {
 }
 
 pub struct ApkReplacement<'a> {
-    pub data: &'a [u8],
+    pub data: ReplacementData<'a>,
     pub compression: zip::CompressionMethod,
+}
+
+/// Where a replacement entry's bytes come from.
+pub enum ReplacementData<'a> {
+    Bytes(&'a [u8]),
+    File(&'a File),
 }
 
 impl<W: Write + Seek> ApkWriter<W> {
@@ -31,7 +38,7 @@ impl<W: Write + Seek> ApkWriter<W> {
     pub fn write_entry(
         &mut self,
         name: &str,
-        data: &[u8],
+        data: &ReplacementData<'_>,
         compression: zip::CompressionMethod,
     ) -> Result<()> {
         let alignment = entry_alignment(name);
@@ -41,25 +48,35 @@ impl<W: Write + Seek> ApkWriter<W> {
             .with_alignment(alignment);
 
         self.writer.start_file(name, options)?;
-        self.writer.write_all(data)?;
+        match data {
+            ReplacementData::Bytes(bytes) => self.writer.write_all(bytes)?,
+            ReplacementData::File(file) => {
+                let mut reader = io::BufReader::new(*file);
+                reader.seek(io::SeekFrom::Start(0))?;
+                io::copy(&mut reader, &mut self.writer)?;
+            }
+        }
         Ok(())
     }
 
     /// Write the complete APK by passing through all entries from source,
     /// replacing those in `replacements`, and removing those in `removals`.
     ///
-    /// Entries in `replacements` that don't exist in `source` are appended at the end.
+    /// `dex_names` are the DEX entries this component receives; `compressed`
+    /// yields each one as a single-entry archive whose compressed bytes are
+    /// copied verbatim. Replacements and DEX entries missing from `source`
+    /// are appended at the end.
     pub fn rewrite_apk<R: Read + Seek>(
         &mut self,
         source: &mut zip::ZipArchive<R>,
         replacements: &BTreeMap<&str, ApkReplacement<'_>>,
         removals: &HashSet<String>,
+        dex_names: &[String],
+        mut compressed: impl FnMut(&str) -> Result<Option<File>>,
     ) -> Result<()> {
-        // Track which replacement entries we've written (so we can append new ones at the end)
-        let mut written_replacements = HashSet::new();
+        let mut written = HashSet::new();
 
         for i in 0..source.len() {
-            // Get the entry name (need to borrow and release before doing anything else)
             let (name, compression) = {
                 let entry = source.by_index_raw(i)?;
                 (entry.name().to_string(), entry.compression())
@@ -69,26 +86,40 @@ impl<W: Write + Seek> ApkWriter<W> {
                 continue;
             }
 
-            if let Some(replacement) = replacements.get(name.as_str()) {
-                self.write_entry(&name, replacement.data, replacement.compression)?;
-                written_replacements.insert(name);
-            } else if should_rewrite_passthrough_for_alignment(&name, compression) {
+            if let Some(archive) = compressed(&name)? {
+                self.copy_compressed(archive)?;
+                written.insert(name);
+            } else if let Some(replacement) = replacements.get(name.as_str()) {
+                self.write_entry(&name, &replacement.data, replacement.compression)?;
+                written.insert(name);
+            } else if should_rewrite_passthrough_for_alignment(compression) {
                 let entry = source.by_index(i)?;
                 self.copy_entry_with_alignment(entry)?;
             } else {
-                // Pass-through: copy compressed bytes as-is
                 let entry = source.by_index_raw(i)?;
                 self.writer.raw_copy_file(entry)?;
             }
         }
 
-        // Append any replacement entries that didn't exist in the source
         for (name, replacement) in replacements {
-            if !written_replacements.contains(*name) {
-                self.write_entry(name, replacement.data, replacement.compression)?;
+            if !written.contains(*name) {
+                self.write_entry(name, &replacement.data, replacement.compression)?;
+            }
+        }
+        for name in dex_names {
+            if !written.contains(name) {
+                let archive = compressed(name)?
+                    .ok_or_else(|| crate::error::invalid("dex write", format!("{name} was not produced")))?;
+                self.copy_compressed(archive)?;
             }
         }
 
+        Ok(())
+    }
+
+    fn copy_compressed(&mut self, archive: File) -> Result<()> {
+        let mut archive = zip::ZipArchive::new(io::BufReader::new(archive))?;
+        self.writer.raw_copy_file(archive.by_index_raw(0)?)?;
         Ok(())
     }
 
@@ -126,9 +157,8 @@ pub fn is_native_library_entry(name: &str) -> bool {
         && parts.next().is_none()
 }
 
-fn should_rewrite_passthrough_for_alignment(
-    name: &str,
-    compression: zip::CompressionMethod,
-) -> bool {
-    compression == zip::CompressionMethod::Stored || is_native_library_entry(name)
+/// Only stored entries are mapped by the platform, so only they need
+/// their alignment restored; deflated ones are copied compressed.
+fn should_rewrite_passthrough_for_alignment(compression: zip::CompressionMethod) -> bool {
+    compression == zip::CompressionMethod::Stored
 }

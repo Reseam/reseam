@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use reseam_apk::reseam_dex::{ClassSkeleton, EncodedMethod};
 use reseam_apk::ApkFile;
 
 use crate::log::{LogEntry, PatchLog};
@@ -38,7 +39,7 @@ pub struct ClassLocation {
     pub class_idx: usize,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MethodLocation {
     pub dex_idx: usize,
     pub class_idx: usize,
@@ -56,6 +57,23 @@ pub struct PatchContext<'a> {
     apk: &'a mut ApkFile,
     log: PatchLog,
     options: PatchOptions,
+    /// Skeleton of the deferred class most recently inspected: patches walk a
+    /// class's methods one FFI call at a time, and this keeps that linear.
+    pub(crate) skeleton: Option<CachedSkeleton>,
+    /// The method most recently decoded for inspection: patches read a
+    /// method one instruction per FFI call, and this decodes it once.
+    pub(crate) method: Option<CachedMethod>,
+}
+
+pub(crate) struct CachedSkeleton {
+    pub(crate) dex_idx: usize,
+    pub(crate) class_idx: usize,
+    pub(crate) skeleton: ClassSkeleton,
+}
+
+pub(crate) struct CachedMethod {
+    pub(crate) location: MethodLocation,
+    pub(crate) method: EncodedMethod,
 }
 
 impl<'a> PatchContext<'a> {
@@ -64,6 +82,8 @@ impl<'a> PatchContext<'a> {
             apk,
             log: PatchLog::default(),
             options: PatchOptions::default(),
+            skeleton: None,
+            method: None,
         }
     }
 

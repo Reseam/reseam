@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::encoded_value::write_encoded_value;
+use super::intern::{ByteInterner, StreamInterner};
+use super::plan::WritePlan;
+use super::sink::DexSink;
 use super::DexWriter;
 use crate::encoding::leb128::write_uleb128;
-use std::collections::HashMap;
+use crate::error::Result;
 
 /// Serialized annotation-directory fragments needed for class-def backpatching.
 pub(crate) struct ClassAnnData {
@@ -24,16 +27,16 @@ struct PendingClassAnnData {
 }
 
 /// Writes annotation items, sets, ref-lists, and directories.
-pub(crate) fn write_annotations(w: &mut DexWriter, dex: &crate::file::DexFile) -> ClassAnnotations {
-    let mut annotation_item_cache: HashMap<Vec<u8>, usize> = HashMap::new();
-    let mut annotation_items: Vec<Vec<u8>> = Vec::new();
-    let mut annotation_set_cache: HashMap<Vec<usize>, usize> = HashMap::new();
-    let mut annotation_sets: Vec<Vec<usize>> = Vec::new();
+pub(crate) fn write_annotations<S: DexSink>(w: &mut DexWriter<S>, plan: &WritePlan<'_>) -> Result<ClassAnnotations> {
+    let ann_items_start = w.pos();
+    let mut items = StreamInterner::default();
+    let mut sets = ByteInterner::default();
     let mut annotation_ref_lists: Vec<Vec<Option<usize>>> = Vec::new();
-    let mut pending_class_ann_datas = Vec::with_capacity(dex.classes.len());
+    let mut encoded = Vec::new();
+    let mut pending_class_ann_datas = Vec::with_capacity(plan.classes.len());
 
-    for class in &dex.classes {
-        if let Some(ref ann_dir) = class.annotations {
+    for k in 0..plan.classes.len() {
+        if let Some(ann_dir) = plan.class_annotations(k)? {
             let mut cad = PendingClassAnnData {
                 class_ann_set: None,
                 field_ann: Vec::new(),
@@ -42,34 +45,16 @@ pub(crate) fn write_annotations(w: &mut DexWriter, dex: &crate::file::DexFile) -
             };
 
             if !ann_dir.class_annotations.is_empty() {
-                cad.class_ann_set = Some(intern_annotation_set(
-                    &ann_dir.class_annotations,
-                    &mut annotation_item_cache,
-                    &mut annotation_items,
-                    &mut annotation_set_cache,
-                    &mut annotation_sets,
-                ));
+                cad.class_ann_set = Some(intern_annotation_set(w, &ann_dir.class_annotations, &mut items, &mut sets, &mut encoded)?);
             }
 
             for (field_idx, anns) in &ann_dir.field_annotations {
-                let set_idx = intern_annotation_set(
-                    anns,
-                    &mut annotation_item_cache,
-                    &mut annotation_items,
-                    &mut annotation_set_cache,
-                    &mut annotation_sets,
-                );
+                let set_idx = intern_annotation_set(w, anns, &mut items, &mut sets, &mut encoded)?;
                 cad.field_ann.push((field_idx.0, set_idx));
             }
 
             for (method_idx, anns) in &ann_dir.method_annotations {
-                let set_idx = intern_annotation_set(
-                    anns,
-                    &mut annotation_item_cache,
-                    &mut annotation_items,
-                    &mut annotation_set_cache,
-                    &mut annotation_sets,
-                );
+                let set_idx = intern_annotation_set(w, anns, &mut items, &mut sets, &mut encoded)?;
                 cad.method_ann.push((method_idx.0, set_idx));
             }
 
@@ -79,13 +64,7 @@ pub(crate) fn write_annotations(w: &mut DexWriter, dex: &crate::file::DexFile) -
                     if anns.is_empty() {
                         set_idxs.push(None);
                     } else {
-                        let set_idx = intern_annotation_set(
-                            anns,
-                            &mut annotation_item_cache,
-                            &mut annotation_items,
-                            &mut annotation_set_cache,
-                            &mut annotation_sets,
-                        );
+                        let set_idx = intern_annotation_set(w, anns, &mut items, &mut sets, &mut encoded)?;
                         set_idxs.push(Some(set_idx));
                     }
                 }
@@ -100,36 +79,30 @@ pub(crate) fn write_annotations(w: &mut DexWriter, dex: &crate::file::DexFile) -
         }
     }
 
-    let ann_items_start = w.pos();
-    let mut annotation_item_offsets = Vec::with_capacity(annotation_items.len());
-    for item in &annotation_items {
-        let off = w.pos();
-        w.buf.extend_from_slice(item);
-        annotation_item_offsets.push(off);
-    }
-    if !annotation_items.is_empty() {
+    if items.len() > 0 {
         w.map_entries.push(crate::types::map::MapItem {
             type_code: crate::types::map::TYPE_ANNOTATION_ITEM,
-            size: annotation_items.len() as u32,
+            size: items.len() as u32,
             offset: ann_items_start,
         });
     }
 
-    let mut annotation_set_offsets = Vec::with_capacity(annotation_sets.len());
-    if !annotation_sets.is_empty() {
+    let mut annotation_set_offsets = Vec::with_capacity(sets.len());
+    if !sets.is_empty() {
         w.align(4);
         let annotation_set_first_off = w.pos();
-        for set in &annotation_sets {
+        for set_idx in 0..sets.len() {
+            let set = sets.get(set_idx);
             let set_off = w.pos();
-            w.write_u32(set.len() as u32);
-            for &item_idx in set {
-                w.write_u32(annotation_item_offsets[item_idx]);
+            w.write_u32((set.len() / 4) as u32);
+            for item_off in set.chunks_exact(4) {
+                w.write_u32(u32::from_le_bytes(item_off.try_into().unwrap()));
             }
             annotation_set_offsets.push(set_off);
         }
         w.map_entries.push(crate::types::map::MapItem {
             type_code: crate::types::map::TYPE_ANNOTATION_SET_ITEM,
-            size: annotation_sets.len() as u32,
+            size: sets.len() as u32,
             offset: annotation_set_first_off,
         });
     }
@@ -219,60 +192,37 @@ pub(crate) fn write_annotations(w: &mut DexWriter, dex: &crate::file::DexFile) -
         class_ann_datas.resize_with(pending_class_ann_datas.len(), || None);
     }
 
-    class_ann_datas
+    Ok(class_ann_datas)
 }
 
 /// Serializes a single annotation item to its on-disk form.
-fn serialize_annotation_item(item: &crate::types::annotation::AnnotationItem) -> Vec<u8> {
-    let mut tmp = Vec::new();
-    tmp.push(item.visibility.to_u8());
-    write_uleb128(&mut tmp, item.type_.0);
-    write_uleb128(&mut tmp, item.elements.len() as u32);
+fn serialize_annotation_item(out: &mut Vec<u8>, item: &crate::types::annotation::AnnotationItem) {
+    out.clear();
+    out.push(item.visibility.to_u8());
+    write_uleb128(out, item.type_.0);
+    write_uleb128(out, item.elements.len() as u32);
     for elem in &item.elements {
-        write_uleb128(&mut tmp, elem.name.0);
-        write_encoded_value(&mut tmp, &elem.value);
+        write_uleb128(out, elem.name.0);
+        write_encoded_value(out, &elem.value);
     }
-    tmp
 }
 
-/// Interns a single annotation item, returning its index in the annotation-item section.
-fn intern_annotation_item(
-    item: &crate::types::annotation::AnnotationItem,
-    item_cache: &mut HashMap<Vec<u8>, usize>,
-    items: &mut Vec<Vec<u8>>,
-) -> usize {
-    let serialized = serialize_annotation_item(item);
-    if let Some(&idx) = item_cache.get(&serialized) {
-        return idx;
+/// Writes the set's items (deduplicated) and interns the set as the
+/// little-endian item offsets it holds. Returns the set index.
+fn intern_annotation_set<S: DexSink>(
+    w: &mut DexWriter<S>,
+    annotations: &[crate::types::annotation::AnnotationItem],
+    items: &mut StreamInterner,
+    sets: &mut ByteInterner,
+    encoded: &mut Vec<u8>,
+) -> Result<usize> {
+    let mut key = Vec::with_capacity(annotations.len() * 4);
+    for item in annotations {
+        serialize_annotation_item(encoded, item);
+        let offset = items.intern(&mut w.sink, encoded)?;
+        key.extend_from_slice(&offset.to_le_bytes());
     }
-
-    let idx = items.len();
-    item_cache.insert(serialized.clone(), idx);
-    items.push(serialized);
-    idx
-}
-
-/// Interns one annotation set after materializing its member items.
-fn intern_annotation_set(
-    items: &[crate::types::annotation::AnnotationItem],
-    item_cache: &mut HashMap<Vec<u8>, usize>,
-    annotation_items: &mut Vec<Vec<u8>>,
-    set_cache: &mut HashMap<Vec<usize>, usize>,
-    annotation_sets: &mut Vec<Vec<usize>>,
-) -> usize {
-    let mut item_indices = Vec::with_capacity(items.len());
-    for item in items {
-        let idx = intern_annotation_item(item, item_cache, annotation_items);
-        item_indices.push(idx);
-    }
-    if let Some(&set_idx) = set_cache.get(&item_indices) {
-        return set_idx;
-    }
-
-    let set_idx = annotation_sets.len();
-    set_cache.insert(item_indices.clone(), set_idx);
-    annotation_sets.push(item_indices);
-    set_idx
+    Ok(sets.intern(&key))
 }
 
 #[cfg(test)]
@@ -288,7 +238,7 @@ mod tests {
     use crate::types::map::{
         TYPE_ANNOTATIONS_DIRECTORY_ITEM, TYPE_ANNOTATION_ITEM, TYPE_ANNOTATION_SET_ITEM,
     };
-    use crate::types::{DexString, StringIdx, TypeIdx};
+    use crate::types::{StringIdx, TypeIdx};
     use crate::write::DexWriter;
 
     fn empty_header() -> DexHeader {
@@ -322,21 +272,16 @@ mod tests {
     #[test]
     fn annotation_sections_are_written_contiguously() -> crate::error::Result<()> {
         let mut dex = crate::file::DexFile::new(empty_header());
-        dex.strings = vec![
-            DexString::new("LA;".to_owned()),
-            DexString::new("LB;".to_owned()),
-            DexString::new("Ljava/lang/Object;".to_owned()),
-            DexString::new("LAnnOne;".to_owned()),
-            DexString::new("LAnnTwo;".to_owned()),
-            DexString::new("value".to_owned()),
-        ];
-        dex.types = vec![
+        dex.strings = ["LA;", "LB;", "Ljava/lang/Object;", "LAnnOne;", "LAnnTwo;", "value"]
+            .into_iter()
+            .collect();
+        dex.types = crate::file::IdTable::from_vec(vec![
             StringIdx(0),
             StringIdx(1),
             StringIdx(2),
             StringIdx(3),
             StringIdx(4),
-        ];
+        ]);
 
         let class_one_annotation = AnnotationItem {
             visibility: AnnotationVisibility::Runtime,
@@ -355,19 +300,19 @@ mod tests {
             }],
         };
 
-        dex.classes = vec![
+        dex.classes = crate::file::ClassTable::from_defs(vec![
             ClassDef {
                 class_type: TypeIdx(0),
                 access_flags: AccessFlags::PUBLIC,
                 superclass: Some(TypeIdx(2)),
                 interfaces: crate::types::TypeList::new(),
                 source_file: None,
-                annotations: Some(AnnotationsDirectory {
+                annotations: Some(Box::new(AnnotationsDirectory {
                     class_annotations: vec![class_one_annotation],
                     field_annotations: Vec::new(),
                     method_annotations: Vec::new(),
                     parameter_annotations: Vec::new(),
-                }),
+                })),
                 class_data: None,
                 static_values: Vec::new(),
             },
@@ -377,19 +322,20 @@ mod tests {
                 superclass: Some(TypeIdx(2)),
                 interfaces: crate::types::TypeList::new(),
                 source_file: None,
-                annotations: Some(AnnotationsDirectory {
+                annotations: Some(Box::new(AnnotationsDirectory {
                     class_annotations: vec![class_two_annotation],
                     field_annotations: Vec::new(),
                     method_annotations: Vec::new(),
                     parameter_annotations: Vec::new(),
-                }),
+                })),
                 class_data: None,
                 static_values: Vec::new(),
             },
-        ];
+        ]);
 
-        let mut writer = DexWriter::new();
-        let class_ann_datas = write_annotations(&mut writer, &dex);
+        let plan = crate::write::plan::WritePlan::new(&dex)?;
+        let mut writer = DexWriter::new(Vec::new());
+        let class_ann_datas = write_annotations(&mut writer, &plan)?;
 
         let ann_item_map = writer
             .map_entries
@@ -424,7 +370,7 @@ mod tests {
 
             let set_base = cad.class_ann_set_off as usize;
             let set_bytes: [u8; 4] = writer
-                .buf
+                .sink
                 .get(set_base..set_base + 4)
                 .and_then(|s| s.try_into().ok())
                 .ok_or_else(|| {
@@ -434,7 +380,7 @@ mod tests {
             for i in 0..set_size {
                 let off = set_base + 4 + i * 4;
                 let item_bytes: [u8; 4] = writer
-                    .buf
+                    .sink
                     .get(off..off + 4)
                     .and_then(|s| s.try_into().ok())
                     .ok_or_else(|| {

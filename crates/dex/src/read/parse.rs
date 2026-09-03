@@ -1,15 +1,13 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use super::class::read_class_defs;
 use super::encoded_value::read_encoded_array_with_opts;
 use super::header::{read_header, read_header_at, u16_at, u32_at};
-use super::ids::*;
 use crate::encoding::leb128::read_uleb128_with_opts;
 use crate::error::{
     invalid_call_site, invalid_hidden_api_flag, invalid_method_handle_type, Result,
 };
-use crate::file::{DexBytes, DexFile};
+use crate::file::{ClassTable, DexBytes, DexFile, IdTable, StringPool};
 use crate::types::encoded_value::EncodedValue;
 use crate::types::header::ParseOptions;
 use crate::types::hidden_api::{ClassHiddenApiFlags, HiddenApiData, HiddenApiFlag};
@@ -20,17 +18,17 @@ use tracing::{debug, instrument};
 #[instrument(level = "debug", skip(buf), fields(buffer_len = buf.len(), lazy = opts.lazy))]
 pub fn parse(buf: &[u8], opts: ParseOptions) -> Result<DexFile> {
     let raw = DexBytes::from_slice(buf);
-    parse_single_with_raw(raw.as_bytes(), Some(raw.clone()), &opts, None)
+    parse_single_with_raw(raw.as_bytes(), raw.clone(), &opts, None)
 }
 
 #[instrument(level = "debug", skip(buf), fields(buffer_len = buf.len(), lazy = opts.lazy))]
 pub fn parse_owned(buf: Vec<u8>, opts: ParseOptions) -> Result<DexFile> {
     let raw = DexBytes::from_vec(buf);
-    parse_single_with_raw(raw.as_bytes(), Some(raw.clone()), &opts, None)
+    parse_single_with_raw(raw.as_bytes(), raw.clone(), &opts, None)
 }
 
-pub(crate) fn parse_with_bytes(raw: DexBytes, opts: ParseOptions) -> Result<DexFile> {
-    parse_single_with_raw(raw.as_bytes(), Some(raw.clone()), &opts, None)
+pub fn parse_bytes(raw: DexBytes, opts: ParseOptions) -> Result<DexFile> {
+    parse_single_with_raw(raw.as_bytes(), raw.clone(), &opts, None)
 }
 
 /// Parses a v41 container buffer into its constituent logical DEX files.
@@ -47,7 +45,7 @@ pub(crate) fn parse_container_with_bytes(
 ) -> Result<Vec<DexFile>> {
     let buf = raw.as_bytes();
     if buf.len() < 8 {
-        let dex = parse_single_with_raw(buf, Some(raw.clone()), &opts, None)?;
+        let dex = parse_single_with_raw(buf, raw.clone(), &opts, None)?;
         return Ok(vec![dex]);
     }
 
@@ -57,7 +55,7 @@ pub(crate) fn parse_container_with_bytes(
 
     let is_container = version.is_some_and(|v| v.is_container_format());
     if !is_container {
-        let dex = parse_single_with_raw(buf, Some(raw.clone()), &opts, None)?;
+        let dex = parse_single_with_raw(buf, raw.clone(), &opts, None)?;
         return Ok(vec![dex]);
     }
 
@@ -74,7 +72,7 @@ pub(crate) fn parse_container_with_bytes(
             break;
         }
 
-        let dex = parse_single_with_raw(buf, Some(raw.clone()), &opts, Some(offset))?;
+        let dex = parse_single_with_raw(buf, raw.clone(), &opts, Some(offset))?;
         offset += dex.header.file_size as usize;
         dex_files.push(dex);
     }
@@ -85,7 +83,7 @@ pub(crate) fn parse_container_with_bytes(
 
 fn parse_single_with_raw(
     buf: &[u8],
-    raw: Option<DexBytes>,
+    raw: DexBytes,
     opts: &ParseOptions,
     header_off: Option<usize>,
 ) -> Result<DexFile> {
@@ -94,50 +92,15 @@ fn parse_single_with_raw(
         None => read_header(buf, opts)?,
     };
 
-    let lazy = opts.lazy;
     let mut dex = DexFile::new(header.clone());
-    dex.raw = raw;
     dex.parse_options = opts.clone();
-
-    if header.string_ids_size > 0 {
-        let string_offsets = read_string_ids(buf, header.string_ids_off, header.string_ids_size)?;
-        for &off in &string_offsets {
-            let s = read_string_data(buf, off, opts)?;
-            dex.strings.push(s);
-        }
-    }
-
-    if header.type_ids_size > 0 {
-        dex.types = read_type_ids(buf, header.type_ids_off, header.type_ids_size)?;
-    }
-
-    if header.proto_ids_size > 0 {
-        dex.prototypes = read_proto_ids(buf, header.proto_ids_off, header.proto_ids_size)?;
-    }
-
-    if header.field_ids_size > 0 {
-        dex.fields = read_field_ids(buf, header.field_ids_off, header.field_ids_size)?;
-    }
-
-    if header.method_ids_size > 0 {
-        dex.methods = read_method_ids(buf, header.method_ids_off, header.method_ids_size)?;
-    }
-
-    if header.class_defs_size > 0 {
-        if lazy {
-            let (classes, offsets) = super::class::read_class_defs_lazy(
-                buf,
-                header.class_defs_off,
-                header.class_defs_size,
-                opts,
-            )?;
-            dex.classes = classes;
-            dex.lazy_class_data_offsets = Some(offsets);
-        } else {
-            dex.classes =
-                read_class_defs(buf, header.class_defs_off, header.class_defs_size, opts)?;
-        }
-    }
+    dex.strings = StringPool::from_raw(raw.clone(), header.string_ids_off, header.string_ids_size, opts)?;
+    dex.types = IdTable::from_raw(raw.clone(), header.type_ids_off, header.type_ids_size)?;
+    dex.prototypes = IdTable::from_raw(raw.clone(), header.proto_ids_off, header.proto_ids_size)?;
+    dex.fields = IdTable::from_raw(raw.clone(), header.field_ids_off, header.field_ids_size)?;
+    dex.methods = IdTable::from_raw(raw.clone(), header.method_ids_off, header.method_ids_size)?;
+    dex.classes = ClassTable::from_raw(raw.clone(), header.class_defs_off, header.class_defs_size)?;
+    dex.raw = Some(raw);
 
     let map_off = header.map_off as usize;
     let map_size = u32_at(buf, map_off)? as usize;
@@ -169,6 +132,10 @@ fn parse_single_with_raw(
         if let Some((off, _)) = hidden_api_off {
             dex.hidden_api = Some(read_hidden_api(buf, off as usize, &dex, opts)?);
         }
+    }
+
+    if !opts.lazy {
+        dex.classes.materialize_all(opts)?;
     }
 
     debug!(
@@ -277,31 +244,17 @@ fn read_hidden_api(
     let class_count = dex.classes.len();
     let mut class_flags = Vec::with_capacity(class_count);
 
-    let mut data_offsets = Vec::with_capacity(class_count);
     for i in 0..class_count {
-        data_offsets.push(u32_at(buf, off + i * 4)?);
-    }
-
-    for (i, &data_off) in data_offsets.iter().enumerate() {
+        let data_off = u32_at(buf, off + i * 4)?;
         if data_off == 0 {
             class_flags.push(None);
             continue;
         }
+        let counts = dex.class_member_counts(i)?.unwrap_or_default();
 
-        let class = &dex.classes[i];
-        let data = match class.class_data.as_ref() {
-            Some(d) => d,
-            None => {
-                class_flags.push(None);
-                continue;
-            }
-        };
-
-        let abs_off = off + data_off as usize;
-        let mut pos = abs_off;
-
-        let mut read_flags = |count: usize| -> Result<Vec<HiddenApiFlag>> {
-            let mut flags = Vec::with_capacity(count);
+        let mut pos = off + data_off as usize;
+        let mut read_flags = |count: u32| -> Result<Vec<HiddenApiFlag>> {
+            let mut flags = Vec::with_capacity(count as usize);
             for _ in 0..count {
                 let (v, consumed) = read_uleb128_with_opts(buf, pos, opts)?;
                 pos += consumed;
@@ -310,10 +263,10 @@ fn read_hidden_api(
             Ok(flags)
         };
 
-        let static_field_flags = read_flags(data.static_fields.len())?;
-        let instance_field_flags = read_flags(data.instance_fields.len())?;
-        let direct_method_flags = read_flags(data.direct_methods.len())?;
-        let virtual_method_flags = read_flags(data.virtual_methods.len())?;
+        let static_field_flags = read_flags(counts.static_fields)?;
+        let instance_field_flags = read_flags(counts.instance_fields)?;
+        let direct_method_flags = read_flags(counts.direct_methods)?;
+        let virtual_method_flags = read_flags(counts.virtual_methods)?;
 
         class_flags.push(Some(ClassHiddenApiFlags {
             static_field_flags,
@@ -328,14 +281,11 @@ fn read_hidden_api(
 
 #[cfg(test)]
 mod tests {
-    use crate::file::DexFile;
-    use crate::types::access_flags::AccessFlags;
-    use crate::types::class::{ClassData, ClassDef, EncodedField};
+    use crate::file::{DexBytes, DexFile};
     use crate::types::encoded_value::EncodedValue;
     use crate::types::header::{DexHeader, DexVersion, ParseOptions};
     use crate::types::method_handle::MethodHandleIdx;
     use crate::types::StringIdx;
-    use crate::types::TypeIdx;
     use crate::write::encoded_value::write_encoded_array;
     use crate::DexError;
 
@@ -396,28 +346,21 @@ mod tests {
 
     #[test]
     fn read_hidden_api_rejects_unknown_flags() {
-        let mut dex = DexFile::new(empty_header());
-        dex.classes.push(ClassDef {
-            class_type: TypeIdx(0),
-            access_flags: AccessFlags::empty(),
-            superclass: None,
-            interfaces: crate::types::TypeList::new(),
-            source_file: None,
-            annotations: None,
-            class_data: Some(ClassData {
-                static_fields: vec![EncodedField {
-                    field: crate::types::FieldIdx(0),
-                    access_flags: AccessFlags::empty(),
-                }],
-                instance_fields: Vec::new(),
-                direct_methods: Vec::new(),
-                virtual_methods: Vec::new(),
-            }),
-            static_values: Vec::new(),
-        });
+        // One class_def record whose class_data (at offset 32) declares a
+        // single static field, followed by a hidden-API blob at offset 40.
+        let mut buf = vec![0u8; 32];
+        buf[8..12].copy_from_slice(&u32::MAX.to_le_bytes());
+        buf[16..20].copy_from_slice(&u32::MAX.to_le_bytes());
+        buf[24..28].copy_from_slice(&32u32.to_le_bytes());
+        buf.extend_from_slice(&[1, 0, 0, 0, 0, 0, 0, 0]);
+        buf.extend_from_slice(&[4, 0, 0, 0, 99]);
+        let raw = DexBytes::from_vec(buf.clone());
 
-        let buf = [4, 0, 0, 0, 99];
-        let error = read_hidden_api(&buf, 0, &dex, &ParseOptions::default()).unwrap_err();
+        let mut dex = DexFile::new(empty_header());
+        dex.classes = crate::file::ClassTable::from_raw(raw.clone(), 0, 1).unwrap();
+        dex.raw = Some(raw);
+
+        let error = read_hidden_api(&buf, 40, &dex, &ParseOptions::default()).unwrap_err();
 
         assert_eq!(
             error.to_string(),

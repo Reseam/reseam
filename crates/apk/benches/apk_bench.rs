@@ -143,15 +143,15 @@ fn bench_search(c: &mut Criterion) {
     });
     group.bench_function("find_all_init_methods", |b| {
         b.iter(|| {
-            dex.scan_methods_collect(|view| {
-                let name = dex.string(dex.methods[view.method.0 as usize].name);
+            dex.scan_methods_collect(&reseam_dex::RefQuery::default(), |view| {
+                let name = dex.string(dex.method_id(view.method).name);
                 Ok((name == "<init>").then(|| view.hit()))
             })
             .unwrap()
         });
     });
     group.bench_function("find_class", |b| {
-        b.iter(|| dex.find_class("Ljava/lang/Object;"));
+        b.iter(|| dex.find_class_index("Ljava/lang/Object;"));
     });
     group.bench_function("find_methods_with_opcodes", |b| {
         let pattern = [
@@ -210,20 +210,10 @@ fn bench_mutation(c: &mut Criterion) {
     group.bench_function("return_early", |b| {
         b.iter_batched(
             || {
-                let mut d = dex.clone();
-                for class in &mut d.classes {
-                    if let Some(ref mut data) = class.class_data {
-                        for m in data.direct_methods.iter_mut() {
-                            if m.code.is_some() {
-                                return d;
-                            }
-                        }
-                    }
-                }
-                d
+                dex.clone()
             },
             |mut dex| {
-                for class in &mut dex.classes {
+                for class in dex.classes.iter_resident_mut() {
                     if let Some(ref mut data) = class.class_data {
                         for m in data.direct_methods.iter_mut() {
                             if let Some(ref mut code) = m.code {
@@ -253,7 +243,7 @@ fn bench_multi_dex(c: &mut Criterion) {
     c.bench_function("multi_dex/write_all", |b| {
         b.iter_batched(
             || container.clone(),
-            |mut c| c.write_all().unwrap(),
+            |mut c| (0..c.len()).for_each(|i| { reseam_dex::write(c.dex_mut(i).unwrap()).unwrap(); }),
             criterion::BatchSize::LargeInput,
         );
     });
@@ -318,7 +308,7 @@ fn bench_instagram(c: &mut Criterion) {
         |b| {
             b.iter_batched(
                 || container.clone(),
-                |mut c| c.write_all().unwrap(),
+                |mut c| (0..c.len()).for_each(|i| { reseam_dex::write(c.dex_mut(i).unwrap()).unwrap(); }),
                 criterion::BatchSize::LargeInput,
             );
         },

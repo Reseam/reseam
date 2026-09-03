@@ -91,7 +91,8 @@ fn test_apk_full_round_trip() {
         let mut dexes = apk3.dex_mut();
         for i in 0..dex_count {
             let dex = dexes.dex_mut(i).expect("dex access failed");
-            for class in &mut dex.classes {
+            dex.resolve_all_class_data().expect("resolve");
+            for class in dex.classes.iter_resident_mut() {
                 if let Some(ref mut data) = class.class_data {
                     for m in data
                         .direct_methods
@@ -185,7 +186,8 @@ fn test_apk_full_round_trip() {
         let mut patched6 = 0;
         let mut dexes = apk6.dex_mut();
         if let Some(dex) = dexes.dex_mut(0) {
-            for class in &mut dex.classes {
+            dex.resolve_all_class_data().expect("resolve");
+            for class in dex.classes.iter_resident_mut() {
                 if let Some(ref mut data) = class.class_data {
                     for m in data
                         .direct_methods

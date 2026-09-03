@@ -56,19 +56,11 @@ pub fn get_instruction(m: u32, index: u32) -> Instruction {
 #[export]
 pub fn instruction_count(m: u32) -> u32 {
     with_ctx(|ctx| {
-        let mh = match with_handles(|h| h.get_method(m)) {
-            Some(mh) => mh,
-            None => return 0,
+        let Some(mh) = with_handles(|h| h.get_method(m)) else {
+            return 0;
         };
-        let (_dex, method) = match ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual) {
-            Some(pair) => pair,
-            None => return 0,
-        };
-        method
-            .code
-            .as_ref()
-            .map(|c| c.instructions.len() as u32)
-            .unwrap_or(0)
+        ctx.read_method_summary(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)
+            .map_or(0, |summary| summary.instruction_count)
     })
 }
 
@@ -196,7 +188,7 @@ pub fn index_of_first_method_call(
                 .skip(start as usize)
                 .find(|(_, insn)| {
                     insn.method_ref().is_some_and(|mr| {
-                        let mid = &dex.methods[mr.0 as usize];
+                        let mid = dex.method_id(mr);
                         dex.type_descriptor(mid.class) == defining_class
                             && dex.string(mid.name) == method_name
                     })
@@ -230,7 +222,7 @@ pub fn index_of_first_field_access(
                         }
                     }
                     insn.field_ref().is_some_and(|fr| {
-                        let fid = &dex.fields[fr.0 as usize];
+                        let fid = dex.field_id(fr);
                         if let Some(ref ft) = field_type {
                             if dex.type_descriptor(fid.type_) != ft.as_str() {
                                 return false;
@@ -364,12 +356,15 @@ pub fn find_instructions_by_resource_id(res_type: String, res_name: String) -> V
 
 #[export]
 pub fn all_method_handles() -> Vec<u32> {
-    with_ctx(|ctx| ctx.all_methods())
-        .into_iter()
-        .map(|loc| {
-            with_handles(|h| h.alloc_method(loc.dex_idx, loc.class_idx, loc.method_idx, loc.is_virtual))
+    let mut handles = Vec::new();
+    with_ctx(|ctx| {
+        ctx.for_each_method(|loc| {
+            handles.push(with_handles(|h| {
+                h.alloc_method(loc.dex_idx, loc.class_idx, loc.method_idx, loc.is_virtual)
+            }));
         })
-        .collect()
+    });
+    handles
 }
 
 #[export]
@@ -407,20 +402,13 @@ pub fn instruction_method_ref(m: u32, index: u32) -> Option<MethodRef> {
         method.code.as_ref().and_then(|c| {
             c.instructions.get(index as usize).and_then(|insn| {
                 insn.method_ref().map(|method_idx| {
-                    let mid = &dex.methods[method_idx.0 as usize];
+                    let mid = dex.method_id(method_idx);
                     let class = dex.type_descriptor(mid.class).to_string();
                     let name = dex.string(mid.name).to_string();
-                    let proto = &dex.prototypes[mid.proto.0 as usize];
-                    let ret = dex.type_descriptor(proto.return_type);
-                    let params: Vec<&str> = proto
-                        .parameters
-                        .iter()
-                        .map(|p| dex.type_descriptor(*p))
-                        .collect();
                     MethodRef {
                         defining_class: class,
                         name,
-                        proto: format!("({}){}", params.join(""), ret),
+                        proto: dex.proto_descriptor(&dex.proto(mid.proto)),
                     }
                 })
             })
@@ -436,7 +424,7 @@ pub fn instruction_field_ref(m: u32, index: u32) -> Option<crate::kotlin::types:
         method.code.as_ref().and_then(|c| {
             c.instructions.get(index as usize).and_then(|insn| {
                 insn.field_ref().map(|field_idx| {
-                    let fid = &dex.fields[field_idx.0 as usize];
+                    let fid = dex.field_id(field_idx);
                     crate::kotlin::types::FieldRef {
                         defining_class: dex.type_descriptor(fid.class).to_string(),
                         name: dex.string(fid.name).to_string(),

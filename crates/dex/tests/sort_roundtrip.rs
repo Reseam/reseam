@@ -16,14 +16,14 @@ fn resolve_methods(dex: &reseam_dex::DexFile) -> Vec<ResolvedMethod> {
     dex.methods
         .iter()
         .map(|m| {
-            let class_desc = dex.type_descriptor(m.class).to_owned();
-            let name = dex.string(m.name).to_owned();
-            let proto = &dex.prototypes[m.proto.0 as usize];
-            let return_type = dex.type_descriptor(proto.return_type).to_owned();
+            let class_desc = dex.type_descriptor(m.class).into_owned();
+            let name = dex.string(m.name).into_owned();
+            let proto = dex.proto(m.proto);
+            let return_type = dex.type_descriptor(proto.return_type).into_owned();
             let params: Vec<String> = proto
                 .parameters
                 .iter()
-                .map(|t| dex.type_descriptor(*t).to_owned())
+                .map(|t| dex.type_descriptor(*t).into_owned())
                 .collect();
             ResolvedMethod {
                 class_desc,
@@ -40,9 +40,9 @@ fn resolve_fields(dex: &reseam_dex::DexFile) -> Vec<(String, String, String)> {
         .iter()
         .map(|f| {
             (
-                dex.type_descriptor(f.class).to_owned(),
-                dex.string(f.name).to_owned(),
-                dex.type_descriptor(f.type_).to_owned(),
+                dex.type_descriptor(f.class).into_owned(),
+                dex.string(f.name).into_owned(),
+                dex.type_descriptor(f.type_).into_owned(),
             )
         })
         .collect()
@@ -50,14 +50,14 @@ fn resolve_fields(dex: &reseam_dex::DexFile) -> Vec<(String, String, String)> {
 
 fn resolve_class_methods(dex: &reseam_dex::DexFile) -> HashMap<String, Vec<(String, String)>> {
     let mut result: HashMap<String, Vec<(String, String)>> = HashMap::new();
-    for class in &dex.classes {
-        let class_desc = dex.type_descriptor(class.class_type).to_owned();
+    for class in dex.classes.iter_resident() {
+        let class_desc = dex.type_descriptor(class.class_type).into_owned();
         if let Some(ref data) = class.class_data {
             let mut methods = Vec::new();
             for m in data.direct_methods.iter().chain(&data.virtual_methods) {
-                let method_id = &dex.methods[m.method.0 as usize];
-                let method_class = dex.type_descriptor(method_id.class).to_owned();
-                let method_name = dex.string(method_id.name).to_owned();
+                let method_id = dex.method_id(m.method);
+                let method_class = dex.type_descriptor(method_id.class).into_owned();
+                let method_name = dex.string(method_id.name).into_owned();
                 methods.push((method_class, method_name));
             }
             result.insert(class_desc, methods);
@@ -103,7 +103,7 @@ fn sort_roundtrip_preserves_method_ids() {
         let before_methods = resolve_methods(&dex);
         let before_class_methods = resolve_class_methods(&dex);
 
-        let written = reseam_dex::write(&mut dex).expect("write");
+        let written = reseam_dex::write(&dex).expect("write");
         let dex2 = reseam_dex::parse(&written, opts).expect("parse written");
 
         let after_methods = resolve_methods(&dex2);
@@ -251,7 +251,7 @@ fn sort_roundtrip_after_interning_preserves_method_ids() {
     );
     let _ = dex.intern_field("Lreseam/Extension;", "extensionField", "Ljava/lang/String;");
 
-    let written = reseam_dex::write(&mut dex).expect("write");
+    let written = reseam_dex::write(&dex).expect("write");
     let mut dex2 = reseam_dex::parse(&written, opts).expect("parse written");
     dex2.resolve_all_class_data().expect("resolve");
 
@@ -364,7 +364,7 @@ fn sort_roundtrip_after_code_modification_preserves_refs() {
 
     // Find a $-containing class and modify its code
     let mut modified_class = None;
-    for class in dex.classes.iter_mut() {
+    for class in dex.classes.iter_resident_mut() {
         if modified_class.is_some() {
             break;
         }
@@ -400,7 +400,7 @@ fn sort_roundtrip_after_code_modification_preserves_refs() {
 
     eprintln!("Modified class: {:?}", modified_class);
 
-    let written = reseam_dex::write(&mut dex).expect("write");
+    let written = reseam_dex::write(&dex).expect("write");
     let mut dex2 = reseam_dex::parse(&written, opts).expect("parse written");
     dex2.resolve_all_class_data().expect("resolve");
 
@@ -486,12 +486,12 @@ fn sort_double_roundtrip_is_stable() {
     };
 
     // First round-trip
-    let mut dex1 = reseam_dex::parse(&dex_bytes, opts.clone()).expect("parse");
-    let written1 = reseam_dex::write(&mut dex1).expect("write1");
+    let dex1 = reseam_dex::parse(&dex_bytes, opts.clone()).expect("parse");
+    let written1 = reseam_dex::write(&dex1).expect("write1");
 
     // Second round-trip
-    let mut dex2 = reseam_dex::parse(&written1, opts.clone()).expect("parse written1");
-    let written2 = reseam_dex::write(&mut dex2).expect("write2");
+    let dex2 = reseam_dex::parse(&written1, opts.clone()).expect("parse written1");
+    let written2 = reseam_dex::write(&dex2).expect("write2");
 
     // The two outputs should be byte-identical (sort is stable/idempotent)
     if written1 != written2 {
@@ -589,11 +589,11 @@ fn compare_patched_vs_original() {
 
         // Check for cross-class method reference corruption
         let mut issues = Vec::new();
-        for class in &patched_dex.classes {
+        for class in patched_dex.classes.iter_resident() {
             let class_desc = patched_dex.type_descriptor(class.class_type);
             if let Some(ref data) = class.class_data {
                 for m in data.direct_methods.iter().chain(&data.virtual_methods) {
-                    let method_id = &patched_dex.methods[m.method.0 as usize];
+                    let method_id = patched_dex.method_id(m.method);
                     let method_class = patched_dex.type_descriptor(method_id.class);
                     let method_name = patched_dex.string(method_id.name);
 

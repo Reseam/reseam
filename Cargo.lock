@@ -1332,11 +1332,15 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "flate2",
+ "libc",
+ "memmap2",
  "pretty_assertions",
  "quick-xml",
  "rayon",
  "reseam-dex",
  "reseam-sign",
+ "rustc-hash",
+ "smallvec",
  "tempfile",
  "thiserror 2.0.18",
  "tracing",
@@ -1359,7 +1363,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "tempfile",
  "time",
  "toml",
  "tracing",
@@ -1380,6 +1383,7 @@ dependencies = [
  "rustc-hash",
  "sha1",
  "smallvec",
+ "tempfile",
  "thiserror 2.0.18",
  "tracing",
  "zip",
@@ -1397,6 +1401,7 @@ dependencies = [
  "jni",
  "reseam-apk",
  "reseam-patcher-macros",
+ "rustc-hash",
  "serde",
  "sha2",
  "smallvec",
@@ -1430,7 +1435,6 @@ dependencies = [
  "reseam-sign",
  "serde",
  "serde_json",
- "tempfile",
  "tracing",
 ]
 
@@ -1438,6 +1442,7 @@ dependencies = [
 name = "reseam-sign"
 version = "0.1.0"
 dependencies = [
+ "memmap2",
  "rayon",
  "ring",
  "tempfile",

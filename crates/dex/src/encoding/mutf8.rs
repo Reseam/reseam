@@ -9,19 +9,37 @@ pub fn decode_mutf8(bytes: &[u8]) -> Result<String> {
 }
 
 pub fn decode_mutf8_with_opts(bytes: &[u8], offset: usize, opts: &ParseOptions) -> Result<String> {
-    decode_mutf8_at_with_opts(bytes, offset, opts)
+    let mut result = String::new();
+    walk_mutf8(bytes, offset, opts, |c| result.push(c))?;
+    Ok(result)
 }
 
-pub fn decode_mutf8_at(bytes: &[u8], offset: usize) -> Result<String> {
-    decode_mutf8_at_with_opts(bytes, offset, &ParseOptions::default())
+/// Decodes bytes that already passed [`utf16_units`] validation; malformed
+/// sequences become U+FFFD instead of errors.
+pub fn decode_mutf8_lossy(bytes: &[u8]) -> String {
+    let opts = ParseOptions {
+        lenient_mutf8: true,
+        ..ParseOptions::default()
+    };
+    let mut result = String::new();
+    walk_mutf8(bytes, 0, &opts, |c| result.push(c))
+        .expect("lenient MUTF-8 decoding only fails on truncation, which validation rejects");
+    result
 }
 
-pub fn decode_mutf8_at_with_opts(
+/// Validates a MUTF-8 payload and returns its length in UTF-16 code units.
+pub fn utf16_units(bytes: &[u8], offset: usize, opts: &ParseOptions) -> Result<u32> {
+    let mut units = 0u32;
+    walk_mutf8(bytes, offset, opts, |c| units += c.len_utf16() as u32)?;
+    Ok(units)
+}
+
+fn walk_mutf8(
     bytes: &[u8],
     offset: usize,
     opts: &ParseOptions,
-) -> Result<String> {
-    let mut result = String::new();
+    mut emit: impl FnMut(char),
+) -> Result<()> {
     let mut i = 0;
     while i < bytes.len() {
         let b0 = bytes[i];
@@ -30,35 +48,27 @@ pub fn decode_mutf8_at_with_opts(
         }
         i += 1;
         if b0 & 0x80 == 0 {
-            // Single byte: 0xxxxxxx
-            result.push(b0 as char);
+            emit(b0 as char);
         } else if b0 & 0xE0 == 0xC0 {
-            // Two bytes: 110xxxxx 10xxxxxx
             if i >= bytes.len() {
                 return Err(invalid_mutf8(offset + i - 1, "truncated 2-byte sequence"));
             }
             let b1 = bytes[i];
             if b1 & 0xC0 != 0x80 {
                 if opts.lenient_mutf8 {
-                    result.push('\u{FFFD}');
+                    emit('\u{FFFD}');
                     continue;
-                };
+                }
                 return Err(invalid_mutf8(offset + i, "invalid 2-byte continuation"));
             }
             i += 1;
             let cp = ((b0 as u32 & 0x1F) << 6) | (b1 as u32 & 0x3F);
-            // MUTF-8: 0xC0 0x80 encodes U+0000
-            if let Some(c) = char::from_u32(cp) {
-                result.push(c);
-            } else {
-                if opts.lenient_mutf8 {
-                    result.push('\u{FFFD}');
-                } else {
-                    return Err(invalid_mutf8(offset + i - 2, "invalid 2-byte code point"));
-                }
+            match char::from_u32(cp) {
+                Some(c) => emit(c),
+                None if opts.lenient_mutf8 => emit('\u{FFFD}'),
+                None => return Err(invalid_mutf8(offset + i - 2, "invalid 2-byte code point")),
             }
         } else if b0 & 0xF0 == 0xE0 {
-            // Three bytes: 1110xxxx 10xxxxxx 10xxxxxx
             if i + 1 >= bytes.len() {
                 return Err(invalid_mutf8(offset + i - 1, "truncated 3-byte sequence"));
             }
@@ -66,7 +76,7 @@ pub fn decode_mutf8_at_with_opts(
             let b2 = bytes[i + 1];
             if b1 & 0xC0 != 0x80 || b2 & 0xC0 != 0x80 {
                 if opts.lenient_mutf8 {
-                    result.push('\u{FFFD}');
+                    emit('\u{FFFD}');
                     continue;
                 }
                 return Err(invalid_mutf8(offset + i, "invalid 3-byte continuation"));
@@ -74,16 +84,14 @@ pub fn decode_mutf8_at_with_opts(
             i += 2;
             let cp = ((b0 as u32 & 0x0F) << 12) | ((b1 as u32 & 0x3F) << 6) | (b2 as u32 & 0x3F);
 
-            // Check for surrogate pair (MUTF-8 encodes supplementary chars this way)
             if (0xD800..=0xDBFF).contains(&cp) {
-                // High surrogate — look for low surrogate
                 if i + 2 < bytes.len() && bytes[i] & 0xF0 == 0xE0 {
                     let b3 = bytes[i];
                     let b4 = bytes[i + 1];
                     let b5 = bytes[i + 2];
                     if b4 & 0xC0 != 0x80 || b5 & 0xC0 != 0x80 {
                         if opts.lenient_mutf8 {
-                            result.push('\u{FFFD}');
+                            emit('\u{FFFD}');
                             continue;
                         }
                         return Err(invalid_mutf8(offset + i, "invalid surrogate continuation"));
@@ -93,52 +101,44 @@ pub fn decode_mutf8_at_with_opts(
                     if (0xDC00..=0xDFFF).contains(&cp2) {
                         i += 3;
                         let supplementary = 0x10000 + ((cp - 0xD800) << 10) + (cp2 - 0xDC00);
-                        if let Some(c) = char::from_u32(supplementary) {
-                            result.push(c);
-                        } else {
-                            if opts.lenient_mutf8 {
-                                result.push('\u{FFFD}');
-                            } else {
+                        match char::from_u32(supplementary) {
+                            Some(c) => emit(c),
+                            None if opts.lenient_mutf8 => emit('\u{FFFD}'),
+                            None => {
                                 return Err(invalid_mutf8(
                                     offset + i - 3,
                                     "invalid supplementary code point",
-                                ));
+                                ))
                             }
                         }
                         continue;
                     }
                 }
-                // Lone high surrogate
                 if opts.lenient_mutf8 {
-                    result.push('\u{FFFD}');
+                    emit('\u{FFFD}');
                 } else {
                     return Err(invalid_mutf8(offset + i - 3, "unpaired high surrogate"));
                 }
             } else if (0xDC00..=0xDFFF).contains(&cp) {
-                // Lone low surrogate
                 if opts.lenient_mutf8 {
-                    result.push('\u{FFFD}');
+                    emit('\u{FFFD}');
                 } else {
                     return Err(invalid_mutf8(offset + i - 3, "unpaired low surrogate"));
                 }
-            } else if let Some(c) = char::from_u32(cp) {
-                result.push(c);
             } else {
-                if opts.lenient_mutf8 {
-                    result.push('\u{FFFD}');
-                } else {
-                    return Err(invalid_mutf8(offset + i - 3, "invalid 3-byte code point"));
+                match char::from_u32(cp) {
+                    Some(c) => emit(c),
+                    None if opts.lenient_mutf8 => emit('\u{FFFD}'),
+                    None => return Err(invalid_mutf8(offset + i - 3, "invalid 3-byte code point")),
                 }
             }
+        } else if opts.lenient_mutf8 {
+            emit('\u{FFFD}');
         } else {
-            if opts.lenient_mutf8 {
-                result.push('\u{FFFD}');
-            } else {
-                return Err(invalid_mutf8(offset + i - 1, "invalid start byte"));
-            }
+            return Err(invalid_mutf8(offset + i - 1, "invalid start byte"));
         }
     }
-    Ok(result)
+    Ok(())
 }
 
 pub fn encode_mutf8(s: &str) -> Vec<u8> {

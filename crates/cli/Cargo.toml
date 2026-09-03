@@ -16,7 +16,6 @@ reseam-sign    = { workspace = true }
 reseam-apk     = { workspace = true }
 clap           = { workspace = true }
 anyhow         = { workspace = true }
-tempfile       = { workspace = true }
 tracing        = { workspace = true }
 tracing-subscriber = { workspace = true }
 ed25519-dalek  = { workspace = true }

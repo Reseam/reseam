@@ -1,21 +1,22 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The lazy-aware writer must produce byte-identical output to the eager
-//! writer. A DEX parsed lazily (classes never materialized) is written by
-//! streaming each deferred class straight from the raw buffer — decoding,
-//! remapping, and re-encoding one at a time. That output must equal the output
-//! of the same DEX with every class fully resolved before writing.
+//! The lazy-aware writer must produce output equivalent to the eager writer.
+//! A DEX parsed lazily (classes never materialized) is written by copying
+//! each file class straight from the raw buffer with its pool indices
+//! rewritten; the same DEX with every class resolved is decoded, remapped
+//! and re-encoded. Parsed back, both outputs must hold the same pools and
+//! the same classes, method for method.
 //!
 //! Two paths matter:
 //! - identity sort: an unmodified, canonically-sorted DEX (no pool reorder);
-//! - remap sort: a pool perturbation (a new string) forces every instruction
-//!   operand to be remapped, so the deferred-class emitter must apply the exact
-//!   same remap + widening the resident path applies.
+//! - remap sort: a pool perturbation (a new string) forces every operand to be
+//!   remapped, so the raw copier must apply exactly the remap the resident
+//!   path applies.
 
 use std::io::Read;
 
-use reseam_dex::{DexString, ParseOptions};
+use reseam_dex::ParseOptions;
 
 const APK: &str = "../../test-apks/com.google.android.youtube_20.40.45.apk";
 
@@ -53,22 +54,43 @@ fn eager_write(dex_bytes: &[u8], perturb: bool) -> Vec<u8> {
     let mut dex = reseam_dex::parse(dex_bytes, lazy_opts()).expect("parse");
     dex.resolve_all_class_data().expect("resolve all");
     if perturb {
-        dex.strings.push(DexString::new("!!lazy_write_marker"));
+        dex.strings.push("!!lazy_write_marker");
     }
-    reseam_dex::write(&mut dex).expect("eager write")
+    reseam_dex::write(&dex).expect("eager write")
 }
 
-/// Writes the DEX with classes left deferred (lazy streaming path).
+/// Writes the DEX with classes left in the file (raw copy path).
 fn lazy_write(dex_bytes: &[u8], perturb: bool) -> Vec<u8> {
     let mut dex = reseam_dex::parse(dex_bytes, lazy_opts()).expect("parse");
     if perturb {
-        dex.strings.push(DexString::new("!!lazy_write_marker"));
+        dex.strings.push("!!lazy_write_marker");
     }
-    reseam_dex::write(&mut dex).expect("lazy write")
+    reseam_dex::write(&dex).expect("lazy write")
+}
+
+/// Everything a DEX holds, fully decoded, for comparing two writers' output.
+struct Snapshot {
+    strings: Vec<String>,
+    prototypes: Vec<reseam_dex::Prototype>,
+    fields: Vec<reseam_dex::FieldId>,
+    methods: Vec<reseam_dex::MethodId>,
+    classes: Vec<reseam_dex::ClassDef>,
+}
+
+fn snapshot(bytes: &[u8]) -> Snapshot {
+    let mut dex = reseam_dex::parse(bytes, lazy_opts()).expect("parse output");
+    dex.resolve_all_class_data().expect("resolve output");
+    Snapshot {
+        strings: dex.strings.iter().map(|s| s.into_owned()).collect(),
+        prototypes: dex.prototypes.to_vec(),
+        fields: dex.fields.to_vec(),
+        methods: dex.methods.to_vec(),
+        classes: dex.classes.iter_resident().cloned().collect(),
+    }
 }
 
 #[test]
-fn lazy_write_is_byte_identical_to_eager_write() {
+fn lazy_write_is_equivalent_to_eager_write() {
     let dexes = dexes();
     if dexes.is_empty() {
         eprintln!("Skipping: test APK not found at {APK}");
@@ -76,25 +98,45 @@ fn lazy_write_is_byte_identical_to_eager_write() {
     }
 
     for (i, dex_bytes) in dexes.iter().enumerate() {
-        // Identity path: an unmodified, already-sorted DEX.
-        let eager = eager_write(dex_bytes, false);
-        let lazy = lazy_write(dex_bytes, false);
-        assert_eq!(
-            lazy, eager,
-            "lazy vs eager write differ (identity sort) for classes{}.dex",
-            i + 1
-        );
-
-        // Remap path: a new string reorders the pools, forcing every deferred
-        // class's operands to be remapped by the streaming emitter.
-        let eager_p = eager_write(dex_bytes, true);
-        let lazy_p = lazy_write(dex_bytes, true);
-        assert_eq!(
-            lazy_p, eager_p,
-            "lazy vs eager write differ (remap sort) for classes{}.dex",
-            i + 1
-        );
+        for perturb in [false, true] {
+            let eager = snapshot(&eager_write(dex_bytes, perturb));
+            let lazy = snapshot(&lazy_write(dex_bytes, perturb));
+            assert_eq!(lazy.strings, eager.strings, "strings differ (perturb={perturb}) for classes{}.dex", i + 1);
+            assert_eq!(lazy.prototypes, eager.prototypes, "protos differ (perturb={perturb}) for classes{}.dex", i + 1);
+            assert_eq!(lazy.fields, eager.fields, "fields differ (perturb={perturb}) for classes{}.dex", i + 1);
+            assert_eq!(lazy.methods, eager.methods, "methods differ (perturb={perturb}) for classes{}.dex", i + 1);
+            assert_eq!(lazy.classes.len(), eager.classes.len());
+            for (l, e) in lazy.classes.iter().zip(&eager.classes) {
+                assert_eq!(l, e, "class differs (perturb={perturb}) for classes{}.dex", i + 1);
+            }
+        }
     }
 
     eprintln!("verified lazy write == eager write across {} dexes", dexes.len());
+}
+
+#[test]
+fn spooled_write_is_byte_identical_to_memory_write() {
+    let dexes = dexes();
+    if dexes.is_empty() {
+        eprintln!("Skipping: test APK not found at {APK}");
+        return;
+    }
+    for (i, bytes) in dexes.iter().enumerate() {
+        for perturb in [false, true] {
+            let mut memory = reseam_dex::parse(bytes, lazy_opts()).expect("parse");
+            let mut spool = reseam_dex::parse(bytes, lazy_opts()).expect("parse");
+            if perturb {
+                memory.strings.push("!!lazy_write_marker");
+                spool.strings.push("!!lazy_write_marker");
+            }
+            let expected = reseam_dex::write(&memory).expect("memory write");
+            let spooled = reseam_dex::write_spooled(&spool).expect("spooled write");
+            assert_eq!(spooled.len(), expected.len() as u64, "dex {i} perturb={perturb}");
+            assert!(
+                spooled.map().expect("map")[..] == expected[..],
+                "dex {i} perturb={perturb}: spooled bytes differ"
+            );
+        }
+    }
 }

@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::code::{ClassLayout, MethodLayout};
+use super::sink::DexSink;
 use super::DexWriter;
-use crate::encoding::leb128::write_uleb128;
 use crate::types::class::EncodedField;
 
 /// Writes all class-data items and records their file offsets.
 ///
 /// The layouts come from the code pass, so the code offsets are consumed in the
 /// same class-then-direct-then-virtual order they were emitted.
-pub(crate) fn write_class_data_items(w: &mut DexWriter, layouts: &[Option<ClassLayout>]) {
+pub(crate) fn write_class_data_items<S: DexSink>(w: &mut DexWriter<S>, layouts: &[Option<ClassLayout>]) {
     let class_data_start = w.pos();
     let mut class_data_item_count = 0u32;
     w.class_data_offsets.clear();
@@ -35,11 +35,11 @@ pub(crate) fn write_class_data_items(w: &mut DexWriter, layouts: &[Option<ClassL
 }
 
 /// Writes one `class_data_item` using sorted delta-encoded member indexes.
-fn write_class_data(w: &mut DexWriter, layout: &ClassLayout, code_off_idx: &mut usize) {
-    write_uleb128(&mut w.buf, layout.static_fields.len() as u32);
-    write_uleb128(&mut w.buf, layout.instance_fields.len() as u32);
-    write_uleb128(&mut w.buf, layout.direct_methods.len() as u32);
-    write_uleb128(&mut w.buf, layout.virtual_methods.len() as u32);
+fn write_class_data<S: DexSink>(w: &mut DexWriter<S>, layout: &ClassLayout, code_off_idx: &mut usize) {
+    w.write_uleb128(layout.static_fields.len() as u32);
+    w.write_uleb128(layout.instance_fields.len() as u32);
+    w.write_uleb128(layout.direct_methods.len() as u32);
+    w.write_uleb128(layout.virtual_methods.len() as u32);
 
     write_fields(w, &layout.static_fields);
     write_fields(w, &layout.instance_fields);
@@ -47,21 +47,21 @@ fn write_class_data(w: &mut DexWriter, layout: &ClassLayout, code_off_idx: &mut 
     write_methods(w, &layout.virtual_methods, code_off_idx);
 }
 
-fn write_fields(w: &mut DexWriter, fields: &[EncodedField]) {
+fn write_fields<S: DexSink>(w: &mut DexWriter<S>, fields: &[EncodedField]) {
     let mut prev_idx = 0u32;
     for f in fields {
-        write_uleb128(&mut w.buf, f.field.0 - prev_idx);
+        w.write_uleb128(f.field.0 - prev_idx);
         prev_idx = f.field.0;
-        write_uleb128(&mut w.buf, f.access_flags.bits());
+        w.write_uleb128(f.access_flags.bits());
     }
 }
 
-fn write_methods(w: &mut DexWriter, methods: &[MethodLayout], code_off_idx: &mut usize) {
+fn write_methods<S: DexSink>(w: &mut DexWriter<S>, methods: &[MethodLayout], code_off_idx: &mut usize) {
     let mut prev_idx = 0u32;
     for m in methods {
-        write_uleb128(&mut w.buf, m.method.0 - prev_idx);
+        w.write_uleb128(m.method.0 - prev_idx);
         prev_idx = m.method.0;
-        write_uleb128(&mut w.buf, m.access_flags.bits());
+        w.write_uleb128(m.access_flags.bits());
         let code_off = if m.has_code {
             let off = w.code_item_offsets[*code_off_idx];
             *code_off_idx += 1;
@@ -69,6 +69,6 @@ fn write_methods(w: &mut DexWriter, methods: &[MethodLayout], code_off_idx: &mut
         } else {
             0
         };
-        write_uleb128(&mut w.buf, code_off);
+        w.write_uleb128(code_off);
     }
 }

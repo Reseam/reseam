@@ -22,6 +22,8 @@ impl Instruction {
             Self::InvokePolymorphicRange { count, .. } => u16::from(*count),
             Self::InvokeCustom { args, .. } => args.len() as u16,
             Self::InvokeCustomRange { count, .. } => u16::from(*count),
+            Self::FilledNewArray { args, .. } => args.len() as u16,
+            Self::FilledNewArrayRange { count, .. } => u16::from(*count),
             _ => 0,
         }
     }

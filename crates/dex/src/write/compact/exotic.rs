@@ -54,8 +54,9 @@ pub(super) fn remap_all_exotic_indices(
     dex: &mut crate::file::DexFile,
     cs_remap: &[u32],
     mh_remap: &[u32],
-) {
-    for class in &mut dex.classes {
+) -> crate::error::Result<()> {
+    for class_idx in 0..dex.classes.len() {
+        let class = dex.class_mut(class_idx)?;
         if let Some(data) = &mut class.class_data {
             for method in data
                 .direct_methods
@@ -93,6 +94,7 @@ pub(super) fn remap_all_exotic_indices(
             remap_method_handle_index_in_annotations_dir(annotations, mh_remap);
         }
     }
+    Ok(())
 }
 
 fn remap_method_handle_in_encoded_value(value: &mut EncodedValue, mh_remap: &HashMap<u32, u32>) {

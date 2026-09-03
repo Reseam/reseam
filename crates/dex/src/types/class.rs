@@ -5,19 +5,19 @@ use super::access_flags::AccessFlags;
 use super::annotation::AnnotationsDirectory;
 use super::code::CodeItem;
 use super::encoded_value::EncodedValue;
-use super::{DexString, FieldIdx, MethodId, MethodIdx, StringIdx, TypeIdx, TypeList};
+use super::{FieldIdx, MethodIdx, StringIdx, TypeIdx, TypeList};
 
 pub const NO_INDEX: u32 = 0xFFFFFFFF;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ClassDef {
     pub class_type: TypeIdx,
     pub access_flags: AccessFlags,
     pub superclass: Option<TypeIdx>,
     pub interfaces: TypeList,
     pub source_file: Option<StringIdx>,
-    pub annotations: Option<AnnotationsDirectory>,
-    pub class_data: Option<ClassData>,
+    pub annotations: Option<Box<AnnotationsDirectory>>,
+    pub class_data: Option<Box<ClassData>>,
     pub static_values: Vec<EncodedValue>,
 }
 
@@ -40,12 +40,7 @@ impl ClassDef {
     }
 
     pub fn ensure_class_data(&mut self) -> &mut ClassData {
-        self.class_data.get_or_insert_with(|| ClassData {
-            static_fields: Vec::new(),
-            instance_fields: Vec::new(),
-            direct_methods: Vec::new(),
-            virtual_methods: Vec::new(),
-        })
+        self.class_data.get_or_insert_with(Default::default)
     }
 
     pub fn add_direct_method(&mut self, method: EncodedMethod) {
@@ -70,41 +65,9 @@ impl ClassDef {
             data.virtual_methods.retain(|m| !predicate(m));
         }
     }
-
-    pub fn find_method(
-        &self,
-        name: &str,
-        methods: &[MethodId],
-        strings: &[DexString],
-    ) -> Option<&EncodedMethod> {
-        let data = self.class_data.as_ref()?;
-        data.direct_methods
-            .iter()
-            .chain(data.virtual_methods.iter())
-            .find(|m| {
-                let method_id = &methods[m.method.0 as usize];
-                strings[method_id.name.0 as usize].as_str() == name
-            })
-    }
-
-    pub fn find_method_mut(
-        &mut self,
-        name: &str,
-        methods: &[MethodId],
-        strings: &[DexString],
-    ) -> Option<&mut EncodedMethod> {
-        let data = self.class_data.as_mut()?;
-        data.direct_methods
-            .iter_mut()
-            .chain(data.virtual_methods.iter_mut())
-            .find(|m| {
-                let method_id = &methods[m.method.0 as usize];
-                strings[method_id.name.0 as usize].as_str() == name
-            })
-    }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct ClassData {
     pub static_fields: Vec<EncodedField>,
     pub instance_fields: Vec<EncodedField>,
@@ -112,13 +75,13 @@ pub struct ClassData {
     pub virtual_methods: Vec<EncodedMethod>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EncodedField {
     pub field: FieldIdx,
     pub access_flags: AccessFlags,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EncodedMethod {
     pub method: MethodIdx,
     pub access_flags: AccessFlags,

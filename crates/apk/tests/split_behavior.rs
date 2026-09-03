@@ -6,7 +6,7 @@ use std::io::Write;
 use std::path::Path;
 
 use reseam_apk::reseam_dex::{DexFile, DexHeader, DexVersion, ParseOptions};
-use reseam_apk::resources::ResPackage;
+use reseam_apk::resources::{ResPackage, ResStringPool};
 use reseam_apk::zip::writer::{ALIGNMENT_DEFAULT, ALIGNMENT_NATIVE_LIB};
 use reseam_apk::{ApkFile, ResourceTable};
 
@@ -20,10 +20,13 @@ fn manifest_bytes(version_name: &str, split_name: Option<&str>) -> Vec<u8> {
     .expect("compile manifest")
 }
 
+fn empty_strings() -> ResStringPool {
+    ResStringPool::new(Vec::new(), true)
+}
+
 fn resource_table_bytes() -> Vec<u8> {
     ResourceTable {
-        global_strings: Vec::new(),
-        global_strings_utf8: true,
+        global_strings: empty_strings(),
         packages: Vec::new(),
     }
     .serialize()
@@ -32,21 +35,13 @@ fn resource_table_bytes() -> Vec<u8> {
 
 fn mutable_resource_table_bytes() -> Vec<u8> {
     ResourceTable {
-        global_strings: Vec::new(),
-        global_strings_utf8: true,
-        packages: vec![ResPackage {
-            id: 0x7F,
-            name: "com.example.test".to_string(),
-            type_strings: Vec::new(),
-            type_strings_utf8: true,
-            key_strings: Vec::new(),
-            key_strings_utf8: true,
-            last_public_type: 0,
-            last_public_key: 0,
-            type_id_offset: 0,
-            type_specs: Vec::new(),
-            types: Vec::new(),
-        }],
+        global_strings: empty_strings(),
+        packages: vec![ResPackage::new(
+            0x7F,
+            "com.example.test",
+            empty_strings(),
+            empty_strings(),
+        )],
     }
     .serialize()
     .expect("serialize mutable resources")
@@ -503,7 +498,7 @@ fn repeated_write_preserves_modified_resources_without_reopen() {
         Some(res_id)
     );
     assert_eq!(
-        reparsed.get_string_resource_value("greeting"),
+        reparsed.get_string_resource_value("greeting").as_deref(),
         Some("hello")
     );
 }

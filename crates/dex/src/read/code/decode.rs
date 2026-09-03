@@ -31,7 +31,9 @@ pub(super) fn hi8(unit: u16) -> u8 {
     (unit >> 8) as u8
 }
 
-fn min_instruction_bytes(opcode: u8) -> usize {
+/// Code units of a fixed-format instruction; `0x00` may instead start a
+/// variable-length payload, see [`payload_units`].
+pub(super) fn opcode_units(opcode: u8) -> usize {
     match opcode {
         0x03
         | 0x06
@@ -48,9 +50,9 @@ fn min_instruction_bytes(opcode: u8) -> usize {
         | 0x6e..=0x72
         | 0x74..=0x78
         | 0xfc
-        | 0xfd => 6,
-        0x18 => 10,
-        0xfa | 0xfb => 8,
+        | 0xfd => 3,
+        0x18 => 5,
+        0xfa | 0xfb => 4,
         0x00
         | 0x01
         | 0x04
@@ -64,9 +66,50 @@ fn min_instruction_bytes(opcode: u8) -> usize {
         | 0x79..=0x7a
         | 0x7b..=0x8f
         | 0xb0..=0xcf
-        | 0xe3..=0xf9 => 2,
-        _ => 4,
+        | 0xe3..=0xf9 => 1,
+        _ => 2,
     }
+}
+
+/// Counts the instructions in a code item by walking opcode lengths, without
+/// decoding operands or building instructions.
+pub fn count_instructions(buf: &[u8], start: usize, insns_size: usize) -> Result<u32> {
+    let mut pc = 0usize;
+    let mut count = 0u32;
+    while pc < insns_size {
+        let unit_off = start + pc * 2;
+        require_len(buf, unit_off, 2, "code item instruction")?;
+        let unit0 = super::format::u16_at(buf, unit_off);
+        let opcode = (unit0 & 0xFF) as u8;
+        pc += if opcode == 0x00 {
+            payload_units(buf, unit_off, unit0)?
+        } else {
+            opcode_units(opcode)
+        };
+        count += 1;
+    }
+    Ok(count)
+}
+
+/// Length of a `nop` or of the switch / fill-array payload it introduces.
+pub(super) fn payload_units(buf: &[u8], unit_off: usize, unit0: u16) -> Result<usize> {
+    use super::format::{u16_at, u32_at};
+    Ok(match unit0 {
+        0x0100 => {
+            require_len(buf, unit_off, 4, "packed-switch payload")?;
+            4 + u16_at(buf, unit_off + 2) as usize * 2
+        }
+        0x0200 => {
+            require_len(buf, unit_off, 4, "sparse-switch payload")?;
+            2 + u16_at(buf, unit_off + 2) as usize * 4
+        }
+        0x0300 => {
+            require_len(buf, unit_off, 8, "fill-array-data payload")?;
+            let data_bytes = u32_at(buf, unit_off + 4) as usize * u16_at(buf, unit_off + 2) as usize;
+            (8 + data_bytes).div_ceil(2)
+        }
+        _ => 1,
+    })
 }
 
 pub fn decode_instructions(
@@ -97,12 +140,7 @@ pub fn decode_instructions_into(
         require_len(buf, unit_off, 2, "code item instruction")?;
         let unit0 = super::format::u16_at(buf, unit_off);
         let opcode = (unit0 & 0xFF) as u8;
-        require_len(
-            buf,
-            unit_off,
-            min_instruction_bytes(opcode),
-            "code item instruction",
-        )?;
+        require_len(buf, unit_off, opcode_units(opcode) * 2, "code item instruction")?;
 
         let decoded = match opcode {
             0x00..=0x43 => basic::decode_opcode(buf, unit_off, opcode)?,

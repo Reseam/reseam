@@ -3,11 +3,10 @@
 
 use super::pattern::{find_pattern_span, InstructionPattern};
 use super::scan::{MethodHit, MethodView};
-use super::DexFile;
+use super::{DexFile, RefKey, RefQuery};
 use crate::error::Result;
 use crate::types::access_flags::AccessFlags;
-use crate::types::instruction::Instruction;
-use crate::types::StringIdx;
+use crate::types::{StringIdx, TypeIdx};
 
 #[derive(Debug, Clone)]
 pub struct Fingerprint {
@@ -98,7 +97,17 @@ pub struct FingerprintHit {
 /// from [`DexFile::prepare_fingerprint`] means a required string is absent from
 /// the DEX, so no method can match and scanning is skipped entirely.
 struct PreparedFingerprint {
+    defining_class: Option<TypeIdx>,
+    name: Option<StringIdx>,
     strings: Option<Vec<StringIdx>>,
+}
+
+impl PreparedFingerprint {
+    fn query(&self, fp: &Fingerprint) -> RefQuery {
+        let strings = self.strings.iter().flatten().map(|&s| RefKey::string(s));
+        let literals = fp.literals.iter().flatten().map(|&l| RefKey::literal(l));
+        RefQuery::all_of(strings.chain(literals))
+    }
 }
 
 impl DexFile {
@@ -106,29 +115,36 @@ impl DexFile {
         let Some(prepared) = self.prepare_fingerprint(fp) else {
             return Ok(None);
         };
-        self.scan_methods_find(|view| self.match_fingerprint(fp, &prepared, view))
+        self.scan_methods_find(&prepared.query(fp), |view| self.match_fingerprint(fp, &prepared, view))
     }
 
     pub fn find_methods_by_fingerprint(&self, fp: &Fingerprint) -> Result<Vec<FingerprintHit>> {
         let Some(prepared) = self.prepare_fingerprint(fp) else {
             return Ok(Vec::new());
         };
-        self.scan_methods_collect(|view| self.match_fingerprint(fp, &prepared, view))
+        self.scan_methods_collect(&prepared.query(fp), |view| self.match_fingerprint(fp, &prepared, view))
     }
 
+    /// Resolves the fingerprint's names to this DEX's indices once; a DEX that
+    /// lacks any of them cannot contain a match and is skipped entirely.
     fn prepare_fingerprint(&self, fp: &Fingerprint) -> Option<PreparedFingerprint> {
+        let defining_class = match &fp.defining_class {
+            None => None,
+            Some(descriptor) => Some(self.find_type_idx(descriptor)?),
+        };
+        let name = match &fp.name {
+            None => None,
+            Some(name) => Some(self.find_string_idx(name)?),
+        };
         let strings = match &fp.strings {
             None => None,
-            Some(list) => {
-                let indices: Vec<StringIdx> =
-                    list.iter().filter_map(|s| self.find_string_idx(s)).collect();
-                if indices.len() != list.len() {
-                    return None;
-                }
-                Some(indices)
-            }
+            Some(list) => Some(list.iter().map(|s| self.find_string_idx(s)).collect::<Option<_>>()?),
         };
-        Some(PreparedFingerprint { strings })
+        Some(PreparedFingerprint {
+            defining_class,
+            name,
+            strings,
+        })
     }
 
     /// Checks a fingerprint against one method. Metadata criteria (defining
@@ -138,20 +154,16 @@ impl DexFile {
         &self,
         fp: &Fingerprint,
         prepared: &PreparedFingerprint,
-        view: &mut MethodView<'_>,
+        view: &MethodView<'_>,
     ) -> Result<Option<FingerprintHit>> {
-        let method_id = &self.methods[view.method.0 as usize];
+        let method_id = self.method_id(view.method);
 
-        if let Some(ref defining_class) = fp.defining_class {
-            if self.type_descriptor(view.class_type) != defining_class {
-                return Ok(None);
-            }
+        if prepared.defining_class.is_some_and(|t| t != view.class_type) {
+            return Ok(None);
         }
 
-        if let Some(ref name) = fp.name {
-            if self.string(method_id.name) != name {
-                return Ok(None);
-            }
+        if prepared.name.is_some_and(|n| n != method_id.name) {
+            return Ok(None);
         }
 
         if let Some(ref flags) = fp.access_flags {
@@ -160,7 +172,7 @@ impl DexFile {
             }
         }
 
-        let proto = &self.prototypes[method_id.proto.0 as usize];
+        let proto = self.proto(method_id.proto);
 
         if let Some(ref return_type) = fp.return_type {
             if !self
@@ -176,7 +188,7 @@ impl DexFile {
                 return Ok(None);
             }
             for (param_idx, expected) in proto.parameters.iter().zip(parameters) {
-                if !param_matches(self.type_descriptor(*param_idx), expected) {
+                if !param_matches(&self.type_descriptor(*param_idx), expected) {
                     return Ok(None);
                 }
             }
@@ -194,32 +206,22 @@ impl DexFile {
             return Ok(None);
         }
 
-        let hit = view.hit();
-        let instructions = view.instructions()?;
-
-        if let Some(ref targets) = prepared.strings {
-            for &target_idx in targets {
-                let found = instructions.iter().any(|insn| match insn {
-                    Instruction::ConstString { string, .. }
-                    | Instruction::ConstStringJumbo { string, .. } => *string == target_idx,
-                    _ => false,
-                });
-                if !found {
-                    return Ok(None);
-                }
+        for &target in prepared.strings.iter().flatten() {
+            if !view.any_instruction(|insn| insn.string_ref() == Some(target))? {
+                return Ok(None);
             }
         }
 
-        if let Some(ref literals) = fp.literals {
-            for &target in literals {
-                if !instructions.iter().any(|insn| insn.literal() == Some(target)) {
-                    return Ok(None);
-                }
+        for &target in fp.literals.iter().flatten() {
+            if !view.any_instruction(|insn| insn.literal() == Some(target))? {
+                return Ok(None);
             }
         }
 
         let matched_indices = if let Some(ref opcodes) = fp.opcodes {
-            match find_pattern_span(instructions, opcodes) {
+            let mut seq = Vec::new();
+            view.opcodes(&mut seq)?;
+            match find_pattern_span(&seq, opcodes) {
                 Some(span) => span.map(|index| index as u32).collect(),
                 None => return Ok(None),
             }
@@ -228,7 +230,7 @@ impl DexFile {
         };
 
         Ok(Some(FingerprintHit {
-            method: hit,
+            method: view.hit(),
             matched_indices,
         }))
     }

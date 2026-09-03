@@ -6,6 +6,7 @@ description = "APK signing support for Reseam with Android Signature Scheme v2 a
 readme = "README.md"
 
 [dependencies]
+memmap2 = { workspace = true }
 ring      = { workspace = true }
 rayon     = { workspace = true }
 thiserror = { workspace = true }

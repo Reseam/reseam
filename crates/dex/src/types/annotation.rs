@@ -4,7 +4,7 @@
 use super::encoded_value::EncodedValue;
 use super::{FieldIdx, MethodIdx, StringIdx, TypeIdx};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct AnnotationsDirectory {
     pub class_annotations: Vec<AnnotationItem>,
     pub field_annotations: Vec<(FieldIdx, Vec<AnnotationItem>)>,
@@ -12,14 +12,14 @@ pub struct AnnotationsDirectory {
     pub parameter_annotations: Vec<(MethodIdx, Vec<Vec<AnnotationItem>>)>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AnnotationItem {
     pub visibility: AnnotationVisibility,
     pub type_: TypeIdx,
     pub elements: Vec<AnnotationElement>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AnnotationElement {
     pub name: StringIdx,
     pub value: EncodedValue,

@@ -37,7 +37,7 @@ impl ReferencedIndices {
 
     pub(super) fn collect_from_dex(dex: &DexFile) -> Self {
         let mut refs = Self::new();
-        for class in &dex.classes {
+        for class in (0..dex.classes.len()).filter_map(|i| dex.classes.resident(i)) {
             refs.collect_class(class);
         }
         for cs in &dex.call_sites {
@@ -336,21 +336,21 @@ impl ReferencedIndices {
         }
 
         for method_index in self.methods.iter().copied().collect::<Vec<_>>() {
-            let method = &dex.methods[method_index as usize];
+            let method = dex.methods.get(method_index as usize);
             self.types.insert(method.class.0);
             self.strings.insert(method.name.0);
             self.protos.insert(method.proto.0 as u32);
         }
 
         for field_index in self.fields.iter().copied().collect::<Vec<_>>() {
-            let field = &dex.fields[field_index as usize];
+            let field = dex.fields.get(field_index as usize);
             self.types.insert(field.class.0);
             self.types.insert(field.type_.0);
             self.strings.insert(field.name.0);
         }
 
         for proto_index in self.protos.iter().copied().collect::<Vec<_>>() {
-            let proto = &dex.prototypes[proto_index as usize];
+            let proto = dex.prototypes.get(proto_index as usize);
             self.strings.insert(proto.shorty.0);
             self.types.insert(proto.return_type.0);
             for param in &proto.parameters {
@@ -359,7 +359,7 @@ impl ReferencedIndices {
         }
 
         for type_index in self.types.iter().copied().collect::<Vec<_>>() {
-            self.strings.insert(dex.types[type_index as usize].0);
+            self.strings.insert(dex.types.get(type_index as usize).0);
         }
     }
 }

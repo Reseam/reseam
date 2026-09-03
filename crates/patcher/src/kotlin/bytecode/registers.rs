@@ -83,7 +83,7 @@ pub fn registers_size(m: u32) -> u16 {
             None => return 0,
         };
         ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)
-            .and_then(|(_, method)| method.code.map(|c| c.registers_size))
+            .and_then(|(_, method)| method.code.as_ref().map(|c| c.registers_size))
             .unwrap_or(0)
     })
 }
@@ -96,7 +96,7 @@ pub fn ins_size(m: u32) -> u16 {
             None => return 0,
         };
         ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)
-            .and_then(|(_, method)| method.code.map(|c| c.ins_size))
+            .and_then(|(_, method)| method.code.as_ref().map(|c| c.ins_size))
             .unwrap_or(0)
     })
 }
@@ -109,7 +109,7 @@ pub fn outs_size(m: u32) -> u16 {
             None => return 0,
         };
         ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)
-            .and_then(|(_, method)| method.code.map(|c| c.outs_size))
+            .and_then(|(_, method)| method.code.as_ref().map(|c| c.outs_size))
             .unwrap_or(0)
     })
 }

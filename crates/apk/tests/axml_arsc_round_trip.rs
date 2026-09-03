@@ -3,8 +3,9 @@
 
 use reseam_apk::axml::{AxmlAttribute, AxmlDocument, AxmlEvent, StringPool, TypedValue};
 use reseam_apk::resources::{
-    MapEntry, ResConfig, ResEntry, ResPackage, ResType, ResValue, ResourceTable, TypeSpec,
+    MapEntry, ResEntry, ResPackage, ResStringPool, ResType, ResValue, ResourceTable, TypeSpec,
 };
+use reseam_dex::file::DexBytes;
 
 fn make_test_axml() -> AxmlDocument {
     let pool = StringPool {
@@ -150,51 +151,33 @@ fn test_axml_round_trip_add_permission() {
     assert_eq!(reparsed.package_name(), Some("com.example.test"));
 }
 
+fn strings(values: &[&str]) -> ResStringPool {
+    ResStringPool::new(values.iter().map(|s| s.to_string()).collect(), true)
+}
+
+fn simple(key: u32, data_type: u8, data: u32) -> Option<ResEntry> {
+    Some(ResEntry {
+        flags: 0,
+        key,
+        value: ResValue::Simple { data_type, data },
+    })
+}
+
 fn make_test_arsc() -> ResourceTable {
+    let mut pkg = ResPackage::new(
+        0x7F,
+        "com.example.test",
+        strings(&["string"]),
+        strings(&["hello", "world"]),
+    );
+    pkg.type_specs.push(TypeSpec::new(1, vec![0, 0]));
+    let mut t = ResType::new(1, vec![0; 48]);
+    t.push(simple(0, 0x03, 0));
+    t.push(simple(1, 0x03, 1));
+    pkg.types.push(t);
     ResourceTable {
-        global_strings: vec![
-            "Hello".to_string(),
-            "World".to_string(),
-            "app_name".to_string(),
-        ],
-        global_strings_utf8: true,
-        packages: vec![ResPackage {
-            id: 0x7F,
-            name: "com.example.test".to_string(),
-            type_strings: vec!["string".to_string()],
-            type_strings_utf8: true,
-            key_strings: vec!["hello".to_string(), "world".to_string()],
-            key_strings_utf8: true,
-            last_public_type: 0,
-            last_public_key: 0,
-            type_id_offset: 0,
-            type_specs: vec![TypeSpec {
-                id: 1,
-                flags: vec![0, 0],
-            }],
-            types: vec![ResType {
-                id: 1,
-                config: ResConfig { data: vec![0; 48] },
-                entries: vec![
-                    Some(ResEntry {
-                        flags: 0,
-                        key: 0,
-                        value: ResValue::Simple {
-                            data_type: 0x03,
-                            data: 0,
-                        },
-                    }),
-                    Some(ResEntry {
-                        flags: 0,
-                        key: 1,
-                        value: ResValue::Simple {
-                            data_type: 0x03,
-                            data: 1,
-                        },
-                    }),
-                ],
-            }],
-        }],
+        global_strings: strings(&["Hello", "World", "app_name"]),
+        packages: vec![pkg],
     }
 }
 
@@ -203,19 +186,7 @@ fn test_find_resource_id_across_packages() {
     let mut table = make_test_arsc();
     table.packages.insert(
         0,
-        ResPackage {
-            id: 0x7E,
-            name: "empty.pkg".to_string(),
-            type_strings: vec![],
-            type_strings_utf8: true,
-            key_strings: vec![],
-            key_strings_utf8: true,
-            last_public_type: 0,
-            last_public_key: 0,
-            type_id_offset: 0,
-            type_specs: vec![],
-            types: vec![],
-        },
+        ResPackage::new(0x7E, "empty.pkg", strings(&[]), strings(&[])),
     );
 
     assert_eq!(table.find_resource_id("string", "hello"), Some(0x7F01_0000));
@@ -297,26 +268,29 @@ fn test_arsc_round_trip_synthetic() {
     let table = make_test_arsc();
 
     let bytes = table.serialize().expect("serialize failed");
-    let reparsed = ResourceTable::parse(&bytes).expect("reparse failed");
+    let reparsed = ResourceTable::parse(DexBytes::from_vec(bytes)).expect("reparse failed");
 
-    assert_eq!(table.global_strings, reparsed.global_strings);
+    assert_eq!(
+        table.global_strings.iter().collect::<Vec<_>>(),
+        reparsed.global_strings.iter().collect::<Vec<_>>()
+    );
     assert_eq!(table.packages.len(), reparsed.packages.len());
 
     let pkg = &reparsed.packages[0];
     assert_eq!(pkg.id, 0x7F);
     assert_eq!(pkg.name, "com.example.test");
-    assert_eq!(pkg.type_strings, vec!["string"]);
-    assert_eq!(pkg.key_strings, vec!["hello", "world"]);
+    assert_eq!(pkg.type_strings.iter().collect::<Vec<_>>(), ["string"]);
+    assert_eq!(pkg.key_strings.iter().collect::<Vec<_>>(), ["hello", "world"]);
     assert_eq!(pkg.type_specs.len(), 1);
     assert_eq!(pkg.types.len(), 1);
 
     let t = &pkg.types[0];
     assert_eq!(t.id, 1);
-    assert_eq!(t.entries.len(), 2);
-    assert!(t.entries[0].is_some());
-    assert!(t.entries[1].is_some());
+    assert_eq!(t.len(), 2);
+    assert!(t.entry(0).is_some());
+    assert!(t.entry(1).is_some());
 
-    let e0 = t.entries[0].as_ref().unwrap();
+    let e0 = t.entry(0).unwrap();
     assert_eq!(e0.key, 0);
     match &e0.value {
         ResValue::Simple { data_type, data } => {
@@ -329,53 +303,38 @@ fn test_arsc_round_trip_synthetic() {
 
 #[test]
 fn test_arsc_round_trip_complex_entries() {
+    let mut pkg = ResPackage::new(0x7F, "com.example", strings(&["style"]), strings(&["AppTheme"]));
+    pkg.type_specs.push(TypeSpec::new(1, vec![0]));
+    let mut t = ResType::new(1, vec![0; 48]);
+    t.push(Some(ResEntry {
+        flags: 0x0001,
+        key: 0,
+        value: ResValue::Complex {
+            parent: 0x01030005,
+            entries: vec![
+                MapEntry {
+                    name: 0x010100D4,
+                    data_type: 0x01,
+                    data: 0x7F020001,
+                },
+                MapEntry {
+                    name: 0x010100D5,
+                    data_type: 0x01,
+                    data: 0x7F020002,
+                },
+            ],
+        },
+    }));
+    pkg.types.push(t);
     let table = ResourceTable {
-        global_strings: vec!["test".to_string()],
-        global_strings_utf8: true,
-        packages: vec![ResPackage {
-            id: 0x7F,
-            name: "com.example".to_string(),
-            type_strings: vec!["style".to_string()],
-            type_strings_utf8: true,
-            key_strings: vec!["AppTheme".to_string()],
-            key_strings_utf8: true,
-            last_public_type: 0,
-            last_public_key: 0,
-            type_id_offset: 0,
-            type_specs: vec![TypeSpec {
-                id: 1,
-                flags: vec![0],
-            }],
-            types: vec![ResType {
-                id: 1,
-                config: ResConfig { data: vec![0; 48] },
-                entries: vec![Some(ResEntry {
-                    flags: 0x0001,
-                    key: 0,
-                    value: ResValue::Complex {
-                        parent: 0x01030005,
-                        entries: vec![
-                            MapEntry {
-                                name: 0x010100D4,
-                                data_type: 0x01,
-                                data: 0x7F020001,
-                            },
-                            MapEntry {
-                                name: 0x010100D5,
-                                data_type: 0x01,
-                                data: 0x7F020002,
-                            },
-                        ],
-                    },
-                })],
-            }],
-        }],
+        global_strings: strings(&["test"]),
+        packages: vec![pkg],
     };
 
     let bytes = table.serialize().expect("serialize failed");
-    let reparsed = ResourceTable::parse(&bytes).expect("reparse failed");
+    let reparsed = ResourceTable::parse(DexBytes::from_vec(bytes)).expect("reparse failed");
 
-    let entry = reparsed.packages[0].types[0].entries[0].as_ref().unwrap();
+    let entry = reparsed.packages[0].types[0].entry(0).unwrap();
     match &entry.value {
         ResValue::Complex { parent, entries } => {
             assert_eq!(*parent, 0x01030005);
@@ -399,11 +358,11 @@ fn test_arsc_round_trip_mutated() {
     table.replace_entry_string(refs[0].res_id, 0);
 
     let bytes = table.serialize().expect("serialize failed");
-    let reparsed = ResourceTable::parse(&bytes).expect("reparse failed");
+    let reparsed = ResourceTable::parse(DexBytes::from_vec(bytes)).expect("reparse failed");
 
-    assert_eq!(reparsed.global_strings[0], "Modified");
+    assert_eq!(reparsed.global_strings.get(0).as_deref(), Some("Modified"));
 
-    let entry = reparsed.packages[0].types[0].entries[1].as_ref().unwrap();
+    let entry = reparsed.packages[0].types[0].entry(1).unwrap();
     match &entry.value {
         ResValue::Simple { data, .. } => assert_eq!(*data, 0),
         _ => panic!("expected simple value"),
@@ -413,20 +372,20 @@ fn test_arsc_round_trip_mutated() {
 #[test]
 fn test_arsc_round_trip_with_none_entries() {
     let mut table = make_test_arsc();
-    table.packages[0].types[0].entries.push(None);
-    table.packages[0].types[0].entries.push(None);
-    table.packages[0].type_specs[0].flags.push(0);
-    table.packages[0].type_specs[0].flags.push(0);
+    table.packages[0].types[0].push(None);
+    table.packages[0].types[0].push(None);
+    table.packages[0].type_specs[0].push(0);
+    table.packages[0].type_specs[0].push(0);
 
     let bytes = table.serialize().expect("serialize failed");
-    let reparsed = ResourceTable::parse(&bytes).expect("reparse failed");
+    let reparsed = ResourceTable::parse(DexBytes::from_vec(bytes)).expect("reparse failed");
 
     let t = &reparsed.packages[0].types[0];
-    assert_eq!(t.entries.len(), 4);
-    assert!(t.entries[0].is_some());
-    assert!(t.entries[1].is_some());
-    assert!(t.entries[2].is_none());
-    assert!(t.entries[3].is_none());
+    assert_eq!(t.len(), 4);
+    assert!(t.entry(0).is_some());
+    assert!(t.entry(1).is_some());
+    assert!(t.entry(2).is_none());
+    assert!(t.entry(3).is_none());
 }
 
 const YOUTUBE_APK: &str = "../../test-apks/for_testing_com.google.android.youtube_21.10.494.apk";
@@ -503,9 +462,9 @@ fn test_arsc_round_trip_real_apks() {
             buf
         };
 
-        let table = ResourceTable::parse(&arsc_bytes).expect("parse failed");
+        let table = ResourceTable::parse(DexBytes::from_vec(arsc_bytes)).expect("parse failed");
         let serialized = table.serialize().expect("serialize failed");
-        let reparsed = ResourceTable::parse(&serialized).expect("reparse failed");
+        let reparsed = ResourceTable::parse(DexBytes::from_vec(serialized)).expect("reparse failed");
 
         assert_eq!(table.global_strings.len(), reparsed.global_strings.len());
         assert_eq!(table.packages.len(), reparsed.packages.len());
@@ -564,7 +523,7 @@ fn test_arsc_mutation_preserves_real_type_header_sizes() {
         };
 
         let original_headers = collect_type_header_sizes(&arsc_bytes).expect("header scan failed");
-        let mut table = ResourceTable::parse(&arsc_bytes).expect("parse failed");
+        let mut table = ResourceTable::parse(DexBytes::from_slice(&arsc_bytes)).expect("parse failed");
         table.add_global_string("reseam mutation sentinel");
         let serialized = table.serialize().expect("serialize failed");
         let mutated_headers =

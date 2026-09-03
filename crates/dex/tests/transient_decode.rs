@@ -52,11 +52,11 @@ fn transient_decode_matches_full_resolution() {
     let mut checked_raw = 0usize;
 
     for class_idx in 0..resolved.classes.len() {
-        let Some(data) = resolved.classes[class_idx].class_data.as_ref() else {
+        let Some(data) = resolved.classes.resident(class_idx).and_then(|c| c.class_data.as_deref()) else {
             continue;
         };
         assert!(
-            lazy.classes[class_idx].class_data.is_none(),
+            !lazy.classes.is_resident(class_idx),
             "lazy dex should not have materialized class {class_idx}"
         );
 
@@ -72,6 +72,22 @@ fn transient_decode_matches_full_resolution() {
 
                 assert_eq!(transient.method, expected.method);
                 assert_eq!(transient.access_flags, expected.access_flags);
+
+                let summary = lazy
+                    .method_summary(class_idx, method_pos, is_virtual)
+                    .expect("summary")
+                    .expect("method present");
+                assert_eq!(summary.method, expected.method);
+                assert_eq!(summary.has_code, expected.code.is_some());
+                let code = expected.code.as_ref();
+                assert_eq!(summary.registers_size, code.map_or(0, |c| c.registers_size));
+                assert_eq!(summary.ins_size, code.map_or(0, |c| c.ins_size));
+                assert_eq!(summary.outs_size, code.map_or(0, |c| c.outs_size));
+                assert_eq!(
+                    summary.instruction_count,
+                    code.map_or(0, |c| c.instructions.len() as u32),
+                    "instruction count differs at class {class_idx} method {method_pos}"
+                );
                 assert_eq!(
                     transient.code.as_ref().map(|c| c.instructions.clone()),
                     expected.code.as_ref().map(|c| c.instructions.clone()),
@@ -89,7 +105,7 @@ fn transient_decode_matches_full_resolution() {
 
     // Materialized path: decoding an already-resolved class clones the same method.
     for class_idx in 0..resolved.classes.len() {
-        let Some(data) = resolved.classes[class_idx].class_data.as_ref() else {
+        let Some(data) = resolved.classes.resident(class_idx).and_then(|c| c.class_data.as_deref()) else {
             continue;
         };
         if let Some(expected) = data.direct_methods.first() {

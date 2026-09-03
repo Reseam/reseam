@@ -9,7 +9,7 @@ use super::TypeIdx;
 use crate::error::invalid;
 use crate::error::Result;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CodeItem {
     pub registers_size: u16,
     pub ins_size: u16,
@@ -22,12 +22,15 @@ pub struct CodeItem {
 
 impl CodeItem {
     /// Computes `outs_size` from the actual instructions (max outgoing arg count).
+    /// Outgoing argument words the code needs: what the instructions require
+    /// after any edits, never less than what the method was compiled with.
     pub fn compute_outs_size(&self) -> u16 {
         self.instructions
             .iter()
             .map(|i| i.outgoing_arg_count())
             .max()
             .unwrap_or(0)
+            .max(self.outs_size)
     }
 
     pub fn instruction(&self, index: usize) -> &Instruction {
@@ -355,20 +358,20 @@ fn fixup_i32(offset: i32, insn_addr: u32, change_addr: u32, delta: i32) -> i32 {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TryItem {
     pub start_addr: u32,
     pub insn_count: u16,
     pub handler_idx: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CatchHandler {
     pub typed_catches: Vec<TypedCatch>,
     pub catch_all_addr: Option<u32>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedCatch {
     pub exception_type: TypeIdx,
     pub addr: u32,

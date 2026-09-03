@@ -11,30 +11,22 @@ use super::types::{
 };
 
 fn resolve_method_ref(dex: &DexFile, idx: MethodIdx) -> MethodRef {
-    let mid = &dex.methods[idx.0 as usize];
-    let class = dex.type_descriptor(mid.class).to_owned();
-    let name = dex.string(mid.name).to_owned();
-    let proto = &dex.prototypes[mid.proto.0 as usize];
-    let ret = dex.type_descriptor(proto.return_type);
-    let params: Vec<_> = proto
-        .parameters
-        .iter()
-        .map(|t| dex.type_descriptor(*t))
-        .collect();
-    let proto_str = format!("({}){}", params.join(""), ret);
+    let mid = dex.method_id(idx);
+    let class = dex.type_descriptor(mid.class).into_owned();
+    let name = dex.string(mid.name).into_owned();
     MethodRef {
         defining_class: class,
         name,
-        proto: proto_str,
+        proto: dex.proto_descriptor(&dex.proto(mid.proto)),
     }
 }
 
 fn resolve_field_ref(dex: &DexFile, idx: FieldIdx) -> FieldRef {
-    let fid = &dex.fields[idx.0 as usize];
+    let fid = dex.field_id(idx);
     FieldRef {
-        defining_class: dex.type_descriptor(fid.class).to_owned(),
-        name: dex.string(fid.name).to_owned(),
-        field_type: dex.type_descriptor(fid.type_).to_owned(),
+        defining_class: dex.type_descriptor(fid.class).into_owned(),
+        name: dex.string(fid.name).into_owned(),
+        field_type: dex.type_descriptor(fid.type_).into_owned(),
     }
 }
 
@@ -880,12 +872,12 @@ pub fn dex_to_kotlin(insn: &reseam_dex::Instruction, dex: &DexFile) -> Instructi
         D::ConstString { dest, string } => Instruction::RegString(RegStringInsn {
             opcode: 0x1a,
             reg_a: u16::from(*dest),
-            value: dex.string(*string).to_owned(),
+            value: dex.string(*string).into_owned(),
         }),
         D::ConstStringJumbo { dest, string } => Instruction::RegString(RegStringInsn {
             opcode: 0x1b,
             reg_a: u16::from(*dest),
-            value: dex.string(*string).to_owned(),
+            value: dex.string(*string).into_owned(),
         }),
 
         // RegType (opcode + reg(s) + type descriptor)
@@ -893,31 +885,31 @@ pub fn dex_to_kotlin(insn: &reseam_dex::Instruction, dex: &DexFile) -> Instructi
             opcode: 0x1c,
             reg_a: u16::from(*dest),
             reg_b: 0,
-            type_descriptor: dex.type_descriptor(*type_).to_owned(),
+            type_descriptor: dex.type_descriptor(*type_).into_owned(),
         }),
         D::CheckCast { ref_, type_ } => Instruction::RegType(RegTypeInsn {
             opcode: 0x1f,
             reg_a: u16::from(*ref_),
             reg_b: 0,
-            type_descriptor: dex.type_descriptor(*type_).to_owned(),
+            type_descriptor: dex.type_descriptor(*type_).into_owned(),
         }),
         D::InstanceOf { dest, ref_, type_ } => Instruction::RegType(RegTypeInsn {
             opcode: 0x20,
             reg_a: u16::from(*dest),
             reg_b: u16::from(*ref_),
-            type_descriptor: dex.type_descriptor(*type_).to_owned(),
+            type_descriptor: dex.type_descriptor(*type_).into_owned(),
         }),
         D::NewInstance { dest, type_ } => Instruction::RegType(RegTypeInsn {
             opcode: 0x22,
             reg_a: u16::from(*dest),
             reg_b: 0,
-            type_descriptor: dex.type_descriptor(*type_).to_owned(),
+            type_descriptor: dex.type_descriptor(*type_).into_owned(),
         }),
         D::NewArray { dest, size, type_ } => Instruction::RegType(RegTypeInsn {
             opcode: 0x23,
             reg_a: u16::from(*dest),
             reg_b: u16::from(*size),
-            type_descriptor: dex.type_descriptor(*type_).to_owned(),
+            type_descriptor: dex.type_descriptor(*type_).into_owned(),
         }),
 
         // RegField (opcode + reg(s) + field reference)
@@ -1341,7 +1333,7 @@ pub fn dex_to_kotlin(insn: &reseam_dex::Instruction, dex: &DexFile) -> Instructi
         D::FilledNewArray { type_, args } => Instruction::FilledArray(FilledArrayInsn {
             opcode: 0x24,
             registers: args.iter().map(|r| u16::from(*r)).collect(),
-            type_descriptor: dex.type_descriptor(*type_).to_owned(),
+            type_descriptor: dex.type_descriptor(*type_).into_owned(),
         }),
 
         // FilledArrayRange
@@ -1353,7 +1345,7 @@ pub fn dex_to_kotlin(insn: &reseam_dex::Instruction, dex: &DexFile) -> Instructi
             opcode: 0x25,
             start_reg: *first_reg,
             reg_count: u16::from(*count),
-            type_descriptor: dex.type_descriptor(*type_).to_owned(),
+            type_descriptor: dex.type_descriptor(*type_).into_owned(),
         }),
 
         // Payload data

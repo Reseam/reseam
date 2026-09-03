@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::file::DexFile;
 use crate::types::annotation::{AnnotationItem, AnnotationsDirectory};
 use crate::types::class::{ClassData, ClassDef, EncodedMethod};
 use crate::types::code::CodeItem;
@@ -9,10 +8,7 @@ use crate::types::debug::{DebugBytecode, DebugInfo};
 use crate::types::encoded_value::EncodedValue;
 use crate::types::instruction::Instruction;
 use crate::types::method_handle::{CallSiteItem, MethodHandle, MethodHandleMember};
-use crate::types::{
-    FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx,
-};
-use crate::util::sort::dex_string_compare;
+use crate::types::{FieldIdx, MethodIdx, ProtoIdx, StringIdx, TypeIdx};
 
 /// Owned index remap tables, retained after sorting so the writer can remap
 /// classes it decodes lazily (never-materialized classes) at emit time.
@@ -34,189 +30,6 @@ impl RemapTables {
             method: &self.method,
         }
     }
-}
-
-/// Sort all index tables and remap all references in place, preparing the
-/// DexFile for writing with correctly sorted tables.
-///
-/// Returns the remap tables when any pool was reordered, so the writer can
-/// apply the same remap to classes whose `class_data` is still deferred (raw).
-/// Returns `None` when every pool was already sorted (identity remap): resident
-/// classes are left untouched and deferred classes are written verbatim.
-///
-/// `raw` and `lazy_class_data_offsets` are intentionally retained so the writer
-/// can stream deferred classes straight from the original buffer. The class
-/// order (and the positional `lazy_class_data_offsets`) is permuted together so
-/// `offsets[i]` still belongs to `classes[i]` after sorting.
-pub fn sort_in_place(dex: &mut DexFile) -> crate::error::Result<Option<RemapTables>> {
-    let mut string_order: Vec<u32> = (0..dex.strings.len() as u32).collect();
-    string_order.sort_by(|&a, &b| {
-        dex_string_compare(
-            dex.strings[a as usize].as_str(),
-            dex.strings[b as usize].as_str(),
-        )
-    });
-
-    let string_remap = build_remap(&string_order);
-
-    let mut type_order: Vec<u32> = (0..dex.types.len() as u32).collect();
-    type_order.sort_by_key(|&i| string_remap[dex.types[i as usize].0 as usize]);
-
-    let type_remap = build_remap(&type_order);
-
-    let mut proto_order: Vec<u32> = (0..dex.prototypes.len() as u32).collect();
-    proto_order.sort_by(|&a, &b| {
-        let pa = &dex.prototypes[a as usize];
-        let pb = &dex.prototypes[b as usize];
-        let ra = type_remap[pa.return_type.0 as usize];
-        let rb = type_remap[pb.return_type.0 as usize];
-        ra.cmp(&rb).then_with(|| {
-            pa.parameters
-                .iter()
-                .map(|t| type_remap[t.0 as usize])
-                .cmp(pb.parameters.iter().map(|t| type_remap[t.0 as usize]))
-        })
-    });
-
-    let proto_remap = build_remap(&proto_order);
-
-    let mut field_order: Vec<u32> = (0..dex.fields.len() as u32).collect();
-    field_order.sort_by(|&a, &b| {
-        let fa = &dex.fields[a as usize];
-        let fb = &dex.fields[b as usize];
-        type_remap[fa.class.0 as usize]
-            .cmp(&type_remap[fb.class.0 as usize])
-            .then_with(|| string_remap[fa.name.0 as usize].cmp(&string_remap[fb.name.0 as usize]))
-            .then_with(|| type_remap[fa.type_.0 as usize].cmp(&type_remap[fb.type_.0 as usize]))
-    });
-
-    let field_remap = build_remap(&field_order);
-
-    let mut method_order: Vec<u32> = (0..dex.methods.len() as u32).collect();
-    method_order.sort_by(|&a, &b| {
-        let ma = &dex.methods[a as usize];
-        let mb = &dex.methods[b as usize];
-        type_remap[ma.class.0 as usize]
-            .cmp(&type_remap[mb.class.0 as usize])
-            .then_with(|| string_remap[ma.name.0 as usize].cmp(&string_remap[mb.name.0 as usize]))
-            .then_with(|| proto_remap[ma.proto.0 as usize].cmp(&proto_remap[mb.proto.0 as usize]))
-    });
-
-    let method_remap = build_remap(&method_order);
-
-    let already_sorted = is_identity(&string_remap)
-        && is_identity(&type_remap)
-        && is_identity(&proto_remap)
-        && is_identity(&field_remap)
-        && is_identity(&method_remap);
-
-    if already_sorted {
-        return Ok(None);
-    }
-
-    let remap = Remap {
-        string: &string_remap,
-        type_: &type_remap,
-        proto: &proto_remap,
-        field: &field_remap,
-        method: &method_remap,
-    };
-
-    let new_strings: Vec<_> = string_order
-        .iter()
-        .map(|&i| dex.strings[i as usize].clone())
-        .collect();
-
-    let new_types: Vec<_> = type_order
-        .iter()
-        .map(|&i| StringIdx(remap.string[dex.types[i as usize].0 as usize]))
-        .collect();
-
-    let new_prototypes: Vec<_> = proto_order
-        .iter()
-        .map(|&i| {
-            let p = &dex.prototypes[i as usize];
-            Prototype {
-                shorty: remap.remap_string(p.shorty),
-                return_type: remap.remap_type(p.return_type),
-                parameters: p.parameters.iter().map(|t| remap.remap_type(*t)).collect(),
-            }
-        })
-        .collect();
-
-    let new_fields: Vec<_> = field_order
-        .iter()
-        .map(|&i| {
-            let f = &dex.fields[i as usize];
-            FieldId {
-                class: remap.remap_type(f.class),
-                type_: remap.remap_type(f.type_),
-                name: remap.remap_string(f.name),
-            }
-        })
-        .collect();
-
-    let new_methods: Vec<_> = method_order
-        .iter()
-        .map(|&i| {
-            let m = &dex.methods[i as usize];
-            MethodId {
-                class: remap.remap_type(m.class),
-                proto: remap.remap_proto(m.proto),
-                name: remap.remap_string(m.name),
-            }
-        })
-        .collect();
-
-    dex.strings = new_strings;
-    dex.types = new_types;
-    dex.prototypes = new_prototypes;
-    dex.fields = new_fields;
-    dex.methods = new_methods;
-
-    for class in &mut dex.classes {
-        remap.remap_class(class);
-    }
-
-    for cs in &mut dex.call_sites {
-        remap.remap_call_site(cs);
-    }
-
-    for mh in &mut dex.method_handles {
-        remap.remap_method_handle(mh);
-    }
-
-    // Reorder classes by their (remapped) type index. `lazy_class_data_offsets`
-    // is positional to `dex.classes`, so it must follow the same permutation;
-    // classes appended after parse have no offset entry (they are always
-    // resident), so pad with 0 before permuting to keep the arrays aligned.
-    match dex.lazy_class_data_offsets.as_mut() {
-        Some(offsets) => {
-            offsets.resize(dex.classes.len(), 0);
-            let mut perm: Vec<usize> = (0..dex.classes.len()).collect();
-            perm.sort_by_key(|&i| dex.classes[i].class_type.0);
-            apply_permutation(&mut dex.classes, &perm);
-            apply_permutation(offsets, &perm);
-        }
-        None => dex.classes.sort_by_key(|c| c.class_type.0),
-    }
-
-    fixup_instructions(dex)?;
-
-    dex.invalidate_lookups();
-    Ok(Some(RemapTables {
-        string: string_remap,
-        type_: type_remap,
-        proto: proto_remap,
-        field: field_remap,
-        method: method_remap,
-    }))
-}
-
-/// Reorders `v` in place so that `v[new] = old_v[perm[new]]`.
-fn apply_permutation<T>(v: &mut Vec<T>, perm: &[usize]) {
-    let mut slots: Vec<Option<T>> = std::mem::take(v).into_iter().map(Some).collect();
-    *v = perm.iter().map(|&i| slots[i].take().unwrap()).collect();
 }
 
 pub(crate) struct Remap<'a> {
@@ -308,7 +121,7 @@ impl<'a> Remap<'a> {
         }
     }
 
-    fn remap_code(&self, code: &mut CodeItem) {
+    pub(crate) fn remap_code(&self, code: &mut CodeItem) {
         for insn in &mut code.instructions {
             self.remap_instruction(insn);
         }
@@ -322,7 +135,7 @@ impl<'a> Remap<'a> {
         }
     }
 
-    fn remap_debug(&self, debug: &mut DebugInfo) {
+    pub(crate) fn remap_debug(&self, debug: &mut DebugInfo) {
         for name in &mut debug.parameter_names {
             *name = self.remap_opt_string(*name);
         }
@@ -350,7 +163,7 @@ impl<'a> Remap<'a> {
         }
     }
 
-    fn remap_annotations_dir(&self, dir: &mut AnnotationsDirectory) {
+    pub(crate) fn remap_annotations_dir(&self, dir: &mut AnnotationsDirectory) {
         for item in &mut dir.class_annotations {
             self.remap_annotation_item(item);
         }
@@ -395,7 +208,7 @@ impl<'a> Remap<'a> {
         item.elements.sort_by_key(|e| e.name.0);
     }
 
-    fn remap_encoded_value(&self, v: &mut EncodedValue) {
+    pub(crate) fn remap_encoded_value(&self, v: &mut EncodedValue) {
         match v {
             EncodedValue::String(idx) => *idx = self.remap_string(*idx),
             EncodedValue::Type(idx) => *idx = self.remap_type(*idx),
@@ -509,38 +322,6 @@ impl<'a> Remap<'a> {
             MethodHandleMember::Method(idx) => *idx = self.remap_method(*idx),
         }
     }
-}
-
-/// Build old_idx → new_idx remap from a permutation array (new_idx → old_idx).
-fn build_remap(order: &[u32]) -> Vec<u32> {
-    let mut remap = vec![0u32; order.len()];
-    for (new_idx, &old_idx) in order.iter().enumerate() {
-        remap[old_idx as usize] = new_idx as u32;
-    }
-    remap
-}
-
-fn is_identity(remap: &[u32]) -> bool {
-    remap.iter().enumerate().all(|(i, &v)| v == i as u32)
-}
-
-fn fixup_instructions(dex: &mut DexFile) -> crate::error::Result<()> {
-    for class in &mut dex.classes {
-        let data = match class.class_data.as_mut() {
-            Some(d) => d,
-            None => continue,
-        };
-        for method in data
-            .direct_methods
-            .iter_mut()
-            .chain(data.virtual_methods.iter_mut())
-        {
-            if let Some(code) = method.code.as_mut() {
-                fixup_code(code)?;
-            }
-        }
-    }
-    Ok(())
 }
 
 /// Promotes instructions whose remapped operand outgrew its encoded width

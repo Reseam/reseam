@@ -5,7 +5,9 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
+use std::sync::Arc;
 
+use reseam_dex::file::DexBytes;
 use reseam_dex::{MultiDexContainer, ParseOptions};
 use tracing::{info, instrument, warn};
 
@@ -15,9 +17,8 @@ use super::{
 };
 use crate::axml::reader::AxmlDocument;
 use crate::dex;
-use crate::error::ApkError;
 use crate::resources::ResourceTable;
-use crate::zip::reader::ApkReader;
+use crate::zip::reader::{entry_bytes, ApkReader};
 use crate::Result;
 
 impl ApkFile {
@@ -131,6 +132,7 @@ impl ApkFile {
         opts: &ParseOptions,
     ) -> Result<ApkComponentSession> {
         let file = File::open(path)?;
+        let archive_file = file.try_clone()?;
         let mut reader = ApkReader::new(BufReader::new(file))?;
         let manifest_bytes = reader.read_manifest()?;
         let manifest = AxmlDocument::parse(&manifest_bytes)?;
@@ -138,22 +140,10 @@ impl ApkFile {
             if opts.lazy {
                 super::component::ResourceSession::Deferred
             } else {
-                let arsc_bytes = reader.read_entry("resources.arsc")?;
-                match ResourceTable::parse(&arsc_bytes) {
-                    Ok(resources) => super::component::ResourceSession::Loaded(resources),
-                    Err(ApkError::Unsupported { feature, detail })
-                        if feature == "resource string pool styles" =>
-                    {
-                        warn!(
-                            component = %name,
-                            feature,
-                            detail,
-                            "opening APK without mutable resource table support"
-                        );
-                        super::component::ResourceSession::Unavailable
-                    }
-                    Err(error) => return Err(error),
-                }
+                let arsc_bytes = entry_bytes(&archive_file, &mut reader.archive_mut().by_name("resources.arsc")?)?;
+                super::component::ResourceSession::Loaded(ResourceTable::parse(
+                    DexBytes::from_mmap(Arc::new(arsc_bytes)),
+                )?)
             }
         } else {
             super::component::ResourceSession::Absent
@@ -184,14 +174,8 @@ impl ApkFile {
         path: &Path,
         opts: ParseOptions,
     ) -> Result<(MultiDexContainer, Vec<ApkEntryPath>)> {
-        let file = File::open(path)?;
-        let mut reader = ApkReader::new(BufReader::new(file))?;
-        let dex_names = reader
-            .dex_entry_names()
-            .into_iter()
-            .map(ApkEntryPath::from)
-            .collect();
-        Ok((dex::extract_dex(&mut reader, opts)?, dex_names))
+        let (dex, names) = dex::extract_dex(path, opts)?;
+        Ok((dex, names.into_iter().map(ApkEntryPath::from).collect()))
     }
 
     fn derive_split_name(path: &Path) -> String {

@@ -30,7 +30,7 @@ impl<'a> PatchContext<'a> {
         self.apk.resource_exists(type_name, entry_name)
     }
 
-    pub fn get_string_resource_value(&mut self, name: &str) -> Option<&str> {
+    pub fn get_string_resource_value(&mut self, name: &str) -> Option<String> {
         self.apk.get_string_resource_value(name)
     }
 

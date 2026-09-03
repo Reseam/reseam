@@ -62,7 +62,7 @@ pub fn res_exists_in_component(component: String, res_type: String, res_name: St
 
 #[export]
 pub fn res_get_string(name: String) -> Option<String> {
-    with_ctx(|ctx| ctx.get_string_resource_value(&name).map(|s| s.to_string()))
+    with_ctx(|ctx| ctx.get_string_resource_value(&name))
 }
 
 #[export]

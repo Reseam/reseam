@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use anyhow::{bail, Result};
+use reseam_apk::scratch::ScratchDir;
 use reseam_sdk::{ApplyDiagnostics, measure_patch, PatchMetrics, PatchPhase, PatchPhaseMetrics};
 use serde::Serialize;
 
@@ -41,6 +42,7 @@ struct PhaseSummary {
     duration_ms: NumericSummary,
     rss_bytes: Option<NumericSummary>,
     peak_rss_bytes: Option<NumericSummary>,
+    heap_peak_bytes: Option<NumericSummary>,
 }
 
 #[derive(Debug, Serialize)]
@@ -70,12 +72,19 @@ pub fn run_perf(command: &PerfCommand) -> Result<()> {
         bail!("--iterations must be greater than 0");
     }
 
+    if let Some(step) = std::env::var("RESEAM_HEAP_TRACE")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+    {
+        reseam_sdk::trace_heap_growth(step << 20);
+    }
+
     let mut iterations = Vec::with_capacity(command.iterations as usize);
 
     for warmup_index in 0..command.warmup {
         eprintln!("warmup {}/{}", warmup_index + 1, command.warmup);
-        let _temp_dir = tempfile::tempdir()?;
-        let output = perf_output(&command.request.split, _temp_dir.path());
+        let scratch = ScratchDir::new("perf")?;
+        let output = perf_output(&command.request.split, scratch.path());
         let request = build_patch_request(&command.request, output)?;
         let report = measure_patch(&request, |_| {});
         if let Err(error) = report.outcome {
@@ -85,8 +94,8 @@ pub fn run_perf(command: &PerfCommand) -> Result<()> {
 
     for iteration_index in 0..command.iterations {
         eprintln!("iteration {}/{}", iteration_index + 1, command.iterations);
-        let temp_dir = tempfile::tempdir()?;
-        let output = perf_output(&command.request.split, temp_dir.path());
+        let scratch = ScratchDir::new("perf")?;
+        let output = perf_output(&command.request.split, scratch.path());
         let request = build_patch_request(&command.request, output)?;
         let report = measure_patch(&request, |_| {});
 
@@ -197,6 +206,9 @@ fn summarize_phase(phase: PatchPhase, iterations: &[&PerfIteration]) -> Option<P
         peak_rss_bytes: summarize_optional_u64(
             samples.iter().filter_map(|sample| sample.peak_rss_bytes),
         ),
+        heap_peak_bytes: summarize_optional_u64(
+            samples.iter().filter_map(|sample| sample.heap_peak_bytes),
+        ),
     })
 }
 
@@ -237,12 +249,22 @@ fn print_report(report: &PerfReport) {
     for iteration in &report.iterations {
         let status = if iteration.success { "ok" } else { "failed" };
         println!(
-            "iteration {:>2}: {:>7}  total={}  peak_rss={}  final_rss={}",
+            "iteration {:>2}: {:>7}  total={}  peak_rss={}  final_rss={} (anon={} file={})  final_heap={}  jvm_committed={}",
             iteration.iteration,
             status,
             format_duration(iteration.metrics.total_duration_ms),
             format_optional_bytes(iteration.metrics.peak_rss_bytes),
             format_optional_bytes(iteration.metrics.final_rss_bytes),
+            format_optional_bytes(iteration.metrics.final_rss_anon_bytes),
+            format_optional_bytes(iteration.metrics.final_rss_file_bytes),
+            format_optional_bytes(iteration.metrics.final_heap_live_bytes),
+            format_optional_bytes(
+                iteration
+                    .metrics
+                    .apply_diagnostics
+                    .as_ref()
+                    .and_then(|d| d.jvm_committed_bytes)
+            ),
         );
         if let Some(error) = &iteration.error {
             println!("  error: {error}");
@@ -279,11 +301,16 @@ fn print_report(report: &PerfReport) {
         println!("phase breakdown:");
         for phase in &report.summary.phases {
             println!(
-                "  {:<24} median={} max_peak={}",
+                "  {:<24} median={} max_peak_rss={} max_peak_heap={}",
                 phase.phase.as_str(),
                 format_duration(phase.duration_ms.median),
                 phase
                     .peak_rss_bytes
+                    .as_ref()
+                    .map(|stats| format_bytes(stats.max))
+                    .unwrap_or_else(|| "n/a".to_string()),
+                phase
+                    .heap_peak_bytes
                     .as_ref()
                     .map(|stats| format_bytes(stats.max))
                     .unwrap_or_else(|| "n/a".to_string()),

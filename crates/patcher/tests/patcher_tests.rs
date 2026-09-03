@@ -9,7 +9,7 @@ use std::process::Command;
 use std::sync::OnceLock;
 
 use reseam_apk::reseam_dex::ParseOptions;
-use reseam_apk::resources::{ResConfig, ResEntry, ResPackage, ResType, ResValue, TypeSpec};
+use reseam_apk::resources::{ResEntry, ResPackage, ResStringPool, ResType, ResValue, TypeSpec};
 use reseam_apk::{ApkFile, AxmlEvent, ResourceTable};
 use reseam_patcher::bundle::PatchBundle;
 use reseam_patcher::context::PatchContext;
@@ -135,36 +135,22 @@ fn manifest_bytes(version_name: &str, split_name: Option<&str>) -> Vec<u8> {
 }
 
 fn resource_table_bytes(entry_name: &str, value: &str) -> Vec<u8> {
+    let strings = |values: &[&str]| ResStringPool::new(values.iter().map(|s| s.to_string()).collect(), true);
+    let mut pkg = ResPackage::new(0x7F, "com.example.test", strings(&["string"]), strings(&[entry_name]));
+    pkg.type_specs.push(TypeSpec::new(1, vec![0]));
+    let mut t = ResType::new(1, vec![0; 48]);
+    t.push(Some(ResEntry {
+        flags: 0,
+        key: 0,
+        value: ResValue::Simple {
+            data_type: 0x03,
+            data: 0,
+        },
+    }));
+    pkg.types.push(t);
     ResourceTable {
-        global_strings: vec![value.to_string()],
-        global_strings_utf8: true,
-        packages: vec![ResPackage {
-            id: 0x7F,
-            name: "com.example.test".to_string(),
-            type_strings: vec!["string".to_string()],
-            type_strings_utf8: true,
-            key_strings: vec![entry_name.to_string()],
-            key_strings_utf8: true,
-            last_public_type: 0,
-            last_public_key: 0,
-            type_id_offset: 0,
-            type_specs: vec![TypeSpec {
-                id: 1,
-                flags: vec![0],
-            }],
-            types: vec![ResType {
-                id: 1,
-                config: ResConfig { data: vec![0; 48] },
-                entries: vec![Some(ResEntry {
-                    flags: 0,
-                    key: 0,
-                    value: ResValue::Simple {
-                        data_type: 0x03,
-                        data: 0,
-                    },
-                })],
-            }],
-        }],
+        global_strings: strings(&[value]),
+        packages: vec![pkg],
     }
     .serialize()
     .expect("serialize resources")
@@ -300,7 +286,8 @@ fn kotlin_bundle_executes_against_runtime_api() {
 
     assert_eq!(
         apk.component_resources(1)
-            .and_then(|resources| resources.get_string_value("split_label")),
+            .and_then(|resources| resources.get_string_value("split_label"))
+            .as_deref(),
         Some("Split patched by runtime")
     );
     assert_eq!(

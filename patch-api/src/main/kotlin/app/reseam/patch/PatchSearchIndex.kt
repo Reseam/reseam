@@ -46,6 +46,9 @@ internal class PatchSearchIndex(private val ctx: PatchRuntime) {
     private val methodsByStrings = mutableMapOf<List<String>, Set<UInt>>()
     private val methodsByLiteral = mutableMapOf<Long, Set<UInt>>()
     private val methodsByOpcode = mutableMapOf<Int, Set<UInt>>()
+    private val methodsByReturnType = mutableMapOf<String, Set<UInt>>()
+    private val methodsByParameterTypes = mutableMapOf<List<String>, Set<UInt>>()
+    private val methodsByParameter = mutableMapOf<String, Set<UInt>>()
     private val classesByString = mutableMapOf<String, Set<DexClass>>()
     private val classesByInstanceFieldType = mutableMapOf<String, Set<DexClass>>()
     private val callersByTarget = mutableMapOf<MethodSignature, List<Method>>()
@@ -72,19 +75,19 @@ internal class PatchSearchIndex(private val ctx: PatchRuntime) {
         }
 
     fun methodsWithReturnType(type: String): Set<UInt> =
-        allMethods.asSequence()
-            .filter { it.returnType == type }
-            .mapTo(linkedSetOf(), Method::handle)
+        methodsByReturnType.getOrPut(type) {
+            findMethodsByReturnType(type).mapTo(linkedSetOf()) { it.toUInt() }
+        }
 
     fun methodsWithExactParameters(types: List<String>): Set<UInt> =
-        allMethods.asSequence()
-            .filter { it.parameterTypes == types }
-            .mapTo(linkedSetOf(), Method::handle)
+        methodsByParameterTypes.getOrPut(types) {
+            findMethodsByParameterTypes(types).mapTo(linkedSetOf()) { it.toUInt() }
+        }
 
     fun methodsWithParameter(type: String): Set<UInt> =
-        allMethods.asSequence()
-            .filter { type in it.parameterTypes }
-            .mapTo(linkedSetOf(), Method::handle)
+        methodsByParameter.getOrPut(type) {
+            findMethodsWithParameter(type).mapTo(linkedSetOf()) { it.toUInt() }
+        }
 
     fun methodsWithOpcode(opcode: Int): Set<UInt> =
         methodsByOpcode.getOrPut(opcode) {

@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use tempfile::TempDir;
+use reseam_apk::scratch::ScratchDir;
 use tracing::{debug, info};
 use zip::ZipArchive;
 
@@ -61,11 +61,11 @@ pub struct PatchBundle {
     pub description: String,
     pub patches: Vec<Box<dyn Patch>>,
     pub extension_dex: Vec<PathBuf>,
-    _extracted: TempDir,
+    _extracted: ScratchDir,
 }
 
 pub struct BundleKeepAlive {
-    _extracted: TempDir,
+    _extracted: ScratchDir,
 }
 
 impl PatchBundle {
@@ -98,8 +98,8 @@ impl PatchBundle {
             });
         }
 
-        let tempdir = tempfile::tempdir().map_err(|e| PatcherError::Bundle {
-            reason: format!("failed to create tempdir: {e}"),
+        let tempdir = ScratchDir::new("bundle").map_err(|e| PatcherError::Bundle {
+            reason: format!("failed to create scratch directory: {e}"),
         })?;
         let mut jar_files = Vec::new();
         let mut extension_dex = Vec::new();
@@ -125,11 +125,7 @@ impl PatchBundle {
         {
             debug!(jar_count = jar_files.len(), "loading Kotlin patches");
             if !jar_files.is_empty() {
-                patches.extend(crate::kotlin::load_kotlin_patches(
-                    &jar_files,
-                    tempdir.path(),
-                    &extension_dex,
-                )?);
+                patches.extend(crate::kotlin::load_kotlin_patches(&jar_files, tempdir.path())?);
             }
         }
 

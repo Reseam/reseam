@@ -1,30 +1,30 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use super::sort::RemapTables;
+use super::plan::WritePlan;
+use super::sink::DexSink;
 use super::DexWriter;
 use super::{annotations, class_data, code, encoded_arrays, finalize};
-use crate::encoding::leb128::write_uleb128;
-use crate::encoding::mutf8::{encode_mutf8, utf16_len};
 use crate::error::Result;
-use crate::file::DexFile;
 use crate::types::map::{
     MapItem, TYPE_CALL_SITE_ID_ITEM, TYPE_CLASS_DEF_ITEM, TYPE_FIELD_ID_ITEM, TYPE_HEADER_ITEM,
     TYPE_MAP_LIST, TYPE_METHOD_HANDLE_ITEM, TYPE_METHOD_ID_ITEM, TYPE_PROTO_ID_ITEM,
     TYPE_STRING_DATA_ITEM, TYPE_STRING_ID_ITEM, TYPE_TYPE_ID_ITEM,
 };
 
+
 /// Writes all sections of a DEX file in spec order, then backpatches offsets.
 pub(crate) trait DexWriterWriteExt {
-    fn write_dex(&mut self, dex: &DexFile, remap: Option<&RemapTables>) -> Result<()>;
+    fn write_dex(&mut self, plan: &WritePlan<'_>) -> Result<()>;
 }
 
-impl DexWriterWriteExt for DexWriter {
-    fn write_dex(&mut self, dex: &DexFile, remap: Option<&RemapTables>) -> Result<()> {
+impl<S: DexSink> DexWriterWriteExt for DexWriter<S> {
+    fn write_dex(&mut self, plan: &WritePlan<'_>) -> Result<()> {
+        let dex = plan.dex;
         let header_off = self.pos();
         self.header_base = header_off;
         let header_size = dex.required_version().header_size() as usize;
-        self.buf.extend_from_slice(&vec![0u8; header_size]);
+        self.write_zeros(header_size);
         self.map_entries.clear();
         self.map_entries.push(MapItem {
             type_code: TYPE_HEADER_ITEM,
@@ -33,7 +33,7 @@ impl DexWriterWriteExt for DexWriter {
         });
 
         let string_ids_off = self.pos();
-        let string_count = dex.strings.len() as u32;
+        let string_count = plan.string_count() as u32;
         for _ in 0..string_count {
             self.write_u32(0);
         }
@@ -47,7 +47,7 @@ impl DexWriterWriteExt for DexWriter {
 
         let type_ids_off = self.pos();
         let type_count = dex.types.len() as u32;
-        for desc_idx in &dex.types {
+        for desc_idx in plan.types() {
             self.write_u32(desc_idx.0);
         }
         if type_count > 0 {
@@ -75,7 +75,7 @@ impl DexWriterWriteExt for DexWriter {
 
         let field_ids_off = self.pos();
         let field_count = dex.fields.len() as u32;
-        for f in &dex.fields {
+        for f in plan.fields() {
             self.write_u16(f.class.0 as u16);
             self.write_u16(f.type_.0 as u16);
             self.write_u32(f.name.0);
@@ -90,7 +90,7 @@ impl DexWriterWriteExt for DexWriter {
 
         let method_ids_off = self.pos();
         let method_count = dex.methods.len() as u32;
-        for m in &dex.methods {
+        for m in plan.methods() {
             self.write_u16(m.class.0 as u16);
             self.write_u16(m.proto.0);
             self.write_u32(m.name.0);
@@ -104,9 +104,9 @@ impl DexWriterWriteExt for DexWriter {
         }
 
         let class_defs_off = self.pos();
-        let class_count = dex.classes.len() as u32;
+        let class_count = plan.classes.len() as u32;
         for _ in 0..class_count {
-            self.buf.extend_from_slice(&[0u8; 32]);
+            self.write_zeros(32);
         }
         if class_count > 0 {
             self.map_entries.push(MapItem {
@@ -116,14 +116,15 @@ impl DexWriterWriteExt for DexWriter {
             });
         }
 
-        let call_sites_off = if !dex.call_sites.is_empty() {
+        let call_sites = plan.call_sites();
+        let call_sites_off = if !call_sites.is_empty() {
             let off = self.pos();
-            for _ in 0..dex.call_sites.len() {
+            for _ in 0..call_sites.len() {
                 self.write_u32(0);
             }
             self.map_entries.push(MapItem {
                 type_code: TYPE_CALL_SITE_ID_ITEM,
-                size: dex.call_sites.len() as u32,
+                size: call_sites.len() as u32,
                 offset: off,
             });
             Some(off)
@@ -131,9 +132,10 @@ impl DexWriterWriteExt for DexWriter {
             None
         };
 
-        if !dex.method_handles.is_empty() {
+        let method_handles = plan.method_handles();
+        if !method_handles.is_empty() {
             let off = self.pos();
-            for mh in &dex.method_handles {
+            for mh in method_handles.iter() {
                 self.write_u16(mh.handle_type.to_u16());
                 self.write_u16(0);
                 let member_id = match &mh.member {
@@ -158,7 +160,7 @@ impl DexWriterWriteExt for DexWriter {
             }
             self.map_entries.push(MapItem {
                 type_code: TYPE_METHOD_HANDLE_ITEM,
-                size: dex.method_handles.len() as u32,
+                size: method_handles.len() as u32,
                 offset: off,
             });
         }
@@ -166,34 +168,30 @@ impl DexWriterWriteExt for DexWriter {
         let data_off = self.pos();
 
         let (proto_param_offsets, class_interface_offsets) =
-            encoded_arrays::write_type_lists(self, dex);
+            encoded_arrays::write_type_lists(self, plan)?;
 
-        let class_ann_datas = annotations::write_annotations(self, dex);
+        let class_ann_datas = annotations::write_annotations(self, plan)?;
 
-        let layouts = code::write_code_and_debug(self, dex, remap)?;
+        let layouts = code::write_code_and_debug(self, plan)?;
         class_data::write_class_data_items(self, &layouts);
 
         let string_data_start = self.pos();
         self.string_data_offsets.clear();
-        for s in &dex.strings {
+        for i in 0..plan.string_count() {
             let off = self.pos();
             self.string_data_offsets.push(off);
-            let mutf8 = encode_mutf8(s.as_str());
-            let utf16_size = utf16_len(s.as_str());
-            write_uleb128(&mut self.buf, utf16_size);
-            self.buf.extend_from_slice(&mutf8);
-            self.buf.push(0);
+            self.write(&plan.string_item(i));
         }
-        if !dex.strings.is_empty() {
+        if string_count > 0 {
             self.map_entries.push(MapItem {
                 type_code: TYPE_STRING_DATA_ITEM,
-                size: dex.strings.len() as u32,
+                size: string_count,
                 offset: string_data_start,
             });
         }
 
         let (static_values_offsets, call_site_data_offsets) =
-            encoded_arrays::write_encoded_arrays(self, dex);
+            encoded_arrays::write_encoded_arrays(self, plan, &call_sites)?;
 
         if let Some(ref hidden_api) = dex.hidden_api {
             self.align(4);
@@ -227,7 +225,7 @@ impl DexWriterWriteExt for DexWriter {
 
         finalize::finalize(
             self,
-            dex,
+            plan,
             data_off,
             data_size,
             string_ids_off,

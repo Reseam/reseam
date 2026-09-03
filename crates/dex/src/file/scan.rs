@@ -3,34 +3,85 @@
 
 //! Method scanning that reads straight from the raw DEX bytes.
 //!
-//! Searches do not need the full decoded IR. A class whose `class_data` is
-//! already materialized — because a patch touched it, created it, or it came
-//! from an eagerly-parsed DEX — is scanned through that IR (which may be
-//! modified). Every other class is streamed from the original buffer, decoding
-//! one method's instructions at a time into a reusable scratch buffer, and only
-//! when a predicate actually asks for them.
-//!
-//! The result is that a search holds one method's instructions at a time rather
-//! than every method in the APK, and a name- or flag-only search never decodes
-//! a single instruction.
+//! Searches never build the decoded IR. A class whose `class_data` is
+//! already materialized (a patch touched it, created it, or it came from an
+//! eagerly-parsed DEX) is scanned through that IR, which may be modified.
+//! Every other class is streamed from the original buffer and its methods are
+//! walked one instruction at a time, reading only the opcode and the operand
+//! the search asks about.
 
 use std::ops::ControlFlow;
 
 use rayon::prelude::*;
 
-use super::pattern::matches_pattern;
-use super::{DexFile, InstructionPattern};
+use super::pattern::{find_pattern_span, InstructionPattern};
+use super::ref_filter::RefFilter;
+use super::{DexFile, RefKey, RefQuery};
 use crate::encoding::leb128::read_uleb128_with_opts;
 use crate::error::Result;
-use crate::read::code::{read_code_instructions_into, read_code_item};
+use crate::read::class::{read_class_skeleton_at, ClassSkeleton, MethodHeader};
+use crate::read::code::{count_instructions, read_code_item, walk_instructions, RawInstruction};
+use crate::read::header::{u16_at, u32_at};
 use crate::types::access_flags::AccessFlags;
 use crate::types::class::{ClassData, EncodedField, EncodedMethod};
 use crate::types::header::ParseOptions;
 use crate::types::instruction::Instruction;
 use crate::types::{FieldIdx, MethodIdx, StringIdx, TypeIdx};
 
-/// A method encountered during a scan. Instructions decode on demand, so cheap
-/// checks (name, flags, prototype) never pay for instruction decoding.
+/// One instruction as a search sees it: the opcode and the pool reference or
+/// literal it carries, from decoded IR or straight from code units.
+#[derive(Clone, Copy)]
+pub enum InstructionRef<'a> {
+    Decoded(&'a Instruction),
+    Raw { buf: &'a [u8], insn: RawInstruction },
+}
+
+impl InstructionRef<'_> {
+    pub fn opcode(&self) -> Option<u16> {
+        match self {
+            Self::Decoded(insn) => insn.opcode(),
+            Self::Raw { insn, .. } => insn.opcode(),
+        }
+    }
+
+    pub fn method_ref(&self) -> Option<MethodIdx> {
+        match self {
+            Self::Decoded(insn) => insn.method_ref(),
+            Self::Raw { buf, insn } => insn.method_ref(buf),
+        }
+    }
+
+    pub fn field_ref(&self) -> Option<FieldIdx> {
+        match self {
+            Self::Decoded(insn) => insn.field_ref(),
+            Self::Raw { buf, insn } => insn.field_ref(buf),
+        }
+    }
+
+    pub fn string_ref(&self) -> Option<StringIdx> {
+        match self {
+            Self::Decoded(insn) => insn.string_ref(),
+            Self::Raw { buf, insn } => insn.string_ref(buf),
+        }
+    }
+
+    pub fn type_ref(&self) -> Option<TypeIdx> {
+        match self {
+            Self::Decoded(insn) => insn.type_ref(),
+            Self::Raw { buf, insn } => insn.type_ref(buf),
+        }
+    }
+
+    pub fn literal(&self) -> Option<i64> {
+        match self {
+            Self::Decoded(insn) => insn.literal(),
+            Self::Raw { buf, insn } => insn.literal(buf),
+        }
+    }
+}
+
+/// A method encountered during a scan. Cheap checks (name, flags, prototype)
+/// come from the member list; instructions are walked only when asked for.
 pub struct MethodView<'a> {
     pub method: MethodIdx,
     pub access_flags: AccessFlags,
@@ -48,13 +99,8 @@ enum Code<'a> {
     None,
     /// From materialized IR (possibly mutated by an earlier patch).
     Resolved(&'a [Instruction]),
-    /// Streamed from the raw buffer; decoded into `scratch` on first request.
-    Raw {
-        buf: &'a [u8],
-        code_off: u32,
-        scratch: &'a mut Vec<Instruction>,
-        decoded: bool,
-    },
+    /// Still in the raw buffer, walked in place.
+    Raw { buf: &'a [u8], code_off: u32 },
 }
 
 impl<'a> MethodView<'a> {
@@ -62,25 +108,45 @@ impl<'a> MethodView<'a> {
         !matches!(self.code, Code::None)
     }
 
-    /// Returns the method's instructions, decoding raw bytes on first call.
-    /// Empty for a codeless method.
-    pub fn instructions(&mut self) -> Result<&[Instruction]> {
-        match &mut self.code {
-            Code::None => Ok(&[]),
-            Code::Resolved(instructions) => Ok(instructions),
-            Code::Raw {
-                buf,
-                code_off,
-                scratch,
-                decoded,
-            } => {
-                if !*decoded {
-                    read_code_instructions_into(buf, *code_off, scratch)?;
-                    *decoded = true;
+    /// Visits each instruction in order, stopping when `visit` returns `false`.
+    pub fn for_each_instruction(&self, mut visit: impl FnMut(InstructionRef<'_>) -> bool) -> Result<()> {
+        match &self.code {
+            Code::None => Ok(()),
+            Code::Resolved(instructions) => {
+                for insn in *instructions {
+                    if !visit(InstructionRef::Decoded(insn)) {
+                        break;
+                    }
                 }
-                Ok(scratch)
+                Ok(())
+            }
+            Code::Raw { buf, code_off } => {
+                let base = *code_off as usize;
+                let insns_size = u32_at(buf, base + 12)? as usize;
+                walk_instructions(buf, base + 16, insns_size, |insn| {
+                    visit(InstructionRef::Raw { buf, insn: *insn })
+                })
             }
         }
+    }
+
+    /// Whether any instruction satisfies `pred`.
+    pub fn any_instruction(&self, mut pred: impl FnMut(InstructionRef<'_>) -> bool) -> Result<bool> {
+        let mut found = false;
+        self.for_each_instruction(|insn| {
+            found = pred(insn);
+            !found
+        })?;
+        Ok(found)
+    }
+
+    /// The method's opcode sequence, into `out`.
+    pub fn opcodes(&self, out: &mut Vec<Option<u16>>) -> Result<()> {
+        out.clear();
+        self.for_each_instruction(|insn| {
+            out.push(insn.opcode());
+            true
+        })
     }
 
     pub fn hit(&self) -> MethodHit {
@@ -120,19 +186,20 @@ pub struct InstructionSite<'a> {
     pub method_pos: usize,
     pub is_virtual: bool,
     pub insn_idx: usize,
-    pub instruction: &'a Instruction,
+    pub instruction: InstructionRef<'a>,
 }
 
 impl DexFile {
     /// Scans methods across all classes, returning the first `Some`. Sequential
-    /// with early exit, reusing one instruction buffer for the whole walk.
+    /// with early exit.
     pub fn scan_methods_find<T>(
         &self,
-        mut f: impl FnMut(&mut MethodView<'_>) -> Result<Option<T>>,
+        query: &RefQuery,
+        mut f: impl FnMut(&MethodView<'_>) -> Result<Option<T>>,
     ) -> Result<Option<T>> {
-        let mut scratch = Vec::new();
+        let filter = self.filter_for(query)?;
         for class_idx in 0..self.classes.len() {
-            let flow = self.scan_class(class_idx, &mut scratch, &mut |view| {
+            let flow = self.scan_class(class_idx, filter, query, &mut |view| {
                 Ok(match f(view)? {
                     Some(value) => ControlFlow::Break(value),
                     None => ControlFlow::Continue(()),
@@ -146,16 +213,19 @@ impl DexFile {
     }
 
     /// Scans every method across all classes in parallel, collecting each `Some`
-    /// in class-then-method order. Each rayon worker keeps its own buffer.
+    /// in class-then-method order. Only methods the reference filter admits
+    /// for `query` are visited.
     pub fn scan_methods_collect<T: Send>(
         &self,
-        f: impl Fn(&mut MethodView<'_>) -> Result<Option<T>> + Sync,
+        query: &RefQuery,
+        f: impl Fn(&MethodView<'_>) -> Result<Option<T>> + Sync,
     ) -> Result<Vec<T>> {
+        let filter = self.filter_for(query)?;
         let per_class: Vec<Vec<T>> = (0..self.classes.len())
             .into_par_iter()
-            .map_init(Vec::new, |scratch, class_idx| {
+            .map(|class_idx| {
                 let mut hits = Vec::new();
-                let _: ControlFlow<()> = self.scan_class(class_idx, scratch, &mut |view| {
+                let _: ControlFlow<()> = self.scan_class(class_idx, filter, query, &mut |view| {
                     if let Some(value) = f(view)? {
                         hits.push(value);
                     }
@@ -167,52 +237,62 @@ impl DexFile {
         Ok(per_class.into_iter().flatten().collect())
     }
 
-    /// Visits every instruction of every method, collecting each `Some`.
+    /// Visits every instruction of every method the filter admits for
+    /// `query`, collecting each `Some`.
     pub fn scan_instructions<T: Send>(
         &self,
+        query: &RefQuery,
         f: impl Fn(&InstructionSite<'_>) -> Option<T> + Sync,
     ) -> Result<Vec<T>> {
-        let per_method: Vec<Vec<T>> = self.scan_methods_collect(|view| {
-            let (class_idx, method_pos, is_virtual) =
-                (view.class_idx, view.method_pos, view.is_virtual);
+        let per_method: Vec<Vec<T>> = self.scan_methods_collect(query, |view| {
             let mut hits = Vec::new();
-            for (insn_idx, instruction) in view.instructions()?.iter().enumerate() {
+            let mut insn_idx = 0;
+            view.for_each_instruction(|instruction| {
                 if let Some(value) = f(&InstructionSite {
-                    class_idx,
-                    method_pos,
-                    is_virtual,
+                    class_idx: view.class_idx,
+                    method_pos: view.method_pos,
+                    is_virtual: view.is_virtual,
                     insn_idx,
                     instruction,
                 }) {
                     hits.push(value);
                 }
-            }
+                insn_idx += 1;
+                true
+            })?;
             Ok((!hits.is_empty()).then_some(hits))
         })?;
         Ok(per_method.into_iter().flatten().collect())
+    }
+
+    fn filter_for(&self, query: &RefQuery) -> Result<Option<&RefFilter>> {
+        if query.is_empty() {
+            return Ok(None);
+        }
+        self.ref_filter().map(Some)
     }
 
     /// Dispatches one class to resolved or raw scanning.
     fn scan_class<T>(
         &self,
         class_idx: usize,
-        scratch: &mut Vec<Instruction>,
-        visit: &mut impl FnMut(&mut MethodView<'_>) -> Result<ControlFlow<T>>,
+        filter: Option<&RefFilter>,
+        query: &RefQuery,
+        visit: &mut impl FnMut(&MethodView<'_>) -> Result<ControlFlow<T>>,
     ) -> Result<ControlFlow<T>> {
-        let class = &self.classes[class_idx];
-        if let Some(data) = &class.class_data {
-            return scan_resolved_class(class_idx, class.class_type, data, visit);
+        let class_type = self.classes.header(class_idx).class_type;
+        if let Some(class) = self.classes.resident(class_idx) {
+            return match &class.class_data {
+                Some(data) => scan_resolved_class(class_idx, class_type, data, visit),
+                None => Ok(ControlFlow::Continue(())),
+            };
         }
-
-        match self
-            .lazy_class_data_offsets
-            .as_ref()
-            .and_then(|offsets| offsets.get(class_idx).copied())
-        {
-            Some(offset) if offset != 0 => {
-                self.scan_raw_class(class_idx, class.class_type, offset, scratch, visit)
+        match self.raw_class_data_offset(class_idx) {
+            Some(offset) => {
+                let masks = filter.map(|f| f.class(class_idx));
+                self.scan_raw_class(class_idx, class_type, offset, masks, query, visit)
             }
-            _ => Ok(ControlFlow::Continue(())),
+            None => Ok(ControlFlow::Continue(())),
         }
     }
 
@@ -221,14 +301,14 @@ impl DexFile {
         class_idx: usize,
         class_type: TypeIdx,
         offset: u32,
-        scratch: &mut Vec<Instruction>,
-        visit: &mut impl FnMut(&mut MethodView<'_>) -> Result<ControlFlow<T>>,
+        masks: Option<&[u64]>,
+        query: &RefQuery,
+        visit: &mut impl FnMut(&MethodView<'_>) -> Result<ControlFlow<T>>,
     ) -> Result<ControlFlow<T>> {
-        let buf = self
-            .raw
-            .as_ref()
-            .ok_or_else(|| crate::error::invalid_offset("scan class data", offset, 0))?
-            .as_bytes();
+        if masks.is_some_and(|masks| !masks.iter().any(|&m| query.admits(m))) {
+            return Ok(ControlFlow::Continue(()));
+        }
+        let buf = self.raw_bytes(offset)?;
         let opts = &self.parse_options;
 
         let mut pos = offset as usize;
@@ -252,6 +332,7 @@ impl DexFile {
             };
             // The method_idx_diff of the first entry in each list is absolute.
             let mut method_idx = 0u32;
+            let slot_base = if is_virtual { direct_methods_size as usize } else { 0 };
             for method_pos in 0..count as usize {
                 let (diff, n) = read_uleb128_with_opts(buf, pos, opts)?;
                 pos += n;
@@ -261,18 +342,15 @@ impl DexFile {
                 let (code_off, n) = read_uleb128_with_opts(buf, pos, opts)?;
                 pos += n;
 
-                scratch.clear();
+                if masks.is_some_and(|masks| !query.admits(masks[slot_base + method_pos])) {
+                    continue;
+                }
                 let code = if code_off != 0 {
-                    Code::Raw {
-                        buf,
-                        code_off,
-                        scratch,
-                        decoded: false,
-                    }
+                    Code::Raw { buf, code_off }
                 } else {
                     Code::None
                 };
-                let mut view = MethodView {
+                let view = MethodView {
                     method: MethodIdx(method_idx),
                     access_flags: AccessFlags::from_bits_retain(access),
                     class_idx,
@@ -281,7 +359,7 @@ impl DexFile {
                     is_virtual,
                     code,
                 };
-                if let ControlFlow::Break(value) = visit(&mut view)? {
+                if let ControlFlow::Break(value) = visit(&view)? {
                     return Ok(ControlFlow::Break(value));
                 }
             }
@@ -295,7 +373,7 @@ fn scan_resolved_class<T>(
     class_idx: usize,
     class_type: TypeIdx,
     data: &ClassData,
-    visit: &mut impl FnMut(&mut MethodView<'_>) -> Result<ControlFlow<T>>,
+    visit: &mut impl FnMut(&MethodView<'_>) -> Result<ControlFlow<T>>,
 ) -> Result<ControlFlow<T>> {
     let lists = [
         (false, data.direct_methods.as_slice()),
@@ -307,7 +385,7 @@ fn scan_resolved_class<T>(
                 Some(code) => Code::Resolved(&code.instructions),
                 None => Code::None,
             };
-            let mut view = MethodView {
+            let view = MethodView {
                 method: method.method,
                 access_flags: method.access_flags,
                 class_idx,
@@ -316,7 +394,7 @@ fn scan_resolved_class<T>(
                 is_virtual,
                 code,
             };
-            if let ControlFlow::Break(value) = visit(&mut view)? {
+            if let ControlFlow::Break(value) = visit(&view)? {
                 return Ok(ControlFlow::Break(value));
             }
         }
@@ -371,50 +449,117 @@ fn decode_one_method(
     is_virtual: bool,
     opts: &ParseOptions,
 ) -> Result<Option<EncodedMethod>> {
-    let mut pos = offset as usize;
-    let (static_fields_size, n) = read_uleb128_with_opts(buf, pos, opts)?;
-    pos += n;
-    let (instance_fields_size, n) = read_uleb128_with_opts(buf, pos, opts)?;
-    pos += n;
-    let (direct_methods_size, n) = read_uleb128_with_opts(buf, pos, opts)?;
-    pos += n;
-    let (virtual_methods_size, n) = read_uleb128_with_opts(buf, pos, opts)?;
-    pos += n;
+    let skeleton = read_class_skeleton_at(buf, offset as usize, opts)?;
+    let Some(header) = skeleton.method(method_pos, is_virtual) else {
+        return Ok(None);
+    };
+    let code = if header.code_off != 0 {
+        Some(read_code_item(buf, header.code_off, opts)?)
+    } else {
+        None
+    };
+    Ok(Some(EncodedMethod {
+        method: header.method,
+        access_flags: header.access_flags,
+        code,
+    }))
+}
 
-    pos = skip_encoded_fields(buf, pos, static_fields_size, opts)?;
-    pos = skip_encoded_fields(buf, pos, instance_fields_size, opts)?;
-
-    for list_is_virtual in [false, true] {
-        let count = if list_is_virtual {
-            virtual_methods_size
+impl ClassSkeleton {
+    pub fn method(&self, method_pos: usize, is_virtual: bool) -> Option<&MethodHeader> {
+        if is_virtual {
+            self.virtual_methods.get(method_pos)
         } else {
-            direct_methods_size
-        };
-        let mut method_idx = 0u32;
-        for pos_in_list in 0..count as usize {
-            let (diff, n) = read_uleb128_with_opts(buf, pos, opts)?;
-            pos += n;
-            method_idx = method_idx.wrapping_add(diff);
-            let (access, n) = read_uleb128_with_opts(buf, pos, opts)?;
-            pos += n;
-            let (code_off, n) = read_uleb128_with_opts(buf, pos, opts)?;
-            pos += n;
-
-            if list_is_virtual == is_virtual && pos_in_list == method_pos {
-                let code = if code_off != 0 {
-                    Some(read_code_item(buf, code_off, opts)?)
-                } else {
-                    None
-                };
-                return Ok(Some(EncodedMethod {
-                    method: MethodIdx(method_idx),
-                    access_flags: AccessFlags::from_bits_retain(access),
-                    code,
-                }));
-            }
+            self.direct_methods.get(method_pos)
         }
     }
-    Ok(None)
+}
+
+/// A method's identity and frame shape, read without decoding its code.
+#[derive(Debug, Clone, Copy)]
+pub struct MethodSummary {
+    pub method: MethodIdx,
+    pub access_flags: AccessFlags,
+    pub registers_size: u16,
+    pub ins_size: u16,
+    pub outs_size: u16,
+    pub has_code: bool,
+    pub instruction_count: u32,
+}
+
+impl DexFile {
+    /// The member lists of a still-deferred class, read from the raw buffer
+    /// without touching any code. `None` for materialized classes and classes
+    /// without class data.
+    pub fn class_skeleton(&self, class_idx: usize) -> Result<Option<ClassSkeleton>> {
+        let Some(offset) = self.raw_class_data_offset(class_idx) else {
+            return Ok(None);
+        };
+        let buf = self.raw_bytes(offset)?;
+        Ok(Some(read_class_skeleton_at(buf, offset as usize, &self.parse_options)?))
+    }
+
+    /// Summarizes a deferred method from its skeleton entry: the 16-byte code
+    /// item header plus an opcode-length walk for the instruction count.
+    pub fn summarize_method(&self, header: &MethodHeader) -> Result<MethodSummary> {
+        let mut summary = MethodSummary {
+            method: header.method,
+            access_flags: header.access_flags,
+            registers_size: 0,
+            ins_size: 0,
+            outs_size: 0,
+            has_code: header.code_off != 0,
+            instruction_count: 0,
+        };
+        if header.code_off != 0 {
+            let buf = self.raw_bytes(header.code_off)?;
+            let base = header.code_off as usize;
+            summary.registers_size = u16_at(buf, base)?;
+            summary.ins_size = u16_at(buf, base + 2)?;
+            summary.outs_size = u16_at(buf, base + 4)?;
+            let insns_size = u32_at(buf, base + 12)? as usize;
+            summary.instruction_count = count_instructions(buf, base + 16, insns_size)?;
+        }
+        Ok(summary)
+    }
+
+    /// Summarizes one method: from IR when its class is materialized, else via
+    /// [`Self::class_skeleton`] and [`Self::summarize_method`].
+    pub fn method_summary(
+        &self,
+        class_idx: usize,
+        method_pos: usize,
+        is_virtual: bool,
+    ) -> Result<Option<MethodSummary>> {
+        if let Some(data) = self.resident_class_data(class_idx) {
+            let list = if is_virtual {
+                &data.virtual_methods
+            } else {
+                &data.direct_methods
+            };
+            return Ok(list.get(method_pos).map(summarize_resident));
+        }
+        let Some(skeleton) = self.class_skeleton(class_idx)? else {
+            return Ok(None);
+        };
+        skeleton
+            .method(method_pos, is_virtual)
+            .map(|header| self.summarize_method(header))
+            .transpose()
+    }
+}
+
+pub fn summarize_resident(m: &EncodedMethod) -> MethodSummary {
+    let code = m.code.as_ref();
+    MethodSummary {
+        method: m.method,
+        access_flags: m.access_flags,
+        registers_size: code.map_or(0, |c| c.registers_size),
+        ins_size: code.map_or(0, |c| c.ins_size),
+        outs_size: code.map_or(0, |c| c.outs_size),
+        has_code: code.is_some(),
+        instruction_count: code.map_or(0, |c| c.instructions.len() as u32),
+    }
 }
 
 /// Member counts of a class, needed by inspection FFIs that never touch code.
@@ -431,10 +576,10 @@ impl DexFile {
     /// class this reads only the four `class_data` header LEBs — no field,
     /// method, or code decoding.
     pub fn class_member_counts(&self, class_idx: usize) -> Result<Option<MemberCounts>> {
-        let Some(class) = self.classes.get(class_idx) else {
+        if class_idx >= self.classes.len() {
             return Ok(None);
-        };
-        if let Some(data) = &class.class_data {
+        }
+        if let Some(data) = self.resident_class_data(class_idx) {
             return Ok(Some(MemberCounts {
                 direct_methods: data.direct_methods.len() as u32,
                 virtual_methods: data.virtual_methods.len() as u32,
@@ -470,10 +615,10 @@ impl DexFile {
         &self,
         class_idx: usize,
     ) -> Result<Option<(Vec<EncodedField>, Vec<EncodedField>)>> {
-        let Some(class) = self.classes.get(class_idx) else {
+        if class_idx >= self.classes.len() {
             return Ok(None);
-        };
-        if let Some(data) = &class.class_data {
+        }
+        if let Some(data) = self.resident_class_data(class_idx) {
             return Ok(Some((
                 data.static_fields.clone(),
                 data.instance_fields.clone(),
@@ -500,11 +645,20 @@ impl DexFile {
         Ok(Some((static_fields, instance_fields)))
     }
 
+    /// The `class_data_item` offset of a class still in the file; `None` for
+    /// resident classes and classes without class data.
     pub(crate) fn raw_class_data_offset(&self, class_idx: usize) -> Option<u32> {
-        self.lazy_class_data_offsets
-            .as_ref()
-            .and_then(|offsets| offsets.get(class_idx).copied())
+        self.classes
+            .raw_def(class_idx)
+            .map(|def| def.class_data_off)
             .filter(|&off| off != 0)
+    }
+
+    /// The class data of a resident class, when it is resident and has any.
+    /// `None` also for classes still in the file: callers fall back to the
+    /// raw readers, and a resident class without class data has no members.
+    fn resident_class_data(&self, class_idx: usize) -> Option<&ClassData> {
+        self.classes.resident(class_idx)?.class_data.as_deref()
     }
 
     pub(crate) fn raw_bytes(&self, offset: u32) -> Result<&[u8]> {
@@ -527,10 +681,7 @@ impl DexFile {
         method_pos: usize,
         is_virtual: bool,
     ) -> Result<Option<EncodedMethod>> {
-        let Some(class) = self.classes.get(class_idx) else {
-            return Ok(None);
-        };
-        if let Some(data) = &class.class_data {
+        if let Some(data) = self.resident_class_data(class_idx) {
             let list = if is_virtual {
                 &data.virtual_methods
             } else {
@@ -551,9 +702,11 @@ impl DexFile {
 impl DexFile {
     /// Finds the first method with the given name.
     pub fn find_method_by_name(&self, name: &str) -> Result<Option<MethodHit>> {
-        self.scan_methods_find(|view| {
-            let method_id = &self.methods[view.method.0 as usize];
-            Ok((self.string(method_id.name) == name).then(|| view.hit()))
+        let Some(name) = self.find_string_idx(name) else {
+            return Ok(None);
+        };
+        self.scan_methods_find(&RefQuery::default(), |view| {
+            Ok((self.method_id(view.method).name == name).then(|| view.hit()))
         })
     }
 
@@ -570,19 +723,17 @@ impl DexFile {
             return Ok(Vec::new());
         }
 
-        self.scan_methods_collect(|view| {
+        let query = RefQuery::all_of(targets.iter().map(|&s| RefKey::string(s)));
+        self.scan_methods_collect(&query, |view| {
             if !view.has_code() {
                 return Ok(None);
             }
-            let instructions = view.instructions()?;
-            let all_present = targets.iter().all(|target| {
-                instructions.iter().any(|insn| match insn {
-                    Instruction::ConstString { string, .. }
-                    | Instruction::ConstStringJumbo { string, .. } => string == target,
-                    _ => false,
-                })
-            });
-            Ok(all_present.then(|| view.hit()))
+            for target in &targets {
+                if !view.any_instruction(|insn| insn.string_ref() == Some(*target))? {
+                    return Ok(None);
+                }
+            }
+            Ok(Some(view.hit()))
         })
     }
 
@@ -591,12 +742,13 @@ impl DexFile {
         &self,
         opcodes: &[InstructionPattern],
     ) -> Result<Vec<MethodHit>> {
-        self.scan_methods_collect(|view| {
+        self.scan_methods_collect(&RefQuery::default(), |view| {
             if !view.has_code() {
                 return Ok(None);
             }
-            let instructions = view.instructions()?;
-            Ok(matches_pattern(instructions, opcodes).then(|| view.hit()))
+            let mut seq = Vec::new();
+            view.opcodes(&mut seq)?;
+            Ok(find_pattern_span(&seq, opcodes).is_some().then(|| view.hit()))
         })
     }
 }

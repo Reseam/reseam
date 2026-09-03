@@ -22,34 +22,13 @@ pub mod register_analysis;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct StringIdx(pub u32);
 
-#[derive(Debug, Clone)]
-pub struct DexString {
-    pub value: Box<str>,
-}
-
-impl DexString {
-    pub fn new(s: impl Into<Box<str>>) -> Self {
-        Self { value: s.into() }
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.value
-    }
-}
-
-impl std::fmt::Display for DexString {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.value)
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TypeIdx(pub u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FieldIdx(pub u32);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldId {
     pub class: TypeIdx,
     pub type_: TypeIdx,
@@ -59,7 +38,7 @@ pub struct FieldId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MethodIdx(pub u32);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MethodId {
     pub class: TypeIdx,
     pub proto: ProtoIdx,
@@ -71,7 +50,7 @@ pub struct ProtoIdx(pub u16);
 
 pub type TypeList = smallvec::SmallVec<[TypeIdx; 4]>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Prototype {
     pub shorty: StringIdx,
     pub return_type: TypeIdx,

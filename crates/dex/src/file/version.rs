@@ -10,31 +10,33 @@ impl DexFile {
         self.header.version
     }
 
+    /// The version the file must be written as: never below what it was
+    /// parsed as (classes still in the file keep whatever they use), raised
+    /// by anything a patch added.
     pub fn required_version(&self) -> DexVersion {
-        if self.header.version >= DexVersion::V040 {
-            return self.header.version;
+        let mut version = self.header.version;
+        if version >= DexVersion::V040 {
+            return version;
         }
-
         if self.hidden_api.is_some() {
-            return DexVersion::V039;
+            version = version.max(DexVersion::V039);
         }
         if !self.call_sites.is_empty() || !self.method_handles.is_empty() {
-            return DexVersion::V038;
+            version = version.max(DexVersion::V038);
         }
-
-        for class in &self.classes {
-            if let Some(data) = class.class_data.as_ref() {
-                for method in data.direct_methods.iter().chain(&data.virtual_methods) {
-                    if let Some(code) = method.code.as_ref() {
-                        if code.instructions.iter().any(uses_v038_instruction) {
-                            return DexVersion::V038;
-                        }
-                    }
-                }
-            }
+        if version < DexVersion::V038 && self.resident_uses_v038_instruction() {
+            version = DexVersion::V038;
         }
+        version
+    }
 
-        DexVersion::V035
+    fn resident_uses_v038_instruction(&self) -> bool {
+        (0..self.classes.len())
+            .filter_map(|i| self.classes.resident(i))
+            .filter_map(|class| class.class_data.as_deref())
+            .flat_map(|data| data.direct_methods.iter().chain(&data.virtual_methods))
+            .filter_map(|method| method.code.as_ref())
+            .any(|code| code.instructions.iter().any(uses_v038_instruction))
     }
 }
 

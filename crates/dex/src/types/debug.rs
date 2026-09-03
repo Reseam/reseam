@@ -3,14 +3,14 @@
 
 use super::{StringIdx, TypeIdx};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DebugInfo {
     pub line_start: u32,
     pub parameter_names: Vec<Option<StringIdx>>,
     pub bytecodes: Vec<DebugBytecode>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum DebugBytecode {
     EndSequence,
     AdvancePc {

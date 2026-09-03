@@ -26,12 +26,6 @@ pub enum ApkError {
         reason: String,
     },
 
-    #[error("unsupported {feature}: {detail}")]
-    Unsupported {
-        feature: &'static str,
-        detail: String,
-    },
-
     #[error("internal error while {operation}: {reason}")]
     Internal {
         operation: &'static str,
@@ -83,9 +77,3 @@ pub(crate) fn invalid(section: &'static str, reason: impl Into<String>) -> ApkEr
     }
 }
 
-pub(crate) fn unsupported(feature: &'static str, detail: impl Into<String>) -> ApkError {
-    ApkError::Unsupported {
-        feature,
-        detail: detail.into(),
-    }
-}

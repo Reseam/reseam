@@ -3,55 +3,63 @@
 
 mod bytes;
 mod class_ops;
+mod classes;
 pub mod container;
 mod fingerprint;
+mod ids;
 mod interning;
 mod lookup;
 mod pattern;
+mod ref_filter;
 mod scan;
+mod strings;
 #[cfg(test)]
 mod tests;
 mod version;
 
 pub use bytes::DexBytes;
+pub use classes::{ClassHeader, ClassTable, RawClassDef};
+pub use ids::{IdRecord, IdTable};
+pub use ref_filter::{RefKey, RefQuery};
+use ref_filter::RefFilter;
+pub(crate) use ids::read_type_list;
+pub use strings::StringPool;
 
-use crate::error::{index_out_of_bounds, invalid_offset};
+use std::borrow::Cow;
+
+use crate::error::invalid_offset;
+use crate::read::encoded_value::read_encoded_array_with_opts;
 use crate::types::class::ClassDef;
+use crate::types::encoded_value::EncodedValue;
 use crate::types::header::{DexHeader, ParseOptions};
 use crate::types::method_handle::{CallSiteItem, MethodHandle};
-use crate::types::{
-    DexString, FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx,
-};
+use crate::types::{FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx};
 
 pub use fingerprint::{Fingerprint, FingerprintBuilder, FingerprintHit};
 pub use pattern::{InstructionPattern, OpcodeMatcher};
-pub use scan::{InstructionHit, InstructionSite, MemberCounts, MethodHit, MethodView};
+pub use scan::{
+    summarize_resident, InstructionHit, InstructionSite, MemberCounts, MethodHit, MethodSummary,
+    MethodView,
+};
 
-use lookup::{LazyMap, ProtoLookup, StringLookup};
-
-#[derive(Debug)]
+/// A DEX file whose tables are views over the mapped file. Nothing is decoded
+/// until it is read, and only what a patch mutates becomes resident.
+#[derive(Debug, Clone)]
 pub struct DexFile {
     pub header: DexHeader,
-    pub strings: Vec<DexString>,
-    pub types: Vec<StringIdx>,
-    pub prototypes: Vec<Prototype>,
-    pub fields: Vec<FieldId>,
-    pub methods: Vec<MethodId>,
-    pub classes: Vec<ClassDef>,
+    pub strings: StringPool,
+    pub types: IdTable<StringIdx>,
+    pub prototypes: IdTable<Prototype>,
+    pub fields: IdTable<FieldId>,
+    pub methods: IdTable<MethodId>,
+    pub classes: ClassTable,
     pub call_sites: Vec<CallSiteItem>,
     pub method_handles: Vec<MethodHandle>,
     pub hidden_api: Option<crate::types::hidden_api::HiddenApiData>,
     pub raw: Option<DexBytes>,
-    /// Options the file was parsed with; lazy class-data resolution reuses them
-    /// so deferred parsing behaves identically to eager parsing.
     pub(crate) parse_options: ParseOptions,
-    pub(crate) lazy_class_data_offsets: Option<Vec<u32>>,
-    pub(crate) string_lookup: StringLookup,
-    pub(crate) type_lookup: LazyMap<StringIdx, TypeIdx>,
-    pub(crate) class_lookup: LazyMap<TypeIdx, usize>,
-    pub(crate) proto_lookup: ProtoLookup,
-    pub(crate) method_lookup: LazyMap<(TypeIdx, StringIdx, ProtoIdx), MethodIdx>,
-    pub(crate) field_lookup: LazyMap<(TypeIdx, StringIdx, TypeIdx), FieldIdx>,
+    ref_filter: std::sync::OnceLock<RefFilter>,
+    dirty: bool,
 }
 
 #[cfg(test)]
@@ -88,29 +96,28 @@ impl DexFile {
     pub fn new(header: DexHeader) -> Self {
         Self {
             header,
-            strings: Vec::new(),
-            types: Vec::new(),
-            prototypes: Vec::new(),
-            fields: Vec::new(),
-            methods: Vec::new(),
-            classes: Vec::new(),
+            strings: StringPool::default(),
+            types: IdTable::default(),
+            prototypes: IdTable::default(),
+            fields: IdTable::default(),
+            methods: IdTable::default(),
+            classes: ClassTable::default(),
             call_sites: Vec::new(),
             method_handles: Vec::new(),
             hidden_api: None,
             raw: None,
             parse_options: ParseOptions::default(),
-            lazy_class_data_offsets: None,
-            string_lookup: StringLookup::default(),
-            type_lookup: LazyMap::default(),
-            class_lookup: LazyMap::default(),
-            proto_lookup: ProtoLookup::default(),
-            method_lookup: LazyMap::default(),
-            field_lookup: LazyMap::default(),
+            ref_filter: std::sync::OnceLock::new(),
+            dirty: false,
         }
     }
 
     pub fn raw_buffer(&self) -> Option<&[u8]> {
         self.raw.as_ref().map(DexBytes::as_bytes)
+    }
+
+    pub fn parse_options(&self) -> &ParseOptions {
+        &self.parse_options
     }
 
     pub fn method_count(&self) -> usize {
@@ -137,104 +144,105 @@ impl DexFile {
         self.types.len() + count <= crate::write::MAX_POOL_SIZE
     }
 
-    pub fn is_lazy(&self) -> bool {
-        self.lazy_class_data_offsets.is_some()
+    pub fn type_string(&self, idx: TypeIdx) -> StringIdx {
+        self.types.get(idx.0 as usize)
     }
 
-    pub fn resolve_class_data(&mut self, class_idx: usize) -> crate::error::Result<bool> {
-        let offsets = match self.lazy_class_data_offsets.as_ref() {
-            Some(offsets) => offsets,
-            None => return Ok(false),
-        };
+    pub fn proto(&self, idx: ProtoIdx) -> Prototype {
+        self.prototypes.get(idx.0 as usize)
+    }
 
-        if class_idx >= offsets.len() || class_idx >= self.classes.len() {
-            return Err(index_out_of_bounds(
-                "class",
-                class_idx as u32,
-                self.classes.len() as u32,
-            ));
+    pub fn field_id(&self, idx: FieldIdx) -> FieldId {
+        self.fields.get(idx.0 as usize)
+    }
+
+    pub fn method_id(&self, idx: MethodIdx) -> MethodId {
+        self.methods.get(idx.0 as usize)
+    }
+
+    pub fn class_header(&self, class_idx: usize) -> ClassHeader {
+        self.classes.header(class_idx)
+    }
+
+    /// The class if a patch already materialized it.
+    pub fn resident_class(&self, class_idx: usize) -> Option<&ClassDef> {
+        self.classes.resident(class_idx)
+    }
+
+    /// A class's static initial values, decoded from the file for classes
+    /// that are not resident.
+    pub fn class_static_values(&self, class_idx: usize) -> crate::error::Result<Cow<'_, [EncodedValue]>> {
+        if let Some(class) = self.classes.resident(class_idx) {
+            return Ok(Cow::Borrowed(&class.static_values));
         }
+        let off = self.classes.raw_def(class_idx).map_or(0, |def| def.static_values_off);
+        if off == 0 {
+            return Ok(Cow::Borrowed(&[]));
+        }
+        let buf = self.raw_buffer().ok_or_else(|| invalid_offset("static values", off, 0))?;
+        Ok(Cow::Owned(read_encoded_array_with_opts(buf, off as usize, &self.parse_options)?.0))
+    }
 
-        let offset = offsets[class_idx];
-        if offset == 0 || self.classes[class_idx].class_data.is_some() {
+    /// Builds the class-type index up front instead of on the first lookup.
+    pub fn build_lookups(&self) {
+        self.classes.index_of_type(TypeIdx(0));
+    }
+
+    /// The per-method reference filter, built on first use.
+    pub(crate) fn ref_filter(&self) -> crate::error::Result<&RefFilter> {
+        if let Some(filter) = self.ref_filter.get() {
+            return Ok(filter);
+        }
+        let filter = RefFilter::build(self)?;
+        Ok(self.ref_filter.get_or_init(|| filter))
+    }
+
+    pub(crate) fn invalidate_ref_filter(&mut self) {
+        self.ref_filter.take();
+    }
+
+    pub fn ref_filter_heap_bytes(&self) -> u64 {
+        self.ref_filter.get().map_or(0, RefFilter::heap_bytes)
+    }
+
+    /// Materializes the class for mutation and marks the DEX dirty.
+    pub fn class_mut(&mut self, class_idx: usize) -> crate::error::Result<&mut ClassDef> {
+        self.touch();
+        self.classes.materialize(class_idx, &self.parse_options)
+    }
+
+    /// Whether any class is still a file record rather than resident.
+    pub fn is_lazy(&self) -> bool {
+        !self.classes.all_resident()
+    }
+
+    /// Materializes a class for reading. Returns whether it was decoded now.
+    pub fn resolve_class_data(&mut self, class_idx: usize) -> crate::error::Result<bool> {
+        if self.classes.is_resident(class_idx) {
             return Ok(false);
         }
-
-        let raw = self
-            .raw
-            .as_ref()
-            .ok_or_else(|| invalid_offset("lazy class data", offset, 0))?;
-        let class_data = crate::read::class::read_class_data_at(
-            raw.as_bytes(),
-            offset as usize,
-            &self.parse_options,
-        )?;
-        self.classes[class_idx].class_data = Some(class_data);
+        self.classes.materialize(class_idx, &self.parse_options)?;
         Ok(true)
     }
 
     pub fn resolve_all_class_data(&mut self) -> crate::error::Result<()> {
-        let Some(offsets) = self.lazy_class_data_offsets.take() else {
-            return Ok(());
-        };
-
-        let needs_raw = self
-            .classes
-            .iter()
-            .zip(&offsets)
-            .any(|(class, &off)| off != 0 && class.class_data.is_none());
-        if !needs_raw {
-            return Ok(());
-        }
-
-        let Some(raw) = self.raw.clone() else {
-            self.lazy_class_data_offsets = Some(offsets);
-            return Err(invalid_offset("lazy class data", 0, 0));
-        };
-
-        let result = crate::read::class::resolve_class_data_entries(
-            &mut self.classes,
-            &offsets,
-            raw.as_bytes(),
-            &self.parse_options,
-        );
-        if result.is_err() {
-            self.lazy_class_data_offsets = Some(offsets);
-        }
-        result
+        self.classes.materialize_all(&self.parse_options)
     }
 
-    pub fn release_raw(&mut self) -> crate::error::Result<()> {
-        if self.lazy_class_data_offsets.is_some() {
-            self.resolve_all_class_data()?;
-        }
-        self.raw = None;
-        Ok(())
+    /// Whether anything changed since parse or the last [`Self::mark_clean`],
+    /// so the writer can copy untouched files through verbatim.
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
     }
-}
 
-impl Clone for DexFile {
-    fn clone(&self) -> Self {
-        Self {
-            header: self.header.clone(),
-            strings: self.strings.clone(),
-            types: self.types.clone(),
-            prototypes: self.prototypes.clone(),
-            fields: self.fields.clone(),
-            methods: self.methods.clone(),
-            classes: self.classes.clone(),
-            call_sites: self.call_sites.clone(),
-            method_handles: self.method_handles.clone(),
-            hidden_api: self.hidden_api.clone(),
-            raw: self.raw.clone(),
-            parse_options: self.parse_options.clone(),
-            lazy_class_data_offsets: self.lazy_class_data_offsets.clone(),
-            string_lookup: StringLookup::default(),
-            type_lookup: LazyMap::default(),
-            class_lookup: LazyMap::default(),
-            proto_lookup: ProtoLookup::default(),
-            method_lookup: LazyMap::default(),
-            field_lookup: LazyMap::default(),
+    pub fn mark_clean(&mut self) {
+        self.dirty = false;
+    }
+
+    pub(crate) fn touch(&mut self) {
+        if !self.dirty {
+            tracing::debug!(file_size = self.header.file_size, "dex marked dirty");
         }
+        self.dirty = true;
     }
 }

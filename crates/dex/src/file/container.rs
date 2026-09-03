@@ -74,21 +74,17 @@ impl MultiDexContainer {
         Ok(Self { dex_files })
     }
 
-    pub fn write_all(&mut self) -> Result<Vec<Vec<u8>>> {
+    /// Rebalances classes across DEX files when any pool overflowed, which
+    /// requires every class to be materialized first. Returns whether it did.
+    pub fn redistribute_if_needed(&mut self) -> Result<bool> {
+        if !self.needs_redistribute() {
+            return Ok(false);
+        }
         for dex in &mut self.dex_files {
             dex.resolve_all_class_data()?;
         }
-
-        let needs_redistribute = self.needs_redistribute();
-        if needs_redistribute {
-            self.redistribute()?;
-        }
-
-        use rayon::prelude::*;
-        self.dex_files
-            .par_iter_mut()
-            .map(crate::write::write)
-            .collect()
+        self.redistribute()?;
+        Ok(true)
     }
 
     pub fn needs_redistribute(&self) -> bool {
@@ -106,9 +102,8 @@ impl MultiDexContainer {
 
         let mut all_classes: Vec<(usize, crate::types::class::ClassDef)> = Vec::new();
         for (i, dex) in old_dexes.iter_mut().enumerate() {
-            for class in dex.classes.drain(..) {
-                all_classes.push((i, class));
-            }
+            let classes = std::mem::take(&mut dex.classes).into_defs(&dex.parse_options)?;
+            all_classes.extend(classes.into_iter().map(|class| (i, class)));
         }
 
         let mut output: Vec<DexFile> = Vec::new();
@@ -147,21 +142,17 @@ impl MultiDexContainer {
         }
 
         for dex in &mut output {
-            compact_tables(dex);
+            compact_tables(dex)?;
         }
         self.dex_files = output;
         Ok(())
     }
 
-    pub fn write_container(&mut self) -> Result<Vec<u8>> {
-        crate::write::write_container(&mut self.dex_files)
+    pub fn write_container(&self) -> Result<Vec<u8>> {
+        crate::write::write_container(&self.dex_files)
     }
 
     pub fn memory_breakdown(&self) -> MemoryBreakdown {
-        use crate::types::class::ClassDef;
-        use crate::types::{DexString, FieldId, MethodId, Prototype, StringIdx};
-        use std::mem::size_of;
-
         let mut breakdown = MemoryBreakdown::default();
         for dex in &self.dex_files {
             breakdown.raw_buffer_bytes += dex
@@ -169,16 +160,13 @@ impl MultiDexContainer {
                 .as_ref()
                 .map(|raw| raw.as_bytes().len() as u64)
                 .unwrap_or(0);
-            for string in &dex.strings {
-                breakdown.string_pool_bytes += string.value.len() as u64;
-            }
-            breakdown.string_pool_bytes += dex.strings.len() as u64 * size_of::<DexString>() as u64;
+            breakdown.string_pool_bytes += dex.strings.heap_bytes();
             breakdown.string_count += dex.strings.len() as u64;
-            breakdown.id_table_bytes += dex.types.len() as u64 * size_of::<StringIdx>() as u64
-                + dex.prototypes.len() as u64 * size_of::<Prototype>() as u64
-                + dex.fields.len() as u64 * size_of::<FieldId>() as u64
-                + dex.methods.len() as u64 * size_of::<MethodId>() as u64;
-            breakdown.class_def_bytes += dex.classes.len() as u64 * size_of::<ClassDef>() as u64;
+            breakdown.id_table_bytes += dex.types.heap_bytes()
+                + dex.prototypes.heap_bytes()
+                + dex.fields.heap_bytes()
+                + dex.methods.heap_bytes();
+            breakdown.class_def_bytes += dex.classes.heap_bytes() + dex.ref_filter_heap_bytes();
         }
         breakdown.materialized = self.materialization_stats();
         breakdown
@@ -188,8 +176,8 @@ impl MultiDexContainer {
         let mut stats = MaterializationStats::default();
         for dex in &self.dex_files {
             stats.total_classes += dex.classes.len() as u64;
-            for class in &dex.classes {
-                let Some(data) = &class.class_data else {
+            for class_idx in 0..dex.classes.len() {
+                let Some(data) = dex.classes.resident(class_idx).and_then(|c| c.class_data.as_deref()) else {
                     continue;
                 };
                 stats.resolved_classes += 1;
@@ -225,8 +213,14 @@ impl MultiDexContainer {
         index: usize,
         class_idx: usize,
     ) -> Result<Option<&DexFile>> {
-        self.dex_class_resolved_mut(index, class_idx)
-            .map(|opt| opt.map(|dex| &*dex))
+        let Some(dex) = self.dex_files.get_mut(index) else {
+            return Ok(None);
+        };
+        if class_idx >= dex.classes.len() {
+            return Ok(None);
+        }
+        dex.resolve_class_data(class_idx)?;
+        Ok(Some(dex))
     }
 
     pub fn dex_class_resolved_mut(
@@ -241,31 +235,16 @@ impl MultiDexContainer {
         if class_idx >= dex.classes.len() {
             return Ok(None);
         }
-        if dex.classes[class_idx].class_data.is_none() {
-            dex.resolve_class_data(class_idx)?;
-        }
+        dex.class_mut(class_idx)?;
         Ok(Some(dex))
     }
 
-    pub fn find_class(&self, descriptor: &str) -> Option<(usize, &crate::types::class::ClassDef)> {
-        for (i, dex) in self.dex_files.iter().enumerate() {
-            if let Some(class) = dex.find_class(descriptor) {
-                return Some((i, class));
-            }
-        }
-        None
-    }
-
-    pub fn find_class_mut(
-        &mut self,
-        descriptor: &str,
-    ) -> Option<(usize, &mut crate::types::class::ClassDef)> {
-        for (i, dex) in self.dex_files.iter_mut().enumerate() {
-            if let Some(class) = dex.find_class_mut(descriptor) {
-                return Some((i, class));
-            }
-        }
-        None
+    /// `(dex index, class index)` of the class with this descriptor.
+    pub fn find_class(&self, descriptor: &str) -> Option<(usize, usize)> {
+        self.dex_files
+            .iter()
+            .enumerate()
+            .find_map(|(i, dex)| dex.find_class_index(descriptor).map(|c| (i, c)))
     }
 
     pub fn add_dex(&mut self, dex: DexFile) {

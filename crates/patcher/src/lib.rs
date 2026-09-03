@@ -36,6 +36,16 @@ pub fn jvm_heap_stats() -> Option<JvmHeapStats> {
     None
 }
 
+/// Releases what the patch runtime accumulated over a run: a full collection
+/// unloads the run's class loader and lets the heap shrink back.
+#[cfg(feature = "kotlin")]
+pub fn release_runtime_memory() {
+    kotlin::collect_runtime_garbage();
+}
+
+#[cfg(not(feature = "kotlin"))]
+pub fn release_runtime_memory() {}
+
 pub mod prelude {
     pub use crate::context::PatchContext;
     pub use crate::engine::{ExecutionPlan, PatchSelection, ProgressEvent, ResolvedPatchPlan};

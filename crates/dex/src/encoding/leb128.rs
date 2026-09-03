@@ -84,21 +84,28 @@ pub fn read_uleb128p1_with_opts(
     }
 }
 
-pub fn write_uleb128(buf: &mut Vec<u8>, mut value: u32) -> usize {
-    let mut count = 0;
+pub fn write_uleb128(buf: &mut Vec<u8>, value: u32) -> usize {
+    let (bytes, len) = encode_uleb128(value);
+    buf.extend_from_slice(&bytes[..len]);
+    len
+}
+
+pub fn encode_uleb128(mut value: u32) -> ([u8; 5], usize) {
+    let mut bytes = [0u8; 5];
+    let mut len = 0;
     loop {
         let mut byte = (value & 0x7F) as u8;
         value >>= 7;
         if value != 0 {
             byte |= 0x80;
         }
-        buf.push(byte);
-        count += 1;
+        bytes[len] = byte;
+        len += 1;
         if value == 0 {
             break;
         }
     }
-    count
+    (bytes, len)
 }
 
 pub fn write_sleb128(buf: &mut Vec<u8>, mut value: i32) -> usize {

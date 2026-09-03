@@ -14,7 +14,6 @@ pub mod types;
 mod xml;
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 #[cfg(not(target_os = "android"))]
 use std::sync::OnceLock;
@@ -26,6 +25,7 @@ use jni::JavaVM;
 use jni::{InitArgsBuilder, JNIVersion};
 use reseam_apk::reseam_dex::{DexFile, EncodedMethod};
 use reseam_apk::AxmlDocument;
+use rustc_hash::FxHashMap;
 use tracing::warn;
 
 use crate::context::PatchContext;
@@ -47,12 +47,52 @@ pub(crate) struct ClassHandle {
     pub class_idx: usize,
 }
 
+/// Handles handed to patches. Each location packs into one word, and keys
+/// allocated in increasing order (a full-app enumeration) form a sorted
+/// prefix found by binary search, so only out-of-order allocations pay for a
+/// hash entry.
 #[derive(Default)]
 pub(crate) struct HandleTable {
-    methods: Vec<MethodHandle>,
-    classes: Vec<ClassHandle>,
-    method_lookup: HashMap<(usize, usize, usize, bool), u32>,
-    class_lookup: HashMap<(usize, usize), u32>,
+    methods: Handles,
+    classes: Handles,
+}
+
+#[derive(Default)]
+struct Handles {
+    keys: Vec<u64>,
+    sorted_len: usize,
+    index: FxHashMap<u64, u32>,
+}
+
+impl Handles {
+    fn alloc(&mut self, key: u64) -> u32 {
+        if let Ok(i) = self.keys[..self.sorted_len].binary_search(&key) {
+            return i as u32;
+        }
+        if let Some(&h) = self.index.get(&key) {
+            return h;
+        }
+        let h = self.keys.len() as u32;
+        if self.sorted_len == self.keys.len() && self.keys.last().is_none_or(|&last| last < key) {
+            self.sorted_len += 1;
+        } else {
+            self.index.insert(key, h);
+        }
+        self.keys.push(key);
+        h
+    }
+
+    fn get(&self, handle: u32) -> Option<u64> {
+        self.keys.get(handle as usize).copied()
+    }
+}
+
+fn pack_method(dex_idx: usize, class_idx: usize, method_idx: usize, is_virtual: bool) -> u64 {
+    (dex_idx as u64) << 56 | (class_idx as u64) << 24 | (is_virtual as u64) << 16 | method_idx as u64
+}
+
+fn pack_class(dex_idx: usize, class_idx: usize) -> u64 {
+    (dex_idx as u64) << 56 | class_idx as u64
 }
 
 impl HandleTable {
@@ -63,38 +103,31 @@ impl HandleTable {
         method_idx: usize,
         is_virtual: bool,
     ) -> u32 {
-        let key = (dex_idx, class_idx, method_idx, is_virtual);
-        if let Some(&h) = self.method_lookup.get(&key) {
-            return h;
-        }
-        let h = self.methods.len() as u32;
-        self.methods.push(MethodHandle {
-            dex_idx,
-            class_idx,
-            method_idx,
-            is_virtual,
-        });
-        self.method_lookup.insert(key, h);
-        h
+        debug_assert!(dex_idx < 256 && class_idx < 1 << 32 && method_idx < 1 << 16);
+        self.methods.alloc(pack_method(dex_idx, class_idx, method_idx, is_virtual))
     }
 
     pub fn get_method(&self, handle: u32) -> Option<MethodHandle> {
-        self.methods.get(handle as usize).copied()
+        let key = self.methods.get(handle)?;
+        Some(MethodHandle {
+            dex_idx: (key >> 56) as usize,
+            class_idx: (key >> 24) as u32 as usize,
+            method_idx: key as u16 as usize,
+            is_virtual: (key >> 16) & 1 == 1,
+        })
     }
 
     pub fn alloc_class(&mut self, dex_idx: usize, class_idx: usize) -> u32 {
-        let key = (dex_idx, class_idx);
-        if let Some(&h) = self.class_lookup.get(&key) {
-            return h;
-        }
-        let h = self.classes.len() as u32;
-        self.classes.push(ClassHandle { dex_idx, class_idx });
-        self.class_lookup.insert(key, h);
-        h
+        debug_assert!(dex_idx < 256 && class_idx < 1 << 32);
+        self.classes.alloc(pack_class(dex_idx, class_idx))
     }
 
     pub fn get_class(&self, handle: u32) -> Option<ClassHandle> {
-        self.classes.get(handle as usize).copied()
+        let key = self.classes.get(handle)?;
+        Some(ClassHandle {
+            dex_idx: (key >> 56) as usize,
+            class_idx: key as u32 as usize,
+        })
     }
 }
 
@@ -171,8 +204,7 @@ pub(crate) fn with_handles<R>(f: impl FnOnce(&mut HandleTable) -> R) -> R {
 }
 
 pub(crate) fn try_get_method_ref(dex: &DexFile, mh: MethodHandle) -> Option<&EncodedMethod> {
-    let class = dex.classes.get(mh.class_idx)?;
-    let data = class.class_data.as_ref()?;
+    let data = dex.resident_class(mh.class_idx)?.class_data.as_ref()?;
     if mh.is_virtual {
         data.virtual_methods.get(mh.method_idx)
     } else {
@@ -184,8 +216,7 @@ pub(crate) fn try_get_method_mut(
     dex: &mut DexFile,
     mh: MethodHandle,
 ) -> Option<&mut EncodedMethod> {
-    let class = dex.classes.get_mut(mh.class_idx)?;
-    let data = class.class_data.as_mut()?;
+    let data = dex.class_mut(mh.class_idx).ok()?.class_data.as_mut()?;
     if mh.is_virtual {
         data.virtual_methods.get_mut(mh.method_idx)
     } else {
@@ -219,6 +250,29 @@ pub(crate) fn get_method_mut(dex: &mut DexFile, mh: MethodHandle) -> Option<&mut
         );
     }
     result
+}
+
+/// Runs Rust-initiated JNI work in its own local frame so the references it
+/// creates die with the frame instead of pinning objects for the thread's
+/// lifetime.
+fn with_frame<T>(
+    env: &mut jni::JNIEnv<'_>,
+    f: impl FnOnce(&mut jni::JNIEnv<'_>) -> Result<T>,
+) -> Result<T> {
+    enum FrameError {
+        Patch(PatcherError),
+        Jni(jni::errors::Error),
+    }
+    impl From<jni::errors::Error> for FrameError {
+        fn from(e: jni::errors::Error) -> Self {
+            Self::Jni(e)
+        }
+    }
+    env.with_local_frame(64, |env| f(env).map_err(FrameError::Patch))
+        .map_err(|e| match e {
+            FrameError::Patch(e) => e,
+            FrameError::Jni(e) => jvm_err(format!("local frame: {e}")),
+        })
 }
 
 fn jvm_err(msg: impl std::fmt::Display) -> PatcherError {
@@ -298,6 +352,10 @@ fn get_or_init_jvm() -> Result<&'static JavaVM> {
                     "-Xmx{}",
                     std::env::var("RESEAM_JVM_HEAP").unwrap_or_else(|_| "256m".into())
                 ))
+                .option("-Xms16m")
+                .option("-XX:+UseSerialGC")
+                .option("-XX:MinHeapFreeRatio=10")
+                .option("-XX:MaxHeapFreeRatio=30")
                 .option("-Dreseam.native.bootstrap=host-registered")
                 .option(format!("-Djava.library.path={}", lib_path.display()))
                 .build()
@@ -328,27 +386,47 @@ fn current_jvm() -> Option<&'static JavaVM> {
     android_host::java_vm().ok()
 }
 
+/// Runs a full collection so the run's class loader, its patch objects, and
+/// the heap they inflated are released before the host measures or reuses
+/// the process.
+pub(crate) fn collect_runtime_garbage() {
+    let Some(vm) = current_jvm() else {
+        return;
+    };
+    let Ok(mut env) = vm.attach_current_thread() else {
+        return;
+    };
+    let _ = with_frame(&mut env, |env| {
+        let _ = env.call_static_method("java/lang/System", "gc", "()V", &[]);
+        clear_pending_exception(env);
+        Ok(())
+    });
+}
+
 pub(crate) fn jvm_heap_stats() -> Option<crate::JvmHeapStats> {
     let vm = current_jvm()?;
     let mut env = vm.attach_current_thread().ok()?;
-    let runtime = env
-        .call_static_method(
-            "java/lang/Runtime",
-            "getRuntime",
-            "()Ljava/lang/Runtime;",
-            &[],
-        )
-        .ok()?
-        .l()
-        .ok()?;
-    let total = env.call_method(&runtime, "totalMemory", "()J", &[]).ok()?.j().ok()? as u64;
-    let free = env.call_method(&runtime, "freeMemory", "()J", &[]).ok()?.j().ok()? as u64;
-    let max = env.call_method(&runtime, "maxMemory", "()J", &[]).ok()?.j().ok()? as u64;
-    Some(crate::JvmHeapStats {
-        used_bytes: total.saturating_sub(free),
-        committed_bytes: total,
-        max_bytes: max,
+    with_frame(&mut env, |env| {
+        let runtime = env
+            .call_static_method("java/lang/Runtime", "getRuntime", "()Ljava/lang/Runtime;", &[])
+            .and_then(|v| v.l())
+            .map_err(|e| jvm_err(format!("Runtime.getRuntime: {e}")))?;
+        let long = |env: &mut jni::JNIEnv<'_>, name: &str| {
+            env.call_method(&runtime, name, "()J", &[])
+                .and_then(|v| v.j())
+                .map(|v| v as u64)
+                .map_err(|e| jvm_err(format!("Runtime.{name}: {e}")))
+        };
+        let total = long(env, "totalMemory")?;
+        let free = long(env, "freeMemory")?;
+        let max = long(env, "maxMemory")?;
+        Ok(crate::JvmHeapStats {
+            used_bytes: total.saturating_sub(free),
+            committed_bytes: total,
+            max_bytes: max,
+        })
     })
+    .ok()
 }
 
 #[cfg(not(target_os = "android"))]
@@ -434,7 +512,9 @@ fn call_patch_method(
         *bd.borrow_mut() = Some(bundle_dir.to_path_buf());
     });
 
-    let result = invoke_patch_method(&mut env, patch_ref.as_obj(), method_name);
+    let result = with_frame(&mut env, |env| {
+        invoke_patch_method(env, patch_ref.as_obj(), method_name)
+    });
 
     BUNDLE_DIR.with(|bd| *bd.borrow_mut() = None);
     // _guard drops here: nulls CTX_PTR, clears handles/xml/elements
@@ -1137,7 +1217,6 @@ fn collect_patch_obj<'a>(
     env: &mut jni::JNIEnv<'a>,
     patch_obj: &JObject<'a>,
     bundle_dir: &Path,
-    bundle_extensions: &[PathBuf],
 ) -> Result<KotlinPatch> {
     let name = read_string_field(env, patch_obj, "getName")?;
     let description = read_string_field(env, patch_obj, "getDescription")?;
@@ -1148,7 +1227,6 @@ fn collect_patch_obj<'a>(
         .into_iter()
         .map(|path| bundle_dir.join(path))
         .collect::<Vec<_>>();
-    ext_dex.extend(bundle_extensions.iter().cloned());
     ext_dex.sort();
     ext_dex.dedup();
     let options = read_option_declarations(env, patch_obj)?;
@@ -1172,11 +1250,7 @@ fn collect_patch_obj<'a>(
     })
 }
 
-pub fn load_kotlin_patches(
-    jar_paths: &[PathBuf],
-    bundle_dir: &Path,
-    bundle_extensions: &[PathBuf],
-) -> Result<Vec<Box<dyn Patch>>> {
+pub fn load_kotlin_patches(jar_paths: &[PathBuf], bundle_dir: &Path) -> Result<Vec<Box<dyn Patch>>> {
     let class_names = scan_class_names(jar_paths);
     if class_names.is_empty() {
         return Ok(Vec::new());
@@ -1186,11 +1260,21 @@ pub fn load_kotlin_patches(
     let mut env = jvm
         .attach_current_thread_permanently()
         .map_err(|e| jvm_err(format!("attach thread: {e}")))?;
+    with_frame(&mut env, |env| {
+        load_patches_from_jars(env, &class_names, jar_paths, bundle_dir)
+    })
+}
 
+fn load_patches_from_jars(
+    env: &mut jni::JNIEnv<'_>,
+    class_names: &[String],
+    jar_paths: &[PathBuf],
+    bundle_dir: &Path,
+) -> Result<Vec<Box<dyn Patch>>> {
     let loader_jars = class_loader_jars(jar_paths)?;
-    let loader = create_class_loader(&mut env, &loader_jars)?;
+    let loader = create_class_loader(env, &loader_jars)?;
 
-    register_jni_natives(&mut env, &loader)?;
+    register_jni_natives(env, &loader)?;
 
     let patch_iface_name = env
         .new_string("app.reseam.patch.ReseamPatch")
@@ -1212,7 +1296,7 @@ pub fn load_kotlin_patches(
 
     let mut patches: Vec<Box<dyn Patch>> = Vec::new();
 
-    for class_name in &class_names {
+    for class_name in class_names {
         let name_j = match env.new_string(class_name) {
             Ok(s) => s,
             Err(_) => continue,
@@ -1283,8 +1367,8 @@ pub fn load_kotlin_patches(
                 Ok(v) if !v.is_null() => v,
                 _ => continue,
             };
-            if is_patch_type(&mut env, &value, &patch_class) {
-                if let Ok(p) = collect_patch_obj(&mut env, &value, bundle_dir, bundle_extensions) {
+            if is_patch_type(env, &value, &patch_class) {
+                if let Ok(p) = collect_patch_obj(env, &value, bundle_dir) {
                     if !p.name().is_empty() {
                         patches.push(Box::new(p));
                     }
@@ -1374,7 +1458,7 @@ pub fn load_kotlin_patches(
                     continue;
                 }
             };
-            if let Ok(p) = collect_patch_obj(&mut env, &value, bundle_dir, bundle_extensions) {
+            if let Ok(p) = collect_patch_obj(env, &value, bundle_dir) {
                 if !p.name().is_empty() {
                     patches.push(Box::new(p));
                 }
@@ -1387,11 +1471,40 @@ pub fn load_kotlin_patches(
 
 #[cfg(test)]
 mod tests {
-    use super::with_ctx;
+    use super::{with_ctx, HandleTable};
 
     #[test]
     #[should_panic(expected = "patch context is not active")]
     fn with_ctx_requires_active_context() {
         with_ctx(|_| ());
+    }
+
+    #[test]
+    fn handles_dedup_in_and_out_of_order() {
+        let mut table = HandleTable::default();
+        let a = table.alloc_method(0, 5, 0, false);
+        let b = table.alloc_method(0, 5, 1, false);
+        let c = table.alloc_method(1, 0, 0, true);
+        assert_eq!((a, b, c), (0, 1, 2));
+        assert_eq!(table.methods.sorted_len, 3);
+        assert!(table.methods.index.is_empty());
+
+        let d = table.alloc_method(0, 2, 7, true);
+        assert_eq!(d, 3);
+        assert_eq!(table.methods.sorted_len, 3);
+        assert_eq!(table.alloc_method(0, 2, 7, true), d);
+        assert_eq!(table.alloc_method(0, 5, 1, false), b);
+        assert_eq!(table.alloc_method(1, 0, 0, true), c);
+
+        let m = table.get_method(d).unwrap();
+        assert_eq!((m.dex_idx, m.class_idx, m.method_idx, m.is_virtual), (0, 2, 7, true));
+        let big = table.alloc_method(3, 70_000, 65_000, false);
+        let m = table.get_method(big).unwrap();
+        assert_eq!((m.dex_idx, m.class_idx, m.method_idx, m.is_virtual), (3, 70_000, 65_000, false));
+
+        let k = table.alloc_class(2, 9);
+        assert_eq!(table.alloc_class(2, 9), k);
+        let c = table.get_class(k).unwrap();
+        assert_eq!((c.dex_idx, c.class_idx), (2, 9));
     }
 }

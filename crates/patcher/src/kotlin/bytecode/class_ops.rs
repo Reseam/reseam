@@ -3,7 +3,7 @@
 
 use reseam_apk::reseam_dex::{
     AccessFlags, AnnotationElement as DexAnnotationElement, AnnotationItem as DexAnnotationItem,
-    AnnotationVisibility as DexAnnotationVisibility, AnnotationsDirectory,
+    AnnotationVisibility as DexAnnotationVisibility,
     CatchHandler as DexCatchHandler, CodeItem, DexFile, EncodedField, EncodedMethod, EncodedValue,
     FieldIdx, Instruction as DexInsn, StringIdx, TryItem as DexTryItem,
     TypedCatch as DexTypedCatch,
@@ -26,7 +26,9 @@ pub fn set_class_access_flags(c: u32, flags: u32) {
             Some(d) => d,
             None => return,
         };
-        dex.classes[ch.class_idx].access_flags = AccessFlags::from_bits_truncate(flags);
+        if let Ok(class) = dex.class_mut(ch.class_idx) {
+            class.access_flags = AccessFlags::from_bits_truncate(flags);
+        }
     });
 }
 
@@ -57,7 +59,9 @@ pub fn add_interface(c: u32, interface_descriptor: String) {
             None => return,
         };
         let type_idx = dex.intern_type(&interface_descriptor);
-        dex.classes[ch.class_idx].interfaces.push(type_idx);
+        if let Ok(class) = dex.class_mut(ch.class_idx) {
+            class.interfaces.push(type_idx);
+        }
     });
 }
 
@@ -72,8 +76,8 @@ pub fn remove_class(c: u32) {
             Some(d) => d,
             None => return,
         };
-        let class_type = dex.classes[ch.class_idx].class_type;
-        dex.remove_class(class_type);
+        let class_type = dex.class_header(ch.class_idx).class_type;
+        let _ = dex.remove_class(class_type);
     });
 }
 
@@ -104,7 +108,7 @@ pub fn add_method(c: u32, method: NewMethod) -> u32 {
             None => return 0,
         };
         let class_desc = dex
-            .type_descriptor(dex.classes[ch.class_idx].class_type)
+            .type_descriptor(dex.class_header(ch.class_idx).class_type)
             .to_string();
         let method_idx = match dex.intern_method(&class_desc, &method.name, &method.proto) {
             Ok(idx) => idx,
@@ -167,7 +171,9 @@ pub fn add_method(c: u32, method: NewMethod) -> u32 {
         let is_virtual = !af.contains(AccessFlags::STATIC)
             && !af.contains(AccessFlags::CONSTRUCTOR)
             && !af.intersects(AccessFlags::PRIVATE);
-        let class = &mut dex.classes[ch.class_idx];
+        let Ok(class) = dex.class_mut(ch.class_idx) else {
+            return 0;
+        };
         let mi = if is_virtual {
             class.add_virtual_method(em);
             class
@@ -198,7 +204,9 @@ pub fn remove_method(m: u32) {
             Some(d) => d,
             None => return,
         };
-        let class = &mut dex.classes[mh.class_idx];
+        let Ok(class) = dex.class_mut(mh.class_idx) else {
+            return;
+        };
         if let Some(data) = &mut class.class_data {
             if mh.is_virtual {
                 if mh.method_idx < data.virtual_methods.len() {
@@ -242,7 +250,7 @@ pub fn add_field(c: u32, field: NewField) -> u32 {
             None => return 0,
         };
         let class_desc = dex
-            .type_descriptor(dex.classes[ch.class_idx].class_type)
+            .type_descriptor(dex.class_header(ch.class_idx).class_type)
             .to_string();
         let field_idx = match dex.intern_field(&class_desc, &field.name, &field.field_type) {
             Ok(idx) => idx,
@@ -257,7 +265,9 @@ pub fn add_field(c: u32, field: NewField) -> u32 {
             .initial_value
             .as_ref()
             .map(|v| encoded_val_to_dex(v, dex));
-        let class = &mut dex.classes[ch.class_idx];
+        let Ok(class) = dex.class_mut(ch.class_idx) else {
+            return 0;
+        };
         if af.contains(AccessFlags::STATIC) {
             class.add_static_field(ef);
             if let Some(val) = init_val {
@@ -289,19 +299,19 @@ pub fn remove_field(c: u32, name: String) {
             Some(d) => d,
             None => return,
         };
-        let fields_to_remove: Vec<FieldIdx> = dex.classes[ch.class_idx]
-            .class_data
-            .as_ref()
+        let fields_to_remove: Vec<FieldIdx> = dex
+            .resident_class(ch.class_idx)
+            .and_then(|class| class.class_data.as_ref())
             .map(|data| {
                 data.static_fields
                     .iter()
                     .chain(&data.instance_fields)
-                    .filter(|f| dex.string(dex.fields[f.field.0 as usize].name) == name)
+                    .filter(|f| dex.string(dex.field_id(f.field).name) == name)
                     .map(|f| f.field)
                     .collect()
             })
             .unwrap_or_default();
-        if let Some(data) = &mut dex.classes[ch.class_idx].class_data {
+        if let Some(data) = dex.class_mut(ch.class_idx).ok().and_then(|c| c.class_data.as_mut()) {
             data.static_fields
                 .retain(|f| !fields_to_remove.contains(&f.field));
             data.instance_fields
@@ -322,18 +332,18 @@ pub fn set_field_access_flags(c: u32, field_name: String, flags: u32) {
             None => return,
         };
         let af = AccessFlags::from_bits_truncate(flags);
-        let target_field = dex.classes[ch.class_idx]
-            .class_data
-            .as_ref()
+        let target_field = dex
+            .resident_class(ch.class_idx)
+            .and_then(|class| class.class_data.as_ref())
             .and_then(|data| {
                 data.static_fields
                     .iter()
                     .chain(&data.instance_fields)
-                    .find(|f| dex.string(dex.fields[f.field.0 as usize].name) == field_name)
+                    .find(|f| dex.string(dex.field_id(f.field).name) == field_name)
                     .map(|f| f.field)
             });
         if let Some(field_idx) = target_field {
-            if let Some(data) = &mut dex.classes[ch.class_idx].class_data {
+            if let Some(data) = dex.class_mut(ch.class_idx).ok().and_then(|c| c.class_data.as_mut()) {
                 for f in data
                     .static_fields
                     .iter_mut()
@@ -360,15 +370,19 @@ pub fn set_static_field_value(c: u32, field_name: String, value: EncodedVal) {
             Some(d) => d,
             None => return,
         };
-        let class = &dex.classes[ch.class_idx];
-        let static_idx = class.class_data.as_ref().and_then(|data| {
-            data.static_fields
-                .iter()
-                .position(|f| dex.string(dex.fields[f.field.0 as usize].name) == field_name)
-        });
+        let static_idx = dex
+            .resident_class(ch.class_idx)
+            .and_then(|class| class.class_data.as_ref())
+            .and_then(|data| {
+                data.static_fields
+                    .iter()
+                    .position(|f| dex.string(dex.field_id(f.field).name) == field_name)
+            });
         if let Some(idx) = static_idx {
             let val = encoded_val_to_dex(&value, dex);
-            let class = &mut dex.classes[ch.class_idx];
+            let Ok(class) = dex.class_mut(ch.class_idx) else {
+                return;
+            };
             while class.static_values.len() <= idx {
                 class.static_values.push(EncodedValue::Null);
             }
@@ -393,16 +407,9 @@ pub fn clone_method(m: u32, new_name: Option<String>) -> u32 {
             None => return 0,
         };
         let method_idx = if let Some(name) = new_name {
-            let mid = &dex.methods[method.method.0 as usize];
+            let mid = dex.method_id(method.method);
             let class_desc = dex.type_descriptor(mid.class).to_string();
-            let proto = &dex.prototypes[mid.proto.0 as usize];
-            let ret = dex.type_descriptor(proto.return_type);
-            let params: Vec<&str> = proto
-                .parameters
-                .iter()
-                .map(|p| dex.type_descriptor(*p))
-                .collect();
-            let proto_str = format!("({}){}", params.join(""), ret);
+            let proto_str = dex.proto_descriptor(&dex.proto(mid.proto));
             match dex.intern_method(&class_desc, &name, &proto_str) {
                 Ok(idx) => idx,
                 Err(_) => return 0,
@@ -415,7 +422,9 @@ pub fn clone_method(m: u32, new_name: Option<String>) -> u32 {
             access_flags: method.access_flags,
             code: method.code.clone(),
         };
-        let class = &mut dex.classes[mh.class_idx];
+        let Ok(class) = dex.class_mut(mh.class_idx) else {
+            return 0;
+        };
         let (mi, is_virtual) = if mh.is_virtual {
             class.add_virtual_method(cloned);
             (
@@ -452,23 +461,7 @@ pub fn superclass_chain(c: u32) -> Vec<u32> {
             Some(d) => d,
             None => return Vec::new(),
         };
-        let mut locs = Vec::new();
-        let mut current_type = dex.classes[ch.class_idx].superclass;
-        while let Some(super_type) = current_type {
-            let found = dex
-                .classes
-                .iter()
-                .enumerate()
-                .find(|(_, cl)| cl.class_type == super_type);
-            match found {
-                Some((ci, class)) => {
-                    locs.push(ci);
-                    current_type = class.superclass;
-                }
-                None => break,
-            }
-        }
-        locs
+        dex.superclass_chain(ch.class_idx)
     });
     locations
         .into_iter()
@@ -487,17 +480,8 @@ pub fn definal_class(c: u32) {
             Some(d) => d,
             None => return,
         };
-        dex.classes[ch.class_idx]
-            .access_flags
-            .remove(AccessFlags::FINAL);
-        if let Some(data) = &mut dex.classes[ch.class_idx].class_data {
-            for m in data
-                .direct_methods
-                .iter_mut()
-                .chain(data.virtual_methods.iter_mut())
-            {
-                m.access_flags.remove(AccessFlags::FINAL);
-            }
+        if let Ok(class) = dex.class_mut(ch.class_idx) {
+            class.definal();
         }
     });
 }
@@ -644,16 +628,14 @@ pub fn add_class_annotation(c: u32, annotation: AnnotationItem) {
             None => return,
         };
         let ann = annotation_to_dex(&annotation, dex);
-        let class = &mut dex.classes[ch.class_idx];
-        let dir = class
+        let Ok(class) = dex.class_mut(ch.class_idx) else {
+            return;
+        };
+        class
             .annotations
-            .get_or_insert_with(|| AnnotationsDirectory {
-                class_annotations: Vec::new(),
-                field_annotations: Vec::new(),
-                method_annotations: Vec::new(),
-                parameter_annotations: Vec::new(),
-            });
-        dir.class_annotations.push(ann);
+            .get_or_insert_with(Default::default)
+            .class_annotations
+            .push(ann);
     });
 }
 
@@ -673,15 +655,12 @@ pub fn add_method_annotation(m: u32, annotation: AnnotationItem) {
             None => return,
         };
         let ann = annotation_to_dex(&annotation, dex);
-        let class = &mut dex.classes[mh.class_idx];
+        let Ok(class) = dex.class_mut(mh.class_idx) else {
+            return;
+        };
         let dir = class
             .annotations
-            .get_or_insert_with(|| AnnotationsDirectory {
-                class_annotations: Vec::new(),
-                field_annotations: Vec::new(),
-                method_annotations: Vec::new(),
-                parameter_annotations: Vec::new(),
-            });
+            .get_or_insert_with(Default::default);
         if let Some(entry) = dir
             .method_annotations
             .iter_mut()
@@ -705,27 +684,24 @@ pub fn add_field_annotation(c: u32, field_name: String, annotation: AnnotationIt
             Some(d) => d,
             None => return,
         };
-        let target_field = dex.classes[ch.class_idx]
-            .class_data
-            .as_ref()
+        let target_field = dex
+            .resident_class(ch.class_idx)
+            .and_then(|class| class.class_data.as_ref())
             .and_then(|data| {
                 data.static_fields
                     .iter()
                     .chain(&data.instance_fields)
-                    .find(|f| dex.string(dex.fields[f.field.0 as usize].name) == field_name)
+                    .find(|f| dex.string(dex.field_id(f.field).name) == field_name)
                     .map(|f| f.field)
             });
         if let Some(field_idx) = target_field {
             let ann = annotation_to_dex(&annotation, dex);
-            let class = &mut dex.classes[ch.class_idx];
+            let Ok(class) = dex.class_mut(ch.class_idx) else {
+                return;
+            };
             let dir = class
                 .annotations
-                .get_or_insert_with(|| AnnotationsDirectory {
-                    class_annotations: Vec::new(),
-                    field_annotations: Vec::new(),
-                    method_annotations: Vec::new(),
-                    parameter_annotations: Vec::new(),
-                });
+                .get_or_insert_with(Default::default);
             if let Some(entry) = dir
                 .field_annotations
                 .iter_mut()

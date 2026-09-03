@@ -17,7 +17,6 @@ serde          = { workspace = true }
 serde_json     = { workspace = true }
 hex            = { workspace = true }
 jni            = { workspace = true }
-tempfile       = { workspace = true }
 tracing        = { workspace = true }
 libc           = { workspace = true }
 memmap2        = { workspace = true }

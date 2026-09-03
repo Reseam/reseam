@@ -1,29 +1,17 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use super::decode::{decode_instructions, decode_instructions_into};
+use super::decode::decode_instructions;
 use super::format::{u16_at, u32_at};
 use super::payload::read_tries_and_handlers;
 use crate::error::Result;
 use crate::types::code::CodeItem;
 use crate::types::header::ParseOptions;
-use crate::types::instruction::Instruction;
 
 use crate::read::debug::read_debug_info;
 
 /// Decodes only a `code_item`'s instructions into `out`, skipping debug info and
 /// exception metadata. Used by scanning, which reuses `out` across methods.
-pub fn read_code_instructions_into(
-    buf: &[u8],
-    off: u32,
-    out: &mut Vec<Instruction>,
-) -> Result<()> {
-    let base = off as usize;
-    crate::error::require_len(buf, base, 16, "code item")?;
-    let insns_size = u32_at(buf, base + 12) as usize;
-    decode_instructions_into(buf, base + 16, insns_size, out)
-}
-
 /// Decodes one `code_item`, including debug info and exception metadata.
 pub fn read_code_item(buf: &[u8], off: u32, opts: &ParseOptions) -> Result<CodeItem> {
     let base = off as usize;

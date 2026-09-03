@@ -2245,6 +2245,39 @@ fun findMethodsByStrings(strings: List<String>): IntArray {
     }
 }
 
+fun findMethodsByReturnType(returnType: String): IntArray {
+    val buf = Native.boltffi_find_methods_by_return_type(returnType.toByteArray(Charsets.UTF_8))
+        ?: throw FfiException(-1, "Null buffer returned")
+    return useWireBytes(buf) { buffer ->
+        buffer.asIntBuffer().let { ib -> IntArray(ib.remaining()).also { ib.get(it) } }
+    }
+}
+
+fun findMethodsByParameterTypes(parameterTypes: List<String>): IntArray {
+    val wire_writer_parameter_types = WireWriterPool.acquire((4 + parameterTypes.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }))
+        kotlin.run {
+            val wire = wire_writer_parameter_types.writer
+            wire.writeU32(parameterTypes.size.toUInt()); parameterTypes.forEach { item -> wire.writeString(item) }
+        }
+    try {
+        val buf = Native.boltffi_find_methods_by_parameter_types(wire_writer_parameter_types.buffer)
+            ?: throw FfiException(-1, "Null buffer returned")
+        return useWireBytes(buf) { buffer ->
+            buffer.asIntBuffer().let { ib -> IntArray(ib.remaining()).also { ib.get(it) } }
+        }
+    } finally {
+        wire_writer_parameter_types.close()
+    }
+}
+
+fun findMethodsWithParameter(parameterType: String): IntArray {
+    val buf = Native.boltffi_find_methods_with_parameter(parameterType.toByteArray(Charsets.UTF_8))
+        ?: throw FfiException(-1, "Null buffer returned")
+    return useWireBytes(buf) { buffer ->
+        buffer.asIntBuffer().let { ib -> IntArray(ib.remaining()).also { ib.get(it) } }
+    }
+}
+
 fun findMethodsByOpcodes(pattern: IntArray): IntArray {
     val buf = Native.boltffi_find_methods_by_opcodes(pattern)
         ?: throw FfiException(-1, "Null buffer returned")
@@ -3669,6 +3702,9 @@ private object Native {
     @JvmStatic external fun boltffi_find_method(class_descriptor: ByteArray, method_name: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_find_method_by_name(name: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_find_methods_by_strings(strings: ByteBuffer): ByteArray?
+    @JvmStatic external fun boltffi_find_methods_by_return_type(return_type: ByteArray): ByteArray?
+    @JvmStatic external fun boltffi_find_methods_by_parameter_types(parameter_types: ByteBuffer): ByteArray?
+    @JvmStatic external fun boltffi_find_methods_with_parameter(parameter_type: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_find_methods_by_opcodes(pattern: IntArray): ByteArray?
     @JvmStatic external fun boltffi_find_method_by_fingerprint(fp: ByteBuffer): ByteArray?
     @JvmStatic external fun boltffi_find_methods_by_fingerprint(fp: ByteBuffer): ByteArray?

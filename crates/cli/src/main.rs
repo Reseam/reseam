@@ -15,6 +15,9 @@ use crate::commands::{
 };
 use crate::logging::init_logging;
 
+#[global_allocator]
+static ALLOCATOR: reseam_sdk::CountingAllocator = reseam_sdk::CountingAllocator;
+
 fn main() -> Result<()> {
     init_logging()?;
     let cli = Cli::parse();

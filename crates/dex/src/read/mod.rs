@@ -13,6 +13,7 @@ pub(crate) mod ids;
 pub mod parse;
 
 pub use parse::parse;
+pub use parse::parse_bytes;
 pub use parse::parse_container;
 pub use parse::parse_owned;
 use tracing::debug;
@@ -43,5 +44,5 @@ pub fn parse_file(
     let file = std::fs::File::open(path).map_err(crate::error::DexError::Io)?;
     // SAFETY: The caller must not mutate the file while the mapping is live.
     let mmap = unsafe { memmap2::Mmap::map(&file) }.map_err(crate::error::DexError::Io)?;
-    parse::parse_with_bytes(crate::file::DexBytes::from_mmap(Arc::new(mmap)), opts)
+    parse::parse_bytes(crate::file::DexBytes::from_mmap(Arc::new(mmap)), opts)
 }

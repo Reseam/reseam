@@ -10,6 +10,12 @@ pub enum DexBytes {
     Mapped(Arc<memmap2::Mmap>),
 }
 
+impl Default for DexBytes {
+    fn default() -> Self {
+        Self::Owned(Arc::new(Vec::new()))
+    }
+}
+
 impl DexBytes {
     pub fn from_slice(buf: &[u8]) -> Self {
         Self::Owned(Arc::new(buf.to_vec()))

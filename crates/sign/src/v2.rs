@@ -30,6 +30,39 @@ pub fn sign_to_writer<W: Write>(apk: &[u8], key: &SigningKey, output: W) -> Resu
     sign_sections_to_writer(&sections, key, output)
 }
 
+/// Signs an unsigned APK file where it is: the contents stay untouched, and
+/// the signing block, central directory and patched EOCD are written over
+/// the old tail. Only the tail is rewritten, so a large APK is not copied.
+#[instrument(level = "info", skip(file, key))]
+pub fn sign_file_in_place(file: &std::fs::File, key: &SigningKey) -> Result<()> {
+    use std::os::unix::fs::FileExt;
+
+    // SAFETY: the file is an unlinked temp file only this process holds, so
+    // its contents cannot change while mapped.
+    let mapped = unsafe { memmap2::Mmap::map(file) }.map_err(crate::error::SignError::Io)?;
+    let sections = signing_block::split_apk(&mapped)?;
+    let target_len = target_signing_block_len(key)?;
+    let new_cd_offset = checked_cd_offset(sections.contents.len(), target_len)?;
+    let v2_block = build_v2_block_from_sections(&sections, key)?;
+    let signing_block =
+        signing_block::build_signing_block_with_padding(&[(BLOCK_ID_V2, v2_block)], target_len)?;
+    let contents_len = sections.contents.len() as u64;
+    let mut tail = Vec::with_capacity(signing_block.len() + sections.central_dir.len() + sections.eocd.len());
+    tail.extend_from_slice(&signing_block);
+    tail.extend_from_slice(sections.central_dir);
+    let eocd_at = tail.len();
+    tail.extend_from_slice(sections.eocd);
+    if tail.len() - eocd_at < 22 {
+        return Err(malformed("eocd", 0, "EOCD record too short (< 22 bytes)"));
+    }
+    tail[eocd_at + 16..eocd_at + 20].copy_from_slice(&new_cd_offset.to_le_bytes());
+    drop(mapped);
+
+    file.write_all_at(&tail, contents_len).map_err(crate::error::SignError::Io)?;
+    file.set_len(contents_len + tail.len() as u64).map_err(crate::error::SignError::Io)?;
+    Ok(())
+}
+
 fn sign_sections_to_writer<W: Write>(
     sections: &ApkSections<'_>,
     key: &SigningKey,

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::fs::File;
+use std::io::{Seek, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
@@ -153,7 +155,7 @@ where
                 message: format!("Writing signed APK to {}", output_path.display()),
             });
             write_signed_single_apk(
-                &mut apk,
+                apk,
                 output_path,
                 request.key_path.as_deref(),
                 request.cert_path.as_deref(),
@@ -169,7 +171,7 @@ where
                 message: format!("Writing signed split APK set to {}", output_dir.display()),
             });
             write_signed_split_apks(
-                &mut apk,
+                apk,
                 output_dir,
                 request.key_path.as_deref(),
                 request.cert_path.as_deref(),
@@ -182,12 +184,46 @@ where
         }
     };
 
+    drop(aggregate_bundle);
+    release_process_memory();
+
     Ok(PatchOutcome {
         results,
         artifact: Some(artifact),
         metrics: PatchMetrics::default(),
     })
 }
+
+/// Hands run-scoped memory back to the system so a long-lived host does not
+/// carry one run's peak into the next: the runtime's garbage first, then the
+/// native allocator's retained pages.
+fn release_process_memory() {
+    reseam_patcher::release_runtime_memory();
+    purge_native_heap();
+}
+
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+fn purge_native_heap() {
+    // SAFETY: malloc_trim only releases free memory held by the allocator.
+    unsafe {
+        libc::malloc_trim(0);
+    }
+}
+
+#[cfg(target_os = "android")]
+fn purge_native_heap() {
+    const M_PURGE: libc::c_int = -101;
+    extern "C" {
+        fn mallopt(param: libc::c_int, value: libc::c_int) -> libc::c_int;
+    }
+    // SAFETY: M_PURGE asks scudo to release cached free pages; it touches no live allocation.
+    unsafe {
+        mallopt(M_PURGE, 0);
+    }
+}
+
+#[cfg(not(any(all(target_os = "linux", target_env = "gnu"), target_os = "android")))]
+fn purge_native_heap() {}
 
 struct AggregateBundle {
     patches: Vec<Box<dyn reseam_patcher::patch::Patch>>,
@@ -270,36 +306,25 @@ fn capture_apply_diagnostics(ctx: &PatchContext) -> ApplyDiagnostics {
 }
 
 fn write_signed_single_apk(
-    apk: &mut ApkFile,
+    apk: ApkFile,
     output_path: &Path,
     key_path: Option<&Path>,
     cert_path: Option<&Path>,
     profiler: &mut PatchProfiler,
 ) -> Result<()> {
-    if let Some(parent) = output_path
+    let output_dir = output_path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create output directory {}", parent.display()))?;
-    }
+        .unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(output_dir)
+        .with_context(|| format!("failed to create output directory {}", output_dir.display()))?;
 
-    let tmp_dir = tempfile::tempdir().context("failed to create temp directory")?;
-    profiler
+    let mut unsigned = profiler
         .measure(PatchPhase::WriteUnsignedArtifacts, || {
-            apk.write_to_with_options(
-                tmp_dir.path(),
-                ApkWriteOptions {
-                    strip_signatures: true,
-                },
-            )
+            apk.write_unsigned_files(ApkWriteOptions::default(), output_dir)
         })
         .context("failed to write patched APK")?;
-
-    let tmp_apk_path = find_output_apks(tmp_dir.path())?
-        .into_iter()
-        .next()
-        .context("no APK file found in output directory")?;
+    let (_, output) = unsigned.pop().context("no APK component was written")?;
     let signing_key = profiler.measure(PatchPhase::LoadSigningKey, || {
         load_or_generate_key(
             output_path.with_extension("pk8"),
@@ -308,13 +333,11 @@ fn write_signed_single_apk(
             cert_path,
         )
     })?;
-    profiler.measure(PatchPhase::SignArtifacts, || {
-        sign_apk_to_path(&tmp_apk_path, output_path, &signing_key)
-    })
+    profiler.measure(PatchPhase::SignArtifacts, || sign_into_place(&output, output_path, &signing_key))
 }
 
 fn write_signed_split_apks(
-    apk: &mut ApkFile,
+    apk: ApkFile,
     output_dir: &Path,
     key_path: Option<&Path>,
     cert_path: Option<&Path>,
@@ -323,15 +346,9 @@ fn write_signed_split_apks(
     std::fs::create_dir_all(output_dir)
         .with_context(|| format!("failed to create output directory {}", output_dir.display()))?;
 
-    let tmp_dir = tempfile::tempdir().context("failed to create temp directory")?;
-    profiler
+    let unsigned = profiler
         .measure(PatchPhase::WriteUnsignedArtifacts, || {
-            apk.write_to_with_options(
-                tmp_dir.path(),
-                ApkWriteOptions {
-                    strip_signatures: true,
-                },
-            )
+            apk.write_unsigned_files(ApkWriteOptions::default(), output_dir)
         })
         .context("failed to write patched APK set")?;
 
@@ -345,70 +362,47 @@ fn write_signed_split_apks(
     })?;
 
     profiler.measure(PatchPhase::SignArtifacts, || -> Result<()> {
-        for unsigned_apk in find_output_apks(tmp_dir.path())? {
-            let file_name = unsigned_apk
-                .file_name()
-                .context("temporary APK output is missing a filename")?;
-            let output_path = output_dir.join(file_name);
-            sign_apk_to_path(&unsigned_apk, &output_path, &signing_key)?;
+        for (name, output) in &unsigned {
+            sign_into_place(output, &output_dir.join(name), &signing_key)?;
         }
-
         Ok(())
-    })?;
-
-    Ok(())
+    })
 }
 
-fn find_output_apks(dir: &Path) -> Result<Vec<PathBuf>> {
-    let mut apks = Vec::new();
-    for entry in std::fs::read_dir(dir).context("failed to read temp directory")? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.extension().is_some_and(|extension| extension == "apk") {
-            apks.push(path);
-        }
-    }
-    apks.sort();
-    Ok(apks)
-}
-
-fn sign_apk_to_path(
-    unsigned_path: &Path,
-    output_path: &Path,
-    signing_key: &SigningKey,
-) -> Result<()> {
-    let output_file = std::fs::File::create(output_path)
-        .with_context(|| format!("failed to create {}", output_path.display()))?;
-    let mut output = std::io::BufWriter::new(output_file);
-    sign_apk_file(unsigned_path, signing_key, &mut output)?;
-    use std::io::Write as _;
-    output
-        .flush()
-        .with_context(|| format!("failed to flush {}", output_path.display()))?;
+/// Signs the unlinked output where it is and gives it its final name. The
+/// file only appears at `output_path` complete and signed.
+fn sign_into_place(output: &File, output_path: &Path, signing_key: &SigningKey) -> Result<()> {
+    reseam_sign::v2::sign_file_in_place(output, signing_key).context("v2 signing failed")?;
+    place_file(output, output_path)
+        .with_context(|| format!("failed to write {}", output_path.display()))?;
     info!(output_path = %output_path.display(), "patched APK written");
     Ok(())
 }
 
-fn sign_apk_file(
-    unsigned_path: &Path,
-    signing_key: &SigningKey,
-    output: &mut dyn std::io::Write,
-) -> Result<()> {
-    let file = std::fs::File::open(unsigned_path)
-        .with_context(|| format!("failed to open {}", unsigned_path.display()))?;
-    // SAFETY: The input file is treated as immutable for the duration of the mapping.
-    let mmap = unsafe { memmap2::Mmap::map(&file) };
+/// Links an unlinked temp file to `path`, falling back to a copy where the
+/// file system cannot link anonymous files.
+fn place_file(file: &File, path: &Path) -> std::io::Result<()> {
+    use std::os::fd::AsRawFd;
 
-    match mmap {
-        Ok(mapped) => reseam_sign::v2::sign_to_writer(&mapped, signing_key, output)
-            .context("v2 signing failed"),
-        Err(_) => {
-            let unsigned_bytes = std::fs::read(unsigned_path)
-                .with_context(|| format!("failed to read {}", unsigned_path.display()))?;
-            reseam_sign::v2::sign_to_writer(&unsigned_bytes, signing_key, output)
-                .context("v2 signing failed")
-        }
+    match std::fs::remove_file(path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
     }
+    let source = std::ffi::CString::new(format!("/proc/self/fd/{}", file.as_raw_fd()))?;
+    let target = std::ffi::CString::new(path.as_os_str().as_encoded_bytes())?;
+    // SAFETY: both paths are valid C strings and linkat only creates a directory entry.
+    let rc = unsafe {
+        libc::linkat(libc::AT_FDCWD, source.as_ptr(), libc::AT_FDCWD, target.as_ptr(), libc::AT_SYMLINK_FOLLOW)
+    };
+    if rc == 0 {
+        return Ok(());
+    }
+    let mut reader = std::io::BufReader::new(file);
+    reader.seek(std::io::SeekFrom::Start(0))?;
+    let mut writer = std::io::BufWriter::new(File::create(path)?);
+    std::io::copy(&mut reader, &mut writer)?;
+    writer.flush()
 }
 
 fn load_or_generate_key(

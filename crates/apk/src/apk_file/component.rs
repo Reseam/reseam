@@ -5,13 +5,15 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
+use std::sync::Arc;
 
+use reseam_dex::file::DexBytes;
 use tracing::warn;
 
 use crate::axml::reader::AxmlDocument;
 use crate::error::ApkError;
 use crate::resources::ResourceTable;
-use crate::zip::reader::ApkReader;
+use crate::zip::reader::{entry_bytes, ApkReader};
 use crate::Result;
 
 use super::{ApkEntryPath, ComponentName};
@@ -101,6 +103,14 @@ impl ApkComponentSession {
                 return;
             }
         };
+        let archive_file = match file.try_clone() {
+            Ok(file) => file,
+            Err(error) => {
+                warn!(component = %self.meta.name, %error, "failed to reopen component while loading resources");
+                self.resources = ResourceSession::Unavailable;
+                return;
+            }
+        };
         let mut reader = match ApkReader::new(BufReader::new(file)) {
             Ok(reader) => reader,
             Err(error) => {
@@ -115,8 +125,13 @@ impl ApkComponentSession {
             }
         };
 
-        let arsc_bytes = match reader.read_entry("resources.arsc") {
-            Ok(bytes) => bytes,
+        let arsc_bytes = match reader
+            .archive_mut()
+            .by_name("resources.arsc")
+            .map_err(ApkError::from)
+            .and_then(|mut entry| entry_bytes(&archive_file, &mut entry))
+        {
+            Ok(mapped) => DexBytes::from_mmap(Arc::new(mapped)),
             Err(error) => {
                 warn!(
                     component = %self.meta.name,
@@ -129,20 +144,9 @@ impl ApkComponentSession {
             }
         };
 
-        match ResourceTable::parse(&arsc_bytes) {
+        match ResourceTable::parse(arsc_bytes) {
             Ok(resources) => {
                 self.resources = ResourceSession::Loaded(resources);
-            }
-            Err(ApkError::Unsupported { feature, detail })
-                if feature == "resource string pool styles" =>
-            {
-                warn!(
-                    component = %self.meta.name,
-                    feature,
-                    detail,
-                    "loading APK without mutable resource table support"
-                );
-                self.resources = ResourceSession::Unavailable;
             }
             Err(error) => {
                 warn!(

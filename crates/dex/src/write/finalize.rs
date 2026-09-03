@@ -1,18 +1,19 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use super::plan::WritePlan;
 use crate::error::Result;
-use crate::file::DexFile;
 use crate::types::class::NO_INDEX;
 use sha1::{Digest, Sha1};
 
 use super::annotations::ClassAnnotations;
+use super::sink::DexSink;
 use super::DexWriter;
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn finalize(
-    w: &mut DexWriter,
-    dex: &DexFile,
+pub(crate) fn finalize<S: DexSink>(
+    w: &mut DexWriter<S>,
+    plan: &WritePlan<'_>,
     data_off: u32,
     data_size: u32,
     string_ids_off: u32,
@@ -29,19 +30,20 @@ pub(crate) fn finalize(
     call_site_data_offsets: &[u32],
     call_sites_off: Option<u32>,
 ) -> Result<()> {
-    for (i, &off) in w.string_data_offsets.iter().enumerate() {
-        let patch_off = string_ids_off as usize + i * 4;
-        w.buf[patch_off..patch_off + 4].copy_from_slice(&off.to_le_bytes());
+    for i in 0..w.string_data_offsets.len() {
+        w.patch_u32(string_ids_off as usize + i * 4, w.string_data_offsets[i]);
     }
 
-    for (i, proto) in dex.prototypes.iter().enumerate() {
+    let dex = plan.dex;
+    for (i, proto) in plan.prototypes().enumerate() {
         let base = proto_ids_off as usize + i * 12;
         w.patch_u32(base, proto.shorty.0);
         w.patch_u32(base + 4, proto.return_type.0);
         w.patch_u32(base + 8, proto_param_offsets[i]);
     }
 
-    for (i, class) in dex.classes.iter().enumerate() {
+    for i in 0..plan.classes.len() {
+        let class = plan.class_header(i);
         let base = class_defs_off as usize + i * 32;
         w.patch_u32(base, class.class_type.0);
         w.patch_u32(base + 4, class.access_flags.bits());
@@ -96,7 +98,7 @@ pub(crate) fn finalize(
 
     let header_base = w.header_base as usize;
 
-    w.buf[header_base..header_base + 8].copy_from_slice(version.magic_bytes());
+    w.patch(header_base, version.magic_bytes());
     w.patch_u32(header_base + OFF_HEADER_SIZE, header_size);
     w.patch_u32(header_base + OFF_ENDIAN_TAG, ENDIAN_TAG);
     w.patch_u32(header_base + OFF_LINK_SIZE, 0);
@@ -150,10 +152,10 @@ pub(crate) fn finalize(
             0
         },
     );
-    w.patch_u32(header_base + OFF_CLASS_DEFS_SIZE, dex.classes.len() as u32);
+    w.patch_u32(header_base + OFF_CLASS_DEFS_SIZE, plan.classes.len() as u32);
     w.patch_u32(
         header_base + OFF_CLASS_DEFS_OFF,
-        if !dex.classes.is_empty() {
+        if !plan.classes.is_empty() {
             class_defs_off
         } else {
             0
@@ -179,24 +181,17 @@ pub(crate) fn finalize(
 
     let logical_end = w.pos() as usize;
 
-    {
-        let mut hasher = Sha1::new();
-        hasher.update(&w.buf[header_base + 32..logical_end]);
-        let sig: [u8; 20] = hasher.finalize().into();
-        w.buf[header_base + OFF_SIGNATURE..header_base + OFF_SIGNATURE + 20].copy_from_slice(&sig);
-    }
+    let mut hasher = Sha1::new();
+    w.sink
+        .digest(header_base + 32, logical_end, &mut |chunk| hasher.update(chunk))?;
+    let sig: [u8; 20] = hasher.finalize().into();
+    w.patch(header_base + OFF_SIGNATURE, &sig);
 
-    {
-        let checksum = adler::adler32(&w.buf[header_base + OFF_CHECKSUM + 4..logical_end])
-            .map_err(|e| {
-                crate::error::malformed(
-                    "dex header",
-                    header_base + OFF_CHECKSUM,
-                    format!("checksum: {e}"),
-                )
-            })?;
-        w.patch_u32(header_base + OFF_CHECKSUM, checksum);
-    }
+    let mut adler = adler::Adler32::new();
+    w.sink.digest(header_base + OFF_CHECKSUM + 4, logical_end, &mut |chunk| {
+        adler.write_slice(chunk)
+    })?;
+    w.patch_u32(header_base + OFF_CHECKSUM, adler.checksum());
 
     Ok(())
 }

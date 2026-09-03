@@ -12,6 +12,8 @@ use crate::types::method_handle::{
 
 use super::sort::Remap;
 use super::MAX_POOL_SIZE;
+use crate::file::IdTable;
+use crate::types::{ProtoIdx, StringIdx, TypeIdx};
 use collect::ReferencedIndices;
 use exotic::{remap_all_exotic_indices, remap_exotic_refs};
 use remap::{
@@ -193,7 +195,6 @@ impl TableSnapshot {
         dex.classes.truncate(self.classes);
         dex.call_sites.truncate(self.call_sites);
         dex.method_handles.truncate(self.method_handles);
-        dex.invalidate_lookups();
     }
 }
 
@@ -216,7 +217,10 @@ pub(crate) fn is_near_full(dex: &DexFile) -> bool {
         || dex.method_handles.len() + MARGIN > MAX_POOL_SIZE
 }
 
-pub(crate) fn compact_tables(dex: &mut DexFile) {
+/// Drops pool entries nothing references. Every class must be resident, which
+/// holds for the freshly built files redistribution produces.
+pub(crate) fn compact_tables(dex: &mut DexFile) -> crate::error::Result<()> {
+    dex.resolve_all_class_data()?;
     let refs = ReferencedIndices::collect_from_dex(dex);
 
     let nothing_to_compact = refs.strings.len() == dex.strings.len()
@@ -228,7 +232,7 @@ pub(crate) fn compact_tables(dex: &mut DexFile) {
         && refs.method_handles.len() == dex.method_handles.len();
 
     if nothing_to_compact {
-        return;
+        return Ok(());
     }
 
     let string_remap = build_compact_remap(&refs.strings, dex.strings.len());
@@ -239,34 +243,38 @@ pub(crate) fn compact_tables(dex: &mut DexFile) {
     let cs_remap = build_compact_remap(&refs.call_sites, dex.call_sites.len());
     let mh_remap = build_compact_remap(&refs.method_handles, dex.method_handles.len());
 
-    dex.strings = filter_indexed(&dex.strings, &refs.strings);
-    dex.types = filter_indexed(&dex.types, &refs.types);
-    dex.prototypes = filter_indexed(&dex.prototypes, &refs.protos);
-    dex.fields = filter_indexed(&dex.fields, &refs.fields);
-    dex.methods = filter_indexed(&dex.methods, &refs.methods);
-    dex.call_sites = filter_indexed(&dex.call_sites, &refs.call_sites);
-    dex.method_handles = filter_indexed(&dex.method_handles, &refs.method_handles);
+    dex.strings.retain(&refs.strings);
+    let mut types = filter_indexed(dex.types.iter(), &refs.types);
+    let mut prototypes = filter_indexed(dex.prototypes.iter(), &refs.protos);
+    let mut fields = filter_indexed(dex.fields.iter(), &refs.fields);
+    let mut methods = filter_indexed(dex.methods.iter(), &refs.methods);
+    dex.call_sites = filter_indexed(dex.call_sites.iter().cloned(), &refs.call_sites);
+    dex.method_handles = filter_indexed(dex.method_handles.iter().cloned(), &refs.method_handles);
 
-    for t in &mut dex.types {
+    for t in &mut types {
         t.0 = string_remap[t.0 as usize];
     }
-    for p in &mut dex.prototypes {
-        p.shorty = crate::types::StringIdx(string_remap[p.shorty.0 as usize]);
-        p.return_type = crate::types::TypeIdx(type_remap[p.return_type.0 as usize]);
+    for p in &mut prototypes {
+        p.shorty = StringIdx(string_remap[p.shorty.0 as usize]);
+        p.return_type = TypeIdx(type_remap[p.return_type.0 as usize]);
         for param in &mut p.parameters {
             param.0 = type_remap[param.0 as usize];
         }
     }
-    for f in &mut dex.fields {
-        f.class = crate::types::TypeIdx(type_remap[f.class.0 as usize]);
-        f.type_ = crate::types::TypeIdx(type_remap[f.type_.0 as usize]);
-        f.name = crate::types::StringIdx(string_remap[f.name.0 as usize]);
+    for f in &mut fields {
+        f.class = TypeIdx(type_remap[f.class.0 as usize]);
+        f.type_ = TypeIdx(type_remap[f.type_.0 as usize]);
+        f.name = StringIdx(string_remap[f.name.0 as usize]);
     }
-    for m in &mut dex.methods {
-        m.class = crate::types::TypeIdx(type_remap[m.class.0 as usize]);
-        m.proto = crate::types::ProtoIdx(proto_remap[m.proto.0 as usize] as u16);
-        m.name = crate::types::StringIdx(string_remap[m.name.0 as usize]);
+    for m in &mut methods {
+        m.class = TypeIdx(type_remap[m.class.0 as usize]);
+        m.proto = ProtoIdx(proto_remap[m.proto.0 as usize] as u16);
+        m.name = StringIdx(string_remap[m.name.0 as usize]);
     }
+    dex.types = IdTable::from_vec(types);
+    dex.prototypes = IdTable::from_vec(prototypes);
+    dex.fields = IdTable::from_vec(fields);
+    dex.methods = IdTable::from_vec(methods);
     for cs in &mut dex.call_sites {
         cs.bootstrap_method = MethodHandleIdx(mh_remap[cs.bootstrap_method.0 as usize]);
     }
@@ -279,8 +287,8 @@ pub(crate) fn compact_tables(dex: &mut DexFile) {
         method: &method_remap,
     };
 
-    for class in &mut dex.classes {
-        remap.remap_class(class);
+    for class_idx in 0..dex.classes.len() {
+        remap.remap_class(dex.class_mut(class_idx)?);
     }
     for cs in &mut dex.call_sites {
         remap.remap_call_site(cs);
@@ -289,6 +297,7 @@ pub(crate) fn compact_tables(dex: &mut DexFile) {
         remap.remap_method_handle(mh);
     }
 
-    remap_all_exotic_indices(dex, &cs_remap, &mh_remap);
-    dex.invalidate_lookups();
+    remap_all_exotic_indices(dex, &cs_remap, &mh_remap)?;
+    dex.classes.invalidate_index();
+    Ok(())
 }

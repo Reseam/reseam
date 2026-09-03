@@ -38,10 +38,13 @@ pub mod write;
 pub use error::{DexError, Result};
 pub use file::container::{MaterializationStats, MemoryBreakdown, MultiDexContainer};
 pub use file::{
-    DexFile, Fingerprint, FingerprintBuilder, FingerprintHit, InstructionHit, InstructionPattern,
-    InstructionSite, MemberCounts, MethodHit, MethodView, OpcodeMatcher,
+    DexFile, Fingerprint, RefKey, RefQuery, FingerprintBuilder, FingerprintHit, InstructionHit, InstructionPattern,
+    summarize_resident, InstructionSite, MemberCounts, MethodHit, MethodSummary, MethodView,
+    OpcodeMatcher,
 };
+pub use read::class::{ClassSkeleton, MethodHeader};
 pub use read::parse;
+pub use read::parse_bytes;
 pub use read::parse_container;
 pub use read::parse_file;
 pub use read::parse_owned;
@@ -65,7 +68,8 @@ pub use types::register_analysis::{
     find_contiguous_free_registers, find_free_register, find_free_registers,
 };
 pub use types::{
-    DexString, FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx,
+    FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx,
 };
 pub use write::write;
 pub use write::write_container;
+pub use write::{write_spooled, Spooled};
