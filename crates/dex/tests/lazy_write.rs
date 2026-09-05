@@ -101,18 +101,46 @@ fn lazy_write_is_equivalent_to_eager_write() {
         for perturb in [false, true] {
             let eager = snapshot(&eager_write(dex_bytes, perturb));
             let lazy = snapshot(&lazy_write(dex_bytes, perturb));
-            assert_eq!(lazy.strings, eager.strings, "strings differ (perturb={perturb}) for classes{}.dex", i + 1);
-            assert_eq!(lazy.prototypes, eager.prototypes, "protos differ (perturb={perturb}) for classes{}.dex", i + 1);
-            assert_eq!(lazy.fields, eager.fields, "fields differ (perturb={perturb}) for classes{}.dex", i + 1);
-            assert_eq!(lazy.methods, eager.methods, "methods differ (perturb={perturb}) for classes{}.dex", i + 1);
+            assert_eq!(
+                lazy.strings,
+                eager.strings,
+                "strings differ (perturb={perturb}) for classes{}.dex",
+                i + 1
+            );
+            assert_eq!(
+                lazy.prototypes,
+                eager.prototypes,
+                "protos differ (perturb={perturb}) for classes{}.dex",
+                i + 1
+            );
+            assert_eq!(
+                lazy.fields,
+                eager.fields,
+                "fields differ (perturb={perturb}) for classes{}.dex",
+                i + 1
+            );
+            assert_eq!(
+                lazy.methods,
+                eager.methods,
+                "methods differ (perturb={perturb}) for classes{}.dex",
+                i + 1
+            );
             assert_eq!(lazy.classes.len(), eager.classes.len());
             for (l, e) in lazy.classes.iter().zip(&eager.classes) {
-                assert_eq!(l, e, "class differs (perturb={perturb}) for classes{}.dex", i + 1);
+                assert_eq!(
+                    l,
+                    e,
+                    "class differs (perturb={perturb}) for classes{}.dex",
+                    i + 1
+                );
             }
         }
     }
 
-    eprintln!("verified lazy write == eager write across {} dexes", dexes.len());
+    eprintln!(
+        "verified lazy write == eager write across {} dexes",
+        dexes.len()
+    );
 }
 
 #[test]
@@ -132,7 +160,11 @@ fn spooled_write_is_byte_identical_to_memory_write() {
             }
             let expected = reseam_dex::write(&memory).expect("memory write");
             let spooled = reseam_dex::write_spooled(&spool).expect("spooled write");
-            assert_eq!(spooled.len(), expected.len() as u64, "dex {i} perturb={perturb}");
+            assert_eq!(
+                spooled.len(),
+                expected.len() as u64,
+                "dex {i} perturb={perturb}"
+            );
             assert!(
                 spooled.map().expect("map")[..] == expected[..],
                 "dex {i} perturb={perturb}: spooled bytes differ"

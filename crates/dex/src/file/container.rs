@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use serde::{Deserialize, Serialize};
+
 use crate::error::Result;
 use crate::file::DexFile;
 use crate::types::header::{DexHeader, DexVersion, ParseOptions};
@@ -15,7 +17,7 @@ pub struct MultiDexContainer {
 
 /// How much class-data IR is currently materialized across all DEXes. Used to
 /// attribute apply-phase memory to decoded instructions vs everything else.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct MaterializationStats {
     pub total_classes: u64,
     pub resolved_classes: u64,
@@ -40,7 +42,7 @@ impl MaterializationStats {
 /// Full native heap attribution for a container, so RSS can be split into its
 /// contributors rather than guessed at. All figures are lower bounds (they
 /// exclude `Vec` capacity slack and allocator overhead).
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct MemoryBreakdown {
     pub raw_buffer_bytes: u64,
     pub string_pool_bytes: u64,
@@ -177,7 +179,11 @@ impl MultiDexContainer {
         for dex in &self.dex_files {
             stats.total_classes += dex.classes.len() as u64;
             for class_idx in 0..dex.classes.len() {
-                let Some(data) = dex.classes.resident(class_idx).and_then(|c| c.class_data.as_deref()) else {
+                let Some(data) = dex
+                    .classes
+                    .resident(class_idx)
+                    .and_then(|c| c.class_data.as_deref())
+                else {
                     continue;
                 };
                 stats.resolved_classes += 1;

@@ -1,174 +1,110 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use boltffi::export;
+//! Reading instructions of one method, and locating instructions across
+//! the whole app.
 
-use crate::context::{FieldAccessSiteHit, InstructionLocation, MethodCallSiteHit};
+use boltffi::export;
+use reseam_apk::reseam_dex::{DexFile, Instruction as DexInsn};
+
+use super::lookup::opcode_patterns;
+use crate::context::{InstructionLocation, SiteHit};
 use crate::kotlin::convert::dex_to_kotlin;
+use crate::kotlin::handles::{alloc_method, alloc_methods, with_code, with_ctx};
 use crate::kotlin::types::{
-    FieldAccessSiteResult, Instruction, InstructionHit, MethodCallSiteResult, MethodRef,
+    FieldRef, Instruction, InstructionHit, MethodCallSiteResult, MethodRef, SimpleInsn,
 };
-use crate::kotlin::{with_ctx, with_handles};
 
 #[export]
 pub fn get_instructions(m: u32) -> Vec<Instruction> {
-    with_ctx(|ctx| {
-        let mh = match with_handles(|h| h.get_method(m)) {
-            Some(mh) => mh,
-            None => return Vec::new(),
-        };
-        let (dex, method) = match ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual) {
-            Some(pair) => pair,
-            None => return Vec::new(),
-        };
-        match &method.code {
-            Some(c) => c
-                .instructions
+    with_code(m, |dex, code| {
+        Some(
+            code.instructions
                 .iter()
                 .map(|insn| dex_to_kotlin(insn, dex))
                 .collect(),
-            None => Vec::new(),
-        }
+        )
     })
+    .unwrap_or_default()
 }
 
+/// The instruction at `index`, or a `nop` when there is none.
 #[export]
 pub fn get_instruction(m: u32, index: u32) -> Instruction {
-    with_ctx(|ctx| {
-        let mh = match with_handles(|h| h.get_method(m)) {
-            Some(mh) => mh,
-            None => return nop(),
-        };
-        let (dex, method) = match ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual) {
-            Some(pair) => pair,
-            None => return nop(),
-        };
-        match &method.code {
-            Some(c) => match c.instructions.get(index as usize) {
-                Some(insn) => dex_to_kotlin(insn, dex),
-                None => nop(),
-            },
-            None => nop(),
-        }
+    with_code(m, |dex, code| {
+        code.instructions
+            .get(index as usize)
+            .map(|insn| dex_to_kotlin(insn, dex))
     })
+    .unwrap_or(Instruction::Simple(SimpleInsn { opcode: 0 }))
 }
 
 #[export]
 pub fn instruction_count(m: u32) -> u32 {
-    with_ctx(|ctx| {
-        let Some(mh) = with_handles(|h| h.get_method(m)) else {
-            return 0;
-        };
-        ctx.read_method_summary(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)
-            .map_or(0, |summary| summary.instruction_count)
+    with_code(m, |_, code| Some(code.instructions.len() as u32)).unwrap_or(0)
+}
+
+fn position(m: u32, start: u32, matches: impl Fn(&DexFile, &DexInsn) -> bool) -> Option<u32> {
+    with_code(m, |dex, code| {
+        code.instructions
+            .iter()
+            .enumerate()
+            .skip(start as usize)
+            .find(|(_, insn)| matches(dex, insn))
+            .map(|(i, _)| i as u32)
+    })
+}
+
+fn position_reversed(m: u32, before: u32, matches: impl Fn(&DexInsn) -> bool) -> Option<u32> {
+    with_code(m, |_, code| {
+        let end = (before as usize).min(code.instructions.len());
+        code.instructions[..end]
+            .iter()
+            .rposition(&matches)
+            .map(|i| i as u32)
     })
 }
 
 #[export]
 pub fn index_of_first(m: u32, start: u32, op: u16) -> Option<u32> {
-    with_ctx(|ctx| {
-        let mh = with_handles(|h| h.get_method(m))?;
-        let (_dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
-        method.code.as_ref().and_then(|c| {
-            c.instructions
-                .iter()
-                .enumerate()
-                .skip(start as usize)
-                .find(|(_, insn)| insn.opcode() == Some(op))
-                .map(|(i, _)| i as u32)
-        })
-    })
+    position(m, start, |_, insn| insn.opcode() == Some(op))
 }
 
 #[export]
 pub fn index_of_first_reversed(m: u32, start: u32, op: u16) -> Option<u32> {
-    with_ctx(|ctx| {
-        let mh = with_handles(|h| h.get_method(m))?;
-        let (_dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
-        method.code.as_ref().and_then(|c| {
-            let end = (start as usize).min(c.instructions.len());
-            c.instructions[..end]
-                .iter()
-                .enumerate()
-                .rev()
-                .find(|(_, insn)| insn.opcode() == Some(op))
-                .map(|(i, _)| i as u32)
-        })
-    })
+    position_reversed(m, start, |insn| insn.opcode() == Some(op))
 }
 
 #[export]
 pub fn index_of_first_literal(m: u32, literal: i64) -> Option<u32> {
-    with_ctx(|ctx| {
-        let mh = with_handles(|h| h.get_method(m))?;
-        let (_dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
-        method.code.as_ref().and_then(|c| {
-            c.instructions
-                .iter()
-                .position(|insn| insn.literal() == Some(literal))
-                .map(|i| i as u32)
-        })
-    })
+    position(m, 0, |_, insn| insn.literal() == Some(literal))
 }
 
 #[export]
 pub fn index_of_first_literal_reversed(m: u32, literal: i64) -> Option<u32> {
-    with_ctx(|ctx| {
-        let mh = with_handles(|h| h.get_method(m))?;
-        let (_dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
-        method.code.as_ref().and_then(|c| {
-            c.instructions
-                .iter()
-                .enumerate()
-                .rev()
-                .find(|(_, insn)| insn.literal() == Some(literal))
-                .map(|(i, _)| i as u32)
-        })
-    })
-}
-
-#[export]
-pub fn contains_literal(m: u32, literal: i64) -> bool {
-    index_of_first_literal(m, literal).is_some()
+    position_reversed(m, u32::MAX, |insn| insn.literal() == Some(literal))
 }
 
 #[export]
 pub fn index_of_first_string(m: u32, s: String) -> Option<u32> {
-    with_ctx(|ctx| {
-        let mh = with_handles(|h| h.get_method(m))?;
-        let (dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
-        let target_idx = dex.find_string_idx(&s)?;
-        method.code.as_ref().and_then(|c| {
-            c.instructions
-                .iter()
-                .position(|insn| insn.string_ref() == Some(target_idx))
-                .map(|i| i as u32)
-        })
+    position(m, 0, |dex, insn| {
+        insn.string_ref().is_some_and(|idx| dex.string(idx) == s)
     })
 }
 
 #[export]
 pub fn find_all_indices(m: u32, op: u16) -> Vec<u32> {
-    with_ctx(|ctx| {
-        let mh = match with_handles(|h| h.get_method(m)) {
-            Some(mh) => mh,
-            None => return Vec::new(),
-        };
-        let (_dex, method) = match ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual) {
-            Some(pair) => pair,
-            None => return Vec::new(),
-        };
-        match &method.code {
-            Some(c) => c
-                .instructions
+    with_code(m, |_, code| {
+        Some(
+            code.instructions
                 .iter()
                 .enumerate()
                 .filter(|(_, insn)| insn.opcode() == Some(op))
                 .map(|(i, _)| i as u32)
                 .collect(),
-            None => Vec::new(),
-        }
+        )
     })
+    .unwrap_or_default()
 }
 
 #[export]
@@ -178,26 +114,16 @@ pub fn index_of_first_method_call(
     method_name: String,
     start: u32,
 ) -> Option<u32> {
-    with_ctx(|ctx| {
-        let mh = with_handles(|h| h.get_method(m))?;
-        let (dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
-        method.code.as_ref().and_then(|c| {
-            c.instructions
-                .iter()
-                .enumerate()
-                .skip(start as usize)
-                .find(|(_, insn)| {
-                    insn.method_ref().is_some_and(|mr| {
-                        let mid = dex.method_id(mr);
-                        dex.type_descriptor(mid.class) == defining_class
-                            && dex.string(mid.name) == method_name
-                    })
-                })
-                .map(|(i, _)| i as u32)
+    position(m, start, |dex, insn| {
+        insn.method_ref().is_some_and(|idx| {
+            let method = dex.method_id(idx);
+            dex.type_descriptor(method.class) == defining_class
+                && dex.string(method.name) == method_name
         })
     })
 }
 
+/// A field access matching every given filter; `op` below zero matches any opcode.
 #[export]
 pub fn index_of_first_field_access(
     m: u32,
@@ -206,165 +132,92 @@ pub fn index_of_first_field_access(
     defining_class: Option<String>,
     start: u32,
 ) -> Option<u32> {
-    with_ctx(|ctx| {
-        let mh = with_handles(|h| h.get_method(m))?;
-        let (dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
-        let target_op = if op >= 0 { Some(op as u16) } else { None };
-        method.code.as_ref().and_then(|c| {
-            c.instructions
-                .iter()
-                .enumerate()
-                .skip(start as usize)
-                .find(|(_, insn)| {
-                    if let Some(top) = target_op {
-                        if insn.opcode() != Some(top) {
-                            return false;
-                        }
-                    }
-                    insn.field_ref().is_some_and(|fr| {
-                        let fid = dex.field_id(fr);
-                        if let Some(ref ft) = field_type {
-                            if dex.type_descriptor(fid.type_) != ft.as_str() {
-                                return false;
-                            }
-                        }
-                        if let Some(ref dc) = defining_class {
-                            if dex.type_descriptor(fid.class) != dc.as_str() {
-                                return false;
-                            }
-                        }
-                        true
-                    })
-                })
-                .map(|(i, _)| i as u32)
-        })
+    let op = u16::try_from(op).ok();
+    position(m, start, |dex, insn| {
+        op.is_none_or(|op| insn.opcode() == Some(op))
+            && insn.field_ref().is_some_and(|idx| {
+                let field = dex.field_id(idx);
+                field_type
+                    .as_deref()
+                    .is_none_or(|t| dex.type_descriptor(field.type_) == t)
+                    && defining_class
+                        .as_deref()
+                        .is_none_or(|c| dex.type_descriptor(field.class) == c)
+            })
     })
 }
 
+/// The first index at or after `start` where `opcodes` match consecutively;
+/// negative opcodes match anything.
 #[export]
 pub fn index_of_opcode_sequence(m: u32, opcodes: Vec<i32>, start: u32) -> Option<u32> {
-    with_ctx(|ctx| {
-        let mh = with_handles(|h| h.get_method(m))?;
-        let (_dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
-        method.code.as_ref().and_then(|c| {
-            let insns = &c.instructions;
-            if opcodes.is_empty() || insns.len() < opcodes.len() {
-                return None;
-            }
-            let end = insns.len() - opcodes.len() + 1;
-            for i in (start as usize)..end {
-                let mut matched = true;
-                for (j, &op) in opcodes.iter().enumerate() {
-                    if op < 0 {
-                        continue;
-                    }
-                    if insns[i + j].opcode() != Some(op as u16) {
-                        matched = false;
-                        break;
-                    }
-                }
-                if matched {
-                    return Some(i as u32);
-                }
-            }
-            None
-        })
+    let pattern = opcode_patterns(&opcodes);
+    with_code(m, |_, code| {
+        if pattern.is_empty() {
+            return None;
+        }
+        code.instructions
+            .windows(pattern.len())
+            .enumerate()
+            .skip(start as usize)
+            .find(|(_, window)| {
+                window
+                    .iter()
+                    .zip(&pattern)
+                    .all(|(insn, expected)| expected.matches(insn.opcode()))
+            })
+            .map(|(i, _)| i as u32)
     })
 }
 
 #[export]
 pub fn find_instructions_by_literal(literal: i64) -> Vec<InstructionHit> {
-    with_ctx(|ctx| ctx.find_instructions_by_literal(literal))
-        .into_iter()
-        .map(instruction_hit)
-        .collect()
+    hits(with_ctx(|ctx| ctx.find_instructions_by_literal(literal)))
 }
 
 #[export]
 pub fn find_instructions_by_string(s: String) -> Vec<InstructionHit> {
-    with_ctx(|ctx| ctx.find_instructions_by_string(&s))
-        .into_iter()
-        .map(instruction_hit)
-        .collect()
+    hits(with_ctx(|ctx| ctx.find_instructions_by_string(&s)))
 }
 
 #[export]
 pub fn find_instructions_by_string_contains(substring: String) -> Vec<InstructionHit> {
-    with_ctx(|ctx| ctx.find_instructions_by_string_contains(&substring))
-        .into_iter()
-        .map(instruction_hit)
-        .collect()
+    hits(with_ctx(|ctx| {
+        ctx.find_instructions_by_string_contains(&substring)
+    }))
 }
 
+#[export]
+pub fn find_instructions_by_resource_id(res_type: String, res_name: String) -> Vec<InstructionHit> {
+    match with_ctx(|ctx| {
+        ctx.apk_mut()
+            .find_resource(&res_type, &res_name)
+            .ok()
+            .flatten()
+    }) {
+        Some((_, res_id)) => find_instructions_by_literal(res_id as i64),
+        None => Vec::new(),
+    }
+}
+
+/// Call sites of `(class_names[i], method_names[i])` pairs.
 #[export]
 pub fn find_method_call_sites(
     class_names: Vec<String>,
     method_names: Vec<String>,
 ) -> Vec<MethodCallSiteResult> {
-    if class_names.len() != method_names.len() {
-        return Vec::new();
-    }
     let targets: Vec<(String, String)> = class_names.into_iter().zip(method_names).collect();
-    with_ctx(|ctx| ctx.find_method_call_sites(&targets))
-        .into_iter()
-        .map(|hit: MethodCallSiteHit| MethodCallSiteResult {
-            method: alloc_method(hit.loc),
-            index: hit.loc.insn_idx as u32,
-            target_index: hit.target_index as u32,
-        })
-        .collect()
+    site_results(with_ctx(|ctx| ctx.find_method_call_sites(&targets)))
 }
 
+/// Accesses of `(class_names[i], field_names[i])` pairs.
 #[export]
 pub fn find_field_access_sites(
     class_names: Vec<String>,
     field_names: Vec<String>,
-) -> Vec<FieldAccessSiteResult> {
-    if class_names.len() != field_names.len() {
-        return Vec::new();
-    }
+) -> Vec<MethodCallSiteResult> {
     let targets: Vec<(String, String)> = class_names.into_iter().zip(field_names).collect();
-    with_ctx(|ctx| ctx.find_field_access_sites(&targets))
-        .into_iter()
-        .map(|hit: FieldAccessSiteHit| FieldAccessSiteResult {
-            method: alloc_method(hit.loc),
-            index: hit.loc.insn_idx as u32,
-            target_index: hit.target_index as u32,
-        })
-        .collect()
-}
-
-fn alloc_method(loc: InstructionLocation) -> u32 {
-    with_handles(|h| h.alloc_method(loc.dex_idx, loc.class_idx, loc.method_pos, loc.is_virtual))
-}
-
-fn instruction_hit(loc: InstructionLocation) -> InstructionHit {
-    InstructionHit {
-        method: alloc_method(loc),
-        index: loc.insn_idx as u32,
-    }
-}
-
-#[export]
-pub fn find_instructions_by_resource_id(res_type: String, res_name: String) -> Vec<InstructionHit> {
-    let res_id = match with_ctx(|ctx| ctx.find_resource_id(&res_type, &res_name)) {
-        Some(id) => id,
-        None => return Vec::new(),
-    };
-    find_instructions_by_literal(res_id as i64)
-}
-
-#[export]
-pub fn all_method_handles() -> Vec<u32> {
-    let mut handles = Vec::new();
-    with_ctx(|ctx| {
-        ctx.for_each_method(|loc| {
-            handles.push(with_handles(|h| {
-                h.alloc_method(loc.dex_idx, loc.class_idx, loc.method_idx, loc.is_virtual)
-            }));
-        })
-    });
-    handles
+    site_results(with_ctx(|ctx| ctx.find_field_access_sites(&targets)))
 }
 
 #[export]
@@ -382,74 +235,69 @@ pub fn find_instructions_by_invoke(
 }
 
 #[export]
+pub fn all_method_handles() -> Vec<u32> {
+    let mut locations = Vec::new();
+    with_ctx(|ctx| ctx.for_each_method(|location| locations.push(location)));
+    alloc_methods(locations)
+}
+
+#[export]
 pub fn instruction_string_ref(m: u32, index: u32) -> Option<String> {
-    with_ctx(|ctx| {
-        let mh = with_handles(|h| h.get_method(m))?;
-        let (dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
-        method.code.as_ref().and_then(|c| {
-            c.instructions
-                .get(index as usize)
-                .and_then(|insn| insn.string_ref().map(|idx| dex.string(idx).to_string()))
-        })
+    with_code(m, |dex, code| {
+        let idx = code.instructions.get(index as usize)?.string_ref()?;
+        Some(dex.string(idx).into_owned())
     })
 }
 
 #[export]
 pub fn instruction_method_ref(m: u32, index: u32) -> Option<MethodRef> {
-    with_ctx(|ctx| {
-        let mh = with_handles(|h| h.get_method(m))?;
-        let (dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
-        method.code.as_ref().and_then(|c| {
-            c.instructions.get(index as usize).and_then(|insn| {
-                insn.method_ref().map(|method_idx| {
-                    let mid = dex.method_id(method_idx);
-                    let class = dex.type_descriptor(mid.class).to_string();
-                    let name = dex.string(mid.name).to_string();
-                    MethodRef {
-                        defining_class: class,
-                        name,
-                        proto: dex.proto_descriptor(&dex.proto(mid.proto)),
-                    }
-                })
-            })
+    with_code(m, |dex, code| {
+        let method = dex.method_id(code.instructions.get(index as usize)?.method_ref()?);
+        Some(MethodRef {
+            defining_class: dex.type_descriptor(method.class).into_owned(),
+            name: dex.string(method.name).into_owned(),
+            proto: dex.proto_descriptor(&dex.proto(method.proto)),
         })
     })
 }
 
 #[export]
-pub fn instruction_field_ref(m: u32, index: u32) -> Option<crate::kotlin::types::FieldRef> {
-    with_ctx(|ctx| {
-        let mh = with_handles(|h| h.get_method(m))?;
-        let (dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
-        method.code.as_ref().and_then(|c| {
-            c.instructions.get(index as usize).and_then(|insn| {
-                insn.field_ref().map(|field_idx| {
-                    let fid = dex.field_id(field_idx);
-                    crate::kotlin::types::FieldRef {
-                        defining_class: dex.type_descriptor(fid.class).to_string(),
-                        name: dex.string(fid.name).to_string(),
-                        field_type: dex.type_descriptor(fid.type_).to_string(),
-                    }
-                })
-            })
+pub fn instruction_field_ref(m: u32, index: u32) -> Option<FieldRef> {
+    with_code(m, |dex, code| {
+        let field = dex.field_id(code.instructions.get(index as usize)?.field_ref()?);
+        Some(FieldRef {
+            defining_class: dex.type_descriptor(field.class).into_owned(),
+            name: dex.string(field.name).into_owned(),
+            field_type: dex.type_descriptor(field.type_).into_owned(),
         })
     })
 }
 
 #[export]
 pub fn instruction_type_ref(m: u32, index: u32) -> Option<String> {
-    with_ctx(|ctx| {
-        let mh = with_handles(|h| h.get_method(m))?;
-        let (dex, method) = ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)?;
-        method.code.as_ref().and_then(|c| {
-            c.instructions.get(index as usize).and_then(|insn| {
-                insn.type_ref()
-                    .map(|type_idx| dex.type_descriptor(type_idx).to_string())
-            })
-        })
+    with_code(m, |dex, code| {
+        let idx = code.instructions.get(index as usize)?.type_ref()?;
+        Some(dex.type_descriptor(idx).into_owned())
     })
 }
 
-fn nop() -> Instruction {
-    Instruction::Simple(crate::kotlin::types::SimpleInsn { opcode: 0x00 })
+fn hits(locations: Vec<InstructionLocation>) -> Vec<InstructionHit> {
+    locations
+        .into_iter()
+        .map(|loc| InstructionHit {
+            method: alloc_method(loc.method),
+            index: loc.insn_idx as u32,
+        })
+        .collect()
+}
+
+fn site_results(sites: Vec<SiteHit>) -> Vec<MethodCallSiteResult> {
+    sites
+        .into_iter()
+        .map(|hit| MethodCallSiteResult {
+            method: alloc_method(hit.loc.method),
+            index: hit.loc.insn_idx as u32,
+            target_index: hit.target_index as u32,
+        })
+        .collect()
 }

@@ -10,7 +10,10 @@ use crate::types::class::EncodedField;
 ///
 /// The layouts come from the code pass, so the code offsets are consumed in the
 /// same class-then-direct-then-virtual order they were emitted.
-pub(crate) fn write_class_data_items<S: DexSink>(w: &mut DexWriter<S>, layouts: &[Option<ClassLayout>]) {
+pub(crate) fn write_class_data_items<S: DexSink>(
+    w: &mut DexWriter<S>,
+    layouts: &[Option<ClassLayout>],
+) {
     let class_data_start = w.pos();
     let mut class_data_item_count = 0u32;
     w.class_data_offsets.clear();
@@ -35,7 +38,11 @@ pub(crate) fn write_class_data_items<S: DexSink>(w: &mut DexWriter<S>, layouts: 
 }
 
 /// Writes one `class_data_item` using sorted delta-encoded member indexes.
-fn write_class_data<S: DexSink>(w: &mut DexWriter<S>, layout: &ClassLayout, code_off_idx: &mut usize) {
+fn write_class_data<S: DexSink>(
+    w: &mut DexWriter<S>,
+    layout: &ClassLayout,
+    code_off_idx: &mut usize,
+) {
     w.write_uleb128(layout.static_fields.len() as u32);
     w.write_uleb128(layout.instance_fields.len() as u32);
     w.write_uleb128(layout.direct_methods.len() as u32);
@@ -56,7 +63,11 @@ fn write_fields<S: DexSink>(w: &mut DexWriter<S>, fields: &[EncodedField]) {
     }
 }
 
-fn write_methods<S: DexSink>(w: &mut DexWriter<S>, methods: &[MethodLayout], code_off_idx: &mut usize) {
+fn write_methods<S: DexSink>(
+    w: &mut DexWriter<S>,
+    methods: &[MethodLayout],
+    code_off_idx: &mut usize,
+) {
     let mut prev_idx = 0u32;
     for m in methods {
         w.write_uleb128(m.method.0 - prev_idx);

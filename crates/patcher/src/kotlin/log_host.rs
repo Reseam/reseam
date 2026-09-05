@@ -3,7 +3,7 @@
 
 use boltffi::export;
 
-use super::with_ctx;
+use super::handles::with_ctx;
 
 #[export]
 pub fn log_info(msg: String) {

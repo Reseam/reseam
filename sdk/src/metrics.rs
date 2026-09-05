@@ -5,6 +5,8 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
+use reseam_apk::reseam_dex::MemoryBreakdown;
+use reseam_patcher::JvmHeapStats;
 use serde::{Deserialize, Serialize};
 
 static HEAP_LIVE: AtomicUsize = AtomicUsize::new(0);
@@ -115,7 +117,6 @@ fn reset_heap_peak() {
 pub enum PatchPhase {
     OpenApk,
     LoadBundles,
-    CompileSelection,
     ValidatePatches,
     ApplyPatches,
     WriteUnsignedArtifacts,
@@ -128,7 +129,6 @@ impl PatchPhase {
         match self {
             Self::OpenApk => "open_apk",
             Self::LoadBundles => "load_bundles",
-            Self::CompileSelection => "compile_selection",
             Self::ValidatePatches => "validate_patches",
             Self::ApplyPatches => "apply_patches",
             Self::WriteUnsignedArtifacts => "write_unsigned_artifacts",
@@ -155,19 +155,8 @@ pub struct PatchPhaseMetrics {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApplyDiagnostics {
     pub rss_bytes: Option<u64>,
-    pub total_classes: u64,
-    pub resolved_classes: u64,
-    pub materialized_methods: u64,
-    pub materialized_instructions: u64,
-    pub estimated_ir_bytes: u64,
-    pub raw_buffer_bytes: u64,
-    pub string_pool_bytes: u64,
-    pub string_count: u64,
-    pub id_table_bytes: u64,
-    pub class_def_bytes: u64,
-    pub jvm_used_bytes: Option<u64>,
-    pub jvm_committed_bytes: Option<u64>,
-    pub jvm_max_bytes: Option<u64>,
+    pub dex: MemoryBreakdown,
+    pub jvm: Option<JvmHeapStats>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -180,12 +169,6 @@ pub struct PatchMetrics {
     pub final_rss_file_bytes: Option<u64>,
     pub phases: Vec<PatchPhaseMetrics>,
     pub apply_diagnostics: Option<ApplyDiagnostics>,
-}
-
-#[derive(Debug)]
-pub struct PatchExecutionReport {
-    pub outcome: anyhow::Result<crate::dto::PatchOutcome>,
-    pub metrics: PatchMetrics,
 }
 
 #[derive(Debug, Clone, Copy, Default)]

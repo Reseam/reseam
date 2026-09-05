@@ -57,14 +57,8 @@ class XmlElement(val doc: UInt, val handle: UInt) {
         requireActivePatchContext()
         xmlSetAttribute(doc, handle, attr, value)
     }
-    fun setInt(attr: String, value: Int) = run {
-        requireActivePatchContext()
-        xmlSetAttributeInt(doc, handle, attr, value)
-    }
-    fun setBool(attr: String, value: Boolean) = run {
-        requireActivePatchContext()
-        xmlSetAttributeBool(doc, handle, attr, value)
-    }
+    fun setInt(attr: String, value: Int) = set(attr, value.toString())
+    fun setBool(attr: String, value: Boolean) = set(attr, value.toString())
     fun setResourceRef(attr: String, resId: UInt) = run {
         requireActivePatchContext()
         xmlSetAttributeRef(doc, handle, attr, resId)
@@ -86,7 +80,7 @@ class XmlElement(val doc: UInt, val handle: UInt) {
                 "Cannot insert elements from different XML documents"
             }
             requireActivePatchContext()
-            xmlInsertBefore(doc, handle, child.handle, before.handle)
+            xmlInsertBefore(doc, child.handle, before.handle)
         }
 
     fun remove() = run {

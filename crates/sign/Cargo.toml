@@ -1,8 +1,8 @@
 [package]
 name = "reseam-sign"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
-description = "APK signing support for Reseam with Android Signature Scheme v2 and v3"
+description = "APK signing for Reseam with Android Signature Scheme v2"
 readme = "README.md"
 
 [dependencies]

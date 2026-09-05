@@ -1,231 +1,133 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::error::{invalid, malformed, Result};
-use std::io::Write;
+use crate::error::{invalid, Result};
 
 const APK_SIG_BLOCK_MAGIC: &[u8; 16] = b"APK Sig Block 42";
 const EOCD_SIGNATURE: &[u8; 4] = b"PK\x05\x06";
+const EOCD_MIN_LEN: usize = 22;
+const EOCD_CD_OFFSET_FIELD: std::ops::Range<usize> = 16..20;
 const PAIR_OVERHEAD: usize = 12;
 const BLOCK_OVERHEAD: usize = 32;
 const BLOCK_ID_PADDING: u32 = 0x4272_6577;
 
-pub const BLOCK_ID_V2: u32 = 0x7109871a;
-pub const BLOCK_ID_V3: u32 = 0xf05368c0;
+pub const BLOCK_ID_V2: u32 = 0x7109_871a;
 
 pub struct ApkSections<'a> {
     pub contents: &'a [u8],
     pub central_dir: &'a [u8],
     pub eocd: &'a [u8],
-    pub cd_offset: u32,
 }
 
-/// Returns (eocd_offset, cd_offset, cd_size).
-pub fn find_eocd(data: &[u8]) -> Result<(usize, u32, u32)> {
-    let min_eocd_size = 22;
-    if data.len() < min_eocd_size {
+pub struct Eocd {
+    pub offset: usize,
+    pub cd_offset: u32,
+    pub cd_size: u32,
+}
+
+pub fn find_eocd(data: &[u8]) -> Result<Eocd> {
+    if data.len() < EOCD_MIN_LEN {
         return Err(invalid("apk", "file too small for ZIP"));
     }
-
-    let search_start = data.len().saturating_sub(min_eocd_size + 65535);
-    for i in (search_start..=data.len() - min_eocd_size).rev() {
-        if &data[i..i + 4] == EOCD_SIGNATURE {
-            let comment_len = read_u16_le(data, i + 20)
-                .ok_or_else(|| malformed("zip eocd", i + 20, "truncated EOCD record"))?
-                as usize;
-            if i + min_eocd_size + comment_len != data.len() {
-                continue;
-            }
-
-            let cd_size = read_u32_le(data, i + 12).ok_or_else(|| {
-                malformed("zip eocd", i + 12, "truncated EOCD central directory size")
-            })?;
-            let cd_offset = read_u32_le(data, i + 16).ok_or_else(|| {
-                malformed(
-                    "zip eocd",
-                    i + 16,
-                    "truncated EOCD central directory offset",
-                )
-            })?;
-            return Ok((i, cd_offset, cd_size));
+    let search_start = data.len().saturating_sub(EOCD_MIN_LEN + u16::MAX as usize);
+    for offset in (search_start..=data.len() - EOCD_MIN_LEN).rev() {
+        let record = &data[offset..offset + EOCD_MIN_LEN];
+        if &record[..4] != EOCD_SIGNATURE {
+            continue;
         }
+        let comment_len = u16::from_le_bytes([record[20], record[21]]) as usize;
+        if offset + EOCD_MIN_LEN + comment_len != data.len() {
+            continue;
+        }
+        return Ok(Eocd {
+            offset,
+            cd_offset: le_u32(record, 16),
+            cd_size: le_u32(record, 12),
+        });
     }
-
     Err(invalid("apk", "EOCD not found"))
 }
 
-/// Strips any existing signing block and returns the three ZIP sections.
+/// Splits an APK into its ZIP sections, leaving any existing signing block out.
 pub fn split_apk(data: &[u8]) -> Result<ApkSections<'_>> {
-    let (eocd_offset, cd_offset, _cd_size) = find_eocd(data)?;
-    let cd_offset = cd_offset as usize;
-
-    if cd_offset > eocd_offset || cd_offset > data.len() {
-        return Err(invalid("apk", "invalid central directory offset"));
+    let eocd = find_eocd(data)?;
+    let cd_offset = eocd.cd_offset as usize;
+    if cd_offset > eocd.offset {
+        return Err(invalid("apk", "central directory offset past EOCD"));
     }
-
-    let contents_end = find_signing_block_start(data, cd_offset).unwrap_or(cd_offset);
-
+    let contents_end = signing_block_start(data, cd_offset).unwrap_or(cd_offset);
     Ok(ApkSections {
         contents: &data[..contents_end],
-        central_dir: &data[cd_offset..eocd_offset],
-        eocd: &data[eocd_offset..],
-        cd_offset: cd_offset as u32,
+        central_dir: &data[cd_offset..eocd.offset],
+        eocd: &data[eocd.offset..],
     })
 }
 
-fn find_signing_block_start(data: &[u8], cd_offset: usize) -> Option<usize> {
-    if cd_offset < 24 || cd_offset > data.len() {
-        return None;
-    }
-
-    let magic_start = cd_offset - 16;
+fn signing_block_start(data: &[u8], cd_offset: usize) -> Option<usize> {
+    let magic_start = cd_offset.checked_sub(APK_SIG_BLOCK_MAGIC.len())?;
     if data.get(magic_start..cd_offset)? != APK_SIG_BLOCK_MAGIC {
         return None;
     }
-
-    let block_size = read_u64_le(data, magic_start.checked_sub(8)?)? as usize;
-
-    // Total block = 8 (leading size) + block_size
+    let block_size = le_u64_at(data, magic_start.checked_sub(8)?)? as usize;
     let block_start = cd_offset.checked_sub(8 + block_size)?;
-    if block_start + 8 > data.len() {
-        return None;
-    }
-
-    let leading_size = read_u64_le(data, block_start)? as usize;
-
-    if leading_size != block_size {
-        return None;
-    }
-
-    Some(block_start)
+    let leading_size = le_u64_at(data, block_start)? as usize;
+    (leading_size == block_size).then_some(block_start)
 }
 
-pub fn build_signing_block(pairs: &[(u32, Vec<u8>)]) -> Vec<u8> {
-    let pairs_size: usize = pairs.iter().map(|(_, v)| 8 + 4 + v.len()).sum();
-    let block_size = pairs_size + 8 + 16;
-    let mut block = Vec::with_capacity(8 + block_size);
-
-    block.extend_from_slice(&(block_size as u64).to_le_bytes());
-
-    for (id, value) in pairs {
-        block.extend_from_slice(&((4 + value.len()) as u64).to_le_bytes());
-        block.extend_from_slice(&id.to_le_bytes());
-        block.extend_from_slice(value);
-    }
-
-    block.extend_from_slice(&(block_size as u64).to_le_bytes());
-    block.extend_from_slice(APK_SIG_BLOCK_MAGIC);
-
-    block
-}
-
-pub(crate) fn signing_block_len(value_lengths: &[usize]) -> usize {
+pub(crate) fn signing_block_len(value_lens: impl IntoIterator<Item = usize>) -> usize {
     BLOCK_OVERHEAD
-        + value_lengths
-            .iter()
+        + value_lens
+            .into_iter()
             .map(|len| PAIR_OVERHEAD + len)
             .sum::<usize>()
 }
 
-pub(crate) fn build_signing_block_with_padding(
-    pairs: &[(u32, Vec<u8>)],
-    target_len: usize,
-) -> Result<Vec<u8>> {
-    let current_len = signing_block_len(
-        &pairs
-            .iter()
-            .map(|(_, value)| value.len())
-            .collect::<Vec<_>>(),
-    );
-
-    if current_len == target_len {
-        return Ok(build_signing_block(pairs));
+/// Builds a block of exactly `target_len` bytes; the slack goes into a padding pair.
+pub(crate) fn build_signing_block(pairs: &[(u32, Vec<u8>)], target_len: usize) -> Result<Vec<u8>> {
+    let len = signing_block_len(pairs.iter().map(|(_, value)| value.len()));
+    let padding = match target_len.checked_sub(len) {
+        Some(0) => None,
+        Some(slack) if slack >= PAIR_OVERHEAD => Some(slack - PAIR_OVERHEAD),
+        _ => {
+            return Err(invalid(
+                "signing block",
+                format!("block of {len} bytes does not fit target length {target_len}"),
+            ))
+        }
+    };
+    let block_size = (target_len - 8) as u64;
+    let mut block = Vec::with_capacity(target_len);
+    block.extend_from_slice(&block_size.to_le_bytes());
+    for (id, value) in pairs {
+        write_pair_header(&mut block, *id, value.len());
+        block.extend_from_slice(value);
     }
-
-    let min_padded_len = current_len.checked_add(PAIR_OVERHEAD).ok_or_else(|| {
-        malformed(
-            "signing block",
-            current_len,
-            "length overflowed while padding",
-        )
-    })?;
-    if min_padded_len > target_len {
-        return Err(invalid(
-            "signing block",
-            format!("signing block exceeded target length ({current_len} > {target_len})"),
-        ));
+    if let Some(padding) = padding {
+        write_pair_header(&mut block, BLOCK_ID_PADDING, padding);
+        block.resize(block.len() + padding, 0);
     }
-
-    let padding_len = target_len - min_padded_len;
-    let mut padded_pairs = pairs.to_vec();
-    padded_pairs.push((BLOCK_ID_PADDING, vec![0; padding_len]));
-
-    let block = build_signing_block(&padded_pairs);
+    block.extend_from_slice(&block_size.to_le_bytes());
+    block.extend_from_slice(APK_SIG_BLOCK_MAGIC);
     debug_assert_eq!(block.len(), target_len);
     Ok(block)
 }
 
-/// Inserts signing block between contents and central directory,
-/// patches EOCD to point to the new CD offset.
-pub fn reassemble_apk(
-    contents: &[u8],
-    signing_block: &[u8],
-    central_dir: &[u8],
-    eocd: &[u8],
-) -> Result<Vec<u8>> {
-    let new_cd_offset = contents.len() + signing_block.len();
-    let mut output =
-        Vec::with_capacity(contents.len() + signing_block.len() + central_dir.len() + eocd.len());
-
-    output.extend_from_slice(contents);
-    output.extend_from_slice(signing_block);
-    output.extend_from_slice(central_dir);
-
-    let mut patched_eocd = eocd.to_vec();
-    if patched_eocd.len() < 22 {
-        return Err(malformed("eocd", 0, "EOCD record too short (< 22 bytes)"));
-    }
-    patched_eocd[16..20].copy_from_slice(&(new_cd_offset as u32).to_le_bytes());
-    output.extend_from_slice(&patched_eocd);
-
-    Ok(output)
+pub(crate) fn patch_cd_offset(eocd: &[u8], cd_offset: u32) -> Vec<u8> {
+    let mut patched = eocd.to_vec();
+    patched[EOCD_CD_OFFSET_FIELD].copy_from_slice(&cd_offset.to_le_bytes());
+    patched
 }
 
-pub fn write_reassembled_apk<W: Write>(
-    contents: &[u8],
-    signing_block: &[u8],
-    central_dir: &[u8],
-    eocd: &[u8],
-    mut output: W,
-) -> Result<()> {
-    let new_cd_offset = contents.len() + signing_block.len();
-    if eocd.len() < 22 {
-        return Err(malformed("eocd", 0, "EOCD record too short (< 22 bytes)"));
-    }
-
-    output.write_all(contents)?;
-    output.write_all(signing_block)?;
-    output.write_all(central_dir)?;
-
-    let mut patched_eocd = eocd.to_vec();
-    patched_eocd[16..20].copy_from_slice(&(new_cd_offset as u32).to_le_bytes());
-    output.write_all(&patched_eocd)?;
-    Ok(())
+fn write_pair_header(block: &mut Vec<u8>, id: u32, value_len: usize) {
+    block.extend_from_slice(&((4 + value_len) as u64).to_le_bytes());
+    block.extend_from_slice(&id.to_le_bytes());
 }
 
-fn read_u16_le(data: &[u8], offset: usize) -> Option<u16> {
-    Some(u16::from_le_bytes(
-        data.get(offset..offset + 2)?.try_into().ok()?,
-    ))
+fn le_u32(data: &[u8], offset: usize) -> u32 {
+    u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap())
 }
 
-fn read_u32_le(data: &[u8], offset: usize) -> Option<u32> {
-    Some(u32::from_le_bytes(
-        data.get(offset..offset + 4)?.try_into().ok()?,
-    ))
-}
-
-fn read_u64_le(data: &[u8], offset: usize) -> Option<u64> {
+fn le_u64_at(data: &[u8], offset: usize) -> Option<u64> {
     Some(u64::from_le_bytes(
         data.get(offset..offset + 8)?.try_into().ok()?,
     ))

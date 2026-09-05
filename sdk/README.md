@@ -4,10 +4,11 @@ Application integration SDK for Reseam clients.
 
 This crate exposes Rust service APIs plus a small BoltFFI JSON API and progress callback:
 
-- `inspect_apk_json`
 - `inspect_json`
 - `patch_json`
 - `PatchEventSink`
+
+Requests and responses are the types in `dto.rs` serialized with serde. A request names the bundle signers it trusts under `trust.keys`; the engine trusts nobody on its own.
 
 ## Android Build
 
@@ -28,44 +29,50 @@ export ANDROID_NDK_BIN="$ANDROID_HOME/ndk/29.0.14206865/toolchains/llvm/prebuilt
 export PATH="$ANDROID_NDK_BIN:$PATH"
 ```
 
-Check the Android target:
-
-```bash
-cargo check -p reseam-sdk --target aarch64-linux-android
-```
-
 Generate Kotlin bindings and package Android `jniLibs`:
 
 ```bash
 cargo xtask regen sdk
 ```
 
-Outputs are written to:
+Outputs are written to `sdk/generated/` and `sdk/jniLibs/`. They are build products, not sources.
 
-```text
-sdk/generated/
-sdk/jniLibs/
+## Desktop Build
+
+```bash
+JAVA_HOME=/path/to/jdk cargo xtask jni-host
 ```
+
+Builds `target/release/libreseam_sdk_jni.so` for the current host.
+
+## Publishing
+
+The Kotlin packages are built by the Gradle project at the workspace root:
+
+```bash
+./gradlew publishToMavenLocal -PreseamSdkVersion=0.3.0
+```
+
+- `app.reseam:reseam-sdk` for managers (Kotlin Multiplatform, Android and JVM)
+- `app.reseam:reseam-patch-sdk` for patch authors
+
+CI publishes both to the Reseam Maven registry on every `v*` tag, with the version taken from the tag.
 
 ## Patcher Host Requirement
 
 Android hosts must install a classloader before inspecting or patching bundles:
 
 ```kotlin
-AndroidPatchHost.setClassLoader(patchClassLoader)
+ReseamAndroidHost.setClassLoader(classLoader)
 ```
 
-Call `AndroidPatchHost.clearClassLoader()` when the host no longer needs that loader.
-
-The classloader must be able to resolve the Reseam SDK and patch classes. Desktop hosts continue to use the existing JVM `URLClassLoader` path.
+The classloader must be able to resolve the Reseam SDK and patch classes. Desktop hosts need nothing: the engine attaches to the JVM it was loaded into.
 
 ## Verification
 
 From the workspace root:
 
 ```bash
-cargo check -p reseam-patcher
-cargo check -p reseam-sdk
 cargo check --workspace
-cd patch-api && ./gradlew compileKotlin
+./gradlew build
 ```

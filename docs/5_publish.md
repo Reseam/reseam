@@ -14,9 +14,10 @@ For keygen and first-run setup, see [Setup](1_setup.md).
 ## Apply locally to verify
 
 ```bash
-reseam bundle list build/bundle/<name>.reseam
+reseam bundle list build/bundle/<name>.reseam --trust <PUBLIC_KEY_HEX>
 reseam patch target.apk \
   --bundle build/bundle/<name>.reseam \
+  --trust <PUBLIC_KEY_HEX> \
   --output patched.apk
 ```
 
@@ -30,6 +31,7 @@ Use the release CLI for meaningful numbers:
 cargo build --release -p reseam-cli
 target/release/reseam perf target.apk \
   --bundle build/bundle/<name>.reseam \
+  --trust <PUBLIC_KEY_HEX> \
   --warmup 1 \
   --iterations 5
 ```
@@ -49,7 +51,7 @@ Required: `--version`, `--url`. Optional: `--homepage`, `--description` or `--de
 
 If the output `patches.json` already exists, prior releases are preserved and an entry matching `--version` is replaced.
 
-In CI, the `generatePatchesJson` Gradle task wraps this command and reads arguments from environment variables: `RESEAM_RELEASE_VERSION`, `RESEAM_BUNDLE_URL`, `RESEAM_RELEASE_DESCRIPTION` (or `RESEAM_RELEASE_DESCRIPTION_FILE`), `RESEAM_HOMEPAGE`, `RESEAM_RELEASE_CREATED_AT`, `RESEAM_RELEASE_PRERELEASE`, `RESEAM_PATCHES_JSON_OUT`.
+In CI, the `generatePatchesJson` Gradle task wraps this command. Pass the release tag as `-PreleaseTag=vX.Y.Z` and it derives the version and the official download URL; the environment variables `RESEAM_RELEASE_VERSION`, `RESEAM_BUNDLE_URL`, `RESEAM_RELEASE_DESCRIPTION` (or `RESEAM_RELEASE_DESCRIPTION_FILE`), `RESEAM_HOMEPAGE`, `RESEAM_RELEASE_CREATED_AT`, `RESEAM_RELEASE_PRERELEASE`, and `RESEAM_PATCHES_JSON_OUT` override each value. `stageRelease` then collects the bundle and `patches.json` under `build/release/`.
 
 ## Hosting
 

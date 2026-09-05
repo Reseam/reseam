@@ -1,6 +1,6 @@
 [package]
 name = "reseam-cli"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 description = "Command-line interface for the Reseam APK patching toolchain"
 readme = "README.md"
@@ -11,18 +11,14 @@ path = "src/main.rs"
 
 [dependencies]
 reseam-sdk     = { workspace = true }
-reseam-patcher = { workspace = true, features = ["kotlin"] }
-reseam-sign    = { workspace = true }
+reseam-patcher = { workspace = true }
 reseam-apk     = { workspace = true }
 clap           = { workspace = true }
 anyhow         = { workspace = true }
 tracing        = { workspace = true }
 tracing-subscriber = { workspace = true }
 ed25519-dalek  = { workspace = true }
-sha2           = { workspace = true }
 hex            = { workspace = true }
-zip            = { workspace = true }
-toml           = { workspace = true }
 serde          = { workspace = true }
 serde_json     = { workspace = true }
 time           = { workspace = true }

@@ -28,11 +28,13 @@ impl RawInstruction {
     /// pseudo-opcode (`0x0100`, `0x0200`, `0x0300`) like
     /// [`crate::types::instruction::Instruction::opcode`] does.
     pub fn opcode(&self) -> Option<u16> {
-        Some(if self.opcode == 0x00 && matches!(self.unit0, 0x0100 | 0x0200 | 0x0300) {
-            self.unit0
-        } else {
-            self.opcode as u16
-        })
+        Some(
+            if self.opcode == 0x00 && matches!(self.unit0, 0x0100 | 0x0200 | 0x0300) {
+                self.unit0
+            } else {
+                self.opcode as u16
+            },
+        )
     }
 
     pub fn method_ref(&self, buf: &[u8]) -> Option<MethodIdx> {
@@ -116,8 +118,8 @@ pub fn walk_instructions(
 mod tests {
     use super::*;
     use crate::read::code::decode::decode_instructions;
-    use crate::write::instruction_writer::encode_instructions;
     use crate::types::instruction::{Instruction, RegList};
+    use crate::write::instruction_writer::encode_instructions;
 
     fn units(instructions: &[Instruction]) -> Vec<u8> {
         encode_instructions(instructions)
@@ -131,21 +133,63 @@ mod tests {
     fn raw_operands_match_decoded_instructions() {
         let program = vec![
             Instruction::Const4 { dest: 0, value: -3 },
-            Instruction::Const16 { dest: 1, value: -300 },
-            Instruction::Const { dest: 2, value: 0x1234_5678 },
+            Instruction::Const16 {
+                dest: 1,
+                value: -300,
+            },
+            Instruction::Const {
+                dest: 2,
+                value: 0x1234_5678,
+            },
             Instruction::ConstHigh16 { dest: 3, value: -2 },
             Instruction::ConstWide16 { dest: 4, value: 7 },
-            Instruction::ConstWide32 { dest: 6, value: -70_000 },
-            Instruction::ConstWide { dest: 8, value: -0x1122_3344_5566_7788 },
-            Instruction::ConstWideHigh16 { dest: 10, value: 0x4000 },
-            Instruction::ConstString { dest: 0, string: StringIdx(5) },
-            Instruction::ConstStringJumbo { dest: 0, string: StringIdx(0x1_0002) },
-            Instruction::ConstClass { dest: 0, type_: TypeIdx(9) },
-            Instruction::AddIntLit8 { dest: 0, src: 1, literal: -5 },
-            Instruction::MulIntLit16 { dest: 0, src: 1, literal: 1000 },
-            Instruction::Sget { dest: 0, field: FieldIdx(77) },
-            Instruction::InvokeStatic { method: MethodIdx(4242), args: RegList::new() },
-            Instruction::InvokeVirtualRange { method: MethodIdx(11), first_reg: 0, count: 2 },
+            Instruction::ConstWide32 {
+                dest: 6,
+                value: -70_000,
+            },
+            Instruction::ConstWide {
+                dest: 8,
+                value: -0x1122_3344_5566_7788,
+            },
+            Instruction::ConstWideHigh16 {
+                dest: 10,
+                value: 0x4000,
+            },
+            Instruction::ConstString {
+                dest: 0,
+                string: StringIdx(5),
+            },
+            Instruction::ConstStringJumbo {
+                dest: 0,
+                string: StringIdx(0x1_0002),
+            },
+            Instruction::ConstClass {
+                dest: 0,
+                type_: TypeIdx(9),
+            },
+            Instruction::AddIntLit8 {
+                dest: 0,
+                src: 1,
+                literal: -5,
+            },
+            Instruction::MulIntLit16 {
+                dest: 0,
+                src: 1,
+                literal: 1000,
+            },
+            Instruction::Sget {
+                dest: 0,
+                field: FieldIdx(77),
+            },
+            Instruction::InvokeStatic {
+                method: MethodIdx(4242),
+                args: RegList::new(),
+            },
+            Instruction::InvokeVirtualRange {
+                method: MethodIdx(11),
+                first_reg: 0,
+                count: 2,
+            },
             Instruction::ReturnVoid,
         ];
         let buf = units(&program);

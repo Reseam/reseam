@@ -35,7 +35,8 @@ impl ByteInterner {
             return i as usize;
         }
         let i = self.ranges.len();
-        self.ranges.push((self.data.len() as u32, bytes.len() as u32));
+        self.ranges
+            .push((self.data.len() as u32, bytes.len() as u32));
         self.data.extend_from_slice(bytes);
         self.index.entry(hash).or_default().push(i as u32);
         i
@@ -97,7 +98,10 @@ impl StreamInterner {
         }
         let offset = sink.pos();
         sink.write(bytes);
-        self.index.entry(hash).or_default().push((offset, bytes.len() as u32));
+        self.index
+            .entry(hash)
+            .or_default()
+            .push((offset, bytes.len() as u32));
         self.count += 1;
         Ok(offset)
     }

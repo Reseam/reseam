@@ -48,7 +48,7 @@
 
 		<rect class="inner" x="16" y="284" width="388" height="44" rx="10" />
 		<circle class="accent-fill" cx="36" cy="306" r="4" opacity="0.5" />
-		<text class="mono-muted" x="50" y="310">payload: *.jar, *.dex, *.rve</text>
+		<text class="mono-muted" x="50" y="310">payload: *.jar, *.dex</text>
 		<text class="label" x="384" y="310" text-anchor="end">deflated</text>
 	</g>
 

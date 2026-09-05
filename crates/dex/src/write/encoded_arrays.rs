@@ -3,17 +3,20 @@
 
 use super::encoded_value::write_encoded_array;
 use super::intern::StreamInterner;
-use crate::file::DexFile;
 use super::plan::WritePlan;
 use super::sink::DexSink;
 use super::DexWriter;
 use crate::error::Result;
+use crate::file::DexFile;
 use crate::types::encoded_value::EncodedValue;
 use crate::types::map::{MapItem, TYPE_ENCODED_ARRAY_ITEM, TYPE_TYPE_LIST};
 use crate::types::method_handle::CallSiteItem;
 
 /// Writes unique type lists and returns offsets for proto parameters and interfaces.
-pub(crate) fn write_type_lists<S: DexSink>(w: &mut DexWriter<S>, plan: &WritePlan<'_>) -> Result<(Vec<u32>, Vec<u32>)> {
+pub(crate) fn write_type_lists<S: DexSink>(
+    w: &mut DexWriter<S>,
+    plan: &WritePlan<'_>,
+) -> Result<(Vec<u32>, Vec<u32>)> {
     w.align(4);
     let type_lists_off = w.pos();
     let mut lists = StreamInterner::default();
@@ -21,7 +24,12 @@ pub(crate) fn write_type_lists<S: DexSink>(w: &mut DexWriter<S>, plan: &WritePla
 
     let mut proto_param_offsets: Vec<u32> = Vec::with_capacity(plan.dex.prototypes.len());
     for proto in plan.prototypes() {
-        proto_param_offsets.push(intern_type_list(w, &mut lists, &mut encoded, &proto.parameters)?);
+        proto_param_offsets.push(intern_type_list(
+            w,
+            &mut lists,
+            &mut encoded,
+            &proto.parameters,
+        )?);
     }
 
     let mut class_interface_offsets: Vec<u32> = Vec::with_capacity(plan.classes.len());
@@ -108,7 +116,8 @@ pub(crate) fn write_encoded_arrays<S: DexSink>(
     for k in 0..plan.classes.len() {
         let static_values = plan.class_static_values(k)?;
         let mut last_non_default = static_values.len();
-        while last_non_default > 0 && super::is_default_value(&static_values[last_non_default - 1]) {
+        while last_non_default > 0 && super::is_default_value(&static_values[last_non_default - 1])
+        {
             last_non_default -= 1;
         }
         if last_non_default == 0 {

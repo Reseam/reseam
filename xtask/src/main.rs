@@ -4,9 +4,11 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 
+mod jni;
 mod ndk;
 mod patch_api;
 mod paths;
+mod release;
 mod run;
 mod sdk;
 
@@ -19,14 +21,17 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
+    /// Regenerates the BoltFFI Kotlin bindings, and for the sdk the Android jniLibs.
     Regen {
         #[arg(value_enum)]
         target: RegenTarget,
     },
-    JniHost {
-        #[arg(long = "crate", value_enum, default_value_t = JniCrate::Patcher)]
-        which: JniCrate,
-    },
+    /// Builds the desktop JNI shim the JVM sdk loads.
+    JniHost,
+    /// Sets the workspace version, commits, and tags the release.
+    Release { version: String },
+    /// Fails unless the tag names the workspace version.
+    CheckTag { tag: String },
 }
 
 #[derive(Copy, Clone, ValueEnum)]
@@ -36,27 +41,19 @@ enum RegenTarget {
     All,
 }
 
-#[derive(Copy, Clone, ValueEnum)]
-pub enum JniCrate {
-    Patcher,
-    Sdk,
-}
-
 fn main() -> Result<()> {
-    let cli = Cli::parse();
-    match cli.cmd {
-        Cmd::Regen { target } => match target {
-            RegenTarget::PatchApi => patch_api::regen()?,
-            RegenTarget::Sdk => sdk::regen()?,
-            RegenTarget::All => {
+    match Cli::parse().cmd {
+        Cmd::Regen { target } => {
+            if matches!(target, RegenTarget::PatchApi | RegenTarget::All) {
                 patch_api::regen()?;
+            }
+            if matches!(target, RegenTarget::Sdk | RegenTarget::All) {
                 sdk::regen()?;
             }
-        },
-        Cmd::JniHost { which } => match which {
-            JniCrate::Patcher => patch_api::build_jni_host()?,
-            JniCrate::Sdk => sdk::build_jni_host()?,
-        },
+        }
+        Cmd::JniHost => sdk::build_jni_host()?,
+        Cmd::Release { version } => release::release(&version)?,
+        Cmd::CheckTag { tag } => release::check_tag(&tag)?,
     }
     Ok(())
 }

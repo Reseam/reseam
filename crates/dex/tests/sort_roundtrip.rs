@@ -97,7 +97,7 @@ fn sort_roundtrip_preserves_method_ids() {
             ..ParseOptions::default()
         };
 
-        let mut dex = reseam_dex::parse(&dex_bytes, opts.clone()).expect("parse original");
+        let mut dex = reseam_dex::parse(dex_bytes, opts.clone()).expect("parse original");
         dex.resolve_all_class_data().expect("resolve class data");
 
         let before_methods = resolve_methods(&dex);
@@ -121,7 +121,7 @@ fn sort_roundtrip_preserves_method_ids() {
             .map(|(i, m)| (m, i))
             .collect();
 
-        for (m, _) in &before_set {
+        for m in before_set.keys() {
             if !after_set.contains_key(m) {
                 panic!(
                     "[{name}] Method LOST after round-trip: {}.{}({}) -> {}",
@@ -132,7 +132,7 @@ fn sort_roundtrip_preserves_method_ids() {
                 );
             }
         }
-        for (m, _) in &after_set {
+        for m in after_set.keys() {
             if !before_set.contains_key(m) {
                 panic!(
                     "[{name}] Method GAINED after round-trip: {}.{}({}) -> {}",

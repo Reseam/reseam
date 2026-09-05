@@ -52,7 +52,11 @@ fn transient_decode_matches_full_resolution() {
     let mut checked_raw = 0usize;
 
     for class_idx in 0..resolved.classes.len() {
-        let Some(data) = resolved.classes.resident(class_idx).and_then(|c| c.class_data.as_deref()) else {
+        let Some(data) = resolved
+            .classes
+            .resident(class_idx)
+            .and_then(|c| c.class_data.as_deref())
+        else {
             continue;
         };
         assert!(
@@ -60,10 +64,8 @@ fn transient_decode_matches_full_resolution() {
             "lazy dex should not have materialized class {class_idx}"
         );
 
-        for (is_virtual, methods) in [
-            (false, &data.direct_methods),
-            (true, &data.virtual_methods),
-        ] {
+        for (is_virtual, methods) in [(false, &data.direct_methods), (true, &data.virtual_methods)]
+        {
             for (method_pos, expected) in methods.iter().enumerate() {
                 let transient = lazy
                     .decode_method_at(class_idx, method_pos, is_virtual)
@@ -105,7 +107,11 @@ fn transient_decode_matches_full_resolution() {
 
     // Materialized path: decoding an already-resolved class clones the same method.
     for class_idx in 0..resolved.classes.len() {
-        let Some(data) = resolved.classes.resident(class_idx).and_then(|c| c.class_data.as_deref()) else {
+        let Some(data) = resolved
+            .classes
+            .resident(class_idx)
+            .and_then(|c| c.class_data.as_deref())
+        else {
             continue;
         };
         if let Some(expected) = data.direct_methods.first() {

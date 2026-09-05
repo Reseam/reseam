@@ -3,7 +3,7 @@
 
 use std::sync::{Mutex, OnceLock};
 
-use jni::objects::{GlobalRef, JClass, JObject};
+use jni::objects::{GlobalRef, JObject};
 use jni::JavaVM;
 
 static VM: OnceLock<JavaVM> = OnceLock::new();
@@ -19,7 +19,7 @@ unsafe impl Sync for PatchClassLoader {}
 
 pub(super) fn java_vm() -> Result<&'static JavaVM, String> {
     VM.get().ok_or_else(|| {
-        "Android JavaVM is not initialized; call AndroidPatchHost.setClassLoader first".to_string()
+        "Android JavaVM is not initialized; call ReseamAndroidHost.setClassLoader first".to_string()
     })
 }
 
@@ -60,19 +60,8 @@ fn set_patch_class_loader(env: &mut jni::JNIEnv<'_>, loader: JObject<'_>) -> Res
     Ok(())
 }
 
-fn clear_patch_class_loader() -> Result<(), String> {
-    *class_loader_slot()
-        .lock()
-        .map_err(|_| "classLoader lock is poisoned".to_string())? = None;
-    Ok(())
-}
-
 fn class_loader_slot() -> &'static Mutex<Option<PatchClassLoader>> {
     PATCH_CLASS_LOADER.get_or_init(|| Mutex::new(None))
-}
-
-fn throw_host_error(env: &mut jni::JNIEnv<'_>, message: impl AsRef<str>) {
-    let _ = env.throw_new("java/lang/IllegalStateException", message.as_ref());
 }
 
 fn remember_java_vm(env: &jni::JNIEnv<'_>) -> Result<(), String> {
@@ -84,25 +73,4 @@ fn remember_java_vm(env: &jni::JNIEnv<'_>) -> Result<(), String> {
         .map_err(|error| format!("failed to get Android JavaVM: {error}"))?;
     let _ = VM.set(vm);
     Ok(())
-}
-
-#[no_mangle]
-pub extern "system" fn Java_app_reseam_patch_AndroidPatchHost_setClassLoader(
-    mut env: jni::JNIEnv<'_>,
-    _class: JClass<'_>,
-    loader: JObject<'_>,
-) {
-    if let Err(error) = set_patch_class_loader(&mut env, loader) {
-        throw_host_error(&mut env, error);
-    }
-}
-
-#[no_mangle]
-pub extern "system" fn Java_app_reseam_patch_AndroidPatchHost_clearClassLoader(
-    mut env: jni::JNIEnv<'_>,
-    _class: JClass<'_>,
-) {
-    if let Err(error) = clear_patch_class_loader() {
-        throw_host_error(&mut env, error);
-    }
 }

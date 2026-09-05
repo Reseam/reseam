@@ -1,39 +1,19 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+//! What a patch sees while it runs: the APK session plus the run's log,
+//! options, and decode caches.
+
+mod dex;
+mod files;
+
 use reseam_apk::reseam_dex::{ClassSkeleton, EncodedMethod};
 use reseam_apk::ApkFile;
 
 use crate::log::{LogEntry, PatchLog};
 use crate::options::PatchOptions;
 
-mod components;
-mod dex;
-mod files;
-mod resources;
-
-#[derive(Debug, Clone, Copy)]
-pub struct InstructionLocation {
-    pub dex_idx: usize,
-    pub class_idx: usize,
-    pub method_pos: usize,
-    pub is_virtual: bool,
-    pub insn_idx: usize,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct MethodCallSiteHit {
-    pub loc: InstructionLocation,
-    pub target_index: usize,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct FieldAccessSiteHit {
-    pub loc: InstructionLocation,
-    pub target_index: usize,
-}
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClassLocation {
     pub dex_idx: usize,
     pub class_idx: usize,
@@ -45,6 +25,19 @@ pub struct MethodLocation {
     pub class_idx: usize,
     pub method_idx: usize,
     pub is_virtual: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct InstructionLocation {
+    pub method: MethodLocation,
+    pub insn_idx: usize,
+}
+
+/// An instruction referring to one of the targets a search asked for.
+#[derive(Debug, Clone, Copy)]
+pub struct SiteHit {
+    pub loc: InstructionLocation,
+    pub target_index: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -59,21 +52,20 @@ pub struct PatchContext<'a> {
     options: PatchOptions,
     /// Skeleton of the deferred class most recently inspected: patches walk a
     /// class's methods one FFI call at a time, and this keeps that linear.
-    pub(crate) skeleton: Option<CachedSkeleton>,
+    skeleton: Option<CachedSkeleton>,
     /// The method most recently decoded for inspection: patches read a
     /// method one instruction per FFI call, and this decodes it once.
-    pub(crate) method: Option<CachedMethod>,
+    method: Option<CachedMethod>,
 }
 
-pub(crate) struct CachedSkeleton {
-    pub(crate) dex_idx: usize,
-    pub(crate) class_idx: usize,
-    pub(crate) skeleton: ClassSkeleton,
+struct CachedSkeleton {
+    location: ClassLocation,
+    skeleton: ClassSkeleton,
 }
 
-pub(crate) struct CachedMethod {
-    pub(crate) location: MethodLocation,
-    pub(crate) method: EncodedMethod,
+struct CachedMethod {
+    location: MethodLocation,
+    method: EncodedMethod,
 }
 
 impl<'a> PatchContext<'a> {
@@ -87,47 +79,30 @@ impl<'a> PatchContext<'a> {
         }
     }
 
+    pub fn apk(&self) -> &ApkFile {
+        self.apk
+    }
+
+    pub fn apk_mut(&mut self) -> &mut ApkFile {
+        self.method = None;
+        self.skeleton = None;
+        self.apk
+    }
+
     pub fn log(&mut self) -> &mut PatchLog {
         &mut self.log
-    }
-
-    pub fn set_log(&mut self, log: PatchLog) {
-        self.log = log;
-    }
-
-    pub fn take_log_entries(&mut self) -> Vec<LogEntry> {
-        self.log.take_entries()
     }
 
     pub fn options(&self) -> &PatchOptions {
         &self.options
     }
 
-    pub fn set_options(&mut self, options: PatchOptions) {
+    pub(crate) fn begin_patch(&mut self, patch: &str, options: PatchOptions) {
+        self.log = PatchLog::new(patch);
         self.options = options;
     }
 
-    pub fn clear_options(&mut self) {
-        self.options = PatchOptions::default();
-    }
-
-    pub fn package_name(&self) -> Option<&str> {
-        self.apk.package_name()
-    }
-
-    pub fn version_code(&self) -> Option<u32> {
-        self.apk.version_code()
-    }
-
-    pub fn version_name(&self) -> Option<&str> {
-        self.apk.version_name()
-    }
-
-    pub fn apk(&self) -> &ApkFile {
-        self.apk
-    }
-
-    pub fn apk_mut(&mut self) -> &mut ApkFile {
-        self.apk
+    pub(crate) fn take_log_entries(&mut self) -> Vec<LogEntry> {
+        self.log.take_entries()
     }
 }

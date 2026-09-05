@@ -19,10 +19,10 @@ mod version;
 
 pub use bytes::DexBytes;
 pub use classes::{ClassHeader, ClassTable, RawClassDef};
-pub use ids::{IdRecord, IdTable};
-pub use ref_filter::{RefKey, RefQuery};
-use ref_filter::RefFilter;
 pub(crate) use ids::read_type_list;
+pub use ids::{IdRecord, IdTable};
+use ref_filter::RefFilter;
+pub use ref_filter::{RefKey, RefQuery};
 pub use strings::StringPool;
 
 use std::borrow::Cow;
@@ -33,7 +33,9 @@ use crate::types::class::ClassDef;
 use crate::types::encoded_value::EncodedValue;
 use crate::types::header::{DexHeader, ParseOptions};
 use crate::types::method_handle::{CallSiteItem, MethodHandle};
-use crate::types::{FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx};
+use crate::types::{
+    FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx,
+};
 
 pub use fingerprint::{Fingerprint, FingerprintBuilder, FingerprintHit};
 pub use pattern::{InstructionPattern, OpcodeMatcher};
@@ -171,16 +173,26 @@ impl DexFile {
 
     /// A class's static initial values, decoded from the file for classes
     /// that are not resident.
-    pub fn class_static_values(&self, class_idx: usize) -> crate::error::Result<Cow<'_, [EncodedValue]>> {
+    pub fn class_static_values(
+        &self,
+        class_idx: usize,
+    ) -> crate::error::Result<Cow<'_, [EncodedValue]>> {
         if let Some(class) = self.classes.resident(class_idx) {
             return Ok(Cow::Borrowed(&class.static_values));
         }
-        let off = self.classes.raw_def(class_idx).map_or(0, |def| def.static_values_off);
+        let off = self
+            .classes
+            .raw_def(class_idx)
+            .map_or(0, |def| def.static_values_off);
         if off == 0 {
             return Ok(Cow::Borrowed(&[]));
         }
-        let buf = self.raw_buffer().ok_or_else(|| invalid_offset("static values", off, 0))?;
-        Ok(Cow::Owned(read_encoded_array_with_opts(buf, off as usize, &self.parse_options)?.0))
+        let buf = self
+            .raw_buffer()
+            .ok_or_else(|| invalid_offset("static values", off, 0))?;
+        Ok(Cow::Owned(
+            read_encoded_array_with_opts(buf, off as usize, &self.parse_options)?.0,
+        ))
     }
 
     /// Builds the class-type index up front instead of on the first lookup.

@@ -76,17 +76,17 @@ internal class PatchSearchIndex(private val ctx: PatchRuntime) {
 
     fun methodsWithReturnType(type: String): Set<UInt> =
         methodsByReturnType.getOrPut(type) {
-            findMethodsByReturnType(type).mapTo(linkedSetOf()) { it.toUInt() }
+            findMethodsByProto(type, null, null).mapTo(linkedSetOf()) { it.toUInt() }
         }
 
     fun methodsWithExactParameters(types: List<String>): Set<UInt> =
         methodsByParameterTypes.getOrPut(types) {
-            findMethodsByParameterTypes(types).mapTo(linkedSetOf()) { it.toUInt() }
+            findMethodsByProto(null, types, null).mapTo(linkedSetOf()) { it.toUInt() }
         }
 
     fun methodsWithParameter(type: String): Set<UInt> =
         methodsByParameter.getOrPut(type) {
-            findMethodsWithParameter(type).mapTo(linkedSetOf()) { it.toUInt() }
+            findMethodsByProto(null, null, type).mapTo(linkedSetOf()) { it.toUInt() }
         }
 
     fun methodsWithOpcode(opcode: Int): Set<UInt> =

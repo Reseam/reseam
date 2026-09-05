@@ -35,12 +35,21 @@ pub struct StringPool {
 }
 
 impl StringPool {
-    pub(crate) fn from_raw(raw: DexBytes, ids_off: u32, count: u32, opts: &ParseOptions) -> Result<Self> {
+    pub(crate) fn from_raw(
+        raw: DexBytes,
+        ids_off: u32,
+        count: u32,
+        opts: &ParseOptions,
+    ) -> Result<Self> {
         let buf = raw.as_bytes();
         let ids_off = ids_off as usize;
         let count = count as usize;
         if ids_off + count * 4 > buf.len() {
-            return Err(invalid_offset("string_ids", ids_off as u32, buf.len() as u32));
+            return Err(invalid_offset(
+                "string_ids",
+                ids_off as u32,
+                buf.len() as u32,
+            ));
         }
         for i in 0..count {
             validate_item(buf, u32_at(buf, ids_off + i * 4)?, opts)?;
@@ -168,7 +177,11 @@ impl StringPool {
     }
 
     pub fn heap_bytes(&self) -> u64 {
-        let owned: usize = self.owned.iter().map(|s| s.len() + size_of::<Box<str>>()).sum();
+        let owned: usize = self
+            .owned
+            .iter()
+            .map(|s| s.len() + size_of::<Box<str>>())
+            .sum();
         (owned + self.tail.len() * 24) as u64
     }
 
@@ -281,7 +294,13 @@ mod tests {
         for off in offsets {
             buf.extend_from_slice(&off.to_le_bytes());
         }
-        StringPool::from_raw(DexBytes::from_vec(buf), ids_off, strings.len() as u32, &ParseOptions::default()).unwrap()
+        StringPool::from_raw(
+            DexBytes::from_vec(buf),
+            ids_off,
+            strings.len() as u32,
+            &ParseOptions::default(),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -339,7 +358,12 @@ mod tests {
         buf[0] = 2;
         let ids_off = buf.len() as u32;
         buf.extend_from_slice(&0u32.to_le_bytes());
-        let err = StringPool::from_raw(DexBytes::from_vec(buf), ids_off, 1, &ParseOptions::default());
+        let err = StringPool::from_raw(
+            DexBytes::from_vec(buf),
+            ids_off,
+            1,
+            &ParseOptions::default(),
+        );
         assert!(err.is_err());
     }
 }

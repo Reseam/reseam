@@ -165,9 +165,6 @@ pub struct AnnotationElement {
 #[derive(Debug, Clone)]
 pub struct ResourceRef {
     pub res_id: u32,
-    pub package_id: u8,
-    pub type_id: u8,
-    pub entry_index: u16,
     pub key_name: String,
 }
 

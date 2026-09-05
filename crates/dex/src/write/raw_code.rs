@@ -86,7 +86,8 @@ pub(crate) fn copy_code_item(
 /// a `const-string` index no longer fits.
 fn remap_operands(opcode: u8, remap: &Remap<'_>, insn: &mut [u8]) -> bool {
     let get16 = |b: &[u8], at: usize| u16::from_le_bytes([b[at], b[at + 1]]) as u32;
-    let set16 = |b: &mut [u8], at: usize, v: u32| b[at..at + 2].copy_from_slice(&(v as u16).to_le_bytes());
+    let set16 =
+        |b: &mut [u8], at: usize, v: u32| b[at..at + 2].copy_from_slice(&(v as u16).to_le_bytes());
     match opcode {
         0x1a => {
             let new = remap.remap_string(StringIdx(get16(insn, 2))).0;
@@ -109,9 +110,17 @@ fn remap_operands(opcode: u8, remap: &Remap<'_>, insn: &mut [u8]) -> bool {
         }
         0xfa | 0xfb => {
             set16(insn, 2, remap.remap_method(MethodIdx(get16(insn, 2))).0);
-            set16(insn, 6, remap.remap_proto(ProtoIdx(get16(insn, 6) as u16)).0 as u32);
+            set16(
+                insn,
+                6,
+                remap.remap_proto(ProtoIdx(get16(insn, 6) as u16)).0 as u32,
+            );
         }
-        0xff => set16(insn, 2, remap.remap_proto(ProtoIdx(get16(insn, 2) as u16)).0 as u32),
+        0xff => set16(
+            insn,
+            2,
+            remap.remap_proto(ProtoIdx(get16(insn, 2) as u16)).0 as u32,
+        ),
         _ => {}
     }
     true
@@ -260,15 +269,34 @@ mod tests {
             outs_size: 1,
             debug_info: None,
             instructions: vec![
-                Instruction::ConstString { dest: 0, string: StringIdx(3) },
-                Instruction::CheckCast { ref_: 0, type_: TypeIdx(2) },
-                Instruction::Sget { dest: 1, field: FieldIdx(5) },
-                Instruction::InvokeStatic { method: MethodIdx(7), args: RegList::new() },
+                Instruction::ConstString {
+                    dest: 0,
+                    string: StringIdx(3),
+                },
+                Instruction::CheckCast {
+                    ref_: 0,
+                    type_: TypeIdx(2),
+                },
+                Instruction::Sget {
+                    dest: 1,
+                    field: FieldIdx(5),
+                },
+                Instruction::InvokeStatic {
+                    method: MethodIdx(7),
+                    args: RegList::new(),
+                },
                 Instruction::ReturnVoid,
             ],
-            tries: vec![TryItem { start_addr: 0, insn_count: 4, handler_idx: 0 }],
+            tries: vec![TryItem {
+                start_addr: 0,
+                insn_count: 4,
+                handler_idx: 0,
+            }],
             catch_handlers: vec![CatchHandler {
-                typed_catches: vec![TypedCatch { exception_type: TypeIdx(120), addr: 4 }],
+                typed_catches: vec![TypedCatch {
+                    exception_type: TypeIdx(120),
+                    addr: 4,
+                }],
                 catch_all_addr: Some(4),
             }],
         };
@@ -300,7 +328,10 @@ mod tests {
 
         let decoded = read_code_item(&raw, 0, &ParseOptions::default()).unwrap();
         assert_eq!(decoded.instructions, expected.instructions);
-        assert_eq!(decoded.catch_handlers[0].typed_catches[0].exception_type, TypeIdx(130));
+        assert_eq!(
+            decoded.catch_handlers[0].typed_catches[0].exception_type,
+            TypeIdx(130)
+        );
     }
 
     #[test]
@@ -310,7 +341,11 @@ mod tests {
             parameter_names: vec![Some(StringIdx(1)), None],
             bytecodes: vec![
                 DebugBytecode::SetPrologueEnd,
-                DebugBytecode::StartLocal { register: 2, name: Some(StringIdx(200)), type_: Some(TypeIdx(3)) },
+                DebugBytecode::StartLocal {
+                    register: 2,
+                    name: Some(StringIdx(200)),
+                    type_: Some(TypeIdx(3)),
+                },
                 DebugBytecode::StartLocalExtended {
                     register: 3,
                     name: None,
@@ -319,9 +354,14 @@ mod tests {
                 },
                 DebugBytecode::AdvancePc { advance: 3 },
                 DebugBytecode::AdvanceLine { advance: -2 },
-                DebugBytecode::SpecialAdvance { line_advance: 1, pc_advance: 2 },
+                DebugBytecode::SpecialAdvance {
+                    line_advance: 1,
+                    pc_advance: 2,
+                },
                 DebugBytecode::EndLocal { register: 2 },
-                DebugBytecode::SetFile { name: Some(StringIdx(6)) },
+                DebugBytecode::SetFile {
+                    name: Some(StringIdx(6)),
+                },
                 DebugBytecode::EndSequence,
             ],
         };

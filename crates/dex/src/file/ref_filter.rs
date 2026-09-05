@@ -81,7 +81,8 @@ impl RefQuery {
     }
 
     pub(crate) fn admits(&self, mask: u64) -> bool {
-        mask & self.all == self.all && (self.any.is_empty() || self.any.iter().any(|&m| m & !mask == 0))
+        mask & self.all == self.all
+            && (self.any.is_empty() || self.any.iter().any(|&m| m & !mask == 0))
     }
 }
 
@@ -127,21 +128,26 @@ impl RefFilter {
             }
             out
         };
-        chunks.into_par_iter().try_for_each(|(class_idx, slots)| -> Result<()> {
-            if slots.is_empty() {
-                return Ok(());
-            }
-            let offset = dex.raw_class_data_offset(class_idx).unwrap();
-            let buf = dex.raw_bytes(offset)?;
-            let skeleton = read_class_skeleton_at(buf, offset as usize, &dex.parse_options)?;
-            let headers = skeleton.direct_methods.iter().chain(&skeleton.virtual_methods);
-            for (slot, header) in slots.iter_mut().zip(headers) {
-                if header.code_off != 0 {
-                    *slot = method_mask(buf, header.code_off)?;
+        chunks
+            .into_par_iter()
+            .try_for_each(|(class_idx, slots)| -> Result<()> {
+                if slots.is_empty() {
+                    return Ok(());
                 }
-            }
-            Ok(())
-        })?;
+                let offset = dex.raw_class_data_offset(class_idx).unwrap();
+                let buf = dex.raw_bytes(offset)?;
+                let skeleton = read_class_skeleton_at(buf, offset as usize, &dex.parse_options)?;
+                let headers = skeleton
+                    .direct_methods
+                    .iter()
+                    .chain(&skeleton.virtual_methods);
+                for (slot, header) in slots.iter_mut().zip(headers) {
+                    if header.code_off != 0 {
+                        *slot = method_mask(buf, header.code_off)?;
+                    }
+                }
+                Ok(())
+            })?;
 
         Ok(Self { class_start, masks })
     }

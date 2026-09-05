@@ -11,7 +11,7 @@ use clap::Parser;
 use crate::app::{BundleCommands, Cli, Commands, PublishCommands};
 use crate::commands::{
     run_bundle_keygen, run_bundle_list, run_bundle_pack, run_info, run_patch, run_perf,
-    run_publish_patches,
+    run_publish_manager, run_publish_patches,
 };
 use crate::logging::init_logging;
 
@@ -33,6 +33,7 @@ fn main() -> Result<()> {
         },
         Commands::Publish { command } => match command {
             PublishCommands::Patches(command) => run_publish_patches(&command),
+            PublishCommands::Manager(command) => run_publish_manager(&command),
         },
     }
 }

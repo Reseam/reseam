@@ -3,7 +3,9 @@
 
 use super::DexFile;
 use crate::error::{invalid_descriptor, Result};
-use crate::types::{FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx, TypeList};
+use crate::types::{
+    FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx, TypeList,
+};
 
 impl DexFile {
     pub fn intern_string(&mut self, s: &str) -> StringIdx {

@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use anyhow::{bail, Context, Result};
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use anyhow::{bail, Context, Result};
 
 pub struct AndroidArch {
     pub triple: &'static str,
@@ -37,68 +38,65 @@ pub const ANDROID_ARCHES: &[AndroidArch] = &[
 pub fn android_api() -> u32 {
     env::var("ANDROID_API")
         .ok()
-        .and_then(|s| s.parse().ok())
+        .and_then(|value| value.parse().ok())
         .unwrap_or(24)
 }
 
-pub fn find_android_clang(prefix: &str, api: u32) -> Result<PathBuf> {
+/// The NDK's `<prefix><api>-clang`, from PATH or the newest NDK under
+/// `$ANDROID_HOME/ndk`.
+pub fn android_clang(prefix: &str, api: u32) -> Result<PathBuf> {
     let name = format!("{prefix}{api}-clang");
-
-    if let Ok(found) = which(&name) {
+    if let Some(found) = env::var_os("PATH").and_then(|path| {
+        env::split_paths(&path)
+            .map(|dir| dir.join(&name))
+            .find(|candidate| candidate.is_file())
+    }) {
         return Ok(found);
     }
 
-    let android_home = env::var_os("ANDROID_HOME")
-        .map(PathBuf::from)
+    let ndk_root = env::var_os("ANDROID_HOME")
+        .map(|home| PathBuf::from(home).join("ndk"))
         .with_context(|| {
-            format!("Android clang not found for {name}; set ANDROID_HOME or put the NDK llvm bin directory on PATH")
+            format!("{name} not on PATH and ANDROID_HOME is not set; install an NDK or put its llvm bin directory on PATH")
         })?;
-
-    let ndk_root = android_home.join("ndk");
     let mut versions: Vec<PathBuf> = std::fs::read_dir(&ndk_root)
         .with_context(|| format!("reading {}", ndk_root.display()))?
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.is_dir())
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| path.is_dir())
         .collect();
-    versions.sort_by(|a, b| version_key(a).cmp(&version_key(b)));
+    versions.sort_by_key(|path| version_key(path));
 
-    for ndk in versions.iter().rev() {
-        let prebuilt = ndk.join("toolchains/llvm/prebuilt");
-        let Ok(entries) = std::fs::read_dir(&prebuilt) else {
-            continue;
-        };
-        for host in entries.flatten() {
-            let candidate = host.path().join("bin").join(&name);
-            if candidate.is_file() {
-                return Ok(candidate);
-            }
-        }
-    }
-
-    bail!(
-        "Android clang not found for {name}; install an NDK under {} or put the toolchain on PATH",
-        ndk_root.display()
-    );
+    versions
+        .iter()
+        .rev()
+        .filter_map(|ndk| std::fs::read_dir(ndk.join("toolchains/llvm/prebuilt")).ok())
+        .flatten()
+        .flatten()
+        .map(|host| host.path().join("bin").join(&name))
+        .find(|candidate| candidate.is_file())
+        .with_context(|| format!("{name} not found in any NDK under {}", ndk_root.display()))
 }
 
-fn version_key(path: &std::path::Path) -> Vec<u32> {
+fn version_key(path: &Path) -> Vec<u32> {
     path.file_name()
-        .and_then(|n| n.to_str())
-        .map(|n| {
-            n.split('.')
-                .map(|p| p.parse::<u32>().unwrap_or(0))
+        .and_then(|name| name.to_str())
+        .map(|name| {
+            name.split('.')
+                .map(|part| part.parse().unwrap_or(0))
                 .collect()
         })
         .unwrap_or_default()
 }
 
-fn which(name: &str) -> Result<PathBuf> {
-    let path = env::var_os("PATH").context("PATH not set")?;
-    for dir in env::split_paths(&path) {
-        let candidate = dir.join(name);
-        if candidate.is_file() {
-            return Ok(candidate);
-        }
-    }
-    bail!("{name} not on PATH");
+pub fn java_home() -> Result<PathBuf> {
+    env::var_os("JAVA_HOME")
+        .map(PathBuf::from)
+        .context("JAVA_HOME not set")
+        .and_then(|home| {
+            if cfg!(target_os = "linux") {
+                Ok(home)
+            } else {
+                bail!("the JNI host build supports Linux only")
+            }
+        })
 }

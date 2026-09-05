@@ -32,7 +32,7 @@ class Method(val handle: UInt) {
 
     fun returnEarly() = returnEarly(handle)
     fun returnEarly(value: Int) = returnEarlyInt(handle, value)
-    fun returnEarly(value: Boolean) = returnEarlyBool(handle, value)
+    fun returnEarly(value: Boolean) = returnEarlyInt(handle, if (value) 1 else 0)
     fun returnEarly(value: Long) = returnEarlyWide(handle, value)
     fun returnEarlyNull() = returnEarlyObjectNull(handle)
 
@@ -61,18 +61,18 @@ class Method(val handle: UInt) {
         if (lowered.size == 1) {
             replaceInstruction(handle, index.toUInt(), lowered.single())
         } else {
-            removeInstruction(handle, index.toUInt())
+            removeInstructions(handle, index.toUInt(), 1u)
             insertInstructions(handle, index.toUInt(), lowered)
         }
     }
 
-    fun removeInstruction(index: Int) = removeInstruction(handle, index.toUInt())
+    fun removeInstruction(index: Int) = removeInstructions(index, 1)
     fun removeInstructions(index: Int, count: Int) = removeInstructions(handle, index.toUInt(), count.toUInt())
 
-    fun replaceString(old: String, new: String): Boolean = replaceString(handle, old, new)
-    fun replaceAllStrings(old: String, new: String): Int = replaceAllStrings(handle, old, new).toInt()
-    fun replaceLiteral(old: Long, new: Long): Boolean = replaceLiteral(handle, old, new)
-    fun replaceAllLiterals(old: Long, new: Long): Int = replaceAllLiterals(handle, old, new).toInt()
+    fun replaceString(old: String, new: String): Boolean = replaceStrings(handle, old, new, false) > 0u
+    fun replaceAllStrings(old: String, new: String): Int = replaceStrings(handle, old, new, true).toInt()
+    fun replaceLiteral(old: Long, new: Long): Boolean = replaceLiterals(handle, old, new, false) > 0u
+    fun replaceAllLiterals(old: Long, new: Long): Int = replaceLiterals(handle, old, new, true).toInt()
     fun replaceMethodCall(
         index: Int, newClass: String, newName: String, newProto: String,
     ): Boolean = replaceMethodCall(handle, index.toUInt(), newClass, newName, newProto)
@@ -93,7 +93,7 @@ class Method(val handle: UInt) {
     fun indexOfFirstReversed(op: Int, start: Int): Int? = indexOfFirstReversed(handle, start.toUInt(), op.toUShort())?.toInt()
     fun indexOfFirstLiteral(literal: Long): Int? = indexOfFirstLiteral(handle, literal)?.toInt()
     fun indexOfFirstLiteralReversed(literal: Long): Int? = indexOfFirstLiteralReversed(handle, literal)?.toInt()
-    fun containsLiteral(literal: Long): Boolean = containsLiteral(handle, literal)
+    fun containsLiteral(literal: Long): Boolean = indexOfFirstLiteral(literal) != null
     fun indexOfFirstString(s: String): Int? = indexOfFirstString(handle, s)?.toInt()
     fun findAllIndices(op: Int): List<Int> = findAllIndices(handle, op.toUShort()).toList()
     fun indexOfFirstMethodCall(definingClass: String, methodName: String, start: Int = 0): Int? =
@@ -113,10 +113,10 @@ class Method(val handle: UInt) {
     fun findContiguousFreeRegisters(atIndex: Int, count: Int, exclude: List<Int> = emptyList()): List<Int> =
         findContiguousFreeRegisters(handle, atIndex.toUInt(), count.toUInt(), ShortArray(exclude.size) { exclude[it].toShort() }).map { it.toInt() }
 
-    fun registerA(index: Int): Int = instructionRegisterA(handle, index.toUInt()).toInt()
-    fun registerB(index: Int): Int = instructionRegisterB(handle, index.toUInt()).toInt()
-    fun registerC(index: Int): Int = instructionRegisterC(handle, index.toUInt()).toInt()
-    fun registerD(index: Int): Int = instructionRegisterD(handle, index.toUInt()).toInt()
+    fun registerA(index: Int): Int = instructionRegister(handle, index.toUInt(), 0u).toInt()
+    fun registerB(index: Int): Int = instructionRegister(handle, index.toUInt(), 1u).toInt()
+    fun registerC(index: Int): Int = instructionRegister(handle, index.toUInt(), 2u).toInt()
+    fun registerD(index: Int): Int = instructionRegister(handle, index.toUInt(), 3u).toInt()
     fun wideLiteral(index: Int): Long = instructionWideLiteral(handle, index.toUInt())
     fun stringRef(index: Int): String? = instructionStringRef(handle, index.toUInt())
     fun methodRef(index: Int): MethodRef? = instructionMethodRef(handle, index.toUInt())

@@ -12,7 +12,6 @@ use crate::types::map::{
     TYPE_STRING_DATA_ITEM, TYPE_STRING_ID_ITEM, TYPE_TYPE_ID_ITEM,
 };
 
-
 /// Writes all sections of a DEX file in spec order, then backpatches offsets.
 pub(crate) trait DexWriterWriteExt {
     fn write_dex(&mut self, plan: &WritePlan<'_>) -> Result<()>;

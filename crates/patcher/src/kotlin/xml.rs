@@ -1,860 +1,601 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use reseam_apk::axml::{AxmlAttribute, AxmlDocument, AxmlEvent, TypedValue};
+//! XML documents a patch holds open by handle. Elements are addressed by
+//! the index of their start event; elements created but not yet attached
+//! live in a pending table and use handles at or above `PENDING_OFFSET`.
+//! Closing a document writes it back to the APK.
+
+use std::cell::RefCell;
 
 use boltffi::export;
+use reseam_apk::axml::{self, AttributeValue, AxmlAttribute, AxmlDocument, AxmlEvent, ANDROID_NS};
+use reseam_apk::{Compression, ResValue, StringPool};
 
-use super::{with_ctx, PENDING_ELEMENTS, XML_DOCUMENTS};
+use super::files::with_component;
+use super::handles::with_ctx;
 
 const PENDING_OFFSET: u32 = 0x8000_0000;
 
-fn xml_file_slot_id(component_index: usize, apk_path: &str) -> String {
-    format!("@file:{component_index}:{apk_path}")
+#[derive(Clone, PartialEq, Eq)]
+pub(super) enum DocSource {
+    File { component: usize, path: String },
+    Manifest { component: usize },
 }
 
-fn parse_xml_slot_id(slot_id: &str) -> Option<(usize, &str)> {
-    let rest = slot_id.strip_prefix("@file:")?;
-    let (component, path) = rest.split_once(':')?;
-    let component_index = component.parse().ok()?;
-    Some((component_index, path))
+struct OpenDoc {
+    doc: AxmlDocument,
+    source: DocSource,
 }
 
-pub(crate) struct PendingElement {
-    doc_idx: u32,
+struct PendingElement {
+    doc: u32,
     events: Vec<AxmlEvent>,
 }
 
-fn pending_index(handle: u32) -> Option<usize> {
-    (handle >= PENDING_OFFSET).then_some((handle - PENDING_OFFSET) as usize)
+thread_local! {
+    static DOCS: RefCell<Vec<Option<OpenDoc>>> = const { RefCell::new(Vec::new()) };
+    static PENDING: RefCell<Vec<PendingElement>> = const { RefCell::new(Vec::new()) };
 }
 
-fn take_pending_element(handle: u32) -> Option<PendingElement> {
-    let idx = pending_index(handle)?;
-    PENDING_ELEMENTS.with(|pe| {
-        let mut pe = pe.borrow_mut();
-        if idx >= pe.len() {
-            return None;
-        }
-        let pending = std::mem::replace(
-            &mut pe[idx],
-            PendingElement {
-                doc_idx: 0,
-                events: Vec::new(),
-            },
-        );
-        (!pending.events.is_empty()).then_some(pending)
+pub(super) fn reset() {
+    DOCS.with(|docs| docs.borrow_mut().clear());
+    PENDING.with(|pending| pending.borrow_mut().clear());
+}
+
+/// The handle of the open document for `source`, opening it with `load`
+/// when no document is open yet.
+pub(super) fn open_source(
+    source: &DocSource,
+    load: impl FnOnce() -> Option<AxmlDocument>,
+) -> Option<u32> {
+    let existing = DOCS.with(|docs| {
+        docs.borrow()
+            .iter()
+            .position(|slot| slot.as_ref().is_some_and(|open| open.source == *source))
+    });
+    if let Some(handle) = existing {
+        return Some(handle as u32);
+    }
+    let doc = load()?;
+    DOCS.with(|docs| {
+        let mut docs = docs.borrow_mut();
+        docs.push(Some(OpenDoc {
+            doc,
+            source: source.clone(),
+        }));
+        Some(docs.len() as u32 - 1)
     })
 }
 
-fn pending_insert_pos(events: &[AxmlEvent]) -> Option<usize> {
-    let mut depth = 0u32;
-    for (idx, event) in events.iter().enumerate() {
-        match event {
-            AxmlEvent::StartElement { .. } => depth += 1,
-            AxmlEvent::EndElement { .. } => {
-                depth = depth.saturating_sub(1);
-                if depth == 0 {
-                    return Some(idx);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
+pub(super) fn is_open(source: &DocSource) -> bool {
+    DOCS.with(|docs| {
+        docs.borrow()
+            .iter()
+            .flatten()
+            .any(|open| open.source == *source)
+    })
 }
 
-fn element_end(doc: &AxmlDocument, start: usize) -> usize {
-    doc.find_end_element(start).unwrap_or(start)
+pub(super) fn with_source_doc<R>(
+    source: &DocSource,
+    f: impl FnOnce(&AxmlDocument) -> R,
+) -> Option<R> {
+    DOCS.with(|docs| {
+        let docs = docs.borrow();
+        let open = docs.iter().flatten().find(|open| open.source == *source)?;
+        Some(f(&open.doc))
+    })
 }
 
-fn extract_subtree(doc: &AxmlDocument, start: usize) -> Vec<AxmlEvent> {
-    let end = element_end(doc, start);
-    doc.elements[start..=end].to_vec()
+pub(super) fn with_source_doc_mut<R>(
+    source: &DocSource,
+    f: impl FnOnce(&mut AxmlDocument) -> R,
+) -> Option<R> {
+    DOCS.with(|docs| {
+        let mut docs = docs.borrow_mut();
+        let open = docs
+            .iter_mut()
+            .flatten()
+            .find(|open| open.source == *source)?;
+        Some(f(&mut open.doc))
+    })
 }
 
-const ANDROID_NS_URI: &str = "http://schemas.android.com/apk/res/android";
-
-fn resolve_namespace<'a>(document: &AxmlDocument, name: &'a str) -> (Option<u32>, &'a str) {
-    if let Some(local) = name.strip_prefix("android:") {
-        let ns_idx = document.elements.iter().find_map(|e| {
-            if let AxmlEvent::StartNamespace { uri, .. } = e {
-                if document.string(*uri) == Some(ANDROID_NS_URI) {
-                    return Some(*uri);
-                }
-            }
-            None
-        });
-        (ns_idx, local)
-    } else {
-        (None, name)
-    }
+fn with_doc<R>(handle: u32, f: impl FnOnce(&AxmlDocument) -> R) -> Option<R> {
+    DOCS.with(|docs| Some(f(&docs.borrow().get(handle as usize)?.as_ref()?.doc)))
 }
 
-fn attr_matches(
-    document: &AxmlDocument,
-    attr: &AxmlAttribute,
-    ns: Option<u32>,
-    local: &str,
-) -> bool {
-    let name_matches = document.string(attr.name) == Some(local);
-    let ns_matches = match (attr.namespace, ns) {
-        (None, None) => true,
-        (Some(a), Some(b)) => a == b,
-        _ => false,
-    };
-    name_matches && ns_matches
+fn with_doc_mut<R>(handle: u32, f: impl FnOnce(&mut AxmlDocument) -> R) -> Option<R> {
+    DOCS.with(|docs| {
+        Some(f(&mut docs
+            .borrow_mut()
+            .get_mut(handle as usize)?
+            .as_mut()?
+            .doc))
+    })
 }
 
-fn get_attr_value(
-    document: &AxmlDocument,
-    attributes: &[AxmlAttribute],
-    name: &str,
-) -> Option<String> {
-    let (ns, local) = resolve_namespace(document, name);
-    for attr in attributes {
-        if attr_matches(document, attr, ns, local) {
-            return match &attr.typed_value {
-                TypedValue::String(si) => document.string(*si).map(|s| s.to_string()),
-                TypedValue::Int(v) => Some(v.to_string()),
-                TypedValue::Bool(v) => Some(v.to_string()),
-                TypedValue::Reference(v) => Some(format!("@0x{v:08x}")),
-                TypedValue::Hex(v) => Some(format!("0x{v:08x}")),
-                TypedValue::Other { data, .. } => Some(data.to_string()),
-            };
-        }
-    }
-    None
+fn pending_index(handle: u32) -> Option<usize> {
+    handle.checked_sub(PENDING_OFFSET).map(|i| i as usize)
 }
 
-fn parse_typed_value(
-    value: &str,
-    pool: &mut reseam_apk::axml::StringPool,
-) -> (TypedValue, Option<u32>) {
-    if value == "true" {
-        return (TypedValue::Bool(true), None);
-    }
-    if value == "false" {
-        return (TypedValue::Bool(false), None);
-    }
-    if value == "match_parent" || value == "fill_parent" {
-        return (TypedValue::Int(-1), None);
-    }
-    if value == "wrap_content" {
-        return (TypedValue::Int(-2), None);
-    }
-    if value == "@null" || value == "@empty" {
-        return (TypedValue::Reference(0), None);
-    }
-    if let Some((data_type, data)) = reseam_apk::axml::compiler::parse_color(value) {
-        return (TypedValue::Other { data_type, data }, None);
-    }
-    if let Some(data) = reseam_apk::axml::compiler::parse_dimension(value) {
-        return (
-            TypedValue::Other {
-                data_type: 0x05,
-                data,
-            },
-            None,
-        );
-    }
-    if let Some(hex) = value.strip_prefix("0x") {
-        if let Ok(v) = u32::from_str_radix(hex, 16) {
-            return (TypedValue::Hex(v), None);
-        }
-    }
-    if let Ok(v) = value.parse::<i32>() {
-        return (TypedValue::Int(v), None);
-    }
-    if let Ok(v) = value.parse::<f32>() {
-        return (
-            TypedValue::Other {
-                data_type: 0x04,
-                data: v.to_bits(),
-            },
-            None,
-        );
-    }
-    let idx = pool.intern(value);
-    (TypedValue::String(idx), Some(idx))
+fn push_pending(doc: u32, events: Vec<AxmlEvent>) -> u32 {
+    PENDING.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        pending.push(PendingElement { doc, events });
+        PENDING_OFFSET + pending.len() as u32 - 1
+    })
 }
 
-fn set_or_add_attr(
-    attributes: &mut Vec<AxmlAttribute>,
-    ns: Option<u32>,
-    name_idx: u32,
-    typed_value: TypedValue,
-    raw_value: Option<u32>,
-) {
-    for attr in attributes.iter_mut() {
-        if attr.name == name_idx && attr.namespace == ns {
-            attr.raw_value = raw_value;
-            attr.typed_value = typed_value;
-            return;
-        }
-    }
-    attributes.push(AxmlAttribute {
-        namespace: ns,
-        name: name_idx,
-        raw_value,
-        typed_value,
-    });
-}
-
-fn resolve_attr_value(document: &mut AxmlDocument, value: &str) -> (TypedValue, Option<u32>) {
-    let (typed, raw) = parse_typed_value(value, &mut document.string_pool);
-    if !matches!(typed, TypedValue::String(_)) {
-        return (typed, raw);
-    }
-    if let Some(rest) = value.strip_prefix('?') {
-        if let Some(attr_id) = resolve_attr_ref(rest) {
-            return (
-                TypedValue::Other {
-                    data_type: 0x02,
-                    data: attr_id,
-                },
-                None,
-            );
-        }
-    }
-    if let Some(rest) = value.strip_prefix('@') {
-        if let Some(id) = resolve_xml_resource_ref(rest) {
-            return (TypedValue::Reference(id), None);
-        }
-    }
-    (typed, raw)
-}
-
-fn resolve_attr_ref(s: &str) -> Option<u32> {
-    if let Some(name) = s.strip_prefix("android:attr/") {
-        return reseam_apk::axml::compiler::android_attr_res_id(name);
-    }
-    let name = s.strip_prefix("attr/").unwrap_or(s);
-    with_ctx(|ctx| ctx.find_resource_id("attr", name))
-}
-
-fn resolve_xml_resource_ref(s: &str) -> Option<u32> {
-    let (namespace, type_name, entry_name, create_id) = parse_xml_resource_ref(s)?;
-    match namespace {
-        Some("android") if type_name == "attr" => {
-            reseam_apk::axml::compiler::android_attr_res_id(entry_name)
-        }
-        Some(_) => None,
-        None if create_id && type_name == "id" => {
-            with_ctx(|ctx| ctx.resources_mut()?.ensure_id(entry_name))
-        }
-        None => with_ctx(|ctx| ctx.find_resource_id(type_name, entry_name)),
-    }
-}
-
-fn parse_xml_resource_ref(s: &str) -> Option<(Option<&str>, &str, &str, bool)> {
-    let create_id = s.starts_with("+id/");
-    let s = s.strip_prefix('+').unwrap_or(s);
-    let slash = s.find('/')?;
-    let (type_part, entry_name) = (&s[..slash], &s[slash + 1..]);
-    let (namespace, type_name) = if let Some(colon) = type_part.find(':') {
-        (Some(&type_part[..colon]), &type_part[colon + 1..])
-    } else {
-        (None, type_part)
-    };
-    if type_name.is_empty() || entry_name.is_empty() {
-        return None;
-    }
-    Some((namespace, type_name, entry_name, create_id))
-}
-
-fn insert_events_at(doc: &mut AxmlDocument, pos: usize, events: Vec<AxmlEvent>) {
-    for (j, event) in events.into_iter().enumerate() {
-        doc.elements.insert(pos + j, event);
-    }
-}
-
-#[export]
-pub fn xml_open(apk_path: String) -> Option<u32> {
-    xml_open_in_component("base".to_string(), apk_path)
-}
-
-#[export]
-pub fn xml_open_in_component(component: String, apk_path: String) -> Option<u32> {
-    with_ctx(|ctx| {
-        let component_index = ctx.component_index(&component)?;
-        let data = ctx.read_file_from_component(component_index, &apk_path)?;
-        let doc = AxmlDocument::parse(&data).ok()?;
-        let slot_id = xml_file_slot_id(component_index, &apk_path);
-        XML_DOCUMENTS.with(|docs| {
-            let mut docs = docs.borrow_mut();
-            let handle = docs.len() as u32;
-            docs.push(Some((doc, slot_id)));
-            Some(handle)
+/// Removes a pending element from the table, leaving its handle dangling.
+fn take_pending(handle: u32) -> Option<PendingElement> {
+    let index = pending_index(handle)?;
+    PENDING.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        let slot = pending.get_mut(index)?;
+        let events = std::mem::take(&mut slot.events);
+        (!events.is_empty()).then_some(PendingElement {
+            doc: slot.doc,
+            events,
         })
     })
 }
 
+/// Read access to the start element `el` names, in the document or pending.
+fn with_element<R>(
+    doc: u32,
+    el: u32,
+    f: impl FnOnce(&AxmlDocument, &[AxmlAttribute]) -> R,
+) -> Option<R> {
+    match pending_index(el) {
+        Some(index) => PENDING.with(|pending| {
+            let pending = pending.borrow();
+            let element = pending.get(index)?;
+            let AxmlEvent::StartElement { attributes, .. } = element.events.first()? else {
+                return None;
+            };
+            with_doc(element.doc, |doc| f(doc, attributes))
+        }),
+        None => with_doc(doc, |doc| Some(f(doc, doc.attributes(el as usize)))).flatten(),
+    }
+}
+
+/// Mutable access to the attributes of the start element `el` names, with
+/// the document's string pool and its `android:` namespace index.
+fn with_attributes_mut<R>(
+    doc: u32,
+    el: u32,
+    f: impl FnOnce(&mut StringPool, Option<u32>, &mut Vec<AxmlAttribute>) -> R,
+) -> Option<R> {
+    match pending_index(el) {
+        Some(index) => PENDING.with(|pending| {
+            let mut pending = pending.borrow_mut();
+            let element = pending.get_mut(index)?;
+            let AxmlEvent::StartElement { attributes, .. } = element.events.first_mut()? else {
+                return None;
+            };
+            with_doc_mut(element.doc, |doc| {
+                let ns = android_ns(doc);
+                f(&mut doc.string_pool, ns, attributes)
+            })
+        }),
+        None => with_doc_mut(doc, |document| {
+            let ns = android_ns(document);
+            let AxmlDocument {
+                string_pool,
+                elements,
+                ..
+            } = document;
+            let AxmlEvent::StartElement { attributes, .. } = elements.get_mut(el as usize)? else {
+                return None;
+            };
+            Some(f(string_pool, ns, attributes))
+        })
+        .flatten(),
+    }
+}
+
+fn android_ns(doc: &AxmlDocument) -> Option<u32> {
+    doc.elements.iter().find_map(|event| match event {
+        AxmlEvent::StartNamespace { uri, .. }
+            if doc.string(*uri).as_deref() == Some(ANDROID_NS) =>
+        {
+            Some(*uri)
+        }
+        _ => None,
+    })
+}
+
+/// `android:name` -> (android namespace, `name`); anything else is unqualified.
+fn split_name(ns: Option<u32>, name: &str) -> (Option<u32>, &str) {
+    match name.strip_prefix("android:") {
+        Some(local) => (ns, local),
+        None => (None, name),
+    }
+}
+
+fn set_or_add(
+    attributes: &mut Vec<AxmlAttribute>,
+    namespace: Option<u32>,
+    name: u32,
+    value: ResValue,
+) {
+    match attributes
+        .iter_mut()
+        .find(|attr| attr.name == name && attr.namespace == namespace)
+    {
+        Some(attr) => attr.set_value(value),
+        None => attributes.push(AxmlAttribute::new(namespace, name, value)),
+    }
+}
+
+fn set_attribute_value(
+    doc: u32,
+    el: u32,
+    name: &str,
+    value: impl FnOnce(&mut StringPool) -> ResValue,
+) {
+    with_attributes_mut(doc, el, |pool, ns, attributes| {
+        let (namespace, local) = split_name(ns, name);
+        let name = pool.intern(local);
+        set_or_add(attributes, namespace, name, value(pool));
+    });
+}
+
+fn attribute_text(doc: &AxmlDocument, attributes: &[AxmlAttribute], name: &str) -> Option<String> {
+    let (namespace, local) = split_name(android_ns(doc), name);
+    let attr = attributes.iter().find(|attr| {
+        attr.namespace == namespace && doc.string(attr.name).as_deref() == Some(local)
+    })?;
+    Some(match attr.value.kind {
+        ResValue::STRING => doc.attribute_string(attr)?.into_owned(),
+        ResValue::INT_DEC => (attr.value.data as i32).to_string(),
+        ResValue::INT_BOOLEAN => (attr.value.data != 0).to_string(),
+        ResValue::REFERENCE => format!("@0x{:08x}", attr.value.data),
+        ResValue::INT_HEX => format!("0x{:08x}", attr.value.data),
+        _ => attr.value.data.to_string(),
+    })
+}
+
+fn subtree(doc: &AxmlDocument, start: usize) -> Vec<AxmlEvent> {
+    let end = doc.find_end_element(start).unwrap_or(start);
+    doc.elements[start..=end].to_vec()
+}
+
+/// Detaches the element at `start` and returns its events.
+fn detach(doc: &mut AxmlDocument, start: usize) -> Vec<AxmlEvent> {
+    let end = doc.find_end_element(start).unwrap_or(start);
+    doc.elements.drain(start..=end).collect()
+}
+
+/// Opens `apk_path` from the component (base when `None`) as a document.
+#[export]
+pub fn xml_open(component: Option<String>, apk_path: String) -> Option<u32> {
+    with_component(component, |ctx, index| {
+        let source = DocSource::File {
+            component: index,
+            path: apk_path.clone(),
+        };
+        open_source(&source, || {
+            let data = ctx.read_file(index, &apk_path).ok().flatten()?;
+            AxmlDocument::parse(&data).ok()
+        })
+    })
+    .flatten()
+}
+
+/// Writes the document back to the APK and releases its handle.
 #[export]
 pub fn xml_close(doc: u32) {
-    XML_DOCUMENTS.with(|docs| {
-        let mut docs = docs.borrow_mut();
-        let idx = doc as usize;
-        let mut clear_slot = true;
-        if let Some(Some((document, path))) = docs.get(idx) {
-            match document.serialize() {
-                Ok(data) => {
-                    let path = path.clone();
-                    with_ctx(|ctx| {
-                        if let Some((component_index, apk_path)) = parse_xml_slot_id(&path) {
-                            ctx.inject_file_into_component(component_index, apk_path, data);
-                        } else if let Some(component_index) = path
-                            .strip_prefix("@manifest:")
-                            .and_then(|s| s.parse::<usize>().ok())
-                        {
-                            if let Some(manifest) = ctx.component_manifest_mut(component_index) {
-                                *manifest = document.clone();
-                            }
-                        }
-                    });
-                }
-                Err(e) => {
-                    let path = path.clone();
-                    clear_slot = false;
-                    with_ctx(|ctx| {
-                        ctx.log()
-                            .warn(format!("xml close: failed to serialize {path}: {e}"))
-                    });
-                }
-            }
-        }
-        if clear_slot {
-            if let Some(slot) = docs.get_mut(idx) {
-                *slot = None;
-            }
+    let Some(open) = DOCS.with(|docs| {
+        docs.borrow_mut()
+            .get_mut(doc as usize)
+            .and_then(Option::take)
+    }) else {
+        return;
+    };
+    with_ctx(|ctx| {
+        let outcome = match open.source {
+            DocSource::File { component, path } => open
+                .doc
+                .serialize()
+                .map_err(|e| e.to_string())
+                .and_then(|data| {
+                    ctx.inject_file(component, &path, data, Compression::Deflated)
+                        .map_err(|e| e.to_string())
+                }),
+            DocSource::Manifest { component } => ctx
+                .component_mut(component)
+                .map_err(|e| e.to_string())
+                .map(|c| {
+                    *c.manifest_mut() = open.doc;
+                }),
+        };
+        if let Err(error) = outcome {
+            ctx.log().warn(format!("xml close: {error}"));
         }
     });
 }
 
 #[export]
 pub fn xml_root(doc: u32) -> u32 {
-    XML_DOCUMENTS.with(|docs| {
-        let docs = docs.borrow();
-        let idx = doc as usize;
-        if let Some(Some((document, _))) = docs.get(idx) {
-            for (i, event) in document.elements.iter().enumerate() {
-                if matches!(event, AxmlEvent::StartElement { .. }) {
-                    return i as u32;
-                }
-            }
-        }
-        0
-    })
+    with_doc(doc, |doc| doc.root().unwrap_or(0) as u32).unwrap_or(0)
 }
 
 #[export]
 pub fn xml_find_by_tag(doc: u32, tag: String) -> Vec<u32> {
-    XML_DOCUMENTS.with(|docs| {
-        let docs = docs.borrow();
-        let idx = doc as usize;
-        let mut results = Vec::new();
-        if let Some(Some((document, _))) = docs.get(idx) {
-            for (i, event) in document.elements.iter().enumerate() {
-                if let AxmlEvent::StartElement { name, .. } = event {
-                    if document.string(*name).is_some_and(|s| s == tag) {
-                        results.push(i as u32);
-                    }
-                }
-            }
-        }
-        results
+    with_doc(doc, |doc| {
+        (0..doc.elements.len())
+            .filter(|&i| doc.element_name(i).as_deref() == Some(tag.as_str()))
+            .map(|i| i as u32)
+            .collect()
     })
+    .unwrap_or_default()
 }
 
 #[export]
 pub fn xml_find_by_attribute(doc: u32, attr_name: String, attr_value: String) -> Vec<u32> {
-    XML_DOCUMENTS.with(|docs| {
-        let docs = docs.borrow();
-        let idx = doc as usize;
-        let mut results = Vec::new();
-        if let Some(Some((document, _))) = docs.get(idx) {
-            for (i, event) in document.elements.iter().enumerate() {
-                if let AxmlEvent::StartElement { attributes, .. } = event {
-                    if get_attr_value(document, attributes, &attr_name).as_deref()
-                        == Some(&attr_value)
-                    {
-                        results.push(i as u32);
-                    }
+    with_doc(doc, |doc| {
+        doc.elements
+            .iter()
+            .enumerate()
+            .filter(|(_, event)| match event {
+                AxmlEvent::StartElement { attributes, .. } => {
+                    attribute_text(doc, attributes, &attr_name).as_deref()
+                        == Some(attr_value.as_str())
                 }
-            }
-        }
-        results
+                _ => false,
+            })
+            .map(|(i, _)| i as u32)
+            .collect()
     })
+    .unwrap_or_default()
 }
 
 #[export]
 pub fn xml_children(doc: u32, el: u32) -> Vec<u32> {
-    XML_DOCUMENTS.with(|docs| {
-        let docs = docs.borrow();
-        let mut results = Vec::new();
-        if let Some(Some((document, _))) = docs.get(doc as usize) {
-            let start = el as usize;
-            if start < document.elements.len()
-                && matches!(document.elements[start], AxmlEvent::StartElement { .. })
-            {
-                let mut depth = 0;
-                for i in start..document.elements.len() {
-                    match &document.elements[i] {
-                        AxmlEvent::StartElement { .. } => {
-                            if depth == 1 {
-                                results.push(i as u32);
-                            }
-                            depth += 1;
-                        }
-                        AxmlEvent::EndElement { .. } => {
-                            depth -= 1;
-                            if depth == 0 {
-                                break;
-                            }
-                        }
-                        _ => {}
+    with_doc(doc, |doc| {
+        let start = el as usize;
+        let Some(end) = doc.find_end_element(start) else {
+            return Vec::new();
+        };
+        let mut depth = 0usize;
+        let mut children = Vec::new();
+        for (i, event) in doc.elements.iter().enumerate().take(end).skip(start + 1) {
+            match event {
+                AxmlEvent::StartElement { .. } => {
+                    if depth == 0 {
+                        children.push(i as u32);
                     }
+                    depth += 1;
                 }
+                AxmlEvent::EndElement { .. } => depth -= 1,
+                _ => {}
             }
         }
-        results
+        children
     })
+    .unwrap_or_default()
 }
 
 #[export]
 pub fn xml_parent(doc: u32, el: u32) -> Option<u32> {
-    XML_DOCUMENTS.with(|docs| {
-        let docs = docs.borrow();
-        if let Some(Some((document, _))) = docs.get(doc as usize) {
-            let target = el as usize;
-            if target < document.elements.len() {
-                let mut depth = 0i32;
-                for i in (0..target).rev() {
-                    match &document.elements[i] {
-                        AxmlEvent::EndElement { .. } => depth += 1,
-                        AxmlEvent::StartElement { .. } => {
-                            if depth == 0 {
-                                return Some(i as u32);
-                            }
-                            depth -= 1;
-                        }
-                        _ => {}
-                    }
-                }
+    with_doc(doc, |doc| {
+        let mut depth = 0i32;
+        for i in (0..el as usize).rev() {
+            match doc.elements.get(i)? {
+                AxmlEvent::EndElement { .. } => depth += 1,
+                AxmlEvent::StartElement { .. } if depth == 0 => return Some(i as u32),
+                AxmlEvent::StartElement { .. } => depth -= 1,
+                _ => {}
             }
         }
         None
     })
+    .flatten()
 }
 
 #[export]
 pub fn xml_tag_name(doc: u32, el: u32) -> String {
-    if el >= PENDING_OFFSET {
-        return PENDING_ELEMENTS.with(|pe| {
-            let pe = pe.borrow();
-            let idx = (el - PENDING_OFFSET) as usize;
-            if let Some(pending) = pe.get(idx) {
-                return XML_DOCUMENTS.with(|docs| {
-                    let docs = docs.borrow();
-                    let doc_idx = pending.doc_idx as usize;
-                    if let Some(Some((document, _))) = docs.get(doc_idx) {
-                        if let Some(AxmlEvent::StartElement { name, .. }) = pending.events.first() {
-                            if let Some(s) = document.string(*name) {
-                                return s.to_string();
-                            }
-                        }
-                    }
-                    String::new()
-                });
-            }
-            String::new()
-        });
+    match pending_index(el) {
+        Some(index) => PENDING.with(|pending| {
+            let pending = pending.borrow();
+            let element = pending.get(index)?;
+            let AxmlEvent::StartElement { name, .. } = element.events.first()? else {
+                return None;
+            };
+            with_doc(element.doc, |doc| doc.string(*name).map(|s| s.into_owned())).flatten()
+        }),
+        None => with_doc(doc, |doc| {
+            doc.element_name(el as usize).map(|s| s.into_owned())
+        })
+        .flatten(),
     }
-    XML_DOCUMENTS.with(|docs| {
-        let docs = docs.borrow();
-        if let Some(Some((document, _))) = docs.get(doc as usize) {
-            if let Some(AxmlEvent::StartElement { name, .. }) = document.elements.get(el as usize) {
-                if let Some(s) = document.string(*name) {
-                    return s.to_string();
-                }
-            }
-        }
-        String::new()
-    })
+    .unwrap_or_default()
 }
 
 #[export]
 pub fn xml_get_attribute(doc: u32, el: u32, name: String) -> Option<String> {
-    if el >= PENDING_OFFSET {
-        return PENDING_ELEMENTS.with(|pe| {
-            let pe = pe.borrow();
-            let idx = (el - PENDING_OFFSET) as usize;
-            if let Some(pending) = pe.get(idx) {
-                return XML_DOCUMENTS.with(|docs| {
-                    let docs = docs.borrow();
-                    let doc_idx = pending.doc_idx as usize;
-                    if let Some(Some((document, _))) = docs.get(doc_idx) {
-                        if let Some(AxmlEvent::StartElement { attributes, .. }) =
-                            pending.events.first()
-                        {
-                            return get_attr_value(document, attributes, &name);
-                        }
-                    }
-                    None
-                });
-            }
-            None
-        });
-    }
-    XML_DOCUMENTS.with(|docs| {
-        let docs = docs.borrow();
-        if let Some(Some((document, _))) = docs.get(doc as usize) {
-            if let Some(AxmlEvent::StartElement { attributes, .. }) =
-                document.elements.get(el as usize)
-            {
-                return get_attr_value(document, attributes, &name);
-            }
-        }
-        None
+    with_element(doc, el, |doc, attributes| {
+        attribute_text(doc, attributes, &name)
     })
+    .flatten()
 }
 
+/// Sets an attribute from text, parsing literals and resource references the
+/// way the XML compiler does.
 #[export]
 pub fn xml_set_attribute(doc: u32, el: u32, name: String, value: String) {
-    if el >= PENDING_OFFSET {
-        PENDING_ELEMENTS.with(|pe| {
-            let mut pe = pe.borrow_mut();
-            let idx = (el - PENDING_OFFSET) as usize;
-            if idx < pe.len() {
-                let doc_idx = pe[idx].doc_idx as usize;
-                XML_DOCUMENTS.with(|docs| {
-                    let mut docs = docs.borrow_mut();
-                    if let Some(Some((document, _))) = docs.get_mut(doc_idx) {
-                        let (ns, local) = resolve_namespace(document, &name);
-                        let name_idx = document.string_pool.intern(local);
-                        let (typed_value, raw_value) = resolve_attr_value(document, &value);
-                        if let Some(AxmlEvent::StartElement { attributes, .. }) =
-                            pe[idx].events.first_mut()
-                        {
-                            set_or_add_attr(attributes, ns, name_idx, typed_value, raw_value);
-                        }
-                    }
-                });
-            }
-        });
-        return;
-    }
-    XML_DOCUMENTS.with(|docs| {
-        let mut docs = docs.borrow_mut();
-        if let Some(Some((document, _))) = docs.get_mut(doc as usize) {
-            let (ns, local) = resolve_namespace(document, &name);
-            let name_idx = document.string_pool.intern(local);
-            let (typed_value, raw_value) = resolve_attr_value(document, &value);
-            if let Some(AxmlEvent::StartElement { attributes, .. }) =
-                document.elements.get_mut(el as usize)
-            {
-                set_or_add_attr(attributes, ns, name_idx, typed_value, raw_value);
-            }
-        }
+    let parsed = with_ctx(|ctx| {
+        let resources = ctx.apk_mut().base_mut().resources_mut().ok().flatten();
+        axml::parse_attribute_value(&value, resources).ok()
     });
-}
-
-#[export]
-pub fn xml_set_attribute_int(doc: u32, el: u32, name: String, value: i32) {
-    set_attribute_typed(doc, el, &name, TypedValue::Int(value));
-}
-
-#[export]
-pub fn xml_set_attribute_bool(doc: u32, el: u32, name: String, value: bool) {
-    set_attribute_typed(doc, el, &name, TypedValue::Bool(value));
+    let Some(parsed) = parsed else {
+        return;
+    };
+    set_attribute_value(doc, el, &name, |pool| match parsed {
+        AttributeValue::Value(value) => value,
+        AttributeValue::Text => ResValue::string(pool.intern(&value)),
+    });
 }
 
 #[export]
 pub fn xml_set_attribute_ref(doc: u32, el: u32, name: String, res_id: u32) {
-    set_attribute_typed(doc, el, &name, TypedValue::Reference(res_id));
-}
-
-fn set_attribute_typed(doc: u32, el: u32, name: &str, typed_value: TypedValue) {
-    if el >= PENDING_OFFSET {
-        PENDING_ELEMENTS.with(|pe| {
-            let mut pe = pe.borrow_mut();
-            let idx = (el - PENDING_OFFSET) as usize;
-            if idx < pe.len() {
-                let doc_idx = pe[idx].doc_idx as usize;
-                XML_DOCUMENTS.with(|docs| {
-                    let mut docs = docs.borrow_mut();
-                    if let Some(Some((document, _))) = docs.get_mut(doc_idx) {
-                        let (ns, local) = resolve_namespace(document, name);
-                        let name_idx = document.string_pool.intern(local);
-                        if let Some(AxmlEvent::StartElement { attributes, .. }) =
-                            pe[idx].events.first_mut()
-                        {
-                            set_or_add_attr(attributes, ns, name_idx, typed_value, None);
-                        }
-                    }
-                });
-            }
-        });
-        return;
-    }
-    XML_DOCUMENTS.with(|docs| {
-        let mut docs = docs.borrow_mut();
-        if let Some(Some((document, _))) = docs.get_mut(doc as usize) {
-            let (ns, local) = resolve_namespace(document, name);
-            let name_idx = document.string_pool.intern(local);
-            if let Some(AxmlEvent::StartElement { attributes, .. }) =
-                document.elements.get_mut(el as usize)
-            {
-                set_or_add_attr(attributes, ns, name_idx, typed_value, None);
-            }
-        }
-    });
+    set_attribute_value(doc, el, &name, |_| ResValue::reference(res_id));
 }
 
 #[export]
 pub fn xml_remove_attribute(doc: u32, el: u32, name: String) {
-    if el >= PENDING_OFFSET {
-        PENDING_ELEMENTS.with(|pe| {
-            let mut pe = pe.borrow_mut();
-            let idx = (el - PENDING_OFFSET) as usize;
-            if idx < pe.len() {
-                let doc_idx = pe[idx].doc_idx as usize;
-                XML_DOCUMENTS.with(|docs| {
-                    let mut docs = docs.borrow_mut();
-                    if let Some(Some((document, _))) = docs.get_mut(doc_idx) {
-                        let (ns, local) = resolve_namespace(document, &name);
-                        let name_idx = document.string_pool.intern(local);
-                        if let Some(AxmlEvent::StartElement { attributes, .. }) =
-                            pe[idx].events.first_mut()
-                        {
-                            attributes.retain(|a| !(a.name == name_idx && a.namespace == ns));
-                        }
-                    }
-                });
-            }
-        });
-        return;
-    }
-    XML_DOCUMENTS.with(|docs| {
-        let mut docs = docs.borrow_mut();
-        if let Some(Some((document, _))) = docs.get_mut(doc as usize) {
-            let (ns, local) = resolve_namespace(document, &name);
-            let name_idx = document.string_pool.intern(local);
-            if let Some(AxmlEvent::StartElement { attributes, .. }) =
-                document.elements.get_mut(el as usize)
-            {
-                attributes.retain(|a| !(a.name == name_idx && a.namespace == ns));
-            }
+    with_attributes_mut(doc, el, |pool, ns, attributes| {
+        let (namespace, local) = split_name(ns, &name);
+        if let Some(name) = pool.find(local) {
+            attributes.retain(|attr| !(attr.name == name && attr.namespace == namespace));
         }
     });
 }
 
+/// A detached element; attach it with `xml_append_child` or `xml_insert_before`.
 #[export]
 pub fn xml_create_element(doc: u32, tag: String) -> u32 {
-    XML_DOCUMENTS.with(|docs| {
-        let mut docs = docs.borrow_mut();
-        let doc_idx = doc as usize;
-        if let Some(Some((document, _))) = docs.get_mut(doc_idx) {
-            let name_idx = document.string_pool.intern(&tag);
-            let events = vec![
+    with_doc_mut(doc, |document| {
+        let name = document.intern_string(&tag);
+        push_pending(
+            doc,
+            vec![
                 AxmlEvent::StartElement {
                     namespace: None,
-                    name: name_idx,
+                    name,
                     attributes: Vec::new(),
                 },
                 AxmlEvent::EndElement {
                     namespace: None,
-                    name: name_idx,
+                    name,
                 },
-            ];
-            PENDING_ELEMENTS.with(|pe| {
-                let mut pe = pe.borrow_mut();
-                let handle = PENDING_OFFSET + pe.len() as u32;
-                pe.push(PendingElement {
-                    doc_idx: doc,
-                    events,
-                });
-                handle
-            })
-        } else {
-            0
-        }
+            ],
+        )
     })
+    .unwrap_or(0)
 }
 
 #[export]
-pub fn xml_append_child(doc: u32, parent_el: u32, child: u32) {
-    if child >= PENDING_OFFSET {
-        let pending = take_pending_element(child);
-        let pending = match pending {
-            Some(p) => p,
-            None => return,
-        };
-        if parent_el >= PENDING_OFFSET {
-            PENDING_ELEMENTS.with(|pe| {
-                let mut pe = pe.borrow_mut();
-                let Some(parent_idx) = pending_index(parent_el) else {
+pub fn xml_append_child(doc: u32, parent: u32, child: u32) {
+    if let Some(pending) = take_pending(child) {
+        if let Some(parent_index) = pending_index(parent) {
+            PENDING.with(|table| {
+                let mut table = table.borrow_mut();
+                let Some(parent) = table.get_mut(parent_index) else {
                     return;
                 };
-                let Some(parent) = pe.get_mut(parent_idx) else {
-                    return;
-                };
-                let Some(insert_pos) = pending_insert_pos(&parent.events) else {
-                    return;
-                };
-                for (offset, event) in pending.events.into_iter().enumerate() {
-                    parent.events.insert(insert_pos + offset, event);
-                }
+                let end = parent.events.len().saturating_sub(1);
+                parent.events.splice(end..end, pending.events);
             });
             return;
         }
-        XML_DOCUMENTS.with(|docs| {
-            let mut docs = docs.borrow_mut();
-            let doc_idx = pending.doc_idx as usize;
-            if let Some(Some((document, _))) = docs.get_mut(doc_idx) {
-                let parent_pos = parent_el as usize;
-                if parent_pos < document.elements.len() {
-                    let end = element_end(document, parent_pos);
-                    insert_events_at(document, end, pending.events);
-                }
+        with_doc_mut(pending.doc, |document| {
+            if let Some(end) = document.find_end_element(parent as usize) {
+                document.elements.splice(end..end, pending.events);
             }
         });
-    } else {
-        XML_DOCUMENTS.with(|docs| {
-            let mut docs = docs.borrow_mut();
-            if let Some(Some((document, _))) = docs.get_mut(doc as usize) {
-                if (child as usize) < document.elements.len() {
-                    let events = extract_subtree(document, child as usize);
-                    let child_start = child as usize;
-                    let child_count = events.len();
-                    document
-                        .elements
-                        .drain(child_start..child_start + child_count);
-                    let parent_pos = if (parent_el as usize) > child_start {
-                        parent_el as usize - child_count
-                    } else {
-                        parent_el as usize
-                    };
-                    let end = element_end(document, parent_pos);
-                    insert_events_at(document, end, events);
-                }
-            }
-        });
+        return;
     }
-}
-
-#[export]
-pub fn xml_insert_before(doc: u32, _parent: u32, child: u32, before: u32) {
-    if child >= PENDING_OFFSET {
-        let pending = take_pending_element(child);
-        let pending = match pending {
-            Some(p) => p,
-            None => return,
-        };
-        XML_DOCUMENTS.with(|docs| {
-            let mut docs = docs.borrow_mut();
-            let doc_idx = pending.doc_idx as usize;
-            if let Some(Some((document, _))) = docs.get_mut(doc_idx) {
-                let before_pos = before as usize;
-                if before_pos < document.elements.len() {
-                    insert_events_at(document, before_pos, pending.events);
-                }
-            }
-        });
-    } else {
-        XML_DOCUMENTS.with(|docs| {
-            let mut docs = docs.borrow_mut();
-            if let Some(Some((document, _))) = docs.get_mut(doc as usize) {
-                if (child as usize) < document.elements.len() {
-                    let events = extract_subtree(document, child as usize);
-                    let child_start = child as usize;
-                    let child_count = events.len();
-                    document
-                        .elements
-                        .drain(child_start..child_start + child_count);
-                    let before_pos = if (before as usize) > child_start {
-                        before as usize - child_count
-                    } else {
-                        before as usize
-                    };
-                    insert_events_at(document, before_pos, events);
-                }
-            }
-        });
-    }
-}
-
-#[export]
-pub fn xml_remove_element(doc: u32, el: u32) {
-    XML_DOCUMENTS.with(|docs| {
-        let mut docs = docs.borrow_mut();
-        if let Some(Some((document, _))) = docs.get_mut(doc as usize) {
-            if (el as usize) < document.elements.len() {
-                document.remove_element(el as usize);
-            }
+    with_doc_mut(doc, |document| {
+        let child = child as usize;
+        if child >= document.elements.len() {
+            return;
+        }
+        let events = detach(document, child);
+        let parent = parent as usize
+            - if parent as usize > child {
+                events.len()
+            } else {
+                0
+            };
+        if let Some(end) = document.find_end_element(parent) {
+            document.elements.splice(end..end, events);
         }
     });
 }
 
 #[export]
-pub fn xml_clone_element(doc: u32, el: u32, deep: bool) -> u32 {
-    XML_DOCUMENTS.with(|docs| {
-        let docs = docs.borrow();
-        if let Some(Some((document, _))) = docs.get(doc as usize) {
-            let start = el as usize;
-            if start < document.elements.len() {
-                if let AxmlEvent::StartElement {
-                    namespace,
-                    name,
-                    attributes,
-                } = &document.elements[start]
-                {
-                    let events = if deep {
-                        extract_subtree(document, start)
-                    } else {
-                        vec![
-                            AxmlEvent::StartElement {
-                                namespace: *namespace,
-                                name: *name,
-                                attributes: attributes.clone(),
-                            },
-                            AxmlEvent::EndElement {
-                                namespace: *namespace,
-                                name: *name,
-                            },
-                        ]
-                    };
-                    return PENDING_ELEMENTS.with(|pe| {
-                        let mut pe = pe.borrow_mut();
-                        let handle = PENDING_OFFSET + pe.len() as u32;
-                        pe.push(PendingElement {
-                            doc_idx: doc,
-                            events,
-                        });
-                        handle
-                    });
-                }
+pub fn xml_insert_before(doc: u32, child: u32, before: u32) {
+    if let Some(pending) = take_pending(child) {
+        with_doc_mut(pending.doc, |document| {
+            let before = before as usize;
+            if before <= document.elements.len() {
+                document.elements.splice(before..before, pending.events);
             }
+        });
+        return;
+    }
+    with_doc_mut(doc, |document| {
+        let child = child as usize;
+        if child >= document.elements.len() {
+            return;
         }
-        0
+        let events = detach(document, child);
+        let before = before as usize
+            - if before as usize > child {
+                events.len()
+            } else {
+                0
+            };
+        if before <= document.elements.len() {
+            document.elements.splice(before..before, events);
+        }
+    });
+}
+
+#[export]
+pub fn xml_remove_element(doc: u32, el: u32) {
+    with_doc_mut(doc, |document| document.remove_element(el as usize));
+}
+
+/// A detached copy of an element, with or without its children.
+#[export]
+pub fn xml_clone_element(doc: u32, el: u32, deep: bool) -> u32 {
+    with_doc(doc, |document| {
+        let start = el as usize;
+        let AxmlEvent::StartElement {
+            namespace,
+            name,
+            attributes,
+        } = document.elements.get(start)?
+        else {
+            return None;
+        };
+        let events = if deep {
+            subtree(document, start)
+        } else {
+            vec![
+                AxmlEvent::StartElement {
+                    namespace: *namespace,
+                    name: *name,
+                    attributes: attributes.clone(),
+                },
+                AxmlEvent::EndElement {
+                    namespace: *namespace,
+                    name: *name,
+                },
+            ]
+        };
+        Some(push_pending(doc, events))
     })
+    .flatten()
+    .unwrap_or(0)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reseam_apk::axml::StringPool;
 
     fn with_test_doc(f: impl FnOnce(u32)) -> AxmlDocument {
+        let strings = [ANDROID_NS, "android", "LinearLayout"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let doc = AxmlDocument {
-            string_pool: StringPool {
-                strings: vec![
-                    ANDROID_NS_URI.to_string(),
-                    "android".to_string(),
-                    "LinearLayout".to_string(),
-                ],
-                is_utf8: true,
-            },
+            string_pool: StringPool::new(strings, true),
             resource_ids: Vec::new(),
             elements: vec![
                 AxmlEvent::StartNamespace {
@@ -876,107 +617,47 @@ mod tests {
                 },
             ],
         };
-        XML_DOCUMENTS.with(|docs| {
-            let mut docs = docs.borrow_mut();
-            docs.clear();
-            docs.push(Some((doc, "res/layout/test.xml".to_string())));
-        });
-        f(0);
-        let document = XML_DOCUMENTS.with(|docs| {
-            let docs = docs.borrow();
-            docs[0].as_ref().expect("test document").0.clone()
-        });
-        XML_DOCUMENTS.with(|docs| docs.borrow_mut().clear());
+        reset();
+        let source = DocSource::File {
+            component: 0,
+            path: "res/layout/test.xml".into(),
+        };
+        let handle = open_source(&source, || Some(doc)).unwrap();
+        f(handle);
+        let document = with_doc(handle, Clone::clone).unwrap();
+        reset();
         document
     }
 
     #[test]
-    fn xml_set_attribute_preserves_typed_values() {
+    fn typed_attributes_and_nested_pending_elements() {
         let document = with_test_doc(|doc| {
-            xml_set_attribute(doc, 1, "android:padding".to_string(), "16dp".to_string());
-            xml_set_attribute(doc, 1, "android:alpha".to_string(), "0.5".to_string());
-            xml_set_attribute(
-                doc,
-                1,
-                "android:textColor".to_string(),
-                "?android:attr/textColor".to_string(),
-            );
-        });
-        let attributes = match &document.elements[1] {
-            AxmlEvent::StartElement { attributes, .. } => attributes,
-            _ => panic!("expected start element"),
-        };
-        let attr = |name: &str| {
-            attributes
-                .iter()
-                .find(|attr| document.string(attr.name) == Some(name))
-                .expect("attribute present")
-        };
-
-        assert!(matches!(
-            attr("padding").typed_value,
-            TypedValue::Other {
-                data_type: 0x05,
-                ..
-            }
-        ));
-        assert!(matches!(
-            attr("alpha").typed_value,
-            TypedValue::Other {
-                data_type: 0x04,
-                ..
-            }
-        ));
-        assert!(matches!(
-            attr("textColor").typed_value,
-            TypedValue::Other { data_type: 0x02, data }
-                if data == reseam_apk::axml::compiler::android_attr_res_id("textColor").unwrap()
-        ));
-    }
-
-    #[test]
-    fn xml_append_child_supports_nested_pending_elements() {
-        let document = with_test_doc(|doc| {
-            let parent = xml_create_element(doc, "activity".to_string());
-            let filter = xml_create_element(doc, "intent-filter".to_string());
-            let action = xml_create_element(doc, "action".to_string());
-            let category = xml_create_element(doc, "category".to_string());
-
-            xml_set_attribute(
-                doc,
-                action,
-                "android:name".to_string(),
-                "android.intent.action.MAIN".to_string(),
-            );
-            xml_set_attribute(
-                doc,
-                category,
-                "android:name".to_string(),
-                "android.intent.category.LAUNCHER".to_string(),
-            );
-
+            set_attribute_value(doc, 1, "android:padding", |_| ResValue::int(16));
+            set_attribute_value(doc, 1, "android:enabled", |_| ResValue::boolean(true));
+            let parent = xml_create_element(doc, "activity".into());
+            let filter = xml_create_element(doc, "intent-filter".into());
+            let action = xml_create_element(doc, "action".into());
+            xml_set_attribute_ref(doc, action, "android:name".into(), 0x7f00_0001);
             xml_append_child(doc, filter, action);
-            xml_append_child(doc, filter, category);
             xml_append_child(doc, parent, filter);
             xml_append_child(doc, 1, parent);
+            assert_eq!(xml_children(doc, 1).len(), 1);
         });
-
-        let mut names = Vec::new();
-        for event in &document.elements {
-            if let AxmlEvent::StartElement { name, .. } = event {
-                names.push(document.string(*name).unwrap().to_string());
-            }
-        }
-
+        let names: Vec<_> = (0..document.elements.len())
+            .filter_map(|i| document.element_name(i).map(|s| s.into_owned()))
+            .collect();
         assert_eq!(
             names,
-            vec![
-                "LinearLayout".to_string(),
-                "activity".to_string(),
-                "intent-filter".to_string(),
-                "action".to_string(),
-                "category".to_string(),
-            ]
+            ["LinearLayout", "activity", "intent-filter", "action"]
+        );
+        let root_attrs = document.attributes(1);
+        assert_eq!(root_attrs.len(), 2);
+        assert_eq!(root_attrs[0].value, ResValue::int(16));
+        assert_eq!(root_attrs[0].namespace, Some(0));
+        assert_eq!(root_attrs[1].value, ResValue::boolean(true));
+        assert_eq!(
+            document.attributes(4)[0].value,
+            ResValue::reference(0x7f00_0001)
         );
     }
 }

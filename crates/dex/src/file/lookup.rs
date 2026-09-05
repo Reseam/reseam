@@ -4,7 +4,9 @@
 use std::borrow::Cow;
 
 use super::DexFile;
-use crate::types::{FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx};
+use crate::types::{
+    FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx,
+};
 
 impl DexFile {
     pub fn string(&self, idx: StringIdx) -> Cow<'_, str> {

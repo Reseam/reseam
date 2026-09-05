@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "reseam", about = "High-performance APK patching engine")]
+#[command(name = "reseam", version, about = "APK patching engine")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -27,13 +27,21 @@ pub enum Commands {
     },
 }
 
-#[derive(Args, Clone)]
+#[derive(Args)]
+pub struct TrustArgs {
+    #[arg(long = "trust", value_name = "PUBLIC_KEY_HEX")]
+    pub trust: Vec<String>,
+}
+
+#[derive(Args)]
 pub struct PatchRequestArgs {
     pub apk: PathBuf,
     #[arg(long = "split")]
     pub split: Vec<PathBuf>,
     #[arg(long)]
     pub bundle: PathBuf,
+    #[command(flatten)]
+    pub trust: TrustArgs,
     #[arg(long, requires = "cert")]
     pub key: Option<PathBuf>,
     #[arg(long, requires = "key")]
@@ -52,9 +60,9 @@ pub struct PatchRequestArgs {
 pub struct PatchCommand {
     #[command(flatten)]
     pub request: PatchRequestArgs,
-    #[arg(long, conflicts_with = "output_dir")]
+    #[arg(long, conflicts_with = "split")]
     pub output: Option<PathBuf>,
-    #[arg(long, conflicts_with = "output")]
+    #[arg(long, requires = "split")]
     pub output_dir: Option<PathBuf>,
 }
 
@@ -100,22 +108,22 @@ pub struct BundlePackCommand {
 #[derive(Args)]
 pub struct BundleListCommand {
     pub bundle: PathBuf,
+    #[command(flatten)]
+    pub trust: TrustArgs,
 }
 
 #[derive(Subcommand)]
 pub enum PublishCommands {
     Patches(PublishPatchesCommand),
+    Manager(PublishManagerCommand),
 }
 
 #[derive(Args)]
-pub struct PublishPatchesCommand {
-    pub bundle: PathBuf,
+pub struct ReleaseArgs {
     #[arg(long)]
     pub version: String,
     #[arg(long)]
     pub url: String,
-    #[arg(long, default_value = "patches.json")]
-    pub out: PathBuf,
     #[arg(long, conflicts_with = "description_file")]
     pub description: Option<String>,
     #[arg(long)]
@@ -126,4 +134,27 @@ pub struct PublishPatchesCommand {
     pub created_at: Option<String>,
     #[arg(long)]
     pub prerelease: bool,
+}
+
+#[derive(Args)]
+pub struct PublishPatchesCommand {
+    pub bundle: PathBuf,
+    #[command(flatten)]
+    pub release: ReleaseArgs,
+    #[arg(long, default_value = "patches.json")]
+    pub out: PathBuf,
+}
+
+#[derive(Args)]
+pub struct PublishManagerCommand {
+    #[arg(long)]
+    pub name: String,
+    #[arg(long)]
+    pub author: String,
+    #[arg(long, default_value = "")]
+    pub summary: String,
+    #[command(flatten)]
+    pub release: ReleaseArgs,
+    #[arg(long, default_value = "manager.json")]
+    pub out: PathBuf,
 }

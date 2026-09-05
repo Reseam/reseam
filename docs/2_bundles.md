@@ -26,7 +26,7 @@ my-bundle/
 
 ## `manifest.toml`
 
-Sits at the bundle root. All four fields are required.
+Sits at the bundle root. `name` and `format_version` are required; `author` and `description` are optional but shown to users, so fill them in.
 
 ```toml
 [bundle]
@@ -40,6 +40,7 @@ format_version = 1
 - `author`: the publisher's name or handle.
 - `description`: one line.
 - `format_version`: currently `1`. The engine refuses to load bundles whose `format_version` it doesn't recognize.
+- `engine`: written by `reseam bundle pack`, never by hand. It records the engine version that packed the bundle. A bundle loads on engines of the same major version (same minor while the major is 0); otherwise the engine says which side needs updating.
 
 Per-patch metadata (name, description, compatibility, options) lives in the patch code. Release metadata (version, download URL) lives in `patches.json`, generated at publish time.
 

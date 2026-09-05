@@ -231,12 +231,16 @@ mod tests {
             sink.patch(sink.pos() as usize - 4, &[8; 4]);
         }
         let mut hashed = Vec::new();
-        spool.digest(4, 2 * WINDOW + 20, &mut |c| hashed.extend_from_slice(c)).unwrap();
+        spool
+            .digest(4, 2 * WINDOW + 20, &mut |c| hashed.extend_from_slice(c))
+            .unwrap();
         assert_eq!(hashed, expected[4..2 * WINDOW + 20]);
         let mut back = Vec::new();
         spool.read_back(24, 16, &mut back).unwrap();
         assert_eq!(back, body[8..24]);
-        spool.read_back(spool.pos() as usize - 12, 6, &mut back).unwrap();
+        spool
+            .read_back(spool.pos() as usize - 12, 6, &mut back)
+            .unwrap();
         assert_eq!(back, expected[expected.len() - 12..expected.len() - 6]);
         spool.patch(4, &[6; 4]);
         expected.patch(4, &[6; 4]);

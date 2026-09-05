@@ -1,25 +1,29 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-pub mod compiler;
-pub mod reader;
-pub mod string_pool;
-pub mod writer;
+//! Android binary XML: parsing, editing, serializing, and compiling from text.
 
-pub use compiler::{compile_xml, is_compiled_axml};
-pub use reader::{AxmlAttribute, AxmlDocument, AxmlEvent, TypedValue};
-pub use string_pool::StringPool;
+pub mod android_attrs;
+mod compiler;
+mod document;
+mod edit;
+mod manifest;
+mod reader;
+mod writer;
 
-pub(crate) const CHUNK_XML_DOCUMENT: u16 = 0x0003;
-pub(crate) const CHUNK_STRING_POOL: u16 = 0x0001;
-pub(crate) const CHUNK_RESOURCE_IDS: u16 = 0x0180;
-pub(crate) const CHUNK_START_NAMESPACE: u16 = 0x0100;
-pub(crate) const CHUNK_END_NAMESPACE: u16 = 0x0101;
-pub(crate) const CHUNK_START_ELEMENT: u16 = 0x0102;
-pub(crate) const CHUNK_END_ELEMENT: u16 = 0x0103;
+pub use android_attrs::android_attr_res_id;
+pub use compiler::{
+    build_document, compile_xml, is_compiled_axml, parse_attribute_value, AttributeValue,
+};
+pub use document::{AxmlAttribute, AxmlDocument, AxmlEvent};
 
-pub(crate) const TYPE_STRING: u8 = 0x03;
-pub(crate) const TYPE_INT_DEC: u8 = 0x10;
-pub(crate) const TYPE_INT_HEX: u8 = 0x11;
-pub(crate) const TYPE_INT_BOOLEAN: u8 = 0x12;
-pub(crate) const TYPE_REFERENCE: u8 = 0x01;
+pub const ANDROID_NS: &str = "http://schemas.android.com/apk/res/android";
+pub const APP_NS: &str = "http://schemas.android.com/apk/res-auto";
+
+const CHUNK_XML_DOCUMENT: u16 = 0x0003;
+const CHUNK_RESOURCE_IDS: u16 = 0x0180;
+const CHUNK_START_NAMESPACE: u16 = 0x0100;
+const CHUNK_END_NAMESPACE: u16 = 0x0101;
+const CHUNK_START_ELEMENT: u16 = 0x0102;
+const CHUNK_END_ELEMENT: u16 = 0x0103;
+const NONE: u32 = 0xFFFF_FFFF;

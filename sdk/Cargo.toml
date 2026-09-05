@@ -1,6 +1,6 @@
 [package]
 name = "reseam-sdk"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 description = "Application integration SDK for Reseam clients"
 
@@ -19,4 +19,3 @@ hex            = { workspace = true }
 jni            = { workspace = true }
 tracing        = { workspace = true }
 libc           = { workspace = true }
-memmap2        = { workspace = true }

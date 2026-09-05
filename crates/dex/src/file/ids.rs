@@ -115,7 +115,10 @@ impl<T: IdRecord> IdTable<T> {
 
     pub fn push(&mut self, record: T) -> usize {
         let i = self.len();
-        self.index.entry(hash_key(&record)).or_default().push(i as u32);
+        self.index
+            .entry(hash_key(&record))
+            .or_default()
+            .push(i as u32);
         self.tail.push(record);
         i
     }
@@ -172,7 +175,10 @@ impl<T: IdRecord> IdTable<T> {
             .unwrap_or(len);
         let mut index: FxHashMap<u64, SmallVec<[u32; 1]>> = FxHashMap::default();
         for i in self.sorted_len..len {
-            index.entry(hash_key(&self.get(i))).or_default().push(i as u32);
+            index
+                .entry(hash_key(&self.get(i)))
+                .or_default()
+                .push(i as u32);
         }
         self.index = index;
     }
@@ -193,7 +199,11 @@ fn hash_key<T: IdRecord>(record: &T) -> u64 {
 
 fn check(buf: &[u8], off: usize, size: usize) -> Result<()> {
     if off + size > buf.len() {
-        return Err(invalid_offset("id table entry", off as u32, buf.len() as u32));
+        return Err(invalid_offset(
+            "id table entry",
+            off as u32,
+            buf.len() as u32,
+        ));
     }
     Ok(())
 }

@@ -23,10 +23,10 @@ Build the JNI wrapper library:
 JAVA_HOME=/usr/lib/jvm/java-17-temurin-jdk cargo xtask jni-host
 ```
 
-Run SDK tests:
+Run SDK tests, from the workspace root:
 
 ```bash
-./gradlew test
+./gradlew :reseam-patch-sdk:test
 ```
 
 ## Editing rules

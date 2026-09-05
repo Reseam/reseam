@@ -9,7 +9,7 @@ class DexClass(val handle: UInt) {
             ?: error("invalid class handle: $handle")
 
     val methods: List<Method>
-        get() = classMethods(handle).map { Method(it.toUInt()) }
+        get() = directMethods + virtualMethods
 
     val directMethods: List<Method>
         get() = classDirectMethods(handle).map { Method(it.toUInt()) }
@@ -21,10 +21,10 @@ class DexClass(val handle: UInt) {
         get() = classFields(handle)
 
     val staticFields: List<FieldInfo>
-        get() = classStaticFields(handle)
+        get() = fields.filter { AccessFlags.STATIC.isSet(it.accessFlags) }
 
     val instanceFields: List<FieldInfo>
-        get() = classInstanceFields(handle)
+        get() = fields.filterNot { AccessFlags.STATIC.isSet(it.accessFlags) }
 
     val superclass: String?
         get() = info.superclass

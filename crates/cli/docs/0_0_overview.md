@@ -20,13 +20,13 @@ The binary is named `reseam` and ships from the `reseam-cli` crate.
 - Generates Ed25519 bundle signing seeds.
 - Packs and signs a bundle staging directory into a `.reseam` archive.
 - Lists the patches inside a bundle with their compatibility and options.
-- Writes or updates a `patches.json` release index from a signed bundle.
+- Writes or updates release indexes: `patches.json` from a signed bundle, `manager.json` for a manager release.
 
 ## Surfaces it talks to
 
 - Reads APKs and split APKs.
 - Reads `.reseam` bundles. Signature verification happens on load; unsigned or untrusted bundles are refused.
 - Writes patched APKs and sibling `.pk8` / `.der` key material next to the output when no key was supplied.
-- Writes `patches.json` indexes for distribution via the Reseam API.
+- Writes `patches.json` and `manager.json` indexes for distribution via the Reseam API.
 
-The CLI does not fetch anything over the network. Bundles and APKs come from local paths; the `publish patches` command only records the URL you supply.
+The CLI does not fetch anything over the network. Bundles and APKs come from local paths; the `publish` commands only record the URLs you supply.

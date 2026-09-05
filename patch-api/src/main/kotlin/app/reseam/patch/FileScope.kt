@@ -8,43 +8,25 @@ package app.reseam.patch
 class FileScope internal constructor(
     private val componentName: String? = null,
 ) {
-    fun components(): List<String> = fileComponentNames()
+    fun components(): List<String> = componentNames()
 
     fun component(name: String): FileScope = FileScope(name)
 
-    fun list(): List<String> =
-        componentName?.let(::fileListInComponent) ?: fileList()
+    fun list(): List<String> = fileList(componentName)
 
-    fun read(path: String): ByteArray? =
-        componentName?.let { fileReadInComponent(it, path) } ?: fileRead(path)
+    fun read(path: String): ByteArray? = fileRead(componentName, path)
 
-    fun write(path: String, data: ByteArray) {
-        if (componentName == null) {
-            fileInject(path, data)
-        } else {
-            fileInjectInComponent(componentName, path, data)
-        }
-    }
+    fun write(path: String, data: ByteArray) = fileInject(componentName, path, data, false)
 
-    fun delete(path: String) {
-        if (componentName == null) {
-            fileDelete(path)
-        } else {
-            fileDeleteInComponent(componentName, path)
-        }
-    }
+    fun writeStored(path: String, data: ByteArray) = fileInject(componentName, path, data, true)
 
-    fun copy(bundlePath: String, apkPath: String) {
-        if (componentName == null) {
-            fileCopy(bundlePath, apkPath)
-        } else {
-            fileCopyInComponent(componentName, bundlePath, apkPath)
-        }
-    }
+    fun delete(path: String) = fileDelete(componentName, path)
+
+    fun copy(bundlePath: String, apkPath: String) = fileCopy(componentName, bundlePath, apkPath)
 
     fun xml(path: String): XmlDocument {
-        val handle = componentName?.let { xmlOpenInComponent(it, path) } ?: xmlOpen(path)
-        return XmlDocument(handle ?: error("failed to open XML document: $path"))
+        val handle = xmlOpen(componentName, path) ?: error("failed to open XML document: $path")
+        return XmlDocument(handle)
     }
 
     fun useXml(path: String, block: XmlDocument.() -> Unit) {

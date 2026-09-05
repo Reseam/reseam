@@ -1,16 +1,15 @@
 [package]
 name = "reseam-patcher"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 description = "Patch execution engine for Reseam with Kotlin JVM bridge support"
 readme = "README.md"
 
 [lib]
-crate-type = ["lib", "cdylib"]
+crate-type = ["lib"]
 
 [dependencies]
 reseam-apk          = { workspace = true }
-reseam-patcher-macros = { workspace = true }
 thiserror   = { workspace = true }
 serde       = { workspace = true }
 toml        = { workspace = true }
@@ -26,6 +25,8 @@ ed25519-dalek = { workspace = true }
 sha2        = { workspace = true }
 hex         = { workspace = true }
 
+[target.'cfg(not(target_os = "android"))'.dependencies]
+libc        = { workspace = true }
 
 [dev-dependencies]
 

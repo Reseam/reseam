@@ -1,6 +1,6 @@
 [package]
 name = "reseam-apk"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 description = "APK container support for Reseam: ZIP, AXML, resources, and DEX extraction"
 readme = "README.md"
@@ -17,14 +17,7 @@ tracing    = { workspace = true }
 memmap2    = { workspace = true }
 tempfile   = { workspace = true }
 libc       = { workspace = true }
-# Not used directly: switches `zip`'s flate2 to the zlib-rs backend for faster deflate.
 flate2     = { workspace = true }
 
 [dev-dependencies]
-pretty_assertions = { workspace = true }
-criterion         = { workspace = true }
-reseam-sign       = { workspace = true }
-
-[[bench]]
-name = "apk_bench"
-harness = false
+reseam-sign = { workspace = true }

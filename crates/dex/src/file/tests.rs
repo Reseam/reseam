@@ -47,8 +47,12 @@ fn intern_descriptors_return_errors() {
 fn dex_with_string_and_class() -> DexFile {
     let mut dex = DexFile::new(empty_test_header());
     dex.intern_string("Lexisting;");
-    dex.create_class("Lexisting;", crate::types::access_flags::AccessFlags::PUBLIC, None)
-        .unwrap();
+    dex.create_class(
+        "Lexisting;",
+        crate::types::access_flags::AccessFlags::PUBLIC,
+        None,
+    )
+    .unwrap();
     dex.mark_clean();
     dex
 }
@@ -81,8 +85,12 @@ fn class_mut_marks_dirty_and_headers_follow() {
 #[test]
 fn removing_a_class_drops_it_from_the_type_index() {
     let mut dex = dex_with_string_and_class();
-    dex.create_class("Lsecond;", crate::types::access_flags::AccessFlags::PUBLIC, None)
-        .unwrap();
+    dex.create_class(
+        "Lsecond;",
+        crate::types::access_flags::AccessFlags::PUBLIC,
+        None,
+    )
+    .unwrap();
     let second = dex.find_type_idx("Lsecond;").unwrap();
     assert_eq!(dex.class_index_of(second), Some(1));
 

@@ -21,21 +21,28 @@ Reseam is a Rust APK patching engine. Patches are written in Kotlin against the 
 cargo build --release
 ```
 
-This builds the `reseam` CLI plus the embedded patcher and SDK shim. The SDK's Android `jniLibs/*.so` files are produced by `cargo xtask regen all` (which also runs the BoltFFI codegen) — run it first on a fresh clone, or whenever you change a `#[export]` Rust function:
+This builds the `reseam` CLI plus the embedded patcher and SDK shim. The Kotlin bindings and the SDK's Android `jniLibs/*.so` files are produced by `cargo xtask regen all` (which also runs the BoltFFI codegen). Run it first on a fresh clone, and whenever you change a `#[export]` Rust function:
 
 ```bash
 cargo xtask regen all
 cargo build --release
 ```
 
-The Kotlin SDK side is published from `patch-api/` and `sdk/`. Build them only when you want to run their gradle tests, regenerate the JNI host glue, or publish to Maven:
+The Kotlin side is one Gradle build at the workspace root: `patch-api` publishes `reseam-patch-sdk` for patch authors, `sdk-kotlin` publishes `reseam-sdk` for managers. See `sdk/README.md`.
 
 ```bash
-cd patch-api && ./gradlew test       # SDK tests
 JAVA_HOME=/path/to/jdk cargo xtask jni-host
+./gradlew build
 ```
 
-`cargo xtask regen` also accepts `patch-api` and `sdk` if you want to regenerate just one side.
+## Release
+
+```bash
+cargo xtask release 0.4.0
+git push --follow-tags
+```
+
+One version for the engine, the SDK, and the patch API, set in `Cargo.toml` by that command. CI refuses a tag that does not match it, publishes both SDK packages, and uploads the CLI. The full order across repositories is in `RELEASING.md`.
 
 ## CLI
 
@@ -44,6 +51,7 @@ Patch an APK:
 ```bash
 reseam patch app.apk \
   --bundle build/bundle/my-bundle.reseam \
+  --trust <PUBLIC_KEY_HEX> \
   --output patched.apk
 ```
 
@@ -67,7 +75,7 @@ Manage bundles:
 ```bash
 reseam bundle keygen --out bundle-signing.key
 reseam bundle pack build/staging --key bundle-signing.key --out build/bundle/my-bundle.reseam
-reseam bundle list build/bundle/my-bundle.reseam
+reseam bundle list build/bundle/my-bundle.reseam --trust <PUBLIC_KEY_HEX>
 ```
 
 Publish a release index:

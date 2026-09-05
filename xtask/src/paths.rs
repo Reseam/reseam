@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 pub fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .expect("xtask crate must live one level below the workspace root")
+        .expect("xtask crate lives one level below the workspace root")
         .to_path_buf()
 }
 
@@ -20,8 +20,4 @@ pub fn patch_api() -> PathBuf {
 
 pub fn sdk() -> PathBuf {
     workspace_root().join("sdk")
-}
-
-pub fn target_debug() -> PathBuf {
-    workspace_root().join("target/debug")
 }

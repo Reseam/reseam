@@ -19,6 +19,7 @@ The output APK is written into a `tempfile::tempdir()` per iteration and discard
 |----------|---------|
 | `<apk>` | Base APK path. |
 | `--bundle <PATH>` | Signed `.reseam` bundle. Verified on open. |
+| `--trust <PUBLIC_KEY_HEX>` | Repeatable. Bundle signer to accept. Same as `reseam patch`. |
 | `--split <APK>` | Repeatable split APK input. |
 | `--key <PK8>` | PKCS#8 signing key. Requires `--cert`. |
 | `--cert <DER>` | DER X.509 certificate. Requires `--key`. |
@@ -40,14 +41,13 @@ Each iteration is broken down by phase, in order:
 |-------|----------------|
 | `OpenApk` | Open the base APK and any splits for patching. |
 | `LoadBundles` | Read each `.reseam`, verify signatures, instantiate patches. |
-| `CompileSelection` | Resolve enable/disable/options into a concrete plan. |
-| `ValidatePatches` | (dry-run only) Check compatibility per patch. |
+| `ValidatePatches` | (dry-run only) Resolve the selection and check compatibility per patch. |
 | `ApplyPatches` | Run each patch. |
 | `WriteUnsignedArtifacts` | Serialize the patched APK or split set to a temp file. |
 | `LoadSigningKey` | Load or generate the APK signing key. |
 | `SignArtifacts` | Produce APK Signature Scheme v2 signatures. |
 
-Per phase the report records duration in milliseconds and, where available, RSS and peak RSS in bytes.
+Per phase the report records duration in milliseconds and, where available, RSS, peak RSS, and peak native heap in bytes.
 
 ## Plain-text report
 
@@ -59,25 +59,27 @@ Dry run: false
 Warmups: 1
 Measured runs: 5
 
-iteration  1:      ok  total=1.42s  peak_rss=412.30MiB  final_rss=388.10MiB
-iteration  2:      ok  total=1.31s  peak_rss=410.80MiB  final_rss=387.20MiB
+iteration  1:      ok  total=4.12s  peak_rss=375.30MiB  final_rss=268.10MiB (anon=180.20MiB file=87.90MiB)  final_heap=22.40MiB  jvm_committed=96.00MiB
+iteration  2:      ok  total=4.05s  peak_rss=372.80MiB  final_rss=266.90MiB (anon=179.60MiB file=87.30MiB)  final_heap=22.10MiB  jvm_committed=96.00MiB
 ...
 
 summary: 5 ok, 0 failed
-  total: min=1.30s median=1.34s max=1.42s mean=1340.0 ms
-  peak rss: min=410.80MiB median=412.30MiB max=414.10MiB
+  total: min=4.01s median=4.05s max=4.12s mean=4056.0 ms
+  peak rss: min=372.80MiB median=375.30MiB max=376.10MiB
 
 phase breakdown:
-  open_apk                 median=82ms  max_peak=120.40MiB
-  load_bundles             median=63ms  max_peak=145.20MiB
-  compile_selection        median=4ms   max_peak=145.20MiB
-  apply_patches            median=720ms max_peak=410.80MiB
-  write_unsigned_artifacts median=180ms max_peak=412.30MiB
-  load_signing_key         median=12ms  max_peak=412.30MiB
-  sign_artifacts           median=240ms max_peak=414.10MiB
+  open_apk                 median=135ms max_peak_rss=120.40MiB max_peak_heap=15.20MiB
+  load_bundles             median=630ms max_peak_rss=145.20MiB max_peak_heap=15.20MiB
+  apply_patches            median=2.10s max_peak_rss=375.30MiB max_peak_heap=22.40MiB
+  write_unsigned_artifacts median=680ms max_peak_rss=375.30MiB max_peak_heap=22.40MiB
+  load_signing_key         median=12ms  max_peak_rss=375.30MiB max_peak_heap=22.40MiB
+  sign_artifacts           median=240ms max_peak_rss=376.10MiB max_peak_heap=22.40MiB
+
+apply_patches memory attribution (sampled at apply-phase peak):
+  ...
 ```
 
-Skipped phases (for example `validate_patches` outside `--dry-run`) are omitted.
+A failed iteration prints `iteration  n:  failed  <error>` instead. Skipped phases (for example `validate_patches` outside `--dry-run`) are omitted. The attribution block at the end breaks the apply-phase peak down into materialized DEX structures, the JVM heap, and the rest of the native heap, from the last successful iteration.
 
 ## JSON report
 
@@ -98,26 +100,29 @@ reseam perf app.apk --bundle patches.reseam --iterations 5 --json > perf.json
       "iteration": 1,
       "success": true,
       "error": null,
-      "metrics": { "total_duration_ms": 1420, "phases": [ ... ], "final_rss_bytes": ..., "peak_rss_bytes": ... }
+      "metrics": { "total_duration_ms": 4120, "phases": [ ... ], "final_rss_bytes": ..., "peak_rss_bytes": ..., "apply_diagnostics": { ... } }
     }
   ],
   "summary": {
     "successful_iterations": 5,
     "failed_iterations": 0,
-    "total_duration_ms": { "min": 1300, "median": 1340, "max": 1420, "mean": 1340.0 },
-    "peak_rss_bytes": { "min": 430718976, "median": 432498688, "max": 434176000, "mean": 432490291.2 },
+    "total_duration_ms": { "min": 4010, "median": 4050, "max": 4120, "mean": 4056.0 },
+    "final_rss_bytes": { "min": ..., "median": ..., "max": ..., "mean": ... },
+    "peak_rss_bytes": { "min": ..., "median": ..., "max": ..., "mean": ... },
     "phases": [
       {
         "phase": "apply_patches",
-        "duration_ms": { "min": 700, "median": 720, "max": 740, "mean": 720.0 },
-        "peak_rss_bytes": { "min": ..., "median": ..., "max": ..., "mean": ... }
+        "duration_ms": { "min": 2050, "median": 2100, "max": 2180, "mean": 2104.0 },
+        "rss_bytes": { ... },
+        "peak_rss_bytes": { ... },
+        "heap_peak_bytes": { ... }
       }
     ]
   }
 }
 ```
 
-`mean` is a float; `min`, `median`, and `max` are integers. RSS fields are omitted on platforms where the engine cannot read them.
+`metrics` is the engine's `PatchMetrics` record for that iteration, the same one Reseam Manager receives. `mean` is a float; `min`, `median`, and `max` are integers. Memory fields are omitted where the engine cannot read them.
 
 ## Tips
 

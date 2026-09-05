@@ -15,7 +15,7 @@ pub enum InstructionPattern {
 }
 
 impl InstructionPattern {
-    fn matches(&self, opcode: Option<u16>) -> bool {
+    pub fn matches(&self, opcode: Option<u16>) -> bool {
         match self {
             Self::Any => true,
             Self::Opcode(matcher) => matcher.opcode() == opcode,

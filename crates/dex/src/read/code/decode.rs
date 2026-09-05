@@ -105,7 +105,8 @@ pub(super) fn payload_units(buf: &[u8], unit_off: usize, unit0: u16) -> Result<u
         }
         0x0300 => {
             require_len(buf, unit_off, 8, "fill-array-data payload")?;
-            let data_bytes = u32_at(buf, unit_off + 4) as usize * u16_at(buf, unit_off + 2) as usize;
+            let data_bytes =
+                u32_at(buf, unit_off + 4) as usize * u16_at(buf, unit_off + 2) as usize;
             (8 + data_bytes).div_ceil(2)
         }
         _ => 1,
@@ -140,7 +141,12 @@ pub fn decode_instructions_into(
         require_len(buf, unit_off, 2, "code item instruction")?;
         let unit0 = super::format::u16_at(buf, unit_off);
         let opcode = (unit0 & 0xFF) as u8;
-        require_len(buf, unit_off, opcode_units(opcode) * 2, "code item instruction")?;
+        require_len(
+            buf,
+            unit_off,
+            opcode_units(opcode) * 2,
+            "code item instruction",
+        )?;
 
         let decoded = match opcode {
             0x00..=0x43 => basic::decode_opcode(buf, unit_off, opcode)?,

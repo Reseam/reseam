@@ -10,12 +10,12 @@ use super::sort::Remap;
 use super::DexWriter;
 use crate::encoding::leb128::{write_sleb128, write_uleb128};
 use crate::error::Result;
-use crate::types::access_flags::AccessFlags;
-use crate::types::header::ParseOptions;
 use crate::read::class::read_class_skeleton_at;
 use crate::read::code::read_code_item;
+use crate::types::access_flags::AccessFlags;
 use crate::types::class::{ClassData, EncodedField};
 use crate::types::code::CodeItem;
+use crate::types::header::ParseOptions;
 use crate::types::map::{MapItem, TYPE_CODE_ITEM, TYPE_DEBUG_INFO_ITEM};
 use crate::types::MethodIdx;
 
@@ -217,7 +217,11 @@ impl CodeEmitter {
             w.align(4);
             w.code_item_offsets.push(w.pos());
             w.write(&self.code_buf);
-            let debug_off = u32::from_le_bytes(buf[code_off as usize + 8..code_off as usize + 12].try_into().unwrap());
+            let debug_off = u32::from_le_bytes(
+                buf[code_off as usize + 8..code_off as usize + 12]
+                    .try_into()
+                    .unwrap(),
+            );
             let item = if debug_off != 0 && opts.include_debug_info {
                 self.scratch.clear();
                 copy_debug_info(buf, debug_off, remap, opts, &mut self.scratch)?;

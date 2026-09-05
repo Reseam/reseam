@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use reseam_sign::keystore::{GeneratedKey, SigningKey};
 use reseam_sign::signing_block;
 use reseam_sign::v2;
+use reseam_sign::{GeneratedKey, SigningKey};
 
 /// Create a minimal valid ZIP/APK in memory for testing.
 fn create_test_apk() -> Vec<u8> {
@@ -60,8 +60,8 @@ fn find_signing_pair_value(signing_block_bytes: &[u8], id: u32) -> Option<&[u8]>
 
 fn extract_v2_digest(signed_apk: &[u8]) -> Vec<u8> {
     let sections = signing_block::split_apk(signed_apk).unwrap();
-    let (_, cd_offset, _) = signing_block::find_eocd(signed_apk).unwrap();
-    let signing_block_bytes = &signed_apk[sections.contents.len()..cd_offset as usize];
+    let cd_offset = signing_block::find_eocd(signed_apk).unwrap().cd_offset as usize;
+    let signing_block_bytes = &signed_apk[sections.contents.len()..cd_offset];
     let v2_block =
         find_signing_pair_value(signing_block_bytes, signing_block::BLOCK_ID_V2).unwrap();
     let signers_seq = read_lp(v2_block, 0);
@@ -145,12 +145,12 @@ fn test_sign_and_verify_structure() {
     assert!(signed.len() > apk.len());
 
     // Should still be a valid ZIP (EOCD present)
-    let (eocd_offset, cd_offset, _cd_size) = signing_block::find_eocd(&signed).unwrap();
-    assert!(eocd_offset > 0);
-    assert!(cd_offset > 0);
+    let eocd = signing_block::find_eocd(&signed).unwrap();
+    assert!(eocd.offset > 0);
+    assert!(eocd.cd_offset > 0);
 
     // The signing block magic should be present before the central directory
-    let cd_off = cd_offset as usize;
+    let cd_off = eocd.cd_offset as usize;
     assert!(cd_off >= 24);
     let magic = &signed[cd_off - 16..cd_off];
     assert_eq!(magic, b"APK Sig Block 42");
@@ -159,10 +159,10 @@ fn test_sign_and_verify_structure() {
 #[test]
 fn test_split_apk_finds_eocd() {
     let apk = create_test_apk();
-    let (eocd_offset, cd_offset, cd_size) = signing_block::find_eocd(&apk).unwrap();
-    assert!(eocd_offset > 0);
-    assert!(cd_offset > 0);
-    assert!(cd_size > 0);
+    let eocd = signing_block::find_eocd(&apk).unwrap();
+    assert!(eocd.offset > 0);
+    assert!(eocd.cd_offset > 0);
+    assert!(eocd.cd_size > 0);
 }
 
 #[test]
@@ -222,21 +222,6 @@ fn test_sign_large_certificate_uses_final_cd_offset_in_digest() {
 }
 
 #[test]
-fn test_v3_sign() {
-    let key = SigningKey::generate().unwrap();
-    let apk = create_test_apk();
-
-    let error = reseam_sign::v3::sign(&apk, &key).unwrap_err();
-    assert!(matches!(
-        error,
-        reseam_sign::SignError::Unsupported {
-            feature: "apk signature scheme v3",
-            ..
-        }
-    ));
-}
-
-#[test]
 fn test_sign_real_apk() {
     let apk_path = "../../test-apks/for_testing_com.google.android.youtube_21.10.494.apk";
     if !std::path::Path::new(apk_path).exists() {
@@ -255,8 +240,7 @@ fn test_sign_real_apk() {
     assert!(!archive.is_empty());
 
     // Verify signing block present
-    let (_, cd_offset, _) = signing_block::find_eocd(&signed).unwrap();
-    let cd_off = cd_offset as usize;
+    let cd_off = signing_block::find_eocd(&signed).unwrap().cd_offset as usize;
     let magic = &signed[cd_off - 16..cd_off];
     assert_eq!(magic, b"APK Sig Block 42");
 
@@ -296,6 +280,9 @@ fn test_sign_in_place_matches_sign() {
     assert_eq!(signed.len(), expected.len());
     assert_eq!(extract_v2_digest(&signed), extract_v2_digest(&expected));
     assert_eq!(signed[..contents_len], expected[..contents_len]);
-    assert_eq!(signed[signed.len() - tail_len..], expected[expected.len() - tail_len..]);
+    assert_eq!(
+        signed[signed.len() - tail_len..],
+        expected[expected.len() - tail_len..]
+    );
     assert!(signing_block::split_apk(&signed).is_ok());
 }

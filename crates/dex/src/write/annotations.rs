@@ -27,7 +27,10 @@ struct PendingClassAnnData {
 }
 
 /// Writes annotation items, sets, ref-lists, and directories.
-pub(crate) fn write_annotations<S: DexSink>(w: &mut DexWriter<S>, plan: &WritePlan<'_>) -> Result<ClassAnnotations> {
+pub(crate) fn write_annotations<S: DexSink>(
+    w: &mut DexWriter<S>,
+    plan: &WritePlan<'_>,
+) -> Result<ClassAnnotations> {
     let ann_items_start = w.pos();
     let mut items = StreamInterner::default();
     let mut sets = ByteInterner::default();
@@ -45,7 +48,13 @@ pub(crate) fn write_annotations<S: DexSink>(w: &mut DexWriter<S>, plan: &WritePl
             };
 
             if !ann_dir.class_annotations.is_empty() {
-                cad.class_ann_set = Some(intern_annotation_set(w, &ann_dir.class_annotations, &mut items, &mut sets, &mut encoded)?);
+                cad.class_ann_set = Some(intern_annotation_set(
+                    w,
+                    &ann_dir.class_annotations,
+                    &mut items,
+                    &mut sets,
+                    &mut encoded,
+                )?);
             }
 
             for (field_idx, anns) in &ann_dir.field_annotations {
@@ -64,7 +73,8 @@ pub(crate) fn write_annotations<S: DexSink>(w: &mut DexWriter<S>, plan: &WritePl
                     if anns.is_empty() {
                         set_idxs.push(None);
                     } else {
-                        let set_idx = intern_annotation_set(w, anns, &mut items, &mut sets, &mut encoded)?;
+                        let set_idx =
+                            intern_annotation_set(w, anns, &mut items, &mut sets, &mut encoded)?;
                         set_idxs.push(Some(set_idx));
                     }
                 }
@@ -272,9 +282,16 @@ mod tests {
     #[test]
     fn annotation_sections_are_written_contiguously() -> crate::error::Result<()> {
         let mut dex = crate::file::DexFile::new(empty_header());
-        dex.strings = ["LA;", "LB;", "Ljava/lang/Object;", "LAnnOne;", "LAnnTwo;", "value"]
-            .into_iter()
-            .collect();
+        dex.strings = [
+            "LA;",
+            "LB;",
+            "Ljava/lang/Object;",
+            "LAnnOne;",
+            "LAnnTwo;",
+            "value",
+        ]
+        .into_iter()
+        .collect();
         dex.types = crate::file::IdTable::from_vec(vec![
             StringIdx(0),
             StringIdx(1),

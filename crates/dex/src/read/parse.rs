@@ -94,7 +94,12 @@ fn parse_single_with_raw(
 
     let mut dex = DexFile::new(header.clone());
     dex.parse_options = opts.clone();
-    dex.strings = StringPool::from_raw(raw.clone(), header.string_ids_off, header.string_ids_size, opts)?;
+    dex.strings = StringPool::from_raw(
+        raw.clone(),
+        header.string_ids_off,
+        header.string_ids_size,
+        opts,
+    )?;
     dex.types = IdTable::from_raw(raw.clone(), header.type_ids_off, header.type_ids_size)?;
     dex.prototypes = IdTable::from_raw(raw.clone(), header.proto_ids_off, header.proto_ids_size)?;
     dex.fields = IdTable::from_raw(raw.clone(), header.field_ids_off, header.field_ids_size)?;

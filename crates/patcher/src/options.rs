@@ -1,69 +1,15 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::borrow::Borrow;
 use std::collections::HashMap;
-use std::fmt;
 use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
 
 use crate::error::{PatcherError, Result};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct OptionKey(Box<str>);
-
-impl OptionKey {
-    pub fn new(value: impl Into<Box<str>>) -> Self {
-        Self(value.into())
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl Borrow<str> for OptionKey {
-    fn borrow(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl AsRef<str> for OptionKey {
-    fn as_ref(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl fmt::Display for OptionKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-impl From<&str> for OptionKey {
-    fn from(value: &str) -> Self {
-        Self::new(value)
-    }
-}
-
-impl From<String> for OptionKey {
-    fn from(value: String) -> Self {
-        Self::new(value)
-    }
-}
-
-impl From<Box<str>> for OptionKey {
-    fn from(value: Box<str>) -> Self {
-        Self(value)
-    }
-}
-
-impl From<OptionKey> for String {
-    fn from(value: OptionKey) -> Self {
-        value.0.into()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum OptionType {
     String,
     Bool,
@@ -73,9 +19,9 @@ pub enum OptionType {
     Path,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct OptionDeclaration {
-    pub key: OptionKey,
+    pub key: String,
     pub title: String,
     pub description: String,
     pub option_type: OptionType,
@@ -84,7 +30,8 @@ pub struct OptionDeclaration {
     pub required: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum OptionValue {
     String(String),
     Bool(bool),
@@ -95,71 +42,128 @@ pub enum OptionValue {
 }
 
 impl OptionValue {
+    pub fn option_type(&self) -> OptionType {
+        match self {
+            Self::String(_) => OptionType::String,
+            Self::Bool(_) => OptionType::Bool,
+            Self::Int(_) => OptionType::Int,
+            Self::Float(_) => OptionType::Float,
+            Self::StringList(_) => OptionType::StringList,
+            Self::Path(_) => OptionType::Path,
+        }
+    }
+
     pub fn as_str(&self) -> Option<&str> {
         match self {
-            OptionValue::String(s) => Some(s),
+            Self::String(s) => Some(s),
             _ => None,
         }
     }
 
     pub fn as_bool(&self) -> Option<bool> {
         match self {
-            OptionValue::Bool(b) => Some(*b),
+            Self::Bool(b) => Some(*b),
             _ => None,
         }
     }
 
     pub fn as_int(&self) -> Option<i64> {
         match self {
-            OptionValue::Int(i) => Some(*i),
+            Self::Int(i) => Some(*i),
             _ => None,
         }
     }
 
     pub fn as_float(&self) -> Option<f64> {
         match self {
-            OptionValue::Float(f) => Some(*f),
+            Self::Float(f) => Some(*f),
             _ => None,
         }
     }
 
     pub fn as_string_list(&self) -> Option<&[String]> {
         match self {
-            OptionValue::StringList(l) => Some(l),
+            Self::StringList(l) => Some(l),
             _ => None,
         }
     }
 
     pub fn as_path(&self) -> Option<&Path> {
         match self {
-            OptionValue::Path(p) => Some(p),
+            Self::Path(p) => Some(p),
             _ => None,
         }
     }
+}
 
-    pub fn type_name(&self) -> &'static str {
-        match self {
-            OptionValue::String(_) => "string",
-            OptionValue::Bool(_) => "bool",
-            OptionValue::Int(_) => "int",
-            OptionValue::Float(_) => "float",
-            OptionValue::StringList(_) => "string list",
-            OptionValue::Path(_) => "path",
+impl OptionDeclaration {
+    pub fn parse(&self, raw: &str) -> std::result::Result<OptionValue, String> {
+        let value = match self.option_type {
+            OptionType::String => OptionValue::String(raw.to_string()),
+            OptionType::Bool => OptionValue::Bool(
+                raw.parse()
+                    .map_err(|_| format!("expected bool, got '{raw}'"))?,
+            ),
+            OptionType::Int => OptionValue::Int(
+                raw.parse()
+                    .map_err(|_| format!("expected int, got '{raw}'"))?,
+            ),
+            OptionType::Float => OptionValue::Float(
+                raw.parse()
+                    .map_err(|_| format!("expected float, got '{raw}'"))?,
+            ),
+            OptionType::StringList => OptionValue::StringList(
+                raw.split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .collect(),
+            ),
+            OptionType::Path => OptionValue::Path(PathBuf::from(raw)),
+        };
+        self.validate(&value)?;
+        Ok(value)
+    }
+
+    pub fn validate(&self, value: &OptionValue) -> std::result::Result<(), String> {
+        if value.option_type() != self.option_type {
+            return Err(format!(
+                "expected {:?}, got {:?}",
+                self.option_type,
+                value.option_type()
+            ));
         }
+        if let Some(valid) = &self.valid_values {
+            let candidates: &[String] = match value {
+                OptionValue::String(s) => std::slice::from_ref(s),
+                OptionValue::StringList(list) => list,
+                _ => &[],
+            };
+            if let Some(bad) = candidates
+                .iter()
+                .find(|candidate| !valid.contains(candidate))
+            {
+                return Err(format!("'{bad}' is not in [{}]", valid.join(", ")));
+            }
+        }
+        if let OptionValue::Path(path) = value {
+            if !path.exists() {
+                return Err(format!("path does not exist: {}", path.display()));
+            }
+        }
+        Ok(())
     }
 }
 
-#[derive(Debug, Clone, Default)]
+/// The option values one patch runs with.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(transparent)]
 pub struct PatchOptions {
-    values: HashMap<OptionKey, OptionValue>,
+    values: HashMap<String, OptionValue>,
 }
 
 impl PatchOptions {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn set(&mut self, key: impl Into<OptionKey>, value: OptionValue) {
+    pub fn set(&mut self, key: impl Into<String>, value: OptionValue) {
         self.values.insert(key.into(), value);
     }
 
@@ -167,65 +171,76 @@ impl PatchOptions {
         self.values.get(key)
     }
 
-    pub fn contains_key(&self, key: &str) -> bool {
-        self.values.contains_key(key)
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&OptionKey, &OptionValue)> {
-        self.values.iter()
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &OptionValue)> {
+        self.values.iter().map(|(key, value)| (key.as_str(), value))
     }
 
-    pub fn get_string(&self, key: &str) -> Option<&str> {
-        self.values.get(key).and_then(|v| v.as_str())
+    /// Checks `provided` against `declarations` and fills in defaults.
+    pub fn resolve(
+        patch: &str,
+        declarations: &[OptionDeclaration],
+        provided: Option<&Self>,
+    ) -> Result<Self> {
+        let provided = provided.cloned().unwrap_or_default();
+        if let Some(key) = provided
+            .values
+            .keys()
+            .find(|key| !declarations.iter().any(|decl| decl.key == **key))
+        {
+            return Err(PatcherError::UnknownOption {
+                patch: patch.to_string(),
+                key: key.clone(),
+            });
+        }
+        let mut resolved = Self::default();
+        for decl in declarations {
+            let value = match provided.get(&decl.key).or(decl.default_value.as_ref()) {
+                Some(value) => value,
+                None if decl.required => {
+                    return Err(PatcherError::MissingRequiredOption {
+                        patch: patch.to_string(),
+                        key: decl.key.clone(),
+                    })
+                }
+                None => continue,
+            };
+            decl.validate(value)
+                .map_err(|reason| PatcherError::InvalidOptionValue {
+                    patch: patch.to_string(),
+                    key: decl.key.clone(),
+                    reason,
+                })?;
+            resolved.set(decl.key.clone(), value.clone());
+        }
+        Ok(resolved)
     }
 
-    pub fn get_bool(&self, key: &str) -> Option<bool> {
-        self.values.get(key).and_then(|v| v.as_bool())
-    }
-
-    pub fn get_int(&self, key: &str) -> Option<i64> {
-        self.values.get(key).and_then(|v| v.as_int())
-    }
-
-    pub fn get_float(&self, key: &str) -> Option<f64> {
-        self.values.get(key).and_then(|v| v.as_float())
-    }
-
-    pub fn get_string_list(&self, key: &str) -> Option<&[String]> {
-        self.values.get(key).and_then(|v| v.as_string_list())
-    }
-
-    pub fn get_path(&self, key: &str) -> Option<&Path> {
-        self.values.get(key).and_then(|v| v.as_path())
-    }
-
+    /// Sorted file names inside a `Path` option's directory.
     pub fn list_path_contents(&self, key: &str) -> Result<Option<Vec<String>>> {
-        let path = match self.get_path(key) {
-            Some(p) => p,
-            None => return Ok(None),
+        let Some(path) = self.get(key).and_then(OptionValue::as_path) else {
+            return Ok(None);
         };
         if !path.is_dir() {
             return Err(PatcherError::NotFound(format!(
-                "option '{}' path is not a directory: {}",
-                key,
+                "option '{key}' path is not a directory: {}",
                 path.display()
             )));
         }
-        let mut entries = Vec::new();
-        for entry in std::fs::read_dir(path)? {
-            let entry = entry?;
-            if let Some(name) = entry.file_name().to_str() {
-                entries.push(name.to_string());
-            }
-        }
+        let mut entries: Vec<String> = std::fs::read_dir(path)?
+            .filter_map(|entry| entry.ok()?.file_name().to_str().map(str::to_string))
+            .collect();
         entries.sort();
         Ok(Some(entries))
     }
 
+    /// A file under a `Path` option's directory; paths escaping it are refused.
     pub fn read_path_file(&self, key: &str, relative: &str) -> Result<Option<Vec<u8>>> {
-        let base = match self.get_path(key) {
-            Some(p) => p,
-            None => return Ok(None),
+        let Some(base) = self.get(key).and_then(OptionValue::as_path) else {
+            return Ok(None);
         };
         let base = base.canonicalize()?;
         let full = base.join(relative);
@@ -233,175 +248,12 @@ impl PatchOptions {
             PatcherError::NotFound(format!("file not found: {} ({e})", full.display()))
         })?;
         if !full.starts_with(&base) {
-            return Err(PatcherError::InvalidOptionValue {
-                patch: String::new(),
-                key: key.to_string(),
-                reason: format!(
-                    "path escapes option root: {} is outside {}",
-                    full.display(),
-                    base.display()
-                ),
-            });
-        }
-        if !full.exists() {
             return Err(PatcherError::NotFound(format!(
-                "file not found: {}",
-                full.display()
+                "option '{key}': {} is outside {}",
+                full.display(),
+                base.display()
             )));
         }
         Ok(Some(std::fs::read(&full)?))
     }
-}
-
-impl OptionDeclaration {
-    pub fn parse_value(&self, raw: &str) -> Result<OptionValue> {
-        let value = match self.option_type {
-            OptionType::String => OptionValue::String(raw.to_string()),
-            OptionType::Bool => OptionValue::Bool(raw.parse::<bool>().map_err(|_| {
-                PatcherError::InvalidOptionValue {
-                    patch: String::new(),
-                    key: self.key.to_string(),
-                    reason: format!("expected bool, got '{raw}'"),
-                }
-            })?),
-            OptionType::Int => OptionValue::Int(raw.parse::<i64>().map_err(|_| {
-                PatcherError::InvalidOptionValue {
-                    patch: String::new(),
-                    key: self.key.to_string(),
-                    reason: format!("expected int, got '{raw}'"),
-                }
-            })?),
-            OptionType::Float => OptionValue::Float(raw.parse::<f64>().map_err(|_| {
-                PatcherError::InvalidOptionValue {
-                    patch: String::new(),
-                    key: self.key.to_string(),
-                    reason: format!("expected float, got '{raw}'"),
-                }
-            })?),
-            OptionType::StringList => OptionValue::StringList(
-                raw.split(',')
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.trim().to_string())
-                    .collect(),
-            ),
-            OptionType::Path => OptionValue::Path(PathBuf::from(raw)),
-        };
-        self.validate_value(&value)?;
-        Ok(value)
-    }
-
-    pub fn validate_value(&self, value: &OptionValue) -> Result<()> {
-        let type_matches = matches!(
-            (&self.option_type, value),
-            (OptionType::String, OptionValue::String(_))
-                | (OptionType::Bool, OptionValue::Bool(_))
-                | (OptionType::Int, OptionValue::Int(_))
-                | (OptionType::Float, OptionValue::Float(_))
-                | (OptionType::StringList, OptionValue::StringList(_))
-                | (OptionType::Path, OptionValue::Path(_))
-        );
-
-        if !type_matches {
-            return Err(PatcherError::InvalidOptionValue {
-                patch: String::new(),
-                key: self.key.to_string(),
-                reason: format!("expected {:?}, got {}", self.option_type, value.type_name()),
-            });
-        }
-
-        if let Some(valid_values) = &self.valid_values {
-            let values_to_check: Vec<&str> = match value {
-                OptionValue::String(v) => vec![v.as_str()],
-                OptionValue::StringList(v) => v.iter().map(String::as_str).collect(),
-                _ => Vec::new(),
-            };
-
-            if !values_to_check.is_empty() {
-                for candidate in values_to_check {
-                    if !valid_values.iter().any(|allowed| allowed == candidate) {
-                        return Err(PatcherError::InvalidOptionValue {
-                            patch: String::new(),
-                            key: self.key.to_string(),
-                            reason: format!(
-                                "'{candidate}' is not in [{}]",
-                                valid_values.join(", ")
-                            ),
-                        });
-                    }
-                }
-            }
-        }
-
-        if let OptionValue::Path(path) = value {
-            if !path.exists() {
-                return Err(PatcherError::InvalidOptionValue {
-                    patch: String::new(),
-                    key: self.key.to_string(),
-                    reason: format!("path does not exist: {}", path.display()),
-                });
-            }
-        }
-
-        Ok(())
-    }
-}
-
-pub fn validate_patch_options(
-    patch_name: &str,
-    declarations: &[OptionDeclaration],
-    provided: Option<&PatchOptions>,
-) -> Result<PatchOptions> {
-    let mut resolved = PatchOptions::new();
-    let provided = provided.cloned().unwrap_or_default();
-
-    for (key, _) in provided.iter() {
-        if !declarations.iter().any(|decl| decl.key == *key) {
-            return Err(PatcherError::UnknownOption {
-                patch: patch_name.to_string(),
-                key: key.to_string(),
-            });
-        }
-    }
-
-    for decl in declarations {
-        if let Some(value) = provided.get(decl.key.as_str()) {
-            decl.validate_value(value).map_err(|err| match err {
-                PatcherError::InvalidOptionValue { reason, .. } => {
-                    PatcherError::InvalidOptionValue {
-                        patch: patch_name.to_string(),
-                        key: decl.key.to_string(),
-                        reason,
-                    }
-                }
-                other => other,
-            })?;
-            resolved.set(decl.key.clone(), value.clone());
-            continue;
-        }
-
-        if let Some(default_value) = &decl.default_value {
-            decl.validate_value(default_value)
-                .map_err(|err| match err {
-                    PatcherError::InvalidOptionValue { reason, .. } => {
-                        PatcherError::InvalidOptionValue {
-                            patch: patch_name.to_string(),
-                            key: decl.key.to_string(),
-                            reason,
-                        }
-                    }
-                    other => other,
-                })?;
-            resolved.set(decl.key.clone(), default_value.clone());
-            continue;
-        }
-
-        if decl.required {
-            return Err(PatcherError::MissingRequiredOption {
-                patch: patch_name.to_string(),
-                key: decl.key.to_string(),
-            });
-        }
-    }
-
-    Ok(resolved)
 }

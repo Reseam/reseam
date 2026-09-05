@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use anyhow::Result;
-use reseam_sdk::inspect_apk as inspect_apk_with_library;
+use reseam_sdk::inspect_apk;
 
 use crate::app::InfoCommand;
 
 pub fn run_info(command: &InfoCommand) -> Result<()> {
-    let apk = inspect_apk_with_library(&command.apk, &[])?;
+    let apk = inspect_apk(&command.apk, &[])?;
 
     println!("APK: {}", command.apk.display());
     if let Some(package) = apk.package_name {
@@ -26,6 +26,5 @@ pub fn run_info(command: &InfoCommand) -> Result<()> {
     }
     println!("  classes:    {}", apk.class_count);
     println!("  methods:    {}", apk.method_count);
-
     Ok(())
 }

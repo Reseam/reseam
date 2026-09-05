@@ -12,7 +12,7 @@ Applies patches from a signed bundle to an APK and writes a new, v2-signed APK (
 ## Single APK
 
 ```bash
-reseam patch app.apk --bundle patches.reseam --output patched.apk
+reseam patch app.apk --bundle patches.reseam --trust <PUBLIC_KEY_HEX> --output patched.apk
 ```
 
 Without `--output`, the CLI writes `<stem>-patched.apk` next to the input APK.
@@ -24,6 +24,7 @@ reseam patch base.apk \
   --split config.arm64_v8a.apk \
   --split config.xxhdpi.apk \
   --bundle patches.reseam \
+  --trust <PUBLIC_KEY_HEX> \
   --output-dir patched/
 ```
 
@@ -35,6 +36,7 @@ reseam patch base.apk \
 |----------|---------|
 | `<apk>` | Base APK path. |
 | `--bundle <PATH>` | Signed `.reseam` bundle to load. Verified on open. |
+| `--trust <PUBLIC_KEY_HEX>` | Repeatable. Ed25519 public key of a bundle signer to accept. Without it no bundle loads. |
 | `--split <APK>` | Repeatable split APK alongside the base. |
 | `--output <FILE>` | Output path for single-APK mode. Mutually exclusive with `--output-dir`. |
 | `--output-dir <DIR>` | Output directory for split-APK mode. Mutually exclusive with `--output`. |
@@ -49,25 +51,25 @@ reseam patch base.apk \
 
 If you pass `--key` and `--cert`, the CLI uses that PKCS#8 key and DER-encoded X.509 cert to produce the APK v2 signature. If you don't:
 
-- Single-APK mode: Reseam looks for `<output>.pk8` and `<output>.der` next to the output. If both exist, it reuses them; otherwise it generates a fresh ECDSA P-256 keypair with a self-signed certificate and writes them to those paths.
+- Single-APK mode: Reseam looks for `<stem>.pk8` and `<stem>.der` next to the output, where `<stem>` is the output name without its extension (`patched.pk8` beside `patched.apk`). If both exist, it reuses them; otherwise it generates a fresh ECDSA P-256 keypair with a self-signed certificate and writes them to those paths.
 - Split-APK mode: Reseam looks for `reseam.pk8` and `reseam.der` inside `--output-dir`. Same reuse-or-generate behavior. All splits are signed with the same key.
 
-Bundle signatures are verified on load against the bundle's embedded public key, then the CLI checks whether that signer is trusted. An unsigned bundle, a bundle signed by an untrusted key, or a tampered manifest stops the run before any patching happens.
+Bundle signatures are verified on load against the bundle's embedded public key, then the CLI checks that signer against the keys passed with `--trust`. The CLI ships no keys of its own. An unsigned bundle, a bundle whose signer was not passed with `--trust`, or a tampered manifest stops the run before any patching happens.
 
 ## Dry run
 
 ```bash
-reseam patch app.apk --bundle patches.reseam --dry-run
+reseam patch app.apk --bundle patches.reseam --trust <PUBLIC_KEY_HEX> --dry-run
 ```
 
-Validates each patch against the APK's package and version and prints the results. Exits non-zero if any patch fails validation. Nothing is written to disk.
+Validates each patch against the APK's package and version and logs one line per patch. Exits non-zero if any patch fails validation. Nothing is written to disk.
 
 ## Selecting patches
 
 By default, every patch in the bundle runs if its `enabled_by_default` flag is set. Override per patch:
 
 ```bash
-reseam patch app.apk --bundle patches.reseam \
+reseam patch app.apk --bundle patches.reseam --trust <PUBLIC_KEY_HEX> \
   --enable example-patch \
   --disable other-patch
 ```
@@ -75,12 +77,12 @@ reseam patch app.apk --bundle patches.reseam \
 Set a patch option:
 
 ```bash
-reseam patch app.apk --bundle patches.reseam \
+reseam patch app.apk --bundle patches.reseam --trust <PUBLIC_KEY_HEX> \
   --option example-patch.mode=fast
 ```
 
-The value is parsed against the option's declared type (string, bool, int, enum). An unknown patch or key fails the run before any DEX work starts.
+The value is parsed against the option's declared type: string, bool, int, float, string list, or path. An unknown patch or key fails the run before any DEX work starts.
 
 ## Output
 
-On success, the summary log line records how many patches applied, how many were skipped, and how many failed. One or more failed patches exit non-zero. The patched APK (or split set) is written only after every selected patch applied cleanly.
+Each patch logs a line as it finishes (applied, skipped with a reason, or failed with a reason), and a summary line records the counts. One or more failed patches exit non-zero. The patched APK (or split set) is written only after every selected patch applied cleanly.

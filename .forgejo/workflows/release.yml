@@ -13,7 +13,6 @@ jobs:
       image: cimg/android:2026.03-node
     env:
       LZMA_API_STATIC: "1"
-      HOST_CLASSIFIER: linux-x86_64
     steps:
       - name: Install Rust toolchain
         uses: https://github.com/dtolnay/rust-toolchain@stable
@@ -56,46 +55,20 @@ jobs:
         run: cargo build --release -p reseam-cli
 
       - name: Build desktop JNI shim
-        run: cargo xtask jni-host --crate sdk
+        run: cargo xtask jni-host
 
-      - name: Publish artifacts to Forgejo Maven
+      - name: Check the tag names the workspace version
+        run: cargo xtask check-tag ${{ github.ref_name }}
+
+      - name: Publish the SDKs to the Forgejo Maven registry
         env:
           FORGEJO_PACKAGES_TOKEN: ${{ secrets.FORGEJO_PACKAGES_TOKEN }}
-        run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          SDK_VERSION="${TAG#v}"
+        run: ./gradlew publishAllPublicationsToForgejoRepository -PreseamSdkVersion=${{ github.ref_name }} --no-daemon
 
-          publish_pom_keyed() {
-            local artifact_id="$1"
-            local working_dir="$2"
-            local pom_url="https://git.reseam.app/api/packages/reseam/maven/app/reseam/${artifact_id}/${SDK_VERSION}/${artifact_id}-${SDK_VERSION}.pom"
-            if curl -fsS -H "Authorization: token ${FORGEJO_PACKAGES_TOKEN}" -o /dev/null "$pom_url"; then
-              echo "app.reseam:${artifact_id}:${SDK_VERSION} already exists; skipping publish"
-            else
-              (cd "$working_dir" && ./gradlew publishAllPublicationsToForgejoRepository -PreseamSdkVersion="${SDK_VERSION}" --no-daemon)
-            fi
-          }
+      - name: Stage the CLI
+        run: install -D target/release/reseam dist/reseam-linux-x64
 
-          publish_jar_keyed() {
-            local artifact_id="$1"
-            local working_dir="$2"
-            local classifier="$3"
-            local jar_url="https://git.reseam.app/api/packages/reseam/maven/app/reseam/${artifact_id}/${SDK_VERSION}/${artifact_id}-${SDK_VERSION}-${classifier}.jar"
-            if curl -fsS -I -H "Authorization: token ${FORGEJO_PACKAGES_TOKEN}" -o /dev/null "$jar_url"; then
-              echo "app.reseam:${artifact_id}:${SDK_VERSION}:${classifier} already exists; skipping publish"
-            else
-              (cd "$working_dir" && ./gradlew publishAllPublicationsToForgejoRepository -PreseamSdkVersion="${SDK_VERSION}" -PreseamHostClassifier="${classifier}" --no-daemon)
-            fi
-          }
-
-          publish_pom_keyed "reseam-patch-sdk" "patch-api"
-          publish_pom_keyed "reseam-sdk-android" "sdk-android"
-          publish_jar_keyed "reseam-sdk-jvm" "sdk-jvm" "${HOST_CLASSIFIER}"
-
-      - name: Stage CLI binary for release
-        run: install -D -m 0755 target/release/reseam dist/reseam-linux-x64
-
-      - name: Upload to Forgejo release
+      - name: Upload to the Forgejo release
         uses: https://code.forgejo.org/actions/forgejo-release@v2.11.1
         with:
           direction: upload

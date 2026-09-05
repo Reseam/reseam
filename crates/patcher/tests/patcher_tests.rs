@@ -9,12 +9,13 @@ use std::process::Command;
 use std::sync::OnceLock;
 
 use reseam_apk::reseam_dex::ParseOptions;
-use reseam_apk::resources::{ResEntry, ResPackage, ResStringPool, ResType, ResValue, TypeSpec};
-use reseam_apk::{ApkFile, AxmlEvent, ResourceTable};
-use reseam_patcher::bundle::PatchBundle;
+use reseam_apk::resources::{EntryValue, ResEntry, ResPackage, ResType, TypeSpec};
+use reseam_apk::{ApkFile, ResValue, ResourceTable, StringPool};
+use reseam_patcher::bundle::{BundleArchive, ENGINE_VERSION};
 use reseam_patcher::context::PatchContext;
-use reseam_patcher::engine::{self, ExecutionPlan, PatchStatus};
+use reseam_patcher::engine::{self, PatchSelection, PatchStatus};
 use reseam_patcher::options::{OptionValue, PatchOptions};
+use reseam_patcher::Patch;
 
 static FIXTURE_JAR: OnceLock<PathBuf> = OnceLock::new();
 
@@ -45,12 +46,14 @@ fn build_fixture_jar() -> PathBuf {
     FIXTURE_JAR
         .get_or_init(|| {
             let root = workspace_root();
-            let gradle = root.join("patch-api/gradlew");
-            let sdk_dir = root.join("patch-api");
+            let gradle = root.join("gradlew");
             let fixture_dir = root.join("tests/kotlin-runtime-bundle");
 
             run_checked(
-                Command::new(&gradle).arg("-p").arg(&sdk_dir).arg("jar"),
+                Command::new(&gradle)
+                    .arg("-p")
+                    .arg(&root)
+                    .arg(":reseam-patch-sdk:jar"),
                 "build reseam patch sdk jar",
             );
             run_checked(
@@ -86,6 +89,7 @@ fn write_bundle_reseam() -> TestBundle {
         r#"[bundle]
 name = "runtime-test-bundle"
 format_version = 1
+engine = "{ENGINE_VERSION}"
 
 [files]
 "{jar_name}" = "{jar_sha}"
@@ -130,22 +134,25 @@ fn manifest_bytes(version_name: &str, split_name: Option<&str>) -> Vec<u8> {
         .unwrap_or_default();
     reseam_apk::axml::compile_xml(&format!(
         r#"<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.test" android:versionCode="1" android:versionName="{version_name}"{split_attr} />"#
-    ))
+    ), None)
     .expect("compile manifest")
 }
 
 fn resource_table_bytes(entry_name: &str, value: &str) -> Vec<u8> {
-    let strings = |values: &[&str]| ResStringPool::new(values.iter().map(|s| s.to_string()).collect(), true);
-    let mut pkg = ResPackage::new(0x7F, "com.example.test", strings(&["string"]), strings(&[entry_name]));
+    let strings =
+        |values: &[&str]| StringPool::new(values.iter().map(|s| s.to_string()).collect(), true);
+    let mut pkg = ResPackage::new(
+        0x7F,
+        "com.example.test",
+        strings(&["string"]),
+        strings(&[entry_name]),
+    );
     pkg.type_specs.push(TypeSpec::new(1, vec![0]));
     let mut t = ResType::new(1, vec![0; 48]);
     t.push(Some(ResEntry {
         flags: 0,
         key: 0,
-        value: ResValue::Simple {
-            data_type: 0x03,
-            data: 0,
-        },
+        value: EntryValue::Simple(ResValue::string(0)),
     }));
     pkg.types.push(t);
     ResourceTable {
@@ -193,10 +200,10 @@ fn open_split_test_apk() -> (tempfile::TempDir, ApkFile) {
         &[("resources.arsc", &split_resources)],
     );
 
-    let apk = ApkFile::open_split_with_options(
+    let apk = ApkFile::open_split(
         &base_path,
         &[split_path.as_path()],
-        ParseOptions {
+        &ParseOptions {
             lazy: true,
             ..ParseOptions::default()
         },
@@ -207,46 +214,42 @@ fn open_split_test_apk() -> (tempfile::TempDir, ApkFile) {
 }
 
 fn manifest_contains_permission(apk: &ApkFile, permission: &str) -> bool {
-    apk.manifest().elements.iter().any(|event| {
-        let AxmlEvent::StartElement {
-            name, attributes, ..
-        } = event
-        else {
-            return false;
-        };
-        if apk.manifest().string(*name) != Some("uses-permission") {
-            return false;
-        }
-        attributes.iter().any(|attr| {
-            apk.manifest().string(attr.name) == Some("name")
-                && attr.raw_value.and_then(|idx| apk.manifest().string(idx)) == Some(permission)
-        })
+    let manifest = apk.base().manifest();
+    (0..manifest.elements.len()).any(|i| {
+        manifest.element_name(i).as_deref() == Some("uses-permission")
+            && manifest
+                .attribute_named(i, "name")
+                .is_some_and(|attr| manifest.attribute_string(attr).as_deref() == Some(permission))
     })
 }
 
 #[test]
 fn kotlin_bundle_executes_against_runtime_api() {
     let bundle_file = write_bundle_reseam();
-    let bundle = PatchBundle::load_with_trust_anchors(&bundle_file.path, &[bundle_file.pubkey])
-        .expect("load runtime bundle");
+    let archive = BundleArchive::open(&bundle_file.path).expect("open runtime bundle");
+    assert_eq!(archive.public_key, bundle_file.pubkey);
+    let bundle = archive.load().expect("load runtime bundle");
+    let patches: Vec<&dyn Patch> = bundle.patches.iter().map(Box::as_ref).collect();
     let (_apk_dir, mut apk) = open_split_test_apk();
     let mut ctx = PatchContext::new(&mut apk);
 
-    let mut plan = ExecutionPlan::new();
-    plan.select_patch("runtime-api");
-    plan.select_patch("dependent-runtime");
-
-    let mut options = PatchOptions::new();
+    let mut options = PatchOptions::default();
     options.set("baseVersion", OptionValue::String("9.9-base".to_string()));
     options.set("splitVersion", OptionValue::String("9.9-split".to_string()));
     options.set(
         "splitText",
         OptionValue::String("Split patched by runtime".to_string()),
     );
-    plan.set_patch_options("runtime-api", options);
+    let selection = PatchSelection {
+        enable: ["runtime-api", "dependent-runtime"]
+            .map(String::from)
+            .into(),
+        options: [("runtime-api".to_string(), options)].into(),
+        ..Default::default()
+    };
 
     let results =
-        engine::apply_patches_with_plan(&mut ctx, &bundle.patches, &plan).expect("apply bundle");
+        engine::apply_patches(&mut ctx, &patches, &selection, |_| {}).expect("apply bundle");
 
     let heap = reseam_patcher::jvm_heap_stats().expect("jvm heap stats after patch run");
     assert!(heap.committed_bytes > 0, "committed heap should be nonzero");
@@ -273,10 +276,13 @@ fn kotlin_bundle_executes_against_runtime_api() {
         Some(&PatchStatus::Skipped { .. })
     ));
 
-    assert_eq!(apk.version_name(), Some("9.9-base"));
+    assert_eq!(apk.version_name().as_deref(), Some("9.9-base"));
     assert_eq!(
-        apk.component_manifest(1)
-            .and_then(|manifest| manifest.version_name()),
+        apk.component(1)
+            .unwrap()
+            .manifest()
+            .version_name()
+            .as_deref(),
         Some("9.9-split")
     );
     assert!(manifest_contains_permission(
@@ -284,50 +290,50 @@ fn kotlin_bundle_executes_against_runtime_api() {
         "android.permission.INTERNET"
     ));
 
+    let split_label = |apk: &mut ApkFile, index: usize| {
+        apk.component_mut(index)
+            .unwrap()
+            .resources()
+            .unwrap()
+            .and_then(|resources| {
+                resources
+                    .string_value("split_label")
+                    .map(|s| s.into_owned())
+            })
+    };
     assert_eq!(
-        apk.component_resources(1)
-            .and_then(|resources| resources.get_string_value("split_label"))
-            .as_deref(),
+        split_label(&mut apk, 1).as_deref(),
         Some("Split patched by runtime")
     );
-    assert_eq!(
-        apk.resources()
-            .and_then(|resources| resources.get_string_value("split_label")),
-        None
-    );
+    assert_eq!(split_label(&mut apk, 0), None);
 
+    let mut entry =
+        |index: usize, name: &str| apk.component_mut(index).unwrap().read_entry(name).unwrap();
+    assert_eq!(entry(0, "assets/base-marker.txt"), Some(b"base".to_vec()));
+    assert_eq!(entry(1, "assets/split-marker.txt"), Some(b"split".to_vec()));
     assert_eq!(
-        apk.read_entry_from_component(0, "assets/base-marker.txt")
-            .expect("base marker"),
-        b"base".to_vec()
+        entry(1, "assets/dependent-marker.txt"),
+        Some(b"dependent".to_vec())
     );
-    assert_eq!(
-        apk.read_entry_from_component(1, "assets/split-marker.txt")
-            .expect("split marker"),
-        b"split".to_vec()
-    );
-    assert_eq!(
-        apk.read_entry_from_component(1, "assets/dependent-marker.txt")
-            .expect("dependent marker"),
-        b"dependent".to_vec()
-    );
-    assert!(apk
-        .read_entry_from_component(0, "assets/split-marker.txt")
-        .is_err());
+    assert_eq!(entry(0, "assets/split-marker.txt"), None);
 }
 
 #[test]
 fn kotlin_bundle_required_option_is_enforced() {
     let bundle_file = write_bundle_reseam();
-    let bundle = PatchBundle::load_with_trust_anchors(&bundle_file.path, &[bundle_file.pubkey])
-        .expect("load runtime bundle");
+    let archive = BundleArchive::open(&bundle_file.path).expect("open runtime bundle");
+    assert_eq!(archive.public_key, bundle_file.pubkey);
+    let bundle = archive.load().expect("load runtime bundle");
+    let patches: Vec<&dyn Patch> = bundle.patches.iter().map(Box::as_ref).collect();
     let (_apk_dir, mut apk) = open_split_test_apk();
     let mut ctx = PatchContext::new(&mut apk);
 
-    let mut plan = ExecutionPlan::new();
-    plan.select_patch("required-option");
+    let selection = PatchSelection {
+        enable: ["required-option".to_string()].into(),
+        ..Default::default()
+    };
 
-    let err = engine::apply_patches_with_plan(&mut ctx, &bundle.patches, &plan)
+    let err = engine::apply_patches(&mut ctx, &patches, &selection, |_| {})
         .expect_err("missing required option should fail");
     let message = err.to_string();
     assert!(

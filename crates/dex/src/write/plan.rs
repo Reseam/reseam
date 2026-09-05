@@ -71,13 +71,23 @@ impl<'a> WritePlan<'a> {
                 let pb = dex.prototypes.get(b as usize);
                 map_type(pa.return_type)
                     .cmp(&map_type(pb.return_type))
-                    .then_with(|| pa.parameters.iter().map(|t| map_type(*t)).cmp(pb.parameters.iter().map(|t| map_type(*t))))
+                    .then_with(|| {
+                        pa.parameters
+                            .iter()
+                            .map(|t| map_type(*t))
+                            .cmp(pb.parameters.iter().map(|t| map_type(*t)))
+                    })
             });
             build_remap(&order)
         });
-        let map_proto = |i: crate::types::ProtoIdx| proto_remap.as_ref().map_or(i.0 as u32, |r| r[i.0 as usize]);
+        let map_proto = |i: crate::types::ProtoIdx| {
+            proto_remap.as_ref().map_or(i.0 as u32, |r| r[i.0 as usize])
+        };
 
-        let field_remap = (!dex.fields.is_sorted() || type_remap.is_some() || string_remap.is_some()).then(|| {
+        let field_remap = (!dex.fields.is_sorted()
+            || type_remap.is_some()
+            || string_remap.is_some())
+        .then(|| {
             let mut order: Vec<u32> = (0..dex.fields.len() as u32).collect();
             order.sort_by_cached_key(|&i| {
                 let f = dex.fields.get(i as usize);
@@ -86,7 +96,11 @@ impl<'a> WritePlan<'a> {
             build_remap(&order)
         });
 
-        let method_remap = (!dex.methods.is_sorted() || type_remap.is_some() || string_remap.is_some() || proto_remap.is_some()).then(|| {
+        let method_remap = (!dex.methods.is_sorted()
+            || type_remap.is_some()
+            || string_remap.is_some()
+            || proto_remap.is_some())
+        .then(|| {
             let mut order: Vec<u32> = (0..dex.methods.len() as u32).collect();
             order.sort_by_cached_key(|&i| {
                 let m = dex.methods.get(i as usize);
@@ -229,7 +243,9 @@ impl<'a> WritePlan<'a> {
             None => Cow::Borrowed(&self.dex.method_handles),
             Some(remap) => {
                 let mut handles = self.dex.method_handles.clone();
-                handles.iter_mut().for_each(|mh| remap.remap_method_handle(mh));
+                handles
+                    .iter_mut()
+                    .for_each(|mh| remap.remap_method_handle(mh));
                 Cow::Owned(handles)
             }
         }
@@ -265,15 +281,21 @@ impl<'a> WritePlan<'a> {
         }
     }
 
-    pub(crate) fn class_annotations(&self, k: usize) -> Result<Option<Cow<'_, AnnotationsDirectory>>> {
+    pub(crate) fn class_annotations(
+        &self,
+        k: usize,
+    ) -> Result<Option<Cow<'_, AnnotationsDirectory>>> {
         match &self.classes[k] {
             WriteClass::Resident(c) => Ok(c.annotations.as_deref().map(Cow::Borrowed)),
             WriteClass::Raw(raw) => {
                 if raw.annotations_off == 0 || !self.dex.parse_options.include_annotations {
                     return Ok(None);
                 }
-                let mut dir =
-                    read_annotations_directory(self.raw_bytes(), raw.annotations_off, &self.dex.parse_options)?;
+                let mut dir = read_annotations_directory(
+                    self.raw_bytes(),
+                    raw.annotations_off,
+                    &self.dex.parse_options,
+                )?;
                 if let Some(remap) = self.remap() {
                     remap.remap_annotations_dir(&mut dir);
                 }
@@ -336,7 +358,11 @@ fn fixup_class(class: &mut ClassDef) -> Result<()> {
     let Some(data) = class.class_data.as_mut() else {
         return Ok(());
     };
-    for method in data.direct_methods.iter_mut().chain(data.virtual_methods.iter_mut()) {
+    for method in data
+        .direct_methods
+        .iter_mut()
+        .chain(data.virtual_methods.iter_mut())
+    {
         if let Some(code) = method.code.as_mut() {
             fixup_code(code)?;
         }

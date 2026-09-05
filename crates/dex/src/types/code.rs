@@ -198,7 +198,13 @@ impl CodeItem {
         let mut total_growth: i32 = 0;
         let mut cur_addr: u32 = 0;
         for insn in &mut self.instructions {
-            let growth = fixup_branch(insn, cur_addr, addr, delta + total_growth, &mut switch_bases)?;
+            let growth = fixup_branch(
+                insn,
+                cur_addr,
+                addr,
+                delta + total_growth,
+                &mut switch_bases,
+            )?;
             total_growth += growth;
             cur_addr += insn.code_units();
         }

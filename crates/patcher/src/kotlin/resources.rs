@@ -1,413 +1,259 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+//! `resources.arsc` entries and the global string pool. `component` is a
+//! split name; `None` means the base.
+
 use boltffi::export;
+use reseam_apk::axml::{self, AttributeValue};
+use reseam_apk::{ResValue, ResourceTable};
 
+use super::files::{inject, with_component};
+use super::handles::{bundle_path, with_ctx};
 use super::types::ResourceRef;
-use super::{with_ctx, BUNDLE_DIR};
+use reseam_apk::Compression;
 
-fn component_index(ctx: &crate::context::PatchContext<'_>, component: &str) -> Option<usize> {
-    ctx.resource_component_index(component)
-}
-
-#[export]
-pub fn res_id(res_type: String, res_name: String) -> Option<u32> {
-    with_ctx(|ctx| ctx.find_resource_id(&res_type, &res_name))
+/// Runs `f` on the named component's resource table, logging when the
+/// component has none or its table cannot be read.
+fn with_resources<R>(
+    component: Option<String>,
+    f: impl FnOnce(&mut ResourceTable) -> R,
+) -> Option<R> {
+    with_component(component, |ctx, index| {
+        match ctx
+            .component_mut(index)
+            .and_then(|c| Ok(c.resources_mut()?))
+        {
+            Ok(Some(resources)) => Some(f(resources)),
+            Ok(None) => None,
+            Err(error) => {
+                ctx.log().warn(format!("resources: {error}"));
+                None
+            }
+        }
+    })
+    .flatten()
 }
 
 #[export]
 pub fn res_component_names() -> Vec<String> {
-    with_ctx(|ctx| ctx.resource_component_names())
+    with_ctx(|ctx| {
+        ctx.apk()
+            .components()
+            .iter()
+            .filter(|c| c.has_resources())
+            .map(|c| c.name().to_string())
+            .collect()
+    })
 }
 
+/// The component defining `res_type/res_name`, searching all of them.
 #[export]
 pub fn res_component_for(res_type: String, res_name: String) -> Option<String> {
     with_ctx(|ctx| {
-        let index = ctx.find_resource_component(&res_type, &res_name)?;
-        ctx.resource_component_name(index).map(str::to_string)
+        let (index, _) = ctx
+            .apk_mut()
+            .find_resource(&res_type, &res_name)
+            .ok()
+            .flatten()?;
+        Some(ctx.apk().component(index)?.name().to_string())
     })
 }
 
 #[export]
 pub fn res_component_for_id(res_id: u32) -> Option<String> {
     with_ctx(|ctx| {
-        let index = ctx.find_resource_component_by_id(res_id)?;
-        ctx.resource_component_name(index).map(str::to_string)
+        let index = ctx.apk_mut().find_resource_by_id(res_id).ok().flatten()?;
+        Some(ctx.apk().component(index)?.name().to_string())
     })
 }
 
+/// The id of `res_type/res_name`; without a component every one is searched.
 #[export]
-pub fn res_id_in_component(component: String, res_type: String, res_name: String) -> Option<u32> {
-    with_ctx(|ctx| {
-        let index = component_index(ctx, &component)?;
-        ctx.find_resource_id_in_component(index, &res_type, &res_name)
-    })
-}
-
-#[export]
-pub fn res_exists(res_type: String, res_name: String) -> bool {
-    with_ctx(|ctx| ctx.resource_exists(&res_type, &res_name))
-}
-
-#[export]
-pub fn res_exists_in_component(component: String, res_type: String, res_name: String) -> bool {
-    with_ctx(|ctx| {
-        let Some(index) = component_index(ctx, &component) else {
-            return false;
-        };
-        ctx.component_resources(index)
-            .is_some_and(|r| r.resource_exists(&res_type, &res_name))
-    })
-}
-
-#[export]
-pub fn res_get_string(name: String) -> Option<String> {
-    with_ctx(|ctx| ctx.get_string_resource_value(&name))
-}
-
-#[export]
-pub fn res_get_string_in_component(component: String, name: String) -> Option<String> {
-    with_ctx(|ctx| {
-        let index = component_index(ctx, &component)?;
-        ctx.component_resources(index)
-            .and_then(|r| r.get_string_value(&name).map(|s| s.to_string()))
-    })
-}
-
-#[export]
-pub fn res_set_string(name: String, value: String) -> bool {
-    with_ctx(|ctx| ctx.set_string_resource_value(&name, &value))
-}
-
-#[export]
-pub fn res_add_string(name: String, value: String) -> Option<u32> {
-    with_ctx(|ctx| ctx.resources_mut()?.add_string_resource(&name, &value))
-}
-
-#[export]
-pub fn res_set_string_in_component(component: String, name: String, value: String) -> bool {
-    with_ctx(|ctx| {
-        let Some(index) = component_index(ctx, &component) else {
-            return false;
-        };
-        let Some(res) = ctx.component_resources_mut(index) else {
-            return false;
-        };
-        res.set_string_value(&name, &value)
-    })
-}
-
-#[export]
-pub fn res_add_string_in_component(component: String, name: String, value: String) -> Option<u32> {
-    with_ctx(|ctx| {
-        let index = component_index(ctx, &component)?;
-        ctx.component_resources_mut(index)?
-            .add_string_resource(&name, &value)
-    })
-}
-
-#[export]
-pub fn res_add_bool(name: String, value: bool) -> Option<u32> {
-    with_ctx(|ctx| ctx.resources_mut()?.add_bool_resource(&name, value))
-}
-
-#[export]
-pub fn res_add_bool_in_component(component: String, name: String, value: bool) -> Option<u32> {
-    with_ctx(|ctx| {
-        let index = component_index(ctx, &component)?;
-        ctx.component_resources_mut(index)?
-            .add_bool_resource(&name, value)
-    })
-}
-
-#[export]
-pub fn res_add_integer(name: String, value: i32) -> Option<u32> {
-    with_ctx(|ctx| ctx.resources_mut()?.add_integer_resource(&name, value))
-}
-
-#[export]
-pub fn res_add_integer_in_component(component: String, name: String, value: i32) -> Option<u32> {
-    with_ctx(|ctx| {
-        let index = component_index(ctx, &component)?;
-        ctx.component_resources_mut(index)?
-            .add_integer_resource(&name, value)
-    })
-}
-
-#[export]
-pub fn res_add_color(name: String, color: String) -> Option<u32> {
-    with_ctx(|ctx| ctx.resources_mut()?.add_color_parsed(&name, &color))
-}
-
-#[export]
-pub fn res_add_color_in_component(component: String, name: String, color: String) -> Option<u32> {
-    with_ctx(|ctx| {
-        let index = component_index(ctx, &component)?;
-        ctx.component_resources_mut(index)?
-            .add_color_parsed(&name, &color)
-    })
-}
-
-#[export]
-pub fn res_add_dimen(name: String, dimen: String) -> Option<u32> {
-    with_ctx(|ctx| ctx.resources_mut()?.add_dimen_parsed(&name, &dimen))
-}
-
-#[export]
-pub fn res_add_dimen_in_component(component: String, name: String, dimen: String) -> Option<u32> {
-    with_ctx(|ctx| {
-        let index = component_index(ctx, &component)?;
-        ctx.component_resources_mut(index)?
-            .add_dimen_parsed(&name, &dimen)
-    })
-}
-
-#[export]
-pub fn res_add_id(name: String) -> Option<u32> {
-    with_ctx(|ctx| ctx.resources_mut()?.ensure_id(&name))
-}
-
-#[export]
-pub fn res_add_id_in_component(component: String, name: String) -> Option<u32> {
-    with_ctx(|ctx| {
-        let index = component_index(ctx, &component)?;
-        ctx.component_resources_mut(index)?.ensure_id(&name)
-    })
-}
-
-#[export]
-pub fn res_copy(bundle_path: String, apk_path: String) {
-    let full_path = BUNDLE_DIR.with(|bd| {
-        let bd = bd.borrow();
-        match bd.as_ref() {
-            Some(dir) => dir.join(&bundle_path),
-            None => std::path::PathBuf::from(&bundle_path),
+pub fn res_id(component: Option<String>, res_type: String, res_name: String) -> Option<u32> {
+    match component {
+        None => with_ctx(|ctx| {
+            ctx.apk_mut()
+                .find_resource(&res_type, &res_name)
+                .ok()
+                .flatten()
+                .map(|(_, id)| id)
+        }),
+        Some(_) => {
+            with_resources(component, |res| res.find_resource_id(&res_type, &res_name)).flatten()
         }
-    });
-    match std::fs::read(&full_path) {
-        Ok(data) => with_ctx(|ctx| ctx.inject_file(&apk_path, data)),
-        Err(e) => with_ctx(|ctx| {
+    }
+}
+
+#[export]
+pub fn res_exists(component: Option<String>, res_type: String, res_name: String) -> bool {
+    res_id(component, res_type, res_name).is_some()
+}
+
+#[export]
+pub fn res_get_string(component: Option<String>, name: String) -> Option<String> {
+    match component {
+        None => with_ctx(|ctx| ctx.apk_mut().string_resource(&name).ok().flatten()),
+        Some(_) => with_resources(component, |res| {
+            res.string_value(&name).map(|s| s.into_owned())
+        })
+        .flatten(),
+    }
+}
+
+#[export]
+pub fn res_set_string(component: Option<String>, name: String, value: String) -> bool {
+    match component {
+        None => with_ctx(|ctx| {
+            ctx.apk_mut()
+                .set_string_resource(&name, &value)
+                .unwrap_or(false)
+        }),
+        Some(_) => {
+            with_resources(component, |res| res.set_string_value(&name, &value)).unwrap_or(false)
+        }
+    }
+}
+
+/// Adds `res_type/name` with `value` read the way resource XML is: booleans,
+/// integers, colors, dimensions and `@type/name` references. A `string`
+/// entry keeps the text as is.
+#[export]
+pub fn res_add(
+    component: Option<String>,
+    res_type: String,
+    name: String,
+    value: String,
+) -> Option<u32> {
+    with_resources(component, |res| {
+        if res_type == "string" {
+            return res.add_string_resource(&name, &value);
+        }
+        match axml::parse_attribute_value(&value, Some(res)) {
+            Ok(AttributeValue::Value(parsed)) => res.add_resource(&res_type, &name, parsed),
+            _ => None,
+        }
+    })
+    .flatten()
+}
+
+#[export]
+pub fn res_add_id(component: Option<String>, name: String) -> Option<u32> {
+    with_resources(component, |res| res.ensure_id(&name)).flatten()
+}
+
+#[export]
+pub fn res_add_raw(
+    component: Option<String>,
+    res_type: String,
+    name: String,
+    data_type: u8,
+    data: u32,
+) -> Option<u32> {
+    with_resources(component, |res| {
+        res.add_resource(&res_type, &name, ResValue::new(data_type, data))
+    })
+    .flatten()
+}
+
+#[export]
+pub fn res_get_raw(component: Option<String>, res_type: String, res_name: String) -> Option<i64> {
+    let component = component.or_else(|| res_component_for(res_type.clone(), res_name.clone()))?;
+    with_resources(Some(component), |res| {
+        res.resource_value(&res_type, &res_name)
+            .map(|v| v.data as i64)
+    })
+    .flatten()
+}
+
+#[export]
+pub fn res_copy(bundle_relative: String, apk_path: String) {
+    let source = bundle_path(&bundle_relative);
+    match std::fs::read(&source) {
+        Ok(data) => inject(None, &apk_path, data, Compression::Deflated),
+        Err(error) => with_ctx(|ctx| {
             ctx.log().warn(format!(
-                "res_copy: failed to read {}: {e}",
-                full_path.display()
+                "res_copy: failed to read {}: {error}",
+                source.display()
             ))
         }),
     }
 }
 
+/// Copies `resources/<res_type>/<file>` from the bundle into `res/<res_type>/`.
 #[export]
 pub fn res_copy_group(res_type: String, files: Vec<String>) {
-    let bundle_dir = BUNDLE_DIR.with(|bd| bd.borrow().clone());
-    let bundle_dir = match bundle_dir {
-        Some(dir) => dir,
-        None => {
-            with_ctx(|ctx| {
-                ctx.log()
-                    .warn("res_copy_group: bundle directory is not set".to_string())
-            });
-            return;
+    let bundle_dir = bundle_path("");
+    let files: Vec<&str> = files.iter().map(String::as_str).collect();
+    with_ctx(|ctx| {
+        if let Err(error) = ctx.copy_resource_group(&bundle_dir, &res_type, &files) {
+            ctx.log().warn(format!("res_copy_group: {error}"));
         }
-    };
-    for file_name in &files {
-        let src = bundle_dir.join("resources").join(&res_type).join(file_name);
-        match std::fs::read(&src) {
-            Ok(data) => {
-                let apk_path = format!("res/{res_type}/{file_name}");
-                with_ctx(|ctx| ctx.inject_file(&apk_path, data));
-            }
-            Err(e) => with_ctx(|ctx| {
-                ctx.log().warn(format!(
-                    "res_copy_group: failed to read {}: {e}",
-                    src.display()
-                ))
-            }),
-        }
-    }
+    });
 }
 
 #[export]
 pub fn res_inject(apk_path: String, data: Vec<u8>) {
-    with_ctx(|ctx| ctx.inject_file(&apk_path, data));
+    inject(None, &apk_path, data, Compression::Deflated);
 }
 
 #[export]
 pub fn res_delete(apk_path: String) {
-    with_ctx(|ctx| ctx.delete_file(&apk_path));
+    super::files::file_delete(None, apk_path);
 }
 
 #[export]
 pub fn res_list(prefix: String) -> Vec<String> {
     with_ctx(|ctx| {
-        ctx.list_files()
+        ctx.apk()
+            .entry_names()
             .iter()
-            .filter(|f| f.as_str().starts_with(&prefix))
+            .filter(|name| name.as_str().starts_with(&prefix))
             .map(ToString::to_string)
             .collect()
     })
 }
 
 #[export]
-pub fn res_add_raw(res_type: String, name: String, data_type: u8, data: u32) -> Option<u32> {
-    with_ctx(|ctx| {
-        ctx.resources_mut()?
-            .add_resource(&res_type, &name, data_type, data)
+pub fn res_pool_get(component: Option<String>, index: u32) -> Option<String> {
+    with_resources(component, |res| {
+        res.get_string(index).map(|s| s.into_owned())
     })
+    .flatten()
 }
 
 #[export]
-pub fn res_add_raw_in_component(
-    component: String,
-    res_type: String,
-    name: String,
-    data_type: u8,
-    data: u32,
-) -> Option<u32> {
-    with_ctx(|ctx| {
-        let index = component_index(ctx, &component)?;
-        ctx.component_resources_mut(index)?
-            .add_resource(&res_type, &name, data_type, data)
-    })
+pub fn res_pool_set(component: Option<String>, index: u32, value: String) {
+    with_resources(component, |res| res.set_string(index, value));
 }
 
 #[export]
-pub fn res_get_raw(res_type: String, res_name: String) -> Option<i64> {
-    with_ctx(|ctx| {
-        let component_index = ctx.find_resource_component(&res_type, &res_name)?;
-        let (_, data) = ctx
-            .component_resources(component_index)?
-            .get_resource_value(&res_type, &res_name)?;
-        Some(data as i64)
-    })
+pub fn res_pool_add(component: Option<String>, value: String) -> Option<u32> {
+    with_resources(component, |res| res.add_global_string(&value))
 }
 
 #[export]
-pub fn res_get_raw_in_component(
-    component: String,
-    res_type: String,
-    res_name: String,
-) -> Option<i64> {
-    with_ctx(|ctx| {
-        let index = component_index(ctx, &component)?;
-        let (_, data) = ctx
-            .component_resources(index)?
-            .get_resource_value(&res_type, &res_name)?;
-        Some(data as i64)
-    })
-}
-
-#[export]
-pub fn res_pool_get(index: u32) -> Option<String> {
-    with_ctx(|ctx| {
-        ctx.resources()
-            .and_then(|r| r.get_string(index).map(|s| s.to_string()))
-    })
-}
-
-#[export]
-pub fn res_pool_set(index: u32, value: String) {
-    with_ctx(|ctx| {
-        if let Some(res) = ctx.resources_mut() {
-            res.set_string(index, value);
-        }
-    });
-}
-
-#[export]
-pub fn res_pool_add(value: String) -> Option<u32> {
-    with_ctx(|ctx| Some(ctx.resources_mut()?.add_global_string(&value)))
-}
-
-#[export]
-pub fn res_pool_find_refs(string_index: u32) -> Vec<ResourceRef> {
-    with_ctx(|ctx| {
-        let res = match ctx.resources() {
-            Some(r) => r,
-            None => return Vec::new(),
-        };
+pub fn res_pool_find_refs(component: Option<String>, string_index: u32) -> Vec<ResourceRef> {
+    with_resources(component, |res| {
         res.find_entries_by_string(string_index)
             .into_iter()
-            .map(|e| ResourceRef {
-                res_id: e.res_id,
-                package_id: e.package_id as u8,
-                type_id: e.type_id,
-                entry_index: e.entry_index as u16,
-                key_name: e.key_name,
+            .map(|entry| ResourceRef {
+                res_id: entry.res_id,
+                key_name: entry.key_name,
             })
             .collect()
     })
+    .unwrap_or_default()
 }
 
+/// Points a string entry at another pool string; without a component the
+/// entry's own component is used.
 #[export]
-pub fn res_pool_get_in_component(component: String, index: u32) -> Option<String> {
-    with_ctx(|ctx| {
-        let index_component = component_index(ctx, &component)?;
-        ctx.component_resources(index_component)
-            .and_then(|r| r.get_string(index).map(|s| s.to_string()))
-    })
-}
-
-#[export]
-pub fn res_pool_set_in_component(component: String, index: u32, value: String) {
-    with_ctx(|ctx| {
-        if let Some(index_component) = component_index(ctx, &component) {
-            if let Some(res) = ctx.component_resources_mut(index_component) {
-                res.set_string(index, value);
-            }
-        }
-    });
-}
-
-#[export]
-pub fn res_pool_add_in_component(component: String, value: String) -> Option<u32> {
-    with_ctx(|ctx| {
-        let index_component = component_index(ctx, &component)?;
-        Some(
-            ctx.component_resources_mut(index_component)?
-                .add_global_string(&value),
-        )
-    })
-}
-
-#[export]
-pub fn res_pool_find_refs_in_component(component: String, string_index: u32) -> Vec<ResourceRef> {
-    with_ctx(|ctx| {
-        let Some(index_component) = component_index(ctx, &component) else {
-            return Vec::new();
-        };
-        let Some(res) = ctx.component_resources(index_component) else {
-            return Vec::new();
-        };
-        res.find_entries_by_string(string_index)
-            .into_iter()
-            .map(|e| ResourceRef {
-                res_id: e.res_id,
-                package_id: e.package_id as u8,
-                type_id: e.type_id,
-                entry_index: e.entry_index as u16,
-                key_name: e.key_name,
-            })
-            .collect()
-    })
-}
-
-#[export]
-pub fn res_replace_entry(res_id: u32, new_string_index: u32) {
-    with_ctx(|ctx| {
-        if let Some(index) = ctx.find_resource_component_by_id(res_id) {
-            if let Some(res) = ctx.component_resources_mut(index) {
-                res.replace_entry_string(res_id, new_string_index);
-            }
-        }
-    });
-}
-
-#[export]
-pub fn res_replace_entry_in_component(component: String, res_id: u32, new_string_index: u32) {
-    with_ctx(|ctx| {
-        if let Some(index) = component_index(ctx, &component) {
-            if let Some(res) = ctx.component_resources_mut(index) {
-                res.replace_entry_string(res_id, new_string_index);
-            }
-        }
+pub fn res_replace_entry(component: Option<String>, res_id: u32, new_string_index: u32) {
+    let Some(component) = component.or_else(|| res_component_for_id(res_id)) else {
+        return;
+    };
+    with_resources(Some(component), |res| {
+        res.replace_entry_string(res_id, new_string_index)
     });
 }

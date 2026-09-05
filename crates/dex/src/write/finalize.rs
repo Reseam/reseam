@@ -182,15 +182,17 @@ pub(crate) fn finalize<S: DexSink>(
     let logical_end = w.pos() as usize;
 
     let mut hasher = Sha1::new();
-    w.sink
-        .digest(header_base + 32, logical_end, &mut |chunk| hasher.update(chunk))?;
+    w.sink.digest(header_base + 32, logical_end, &mut |chunk| {
+        hasher.update(chunk)
+    })?;
     let sig: [u8; 20] = hasher.finalize().into();
     w.patch(header_base + OFF_SIGNATURE, &sig);
 
     let mut adler = adler::Adler32::new();
-    w.sink.digest(header_base + OFF_CHECKSUM + 4, logical_end, &mut |chunk| {
-        adler.write_slice(chunk)
-    })?;
+    w.sink
+        .digest(header_base + OFF_CHECKSUM + 4, logical_end, &mut |chunk| {
+            adler.write_slice(chunk)
+        })?;
     w.patch_u32(header_base + OFF_CHECKSUM, adler.checksum());
 
     Ok(())

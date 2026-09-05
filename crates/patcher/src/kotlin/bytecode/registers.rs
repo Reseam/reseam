@@ -1,155 +1,77 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use boltffi::export;
-use reseam_apk::reseam_dex::{
-    find_contiguous_free_registers as dex_find_contiguous_free_registers,
-    find_free_register as dex_find_free_register, find_free_registers as dex_find_free_registers,
-    Instruction as DexInsn,
-};
+//! Register frame queries and the one frame mutation, growing locals.
 
-use crate::kotlin::{get_method_mut, with_ctx, with_handles};
+use boltffi::export;
+use reseam_apk::reseam_dex::{self as dex, Instruction as DexInsn};
+
+use crate::kotlin::handles::{code_mut, with_code, with_method_mut};
 
 #[export]
 pub fn ensure_outs_size(m: u32, min_outs_size: u16) {
-    with_ctx(|ctx| {
-        let mh = match with_handles(|h| h.get_method(m)) {
-            Some(mh) => mh,
-            None => return,
-        };
-        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
-            Some(d) => d,
-            None => return,
-        };
-        let method = match get_method_mut(dex, mh) {
-            Some(m) => m,
-            None => return,
-        };
-        if let Some(code) = &mut method.code {
-            code.outs_size = code.outs_size.max(min_outs_size);
-        }
+    with_method_mut(m, |dex, loc| {
+        let code = code_mut(dex, loc)?;
+        code.outs_size = code.outs_size.max(min_outs_size);
+        Some(())
     });
 }
 
+/// Adds locals below the parameter registers, renumbering parameter uses.
+/// Fails when an instruction cannot encode the shifted register.
 #[export]
 pub fn grow_local_registers(m: u32, additional_locals: u16) -> bool {
     if additional_locals == 0 {
         return true;
     }
-
-    with_ctx(|ctx| {
-        let mh = match with_handles(|h| h.get_method(m)) {
-            Some(mh) => mh,
-            None => return false,
-        };
-        let dex = match ctx.class_dex_mut(mh.dex_idx, mh.class_idx) {
-            Some(d) => d,
-            None => return false,
-        };
-        let method = match get_method_mut(dex, mh) {
-            Some(m) => m,
-            None => return false,
-        };
-        let Some(code) = &mut method.code else {
-            return false;
-        };
-
-        let Some(new_registers_size) = code.registers_size.checked_add(additional_locals) else {
-            return false;
-        };
-        let Some(param_base) = code.registers_size.checked_sub(code.ins_size) else {
-            return false;
-        };
-
+    with_method_mut(m, |dex, loc| {
+        let code = code_mut(dex, loc)?;
+        let new_registers_size = code.registers_size.checked_add(additional_locals)?;
+        let param_base = code.registers_size.checked_sub(code.ins_size)?;
         let mut shifted = code.instructions.clone();
-        for insn in &mut shifted {
-            if !shift_parameter_registers(insn, param_base, additional_locals) {
-                return false;
-            }
+        if !shifted
+            .iter_mut()
+            .all(|insn| shift_parameter_registers(insn, param_base, additional_locals))
+        {
+            return None;
         }
-
         code.instructions = shifted;
         code.registers_size = new_registers_size;
         code.debug_info = None;
-        true
+        Some(())
     })
+    .is_some()
 }
 
 #[export]
 pub fn registers_size(m: u32) -> u16 {
-    with_ctx(|ctx| {
-        let mh = match with_handles(|h| h.get_method(m)) {
-            Some(mh) => mh,
-            None => return 0,
-        };
-        ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)
-            .and_then(|(_, method)| method.code.as_ref().map(|c| c.registers_size))
-            .unwrap_or(0)
-    })
+    with_code(m, |_, code| Some(code.registers_size)).unwrap_or(0)
 }
 
 #[export]
 pub fn ins_size(m: u32) -> u16 {
-    with_ctx(|ctx| {
-        let mh = match with_handles(|h| h.get_method(m)) {
-            Some(mh) => mh,
-            None => return 0,
-        };
-        ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)
-            .and_then(|(_, method)| method.code.as_ref().map(|c| c.ins_size))
-            .unwrap_or(0)
-    })
+    with_code(m, |_, code| Some(code.ins_size)).unwrap_or(0)
 }
 
 #[export]
 pub fn outs_size(m: u32) -> u16 {
-    with_ctx(|ctx| {
-        let mh = match with_handles(|h| h.get_method(m)) {
-            Some(mh) => mh,
-            None => return 0,
-        };
-        ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual)
-            .and_then(|(_, method)| method.code.as_ref().map(|c| c.outs_size))
-            .unwrap_or(0)
-    })
+    with_code(m, |_, code| Some(code.outs_size)).unwrap_or(0)
 }
 
 #[export]
 pub fn find_free_register(m: u32, at_index: u32, exclude: Vec<u16>) -> u16 {
-    with_ctx(|ctx| {
-        let mh = match with_handles(|h| h.get_method(m)) {
-            Some(mh) => mh,
-            None => return 0,
-        };
-        let (_dex, method) = match ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual) {
-            Some(pair) => pair,
-            None => return 0,
-        };
-        method
-            .code
-            .as_ref()
-            .and_then(|c| dex_find_free_register(c, at_index as usize, &exclude))
-            .unwrap_or(0)
+    with_code(m, |_, code| {
+        dex::find_free_register(code, at_index as usize, &exclude)
     })
+    .unwrap_or(0)
 }
 
 #[export]
 pub fn find_free_registers(m: u32, at_index: u32, count: u32, exclude: Vec<u16>) -> Vec<u16> {
-    with_ctx(|ctx| {
-        let mh = match with_handles(|h| h.get_method(m)) {
-            Some(mh) => mh,
-            None => return Vec::new(),
-        };
-        let (_dex, method) = match ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual) {
-            Some(pair) => pair,
-            None => return Vec::new(),
-        };
-        method
-            .code
-            .as_ref()
-            .and_then(|c| dex_find_free_registers(c, at_index as usize, count as usize, &exclude))
-            .unwrap_or_default()
+    with_code(m, |_, code| {
+        dex::find_free_registers(code, at_index as usize, count as usize, &exclude)
     })
+    .unwrap_or_default()
 }
 
 #[export]
@@ -159,88 +81,31 @@ pub fn find_contiguous_free_registers(
     count: u32,
     exclude: Vec<u16>,
 ) -> Vec<u16> {
-    with_ctx(|ctx| {
-        let mh = match with_handles(|h| h.get_method(m)) {
-            Some(mh) => mh,
-            None => return Vec::new(),
-        };
-        let (_dex, method) = match ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual) {
-            Some(pair) => pair,
-            None => return Vec::new(),
-        };
-        method
-            .code
-            .as_ref()
-            .and_then(|c| {
-                dex_find_contiguous_free_registers(c, at_index as usize, count as usize, &exclude)
-            })
-            .unwrap_or_default()
+    with_code(m, |_, code| {
+        dex::find_contiguous_free_registers(code, at_index as usize, count as usize, &exclude)
     })
+    .unwrap_or_default()
 }
 
+/// The `position`th register operand of the instruction at `index`, or 0.
 #[export]
-pub fn instruction_register_a(m: u32, index: u32) -> u16 {
-    get_insn_register(m, index, 0)
-}
-
-#[export]
-pub fn instruction_register_b(m: u32, index: u32) -> u16 {
-    get_insn_register(m, index, 1)
-}
-
-#[export]
-pub fn instruction_register_c(m: u32, index: u32) -> u16 {
-    get_insn_register(m, index, 2)
-}
-
-#[export]
-pub fn instruction_register_d(m: u32, index: u32) -> u16 {
-    get_insn_register(m, index, 3)
+pub fn instruction_register(m: u32, index: u32, position: u32) -> u16 {
+    with_code(m, |_, code| {
+        code.instructions
+            .get(index as usize)?
+            .registers_used()
+            .get(position as usize)
+            .copied()
+    })
+    .unwrap_or(0)
 }
 
 #[export]
 pub fn instruction_wide_literal(m: u32, index: u32) -> i64 {
-    with_ctx(|ctx| {
-        let mh = match with_handles(|h| h.get_method(m)) {
-            Some(mh) => mh,
-            None => return 0,
-        };
-        let (_dex, method) = match ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual) {
-            Some(pair) => pair,
-            None => return 0,
-        };
-        method
-            .code
-            .as_ref()
-            .and_then(|c| {
-                c.instructions
-                    .get(index as usize)
-                    .and_then(|insn| insn.literal())
-            })
-            .unwrap_or(0)
+    with_code(m, |_, code| {
+        code.instructions.get(index as usize)?.literal()
     })
-}
-
-fn get_insn_register(m: u32, index: u32, reg_pos: usize) -> u16 {
-    with_ctx(|ctx| {
-        let mh = match with_handles(|h| h.get_method(m)) {
-            Some(mh) => mh,
-            None => return 0,
-        };
-        let (_dex, method) = match ctx.read_method(mh.dex_idx, mh.class_idx, mh.method_idx, mh.is_virtual) {
-            Some(pair) => pair,
-            None => return 0,
-        };
-        method
-            .code
-            .as_ref()
-            .and_then(|c| {
-                c.instructions
-                    .get(index as usize)
-                    .and_then(|insn| insn.registers_used().get(reg_pos).copied())
-            })
-            .unwrap_or(0)
-    })
+    .unwrap_or(0)
 }
 
 fn shift_parameter_registers(insn: &mut DexInsn, param_base: u16, additional: u16) -> bool {
@@ -488,20 +353,43 @@ fn shift_parameter_registers(insn: &mut DexInsn, param_base: u16, additional: u1
         | DexInsn::AgetBoolean { dest, array, index }
         | DexInsn::AgetByte { dest, array, index }
         | DexInsn::AgetChar { dest, array, index }
-        | DexInsn::AgetShort { dest, array, index } => {
-            shift_u8(dest, param_base, additional)
-                && shift_u8(array, param_base, additional)
-                && shift_u8(index, param_base, additional)
+        | DexInsn::AgetShort { dest, array, index }
+        | DexInsn::Aput {
+            src: dest,
+            array,
+            index,
         }
-
-        DexInsn::Aput { src, array, index }
-        | DexInsn::AputWide { src, array, index }
-        | DexInsn::AputObject { src, array, index }
-        | DexInsn::AputBoolean { src, array, index }
-        | DexInsn::AputByte { src, array, index }
-        | DexInsn::AputChar { src, array, index }
-        | DexInsn::AputShort { src, array, index } => {
-            shift_u8(src, param_base, additional)
+        | DexInsn::AputWide {
+            src: dest,
+            array,
+            index,
+        }
+        | DexInsn::AputObject {
+            src: dest,
+            array,
+            index,
+        }
+        | DexInsn::AputBoolean {
+            src: dest,
+            array,
+            index,
+        }
+        | DexInsn::AputByte {
+            src: dest,
+            array,
+            index,
+        }
+        | DexInsn::AputChar {
+            src: dest,
+            array,
+            index,
+        }
+        | DexInsn::AputShort {
+            src: dest,
+            array,
+            index,
+        } => {
+            shift_u8(dest, param_base, additional)
                 && shift_u8(array, param_base, additional)
                 && shift_u8(index, param_base, additional)
         }
@@ -537,7 +425,9 @@ fn shift_parameter_registers(insn: &mut DexInsn, param_base: u16, additional: u1
         | DexInsn::InvokeStatic { args, .. }
         | DexInsn::InvokeInterface { args, .. }
         | DexInsn::InvokePolymorphic { args, .. }
-        | DexInsn::InvokeCustom { args, .. } => shift_u4_slice(args, param_base, additional),
+        | DexInsn::InvokeCustom { args, .. } => args
+            .iter_mut()
+            .all(|reg| shift_u4(reg, param_base, additional)),
 
         DexInsn::FilledNewArrayRange {
             first_reg, count, ..
@@ -568,42 +458,43 @@ fn shift_parameter_registers(insn: &mut DexInsn, param_base: u16, additional: u1
     }
 }
 
-fn shift_u4(register: &mut u8, param_base: u16, additional: u16) -> bool {
-    let Some(shifted) = shifted_register(u16::from(*register), param_base, additional) else {
-        return false;
-    };
-    if shifted > 15 {
-        return false;
+fn shifted(register: u16, param_base: u16, additional: u16) -> Option<u16> {
+    if register >= param_base {
+        register.checked_add(additional)
+    } else {
+        Some(register)
     }
-    *register = shifted as u8;
-    true
+}
+
+fn shift_u4(register: &mut u8, param_base: u16, additional: u16) -> bool {
+    shift_within(register, 15, param_base, additional)
 }
 
 fn shift_u8(register: &mut u8, param_base: u16, additional: u16) -> bool {
-    let Some(shifted) = shifted_register(u16::from(*register), param_base, additional) else {
-        return false;
-    };
-    if shifted > u8::MAX as u16 {
-        return false;
+    shift_within(register, u8::MAX as u16, param_base, additional)
+}
+
+fn shift_within(register: &mut u8, max: u16, param_base: u16, additional: u16) -> bool {
+    match shifted(u16::from(*register), param_base, additional) {
+        Some(value) if value <= max => {
+            *register = value as u8;
+            true
+        }
+        _ => false,
     }
-    *register = shifted as u8;
-    true
 }
 
 fn shift_u16(register: &mut u16, param_base: u16, additional: u16) -> bool {
-    let Some(shifted) = shifted_register(*register, param_base, additional) else {
-        return false;
-    };
-    *register = shifted;
-    true
+    match shifted(*register, param_base, additional) {
+        Some(value) => {
+            *register = value;
+            true
+        }
+        None => false,
+    }
 }
 
-fn shift_u4_slice(registers: &mut [u8], param_base: u16, additional: u16) -> bool {
-    registers
-        .iter_mut()
-        .all(|register| shift_u4(register, param_base, additional))
-}
-
+/// A range must lie entirely on one side of the parameter boundary.
 fn shift_range(first_reg: &mut u16, count: u8, param_base: u16, additional: u16) -> bool {
     if count == 0 {
         return true;
@@ -612,16 +503,5 @@ fn shift_range(first_reg: &mut u16, count: u8, param_base: u16, additional: u16)
     if last_reg < param_base {
         return true;
     }
-    if *first_reg < param_base {
-        return false;
-    }
-    shift_u16(first_reg, param_base, additional)
-}
-
-fn shifted_register(register: u16, param_base: u16, additional: u16) -> Option<u16> {
-    if register >= param_base {
-        register.checked_add(additional)
-    } else {
-        Some(register)
-    }
+    *first_reg >= param_base && shift_u16(first_reg, param_base, additional)
 }

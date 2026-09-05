@@ -1,41 +1,46 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+//! The running patch's option values.
+
 use boltffi::export;
 
-use super::with_ctx;
+use super::handles::with_ctx;
+use crate::options::OptionValue;
+
+fn option<R>(key: &str, f: impl FnOnce(&OptionValue) -> Option<R>) -> Option<R> {
+    with_ctx(|ctx| f(ctx.options().get(key)?))
+}
 
 #[export]
 pub fn option_get_string(key: String) -> Option<String> {
-    with_ctx(|ctx| ctx.options().get_string(&key).map(|s| s.to_string()))
+    option(&key, |v| v.as_str().map(str::to_string))
 }
 
 #[export]
 pub fn option_get_bool(key: String) -> Option<bool> {
-    with_ctx(|ctx| ctx.options().get_bool(&key))
+    option(&key, OptionValue::as_bool)
 }
 
 #[export]
 pub fn option_get_int(key: String) -> Option<i64> {
-    with_ctx(|ctx| ctx.options().get_int(&key))
+    option(&key, OptionValue::as_int)
 }
 
 #[export]
 pub fn option_get_float(key: String) -> Option<f64> {
-    with_ctx(|ctx| ctx.options().get_float(&key))
+    option(&key, OptionValue::as_float)
 }
 
 #[export]
 pub fn option_get_string_list(key: String) -> Option<Vec<String>> {
-    with_ctx(|ctx| ctx.options().get_string_list(&key).map(|sl| sl.to_vec()))
+    option(&key, |v| v.as_string_list().map(<[String]>::to_vec))
 }
 
 #[export]
 pub fn option_get_path(key: String) -> Option<String> {
-    with_ctx(|ctx| {
-        ctx.options()
-            .get_path(&key)
-            .map(|path| path.to_string_lossy().into_owned())
+    option(&key, |v| {
+        v.as_path().map(|p| p.to_string_lossy().into_owned())
     })
 }
 

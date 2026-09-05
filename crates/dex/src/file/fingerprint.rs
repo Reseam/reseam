@@ -115,14 +115,18 @@ impl DexFile {
         let Some(prepared) = self.prepare_fingerprint(fp) else {
             return Ok(None);
         };
-        self.scan_methods_find(&prepared.query(fp), |view| self.match_fingerprint(fp, &prepared, view))
+        self.scan_methods_find(&prepared.query(fp), |view| {
+            self.match_fingerprint(fp, &prepared, view)
+        })
     }
 
     pub fn find_methods_by_fingerprint(&self, fp: &Fingerprint) -> Result<Vec<FingerprintHit>> {
         let Some(prepared) = self.prepare_fingerprint(fp) else {
             return Ok(Vec::new());
         };
-        self.scan_methods_collect(&prepared.query(fp), |view| self.match_fingerprint(fp, &prepared, view))
+        self.scan_methods_collect(&prepared.query(fp), |view| {
+            self.match_fingerprint(fp, &prepared, view)
+        })
     }
 
     /// Resolves the fingerprint's names to this DEX's indices once; a DEX that
@@ -138,7 +142,11 @@ impl DexFile {
         };
         let strings = match &fp.strings {
             None => None,
-            Some(list) => Some(list.iter().map(|s| self.find_string_idx(s)).collect::<Option<_>>()?),
+            Some(list) => Some(
+                list.iter()
+                    .map(|s| self.find_string_idx(s))
+                    .collect::<Option<_>>()?,
+            ),
         };
         Some(PreparedFingerprint {
             defining_class,
@@ -158,7 +166,10 @@ impl DexFile {
     ) -> Result<Option<FingerprintHit>> {
         let method_id = self.method_id(view.method);
 
-        if prepared.defining_class.is_some_and(|t| t != view.class_type) {
+        if prepared
+            .defining_class
+            .is_some_and(|t| t != view.class_type)
+        {
             return Ok(None);
         }
 

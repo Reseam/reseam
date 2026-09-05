@@ -1411,32 +1411,20 @@ data class AnnotationElement(
 
 data class ResourceRef(
     val resId: UInt,
-    val packageId: UByte,
-    val typeId: UByte,
-    val entryIndex: UShort,
     val keyName: String
 ) {
     companion object {
         fun decode(reader: WireReader): ResourceRef = ResourceRef(
             reader.readU32(),
-            reader.readU8(),
-            reader.readU8(),
-            reader.readU16(),
             reader.readString()
         )
     }
     fun wireEncodedSize(): Int =
         4 +
-        1 +
-        1 +
-        2 +
         (4 + Utf8Codec.maxBytes(keyName))
 
     fun wireEncodeTo(wire: WireWriter) {
         wire.writeU32(resId)
-        wire.writeU8(packageId)
-        wire.writeU8(typeId)
-        wire.writeU16(entryIndex)
         wire.writeString(keyName)
     }
 }
@@ -1964,23 +1952,6 @@ private object MethodCallSiteResultReader {
         List(count) { i -> read(buf, baseOffset + i * STRUCT_SIZE) }
 }
 
-private object FieldAccessSiteResultReader {
-    const val STRUCT_SIZE = 12
-    const val OFFSET_METHOD = 0
-    const val OFFSET_INDEX = 4
-    const val OFFSET_TARGET_INDEX = 8
-
-    fun read(buf: ByteBuffer, offset: Int): FieldAccessSiteResult =
-        FieldAccessSiteResult(
-            method = buf.getInt(offset + OFFSET_METHOD).toUInt(),
-            index = buf.getInt(offset + OFFSET_INDEX).toUInt(),
-            targetIndex = buf.getInt(offset + OFFSET_TARGET_INDEX).toUInt()
-        )
-
-    fun readAll(buf: ByteBuffer, baseOffset: Int, count: Int): List<FieldAccessSiteResult> =
-        List(count) { i -> read(buf, baseOffset + i * STRUCT_SIZE) }
-}
-
 private object TryItemWriter {
     const val STRUCT_SIZE = 12
     const val OFFSET_START_ADDR = 0
@@ -2027,9 +1998,30 @@ fun removeClass(c: UInt) {
     Native.boltffi_remove_class(c.toInt())
 }
 
+/**
+ * A new empty class in DEX `dex_index`; 0 when creation fails.
+ */
+
 fun createClass(dexIndex: UInt, descriptor: String, flags: UInt, superclass: String): UInt {
     return Native.boltffi_create_class(dexIndex.toInt(), descriptor.toByteArray(Charsets.UTF_8), flags.toInt(), superclass.toByteArray(Charsets.UTF_8)).toUInt()
 }
+
+fun definalClass(c: UInt) {
+    Native.boltffi_definal_class(c.toInt())
+}
+
+fun superclassChain(c: UInt): IntArray {
+    val buf = Native.boltffi_superclass_chain(c.toInt())
+        ?: throw FfiException(-1, "Null buffer returned")
+    return useWireBytes(buf) { buffer ->
+        buffer.asIntBuffer().let { ib -> IntArray(ib.remaining()).also { ib.get(it) } }
+    }
+}
+
+/**
+ * Adds a method; static, constructor and private methods are direct, the
+ * rest virtual. Returns its handle, or 0 when the class cannot take it.
+ */
 
 fun addMethod(c: UInt, method: NewMethod): UInt {
     val wire_writer_method = WireWriterPool.acquire(method.wireEncodedSize())
@@ -2052,14 +2044,35 @@ fun setMethodAccessFlags(m: UInt, flags: UInt) {
     Native.boltffi_set_method_access_flags(m.toInt(), flags.toInt())
 }
 
-fun addField(c: UInt, `field`: NewField): UInt {
+/**
+ * A copy of the method in the same class, under `new_name` when given.
+ */
+
+fun cloneMethod(m: UInt, newName: String?): UInt {
+    val wire_writer_new_name = WireWriterPool.acquire((newName?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_new_name.writer
+            newName?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        return Native.boltffi_clone_method(m.toInt(), wire_writer_new_name.buffer).toUInt()
+    } finally {
+        wire_writer_new_name.close()
+    }
+}
+
+/**
+ * Adds a field; a static field's `initial_value` becomes its static value.
+ */
+
+fun addField(c: UInt, `field`: NewField) {
     val wire_writer_field = WireWriterPool.acquire(`field`.wireEncodedSize())
         kotlin.run {
             val wire = wire_writer_field.writer
             `field`.wireEncodeTo(wire)
         }
     try {
-        return Native.boltffi_add_field(c.toInt(), wire_writer_field.buffer).toUInt()
+        Native.boltffi_add_field(c.toInt(), wire_writer_field.buffer)
     } finally {
         wire_writer_field.close()
     }
@@ -2086,29 +2099,43 @@ fun setStaticFieldValue(c: UInt, fieldName: String, `value`: EncodedVal) {
     }
 }
 
-fun cloneMethod(m: UInt, newName: String?): UInt {
-    val wire_writer_new_name = WireWriterPool.acquire((newName?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+fun addClassAnnotation(c: UInt, `annotation`: AnnotationItem) {
+    val wire_writer_annotation = WireWriterPool.acquire(`annotation`.wireEncodedSize())
         kotlin.run {
-            val wire = wire_writer_new_name.writer
-            newName?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+            val wire = wire_writer_annotation.writer
+            `annotation`.wireEncodeTo(wire)
         }
     try {
-        return Native.boltffi_clone_method(m.toInt(), wire_writer_new_name.buffer).toUInt()
+        Native.boltffi_add_class_annotation(c.toInt(), wire_writer_annotation.buffer)
     } finally {
-        wire_writer_new_name.close()
+        wire_writer_annotation.close()
     }
 }
 
-fun superclassChain(c: UInt): IntArray {
-    val buf = Native.boltffi_superclass_chain(c.toInt())
-        ?: throw FfiException(-1, "Null buffer returned")
-    return useWireBytes(buf) { buffer ->
-        buffer.asIntBuffer().let { ib -> IntArray(ib.remaining()).also { ib.get(it) } }
+fun addMethodAnnotation(m: UInt, `annotation`: AnnotationItem) {
+    val wire_writer_annotation = WireWriterPool.acquire(`annotation`.wireEncodedSize())
+        kotlin.run {
+            val wire = wire_writer_annotation.writer
+            `annotation`.wireEncodeTo(wire)
+        }
+    try {
+        Native.boltffi_add_method_annotation(m.toInt(), wire_writer_annotation.buffer)
+    } finally {
+        wire_writer_annotation.close()
     }
 }
 
-fun definalClass(c: UInt) {
-    Native.boltffi_definal_class(c.toInt())
+fun addFieldAnnotation(c: UInt, fieldName: String, `annotation`: AnnotationItem) {
+    val wire_writer_annotation = WireWriterPool.acquire(`annotation`.wireEncodedSize())
+        kotlin.run {
+            val wire = wire_writer_annotation.writer
+            `annotation`.wireEncodeTo(wire)
+        }
+    try {
+        Native.boltffi_add_field_annotation(c.toInt(), fieldName.toByteArray(Charsets.UTF_8), wire_writer_annotation.buffer)
+    } finally {
+        wire_writer_annotation.close()
+    }
 }
 
 fun dexCount(): UInt {
@@ -2162,6 +2189,10 @@ fun buildLookups(d: UInt) {
     Native.boltffi_build_lookups(d.toInt())
 }
 
+/**
+ * Merges DEX files from the bundle into the app; returns how many.
+ */
+
 fun mergeExtensionDex(paths: List<String>): UInt {
     val wire_writer_paths = WireWriterPool.acquire((4 + paths.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }))
         kotlin.run {
@@ -2172,45 +2203,6 @@ fun mergeExtensionDex(paths: List<String>): UInt {
         return Native.boltffi_merge_extension_dex(wire_writer_paths.buffer).toUInt()
     } finally {
         wire_writer_paths.close()
-    }
-}
-
-fun addClassAnnotation(c: UInt, `annotation`: AnnotationItem) {
-    val wire_writer_annotation = WireWriterPool.acquire(`annotation`.wireEncodedSize())
-        kotlin.run {
-            val wire = wire_writer_annotation.writer
-            `annotation`.wireEncodeTo(wire)
-        }
-    try {
-        Native.boltffi_add_class_annotation(c.toInt(), wire_writer_annotation.buffer)
-    } finally {
-        wire_writer_annotation.close()
-    }
-}
-
-fun addMethodAnnotation(m: UInt, `annotation`: AnnotationItem) {
-    val wire_writer_annotation = WireWriterPool.acquire(`annotation`.wireEncodedSize())
-        kotlin.run {
-            val wire = wire_writer_annotation.writer
-            `annotation`.wireEncodeTo(wire)
-        }
-    try {
-        Native.boltffi_add_method_annotation(m.toInt(), wire_writer_annotation.buffer)
-    } finally {
-        wire_writer_annotation.close()
-    }
-}
-
-fun addFieldAnnotation(c: UInt, fieldName: String, `annotation`: AnnotationItem) {
-    val wire_writer_annotation = WireWriterPool.acquire(`annotation`.wireEncodedSize())
-        kotlin.run {
-            val wire = wire_writer_annotation.writer
-            `annotation`.wireEncodeTo(wire)
-        }
-    try {
-        Native.boltffi_add_field_annotation(c.toInt(), fieldName.toByteArray(Charsets.UTF_8), wire_writer_annotation.buffer)
-    } finally {
-        wire_writer_annotation.close()
     }
 }
 
@@ -2245,38 +2237,43 @@ fun findMethodsByStrings(strings: List<String>): IntArray {
     }
 }
 
-fun findMethodsByReturnType(returnType: String): IntArray {
-    val buf = Native.boltffi_find_methods_by_return_type(returnType.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    return useWireBytes(buf) { buffer ->
-        buffer.asIntBuffer().let { ib -> IntArray(ib.remaining()).also { ib.get(it) } }
-    }
-}
+/**
+ * Methods whose prototype satisfies every given filter: exact return type,
+ * exact parameter list, and a parameter of `parameter` type anywhere.
+ */
 
-fun findMethodsByParameterTypes(parameterTypes: List<String>): IntArray {
-    val wire_writer_parameter_types = WireWriterPool.acquire((4 + parameterTypes.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }))
+fun findMethodsByProto(returnType: String?, parameterTypes: List<String>?, parameter: String?): IntArray {
+    val wire_writer_return_type = WireWriterPool.acquire((returnType?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_return_type.writer
+            returnType?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    val wire_writer_parameter_types = WireWriterPool.acquire((parameterTypes?.let { v -> 1 + (4 + v.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_parameter_types.writer
-            wire.writeU32(parameterTypes.size.toUInt()); parameterTypes.forEach { item -> wire.writeString(item) }
+            parameterTypes?.let { v -> wire.writeU8(1u); wire.writeU32(v.size.toUInt()); v.forEach { item -> wire.writeString(item) } } ?: wire.writeU8(0u)
+        }
+    val wire_writer_parameter = WireWriterPool.acquire((parameter?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_parameter.writer
+            parameter?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
         }
     try {
-        val buf = Native.boltffi_find_methods_by_parameter_types(wire_writer_parameter_types.buffer)
+        val buf = Native.boltffi_find_methods_by_proto(wire_writer_return_type.buffer, wire_writer_parameter_types.buffer, wire_writer_parameter.buffer)
             ?: throw FfiException(-1, "Null buffer returned")
         return useWireBytes(buf) { buffer ->
             buffer.asIntBuffer().let { ib -> IntArray(ib.remaining()).also { ib.get(it) } }
         }
     } finally {
+        wire_writer_return_type.close()
         wire_writer_parameter_types.close()
+        wire_writer_parameter.close()
     }
 }
 
-fun findMethodsWithParameter(parameterType: String): IntArray {
-    val buf = Native.boltffi_find_methods_with_parameter(parameterType.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    return useWireBytes(buf) { buffer ->
-        buffer.asIntBuffer().let { ib -> IntArray(ib.remaining()).also { ib.get(it) } }
-    }
-}
+/**
+ * Negative opcodes match any instruction.
+ */
 
 fun findMethodsByOpcodes(pattern: IntArray): IntArray {
     val buf = Native.boltffi_find_methods_by_opcodes(pattern)
@@ -2348,14 +2345,6 @@ fun getClassInfo(c: UInt): ClassInfo? {
     return reader.readOptional { ClassInfo.decode(reader) }
 }
 
-fun classMethods(c: UInt): IntArray {
-    val buf = Native.boltffi_class_methods(c.toInt())
-        ?: throw FfiException(-1, "Null buffer returned")
-    return useWireBytes(buf) { buffer ->
-        buffer.asIntBuffer().let { ib -> IntArray(ib.remaining()).also { ib.get(it) } }
-    }
-}
-
 fun classDirectMethods(c: UInt): IntArray {
     val buf = Native.boltffi_class_direct_methods(c.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
@@ -2372,31 +2361,15 @@ fun classVirtualMethods(c: UInt): IntArray {
     }
 }
 
+/**
+ * Static fields first, then instance fields.
+ */
+
 fun classFields(c: UInt): List<FieldInfo> {
     val buf = Native.boltffi_class_fields(c.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readList { FieldInfo.decode(reader) }
-}
-
-fun classStaticFields(c: UInt): List<FieldInfo> {
-    val buf = Native.boltffi_class_static_fields(c.toInt())
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readList { FieldInfo.decode(reader) }
-}
-
-fun classInstanceFields(c: UInt): List<FieldInfo> {
-    val buf = Native.boltffi_class_instance_fields(c.toInt())
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readList { FieldInfo.decode(reader) }
-}
-
-fun version(): String {
-    val result = Native.boltffi_version()
-        ?: throw FfiException(-1, "Null buffer returned")
-    return result
 }
 
 fun setInstructions(m: UInt, insns: List<Instruction>) {
@@ -2412,6 +2385,10 @@ fun setInstructions(m: UInt, insns: List<Instruction>) {
     }
 }
 
+/**
+ * Replaces the whole body, dropping debug info the new code cannot match.
+ */
+
 fun replaceBody(m: UInt, registersSize: UShort, outsSize: UShort, insns: List<Instruction>) {
     val wire_writer_insns = WireWriterPool.acquire((4 + insns.sumOf { item -> item.wireEncodedSize() }))
         kotlin.run {
@@ -2422,19 +2399,6 @@ fun replaceBody(m: UInt, registersSize: UShort, outsSize: UShort, insns: List<In
         Native.boltffi_replace_body(m.toInt(), registersSize.toShort(), outsSize.toShort(), wire_writer_insns.buffer)
     } finally {
         wire_writer_insns.close()
-    }
-}
-
-fun insertInstruction(m: UInt, index: UInt, insn: Instruction) {
-    val wire_writer_insn = WireWriterPool.acquire(insn.wireEncodedSize())
-        kotlin.run {
-            val wire = wire_writer_insn.writer
-            insn.wireEncodeTo(wire)
-        }
-    try {
-        Native.boltffi_insert_instruction(m.toInt(), index.toInt(), wire_writer_insn.buffer)
-    } finally {
-        wire_writer_insn.close()
     }
 }
 
@@ -2464,10 +2428,6 @@ fun replaceInstruction(m: UInt, index: UInt, insn: Instruction) {
     }
 }
 
-fun removeInstruction(m: UInt, index: UInt) {
-    Native.boltffi_remove_instruction(m.toInt(), index.toInt())
-}
-
 fun removeInstructions(m: UInt, index: UInt, count: UInt) {
     Native.boltffi_remove_instructions(m.toInt(), index.toInt(), count.toInt())
 }
@@ -2480,10 +2440,6 @@ fun returnEarlyInt(m: UInt, `value`: Int) {
     Native.boltffi_return_early_int(m.toInt(), `value`)
 }
 
-fun returnEarlyBool(m: UInt, `value`: Boolean) {
-    Native.boltffi_return_early_bool(m.toInt(), `value`)
-}
-
 fun returnEarlyObjectNull(m: UInt) {
     Native.boltffi_return_early_object_null(m.toInt())
 }
@@ -2492,20 +2448,22 @@ fun returnEarlyWide(m: UInt, `value`: Long) {
     Native.boltffi_return_early_wide(m.toInt(), `value`)
 }
 
-fun replaceString(m: UInt, old: String, new: String): Boolean {
-    return Native.boltffi_replace_string(m.toInt(), old.toByteArray(Charsets.UTF_8), new.toByteArray(Charsets.UTF_8))
+/**
+ * Rewrites string constants equal to `old`; `all` decides whether to stop
+ * after the first. Returns how many changed.
+ */
+
+fun replaceStrings(m: UInt, old: String, new: String, all: Boolean): UInt {
+    return Native.boltffi_replace_strings(m.toInt(), old.toByteArray(Charsets.UTF_8), new.toByteArray(Charsets.UTF_8), all).toUInt()
 }
 
-fun replaceAllStrings(m: UInt, old: String, new: String): UInt {
-    return Native.boltffi_replace_all_strings(m.toInt(), old.toByteArray(Charsets.UTF_8), new.toByteArray(Charsets.UTF_8)).toUInt()
-}
+/**
+ * Rewrites literals equal to `old` where the instruction can encode `new`;
+ * `all` decides whether to stop after the first. Returns how many changed.
+ */
 
-fun replaceLiteral(m: UInt, old: Long, new: Long): Boolean {
-    return Native.boltffi_replace_literal(m.toInt(), old, new)
-}
-
-fun replaceAllLiterals(m: UInt, old: Long, new: Long): UInt {
-    return Native.boltffi_replace_all_literals(m.toInt(), old, new).toUInt()
+fun replaceLiterals(m: UInt, old: Long, new: Long, all: Boolean): UInt {
+    return Native.boltffi_replace_literals(m.toInt(), old, new, all).toUInt()
 }
 
 fun replaceMethodCall(m: UInt, index: UInt, newClass: String, newName: String, newProto: String): Boolean {
@@ -2516,6 +2474,10 @@ fun insertInvokeStatic(m: UInt, index: UInt, className: String, name: String, pr
     return Native.boltffi_insert_invoke_static(m.toInt(), index.toInt(), className.toByteArray(Charsets.UTF_8), name.toByteArray(Charsets.UTF_8), proto.toByteArray(Charsets.UTF_8), registers)
 }
 
+/**
+ * Inserts a static call followed by a `move-result` into `result_register`.
+ */
+
 fun insertInvokeStaticWithMoveResult(m: UInt, index: UInt, className: String, name: String, proto: String, registers: ShortArray, resultRegister: UShort, isObject: Boolean): Boolean {
     return Native.boltffi_insert_invoke_static_with_move_result(m.toInt(), index.toInt(), className.toByteArray(Charsets.UTF_8), name.toByteArray(Charsets.UTF_8), proto.toByteArray(Charsets.UTF_8), registers, resultRegister.toShort(), isObject)
 }
@@ -2523,6 +2485,11 @@ fun insertInvokeStaticWithMoveResult(m: UInt, index: UInt, className: String, na
 fun ensureOutsSize(m: UInt, minOutsSize: UShort) {
     Native.boltffi_ensure_outs_size(m.toInt(), minOutsSize.toShort())
 }
+
+/**
+ * Adds locals below the parameter registers, renumbering parameter uses.
+ * Fails when an instruction cannot encode the shifted register.
+ */
 
 fun growLocalRegisters(m: UInt, additionalLocals: UShort): Boolean {
     return Native.boltffi_grow_local_registers(m.toInt(), additionalLocals.toShort())
@@ -2560,20 +2527,12 @@ fun findContiguousFreeRegisters(m: UInt, atIndex: UInt, count: UInt, exclude: Sh
     }
 }
 
-fun instructionRegisterA(m: UInt, index: UInt): UShort {
-    return Native.boltffi_instruction_register_a(m.toInt(), index.toInt()).toUShort()
-}
+/**
+ * The `position`th register operand of the instruction at `index`, or 0.
+ */
 
-fun instructionRegisterB(m: UInt, index: UInt): UShort {
-    return Native.boltffi_instruction_register_b(m.toInt(), index.toInt()).toUShort()
-}
-
-fun instructionRegisterC(m: UInt, index: UInt): UShort {
-    return Native.boltffi_instruction_register_c(m.toInt(), index.toInt()).toUShort()
-}
-
-fun instructionRegisterD(m: UInt, index: UInt): UShort {
-    return Native.boltffi_instruction_register_d(m.toInt(), index.toInt()).toUShort()
+fun instructionRegister(m: UInt, index: UInt, position: UInt): UShort {
+    return Native.boltffi_instruction_register(m.toInt(), index.toInt(), position.toInt()).toUShort()
 }
 
 fun instructionWideLiteral(m: UInt, index: UInt): Long {
@@ -2586,6 +2545,10 @@ fun getInstructions(m: UInt): List<Instruction> {
     val reader = WireReader(buf)
     return reader.readList { Instruction.decode(reader) }
 }
+
+/**
+ * The instruction at `index`, or a `nop` when there is none.
+ */
 
 fun getInstruction(m: UInt, index: UInt): Instruction {
     val buf = Native.boltffi_get_instruction(m.toInt(), index.toInt())
@@ -2626,10 +2589,6 @@ fun indexOfFirstLiteralReversed(m: UInt, literal: Long): UInt? {
     return reader.readOptional { reader.readU32() }
 }
 
-fun containsLiteral(m: UInt, literal: Long): Boolean {
-    return Native.boltffi_contains_literal(m.toInt(), literal)
-}
-
 fun indexOfFirstString(m: UInt, s: String): UInt? {
     val buf = Native.boltffi_index_of_first_string(m.toInt(), s.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
@@ -2652,6 +2611,10 @@ fun indexOfFirstMethodCall(m: UInt, definingClass: String, methodName: String, s
     return reader.readOptional { reader.readU32() }
 }
 
+/**
+ * A field access matching every given filter; `op` below zero matches any opcode.
+ */
+
 fun indexOfFirstFieldAccess(m: UInt, op: Int, fieldType: String?, definingClass: String?, start: UInt): UInt? {
     val wire_writer_field_type = WireWriterPool.acquire((fieldType?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
@@ -2673,6 +2636,11 @@ fun indexOfFirstFieldAccess(m: UInt, op: Int, fieldType: String?, definingClass:
         wire_writer_defining_class.close()
     }
 }
+
+/**
+ * The first index at or after `start` where `opcodes` match consecutively;
+ * negative opcodes match anything.
+ */
 
 fun indexOfOpcodeSequence(m: UInt, opcodes: IntArray, start: UInt): UInt? {
     val buf = Native.boltffi_index_of_opcode_sequence(m.toInt(), opcodes, start.toInt())
@@ -2705,6 +2673,18 @@ fun findInstructionsByStringContains(substring: String): List<InstructionHit> {
     }
 }
 
+fun findInstructionsByResourceId(resType: String, resName: String): List<InstructionHit> {
+    val buf = Native.boltffi_find_instructions_by_resource_id(resType.toByteArray(Charsets.UTF_8), resName.toByteArray(Charsets.UTF_8))
+        ?: throw FfiException(-1, "Null buffer returned")
+    return useWireBytes(buf) { buffer ->
+        InstructionHitReader.readAll(buffer, 0, buffer.capacity() / InstructionHitReader.STRUCT_SIZE)
+    }
+}
+
+/**
+ * Call sites of `(class_names[i], method_names[i])` pairs.
+ */
+
 fun findMethodCallSites(classNames: List<String>, methodNames: List<String>): List<MethodCallSiteResult> {
     val wire_writer_class_names = WireWriterPool.acquire((4 + classNames.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }))
         kotlin.run {
@@ -2728,7 +2708,11 @@ fun findMethodCallSites(classNames: List<String>, methodNames: List<String>): Li
     }
 }
 
-fun findFieldAccessSites(classNames: List<String>, fieldNames: List<String>): List<FieldAccessSiteResult> {
+/**
+ * Accesses of `(class_names[i], field_names[i])` pairs.
+ */
+
+fun findFieldAccessSites(classNames: List<String>, fieldNames: List<String>): List<MethodCallSiteResult> {
     val wire_writer_class_names = WireWriterPool.acquire((4 + classNames.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }))
         kotlin.run {
             val wire = wire_writer_class_names.writer
@@ -2743,7 +2727,7 @@ fun findFieldAccessSites(classNames: List<String>, fieldNames: List<String>): Li
         val buf = Native.boltffi_find_field_access_sites(wire_writer_class_names.buffer, wire_writer_field_names.buffer)
             ?: throw FfiException(-1, "Null buffer returned")
         return useWireBytes(buf) { buffer ->
-            FieldAccessSiteResultReader.readAll(buffer, 0, buffer.capacity() / FieldAccessSiteResultReader.STRUCT_SIZE)
+            MethodCallSiteResultReader.readAll(buffer, 0, buffer.capacity() / MethodCallSiteResultReader.STRUCT_SIZE)
         }
     } finally {
         wire_writer_class_names.close()
@@ -2751,8 +2735,8 @@ fun findFieldAccessSites(classNames: List<String>, fieldNames: List<String>): Li
     }
 }
 
-fun findInstructionsByResourceId(resType: String, resName: String): List<InstructionHit> {
-    val buf = Native.boltffi_find_instructions_by_resource_id(resType.toByteArray(Charsets.UTF_8), resName.toByteArray(Charsets.UTF_8))
+fun findInstructionsByInvoke(definingClass: String, methodName: String): List<InstructionHit> {
+    val buf = Native.boltffi_find_instructions_by_invoke(definingClass.toByteArray(Charsets.UTF_8), methodName.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     return useWireBytes(buf) { buffer ->
         InstructionHitReader.readAll(buffer, 0, buffer.capacity() / InstructionHitReader.STRUCT_SIZE)
@@ -2764,14 +2748,6 @@ fun allMethodHandles(): IntArray {
         ?: throw FfiException(-1, "Null buffer returned")
     return useWireBytes(buf) { buffer ->
         buffer.asIntBuffer().let { ib -> IntArray(ib.remaining()).also { ib.get(it) } }
-    }
-}
-
-fun findInstructionsByInvoke(definingClass: String, methodName: String): List<InstructionHit> {
-    val buf = Native.boltffi_find_instructions_by_invoke(definingClass.toByteArray(Charsets.UTF_8), methodName.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    return useWireBytes(buf) { buffer ->
-        InstructionHitReader.readAll(buffer, 0, buffer.capacity() / InstructionHitReader.STRUCT_SIZE)
     }
 }
 
@@ -2803,63 +2779,86 @@ fun instructionTypeRef(m: UInt, index: UInt): String? {
     return reader.readOptional { reader.readString() }
 }
 
-fun fileComponentNames(): List<String> {
-    val buf = Native.boltffi_file_component_names()
+fun componentNames(): List<String> {
+    val buf = Native.boltffi_component_names()
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readList { reader.readString() }
 }
 
-fun fileList(): List<String> {
-    val buf = Native.boltffi_file_list()
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readList { reader.readString() }
+fun fileList(component: String?): List<String> {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        val buf = Native.boltffi_file_list(wire_writer_component.buffer)
+            ?: throw FfiException(-1, "Null buffer returned")
+        val reader = WireReader(buf)
+        return reader.readList { reader.readString() }
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun fileListInComponent(component: String): List<String> {
-    val buf = Native.boltffi_file_list_in_component(component.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readList { reader.readString() }
+fun fileRead(component: String?, apkPath: String): ByteArray? {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        val buf = Native.boltffi_file_read(wire_writer_component.buffer, apkPath.toByteArray(Charsets.UTF_8))
+            ?: throw FfiException(-1, "Null buffer returned")
+        val reader = WireReader(buf)
+        return reader.readOptional { reader.readBytes() }
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun fileRead(apkPath: String): ByteArray? {
-    val buf = Native.boltffi_file_read(apkPath.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readBytes() }
+fun fileInject(component: String?, apkPath: String, `data`: ByteArray, stored: Boolean) {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        Native.boltffi_file_inject(wire_writer_component.buffer, apkPath.toByteArray(Charsets.UTF_8), `data`, stored)
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun fileReadInComponent(component: String, apkPath: String): ByteArray? {
-    val buf = Native.boltffi_file_read_in_component(component.toByteArray(Charsets.UTF_8), apkPath.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readBytes() }
+fun fileDelete(component: String?, apkPath: String) {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        Native.boltffi_file_delete(wire_writer_component.buffer, apkPath.toByteArray(Charsets.UTF_8))
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun fileInject(apkPath: String, `data`: ByteArray) {
-    Native.boltffi_file_inject(apkPath.toByteArray(Charsets.UTF_8), `data`)
-}
+/**
+ * Copies a file from the bundle into the APK.
+ */
 
-fun fileInjectInComponent(component: String, apkPath: String, `data`: ByteArray) {
-    Native.boltffi_file_inject_in_component(component.toByteArray(Charsets.UTF_8), apkPath.toByteArray(Charsets.UTF_8), `data`)
-}
-
-fun fileDelete(apkPath: String) {
-    Native.boltffi_file_delete(apkPath.toByteArray(Charsets.UTF_8))
-}
-
-fun fileDeleteInComponent(component: String, apkPath: String) {
-    Native.boltffi_file_delete_in_component(component.toByteArray(Charsets.UTF_8), apkPath.toByteArray(Charsets.UTF_8))
-}
-
-fun fileCopy(bundlePath: String, apkPath: String) {
-    Native.boltffi_file_copy(bundlePath.toByteArray(Charsets.UTF_8), apkPath.toByteArray(Charsets.UTF_8))
-}
-
-fun fileCopyInComponent(component: String, bundlePath: String, apkPath: String) {
-    Native.boltffi_file_copy_in_component(component.toByteArray(Charsets.UTF_8), bundlePath.toByteArray(Charsets.UTF_8), apkPath.toByteArray(Charsets.UTF_8))
+fun fileCopy(component: String?, bundleRelative: String, apkPath: String) {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        Native.boltffi_file_copy(wire_writer_component.buffer, bundleRelative.toByteArray(Charsets.UTF_8), apkPath.toByteArray(Charsets.UTF_8))
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
 fun logInfo(msg: String) {
@@ -2874,81 +2873,188 @@ fun logDebug(msg: String) {
     Native.boltffi_log_debug(msg.toByteArray(Charsets.UTF_8))
 }
 
-fun manifestPackageName(): String {
-    val result = Native.boltffi_manifest_package_name()
-        ?: throw FfiException(-1, "Null buffer returned")
-    return result
+fun manifestPackageName(component: String?): String? {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        val buf = Native.boltffi_manifest_package_name(wire_writer_component.buffer)
+            ?: throw FfiException(-1, "Null buffer returned")
+        val reader = WireReader(buf)
+        return reader.readOptional { reader.readString() }
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun manifestVersionCode(): UInt? {
-    val buf = Native.boltffi_manifest_version_code()
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
+fun manifestVersionCode(component: String?): UInt? {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        val buf = Native.boltffi_manifest_version_code(wire_writer_component.buffer)
+            ?: throw FfiException(-1, "Null buffer returned")
+        val reader = WireReader(buf)
+        return reader.readOptional { reader.readU32() }
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun manifestVersionName(): String? {
-    val buf = Native.boltffi_manifest_version_name()
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readString() }
+fun manifestVersionName(component: String?): String? {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        val buf = Native.boltffi_manifest_version_name(wire_writer_component.buffer)
+            ?: throw FfiException(-1, "Null buffer returned")
+        val reader = WireReader(buf)
+        return reader.readOptional { reader.readString() }
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun manifestMinSdkVersion(): UInt? {
-    val buf = Native.boltffi_manifest_min_sdk_version()
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
+fun manifestMinSdkVersion(component: String?): UInt? {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        val buf = Native.boltffi_manifest_min_sdk_version(wire_writer_component.buffer)
+            ?: throw FfiException(-1, "Null buffer returned")
+        val reader = WireReader(buf)
+        return reader.readOptional { reader.readU32() }
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun manifestSplitName(): String? {
-    val buf = Native.boltffi_manifest_split_name()
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readString() }
+fun manifestSplitName(component: String?): String? {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        val buf = Native.boltffi_manifest_split_name(wire_writer_component.buffer)
+            ?: throw FfiException(-1, "Null buffer returned")
+        val reader = WireReader(buf)
+        return reader.readOptional { reader.readString() }
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun manifestSetVersionCode(code: UInt) {
-    Native.boltffi_manifest_set_version_code(code.toInt())
+fun manifestSetVersionCode(component: String?, code: UInt) {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        Native.boltffi_manifest_set_version_code(wire_writer_component.buffer, code.toInt())
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun manifestSetVersionName(name: String) {
-    Native.boltffi_manifest_set_version_name(name.toByteArray(Charsets.UTF_8))
+fun manifestSetVersionName(component: String?, name: String) {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        Native.boltffi_manifest_set_version_name(wire_writer_component.buffer, name.toByteArray(Charsets.UTF_8))
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun manifestSetMinSdk(sdk: UInt) {
-    Native.boltffi_manifest_set_min_sdk(sdk.toInt())
+fun manifestSetMinSdk(component: String?, sdk: UInt) {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        Native.boltffi_manifest_set_min_sdk(wire_writer_component.buffer, sdk.toInt())
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun manifestAddPermission(permission: String) {
-    Native.boltffi_manifest_add_permission(permission.toByteArray(Charsets.UTF_8))
+fun manifestAddPermission(component: String?, permission: String) {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        Native.boltffi_manifest_add_permission(wire_writer_component.buffer, permission.toByteArray(Charsets.UTF_8))
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun manifestSetAttributeInt(elementName: String, attrResId: UInt, `value`: Int) {
-    Native.boltffi_manifest_set_attribute_int(elementName.toByteArray(Charsets.UTF_8), attrResId.toInt(), `value`)
+/**
+ * Sets the `android:` attribute `attr_name` on the first element named
+ * `element_name`, adding it when the element lacks it.
+ */
+
+fun manifestSetAttributeInt(component: String?, elementName: String, attrName: String, `value`: Int) {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        Native.boltffi_manifest_set_attribute_int(wire_writer_component.buffer, elementName.toByteArray(Charsets.UTF_8), attrName.toByteArray(Charsets.UTF_8), `value`)
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun manifestSetAttributeIntInComponent(component: String, elementName: String, attrResId: UInt, `value`: Int) {
-    Native.boltffi_manifest_set_attribute_int_in_component(component.toByteArray(Charsets.UTF_8), elementName.toByteArray(Charsets.UTF_8), attrResId.toInt(), `value`)
+fun manifestSetAttributeString(component: String?, elementName: String, attrName: String, `value`: String) {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        Native.boltffi_manifest_set_attribute_string(wire_writer_component.buffer, elementName.toByteArray(Charsets.UTF_8), attrName.toByteArray(Charsets.UTF_8), `value`.toByteArray(Charsets.UTF_8))
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun manifestSetAttributeString(elementName: String, attrResId: UInt, `value`: String) {
-    Native.boltffi_manifest_set_attribute_string(elementName.toByteArray(Charsets.UTF_8), attrResId.toInt(), `value`.toByteArray(Charsets.UTF_8))
+fun manifestSetActivityConfigChanges(component: String?, activityName: String, configChanges: String) {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        Native.boltffi_manifest_set_activity_config_changes(wire_writer_component.buffer, activityName.toByteArray(Charsets.UTF_8), configChanges.toByteArray(Charsets.UTF_8))
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun manifestSetAttributeStringInComponent(component: String, elementName: String, attrResId: UInt, `value`: String) {
-    Native.boltffi_manifest_set_attribute_string_in_component(component.toByteArray(Charsets.UTF_8), elementName.toByteArray(Charsets.UTF_8), attrResId.toInt(), `value`.toByteArray(Charsets.UTF_8))
-}
-
-fun manifestSetActivityConfigChanges(activityName: String, configChanges: String) {
-    Native.boltffi_manifest_set_activity_config_changes(activityName.toByteArray(Charsets.UTF_8), configChanges.toByteArray(Charsets.UTF_8))
-}
-
-fun manifestSetActivityConfigChangesInComponent(component: String, activityName: String, configChanges: String) {
-    Native.boltffi_manifest_set_activity_config_changes_in_component(component.toByteArray(Charsets.UTF_8), activityName.toByteArray(Charsets.UTF_8), configChanges.toByteArray(Charsets.UTF_8))
-}
-
-fun manifestAddIntentFilter(activityName: String, action: String?, category: String?, mimeType: String?) {
+fun manifestAddIntentFilter(component: String?, activityName: String, action: String?, category: String?, mimeType: String?) {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
     val wire_writer_action = WireWriterPool.acquire((action?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_action.writer
@@ -2965,144 +3071,80 @@ fun manifestAddIntentFilter(activityName: String, action: String?, category: Str
             mimeType?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
         }
     try {
-        Native.boltffi_manifest_add_intent_filter(activityName.toByteArray(Charsets.UTF_8), wire_writer_action.buffer, wire_writer_category.buffer, wire_writer_mime_type.buffer)
+        Native.boltffi_manifest_add_intent_filter(wire_writer_component.buffer, activityName.toByteArray(Charsets.UTF_8), wire_writer_action.buffer, wire_writer_category.buffer, wire_writer_mime_type.buffer)
     } finally {
+        wire_writer_component.close()
         wire_writer_action.close()
         wire_writer_category.close()
         wire_writer_mime_type.close()
     }
 }
 
-fun manifestAddIntentFilterInComponent(component: String, activityName: String, action: String?, category: String?, mimeType: String?) {
-    val wire_writer_action = WireWriterPool.acquire((action?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+fun manifestAddActivityAlias(component: String?, targetActivity: String, aliasName: String, enabled: Boolean, label: String?) {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
-            val wire = wire_writer_action.writer
-            action?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
         }
-    val wire_writer_category = WireWriterPool.acquire((category?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
-        kotlin.run {
-            val wire = wire_writer_category.writer
-            category?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
-        }
-    val wire_writer_mime_type = WireWriterPool.acquire((mimeType?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
-        kotlin.run {
-            val wire = wire_writer_mime_type.writer
-            mimeType?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
-        }
-    try {
-        Native.boltffi_manifest_add_intent_filter_in_component(component.toByteArray(Charsets.UTF_8), activityName.toByteArray(Charsets.UTF_8), wire_writer_action.buffer, wire_writer_category.buffer, wire_writer_mime_type.buffer)
-    } finally {
-        wire_writer_action.close()
-        wire_writer_category.close()
-        wire_writer_mime_type.close()
-    }
-}
-
-fun manifestAddActivityAlias(targetActivity: String, aliasName: String, enabled: Boolean, label: String?) {
     val wire_writer_label = WireWriterPool.acquire((label?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_label.writer
             label?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
         }
     try {
-        Native.boltffi_manifest_add_activity_alias(targetActivity.toByteArray(Charsets.UTF_8), aliasName.toByteArray(Charsets.UTF_8), enabled, wire_writer_label.buffer)
+        Native.boltffi_manifest_add_activity_alias(wire_writer_component.buffer, targetActivity.toByteArray(Charsets.UTF_8), aliasName.toByteArray(Charsets.UTF_8), enabled, wire_writer_label.buffer)
     } finally {
+        wire_writer_component.close()
         wire_writer_label.close()
     }
 }
 
-fun manifestAddActivityAliasInComponent(component: String, targetActivity: String, aliasName: String, enabled: Boolean, label: String?) {
-    val wire_writer_label = WireWriterPool.acquire((label?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+/**
+ * Copies every `intent-filter` of `from_activity` to the start of `to_activity`.
+ */
+
+fun manifestCopyIntentFilters(component: String?, fromActivity: String, toActivity: String) {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
-            val wire = wire_writer_label.writer
-            label?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
         }
     try {
-        Native.boltffi_manifest_add_activity_alias_in_component(component.toByteArray(Charsets.UTF_8), targetActivity.toByteArray(Charsets.UTF_8), aliasName.toByteArray(Charsets.UTF_8), enabled, wire_writer_label.buffer)
+        Native.boltffi_manifest_copy_intent_filters(wire_writer_component.buffer, fromActivity.toByteArray(Charsets.UTF_8), toActivity.toByteArray(Charsets.UTF_8))
     } finally {
-        wire_writer_label.close()
+        wire_writer_component.close()
     }
 }
 
-fun manifestCopyIntentFilters(fromActivity: String, toActivity: String) {
-    Native.boltffi_manifest_copy_intent_filters(fromActivity.toByteArray(Charsets.UTF_8), toActivity.toByteArray(Charsets.UTF_8))
-}
+/**
+ * Opens the manifest as an XML document; edits through either view are
+ * shared until the document is closed.
+ */
 
-fun manifestCopyIntentFiltersInComponent(component: String, fromActivity: String, toActivity: String) {
-    Native.boltffi_manifest_copy_intent_filters_in_component(component.toByteArray(Charsets.UTF_8), fromActivity.toByteArray(Charsets.UTF_8), toActivity.toByteArray(Charsets.UTF_8))
-}
-
-fun manifestGetDocument(): UInt {
-    return Native.boltffi_manifest_get_document().toUInt()
-}
-
-fun manifestComponentNames(): List<String> {
-    val buf = Native.boltffi_manifest_component_names()
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readList { reader.readString() }
-}
-
-fun manifestPackageNameInComponent(component: String): String? {
-    val buf = Native.boltffi_manifest_package_name_in_component(component.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readString() }
-}
-
-fun manifestVersionCodeInComponent(component: String): UInt? {
-    val buf = Native.boltffi_manifest_version_code_in_component(component.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
-}
-
-fun manifestVersionNameInComponent(component: String): String? {
-    val buf = Native.boltffi_manifest_version_name_in_component(component.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readString() }
-}
-
-fun manifestMinSdkVersionInComponent(component: String): UInt? {
-    val buf = Native.boltffi_manifest_min_sdk_version_in_component(component.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
-}
-
-fun manifestSplitNameInComponent(component: String): String? {
-    val buf = Native.boltffi_manifest_split_name_in_component(component.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readString() }
-}
-
-fun manifestSetVersionCodeInComponent(component: String, code: UInt) {
-    Native.boltffi_manifest_set_version_code_in_component(component.toByteArray(Charsets.UTF_8), code.toInt())
-}
-
-fun manifestSetVersionNameInComponent(component: String, name: String) {
-    Native.boltffi_manifest_set_version_name_in_component(component.toByteArray(Charsets.UTF_8), name.toByteArray(Charsets.UTF_8))
-}
-
-fun manifestSetMinSdkInComponent(component: String, sdk: UInt) {
-    Native.boltffi_manifest_set_min_sdk_in_component(component.toByteArray(Charsets.UTF_8), sdk.toInt())
-}
-
-fun manifestAddPermissionInComponent(component: String, permission: String) {
-    Native.boltffi_manifest_add_permission_in_component(component.toByteArray(Charsets.UTF_8), permission.toByteArray(Charsets.UTF_8))
-}
-
-fun manifestGetDocumentInComponent(component: String): UInt? {
-    val buf = Native.boltffi_manifest_get_document_in_component(component.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
+fun manifestGetDocument(component: String?): UInt? {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        val buf = Native.boltffi_manifest_get_document(wire_writer_component.buffer)
+            ?: throw FfiException(-1, "Null buffer returned")
+        val reader = WireReader(buf)
+        return reader.readOptional { reader.readU32() }
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
 fun ctxIsActive(): Boolean {
     return Native.boltffi_ctx_is_active()
+}
+
+fun version(): String {
+    val result = Native.boltffi_version()
+        ?: throw FfiException(-1, "Null buffer returned")
+    return result
 }
 
 fun optionGetString(key: String): String? {
@@ -3161,19 +3203,16 @@ fun optionReadPathFile(key: String, relativePath: String): ByteArray? {
     return reader.readOptional { reader.readBytes() }
 }
 
-fun resId(resType: String, resName: String): UInt? {
-    val buf = Native.boltffi_res_id(resType.toByteArray(Charsets.UTF_8), resName.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
-}
-
 fun resComponentNames(): List<String> {
     val buf = Native.boltffi_res_component_names()
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readList { reader.readString() }
 }
+
+/**
+ * The component defining `res_type/res_name`, searching all of them.
+ */
 
 fun resComponentFor(resType: String, resName: String): String? {
     val buf = Native.boltffi_res_component_for(resType.toByteArray(Charsets.UTF_8), resName.toByteArray(Charsets.UTF_8))
@@ -3189,130 +3228,145 @@ fun resComponentForId(resId: UInt): String? {
     return reader.readOptional { reader.readString() }
 }
 
-fun resIdInComponent(component: String, resType: String, resName: String): UInt? {
-    val buf = Native.boltffi_res_id_in_component(component.toByteArray(Charsets.UTF_8), resType.toByteArray(Charsets.UTF_8), resName.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
+/**
+ * The id of `res_type/res_name`; without a component every one is searched.
+ */
+
+fun resId(component: String?, resType: String, resName: String): UInt? {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        val buf = Native.boltffi_res_id(wire_writer_component.buffer, resType.toByteArray(Charsets.UTF_8), resName.toByteArray(Charsets.UTF_8))
+            ?: throw FfiException(-1, "Null buffer returned")
+        val reader = WireReader(buf)
+        return reader.readOptional { reader.readU32() }
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun resExists(resType: String, resName: String): Boolean {
-    return Native.boltffi_res_exists(resType.toByteArray(Charsets.UTF_8), resName.toByteArray(Charsets.UTF_8))
+fun resExists(component: String?, resType: String, resName: String): Boolean {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        return Native.boltffi_res_exists(wire_writer_component.buffer, resType.toByteArray(Charsets.UTF_8), resName.toByteArray(Charsets.UTF_8))
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun resExistsInComponent(component: String, resType: String, resName: String): Boolean {
-    return Native.boltffi_res_exists_in_component(component.toByteArray(Charsets.UTF_8), resType.toByteArray(Charsets.UTF_8), resName.toByteArray(Charsets.UTF_8))
+fun resGetString(component: String?, name: String): String? {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        val buf = Native.boltffi_res_get_string(wire_writer_component.buffer, name.toByteArray(Charsets.UTF_8))
+            ?: throw FfiException(-1, "Null buffer returned")
+        val reader = WireReader(buf)
+        return reader.readOptional { reader.readString() }
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun resGetString(name: String): String? {
-    val buf = Native.boltffi_res_get_string(name.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readString() }
+fun resSetString(component: String?, name: String, `value`: String): Boolean {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        return Native.boltffi_res_set_string(wire_writer_component.buffer, name.toByteArray(Charsets.UTF_8), `value`.toByteArray(Charsets.UTF_8))
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun resGetStringInComponent(component: String, name: String): String? {
-    val buf = Native.boltffi_res_get_string_in_component(component.toByteArray(Charsets.UTF_8), name.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readString() }
+/**
+ * Adds `res_type/name` with `value` read the way resource XML is: booleans,
+ * integers, colors, dimensions and `@type/name` references. A `string`
+ * entry keeps the text as is.
+ */
+
+fun resAdd(component: String?, resType: String, name: String, `value`: String): UInt? {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        val buf = Native.boltffi_res_add(wire_writer_component.buffer, resType.toByteArray(Charsets.UTF_8), name.toByteArray(Charsets.UTF_8), `value`.toByteArray(Charsets.UTF_8))
+            ?: throw FfiException(-1, "Null buffer returned")
+        val reader = WireReader(buf)
+        return reader.readOptional { reader.readU32() }
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun resSetString(name: String, `value`: String): Boolean {
-    return Native.boltffi_res_set_string(name.toByteArray(Charsets.UTF_8), `value`.toByteArray(Charsets.UTF_8))
+fun resAddId(component: String?, name: String): UInt? {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        val buf = Native.boltffi_res_add_id(wire_writer_component.buffer, name.toByteArray(Charsets.UTF_8))
+            ?: throw FfiException(-1, "Null buffer returned")
+        val reader = WireReader(buf)
+        return reader.readOptional { reader.readU32() }
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun resAddString(name: String, `value`: String): UInt? {
-    val buf = Native.boltffi_res_add_string(name.toByteArray(Charsets.UTF_8), `value`.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
+fun resAddRaw(component: String?, resType: String, name: String, dataType: UByte, `data`: UInt): UInt? {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        val buf = Native.boltffi_res_add_raw(wire_writer_component.buffer, resType.toByteArray(Charsets.UTF_8), name.toByteArray(Charsets.UTF_8), dataType.toByte(), `data`.toInt())
+            ?: throw FfiException(-1, "Null buffer returned")
+        val reader = WireReader(buf)
+        return reader.readOptional { reader.readU32() }
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun resSetStringInComponent(component: String, name: String, `value`: String): Boolean {
-    return Native.boltffi_res_set_string_in_component(component.toByteArray(Charsets.UTF_8), name.toByteArray(Charsets.UTF_8), `value`.toByteArray(Charsets.UTF_8))
+fun resGetRaw(component: String?, resType: String, resName: String): Long? {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        val buf = Native.boltffi_res_get_raw(wire_writer_component.buffer, resType.toByteArray(Charsets.UTF_8), resName.toByteArray(Charsets.UTF_8))
+            ?: throw FfiException(-1, "Null buffer returned")
+        val reader = WireReader(buf)
+        return reader.readOptional { reader.readI64() }
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun resAddStringInComponent(component: String, name: String, `value`: String): UInt? {
-    val buf = Native.boltffi_res_add_string_in_component(component.toByteArray(Charsets.UTF_8), name.toByteArray(Charsets.UTF_8), `value`.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
+fun resCopy(bundleRelative: String, apkPath: String) {
+    Native.boltffi_res_copy(bundleRelative.toByteArray(Charsets.UTF_8), apkPath.toByteArray(Charsets.UTF_8))
 }
 
-fun resAddBool(name: String, `value`: Boolean): UInt? {
-    val buf = Native.boltffi_res_add_bool(name.toByteArray(Charsets.UTF_8), `value`)
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
-}
-
-fun resAddBoolInComponent(component: String, name: String, `value`: Boolean): UInt? {
-    val buf = Native.boltffi_res_add_bool_in_component(component.toByteArray(Charsets.UTF_8), name.toByteArray(Charsets.UTF_8), `value`)
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
-}
-
-fun resAddInteger(name: String, `value`: Int): UInt? {
-    val buf = Native.boltffi_res_add_integer(name.toByteArray(Charsets.UTF_8), `value`)
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
-}
-
-fun resAddIntegerInComponent(component: String, name: String, `value`: Int): UInt? {
-    val buf = Native.boltffi_res_add_integer_in_component(component.toByteArray(Charsets.UTF_8), name.toByteArray(Charsets.UTF_8), `value`)
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
-}
-
-fun resAddColor(name: String, color: String): UInt? {
-    val buf = Native.boltffi_res_add_color(name.toByteArray(Charsets.UTF_8), color.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
-}
-
-fun resAddColorInComponent(component: String, name: String, color: String): UInt? {
-    val buf = Native.boltffi_res_add_color_in_component(component.toByteArray(Charsets.UTF_8), name.toByteArray(Charsets.UTF_8), color.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
-}
-
-fun resAddDimen(name: String, dimen: String): UInt? {
-    val buf = Native.boltffi_res_add_dimen(name.toByteArray(Charsets.UTF_8), dimen.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
-}
-
-fun resAddDimenInComponent(component: String, name: String, dimen: String): UInt? {
-    val buf = Native.boltffi_res_add_dimen_in_component(component.toByteArray(Charsets.UTF_8), name.toByteArray(Charsets.UTF_8), dimen.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
-}
-
-fun resAddId(name: String): UInt? {
-    val buf = Native.boltffi_res_add_id(name.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
-}
-
-fun resAddIdInComponent(component: String, name: String): UInt? {
-    val buf = Native.boltffi_res_add_id_in_component(component.toByteArray(Charsets.UTF_8), name.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
-}
-
-fun resCopy(bundlePath: String, apkPath: String) {
-    Native.boltffi_res_copy(bundlePath.toByteArray(Charsets.UTF_8), apkPath.toByteArray(Charsets.UTF_8))
-}
+/**
+ * Copies `resources/<res_type>/<file>` from the bundle into `res/<res_type>/`.
+ */
 
 fun resCopyGroup(resType: String, files: List<String>) {
     val wire_writer_files = WireWriterPool.acquire((4 + files.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }))
@@ -3342,105 +3396,108 @@ fun resList(prefix: String): List<String> {
     return reader.readList { reader.readString() }
 }
 
-fun resAddRaw(resType: String, name: String, dataType: UByte, `data`: UInt): UInt? {
-    val buf = Native.boltffi_res_add_raw(resType.toByteArray(Charsets.UTF_8), name.toByteArray(Charsets.UTF_8), dataType.toByte(), `data`.toInt())
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
+fun resPoolGet(component: String?, index: UInt): String? {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        val buf = Native.boltffi_res_pool_get(wire_writer_component.buffer, index.toInt())
+            ?: throw FfiException(-1, "Null buffer returned")
+        val reader = WireReader(buf)
+        return reader.readOptional { reader.readString() }
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun resAddRawInComponent(component: String, resType: String, name: String, dataType: UByte, `data`: UInt): UInt? {
-    val buf = Native.boltffi_res_add_raw_in_component(component.toByteArray(Charsets.UTF_8), resType.toByteArray(Charsets.UTF_8), name.toByteArray(Charsets.UTF_8), dataType.toByte(), `data`.toInt())
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
+fun resPoolSet(component: String?, index: UInt, `value`: String) {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        Native.boltffi_res_pool_set(wire_writer_component.buffer, index.toInt(), `value`.toByteArray(Charsets.UTF_8))
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun resGetRaw(resType: String, resName: String): Long? {
-    val buf = Native.boltffi_res_get_raw(resType.toByteArray(Charsets.UTF_8), resName.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readI64() }
+fun resPoolAdd(component: String?, `value`: String): UInt? {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        val buf = Native.boltffi_res_pool_add(wire_writer_component.buffer, `value`.toByteArray(Charsets.UTF_8))
+            ?: throw FfiException(-1, "Null buffer returned")
+        val reader = WireReader(buf)
+        return reader.readOptional { reader.readU32() }
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun resGetRawInComponent(component: String, resType: String, resName: String): Long? {
-    val buf = Native.boltffi_res_get_raw_in_component(component.toByteArray(Charsets.UTF_8), resType.toByteArray(Charsets.UTF_8), resName.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readI64() }
+fun resPoolFindRefs(component: String?, stringIndex: UInt): List<ResourceRef> {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        val buf = Native.boltffi_res_pool_find_refs(wire_writer_component.buffer, stringIndex.toInt())
+            ?: throw FfiException(-1, "Null buffer returned")
+        val reader = WireReader(buf)
+        return reader.readList { ResourceRef.decode(reader) }
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun resPoolGet(index: UInt): String? {
-    val buf = Native.boltffi_res_pool_get(index.toInt())
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readString() }
+/**
+ * Points a string entry at another pool string; without a component the
+ * entry's own component is used.
+ */
+
+fun resReplaceEntry(component: String?, resId: UInt, newStringIndex: UInt) {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        Native.boltffi_res_replace_entry(wire_writer_component.buffer, resId.toInt(), newStringIndex.toInt())
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun resPoolSet(index: UInt, `value`: String) {
-    Native.boltffi_res_pool_set(index.toInt(), `value`.toByteArray(Charsets.UTF_8))
+/**
+ * Opens `apk_path` from the component (base when `None`) as a document.
+ */
+
+fun xmlOpen(component: String?, apkPath: String): UInt? {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        val buf = Native.boltffi_xml_open(wire_writer_component.buffer, apkPath.toByteArray(Charsets.UTF_8))
+            ?: throw FfiException(-1, "Null buffer returned")
+        val reader = WireReader(buf)
+        return reader.readOptional { reader.readU32() }
+    } finally {
+        wire_writer_component.close()
+    }
 }
 
-fun resPoolAdd(`value`: String): UInt? {
-    val buf = Native.boltffi_res_pool_add(`value`.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
-}
-
-fun resPoolFindRefs(stringIndex: UInt): List<ResourceRef> {
-    val buf = Native.boltffi_res_pool_find_refs(stringIndex.toInt())
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readList { ResourceRef.decode(reader) }
-}
-
-fun resPoolGetInComponent(component: String, index: UInt): String? {
-    val buf = Native.boltffi_res_pool_get_in_component(component.toByteArray(Charsets.UTF_8), index.toInt())
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readString() }
-}
-
-fun resPoolSetInComponent(component: String, index: UInt, `value`: String) {
-    Native.boltffi_res_pool_set_in_component(component.toByteArray(Charsets.UTF_8), index.toInt(), `value`.toByteArray(Charsets.UTF_8))
-}
-
-fun resPoolAddInComponent(component: String, `value`: String): UInt? {
-    val buf = Native.boltffi_res_pool_add_in_component(component.toByteArray(Charsets.UTF_8), `value`.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
-}
-
-fun resPoolFindRefsInComponent(component: String, stringIndex: UInt): List<ResourceRef> {
-    val buf = Native.boltffi_res_pool_find_refs_in_component(component.toByteArray(Charsets.UTF_8), stringIndex.toInt())
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readList { ResourceRef.decode(reader) }
-}
-
-fun resReplaceEntry(resId: UInt, newStringIndex: UInt) {
-    Native.boltffi_res_replace_entry(resId.toInt(), newStringIndex.toInt())
-}
-
-fun resReplaceEntryInComponent(component: String, resId: UInt, newStringIndex: UInt) {
-    Native.boltffi_res_replace_entry_in_component(component.toByteArray(Charsets.UTF_8), resId.toInt(), newStringIndex.toInt())
-}
-
-fun xmlOpen(apkPath: String): UInt? {
-    val buf = Native.boltffi_xml_open(apkPath.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
-}
-
-fun xmlOpenInComponent(component: String, apkPath: String): UInt? {
-    val buf = Native.boltffi_xml_open_in_component(component.toByteArray(Charsets.UTF_8), apkPath.toByteArray(Charsets.UTF_8))
-        ?: throw FfiException(-1, "Null buffer returned")
-    val reader = WireReader(buf)
-    return reader.readOptional { reader.readU32() }
-}
+/**
+ * Writes the document back to the APK and releases its handle.
+ */
 
 fun xmlClose(doc: UInt) {
     Native.boltffi_xml_close(doc.toInt())
@@ -3494,16 +3551,13 @@ fun xmlGetAttribute(doc: UInt, el: UInt, name: String): String? {
     return reader.readOptional { reader.readString() }
 }
 
+/**
+ * Sets an attribute from text, parsing literals and resource references the
+ * way the XML compiler does.
+ */
+
 fun xmlSetAttribute(doc: UInt, el: UInt, name: String, `value`: String) {
     Native.boltffi_xml_set_attribute(doc.toInt(), el.toInt(), name.toByteArray(Charsets.UTF_8), `value`.toByteArray(Charsets.UTF_8))
-}
-
-fun xmlSetAttributeInt(doc: UInt, el: UInt, name: String, `value`: Int) {
-    Native.boltffi_xml_set_attribute_int(doc.toInt(), el.toInt(), name.toByteArray(Charsets.UTF_8), `value`)
-}
-
-fun xmlSetAttributeBool(doc: UInt, el: UInt, name: String, `value`: Boolean) {
-    Native.boltffi_xml_set_attribute_bool(doc.toInt(), el.toInt(), name.toByteArray(Charsets.UTF_8), `value`)
 }
 
 fun xmlSetAttributeRef(doc: UInt, el: UInt, name: String, resId: UInt) {
@@ -3514,21 +3568,29 @@ fun xmlRemoveAttribute(doc: UInt, el: UInt, name: String) {
     Native.boltffi_xml_remove_attribute(doc.toInt(), el.toInt(), name.toByteArray(Charsets.UTF_8))
 }
 
+/**
+ * A detached element; attach it with `xml_append_child` or `xml_insert_before`.
+ */
+
 fun xmlCreateElement(doc: UInt, tag: String): UInt {
     return Native.boltffi_xml_create_element(doc.toInt(), tag.toByteArray(Charsets.UTF_8)).toUInt()
 }
 
-fun xmlAppendChild(doc: UInt, parentEl: UInt, child: UInt) {
-    Native.boltffi_xml_append_child(doc.toInt(), parentEl.toInt(), child.toInt())
+fun xmlAppendChild(doc: UInt, parent: UInt, child: UInt) {
+    Native.boltffi_xml_append_child(doc.toInt(), parent.toInt(), child.toInt())
 }
 
-fun xmlInsertBefore(doc: UInt, parent: UInt, child: UInt, before: UInt) {
-    Native.boltffi_xml_insert_before(doc.toInt(), parent.toInt(), child.toInt(), before.toInt())
+fun xmlInsertBefore(doc: UInt, child: UInt, before: UInt) {
+    Native.boltffi_xml_insert_before(doc.toInt(), child.toInt(), before.toInt())
 }
 
 fun xmlRemoveElement(doc: UInt, el: UInt) {
     Native.boltffi_xml_remove_element(doc.toInt(), el.toInt())
 }
+
+/**
+ * A detached copy of an element, with or without its children.
+ */
 
 fun xmlCloneElement(doc: UInt, el: UInt, deep: Boolean): UInt {
     return Native.boltffi_xml_clone_element(doc.toInt(), el.toInt(), deep).toUInt()
@@ -3536,20 +3598,6 @@ fun xmlCloneElement(doc: UInt, el: UInt, deep: Boolean): UInt {
 
 @Suppress("FunctionName")
 private object Native {
-    init {
-        val preferredLibrary = "reseam_patcher_jni"
-        val fallbackLibrary = "reseam_patcher"
-        val vmName = System.getProperty("java.vm.name").orEmpty()
-        val bootstrapMode = System.getProperty("reseam.native.bootstrap").orEmpty()
-        val isAndroidRuntime =
-            vmName.contains("dalvik", ignoreCase = true) ||
-            vmName.contains("art", ignoreCase = true)
-        if (isAndroidRuntime) {
-            System.loadLibrary(fallbackLibrary)
-        } else if (bootstrapMode != "host-registered") {
-            loadDesktopLibraries(preferredLibrary, fallbackLibrary)
-        }
-    }
     @Volatile
     private var bundledLibraryDirectory: java.io.File? = null
 
@@ -3674,16 +3722,19 @@ private object Native {
     @JvmStatic external fun boltffi_add_interface(c: Int, interface_descriptor: ByteArray): Unit
     @JvmStatic external fun boltffi_remove_class(c: Int): Unit
     @JvmStatic external fun boltffi_create_class(dex_index: Int, descriptor: ByteArray, flags: Int, superclass: ByteArray): Int
+    @JvmStatic external fun boltffi_definal_class(c: Int): Unit
+    @JvmStatic external fun boltffi_superclass_chain(c: Int): ByteArray?
     @JvmStatic external fun boltffi_add_method(c: Int, method: ByteBuffer): Int
     @JvmStatic external fun boltffi_remove_method(m: Int): Unit
     @JvmStatic external fun boltffi_set_method_access_flags(m: Int, flags: Int): Unit
-    @JvmStatic external fun boltffi_add_field(c: Int, field: ByteBuffer): Int
+    @JvmStatic external fun boltffi_clone_method(m: Int, new_name: ByteBuffer): Int
+    @JvmStatic external fun boltffi_add_field(c: Int, field: ByteBuffer): Unit
     @JvmStatic external fun boltffi_remove_field(c: Int, name: ByteArray): Unit
     @JvmStatic external fun boltffi_set_field_access_flags(c: Int, field_name: ByteArray, flags: Int): Unit
     @JvmStatic external fun boltffi_set_static_field_value(c: Int, field_name: ByteArray, value: ByteBuffer): Unit
-    @JvmStatic external fun boltffi_clone_method(m: Int, new_name: ByteBuffer): Int
-    @JvmStatic external fun boltffi_superclass_chain(c: Int): ByteArray?
-    @JvmStatic external fun boltffi_definal_class(c: Int): Unit
+    @JvmStatic external fun boltffi_add_class_annotation(c: Int, annotation: ByteBuffer): Unit
+    @JvmStatic external fun boltffi_add_method_annotation(m: Int, annotation: ByteBuffer): Unit
+    @JvmStatic external fun boltffi_add_field_annotation(c: Int, field_name: ByteArray, annotation: ByteBuffer): Unit
     @JvmStatic external fun boltffi_dex_count(): Int
     @JvmStatic external fun boltffi_method_dex(m: Int): Int
     @JvmStatic external fun boltffi_intern_string(d: Int, s: ByteArray): Int
@@ -3696,15 +3747,10 @@ private object Native {
     @JvmStatic external fun boltffi_get_type_descriptor(d: Int, idx: Int): String?
     @JvmStatic external fun boltffi_build_lookups(d: Int): Unit
     @JvmStatic external fun boltffi_merge_extension_dex(paths: ByteBuffer): Int
-    @JvmStatic external fun boltffi_add_class_annotation(c: Int, annotation: ByteBuffer): Unit
-    @JvmStatic external fun boltffi_add_method_annotation(m: Int, annotation: ByteBuffer): Unit
-    @JvmStatic external fun boltffi_add_field_annotation(c: Int, field_name: ByteArray, annotation: ByteBuffer): Unit
     @JvmStatic external fun boltffi_find_method(class_descriptor: ByteArray, method_name: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_find_method_by_name(name: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_find_methods_by_strings(strings: ByteBuffer): ByteArray?
-    @JvmStatic external fun boltffi_find_methods_by_return_type(return_type: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_find_methods_by_parameter_types(parameter_types: ByteBuffer): ByteArray?
-    @JvmStatic external fun boltffi_find_methods_with_parameter(parameter_type: ByteArray): ByteArray?
+    @JvmStatic external fun boltffi_find_methods_by_proto(return_type: ByteBuffer, parameter_types: ByteBuffer, parameter: ByteBuffer): ByteArray?
     @JvmStatic external fun boltffi_find_methods_by_opcodes(pattern: IntArray): ByteArray?
     @JvmStatic external fun boltffi_find_method_by_fingerprint(fp: ByteBuffer): ByteArray?
     @JvmStatic external fun boltffi_find_methods_by_fingerprint(fp: ByteBuffer): ByteArray?
@@ -3712,29 +3758,20 @@ private object Native {
     @JvmStatic external fun boltffi_get_all_classes(): ByteArray?
     @JvmStatic external fun boltffi_get_method_info(m: Int): ByteArray?
     @JvmStatic external fun boltffi_get_class_info(c: Int): ByteArray?
-    @JvmStatic external fun boltffi_class_methods(c: Int): ByteArray?
     @JvmStatic external fun boltffi_class_direct_methods(c: Int): ByteArray?
     @JvmStatic external fun boltffi_class_virtual_methods(c: Int): ByteArray?
     @JvmStatic external fun boltffi_class_fields(c: Int): ByteArray?
-    @JvmStatic external fun boltffi_class_static_fields(c: Int): ByteArray?
-    @JvmStatic external fun boltffi_class_instance_fields(c: Int): ByteArray?
-    @JvmStatic external fun boltffi_version(): String?
     @JvmStatic external fun boltffi_set_instructions(m: Int, insns: ByteBuffer): Unit
     @JvmStatic external fun boltffi_replace_body(m: Int, registers_size: Short, outs_size: Short, insns: ByteBuffer): Unit
-    @JvmStatic external fun boltffi_insert_instruction(m: Int, index: Int, insn: ByteBuffer): Unit
     @JvmStatic external fun boltffi_insert_instructions(m: Int, index: Int, insns: ByteBuffer): Unit
     @JvmStatic external fun boltffi_replace_instruction(m: Int, index: Int, insn: ByteBuffer): Unit
-    @JvmStatic external fun boltffi_remove_instruction(m: Int, index: Int): Unit
     @JvmStatic external fun boltffi_remove_instructions(m: Int, index: Int, count: Int): Unit
     @JvmStatic external fun boltffi_return_early(m: Int): Unit
     @JvmStatic external fun boltffi_return_early_int(m: Int, value: Int): Unit
-    @JvmStatic external fun boltffi_return_early_bool(m: Int, value: Boolean): Unit
     @JvmStatic external fun boltffi_return_early_object_null(m: Int): Unit
     @JvmStatic external fun boltffi_return_early_wide(m: Int, value: Long): Unit
-    @JvmStatic external fun boltffi_replace_string(m: Int, old: ByteArray, new: ByteArray): Boolean
-    @JvmStatic external fun boltffi_replace_all_strings(m: Int, old: ByteArray, new: ByteArray): Int
-    @JvmStatic external fun boltffi_replace_literal(m: Int, old: Long, new: Long): Boolean
-    @JvmStatic external fun boltffi_replace_all_literals(m: Int, old: Long, new: Long): Int
+    @JvmStatic external fun boltffi_replace_strings(m: Int, old: ByteArray, new: ByteArray, all: Boolean): Int
+    @JvmStatic external fun boltffi_replace_literals(m: Int, old: Long, new: Long, all: Boolean): Int
     @JvmStatic external fun boltffi_replace_method_call(m: Int, index: Int, new_class: ByteArray, new_name: ByteArray, new_proto: ByteArray): Boolean
     @JvmStatic external fun boltffi_insert_invoke_static(m: Int, index: Int, class_name: ByteArray, name: ByteArray, proto: ByteArray, registers: ShortArray): Boolean
     @JvmStatic external fun boltffi_insert_invoke_static_with_move_result(m: Int, index: Int, class_name: ByteArray, name: ByteArray, proto: ByteArray, registers: ShortArray, result_register: Short, is_object: Boolean): Boolean
@@ -3746,10 +3783,7 @@ private object Native {
     @JvmStatic external fun boltffi_find_free_register(m: Int, at_index: Int, exclude: ShortArray): Short
     @JvmStatic external fun boltffi_find_free_registers(m: Int, at_index: Int, count: Int, exclude: ShortArray): ByteArray?
     @JvmStatic external fun boltffi_find_contiguous_free_registers(m: Int, at_index: Int, count: Int, exclude: ShortArray): ByteArray?
-    @JvmStatic external fun boltffi_instruction_register_a(m: Int, index: Int): Short
-    @JvmStatic external fun boltffi_instruction_register_b(m: Int, index: Int): Short
-    @JvmStatic external fun boltffi_instruction_register_c(m: Int, index: Int): Short
-    @JvmStatic external fun boltffi_instruction_register_d(m: Int, index: Int): Short
+    @JvmStatic external fun boltffi_instruction_register(m: Int, index: Int, position: Int): Short
     @JvmStatic external fun boltffi_instruction_wide_literal(m: Int, index: Int): Long
     @JvmStatic external fun boltffi_get_instructions(m: Int): ByteArray?
     @JvmStatic external fun boltffi_get_instruction(m: Int, index: Int): ByteArray?
@@ -3758,7 +3792,6 @@ private object Native {
     @JvmStatic external fun boltffi_index_of_first_reversed(m: Int, start: Int, op: Short): ByteArray?
     @JvmStatic external fun boltffi_index_of_first_literal(m: Int, literal: Long): ByteArray?
     @JvmStatic external fun boltffi_index_of_first_literal_reversed(m: Int, literal: Long): ByteArray?
-    @JvmStatic external fun boltffi_contains_literal(m: Int, literal: Long): Boolean
     @JvmStatic external fun boltffi_index_of_first_string(m: Int, s: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_find_all_indices(m: Int, op: Short): ByteArray?
     @JvmStatic external fun boltffi_index_of_first_method_call(m: Int, defining_class: ByteArray, method_name: ByteArray, start: Int): ByteArray?
@@ -3767,63 +3800,42 @@ private object Native {
     @JvmStatic external fun boltffi_find_instructions_by_literal(literal: Long): ByteArray?
     @JvmStatic external fun boltffi_find_instructions_by_string(s: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_find_instructions_by_string_contains(substring: ByteArray): ByteArray?
+    @JvmStatic external fun boltffi_find_instructions_by_resource_id(res_type: ByteArray, res_name: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_find_method_call_sites(class_names: ByteBuffer, method_names: ByteBuffer): ByteArray?
     @JvmStatic external fun boltffi_find_field_access_sites(class_names: ByteBuffer, field_names: ByteBuffer): ByteArray?
-    @JvmStatic external fun boltffi_find_instructions_by_resource_id(res_type: ByteArray, res_name: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_all_method_handles(): ByteArray?
     @JvmStatic external fun boltffi_find_instructions_by_invoke(defining_class: ByteArray, method_name: ByteArray): ByteArray?
+    @JvmStatic external fun boltffi_all_method_handles(): ByteArray?
     @JvmStatic external fun boltffi_instruction_string_ref(m: Int, index: Int): ByteArray?
     @JvmStatic external fun boltffi_instruction_method_ref(m: Int, index: Int): ByteArray?
     @JvmStatic external fun boltffi_instruction_field_ref(m: Int, index: Int): ByteArray?
     @JvmStatic external fun boltffi_instruction_type_ref(m: Int, index: Int): ByteArray?
-    @JvmStatic external fun boltffi_file_component_names(): ByteArray?
-    @JvmStatic external fun boltffi_file_list(): ByteArray?
-    @JvmStatic external fun boltffi_file_list_in_component(component: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_file_read(apk_path: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_file_read_in_component(component: ByteArray, apk_path: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_file_inject(apk_path: ByteArray, data: ByteArray): Unit
-    @JvmStatic external fun boltffi_file_inject_in_component(component: ByteArray, apk_path: ByteArray, data: ByteArray): Unit
-    @JvmStatic external fun boltffi_file_delete(apk_path: ByteArray): Unit
-    @JvmStatic external fun boltffi_file_delete_in_component(component: ByteArray, apk_path: ByteArray): Unit
-    @JvmStatic external fun boltffi_file_copy(bundle_path: ByteArray, apk_path: ByteArray): Unit
-    @JvmStatic external fun boltffi_file_copy_in_component(component: ByteArray, bundle_path: ByteArray, apk_path: ByteArray): Unit
+    @JvmStatic external fun boltffi_component_names(): ByteArray?
+    @JvmStatic external fun boltffi_file_list(component: ByteBuffer): ByteArray?
+    @JvmStatic external fun boltffi_file_read(component: ByteBuffer, apk_path: ByteArray): ByteArray?
+    @JvmStatic external fun boltffi_file_inject(component: ByteBuffer, apk_path: ByteArray, data: ByteArray, stored: Boolean): Unit
+    @JvmStatic external fun boltffi_file_delete(component: ByteBuffer, apk_path: ByteArray): Unit
+    @JvmStatic external fun boltffi_file_copy(component: ByteBuffer, bundle_relative: ByteArray, apk_path: ByteArray): Unit
     @JvmStatic external fun boltffi_log_info(msg: ByteArray): Unit
     @JvmStatic external fun boltffi_log_warn(msg: ByteArray): Unit
     @JvmStatic external fun boltffi_log_debug(msg: ByteArray): Unit
-    @JvmStatic external fun boltffi_manifest_package_name(): String?
-    @JvmStatic external fun boltffi_manifest_version_code(): ByteArray?
-    @JvmStatic external fun boltffi_manifest_version_name(): ByteArray?
-    @JvmStatic external fun boltffi_manifest_min_sdk_version(): ByteArray?
-    @JvmStatic external fun boltffi_manifest_split_name(): ByteArray?
-    @JvmStatic external fun boltffi_manifest_set_version_code(code: Int): Unit
-    @JvmStatic external fun boltffi_manifest_set_version_name(name: ByteArray): Unit
-    @JvmStatic external fun boltffi_manifest_set_min_sdk(sdk: Int): Unit
-    @JvmStatic external fun boltffi_manifest_add_permission(permission: ByteArray): Unit
-    @JvmStatic external fun boltffi_manifest_set_attribute_int(element_name: ByteArray, attr_res_id: Int, value: Int): Unit
-    @JvmStatic external fun boltffi_manifest_set_attribute_int_in_component(component: ByteArray, element_name: ByteArray, attr_res_id: Int, value: Int): Unit
-    @JvmStatic external fun boltffi_manifest_set_attribute_string(element_name: ByteArray, attr_res_id: Int, value: ByteArray): Unit
-    @JvmStatic external fun boltffi_manifest_set_attribute_string_in_component(component: ByteArray, element_name: ByteArray, attr_res_id: Int, value: ByteArray): Unit
-    @JvmStatic external fun boltffi_manifest_set_activity_config_changes(activity_name: ByteArray, config_changes: ByteArray): Unit
-    @JvmStatic external fun boltffi_manifest_set_activity_config_changes_in_component(component: ByteArray, activity_name: ByteArray, config_changes: ByteArray): Unit
-    @JvmStatic external fun boltffi_manifest_add_intent_filter(activity_name: ByteArray, action: ByteBuffer, category: ByteBuffer, mime_type: ByteBuffer): Unit
-    @JvmStatic external fun boltffi_manifest_add_intent_filter_in_component(component: ByteArray, activity_name: ByteArray, action: ByteBuffer, category: ByteBuffer, mime_type: ByteBuffer): Unit
-    @JvmStatic external fun boltffi_manifest_add_activity_alias(target_activity: ByteArray, alias_name: ByteArray, enabled: Boolean, label: ByteBuffer): Unit
-    @JvmStatic external fun boltffi_manifest_add_activity_alias_in_component(component: ByteArray, target_activity: ByteArray, alias_name: ByteArray, enabled: Boolean, label: ByteBuffer): Unit
-    @JvmStatic external fun boltffi_manifest_copy_intent_filters(from_activity: ByteArray, to_activity: ByteArray): Unit
-    @JvmStatic external fun boltffi_manifest_copy_intent_filters_in_component(component: ByteArray, from_activity: ByteArray, to_activity: ByteArray): Unit
-    @JvmStatic external fun boltffi_manifest_get_document(): Int
-    @JvmStatic external fun boltffi_manifest_component_names(): ByteArray?
-    @JvmStatic external fun boltffi_manifest_package_name_in_component(component: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_manifest_version_code_in_component(component: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_manifest_version_name_in_component(component: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_manifest_min_sdk_version_in_component(component: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_manifest_split_name_in_component(component: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_manifest_set_version_code_in_component(component: ByteArray, code: Int): Unit
-    @JvmStatic external fun boltffi_manifest_set_version_name_in_component(component: ByteArray, name: ByteArray): Unit
-    @JvmStatic external fun boltffi_manifest_set_min_sdk_in_component(component: ByteArray, sdk: Int): Unit
-    @JvmStatic external fun boltffi_manifest_add_permission_in_component(component: ByteArray, permission: ByteArray): Unit
-    @JvmStatic external fun boltffi_manifest_get_document_in_component(component: ByteArray): ByteArray?
+    @JvmStatic external fun boltffi_manifest_package_name(component: ByteBuffer): ByteArray?
+    @JvmStatic external fun boltffi_manifest_version_code(component: ByteBuffer): ByteArray?
+    @JvmStatic external fun boltffi_manifest_version_name(component: ByteBuffer): ByteArray?
+    @JvmStatic external fun boltffi_manifest_min_sdk_version(component: ByteBuffer): ByteArray?
+    @JvmStatic external fun boltffi_manifest_split_name(component: ByteBuffer): ByteArray?
+    @JvmStatic external fun boltffi_manifest_set_version_code(component: ByteBuffer, code: Int): Unit
+    @JvmStatic external fun boltffi_manifest_set_version_name(component: ByteBuffer, name: ByteArray): Unit
+    @JvmStatic external fun boltffi_manifest_set_min_sdk(component: ByteBuffer, sdk: Int): Unit
+    @JvmStatic external fun boltffi_manifest_add_permission(component: ByteBuffer, permission: ByteArray): Unit
+    @JvmStatic external fun boltffi_manifest_set_attribute_int(component: ByteBuffer, element_name: ByteArray, attr_name: ByteArray, value: Int): Unit
+    @JvmStatic external fun boltffi_manifest_set_attribute_string(component: ByteBuffer, element_name: ByteArray, attr_name: ByteArray, value: ByteArray): Unit
+    @JvmStatic external fun boltffi_manifest_set_activity_config_changes(component: ByteBuffer, activity_name: ByteArray, config_changes: ByteArray): Unit
+    @JvmStatic external fun boltffi_manifest_add_intent_filter(component: ByteBuffer, activity_name: ByteArray, action: ByteBuffer, category: ByteBuffer, mime_type: ByteBuffer): Unit
+    @JvmStatic external fun boltffi_manifest_add_activity_alias(component: ByteBuffer, target_activity: ByteArray, alias_name: ByteArray, enabled: Boolean, label: ByteBuffer): Unit
+    @JvmStatic external fun boltffi_manifest_copy_intent_filters(component: ByteBuffer, from_activity: ByteArray, to_activity: ByteArray): Unit
+    @JvmStatic external fun boltffi_manifest_get_document(component: ByteBuffer): ByteArray?
     @JvmStatic external fun boltffi_ctx_is_active(): Boolean
+    @JvmStatic external fun boltffi_version(): String?
     @JvmStatic external fun boltffi_option_get_string(key: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_option_get_bool(key: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_option_get_int(key: ByteArray): ByteArray?
@@ -3832,50 +3844,28 @@ private object Native {
     @JvmStatic external fun boltffi_option_get_path(key: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_option_list_path_contents(key: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_option_read_path_file(key: ByteArray, relative_path: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_res_id(res_type: ByteArray, res_name: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_res_component_names(): ByteArray?
     @JvmStatic external fun boltffi_res_component_for(res_type: ByteArray, res_name: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_res_component_for_id(res_id: Int): ByteArray?
-    @JvmStatic external fun boltffi_res_id_in_component(component: ByteArray, res_type: ByteArray, res_name: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_res_exists(res_type: ByteArray, res_name: ByteArray): Boolean
-    @JvmStatic external fun boltffi_res_exists_in_component(component: ByteArray, res_type: ByteArray, res_name: ByteArray): Boolean
-    @JvmStatic external fun boltffi_res_get_string(name: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_res_get_string_in_component(component: ByteArray, name: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_res_set_string(name: ByteArray, value: ByteArray): Boolean
-    @JvmStatic external fun boltffi_res_add_string(name: ByteArray, value: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_res_set_string_in_component(component: ByteArray, name: ByteArray, value: ByteArray): Boolean
-    @JvmStatic external fun boltffi_res_add_string_in_component(component: ByteArray, name: ByteArray, value: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_res_add_bool(name: ByteArray, value: Boolean): ByteArray?
-    @JvmStatic external fun boltffi_res_add_bool_in_component(component: ByteArray, name: ByteArray, value: Boolean): ByteArray?
-    @JvmStatic external fun boltffi_res_add_integer(name: ByteArray, value: Int): ByteArray?
-    @JvmStatic external fun boltffi_res_add_integer_in_component(component: ByteArray, name: ByteArray, value: Int): ByteArray?
-    @JvmStatic external fun boltffi_res_add_color(name: ByteArray, color: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_res_add_color_in_component(component: ByteArray, name: ByteArray, color: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_res_add_dimen(name: ByteArray, dimen: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_res_add_dimen_in_component(component: ByteArray, name: ByteArray, dimen: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_res_add_id(name: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_res_add_id_in_component(component: ByteArray, name: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_res_copy(bundle_path: ByteArray, apk_path: ByteArray): Unit
+    @JvmStatic external fun boltffi_res_id(component: ByteBuffer, res_type: ByteArray, res_name: ByteArray): ByteArray?
+    @JvmStatic external fun boltffi_res_exists(component: ByteBuffer, res_type: ByteArray, res_name: ByteArray): Boolean
+    @JvmStatic external fun boltffi_res_get_string(component: ByteBuffer, name: ByteArray): ByteArray?
+    @JvmStatic external fun boltffi_res_set_string(component: ByteBuffer, name: ByteArray, value: ByteArray): Boolean
+    @JvmStatic external fun boltffi_res_add(component: ByteBuffer, res_type: ByteArray, name: ByteArray, value: ByteArray): ByteArray?
+    @JvmStatic external fun boltffi_res_add_id(component: ByteBuffer, name: ByteArray): ByteArray?
+    @JvmStatic external fun boltffi_res_add_raw(component: ByteBuffer, res_type: ByteArray, name: ByteArray, data_type: Byte, data: Int): ByteArray?
+    @JvmStatic external fun boltffi_res_get_raw(component: ByteBuffer, res_type: ByteArray, res_name: ByteArray): ByteArray?
+    @JvmStatic external fun boltffi_res_copy(bundle_relative: ByteArray, apk_path: ByteArray): Unit
     @JvmStatic external fun boltffi_res_copy_group(res_type: ByteArray, files: ByteBuffer): Unit
     @JvmStatic external fun boltffi_res_inject(apk_path: ByteArray, data: ByteArray): Unit
     @JvmStatic external fun boltffi_res_delete(apk_path: ByteArray): Unit
     @JvmStatic external fun boltffi_res_list(prefix: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_res_add_raw(res_type: ByteArray, name: ByteArray, data_type: Byte, data: Int): ByteArray?
-    @JvmStatic external fun boltffi_res_add_raw_in_component(component: ByteArray, res_type: ByteArray, name: ByteArray, data_type: Byte, data: Int): ByteArray?
-    @JvmStatic external fun boltffi_res_get_raw(res_type: ByteArray, res_name: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_res_get_raw_in_component(component: ByteArray, res_type: ByteArray, res_name: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_res_pool_get(index: Int): ByteArray?
-    @JvmStatic external fun boltffi_res_pool_set(index: Int, value: ByteArray): Unit
-    @JvmStatic external fun boltffi_res_pool_add(value: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_res_pool_find_refs(string_index: Int): ByteArray?
-    @JvmStatic external fun boltffi_res_pool_get_in_component(component: ByteArray, index: Int): ByteArray?
-    @JvmStatic external fun boltffi_res_pool_set_in_component(component: ByteArray, index: Int, value: ByteArray): Unit
-    @JvmStatic external fun boltffi_res_pool_add_in_component(component: ByteArray, value: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_res_pool_find_refs_in_component(component: ByteArray, string_index: Int): ByteArray?
-    @JvmStatic external fun boltffi_res_replace_entry(res_id: Int, new_string_index: Int): Unit
-    @JvmStatic external fun boltffi_res_replace_entry_in_component(component: ByteArray, res_id: Int, new_string_index: Int): Unit
-    @JvmStatic external fun boltffi_xml_open(apk_path: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_xml_open_in_component(component: ByteArray, apk_path: ByteArray): ByteArray?
+    @JvmStatic external fun boltffi_res_pool_get(component: ByteBuffer, index: Int): ByteArray?
+    @JvmStatic external fun boltffi_res_pool_set(component: ByteBuffer, index: Int, value: ByteArray): Unit
+    @JvmStatic external fun boltffi_res_pool_add(component: ByteBuffer, value: ByteArray): ByteArray?
+    @JvmStatic external fun boltffi_res_pool_find_refs(component: ByteBuffer, string_index: Int): ByteArray?
+    @JvmStatic external fun boltffi_res_replace_entry(component: ByteBuffer, res_id: Int, new_string_index: Int): Unit
+    @JvmStatic external fun boltffi_xml_open(component: ByteBuffer, apk_path: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_xml_close(doc: Int): Unit
     @JvmStatic external fun boltffi_xml_root(doc: Int): Int
     @JvmStatic external fun boltffi_xml_find_by_tag(doc: Int, tag: ByteArray): ByteArray?
@@ -3885,13 +3875,11 @@ private object Native {
     @JvmStatic external fun boltffi_xml_tag_name(doc: Int, el: Int): String?
     @JvmStatic external fun boltffi_xml_get_attribute(doc: Int, el: Int, name: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_xml_set_attribute(doc: Int, el: Int, name: ByteArray, value: ByteArray): Unit
-    @JvmStatic external fun boltffi_xml_set_attribute_int(doc: Int, el: Int, name: ByteArray, value: Int): Unit
-    @JvmStatic external fun boltffi_xml_set_attribute_bool(doc: Int, el: Int, name: ByteArray, value: Boolean): Unit
     @JvmStatic external fun boltffi_xml_set_attribute_ref(doc: Int, el: Int, name: ByteArray, res_id: Int): Unit
     @JvmStatic external fun boltffi_xml_remove_attribute(doc: Int, el: Int, name: ByteArray): Unit
     @JvmStatic external fun boltffi_xml_create_element(doc: Int, tag: ByteArray): Int
-    @JvmStatic external fun boltffi_xml_append_child(doc: Int, parent_el: Int, child: Int): Unit
-    @JvmStatic external fun boltffi_xml_insert_before(doc: Int, _parent: Int, child: Int, before: Int): Unit
+    @JvmStatic external fun boltffi_xml_append_child(doc: Int, parent: Int, child: Int): Unit
+    @JvmStatic external fun boltffi_xml_insert_before(doc: Int, child: Int, before: Int): Unit
     @JvmStatic external fun boltffi_xml_remove_element(doc: Int, el: Int): Unit
     @JvmStatic external fun boltffi_xml_clone_element(doc: Int, el: Int, deep: Boolean): Int
 }

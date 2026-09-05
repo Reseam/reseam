@@ -1,25 +1,25 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+//! Host-facing API over the engine: inspect an APK and bundles, run a patch
+//! request, and the JSON exports the Kotlin SDK binds to.
+
 mod dto;
+mod ffi;
 mod inspect;
 mod metrics;
-mod selection;
-mod service;
+mod output;
+mod run;
+mod trust;
 
 pub use dto::{
-    ApkMetadata, ArtifactKind, BundleMetadata, CompatibilityMetadata, InputOptionValue,
-    InspectResponse, OptionKind, OptionMetadata, PatchArtifact, PatchMetadata, PatchOutcome,
-    PatchOutput, PatchRequest, PatchRunStatus, PatchSelection, RunEvent, TrustStatus, TrustStore,
+    ApkMetadata, BundleMetadata, InspectRequest, InspectResponse, PatchMetadata, PatchOutcome,
+    PatchOutput, PatchRequest, RunEvent, SigningKeyFiles,
 };
-pub use inspect::{built_in_trust_store, inspect_apk, inspect_with_trust, load_bundle_with_trust};
+pub use inspect::{inspect, inspect_apk, load_bundles};
 pub use metrics::{
-    trace_heap_growth, ApplyDiagnostics, CountingAllocator, PatchExecutionReport, PatchMetrics, PatchPhase,
+    trace_heap_growth, ApplyDiagnostics, CountingAllocator, PatchMetrics, PatchPhase,
     PatchPhaseMetrics,
 };
-pub use selection::{
-    build_execution_plan, compile_patch_selection, parse_cli_option, selection_from_cli,
-};
-pub use service::{measure_patch, patch};
-
-include!("ffi.rs");
+pub use run::patch;
+pub use trust::TrustStore;

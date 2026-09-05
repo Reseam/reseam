@@ -1,143 +1,132 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::path::PathBuf;
-
-use anyhow::{bail, Context, Result};
-use reseam_patcher::engine::PatchStatus;
+use anyhow::{anyhow, ensure, Context, Result};
+use reseam_patcher::engine::{PatchSelection, PatchStatus};
 use reseam_sdk::{
-    built_in_trust_store, load_bundle_with_trust, patch as patch_with_library, selection_from_cli,
-    ArtifactKind, PatchOutput as LibraryPatchOutput, PatchRequest, PatchRunStatus, RunEvent,
+    load_bundles, patch, PatchOutput, PatchRequest, RunEvent, SigningKeyFiles, TrustStore,
 };
 use tracing::{error, info, warn};
 
 use crate::app::{PatchCommand, PatchRequestArgs};
 
-pub(crate) enum OutputTarget {
-    SingleFile(PathBuf),
-    SplitDir(PathBuf),
-}
-
 pub fn run_patch(command: &PatchCommand) -> Result<()> {
-    let split_mode = !command.request.split.is_empty();
-    if split_mode && command.output.is_some() {
-        bail!("--output cannot be used with --split; use --output-dir instead");
-    }
-    if !split_mode && command.output_dir.is_some() {
-        bail!("--output-dir can only be used with --split");
-    }
-
-    let output_target = if split_mode {
-        let dir = match &command.output_dir {
-            Some(dir) => dir.clone(),
-            None => {
-                let stem = command
-                    .request
-                    .apk
-                    .file_stem()
-                    .context("invalid APK path")?
-                    .to_string_lossy();
-                command
-                    .request
-                    .apk
-                    .with_file_name(format!("{stem}-patched"))
-            }
-        };
-        OutputTarget::SplitDir(dir)
+    let apk = &command.request.apk;
+    let stem = apk
+        .file_stem()
+        .context("invalid APK path")?
+        .to_string_lossy();
+    let output = if command.request.split.is_empty() {
+        PatchOutput::SingleFile {
+            path: command
+                .output
+                .clone()
+                .unwrap_or_else(|| apk.with_file_name(format!("{stem}-patched.apk"))),
+        }
     } else {
-        let path = match &command.output {
-            Some(path) => path.clone(),
-            None => {
-                let stem = command
-                    .request
-                    .apk
-                    .file_stem()
-                    .context("invalid APK path")?
-                    .to_string_lossy();
-                command
-                    .request
-                    .apk
-                    .with_file_name(format!("{stem}-patched.apk"))
-            }
-        };
-        OutputTarget::SingleFile(path)
+        PatchOutput::SplitDir {
+            path: command
+                .output_dir
+                .clone()
+                .unwrap_or_else(|| apk.with_file_name(format!("{stem}-patched"))),
+        }
     };
 
-    let request = build_patch_request(&command.request, patch_output(output_target))?;
-
-    let outcome = patch_with_library(&request, |event| match event {
-        RunEvent::Info { message } => info!(message),
-        RunEvent::PatchStarted { patch } => info!(patch, "patch started"),
-        RunEvent::PatchFinished {
-            patch,
-            status,
-            reason,
-        } => match status {
-            PatchRunStatus::Applied => info!(patch, "patch completed"),
-            PatchRunStatus::Skipped => {
-                warn!(patch, reason = reason.unwrap_or_default(), "patch skipped")
-            }
-            PatchRunStatus::Failed => {
-                error!(patch, reason = reason.unwrap_or_default(), "patch failed")
-            }
-        },
-        RunEvent::PatchLog {
-            patch,
-            level,
-            message,
-        } => info!(patch, level, message, "patch log"),
-    })?;
-
-    let failed_count = outcome
-        .results
-        .iter()
-        .filter(|result| matches!(result.status, PatchStatus::Failed { .. }))
-        .count();
-
-    if command.request.dry_run {
-        if failed_count > 0 {
-            bail!("{failed_count} patch(es) failed validation");
-        }
-        info!("dry run enabled; validation completed without applying patches");
-        return Ok(());
+    let request = request(&command.request, output)?;
+    let outcome = patch(&request, log_event)?;
+    let count = |wanted: fn(&PatchStatus) -> bool| {
+        outcome
+            .results
+            .iter()
+            .filter(|result| wanted(&result.status))
+            .count()
+    };
+    info!(
+        applied = count(|status| matches!(status, PatchStatus::Applied)),
+        skipped = count(|status| matches!(status, PatchStatus::Skipped { .. })),
+        failed = count(|status| matches!(status, PatchStatus::Failed { .. })),
+        "patch run finished"
+    );
+    if request.dry_run {
+        info!("dry run: validation completed without applying patches");
+    } else {
+        info!(path = %request.output.path().display(), "patched output ready");
     }
-
-    if let Some(artifact) = outcome.artifact {
-        match artifact.kind {
-            ArtifactKind::Apk => info!(path = %artifact.path.display(), "patched APK ready"),
-            ArtifactKind::SplitDirectory => {
-                info!(path = %artifact.path.display(), "patched split APK set ready")
-            }
-        }
-    }
-
     Ok(())
 }
 
-pub(crate) fn build_patch_request(
-    args: &PatchRequestArgs,
-    output: LibraryPatchOutput,
-) -> Result<PatchRequest> {
-    let trust_store = built_in_trust_store();
-    let patch_bundle = load_bundle_with_trust(&args.bundle, &trust_store)?;
-    let selection = selection_from_cli(&args.enable, &args.disable, &args.option, &patch_bundle)?;
+fn log_event(event: RunEvent) {
+    match event {
+        RunEvent::Info { message } => info!(message),
+        RunEvent::PatchStarted { patch } => info!(patch, "patch started"),
+        RunEvent::PatchFinished { patch, status } => match status {
+            PatchStatus::Applied => info!(patch, "patch applied"),
+            PatchStatus::Skipped { reason } => warn!(patch, reason, "patch skipped"),
+            PatchStatus::Failed { reason } => error!(patch, reason, "patch failed"),
+        },
+        RunEvent::PatchLog(entry) => info!(
+            patch = entry.patch,
+            level = %entry.level,
+            entry.message,
+            "patch log"
+        ),
+    }
+}
 
+pub(crate) fn request(args: &PatchRequestArgs, output: PatchOutput) -> Result<PatchRequest> {
+    let trust = args.trust.store()?;
+    let selection = selection(args, &trust)?;
     Ok(PatchRequest {
         apk_path: args.apk.clone(),
         split_paths: args.split.clone(),
         bundle_paths: vec![args.bundle.clone()],
-        trust_store,
+        trust,
         selection,
         output,
-        key_path: args.key.clone(),
-        cert_path: args.cert.clone(),
+        signing: args
+            .key
+            .clone()
+            .zip(args.cert.clone())
+            .map(|(key, cert)| SigningKeyFiles { key, cert }),
         dry_run: args.dry_run,
     })
 }
 
-pub(crate) fn patch_output(target: OutputTarget) -> LibraryPatchOutput {
-    match target {
-        OutputTarget::SingleFile(path) => LibraryPatchOutput::SingleFile(path),
-        OutputTarget::SplitDir(path) => LibraryPatchOutput::SplitDir(path),
+/// `--option PATCH.KEY=VALUE` values are typed by the patch's declaration,
+/// which means loading the bundle once up front.
+fn selection(args: &PatchRequestArgs, trust: &TrustStore) -> Result<PatchSelection> {
+    let mut selection = PatchSelection {
+        enable: args.enable.iter().cloned().collect(),
+        disable: args.disable.iter().cloned().collect(),
+        ..Default::default()
+    };
+    if args.option.is_empty() {
+        return Ok(selection);
     }
+    let bundles = load_bundles(std::slice::from_ref(&args.bundle), trust)?;
+    for raw in &args.option {
+        let invalid = || anyhow!("invalid option '{raw}': expected PATCH.KEY=VALUE");
+        let (lhs, value) = raw.split_once('=').ok_or_else(invalid)?;
+        let (patch, key) = lhs.split_once('.').ok_or_else(invalid)?;
+        ensure!(!patch.is_empty() && !key.is_empty(), invalid());
+        let declaration = bundles
+            .iter()
+            .flat_map(|bundle| &bundle.patches)
+            .find(|candidate| candidate.name() == patch)
+            .with_context(|| format!("unknown patch '{patch}'"))?
+            .spec()
+            .options
+            .iter()
+            .find(|declaration| declaration.key == key)
+            .with_context(|| format!("unknown option '{key}' for patch '{patch}'"))?;
+        let value = declaration
+            .parse(value)
+            .map_err(|reason| anyhow!("invalid --option {raw}: {reason}"))?;
+        selection
+            .options
+            .entry(patch.to_string())
+            .or_default()
+            .set(key, value);
+    }
+    Ok(selection)
 }

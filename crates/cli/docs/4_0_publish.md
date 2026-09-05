@@ -16,7 +16,7 @@ reseam publish patches \
 
 ## What it does
 
-1. Opens the bundle archive, reads `manifest.pubkey`, and verifies `manifest.sig` against it. The key is not checked against the patch engine's trusted-key list here; that check only happens when a client loads the bundle to apply it.
+1. Opens the bundle archive, reads `manifest.pubkey`, and verifies `manifest.sig` against it. Whether the key is trusted is not decided here; that check only happens when a client loads the bundle to apply it.
 2. Reads bundle `name`, `author`, and `description` from `manifest.toml`. Records the public key as hex in the index.
 3. If `--out` already exists, loads it and refuses to continue when the recorded `bundle.public_key` doesn't match the archive's key. This is the safety net against publishing a differently-keyed bundle to the same index.
 4. Replaces any existing release with the same `--version`.
@@ -60,3 +60,23 @@ reseam publish patches \
 ```
 
 The Reseam API reads this file from whatever URL you configure in `PATCHES_URL` and serves it back under `*.reseam.app` paths.
+
+## `reseam publish manager`
+
+Writes `manager.json`, the index Reseam Manager checks for updates and the website reads for downloads. Same shape as `patches.json` without a public key.
+
+```bash
+reseam publish manager \
+  --name "Reseam Manager" --author Reseam \
+  --version 1.0.0 \
+  --url https://git.reseam.app/reseam/manager/releases/tag/v1.0.0
+```
+
+| Argument | Purpose |
+|----------|---------|
+| `--name <TEXT>` | Publisher name shown to users. |
+| `--author <TEXT>` | Publisher author. |
+| `--summary <TEXT>` | Publisher description. Optional. |
+| `--out <PATH>` | Index path. Defaults to `manager.json`. |
+
+`--version`, `--url`, `--description`, `--description-file`, `--homepage`, `--created-at`, and `--prerelease` behave as for `publish patches`.

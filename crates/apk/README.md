@@ -1,35 +1,32 @@
 # reseam-apk
 
-APK file reader and writer. Handles the ZIP container, Android Binary XML (AXML), resource tables, and DEX extraction/injection.
+APK file reader and writer. Handles the ZIP container, Android Binary XML (AXML), resource tables, and DEX extraction and injection.
 
 ## Key capabilities
 
-- **Read/write APK files** as ZIP archives with proper alignment and compression
-- **Signature-preserving library writes by default** — `ApkFile::write_to()` preserves existing signature entries unless the caller explicitly opts into stripping before resigning
-- **Parse and compile AXML** (Android Binary XML) — the binary format used for `AndroidManifest.xml` and other compiled XML resources
-- **Resource table** parsing for resolving resource IDs to values, preserving string-pool encoding and package header metadata for supported tables
-- **DEX extraction** — pull `classes*.dex` from an APK into `reseam-dex` structures
-- **DEX injection** — write modified DEX files back into an APK
-- **Multi-DEX** aware across all operations
-
-Current limitation: styled resource string pools are rejected for mutation/serialization rather than being rewritten lossy.
+- **Read and write APK files** as ZIP archives with the alignment and compression Android expects, streaming large entries instead of holding them in memory
+- **Split APKs**: a base APK plus config splits opened as one session of components, each with its own manifest, resources, and injected files
+- **Parse and compile AXML**, the binary format used for `AndroidManifest.xml` and other compiled XML resources
+- **Resource table** parsing and rewriting for `resources.arsc`, including styled string pools
+- **DEX extraction and injection**: `classes*.dex` in and out of `reseam-dex` structures, multi-DEX aware
+- **Scratch directories** that outlive a crashed process only until the next run sweeps them
 
 ## Modules
 
 | Module | Purpose |
 |--------|---------|
-| `apk_file` | `ApkFile` — high-level APK abstraction for reading, modifying, and writing APKs |
-| `zip` | ZIP reader/writer handling APK-specific alignment requirements |
-| `axml` | AXML reader, writer, and compiler for Android binary XML |
-| `dex` | DEX extraction and injection helpers bridging APK ↔ `reseam-dex` |
-| `resources` | Android resource table (`resources.arsc`) parser |
+| `apk_file` | `ApkFile` and `ApkComponent`: open, modify, and write APKs and their splits |
+| `zip` | ZIP reader and writer for APK-specific alignment and streaming |
+| `axml` | AXML reader, writer, and compiler, plus the framework attribute ids |
+| `resources` | `ResourceTable` for `resources.arsc` |
+| `entry` | Entry-name rules: DEX ordinals, signature entries, native libraries |
+| `scratch` | `ScratchDir`, per-process temporary directories |
 
 ## Usage
 
 ```rust
-use reseam_apk::{ApkFile, ApkReader};
+use reseam_apk::{ApkFile, reseam_dex::ParseOptions};
 
-let apk = ApkFile::open("app.apk")?;
-let manifest = apk.manifest(); // parsed AXML
-let dex_files = apk.dex(); // MultiDexContainer
+let apk = ApkFile::open("app.apk", &ParseOptions::default())?;
+let dex = apk.dex(); // MultiDexContainer over every classes*.dex
 ```

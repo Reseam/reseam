@@ -1,29 +1,24 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use reseam_apk::axml::{AxmlAttribute, AxmlDocument, AxmlEvent, StringPool, TypedValue};
+use reseam_apk::axml::{self, AxmlAttribute, AxmlDocument, AxmlEvent};
 use reseam_apk::resources::{
-    MapEntry, ResEntry, ResPackage, ResStringPool, ResType, ResValue, ResourceTable, TypeSpec,
+    EntryValue, MapEntry, ResEntry, ResPackage, ResType, ResourceTable, TypeSpec,
 };
+use reseam_apk::{ResValue, StringPool};
 use reseam_dex::file::DexBytes;
 
-fn make_test_axml() -> AxmlDocument {
-    let pool = StringPool {
-        strings: vec![
-            "http://schemas.android.com/apk/res/android".to_string(),
-            "android".to_string(),
-            "manifest".to_string(),
-            "package".to_string(),
-            "versionCode".to_string(),
-            "versionName".to_string(),
-            "com.example.test".to_string(),
-            "1.0.0".to_string(),
-        ],
-        is_utf8: true,
-    };
-
-    let resource_ids = vec![0, 0, 0, 0, 0x0101_021b, 0x0101_021c];
-
+fn make_test_axml(is_utf8: bool) -> AxmlDocument {
+    let strings = [
+        "http://schemas.android.com/apk/res/android",
+        "android",
+        "manifest",
+        "package",
+        "versionCode",
+        "versionName",
+        "com.example.test",
+        "1.0.0",
+    ];
     let elements = vec![
         AxmlEvent::StartNamespace {
             prefix: Some(1),
@@ -33,24 +28,9 @@ fn make_test_axml() -> AxmlDocument {
             namespace: None,
             name: 2,
             attributes: vec![
-                AxmlAttribute {
-                    namespace: None,
-                    name: 3,
-                    raw_value: Some(6),
-                    typed_value: TypedValue::String(6),
-                },
-                AxmlAttribute {
-                    namespace: Some(0),
-                    name: 4,
-                    raw_value: None,
-                    typed_value: TypedValue::Int(1),
-                },
-                AxmlAttribute {
-                    namespace: Some(0),
-                    name: 5,
-                    raw_value: Some(7),
-                    typed_value: TypedValue::String(7),
-                },
+                AxmlAttribute::new(None, 3, ResValue::string(6)),
+                AxmlAttribute::new(Some(0), 4, ResValue::int(1)),
+                AxmlAttribute::new(Some(0), 5, ResValue::string(7)),
             ],
         },
         AxmlEvent::EndElement {
@@ -62,105 +42,99 @@ fn make_test_axml() -> AxmlDocument {
             uri: 0,
         },
     ];
-
     AxmlDocument {
-        string_pool: pool,
-        resource_ids,
+        string_pool: StringPool::new(strings.iter().map(|s| s.to_string()).collect(), is_utf8),
+        resource_ids: vec![0, 0, 0, 0, 0x0101_021b, 0x0101_021c],
         elements,
+    }
+}
+
+fn assert_same_strings(a: &AxmlDocument, b: &AxmlDocument) {
+    assert_eq!(a.string_pool.len(), b.string_pool.len());
+    for (i, (x, y)) in a.string_pool.iter().zip(b.string_pool.iter()).enumerate() {
+        assert_eq!(x, y, "string {i} mismatch");
     }
 }
 
 #[test]
 fn test_axml_round_trip_synthetic() {
-    let doc = make_test_axml();
-
+    let doc = make_test_axml(true);
     let bytes = doc.serialize().expect("serialize failed");
     let reparsed = AxmlDocument::parse(&bytes).expect("reparse failed");
 
-    assert_eq!(
-        doc.string_pool.strings.len(),
-        reparsed.string_pool.strings.len()
-    );
-    for (i, (a, b)) in doc
-        .string_pool
-        .strings
-        .iter()
-        .zip(&reparsed.string_pool.strings)
-        .enumerate()
-    {
-        assert_eq!(a, b, "string {i} mismatch");
-    }
-
+    assert_same_strings(&doc, &reparsed);
     assert_eq!(doc.resource_ids, reparsed.resource_ids);
     assert_eq!(doc.elements.len(), reparsed.elements.len());
-
-    assert_eq!(reparsed.package_name(), Some("com.example.test"));
+    assert_eq!(reparsed.package_name().as_deref(), Some("com.example.test"));
     assert_eq!(reparsed.version_code(), Some(1));
-    assert_eq!(reparsed.version_name(), Some("1.0.0"));
+    assert_eq!(reparsed.version_name().as_deref(), Some("1.0.0"));
 }
 
 #[test]
 fn test_axml_round_trip_utf16() {
-    let mut doc = make_test_axml();
-    doc.string_pool.is_utf8 = false;
-
+    let doc = make_test_axml(false);
     let bytes = doc.serialize().expect("serialize failed");
     let reparsed = AxmlDocument::parse(&bytes).expect("reparse failed");
 
-    assert_eq!(
-        doc.string_pool.strings.len(),
-        reparsed.string_pool.strings.len()
-    );
-    for (i, (a, b)) in doc
-        .string_pool
-        .strings
-        .iter()
-        .zip(&reparsed.string_pool.strings)
-        .enumerate()
-    {
-        assert_eq!(a, b, "string {i} mismatch");
-    }
-
-    assert_eq!(reparsed.package_name(), Some("com.example.test"));
+    assert!(!reparsed.string_pool.is_utf8());
+    assert_same_strings(&doc, &reparsed);
+    assert_eq!(reparsed.package_name().as_deref(), Some("com.example.test"));
 }
 
 #[test]
 fn test_axml_round_trip_mutated() {
-    let mut doc = make_test_axml();
-    doc.set_version_code(42);
-    doc.set_version_name("2.0.0");
+    let mut doc = make_test_axml(true);
+    assert!(doc.set_version_code(42));
+    assert!(doc.set_version_name("2.0.0"));
 
     let bytes = doc.serialize().expect("serialize failed");
     let reparsed = AxmlDocument::parse(&bytes).expect("reparse failed");
 
     assert_eq!(reparsed.version_code(), Some(42));
-    assert_eq!(reparsed.version_name(), Some("2.0.0"));
-    assert_eq!(reparsed.package_name(), Some("com.example.test"));
+    assert_eq!(reparsed.version_name().as_deref(), Some("2.0.0"));
+    assert_eq!(reparsed.package_name().as_deref(), Some("com.example.test"));
 }
 
 #[test]
 fn test_axml_round_trip_add_permission() {
-    let mut doc = make_test_axml();
+    let mut doc = make_test_axml(true);
     let original_element_count = doc.elements.len();
-    doc.add_permission("android.permission.INTERNET");
+    assert!(doc.add_permission("android.permission.INTERNET"));
 
     let bytes = doc.serialize().expect("serialize failed");
     let reparsed = AxmlDocument::parse(&bytes).expect("reparse failed");
 
     assert_eq!(reparsed.elements.len(), original_element_count + 2);
-    assert_eq!(reparsed.package_name(), Some("com.example.test"));
+    let permission = reparsed
+        .find_element("uses-permission")
+        .expect("permission element");
+    let name = reparsed
+        .attribute(permission, 0x0101_0003)
+        .expect("name attribute");
+    assert_eq!(
+        reparsed.attribute_string(name).as_deref(),
+        Some("android.permission.INTERNET")
+    );
+    assert_eq!(reparsed.package_name().as_deref(), Some("com.example.test"));
 }
 
-fn strings(values: &[&str]) -> ResStringPool {
-    ResStringPool::new(values.iter().map(|s| s.to_string()).collect(), true)
+fn strings(values: &[&str]) -> StringPool {
+    StringPool::new(values.iter().map(|s| s.to_string()).collect(), true)
 }
 
-fn simple(key: u32, data_type: u8, data: u32) -> Option<ResEntry> {
+fn simple(key: u32, kind: u8, data: u32) -> Option<ResEntry> {
     Some(ResEntry {
         flags: 0,
         key,
-        value: ResValue::Simple { data_type, data },
+        value: EntryValue::Simple(ResValue::new(kind, data)),
     })
+}
+
+fn simple_value(entry: &ResEntry) -> ResValue {
+    match entry.value {
+        EntryValue::Simple(value) => value,
+        EntryValue::Complex { .. } => panic!("expected simple value"),
+    }
 }
 
 fn make_test_arsc() -> ResourceTable {
@@ -172,8 +146,8 @@ fn make_test_arsc() -> ResourceTable {
     );
     pkg.type_specs.push(TypeSpec::new(1, vec![0, 0]));
     let mut t = ResType::new(1, vec![0; 48]);
-    t.push(simple(0, 0x03, 0));
-    t.push(simple(1, 0x03, 1));
+    t.push(simple(0, ResValue::STRING, 0));
+    t.push(simple(1, ResValue::STRING, 1));
     pkg.types.push(t);
     ResourceTable {
         global_strings: strings(&["Hello", "World", "app_name"]),
@@ -199,10 +173,9 @@ fn test_xml_compiler_resolves_typed_resource_values() {
         .find_resource_id("string", "hello")
         .expect("string id");
     let local_attr_id = table
-        .add_resource("attr", "titleText", 0, 0)
+        .add_resource("attr", "titleText", ResValue::new(0, 0))
         .expect("attr id");
-    let android_attr_id =
-        reseam_apk::axml::compiler::android_attr_res_id("textColor").expect("android attr id");
+    let android_attr_id = axml::android_attr_res_id("textColor").expect("android attr id");
     let xml = r#"
         <TextView
             xmlns:android="http://schemas.android.com/apk/res/android"
@@ -214,59 +187,28 @@ fn test_xml_compiler_resolves_typed_resource_values() {
             android:alpha="0.5" />
     "#;
 
-    let doc = reseam_apk::axml::compiler::build_axml_document_with_resources(xml, Some(&mut table))
-        .expect("build axml");
-    let element = doc
-        .elements
-        .iter()
-        .find_map(|event| match event {
-            AxmlEvent::StartElement { attributes, .. } => Some(attributes),
-            _ => None,
-        })
-        .expect("start element");
+    let doc = axml::build_document(xml, Some(&mut table)).expect("build axml");
+    let element = doc.root().expect("start element");
     let attr = |name: &str| {
-        element
-            .iter()
-            .find(|attr| doc.string(attr.name) == Some(name))
+        doc.attribute_named(element, name)
             .expect("attribute present")
+            .value
     };
 
-    assert!(matches!(
-        attr("text").typed_value,
-        TypedValue::Reference(id) if id == string_id
-    ));
-    assert!(matches!(
-        attr("id").typed_value,
-        TypedValue::Reference(id) if id == table.find_resource_id("id", "title").unwrap()
-    ));
-    assert!(matches!(
-        attr("theme").typed_value,
-        TypedValue::Other { data_type: 0x02, data } if data == local_attr_id
-    ));
-    assert!(matches!(
-        attr("textColor").typed_value,
-        TypedValue::Other { data_type: 0x02, data } if data == android_attr_id
-    ));
-    assert!(matches!(
-        attr("padding").typed_value,
-        TypedValue::Other {
-            data_type: 0x05,
-            ..
-        }
-    ));
-    assert!(matches!(
-        attr("alpha").typed_value,
-        TypedValue::Other {
-            data_type: 0x04,
-            ..
-        }
-    ));
+    assert_eq!(attr("text"), ResValue::reference(string_id));
+    assert_eq!(
+        attr("id"),
+        ResValue::reference(table.find_resource_id("id", "title").unwrap())
+    );
+    assert_eq!(attr("theme"), ResValue::attribute(local_attr_id));
+    assert_eq!(attr("textColor"), ResValue::attribute(android_attr_id));
+    assert_eq!(attr("padding").kind, ResValue::DIMENSION);
+    assert_eq!(attr("alpha").kind, ResValue::FLOAT);
 }
 
 #[test]
 fn test_arsc_round_trip_synthetic() {
     let table = make_test_arsc();
-
     let bytes = table.serialize().expect("serialize failed");
     let reparsed = ResourceTable::parse(DexBytes::from_vec(bytes)).expect("reparse failed");
 
@@ -280,47 +222,45 @@ fn test_arsc_round_trip_synthetic() {
     assert_eq!(pkg.id, 0x7F);
     assert_eq!(pkg.name, "com.example.test");
     assert_eq!(pkg.type_strings.iter().collect::<Vec<_>>(), ["string"]);
-    assert_eq!(pkg.key_strings.iter().collect::<Vec<_>>(), ["hello", "world"]);
+    assert_eq!(
+        pkg.key_strings.iter().collect::<Vec<_>>(),
+        ["hello", "world"]
+    );
     assert_eq!(pkg.type_specs.len(), 1);
     assert_eq!(pkg.types.len(), 1);
 
     let t = &pkg.types[0];
     assert_eq!(t.id, 1);
     assert_eq!(t.len(), 2);
-    assert!(t.entry(0).is_some());
     assert!(t.entry(1).is_some());
-
     let e0 = t.entry(0).unwrap();
     assert_eq!(e0.key, 0);
-    match &e0.value {
-        ResValue::Simple { data_type, data } => {
-            assert_eq!(*data_type, 0x03);
-            assert_eq!(*data, 0);
-        }
-        _ => panic!("expected simple value"),
-    }
+    assert_eq!(simple_value(&e0), ResValue::string(0));
 }
 
 #[test]
 fn test_arsc_round_trip_complex_entries() {
-    let mut pkg = ResPackage::new(0x7F, "com.example", strings(&["style"]), strings(&["AppTheme"]));
+    let mut pkg = ResPackage::new(
+        0x7F,
+        "com.example",
+        strings(&["style"]),
+        strings(&["AppTheme"]),
+    );
     pkg.type_specs.push(TypeSpec::new(1, vec![0]));
     let mut t = ResType::new(1, vec![0; 48]);
     t.push(Some(ResEntry {
         flags: 0x0001,
         key: 0,
-        value: ResValue::Complex {
+        value: EntryValue::Complex {
             parent: 0x01030005,
             entries: vec![
                 MapEntry {
                     name: 0x010100D4,
-                    data_type: 0x01,
-                    data: 0x7F020001,
+                    value: ResValue::reference(0x7F020001),
                 },
                 MapEntry {
                     name: 0x010100D5,
-                    data_type: 0x01,
-                    data: 0x7F020002,
+                    value: ResValue::reference(0x7F020002),
                 },
             ],
         },
@@ -335,17 +275,15 @@ fn test_arsc_round_trip_complex_entries() {
     let reparsed = ResourceTable::parse(DexBytes::from_vec(bytes)).expect("reparse failed");
 
     let entry = reparsed.packages[0].types[0].entry(0).unwrap();
-    match &entry.value {
-        ResValue::Complex { parent, entries } => {
-            assert_eq!(*parent, 0x01030005);
-            assert_eq!(entries.len(), 2);
-            assert_eq!(entries[0].name, 0x010100D4);
-            assert_eq!(entries[0].data, 0x7F020001);
-            assert_eq!(entries[1].name, 0x010100D5);
-            assert_eq!(entries[1].data, 0x7F020002);
-        }
-        _ => panic!("expected complex value"),
-    }
+    let EntryValue::Complex { parent, entries } = &entry.value else {
+        panic!("expected complex value");
+    };
+    assert_eq!(*parent, 0x01030005);
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0].name, 0x010100D4);
+    assert_eq!(entries[0].value, ResValue::reference(0x7F020001));
+    assert_eq!(entries[1].name, 0x010100D5);
+    assert_eq!(entries[1].value, ResValue::reference(0x7F020002));
 }
 
 #[test]
@@ -355,18 +293,15 @@ fn test_arsc_round_trip_mutated() {
 
     let refs = table.find_entries_by_string(1);
     assert_eq!(refs.len(), 1);
+    assert_eq!(refs[0].key_name, "world");
     table.replace_entry_string(refs[0].res_id, 0);
 
     let bytes = table.serialize().expect("serialize failed");
     let reparsed = ResourceTable::parse(DexBytes::from_vec(bytes)).expect("reparse failed");
 
     assert_eq!(reparsed.global_strings.get(0).as_deref(), Some("Modified"));
-
     let entry = reparsed.packages[0].types[0].entry(1).unwrap();
-    match &entry.value {
-        ResValue::Simple { data, .. } => assert_eq!(*data, 0),
-        _ => panic!("expected simple value"),
-    }
+    assert_eq!(simple_value(&entry).data, 0);
 }
 
 #[test]
@@ -398,47 +333,34 @@ fn available_apks() -> Vec<&'static str> {
         .collect()
 }
 
+fn read_entry(apk_path: &str, name: &str) -> Vec<u8> {
+    let file = std::fs::File::open(apk_path).unwrap();
+    let mut archive = zip::ZipArchive::new(file).unwrap();
+    let mut entry = archive.by_name(name).unwrap();
+    let mut buf = Vec::new();
+    std::io::Read::read_to_end(&mut entry, &mut buf).unwrap();
+    buf
+}
+
 #[test]
 fn test_axml_round_trip_real_apks() {
     let apks = available_apks();
     if apks.is_empty() {
-        eprintln!("Skipping: no APK files found");
         return;
     }
 
     for apk_path in &apks {
-        eprintln!("\n=== AXML round-trip: {apk_path} ===");
-        let file = std::fs::File::open(apk_path).unwrap();
-        let mut archive = zip::ZipArchive::new(file).unwrap();
-
-        let manifest_bytes = {
-            let mut entry = archive.by_name("AndroidManifest.xml").unwrap();
-            let mut buf = Vec::new();
-            std::io::Read::read_to_end(&mut entry, &mut buf).unwrap();
-            buf
-        };
-
-        let doc = AxmlDocument::parse(&manifest_bytes).expect("parse failed");
+        let doc = AxmlDocument::parse(&read_entry(apk_path, "AndroidManifest.xml"))
+            .expect("parse failed");
         let serialized = doc.serialize().expect("serialize failed");
         let reparsed = AxmlDocument::parse(&serialized).expect("reparse failed");
 
-        assert_eq!(
-            doc.string_pool.strings.len(),
-            reparsed.string_pool.strings.len()
-        );
+        assert_same_strings(&doc, &reparsed);
         assert_eq!(doc.resource_ids, reparsed.resource_ids);
         assert_eq!(doc.elements.len(), reparsed.elements.len());
         assert_eq!(doc.package_name(), reparsed.package_name());
         assert_eq!(doc.version_code(), reparsed.version_code());
         assert_eq!(doc.version_name(), reparsed.version_name());
-
-        eprintln!(
-            "  package={:?} version={:?} strings={} elements={} OK",
-            reparsed.package_name(),
-            reparsed.version_name(),
-            reparsed.string_pool.strings.len(),
-            reparsed.elements.len(),
-        );
     }
 }
 
@@ -446,29 +368,18 @@ fn test_axml_round_trip_real_apks() {
 fn test_arsc_round_trip_real_apks() {
     let apks = available_apks();
     if apks.is_empty() {
-        eprintln!("Skipping: no APK files found");
         return;
     }
 
     for apk_path in &apks {
-        eprintln!("\n=== ARSC round-trip: {apk_path} ===");
-        let file = std::fs::File::open(apk_path).unwrap();
-        let mut archive = zip::ZipArchive::new(file).unwrap();
-
-        let arsc_bytes = {
-            let mut entry = archive.by_name("resources.arsc").unwrap();
-            let mut buf = Vec::new();
-            std::io::Read::read_to_end(&mut entry, &mut buf).unwrap();
-            buf
-        };
-
+        let arsc_bytes = read_entry(apk_path, "resources.arsc");
         let table = ResourceTable::parse(DexBytes::from_vec(arsc_bytes)).expect("parse failed");
         let serialized = table.serialize().expect("serialize failed");
-        let reparsed = ResourceTable::parse(DexBytes::from_vec(serialized)).expect("reparse failed");
+        let reparsed =
+            ResourceTable::parse(DexBytes::from_vec(serialized)).expect("reparse failed");
 
         assert_eq!(table.global_strings.len(), reparsed.global_strings.len());
         assert_eq!(table.packages.len(), reparsed.packages.len());
-
         for (i, (orig, re)) in table.packages.iter().zip(&reparsed.packages).enumerate() {
             assert_eq!(orig.id, re.id, "package {i} id mismatch");
             assert_eq!(orig.name, re.name, "package {i} name mismatch");
@@ -493,12 +404,6 @@ fn test_arsc_round_trip_real_apks() {
                 "package {i} types count mismatch"
             );
         }
-
-        eprintln!(
-            "  strings={} packages={} OK",
-            reparsed.global_strings.len(),
-            reparsed.packages.len(),
-        );
     }
 }
 
@@ -506,29 +411,18 @@ fn test_arsc_round_trip_real_apks() {
 fn test_arsc_mutation_preserves_real_type_header_sizes() {
     let apks = available_apks();
     if apks.is_empty() {
-        eprintln!("Skipping: no APK files found");
         return;
     }
 
     for apk_path in &apks {
-        eprintln!("\n=== ARSC mutation header preservation: {apk_path} ===");
-        let file = std::fs::File::open(apk_path).unwrap();
-        let mut archive = zip::ZipArchive::new(file).unwrap();
-
-        let arsc_bytes = {
-            let mut entry = archive.by_name("resources.arsc").unwrap();
-            let mut buf = Vec::new();
-            std::io::Read::read_to_end(&mut entry, &mut buf).unwrap();
-            buf
-        };
-
+        let arsc_bytes = read_entry(apk_path, "resources.arsc");
         let original_headers = collect_type_header_sizes(&arsc_bytes).expect("header scan failed");
-        let mut table = ResourceTable::parse(DexBytes::from_slice(&arsc_bytes)).expect("parse failed");
+        let mut table =
+            ResourceTable::parse(DexBytes::from_slice(&arsc_bytes)).expect("parse failed");
         table.add_global_string("reseam mutation sentinel");
         let serialized = table.serialize().expect("serialize failed");
         let mutated_headers =
             collect_type_header_sizes(&serialized).expect("mutated header scan failed");
-
         assert_eq!(
             original_headers, mutated_headers,
             "type header sizes changed after string-pool mutation for {apk_path}"
@@ -553,14 +447,12 @@ fn collect_type_header_sizes(bytes: &[u8]) -> Result<Vec<u16>, String> {
 
     let mut headers = Vec::new();
     let mut pos = 12usize;
-
     while pos + 8 <= bytes.len() {
         let chunk_type = read_u16(bytes, pos)?;
         let chunk_size = read_u32(bytes, pos + 4)? as usize;
         if chunk_size < 8 || pos + chunk_size > bytes.len() {
             return Err(format!("invalid chunk size at {pos}"));
         }
-
         if chunk_type == 0x0200 {
             let package = &bytes[pos..pos + chunk_size];
             let mut ppos = 288usize;
@@ -577,9 +469,7 @@ fn collect_type_header_sizes(bytes: &[u8]) -> Result<Vec<u16>, String> {
                 ppos += pkg_chunk_size;
             }
         }
-
         pos += chunk_size;
     }
-
     Ok(headers)
 }

@@ -1,46 +1,48 @@
 # reseam-patcher
 
-Patch execution engine. Loads patch bundles, resolves dependencies, validates options, and applies patches to APKs. The current bundle loader executes Kotlin patches from compiled JARs via an embedded JVM.
+Patch execution engine. Loads signed patch bundles, resolves which patches run and in what order, applies them to an APK, and reports per-patch results. Patches are written in Kotlin and run on an in-process JVM.
 
 ## Key capabilities
 
-- **Patch bundles** — load patches from directories with a TOML manifest, compiled Kotlin JARs, and extension DEX
-- **Dependency resolution** — topological ordering of patches with cycle detection
-- **Execution engine** — applies patches in order, tracks status (applied/skipped/failed), collects logs
-- **Options system** — typed patch options (string, bool, int, float, string list, path) with validation and defaults
-- **Kotlin patches** — spins up a JVM via JNI to execute Kotlin-authored patches that use the Reseam SDK API. Handles bytecode manipulation, manifest editing, resource copying, and XML patching through a bridge layer
-- **Patch context** — provides patches access to the APK's DEX files, manifest, and resources
+- **Patch bundles**: open a `.reseam` archive, verify its signature and file hashes, check it was built for this engine's version line, and load its patches and extension DEX
+- **Dependency resolution**: topological ordering of patches with cycle detection
+- **Execution engine**: applies patches in order, tracks status (applied, skipped, failed), reports progress to an observer
+- **Options system**: typed patch options (string, bool, int, float, string list, path) with validation and defaults
+- **Kotlin patches**: runs Kotlin-authored patches through the BoltFFI bridge, on a JVM the engine starts or the one it was loaded into. Bytecode manipulation, manifest editing, resource and XML changes all go through the bridge
+- **Patch context**: gives patches access to the APK's DEX files, manifest, resources, and files, plus a search API over all DEX
 
 ## Modules
 
 | Module | Purpose |
 |--------|---------|
-| `engine` | `ExecutionPlan` — patch selection, ordering, execution loop |
-| `bundle` | `PatchBundle` — loads patches and metadata from a bundle directory |
-| `context` | `PatchContext` — APK state passed to each patch during execution |
-| `patch` | `Patch` trait — interface every patch implements |
-| `options` | Option declarations, types, and validation |
-| `dependency` | Topological sort and cycle detection |
-| `kotlin` | JNI bridge for running Kotlin patches — type conversion, bytecode ops, manifest/resource/XML helpers |
+| `bundle` | `BundleArchive` opens and verifies a bundle, `load` extracts it and loads its patches, `pack` writes one |
+| `engine` | `apply_patches` and `validate_patches` over a `PatchSelection` |
+| `context` | `PatchContext`: the APK session, DEX search API, run log, and options |
+| `patch` | `Patch` trait and `PatchSpec`, the interface every patch implements |
+| `options` | Option declarations, values, and resolution against a selection |
+| `kotlin` | JVM host, bundle class loader, and the `#[export]` functions the Kotlin scopes call |
 | `log` | Structured patch logging |
+
+Trust is the host's decision. The engine checks that a bundle is intact and signed by the key it carries; the host decides whether that key is acceptable before calling `load`.
 
 ## Kotlin/JNI boundary
 
-The Kotlin integration has three separate concerns:
-
 - Rust exports in `src/kotlin/**/*.rs` define the host API with `#[export]`
-- `patch-api/generated/` contains raw BoltFFI output and is fully replaceable
-- handwritten files in `patch-api/src/main/kotlin/dev/reseam/patch/` provide stable SDK ergonomics and policy
+- `patch-api/generated/` holds raw BoltFFI output and is fully replaceable
+- handwritten files in `patch-api/src/main/kotlin/app/reseam/patch/` provide the patch-author API on top
 
-Regeneration is done through `cargo xtask regen patch-api`. Normal Cargo builds remain strict and still compile the JNI glue; regeneration uses `RESEAM_SKIP_JNI_GLUE=1` only to prevent stale generated JNI code from blocking type generation.
+Regenerate with `cargo xtask regen patch-api`. The integration test in `tests/` builds a Kotlin fixture bundle with Gradle and runs it through the JVM.
 
 ## Usage
 
 ```rust
-use reseam_patcher::prelude::*;
-use reseam_patcher::bundle::PatchBundle;
+use reseam_patcher::bundle::BundleArchive;
+use reseam_patcher::engine::{apply_patches, PatchSelection};
+use reseam_patcher::Patch;
 
-let bundle = PatchBundle::load("patches/")?;
-let plan = ExecutionPlan::default();
-let results = reseam_patcher::engine::apply_patches_with_plan(&mut context, &bundle.patches, &plan)?;
+let archive = BundleArchive::open("patches.reseam".as_ref())?;
+// host checks archive.public_key against its trust list here
+let bundle = archive.load()?;
+let patches: Vec<&dyn Patch> = bundle.patches.iter().map(Box::as_ref).collect();
+let results = apply_patches(&mut context, &patches, &PatchSelection::default(), |_| {})?;
 ```

@@ -119,7 +119,10 @@ impl ClassTable {
 
     pub fn from_defs(defs: Vec<ClassDef>) -> Self {
         Self {
-            slots: defs.into_iter().map(|c| ClassSlot::Resident(Box::new(c))).collect(),
+            slots: defs
+                .into_iter()
+                .map(|c| ClassSlot::Resident(Box::new(c)))
+                .collect(),
             ..Self::default()
         }
     }
@@ -200,11 +203,16 @@ impl ClassTable {
     }
 
     pub fn all_resident(&self) -> bool {
-        self.slots.iter().all(|s| matches!(s, ClassSlot::Resident(_)))
+        self.slots
+            .iter()
+            .all(|s| matches!(s, ClassSlot::Resident(_)))
     }
 
     pub fn resident_count(&self) -> usize {
-        self.slots.iter().filter(|s| matches!(s, ClassSlot::Resident(_))).count()
+        self.slots
+            .iter()
+            .filter(|s| matches!(s, ClassSlot::Resident(_)))
+            .count()
     }
 
     /// Decodes the class from the file if needed and returns it mutably.
@@ -215,7 +223,11 @@ impl ClassTable {
         };
         if let ClassSlot::Raw(r) = *slot {
             let buf = self.raw_bytes();
-            let def = read_class_def(buf, RawClassDef::read(buf, self.off + r as usize * RECORD_SIZE), opts)?;
+            let def = read_class_def(
+                buf,
+                RawClassDef::read(buf, self.off + r as usize * RECORD_SIZE),
+                opts,
+            )?;
             self.slots[i] = ClassSlot::Resident(Box::new(def));
         }
         Ok(self.resident_mut(i).unwrap())
@@ -229,7 +241,11 @@ impl ClassTable {
         let off = self.off;
         self.slots.par_iter_mut().try_for_each(|slot| {
             if let ClassSlot::Raw(r) = *slot {
-                let def = read_class_def(buf, RawClassDef::read(buf, off + r as usize * RECORD_SIZE), opts)?;
+                let def = read_class_def(
+                    buf,
+                    RawClassDef::read(buf, off + r as usize * RECORD_SIZE),
+                    opts,
+                )?;
                 *slot = ClassSlot::Resident(Box::new(def));
             }
             Ok(())

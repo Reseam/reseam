@@ -109,7 +109,10 @@ impl<'a> MethodView<'a> {
     }
 
     /// Visits each instruction in order, stopping when `visit` returns `false`.
-    pub fn for_each_instruction(&self, mut visit: impl FnMut(InstructionRef<'_>) -> bool) -> Result<()> {
+    pub fn for_each_instruction(
+        &self,
+        mut visit: impl FnMut(InstructionRef<'_>) -> bool,
+    ) -> Result<()> {
         match &self.code {
             Code::None => Ok(()),
             Code::Resolved(instructions) => {
@@ -131,7 +134,10 @@ impl<'a> MethodView<'a> {
     }
 
     /// Whether any instruction satisfies `pred`.
-    pub fn any_instruction(&self, mut pred: impl FnMut(InstructionRef<'_>) -> bool) -> Result<bool> {
+    pub fn any_instruction(
+        &self,
+        mut pred: impl FnMut(InstructionRef<'_>) -> bool,
+    ) -> Result<bool> {
         let mut found = false;
         self.for_each_instruction(|insn| {
             found = pred(insn);
@@ -225,12 +231,13 @@ impl DexFile {
             .into_par_iter()
             .map(|class_idx| {
                 let mut hits = Vec::new();
-                let _: ControlFlow<()> = self.scan_class(class_idx, filter, query, &mut |view| {
-                    if let Some(value) = f(view)? {
-                        hits.push(value);
-                    }
-                    Ok(ControlFlow::Continue(()))
-                })?;
+                let _: ControlFlow<()> =
+                    self.scan_class(class_idx, filter, query, &mut |view| {
+                        if let Some(value) = f(view)? {
+                            hits.push(value);
+                        }
+                        Ok(ControlFlow::Continue(()))
+                    })?;
                 Ok(hits)
             })
             .collect::<Result<_>>()?;
@@ -332,7 +339,11 @@ impl DexFile {
             };
             // The method_idx_diff of the first entry in each list is absolute.
             let mut method_idx = 0u32;
-            let slot_base = if is_virtual { direct_methods_size as usize } else { 0 };
+            let slot_base = if is_virtual {
+                direct_methods_size as usize
+            } else {
+                0
+            };
             for method_pos in 0..count as usize {
                 let (diff, n) = read_uleb128_with_opts(buf, pos, opts)?;
                 pos += n;
@@ -496,7 +507,11 @@ impl DexFile {
             return Ok(None);
         };
         let buf = self.raw_bytes(offset)?;
-        Ok(Some(read_class_skeleton_at(buf, offset as usize, &self.parse_options)?))
+        Ok(Some(read_class_skeleton_at(
+            buf,
+            offset as usize,
+            &self.parse_options,
+        )?))
     }
 
     /// Summarizes a deferred method from its skeleton entry: the 16-byte code
@@ -748,7 +763,9 @@ impl DexFile {
             }
             let mut seq = Vec::new();
             view.opcodes(&mut seq)?;
-            Ok(find_pattern_span(&seq, opcodes).is_some().then(|| view.hit()))
+            Ok(find_pattern_span(&seq, opcodes)
+                .is_some()
+                .then(|| view.hit()))
         })
     }
 }

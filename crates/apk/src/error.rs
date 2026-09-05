@@ -26,12 +26,6 @@ pub enum ApkError {
         reason: String,
     },
 
-    #[error("internal error while {operation}: {reason}")]
-    Internal {
-        operation: &'static str,
-        reason: String,
-    },
-
     #[error("ZIP error: {0}")]
     Zip(#[from] ::zip::result::ZipError),
 
@@ -76,4 +70,3 @@ pub(crate) fn invalid(section: &'static str, reason: impl Into<String>) -> ApkEr
         reason: reason.into(),
     }
 }
-

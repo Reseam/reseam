@@ -5,7 +5,6 @@ members = [
     "crates/apk",
     "crates/sign",
     "crates/patcher",
-    "crates/patcher-macros",
     "sdk",
     "crates/cli",
     "xtask",
@@ -15,13 +14,15 @@ exclude = [
     "sdk/target/boltffi_bindgen_type_resolution",
 ]
 
+[workspace.package]
+version = "0.3.0"
+
 [workspace.dependencies]
 # Internal crates
 reseam-dex     = { path = "crates/dex" }
 reseam-apk     = { path = "crates/apk" }
 reseam-sign    = { path = "crates/sign" }
 reseam-patcher = { path = "crates/patcher" }
-reseam-patcher-macros = { path = "crates/patcher-macros" }
 reseam-sdk     = { path = "sdk" }
 
 # Shared external dependencies (pinned versions for all crates)

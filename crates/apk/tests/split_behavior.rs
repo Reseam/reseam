@@ -6,9 +6,18 @@ use std::io::Write;
 use std::path::Path;
 
 use reseam_apk::reseam_dex::{DexFile, DexHeader, DexVersion, ParseOptions};
-use reseam_apk::resources::{ResPackage, ResStringPool};
-use reseam_apk::zip::writer::{ALIGNMENT_DEFAULT, ALIGNMENT_NATIVE_LIB};
-use reseam_apk::{ApkFile, ResourceTable};
+use reseam_apk::resources::ResPackage;
+use reseam_apk::{ApkFile, ApkWriteOptions, Compression, ResourceTable, StringPool};
+
+const ALIGNMENT_DEFAULT: u64 = 4;
+const ALIGNMENT_NATIVE_LIB: u64 = 16 * 1024;
+
+fn lazy() -> ParseOptions {
+    ParseOptions {
+        lazy: true,
+        ..ParseOptions::default()
+    }
+}
 
 fn manifest_bytes(version_name: &str, split_name: Option<&str>) -> Vec<u8> {
     let split_attr = split_name
@@ -16,12 +25,12 @@ fn manifest_bytes(version_name: &str, split_name: Option<&str>) -> Vec<u8> {
         .unwrap_or_default();
     reseam_apk::axml::compile_xml(&format!(
         r#"<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.test" android:versionCode="1" android:versionName="{version_name}"{split_attr} />"#
-    ))
+    ), None)
     .expect("compile manifest")
 }
 
-fn empty_strings() -> ResStringPool {
-    ResStringPool::new(Vec::new(), true)
+fn empty_strings() -> StringPool {
+    StringPool::new(Vec::new(), true)
 }
 
 fn resource_table_bytes() -> Vec<u8> {
@@ -105,8 +114,8 @@ fn empty_dex_header(version: DexVersion) -> DexHeader {
 }
 
 fn minimal_dex_bytes() -> Vec<u8> {
-    let mut dex = DexFile::new(empty_dex_header(DexVersion::V035));
-    reseam_apk::reseam_dex::write(&mut dex).expect("write minimal dex")
+    let dex = DexFile::new(empty_dex_header(DexVersion::V035));
+    reseam_apk::reseam_dex::write(&dex).expect("write minimal dex")
 }
 
 #[test]
@@ -126,49 +135,51 @@ fn split_apk_supports_split_resource_tables_and_component_state() {
         &[("resources.arsc", &resource_table_bytes())],
     );
 
-    let mut apk = ApkFile::open_split_with_options(
-        &base,
-        &[split.as_path()],
-        ParseOptions {
-            lazy: true,
-            ..ParseOptions::default()
-        },
-    )
-    .expect("open split apk");
+    let mut apk = ApkFile::open_split(&base, &[split.as_path()], &lazy()).expect("open split apk");
 
-    assert_eq!(apk.component_count(), 2);
-    assert_eq!(apk.split_names(), vec!["config.test"]);
-    assert!(apk.component_resources(1).is_some());
+    assert_eq!(apk.components().len(), 2);
+    assert_eq!(apk.components()[1].name(), "config.test");
+    assert!(apk.component_mut(1).unwrap().resources().unwrap().is_some());
     assert_eq!(
-        apk.component_manifest(1)
-            .and_then(|manifest| manifest.version_name()),
+        apk.component(1)
+            .unwrap()
+            .manifest()
+            .version_name()
+            .as_deref(),
         Some("1.0-split")
     );
 
-    apk.component_manifest_mut(1)
-        .expect("split manifest")
+    apk.component_mut(1)
+        .unwrap()
+        .manifest_mut()
         .set_version_name("2.0-split");
 
     let out_dir = tmp.path().join("out");
-    apk.write_to(&out_dir).expect("write split output");
+    apk.write_to(&out_dir, ApkWriteOptions::default())
+        .expect("write split output");
 
-    let mut reparsed = ApkFile::open_split_with_options(
+    let mut reparsed = ApkFile::open_split(
         out_dir.join("base.apk"),
         &[out_dir.join("config.apk")],
-        ParseOptions {
-            lazy: true,
-            ..ParseOptions::default()
-        },
+        &lazy(),
     )
     .expect("reopen split output");
 
     assert_eq!(
         reparsed
-            .component_manifest(1)
-            .and_then(|manifest| manifest.version_name()),
+            .component(1)
+            .unwrap()
+            .manifest()
+            .version_name()
+            .as_deref(),
         Some("2.0-split")
     );
-    assert!(reparsed.component_resources(1).is_some());
+    assert!(reparsed
+        .component_mut(1)
+        .unwrap()
+        .resources()
+        .unwrap()
+        .is_some());
 }
 
 #[test]
@@ -188,22 +199,23 @@ fn split_apk_file_changes_are_component_scoped() {
         &[("assets/old.txt", b"old-split")],
     );
 
-    let mut apk = ApkFile::open_split_with_options(
-        &base,
-        &[split.as_path()],
-        ParseOptions {
-            lazy: true,
-            ..ParseOptions::default()
-        },
-    )
-    .expect("open split apk");
+    let mut apk = ApkFile::open_split(&base, &[split.as_path()], &lazy()).expect("open split apk");
 
-    apk.inject_file("assets/new.txt", b"new-base".to_vec());
-    apk.delete_file("assets/old.txt");
-    apk.inject_file_into(1, "assets/split-only.txt", b"new-split".to_vec());
+    apk.base_mut().inject_file(
+        "assets/new.txt",
+        b"new-base".to_vec(),
+        Compression::Deflated,
+    );
+    apk.base_mut().delete_file("assets/old.txt");
+    apk.component_mut(1).unwrap().inject_file(
+        "assets/split-only.txt",
+        b"new-split".to_vec(),
+        Compression::Deflated,
+    );
 
     let out_dir = tmp.path().join("out");
-    apk.write_to(&out_dir).expect("write split output");
+    apk.write_to(&out_dir, ApkWriteOptions::default())
+        .expect("write split output");
 
     let base_file = File::open(out_dir.join("base.apk")).expect("open base output");
     let base_archive = zip::ZipArchive::new(base_file).expect("base zip archive");
@@ -238,18 +250,12 @@ fn write_to_strips_stale_signature_entries() {
         ],
     );
 
-    let mut apk = ApkFile::open_with_options(
-        &apk_path,
-        ParseOptions {
-            lazy: true,
-            ..ParseOptions::default()
-        },
-    )
-    .expect("open apk");
-    apk.manifest_mut().set_version_name("2.0-base");
+    let mut apk = ApkFile::open(&apk_path, &lazy()).expect("open apk");
+    apk.base_mut().manifest_mut().set_version_name("2.0-base");
 
     let out_dir = tmp.path().join("out");
-    apk.write_to(&out_dir).expect("write output");
+    apk.write_to(&out_dir, ApkWriteOptions::default())
+        .expect("write output");
 
     let file = File::open(out_dir.join("signed.apk")).expect("open output");
     let archive = zip::ZipArchive::new(file).expect("zip archive");
@@ -274,18 +280,12 @@ fn apk_write_aligns_passthrough_native_libraries_for_16kb_pages() {
         ],
     );
 
-    let mut apk = ApkFile::open_with_options(
-        &apk_path,
-        ParseOptions {
-            lazy: true,
-            ..ParseOptions::default()
-        },
-    )
-    .expect("open apk");
-    apk.manifest_mut().set_version_name("2.0-base");
+    let mut apk = ApkFile::open(&apk_path, &lazy()).expect("open apk");
+    apk.base_mut().manifest_mut().set_version_name("2.0-base");
 
     let out_dir = tmp.path().join("out");
-    apk.write_to(&out_dir).expect("write output");
+    apk.write_to(&out_dir, ApkWriteOptions::default())
+        .expect("write output");
 
     let out_apk = out_dir.join("app.apk");
     let (asset_start, asset_compression) =
@@ -294,9 +294,9 @@ fn apk_write_aligns_passthrough_native_libraries_for_16kb_pages() {
         entry_data_start_and_compression(&out_apk, "lib/arm64-v8a/libdemo.so");
 
     assert_eq!(asset_compression, zip::CompressionMethod::Stored);
-    assert_eq!(asset_start % u64::from(ALIGNMENT_DEFAULT), 0);
+    assert_eq!(asset_start % ALIGNMENT_DEFAULT, 0);
     assert_eq!(native_compression, zip::CompressionMethod::Stored);
-    assert_eq!(native_start % u64::from(ALIGNMENT_NATIVE_LIB), 0);
+    assert_eq!(native_start % ALIGNMENT_NATIVE_LIB, 0);
 }
 
 #[test]
@@ -306,24 +306,22 @@ fn native_library_injection_is_stored_and_16kb_aligned() {
 
     write_apk(&apk_path, &manifest_bytes("1.0-base", None), &[]);
 
-    let mut apk = ApkFile::open_with_options(
-        &apk_path,
-        ParseOptions {
-            lazy: true,
-            ..ParseOptions::default()
-        },
-    )
-    .expect("open apk");
-    apk.inject_file("lib/arm64-v8a/libnew.so", vec![0x7F, b'E', b'L', b'F']);
+    let mut apk = ApkFile::open(&apk_path, &lazy()).expect("open apk");
+    apk.base_mut().inject_file(
+        "lib/arm64-v8a/libnew.so",
+        vec![0x7F, b'E', b'L', b'F'],
+        Compression::Deflated,
+    );
 
     let out_dir = tmp.path().join("out");
-    apk.write_to(&out_dir).expect("write output");
+    apk.write_to(&out_dir, ApkWriteOptions::default())
+        .expect("write output");
 
     let (native_start, native_compression) =
         entry_data_start_and_compression(&out_dir.join("app.apk"), "lib/arm64-v8a/libnew.so");
 
     assert_eq!(native_compression, zip::CompressionMethod::Stored);
-    assert_eq!(native_start % u64::from(ALIGNMENT_NATIVE_LIB), 0);
+    assert_eq!(native_start % ALIGNMENT_NATIVE_LIB, 0);
 }
 
 #[test]
@@ -353,18 +351,12 @@ fn manifest_only_write_preserves_untouched_dex_metadata() {
     writer.write_all(&dex_bytes).expect("write dex");
     writer.finish().expect("finish apk");
 
-    let mut apk = ApkFile::open_with_options(
-        &apk_path,
-        ParseOptions {
-            lazy: true,
-            ..ParseOptions::default()
-        },
-    )
-    .expect("open apk");
-    apk.manifest_mut().set_version_name("2.0-base");
+    let mut apk = ApkFile::open(&apk_path, &lazy()).expect("open apk");
+    apk.base_mut().manifest_mut().set_version_name("2.0-base");
 
     let out_dir = tmp.path().join("out");
-    apk.write_to(&out_dir).expect("write output");
+    apk.write_to(&out_dir, ApkWriteOptions::default())
+        .expect("write output");
 
     let file = File::open(out_dir.join("app.apk")).expect("open output");
     let mut archive = zip::ZipArchive::new(file).expect("zip archive");
@@ -391,22 +383,16 @@ fn split_write_preserves_untouched_dex_component_placement() {
         &[("classes.dex", &dex_bytes)],
     );
 
-    let mut apk = ApkFile::open_split_with_options(
-        &base,
-        &[split.as_path()],
-        ParseOptions {
-            lazy: true,
-            ..ParseOptions::default()
-        },
-    )
-    .expect("open split apk");
+    let mut apk = ApkFile::open_split(&base, &[split.as_path()], &lazy()).expect("open split apk");
 
-    apk.component_manifest_mut(1)
-        .expect("split manifest")
+    apk.component_mut(1)
+        .unwrap()
+        .manifest_mut()
         .set_version_name("2.0-split");
 
     let out_dir = tmp.path().join("out");
-    apk.write_to(&out_dir).expect("write split output");
+    apk.write_to(&out_dir, ApkWriteOptions::default())
+        .expect("write split output");
 
     let base_file = File::open(out_dir.join("base.apk")).expect("open base output");
     let base_archive = zip::ZipArchive::new(base_file).expect("base zip archive");
@@ -424,22 +410,16 @@ fn repeated_write_preserves_added_dex_without_reopen() {
 
     write_apk(&apk_path, &manifest_bytes("1.0-base", None), &[]);
 
-    let mut apk = ApkFile::open_with_options(
-        &apk_path,
-        ParseOptions {
-            lazy: true,
-            ..ParseOptions::default()
-        },
-    )
-    .expect("open apk");
-    apk.dex_mut()
-        .add_dex(DexFile::new(empty_dex_header(DexVersion::V035)));
+    let mut apk = ApkFile::open(&apk_path, &lazy()).expect("open apk");
+    apk.add_dex(DexFile::new(empty_dex_header(DexVersion::V035)));
 
     let out_one = tmp.path().join("out-one");
-    apk.write_to(&out_one).expect("write first output");
+    apk.write_to(&out_one, ApkWriteOptions::default())
+        .expect("write first output");
 
     let out_two = tmp.path().join("out-two");
-    apk.write_to(&out_two).expect("write second output");
+    apk.write_to(&out_two, ApkWriteOptions::default())
+        .expect("write second output");
 
     let file = File::open(out_two.join("app.apk")).expect("open second output");
     let mut archive = zip::ZipArchive::new(file).expect("zip archive");
@@ -449,7 +429,8 @@ fn repeated_write_preserves_added_dex_without_reopen() {
 
     assert_eq!(output_dex, minimal_dex_bytes());
 
-    let reparsed = ApkFile::open(out_two.join("app.apk")).expect("reopen second output");
+    let reparsed = ApkFile::open(out_two.join("app.apk"), &ParseOptions::default())
+        .expect("reopen second output");
     assert_eq!(reparsed.dex().len(), 1);
 }
 
@@ -464,41 +445,35 @@ fn repeated_write_preserves_modified_resources_without_reopen() {
         &[("resources.arsc", &mutable_resource_table_bytes())],
     );
 
-    let mut apk = ApkFile::open_with_options(
-        &apk_path,
-        ParseOptions {
-            lazy: true,
-            ..ParseOptions::default()
-        },
-    )
-    .expect("open apk");
+    let mut apk = ApkFile::open(&apk_path, &lazy()).expect("open apk");
     let res_id = apk
+        .base_mut()
         .resources_mut()
+        .unwrap()
         .expect("resources")
         .add_string_resource("greeting", "hello")
         .expect("add string resource");
 
     let out_one = tmp.path().join("out-one");
-    apk.write_to(&out_one).expect("write first output");
+    apk.write_to(&out_one, ApkWriteOptions::default())
+        .expect("write first output");
 
     let out_two = tmp.path().join("out-two");
-    apk.write_to(&out_two).expect("write second output");
+    apk.write_to(&out_two, ApkWriteOptions::default())
+        .expect("write second output");
 
-    let mut reparsed = ApkFile::open_with_options(
-        out_two.join("app.apk"),
-        ParseOptions {
-            lazy: true,
-            ..ParseOptions::default()
-        },
-    )
-    .expect("reopen second output");
+    let mut reparsed =
+        ApkFile::open(out_two.join("app.apk"), &lazy()).expect("reopen second output");
 
     assert_eq!(
-        reparsed.find_resource_id("string", "greeting"),
+        reparsed
+            .find_resource("string", "greeting")
+            .unwrap()
+            .map(|(_, id)| id),
         Some(res_id)
     );
     assert_eq!(
-        reparsed.get_string_resource_value("greeting").as_deref(),
+        reparsed.string_resource("greeting").unwrap().as_deref(),
         Some("hello")
     );
 }
@@ -531,18 +506,12 @@ fn manifest_only_write_preserves_untouched_resource_metadata() {
     writer.write_all(&resource_bytes).expect("write resources");
     writer.finish().expect("finish apk");
 
-    let mut apk = ApkFile::open_with_options(
-        &apk_path,
-        ParseOptions {
-            lazy: true,
-            ..ParseOptions::default()
-        },
-    )
-    .expect("open apk");
-    apk.manifest_mut().set_version_name("2.0-base");
+    let mut apk = ApkFile::open(&apk_path, &lazy()).expect("open apk");
+    apk.base_mut().manifest_mut().set_version_name("2.0-base");
 
     let out_dir = tmp.path().join("out");
-    apk.write_to(&out_dir).expect("write output");
+    apk.write_to(&out_dir, ApkWriteOptions::default())
+        .expect("write output");
 
     let file = File::open(out_dir.join("app.apk")).expect("open output");
     let mut archive = zip::ZipArchive::new(file).expect("zip archive");

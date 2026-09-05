@@ -4,28 +4,29 @@ APK signing implementation supporting Android Signature Scheme v2.
 
 ## Key capabilities
 
-- **V2 signing** — ECDSA-SHA256 chunk-based signing per the APK Signature Scheme v2 spec
-- **Key generation** — generate ECDSA P-256 signing keys and self-signed X.509 certificates
-- **PKCS#8/X.509 loading** — load existing private keys (DER) and certificates
-- **Signing block manipulation** — parse, inject, and reconstruct APK signing blocks
+- **V2 signing**: ECDSA-SHA256 chunk-based signing per the APK Signature Scheme v2 spec, either into a new buffer or in place on an unsigned file
+- **Key generation**: generate ECDSA P-256 signing keys with self-signed X.509 certificates, and save them as PKCS#8 and DER
+- **PKCS#8/X.509 loading**: load existing private keys (DER) and certificates
+- **Signing block manipulation**: parse, inject, and reconstruct APK signing blocks
 
 ## Modules
 
 | Module | Purpose |
 |--------|---------|
 | `v2` | APK Signature Scheme v2 implementation |
-| `v3` | Reserved module name; currently returns `Unsupported` until a correct v3 implementation exists |
-| `keystore` | Key generation (`GeneratedKey`) and loading (`SigningKey`) |
 | `signing_block` | APK signing block parsing and construction |
-| `der` | Minimal DER encoding for X.509 certificate construction |
+
+Key loading and certificate construction are internal; `SigningKey` and `GeneratedKey` are the public entry points.
 
 ## Usage
 
 ```rust
-use reseam_sign::{GeneratedKey, v2};
+use reseam_sign::{GeneratedKey, SigningKey, v2};
 
-let key = GeneratedKey::generate()?;
-let signed_apk = v2::sign(&apk_bytes, &key.signing_key)?;
+let generated = GeneratedKey::generate()?;
+generated.save("out.pk8".as_ref(), "out.der".as_ref())?;
+let key = SigningKey::from_files("out.pk8".as_ref(), "out.der".as_ref())?;
+v2::sign_file_in_place(&unsigned_apk_file, &key)?;
 ```
 
-`reseam_sign::v3` is intentionally unavailable for real signing today; it returns `Unsupported` until the signed-data layout is implemented and verified correctly.
+`v2::sign` returns a signed copy instead of rewriting the file.

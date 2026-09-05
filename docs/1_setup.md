@@ -26,8 +26,8 @@ export RESEAM_BUNDLE_KEY=$PWD/bundle-signing.key
 
 Gradle needs to know which `reseam` CLI to use when packing the bundle. Pick one:
 
-- `-Preseam.workspace=/path/to/reseam` — point at a sibling Reseam checkout. Gradle uses `<workspace>/target/release/reseam` and pulls the patch SDK directly from `<workspace>/patch-api` via `includeBuild`, so any local SDK edits are picked up.
-- `RESEAM_BIN=/abs/path/to/reseam` — point at a prebuilt CLI binary. The patch SDK is resolved from Maven (released versions only).
+- `-Preseam.workspace=/path/to/reseam` (or `RESEAM_WORKSPACE`): point at a sibling Reseam checkout. Gradle uses `<workspace>/target/release/reseam` and includes the workspace's own Gradle build, so the patch SDK is compiled from source and any local SDK edits are picked up.
+- `RESEAM_BIN=/abs/path/to/reseam`: point at a prebuilt CLI binary. The patch SDK is resolved from Maven (released versions only).
 
 Without one of those the build fails with `RESEAM_BIN env var or -Preseam.workspace property required to locate the reseam CLI`.
 
@@ -36,15 +36,16 @@ Output: `build/bundle/<name>.reseam`.
 Inspect and apply to a local APK to check:
 
 ```bash
-reseam bundle list build/bundle/<name>.reseam
+reseam bundle list build/bundle/<name>.reseam --trust <PUBLIC_KEY_HEX>
 reseam patch target.apk \
   --bundle build/bundle/<name>.reseam \
+  --trust <PUBLIC_KEY_HEX> \
   --output patched.apk
 ```
 
 ## Tuning the patcher
 
-The Kotlin patch host runs in an embedded JVM. Heap defaults to `256m` — fine for most APKs, but very large targets (Instagram, Facebook) can OOM during patch search-index construction. Bump it via `RESEAM_JVM_HEAP`:
+The Kotlin patch host runs in an embedded JVM. Heap defaults to `256m`, enough for most APKs, but very large targets (Instagram, Facebook) can OOM during patch search-index construction. Bump it via `RESEAM_JVM_HEAP`:
 
 ```bash
 RESEAM_JVM_HEAP=4g reseam patch target.apk --bundle ...

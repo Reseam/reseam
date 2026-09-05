@@ -38,9 +38,9 @@ pub mod write;
 pub use error::{DexError, Result};
 pub use file::container::{MaterializationStats, MemoryBreakdown, MultiDexContainer};
 pub use file::{
-    DexFile, Fingerprint, RefKey, RefQuery, FingerprintBuilder, FingerprintHit, InstructionHit, InstructionPattern,
-    summarize_resident, InstructionSite, MemberCounts, MethodHit, MethodSummary, MethodView,
-    OpcodeMatcher,
+    summarize_resident, DexFile, Fingerprint, FingerprintBuilder, FingerprintHit, InstructionHit,
+    InstructionPattern, InstructionSite, MemberCounts, MethodHit, MethodSummary, MethodView,
+    OpcodeMatcher, RefKey, RefQuery,
 };
 pub use read::class::{ClassSkeleton, MethodHeader};
 pub use read::parse;
@@ -67,9 +67,7 @@ pub use types::method_handle::{CallSiteIdx, CallSiteItem, MethodHandle, MethodHa
 pub use types::register_analysis::{
     find_contiguous_free_registers, find_free_register, find_free_registers,
 };
-pub use types::{
-    FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx,
-};
+pub use types::{FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx};
 pub use write::write;
 pub use write::write_container;
 pub use write::{write_spooled, Spooled};

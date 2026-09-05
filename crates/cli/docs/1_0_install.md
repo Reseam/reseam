@@ -11,12 +11,14 @@ Grab the latest release from the Forgejo releases page:
 
 <https://git.reseam.app/reseam/reseam/releases>
 
-Download the archive for your platform, extract `reseam`, and put it on your `PATH`:
+Each release ships the binary itself, `reseam-linux-x64` (Linux, x86-64). Rename it and put it on your `PATH`:
 
 ```bash
-chmod +x reseam
-mv reseam ~/.local/bin/
+chmod +x reseam-linux-x64
+mv reseam-linux-x64 ~/.local/bin/reseam
 ```
+
+Other platforms build from source.
 
 ## From source
 

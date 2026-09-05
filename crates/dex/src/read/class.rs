@@ -22,7 +22,11 @@ pub fn read_class_def(buf: &[u8], raw: RawClassDef, opts: &ParseOptions) -> Resu
         crate::types::TypeList::new()
     };
     let annotations = if raw.annotations_off != 0 && opts.include_annotations {
-        Some(Box::new(read_annotations_directory(buf, raw.annotations_off, opts)?))
+        Some(Box::new(read_annotations_directory(
+            buf,
+            raw.annotations_off,
+            opts,
+        )?))
     } else {
         None
     };
