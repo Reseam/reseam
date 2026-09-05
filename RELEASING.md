@@ -37,7 +37,7 @@ Builds signed APKs per ABI plus deb and rpm, writes `manager.json`, uploads ever
 2. Tag and push; the tag becomes the app version:
 
 ```bash
-git tag v1.0.1
+git tag v0.2.1
 git push --follow-tags
 ```
 
