@@ -38,7 +38,13 @@ pub fn release(version: &str) -> Result<()> {
             .current_dir(&root))?;
     }
     run(Command::new("git")
-        .args(["tag", &format!("v{version}")])
+        .args([
+            "tag",
+            "-a",
+            "-m",
+            &format!("v{version}"),
+            &format!("v{version}"),
+        ])
         .current_dir(&root))?;
     println!("Tagged v{version}; push with `git push --follow-tags`.");
     Ok(())
