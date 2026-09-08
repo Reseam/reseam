@@ -16,6 +16,16 @@ class FileScope internal constructor(
 
     fun read(path: String): ByteArray? = fileRead(componentName, path)
 
+    /** The original, unmodified bytes of this component's APK, signing block included. */
+    fun source(): ByteArray? = fileSource(componentName)
+
+    /**
+     * The original signer certificates, DER-encoded X.509, from the APK
+     * Signing Block: the v3 signers when present, otherwise v2. Empty when the
+     * APK is unsigned or carries only a v1 (JAR) signature.
+     */
+    fun signers(): List<ByteArray> = fileSigners(componentName)
+
     fun write(path: String, data: ByteArray) = fileInject(componentName, path, data, false)
 
     fun writeStored(path: String, data: ByteArray) = fileInject(componentName, path, data, true)

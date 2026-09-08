@@ -64,6 +64,49 @@ pub fn file_read(component: Option<String>, apk_path: String) -> Option<Vec<u8>>
     .flatten()
 }
 
+/// The original, unmodified bytes of the component's APK file.
+#[export]
+pub fn file_source(component: Option<String>) -> Option<Vec<u8>> {
+    with_component(component, |ctx, index| {
+        let source = ctx
+            .apk()
+            .component(index)
+            .ok_or_else(|| "unknown component".to_string())
+            .and_then(|component| component.source().map_err(|error| error.to_string()));
+        match source {
+            Ok(bytes) => Some(bytes.to_vec()),
+            Err(error) => {
+                ctx.log().warn(format!("file_source: {error}"));
+                None
+            }
+        }
+    })
+    .flatten()
+}
+
+/// The DER-encoded X.509 certificate of each signer of the component's APK.
+#[export]
+pub fn file_signers(component: Option<String>) -> Vec<Vec<u8>> {
+    with_component(component, |ctx, index| {
+        let certificates = ctx
+            .apk()
+            .component(index)
+            .ok_or_else(|| "unknown component".to_string())
+            .and_then(|component| component.source().map_err(|error| error.to_string()))
+            .and_then(|source| {
+                reseam_sign::signer_certificates(&source).map_err(|error| error.to_string())
+            });
+        match certificates {
+            Ok(certificates) => certificates,
+            Err(error) => {
+                ctx.log().warn(format!("file_signers: {error}"));
+                Vec::new()
+            }
+        }
+    })
+    .unwrap_or_default()
+}
+
 #[export]
 pub fn file_inject(component: Option<String>, apk_path: String, data: Vec<u8>, stored: bool) {
     let compression = if stored {

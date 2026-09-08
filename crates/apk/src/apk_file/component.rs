@@ -92,6 +92,13 @@ impl ApkComponent {
         &self.path
     }
 
+    /// The original, unmodified bytes of this component's APK file, mapped
+    /// read-only and including its signing block. Reflects the input on disk,
+    /// not the session's staged edits.
+    pub fn source(&self) -> Result<memmap2::Mmap> {
+        reader::map_file(&self.archive)
+    }
+
     pub fn manifest(&self) -> &AxmlDocument {
         &self.manifest
     }

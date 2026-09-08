@@ -12,6 +12,7 @@ const BLOCK_OVERHEAD: usize = 32;
 const BLOCK_ID_PADDING: u32 = 0x4272_6577;
 
 pub const BLOCK_ID_V2: u32 = 0x7109_871a;
+pub const BLOCK_ID_V3: u32 = 0xf053_68c0;
 
 pub struct ApkSections<'a> {
     pub contents: &'a [u8],
@@ -61,6 +62,32 @@ pub fn split_apk(data: &[u8]) -> Result<ApkSections<'_>> {
         central_dir: &data[cd_offset..eocd.offset],
         eocd: &data[eocd.offset..],
     })
+}
+
+/// The APK Signing Block, when the archive carries one. The slice runs from
+/// the block's leading size field through its trailing magic, ready for
+/// [`find_pair`]; `None` means the archive is unsigned or JAR-signed only.
+pub fn block(data: &[u8]) -> Result<Option<&[u8]>> {
+    let cd_offset = find_eocd(data)?.cd_offset as usize;
+    Ok(signing_block_start(data, cd_offset).map(|start| &data[start..cd_offset]))
+}
+
+/// The value of the id-value pair identified by `id`, if the block holds one.
+pub fn find_pair(block: &[u8], id: u32) -> Option<&[u8]> {
+    let end = block.len().checked_sub(8 + APK_SIG_BLOCK_MAGIC.len())?;
+    let mut pos = 8;
+    while pos < end {
+        let pair_len = le_u64_at(block, pos)? as usize;
+        let value_end = pos.checked_add(8 + pair_len)?;
+        if value_end > end {
+            return None;
+        }
+        if le_u32(block, pos + 8) == id {
+            return Some(&block[pos + 12..value_end]);
+        }
+        pos = value_end;
+    }
+    None
 }
 
 fn signing_block_start(data: &[u8], cd_offset: usize) -> Option<usize> {

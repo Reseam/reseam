@@ -1225,6 +1225,7 @@ dependencies = [
  "jni",
  "libloading",
  "reseam-apk",
+ "reseam-sign",
  "rustc-hash",
  "serde",
  "sha2",

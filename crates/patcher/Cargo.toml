@@ -10,6 +10,7 @@ crate-type = ["lib"]
 
 [dependencies]
 reseam-apk          = { workspace = true }
+reseam-sign         = { workspace = true, optional = true }
 thiserror   = { workspace = true }
 serde       = { workspace = true }
 toml        = { workspace = true }
@@ -32,7 +33,7 @@ libloading  = { workspace = true }
 
 [features]
 default = ["kotlin"]
-kotlin = ["dep:boltffi", "dep:jni"]
+kotlin = ["dep:boltffi", "dep:jni", "dep:reseam-sign"]
 
 [build-dependencies]
 cc = "1"

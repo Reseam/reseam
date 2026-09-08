@@ -2818,6 +2818,46 @@ fun fileRead(component: String?, apkPath: String): ByteArray? {
     }
 }
 
+/**
+ * The original, unmodified bytes of the component's APK file.
+ */
+
+fun fileSource(component: String?): ByteArray? {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        val buf = Native.boltffi_file_source(wire_writer_component.buffer)
+            ?: throw FfiException(-1, "Null buffer returned")
+        val reader = WireReader(buf)
+        return reader.readOptional { reader.readBytes() }
+    } finally {
+        wire_writer_component.close()
+    }
+}
+
+/**
+ * The DER-encoded X.509 certificate of each signer of the component's APK.
+ */
+
+fun fileSigners(component: String?): List<ByteArray> {
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+        kotlin.run {
+            val wire = wire_writer_component.writer
+            component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
+        }
+    try {
+        val buf = Native.boltffi_file_signers(wire_writer_component.buffer)
+            ?: throw FfiException(-1, "Null buffer returned")
+        val reader = WireReader(buf)
+        return reader.readList { reader.readBytes() }
+    } finally {
+        wire_writer_component.close()
+    }
+}
+
 fun fileInject(component: String?, apkPath: String, `data`: ByteArray, stored: Boolean) {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
@@ -3812,6 +3852,8 @@ private object Native {
     @JvmStatic external fun boltffi_component_names(): ByteArray?
     @JvmStatic external fun boltffi_file_list(component: ByteBuffer): ByteArray?
     @JvmStatic external fun boltffi_file_read(component: ByteBuffer, apk_path: ByteArray): ByteArray?
+    @JvmStatic external fun boltffi_file_source(component: ByteBuffer): ByteArray?
+    @JvmStatic external fun boltffi_file_signers(component: ByteBuffer): ByteArray?
     @JvmStatic external fun boltffi_file_inject(component: ByteBuffer, apk_path: ByteArray, data: ByteArray, stored: Boolean): Unit
     @JvmStatic external fun boltffi_file_delete(component: ByteBuffer, apk_path: ByteArray): Unit
     @JvmStatic external fun boltffi_file_copy(component: ByteBuffer, bundle_relative: ByteArray, apk_path: ByteArray): Unit

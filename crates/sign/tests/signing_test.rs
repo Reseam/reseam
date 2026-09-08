@@ -286,3 +286,18 @@ fn test_sign_in_place_matches_sign() {
     );
     assert!(signing_block::split_apk(&signed).is_ok());
 }
+
+#[test]
+fn signer_certificates_round_trip() {
+    let apk = create_test_apk();
+    let key = SigningKey::generate().unwrap();
+    let signed = v2::sign(&apk, &key).unwrap();
+    let certificates = reseam_sign::signer_certificates(&signed).unwrap();
+    assert_eq!(certificates, vec![key.certificate_der().to_vec()]);
+}
+
+#[test]
+fn signer_certificates_empty_when_unsigned() {
+    let apk = create_test_apk();
+    assert!(reseam_sign::signer_certificates(&apk).unwrap().is_empty());
+}

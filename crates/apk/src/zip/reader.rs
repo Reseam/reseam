@@ -62,6 +62,16 @@ pub(crate) fn map_entry(archive: &mut Archive, name: &str) -> Result<memmap2::Mm
     })
 }
 
+/// The whole archive file as a read-only mapping, sharing the open
+/// descriptor. Gives a patch the original, unmodified APK bytes, signing
+/// block included.
+pub(crate) fn map_file(archive: &Archive) -> Result<memmap2::Mmap> {
+    let file = archive.clone().into_inner();
+    // SAFETY: the archive is opened read-only for the whole run and nothing
+    // in this process writes to it.
+    Ok(unsafe { memmap2::Mmap::map(file.file())? })
+}
+
 pub(crate) fn spool(reader: &mut impl Read) -> Result<memmap2::Mmap> {
     let mut file = tempfile::tempfile()?;
     let mut out = BufWriter::with_capacity(1 << 20, &mut file);
