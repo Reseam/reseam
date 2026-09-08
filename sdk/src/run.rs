@@ -7,8 +7,8 @@ use reseam_patcher::context::PatchContext;
 use reseam_patcher::engine::{self, PatchResult, PatchStatus};
 use reseam_patcher::Patch;
 
-use crate::dto::{PatchOutcome, PatchOutput, PatchRequest, RunEvent};
-use crate::inspect::{load_bundles, open_apk};
+use crate::dto::{PatchArtifact, PatchOutcome, PatchRequest, RunEvent};
+use crate::inspect::{load_bundles, open_apk, OpenedApk};
 use crate::metrics::{ApplyDiagnostics, PatchPhase, PatchProfiler};
 use crate::output::write_signed;
 
@@ -16,8 +16,9 @@ use crate::output::write_signed;
 /// stops after validation and reports what would run.
 pub fn patch(request: &PatchRequest, mut emit: impl FnMut(RunEvent)) -> Result<PatchOutcome> {
     let mut profiler = PatchProfiler::new();
-    let results = run(request, &mut emit, &mut profiler)?;
+    let (results, output) = run(request, &mut emit, &mut profiler)?;
     Ok(PatchOutcome {
+        output,
         results,
         metrics: profiler.finish(),
     })
@@ -27,21 +28,27 @@ fn run(
     request: &PatchRequest,
     emit: &mut impl FnMut(RunEvent),
     profiler: &mut PatchProfiler,
-) -> Result<Vec<PatchResult>> {
+) -> Result<(Vec<PatchResult>, PatchArtifact)> {
     emit(info(format!("Opening APK {}", request.apk_path.display())));
-    let mut apk = profiler.measure(PatchPhase::OpenApk, || {
+    let mut opened = profiler.measure(PatchPhase::OpenApk, || {
         open_apk(
             &request.apk_path,
             &request.split_paths,
             &ApkFile::patch_options(),
         )
     })?;
-    if let PatchOutput::SingleFile { .. } = request.output {
-        ensure!(
-            apk.components().len() == 1,
-            "single-file output needs an APK without splits; use a split directory"
-        );
+    if let Some(bundle) = &opened.bundle {
+        let splits = bundle.split_entries().len();
+        emit(info(format!(
+            "Opened {} bundle {}: {} base APK, {} split{}",
+            bundle.format().as_str(),
+            bundle.package(),
+            bundle.base_entry(),
+            splits,
+            if splits == 1 { "" } else { "s" },
+        )));
     }
+    let output = request.output.resolve(opened.apk.components().len())?;
 
     emit(info("Loading bundles".to_string()));
     let bundles = profiler.measure(PatchPhase::LoadBundles, || {
@@ -57,8 +64,8 @@ fn run(
             engine::validate_patches(
                 &patches,
                 &request.selection,
-                apk.package_name().as_deref(),
-                apk.version_name().as_deref(),
+                opened.apk.package_name().as_deref(),
+                opened.apk.version_name().as_deref(),
             )
         })?;
         for result in &results {
@@ -68,10 +75,10 @@ fn run(
             });
         }
         ensure_none_failed(&results)?;
-        return Ok(results);
+        return Ok((results, output));
     }
 
-    let mut ctx = PatchContext::new(&mut apk);
+    let mut ctx = PatchContext::new(&mut opened.apk);
     let results = profiler
         .measure(PatchPhase::ApplyPatches, || {
             engine::apply_patches(&mut ctx, &patches, &request.selection, |event| {
@@ -86,12 +93,14 @@ fn run(
 
     emit(info(format!(
         "Writing signed output to {}",
-        request.output.path().display()
+        output.path().display()
     )));
-    write_signed(apk, &request.output, request.signing.as_ref(), profiler)?;
+    let OpenedApk { apk, bundle } = opened;
+    write_signed(apk, &output, request.signing.as_ref(), profiler)?;
+    drop(bundle);
     drop(bundles);
     release_process_memory();
-    Ok(results)
+    Ok((results, output))
 }
 
 fn info(message: String) -> RunEvent {

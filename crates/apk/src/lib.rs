@@ -5,6 +5,7 @@ mod apk_file;
 pub mod axml;
 mod buf;
 mod chunk;
+mod container;
 mod dex;
 pub mod entry;
 pub mod error;
@@ -14,8 +15,11 @@ mod string_pool;
 mod value;
 mod zip;
 
-pub use apk_file::{ApkComponent, ApkFile, ApkWriteOptions, Compression};
+pub use apk_file::{
+    ApkComponent, ApkFile, ApkWriteOptions, ApplicationIcon, Compression, IconLayer,
+};
 pub use axml::AxmlDocument;
+pub use container::{ContainerBundle, ContainerFormat};
 pub use dex::extract_dex;
 pub use error::{ApkError, Result};
 pub use resources::ResourceTable;

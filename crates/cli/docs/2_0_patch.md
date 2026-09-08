@@ -30,16 +30,24 @@ reseam patch base.apk \
 
 `--split` is repeatable. Without `--output-dir`, the CLI writes a `<stem>-patched/` directory next to the base APK and places the signed outputs inside it.
 
+## APKM and XAPK containers
+
+The input can also be an `.apkm` or `.xapk`. Reseam validates and extracts its APK components, then uses the same patching and signing pipeline as an explicit split set. Container inputs cannot be combined with `--split`.
+
+Without output flags, one component produces `<stem>-patched.apk`; multiple components produce `<stem>-patched/`. `--output` requires one component. `--output-dir` works for either case and preserves the component filenames. The two flags are mutually exclusive.
+
+XAPKs containing or declaring OBB expansion files are rejected: Reseam currently handles APK components only.
+
 ## Arguments
 
 | Argument | Purpose |
 |----------|---------|
-| `<apk>` | Base APK path. |
+| `<apk>` | Base APK, APKM, or XAPK path. |
 | `--bundle <PATH>` | Signed `.reseam` bundle to load. Verified on open. |
 | `--trust <PUBLIC_KEY_HEX>` | Repeatable. Ed25519 public key of a bundle signer to accept. Without it no bundle loads. |
 | `--split <APK>` | Repeatable split APK alongside the base. |
 | `--output <FILE>` | Output path for single-APK mode. Mutually exclusive with `--output-dir`. |
-| `--output-dir <DIR>` | Output directory for split-APK mode. Mutually exclusive with `--output`. |
+| `--output-dir <DIR>` | Output directory for APK components (one or more). Mutually exclusive with `--output`. |
 | `--key <PK8>` | PKCS#8 private key for APK signing. Requires `--cert`. |
 | `--cert <DER>` | DER-encoded X.509 certificate matching `--key`. Requires `--key`. |
 | `--enable <PATCH>` | Repeatable. Force a patch on, even if disabled by default. |

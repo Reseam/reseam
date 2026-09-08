@@ -12,23 +12,17 @@ use crate::app::{PatchCommand, PatchRequestArgs};
 
 pub fn run_patch(command: &PatchCommand) -> Result<()> {
     let apk = &command.request.apk;
-    let stem = apk
-        .file_stem()
-        .context("invalid APK path")?
-        .to_string_lossy();
-    let output = if command.request.split.is_empty() {
-        PatchOutput::SingleFile {
-            path: command
-                .output
-                .clone()
-                .unwrap_or_else(|| apk.with_file_name(format!("{stem}-patched.apk"))),
-        }
+    let output = if let Some(path) = &command.output {
+        PatchOutput::SingleFile { path: path.clone() }
+    } else if let Some(path) = &command.output_dir {
+        PatchOutput::SplitDir { path: path.clone() }
     } else {
-        PatchOutput::SplitDir {
-            path: command
-                .output_dir
-                .clone()
-                .unwrap_or_else(|| apk.with_file_name(format!("{stem}-patched"))),
+        let stem = apk
+            .file_stem()
+            .context("invalid APK path")?
+            .to_string_lossy();
+        PatchOutput::Auto {
+            path: apk.with_file_name(format!("{stem}-patched")),
         }
     };
 
@@ -50,7 +44,7 @@ pub fn run_patch(command: &PatchCommand) -> Result<()> {
     if request.dry_run {
         info!("dry run: validation completed without applying patches");
     } else {
-        info!(path = %request.output.path().display(), "patched output ready");
+        info!(path = %outcome.output.path().display(), "patched output ready");
     }
     Ok(())
 }

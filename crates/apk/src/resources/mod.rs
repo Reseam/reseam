@@ -166,8 +166,17 @@ impl ResourceTable {
         }
     }
 
-    /// Adds or replaces the default-configuration entry `type_name/entry_name`
-    /// in the first package and returns its id.
+    /// The simple value of `res_id` in each configuration that defines it.
+    pub fn values(&self, res_id: u32) -> impl Iterator<Item = (&ResType, ResValue)> {
+        let (package_id, type_id, entry_index) = split_res_id(res_id);
+        self.packages
+            .iter()
+            .filter(move |package| package.id == package_id)
+            .flat_map(|package| &package.types)
+            .filter(move |res_type| res_type.id == type_id)
+            .filter_map(move |res_type| Some((res_type, res_type.entry_head(entry_index)?.1?)))
+    }
+
     pub(crate) fn contains_resource_id(&self, res_id: u32) -> bool {
         let (package_id, type_id, entry_index) = split_res_id(res_id);
         self.packages
@@ -177,6 +186,8 @@ impl ResourceTable {
             .any(|res_type| res_type.id == type_id && res_type.entry(entry_index).is_some())
     }
 
+    /// Adds or replaces the default-configuration entry `type_name/entry_name`
+    /// in the first package and returns its id.
     pub fn add_resource(
         &mut self,
         type_name: &str,

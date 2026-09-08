@@ -3,6 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
+use reseam_apk::ContainerFormat;
 use reseam_patcher::engine::{PatchResult, PatchSelection, PatchStatus, ProgressEvent};
 use reseam_patcher::log::LogEntry;
 use reseam_patcher::PatchSpec;
@@ -13,9 +14,12 @@ use crate::trust::TrustStore;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ApkMetadata {
+    pub application_label: Option<String>,
     pub package_name: Option<String>,
     pub version_name: Option<String>,
     pub version_code: Option<u32>,
+    /// The container format the input came from, when it was an APKM/XAPK file.
+    pub bundle_kind: Option<ContainerFormat>,
     pub dex_files: usize,
     pub component_count: usize,
     pub split_names: Vec<String>,
@@ -91,11 +95,27 @@ pub struct SigningKeyFiles {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PatchOutput {
+    /// Use `path` as a directory for splits, or append `.apk` for one component.
+    Auto {
+        path: PathBuf,
+    },
+    SingleFile {
+        path: PathBuf,
+    },
+    SplitDir {
+        path: PathBuf,
+    },
+}
+
+/// The concrete output selected after opening the input, including for dry runs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PatchArtifact {
     SingleFile { path: PathBuf },
     SplitDir { path: PathBuf },
 }
 
-impl PatchOutput {
+impl PatchArtifact {
     pub fn path(&self) -> &Path {
         match self {
             Self::SingleFile { path } | Self::SplitDir { path } => path,
@@ -103,8 +123,35 @@ impl PatchOutput {
     }
 }
 
+impl PatchOutput {
+    /// Requested destination. For automatic output, use the outcome for the final path.
+    pub fn path(&self) -> &Path {
+        match self {
+            Self::Auto { path } | Self::SingleFile { path } | Self::SplitDir { path } => path,
+        }
+    }
+
+    pub(crate) fn resolve(&self, components: usize) -> anyhow::Result<PatchArtifact> {
+        Ok(match self {
+            Self::Auto { path } if components == 1 => {
+                let mut name = path.as_os_str().to_os_string();
+                name.push(".apk");
+                PatchArtifact::SingleFile { path: name.into() }
+            }
+            Self::Auto { path } | Self::SplitDir { path } => {
+                PatchArtifact::SplitDir { path: path.clone() }
+            }
+            Self::SingleFile { path } => {
+                anyhow::ensure!(components == 1, "input has splits; use a split directory (--output-dir) instead of single-file output");
+                PatchArtifact::SingleFile { path: path.clone() }
+            }
+        })
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct PatchOutcome {
+    pub output: PatchArtifact,
     pub results: Vec<PatchResult>,
     pub metrics: PatchMetrics,
 }
@@ -125,5 +172,48 @@ impl From<ProgressEvent> for RunEvent {
             ProgressEvent::PatchLog(entry) => Self::PatchLog(entry),
             ProgressEvent::PatchFinished { patch, status } => Self::PatchFinished { patch, status },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn automatic_output_depends_on_components_and_preserves_dotted_names() {
+        let output: PatchOutput =
+            serde_json::from_str(r#"{"kind":"auto","path":"out/com.example.app.reseamed"}"#)
+                .unwrap();
+        assert_eq!(
+            output.resolve(1).unwrap(),
+            PatchArtifact::SingleFile {
+                path: "out/com.example.app.reseamed.apk".into()
+            }
+        );
+        assert_eq!(
+            output.resolve(2).unwrap(),
+            PatchArtifact::SplitDir {
+                path: "out/com.example.app.reseamed".into()
+            }
+        );
+    }
+
+    #[test]
+    fn explicit_outputs_are_honored_or_rejected_never_redirected() {
+        let path = PathBuf::from("chosen");
+        let directory = PatchOutput::SplitDir { path: path.clone() };
+        for count in [1, 2] {
+            assert_eq!(
+                directory.resolve(count).unwrap(),
+                PatchArtifact::SplitDir { path: path.clone() }
+            );
+        }
+        let file = PatchOutput::SingleFile { path: path.clone() };
+        assert_eq!(file.resolve(1).unwrap(), PatchArtifact::SingleFile { path });
+        assert!(file
+            .resolve(2)
+            .unwrap_err()
+            .to_string()
+            .contains("--output-dir"));
     }
 }

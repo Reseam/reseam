@@ -25,10 +25,12 @@ reseam patch base.apk \
   --output-dir patched/
 ```
 
+APKM and XAPK inputs use the same pipeline. By default, one APK component produces `<stem>-patched.apk`; multiple components produce `<stem>-patched/`. XAPKs requiring OBB expansion files are rejected.
+
 Options:
 - `--split <APK>`: add a split APK alongside the base APK, repeatable
 - `--output <FILE>`: output path for single-APK mode
-- `--output-dir <DIR>`: output directory for split-APK mode
+- `--output-dir <DIR>`: output directory for one or more APK components; mutually exclusive with `--output`
 - `--key <PK8>` and `--cert <DER>`: sign with an existing PKCS#8 key and X.509 certificate, provided together; otherwise Reseam reuses or generates key material next to the output
 - `--enable <PATCH>` and `--disable <PATCH>`: toggle patches by name, repeatable
 - `--option PATCH.KEY=VALUE`: set a patch option, typed by the patch's declaration

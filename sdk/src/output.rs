@@ -10,25 +10,25 @@ use reseam_apk::{ApkFile, ApkWriteOptions};
 use reseam_sign::{GeneratedKey, SigningKey};
 use tracing::info;
 
-use crate::dto::{PatchOutput, SigningKeyFiles};
+use crate::dto::{PatchArtifact, SigningKeyFiles};
 use crate::metrics::{PatchPhase, PatchProfiler};
 
 /// Writes every component unsigned into the output directory, signs each in
 /// place, and only then links it under its final name.
 pub(crate) fn write_signed(
     mut apk: ApkFile,
-    output: &PatchOutput,
+    output: &PatchArtifact,
     signing: Option<&SigningKeyFiles>,
     profiler: &mut PatchProfiler,
 ) -> Result<()> {
     let (dir, key_stem): (&Path, PathBuf) = match output {
-        PatchOutput::SingleFile { path } => (
+        PatchArtifact::SingleFile { path } => (
             path.parent()
                 .filter(|parent| !parent.as_os_str().is_empty())
                 .unwrap_or(Path::new(".")),
             path.with_extension(""),
         ),
-        PatchOutput::SplitDir { path } => (path, path.join("reseam")),
+        PatchArtifact::SplitDir { path } => (path, path.join("reseam")),
     };
     std::fs::create_dir_all(dir)
         .with_context(|| format!("failed to create output directory {}", dir.display()))?;
@@ -44,8 +44,8 @@ pub(crate) fn write_signed(
     profiler.measure(PatchPhase::SignArtifacts, || {
         unsigned.iter().try_for_each(|(name, file)| {
             let destination = match output {
-                PatchOutput::SingleFile { path } => path.clone(),
-                PatchOutput::SplitDir { path } => path.join(name),
+                PatchArtifact::SingleFile { path } => path.clone(),
+                PatchArtifact::SplitDir { path } => path.join(name),
             };
             sign_into_place(file, &destination, &key)
         })

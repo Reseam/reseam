@@ -13,8 +13,8 @@ mod run;
 mod trust;
 
 pub use dto::{
-    ApkMetadata, BundleMetadata, InspectRequest, InspectResponse, PatchMetadata, PatchOutcome,
-    PatchOutput, PatchRequest, RunEvent, SigningKeyFiles,
+    ApkMetadata, BundleMetadata, InspectRequest, InspectResponse, PatchArtifact, PatchMetadata,
+    PatchOutcome, PatchOutput, PatchRequest, RunEvent, SigningKeyFiles,
 };
 pub use inspect::{inspect, inspect_apk, load_bundles};
 pub use metrics::{
@@ -23,3 +23,6 @@ pub use metrics::{
 };
 pub use run::patch;
 pub use trust::TrustStore;
+
+#[cfg(test)]
+mod tests;

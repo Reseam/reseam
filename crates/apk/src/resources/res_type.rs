@@ -101,6 +101,14 @@ impl ResType {
         self.config.len() <= 4 || self.config[4..].iter().all(|&b| b == 0)
     }
 
+    /// Screen density from ResTable_config; zero denotes the default density.
+    pub(crate) fn density(&self) -> u16 {
+        self.config
+            .get(14..16)
+            .map(|bytes| u16::from_le_bytes([bytes[0], bytes[1]]))
+            .unwrap_or(0)
+    }
+
     /// The entry at `i`, decoded; `None` for an absent entry.
     pub fn entry(&self, i: usize) -> Option<ResEntry> {
         if let Some(entry) = self.overlay.get(&(i as u32)) {

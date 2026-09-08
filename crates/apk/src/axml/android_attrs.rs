@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 pub const ATTR_LABEL: u32 = 0x0101_0001;
+pub const ATTR_ICON: u32 = 0x0101_0002;
+pub const ATTR_DRAWABLE: u32 = 0x0101_0199;
 pub const ATTR_NAME: u32 = 0x0101_0003;
 pub const ATTR_ENABLED: u32 = 0x0101_000e;
 pub const ATTR_CONFIG_CHANGES: u32 = 0x0101_001f;
@@ -17,7 +19,7 @@ pub fn android_attr_res_id(name: &str) -> Option<u32> {
     Some(match name {
         "theme" => 0x0101_0000,
         "label" => ATTR_LABEL,
-        "icon" => 0x0101_0002,
+        "icon" => ATTR_ICON,
         "name" => ATTR_NAME,
         "permission" => 0x0101_0006,
         "protectionLevel" => 0x0101_0009,
@@ -153,6 +155,7 @@ pub fn android_attr_res_id(name: &str) -> Option<u32> {
         "drawableRight" => 0x0101_016f,
         "drawableBottom" => 0x0101_0170,
         "drawablePadding" => 0x0101_0171,
+        "drawable" => ATTR_DRAWABLE,
         _ => return None,
     })
 }

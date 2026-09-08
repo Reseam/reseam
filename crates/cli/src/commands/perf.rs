@@ -73,14 +73,8 @@ pub fn run_perf(command: &PerfCommand) -> Result<()> {
     let run = |label: &str| -> Result<PatchMetrics> {
         eprintln!("{label}");
         let scratch = ScratchDir::new("perf")?;
-        let output = if args.split.is_empty() {
-            PatchOutput::SingleFile {
-                path: scratch.path().join("patched.apk"),
-            }
-        } else {
-            PatchOutput::SplitDir {
-                path: scratch.path().join("patched"),
-            }
+        let output = PatchOutput::Auto {
+            path: scratch.path().join("patched"),
         };
         Ok(patch(&request(args, output)?, |_| {})?.metrics)
     };

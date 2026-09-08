@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{ensure, Context, Result};
 use reseam_apk::reseam_dex::ParseOptions;
-use reseam_apk::ApkFile;
+use reseam_apk::{ApkFile, ContainerBundle};
 use reseam_patcher::bundle::{BundleArchive, PatchBundle};
 use reseam_patcher::PatchSpec;
 
@@ -13,12 +13,23 @@ use crate::dto::{ApkMetadata, BundleMetadata, InspectRequest, InspectResponse, P
 use crate::trust::TrustStore;
 
 pub fn inspect_apk(apk_path: &Path, split_paths: &[PathBuf]) -> Result<ApkMetadata> {
-    let apk = open_apk(apk_path, split_paths, &ParseOptions::default())?;
+    // Same tolerance as patching: a repacked APK (stale DEX checksums and
+    // signatures) is still an APK, and inspection exists to read it, not to
+    // certify it.
+    let mut opened = open_apk(apk_path, split_paths, &ApkFile::patch_options())?;
+    apk_metadata(&mut opened)
+}
+
+pub(crate) fn apk_metadata(opened: &mut OpenedApk) -> Result<ApkMetadata> {
+    let application_label = opened.apk.application_label()?;
+    let apk = &opened.apk;
     let dex_files = apk.dex();
     Ok(ApkMetadata {
+        application_label,
         package_name: apk.package_name().map(Into::into),
         version_name: apk.version_name().map(Into::into),
         version_code: apk.version_code(),
+        bundle_kind: opened.bundle.as_ref().map(ContainerBundle::format),
         dex_files: dex_files.len(),
         component_count: apk.components().len(),
         split_names: apk.components()[1..]
@@ -66,13 +77,32 @@ pub fn inspect(request: &InspectRequest) -> Result<InspectResponse> {
     })
 }
 
+/// An opened APK plus the container bundle it came from, when the input was
+/// an APKM/XAPK file. The bundle keeps the extracted scratch files alive for
+/// as long as the opened APK needs them (paths, mmaps, output naming).
+pub(crate) struct OpenedApk {
+    pub apk: ApkFile,
+    pub bundle: Option<ContainerBundle>,
+}
+
 pub(crate) fn open_apk(
     apk_path: &Path,
     split_paths: &[PathBuf],
     options: &ParseOptions,
-) -> Result<ApkFile> {
-    ApkFile::open_split(apk_path, split_paths, options)
-        .with_context(|| format!("failed to open APK {}", apk_path.display()))
+) -> Result<OpenedApk> {
+    let bundle = ContainerBundle::open(apk_path)
+        .with_context(|| format!("failed to open APK bundle {}", apk_path.display()))?;
+    ensure!(
+        bundle.is_none() || split_paths.is_empty(),
+        "split files cannot be combined with an APKM/XAPK container"
+    );
+    let (base, splits) = match &bundle {
+        Some(bundle) => (bundle.base_path(), bundle.split_paths()),
+        None => (apk_path, split_paths),
+    };
+    let apk = ApkFile::open_split(base, splits, options)
+        .with_context(|| format!("failed to open APK {}", apk_path.display()))?;
+    Ok(OpenedApk { apk, bundle })
 }
 
 /// Loads bundles signed by a key in `trust`; anything else is an error.

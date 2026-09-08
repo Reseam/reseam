@@ -8,6 +8,7 @@
 mod component;
 mod dex_workers;
 mod open;
+mod presentation;
 mod write;
 
 use std::borrow::Cow;
@@ -18,6 +19,7 @@ use reseam_dex::{DexFile, MultiDexContainer};
 use crate::error::Result;
 
 pub use component::{ApkComponent, Compression};
+pub use presentation::{ApplicationIcon, IconLayer};
 pub use write::ApkWriteOptions;
 
 pub struct ApkFile {

@@ -60,9 +60,11 @@ pub struct PatchRequestArgs {
 pub struct PatchCommand {
     #[command(flatten)]
     pub request: PatchRequestArgs,
-    #[arg(long, conflicts_with = "split")]
+    /// File for a single-component input.
+    #[arg(long, conflicts_with_all = ["split", "output_dir"])]
     pub output: Option<PathBuf>,
-    #[arg(long, requires = "split")]
+    /// Directory for patched APK components, including a single APK.
+    #[arg(long)]
     pub output_dir: Option<PathBuf>,
 }
 
@@ -157,4 +159,39 @@ pub struct PublishManagerCommand {
     pub release: ReleaseArgs,
     #[arg(long, default_value = "manager.json")]
     pub out: PathBuf,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn output_flags_are_mutually_exclusive_for_every_input_format() {
+        for input in ["app.apk", "app.apkm", "app.xapk"] {
+            let error = Cli::try_parse_from([
+                "reseam",
+                "patch",
+                input,
+                "--bundle",
+                "patches.reseam",
+                "--output",
+                "out.apk",
+                "--output-dir",
+                "out",
+            ])
+            .err()
+            .expect("conflicting output flags");
+            assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+            assert!(Cli::try_parse_from([
+                "reseam",
+                "patch",
+                input,
+                "--bundle",
+                "patches.reseam",
+                "--output-dir",
+                "out"
+            ])
+            .is_ok());
+        }
+    }
 }

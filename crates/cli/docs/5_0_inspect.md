@@ -15,6 +15,7 @@ Output:
 
 ```
 APK: app.apk
+  label:      Example
   package:    com.example.app
   version:    1.4.2
   versionCode: 14200

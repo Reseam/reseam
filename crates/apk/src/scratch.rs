@@ -14,6 +14,7 @@ const PREFIX: &str = "reseam-";
 
 static SEQUENCE: AtomicU32 = AtomicU32::new(0);
 
+#[derive(Debug)]
 pub struct ScratchDir {
     path: PathBuf,
 }

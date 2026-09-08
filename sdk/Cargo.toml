@@ -19,3 +19,6 @@ hex            = { workspace = true }
 jni            = { workspace = true }
 tracing        = { workspace = true }
 libc           = { workspace = true }
+
+[dev-dependencies]
+zip = { workspace = true }

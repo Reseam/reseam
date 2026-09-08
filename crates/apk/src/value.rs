@@ -20,6 +20,8 @@ impl ResValue {
     pub const INT_BOOLEAN: u8 = 0x12;
     pub const INT_COLOR_ARGB8: u8 = 0x1c;
     pub const INT_COLOR_RGB8: u8 = 0x1d;
+    pub const INT_COLOR_ARGB4: u8 = 0x1e;
+    pub const INT_COLOR_RGB4: u8 = 0x1f;
 
     pub const fn new(kind: u8, data: u32) -> Self {
         Self { kind, data }
@@ -68,6 +70,13 @@ impl ResValue {
 
     pub fn as_bool(self) -> Option<bool> {
         (self.kind == Self::INT_BOOLEAN).then_some(self.data != 0)
+    }
+
+    /// Any of the colour kinds, as ARGB.
+    pub fn color(self) -> Option<u32> {
+        (Self::INT_COLOR_ARGB8..=Self::INT_COLOR_RGB4)
+            .contains(&self.kind)
+            .then_some(self.data)
     }
 
     /// `#RGB`, `#ARGB`, `#RRGGBB` or `#AARRGGBB`.

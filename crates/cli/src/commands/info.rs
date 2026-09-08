@@ -10,6 +10,9 @@ pub fn run_info(command: &InfoCommand) -> Result<()> {
     let apk = inspect_apk(&command.apk, &[])?;
 
     println!("APK: {}", command.apk.display());
+    if let Some(label) = apk.application_label {
+        println!("  label:      {label}");
+    }
     if let Some(package) = apk.package_name {
         println!("  package:    {package}");
     }
@@ -18,6 +21,9 @@ pub fn run_info(command: &InfoCommand) -> Result<()> {
     }
     if let Some(code) = apk.version_code {
         println!("  versionCode: {code}");
+    }
+    if let Some(kind) = apk.bundle_kind {
+        println!("  bundle:     {}", kind.as_str());
     }
     println!("  dex files:  {}", apk.dex_files);
     println!("  components: {}", apk.component_count);
