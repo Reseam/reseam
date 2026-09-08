@@ -7,7 +7,7 @@ mod digest;
 mod signer;
 
 use std::fs::File;
-use std::os::unix::fs::FileExt;
+use std::io::{Seek, SeekFrom, Write};
 
 use tracing::instrument;
 
@@ -36,7 +36,9 @@ pub fn sign_file_in_place(file: &File, key: &SigningKey) -> Result<()> {
     let contents_len = sections.contents.len() as u64;
     let tail = signed_tail(&sections, key)?;
     drop(mapped);
-    file.write_all_at(&tail, contents_len)?;
+    let mut file = file;
+    file.seek(SeekFrom::Start(contents_len))?;
+    file.write_all(&tail)?;
     file.set_len(contents_len + tail.len() as u64)?;
     Ok(())
 }

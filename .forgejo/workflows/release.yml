@@ -11,8 +11,6 @@ jobs:
     runs-on: docker
     container:
       image: cimg/android:2026.03-node
-    env:
-      LZMA_API_STATIC: "1"
     steps:
       - name: Install Rust toolchain
         uses: https://github.com/dtolnay/rust-toolchain@stable

@@ -22,7 +22,7 @@ tracing   = { workspace = true }
 [dev-dependencies]
 pretty_assertions = { workspace = true }
 criterion         = { workspace = true }
-zip               = { version = "2", default-features = false, features = ["deflate"] }
+zip               = { workspace = true }
 smallvec          = { workspace = true }
 
 [[bench]]

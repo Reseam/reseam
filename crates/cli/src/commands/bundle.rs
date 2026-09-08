@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
 
 use anyhow::{ensure, Context, Result};
 use ed25519_dalek::SigningKey;
@@ -98,10 +97,11 @@ pub fn run_bundle_keygen(command: &BundleKeygenCommand) -> Result<()> {
     create_parent(&command.out)?;
     let mut seed = [0u8; 32];
     rand::rngs::OsRng.fill_bytes(&mut seed);
-    std::fs::OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .mode(0o600)
+    let mut options = std::fs::OpenOptions::new();
+    options.create_new(true).write(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options
         .open(&command.out)
         .with_context(|| format!("failed to create {}", command.out.display()))?
         .write_all(&seed)?;

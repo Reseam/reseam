@@ -3,9 +3,9 @@
 
 use std::fs::File;
 use std::io;
-use std::os::unix::fs::FileExt;
 
 use crate::error::{DexError, Result};
+use crate::util::file::FileExt;
 
 /// Destination of a DEX serialization. The writer appends sequentially and
 /// backpatches tables it emitted earlier; how those land is up to the sink.

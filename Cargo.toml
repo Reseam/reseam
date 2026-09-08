@@ -34,8 +34,8 @@ sha1        = "0.10"
 adler       = "1"
 rayon       = "1.10"
 memmap2     = "0.9"
-zip         = "2"
-flate2      = { version = "1", features = ["zlib-rs"] }
+zip         = { version = "2", default-features = false, features = ["deflate-flate2", "flate2"] }
+flate2      = { version = "1", default-features = false, features = ["zlib-rs"] }
 quick-xml   = "0.37"
 ring        = "0.17"
 ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
@@ -51,6 +51,8 @@ jni         = { version = "0.21", features = ["invocation"] }
 clap        = { version = "4", features = ["derive"] }
 anyhow      = "1"
 libc        = "0.2"
+libloading  = "0.7"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }
 tracing     = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 

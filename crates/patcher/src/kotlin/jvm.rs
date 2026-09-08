@@ -17,6 +17,7 @@ pub(super) fn jvm_err(reason: impl std::fmt::Display) -> PatcherError {
 
 #[cfg(not(target_os = "android"))]
 mod desktop {
+    use std::env::consts::{DLL_PREFIX, DLL_SUFFIX};
     use std::path::{Path, PathBuf};
     use std::sync::OnceLock;
 
@@ -39,12 +40,8 @@ mod desktop {
         }
         let java_home = find_java_home().ok_or("JAVA_HOME not set and java not found on PATH")?;
         let jvm_lib = find_jvm_lib(&java_home)
-            .ok_or_else(|| format!("libjvm not found in {}", java_home.display()))?;
-        let jvm_dir = jvm_lib.parent().and_then(Path::to_str).unwrap_or_default();
-        let ld_path = std::env::var("LD_LIBRARY_PATH").unwrap_or_default();
-        if !ld_path.split(':').any(|dir| dir == jvm_dir) {
-            std::env::set_var("LD_LIBRARY_PATH", format!("{jvm_dir}:{ld_path}"));
-        }
+            .ok_or_else(|| format!("JVM library not found in {}", java_home.display()))?;
+        expose_library_dir(jvm_lib.parent().unwrap_or(&java_home));
         let heap = std::env::var("RESEAM_JVM_HEAP").unwrap_or_else(|_| "256m".into());
         let args = InitArgsBuilder::new()
             .version(JNIVersion::V8)
@@ -55,7 +52,26 @@ mod desktop {
             .option("-XX:MaxHeapFreeRatio=30")
             .build()
             .map_err(|e| format!("JVM args: {e}"))?;
-        JavaVM::new(args).map_err(|e| format!("JVM init: {e}"))
+        JavaVM::with_libjvm(args, || Ok(jvm_lib)).map_err(|e| format!("JVM init: {e}"))
+    }
+
+    /// The variable HotSpot turns into `java.library.path`.
+    const LIBRARY_PATH: &str = if cfg!(windows) {
+        "PATH"
+    } else {
+        "LD_LIBRARY_PATH"
+    };
+
+    fn expose_library_dir(dir: &Path) {
+        let current = std::env::var_os(LIBRARY_PATH).unwrap_or_default();
+        let mut dirs: Vec<PathBuf> = std::env::split_paths(&current).collect();
+        if dirs.iter().any(|known| known == dir) {
+            return;
+        }
+        dirs.insert(0, dir.to_path_buf());
+        if let Ok(joined) = std::env::join_paths(dirs) {
+            std::env::set_var(LIBRARY_PATH, joined);
+        }
     }
 
     /// The JVM this process already runs in. A JVM host loads libjvm into
@@ -64,11 +80,10 @@ mod desktop {
     fn running() -> Option<JavaVM> {
         type GetCreatedJavaVms =
             unsafe extern "system" fn(*mut *mut jni::sys::JavaVM, jsize, *mut jsize) -> jint;
-        let symbol = unsafe { libc::dlsym(libc::RTLD_DEFAULT, c"JNI_GetCreatedJavaVMs".as_ptr()) };
-        if symbol.is_null() {
-            return None;
-        }
-        let get_created: GetCreatedJavaVms = unsafe { std::mem::transmute(symbol) };
+        let host = host_library().ok()?;
+        // SAFETY: the symbol is the JNI invocation entry point with exactly this signature.
+        let get_created =
+            unsafe { host.get::<GetCreatedJavaVms>(b"JNI_GetCreatedJavaVMs\0") }.ok()?;
         let mut vm = std::ptr::null_mut();
         let mut count: jsize = 0;
         unsafe {
@@ -77,6 +92,16 @@ mod desktop {
             }
             JavaVM::from_raw(vm).ok()
         }
+    }
+
+    #[cfg(unix)]
+    fn host_library() -> std::result::Result<libloading::Library, libloading::Error> {
+        Ok(libloading::os::unix::Library::this().into())
+    }
+
+    #[cfg(windows)]
+    fn host_library() -> std::result::Result<libloading::Library, libloading::Error> {
+        libloading::os::windows::Library::open_already_loaded("jvm.dll").map(Into::into)
     }
 
     fn find_java_home() -> Option<PathBuf> {
@@ -103,18 +128,27 @@ mod desktop {
     }
 
     fn find_jvm_lib(java_home: &Path) -> Option<PathBuf> {
-        [
-            "lib/server/libjvm.so",
-            "lib/amd64/server/libjvm.so",
-            "lib/client/libjvm.so",
-            "jre/lib/server/libjvm.so",
-            "jre/lib/amd64/server/libjvm.so",
-            "lib/server/libjvm.dylib",
-            "lib/libjvm.dylib",
-        ]
-        .iter()
-        .map(|candidate| java_home.join(candidate))
-        .find(|path| path.exists())
+        const DIRS: &[&str] = if cfg!(windows) {
+            &[
+                "bin/server",
+                "bin/client",
+                "jre/bin/server",
+                "jre/bin/client",
+            ]
+        } else {
+            &[
+                "lib/server",
+                "lib/amd64/server",
+                "lib/client",
+                "jre/lib/server",
+                "jre/lib/amd64/server",
+                "lib",
+            ]
+        };
+        let name = format!("{DLL_PREFIX}jvm{DLL_SUFFIX}");
+        DIRS.iter()
+            .map(|dir| java_home.join(dir).join(&name))
+            .find(|path| path.exists())
     }
 }
 

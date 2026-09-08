@@ -63,10 +63,34 @@ fn sweep_stale(root: &Path) {
     }
 }
 
+#[cfg(unix)]
 fn process_alive(pid: u32) -> bool {
     // SAFETY: signal 0 checks for existence and permission without sending anything.
     let rc = unsafe { libc::kill(pid as libc::pid_t, 0) };
     rc == 0 || io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}
+
+#[cfg(windows)]
+fn process_alive(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, GetLastError, ERROR_ACCESS_DENIED, STILL_ACTIVE,
+    };
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    // SAFETY: the handle is only queried for its exit code and closed again.
+    unsafe {
+        let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if process.is_null() {
+            return GetLastError() == ERROR_ACCESS_DENIED;
+        }
+        let mut exit_code = 0;
+        let alive =
+            GetExitCodeProcess(process, &mut exit_code) != 0 && exit_code == STILL_ACTIVE as u32;
+        CloseHandle(process);
+        alive
+    }
 }
 
 #[cfg(test)]

@@ -3,9 +3,10 @@
 
 use std::fs::File;
 use std::io::{self, BufWriter, Read, Seek, SeekFrom, Write};
-use std::os::unix::fs::FileExt;
 use std::path::Path;
 use std::sync::Arc;
+
+use reseam_dex::util::file::FileExt;
 
 use crate::entry::dex_ordinal;
 use crate::error::Result;

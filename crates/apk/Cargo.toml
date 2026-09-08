@@ -18,8 +18,13 @@ rayon      = { workspace = true }
 tracing    = { workspace = true }
 memmap2    = { workspace = true }
 tempfile   = { workspace = true }
-libc       = { workspace = true }
 flate2     = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true }
 
 [dev-dependencies]
 reseam-sign = { workspace = true }

@@ -2,4 +2,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 pub mod descriptor;
+pub mod file;
 pub mod sort;

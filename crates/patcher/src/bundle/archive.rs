@@ -3,7 +3,6 @@
 
 use std::fs::File;
 use std::io::{Read, Seek};
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
@@ -105,7 +104,9 @@ impl BundleArchive {
             let out = extracted.path().join(&name);
             std::fs::write(&out, contents)?;
             // ART refuses to load a writable dex file (Android 14 and later).
-            std::fs::set_permissions(&out, std::fs::Permissions::from_mode(0o444))?;
+            let mut permissions = std::fs::metadata(&out)?.permissions();
+            permissions.set_readonly(true);
+            std::fs::set_permissions(&out, permissions)?;
             if name.ends_with(".jar") {
                 jars.push(out);
             } else {

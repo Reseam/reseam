@@ -77,16 +77,28 @@ fn sign_into_place(output: &File, path: &Path, key: &SigningKey) -> Result<()> {
     Ok(())
 }
 
-/// Links an unlinked temp file to `path`, falling back to a copy where the
-/// file system cannot link anonymous files.
+/// Gives an unlinked temp file the name `path`, falling back to a copy where
+/// the platform or file system cannot link anonymous files.
 fn place_file(file: &File, path: &Path) -> std::io::Result<()> {
-    use std::os::fd::AsRawFd;
-
     match std::fs::remove_file(path) {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(error),
     }
+    if link_anonymous(file, path).is_ok() {
+        return Ok(());
+    }
+    let mut reader = std::io::BufReader::new(file);
+    reader.seek(std::io::SeekFrom::Start(0))?;
+    let mut writer = std::io::BufWriter::new(File::create(path)?);
+    std::io::copy(&mut reader, &mut writer)?;
+    writer.flush()
+}
+
+#[cfg(target_os = "linux")]
+fn link_anonymous(file: &File, path: &Path) -> std::io::Result<()> {
+    use std::os::fd::AsRawFd;
+
     let source = std::ffi::CString::new(format!("/proc/self/fd/{}", file.as_raw_fd()))?;
     let target = std::ffi::CString::new(path.as_os_str().as_encoded_bytes())?;
     // SAFETY: both paths are valid C strings and linkat only creates a directory entry.
@@ -100,11 +112,13 @@ fn place_file(file: &File, path: &Path) -> std::io::Result<()> {
         )
     };
     if rc == 0 {
-        return Ok(());
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
     }
-    let mut reader = std::io::BufReader::new(file);
-    reader.seek(std::io::SeekFrom::Start(0))?;
-    let mut writer = std::io::BufWriter::new(File::create(path)?);
-    std::io::copy(&mut reader, &mut writer)?;
-    writer.flush()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn link_anonymous(_file: &File, _path: &Path) -> std::io::Result<()> {
+    Err(std::io::ErrorKind::Unsupported.into())
 }
