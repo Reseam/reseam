@@ -1,107 +1,49 @@
 # Finding code in the app
 
-App code is obfuscated and method names change with every release, so a patch never refers to a method by name. It describes the method instead: the strings it loads, its return type, what it calls. Reseam searches the app for the one method matching that description. ReVanced calls the description a fingerprint; here it is a *target*, and a target can be a method, a class, a field, or one instruction inside a method.
+App code is obfuscated and renamed every release, so a patch never refers to a method by name. It describes the method: the strings it loads, its return type, what it calls. Reseam finds the one method matching the description. ReVanced calls the description a fingerprint; here it is a *target*, and a target can be a method, a class, a field, or one instruction.
 
-![Two releases of the same app on the left, 19.42 and 20.08. The method is named xyz() in one and q() in the other, but both load the string ad_impression, return a boolean, and call bindFeedItem. On the right, a target declared as method("isAd") with strings("ad_impression") and returns(Type.Boolean) matches both releases. Names change between releases; strings, types, and calls usually stay. Exactly one method must match.](fingerprint-match.svg)
+![Two releases of the same app on the left. The method is named xyz() in one and q() in the other, but both load the string ad_impression, return a boolean, and call bindFeedItem. On the right, a target declared as method("isAd") with strings("ad_impression") and returns(Type.Boolean) matches both releases. Exactly one method must match.](fingerprint-match.svg)
 
-Targets are top-level values. They resolve the first time a patch uses them and stay cached for the rest of that patch. Outside a running patch a target is only a description: reading `target.method` at load time throws.
+Targets are top-level values. They resolve the first time a patch uses them and stay cached for that patch. Types are accepted as descriptors (`Ljava/lang/String;`), dotted names (`java.lang.String`), or `Type` constants.
 
-Every type is accepted as a descriptor (`Ljava/lang/String;`), a dotted name (`java.lang.String`), or a `Type` constant (`Type.String`, `Type.Boolean`, `Type.Void`, `Type.List`, `Type.Context`, and so on). Arrays take a `[]` suffix or a leading `[`.
-
-## Methods
+## Methods and classes
 
 ```kotlin
-import app.reseam.patch.method
-
 val isAd = method("isAd") {
     strings("ad_impression")
     returns(Type.Boolean)
 }
-```
-
-The string is a label for reports and errors. The block runs when the target resolves, so it may read other targets.
-
-| Constraint | Meaning |
-|---|---|
-| `name("onReceive")` | Exact method name. |
-| `strings("a", "b")` | Loads every listed string constant. |
-| `literals(42L)` | Loads every listed numeric literal. |
-| `returns(type)` | Return type. |
-| `params(a, b)` | Exact parameter list; `params()` means none. |
-| `param(2, type)` | The parameter at an index. |
-| `hasParam(type)` | A parameter of this type anywhere. |
-| `paramCount(3)` | Number of parameters. |
-| `flags(AccessFlags.STATIC)` | Access flags the method carries. |
-| `inClass(classTarget)` | Declared in that class. |
-| `calls(methodTarget)` | Invokes that method. |
-| `calledBy(methodTarget)` | Invoked by that method. |
-| `callsMethod { name == "keySet" }` | Invokes something matching the predicate on the `MethodRef`, in the app or the platform. |
-| `opcode(Opcode.INVOKE_STATIC)` | Contains the opcode. |
-| `rankBy("label") { ... }` | Scores candidates; the highest wins. |
-| `first()` | Take the best candidate even when several tie. |
-
-Exactly one method must satisfy the query. More than one is an error listing the candidates, unless `rankBy` produces a single best score or `first()` is set.
-
-### How a query searches
-
-The engine indexes the app once per patch run: strings, literals, names, return and parameter types, opcodes, and who calls whom. A query does not scan every method. It starts from the constraints that select fewest candidates and checks the rest against them:
-
-1. `inClass`, `calls`, `calledBy`, `strings`, `literals` seed the candidate set from the indexes and intersect, smallest first.
-2. With none of those, `name` seeds it.
-3. With none of those either, `returns`, `params`, `hasParam`, and `opcode` seed it. These match thousands of methods in a large app.
-4. With nothing selective at all, every method in the app is a candidate.
-
-The report a failed target prints shows this pipeline: `strings("x"): 3 candidate method(s)`, then which constraint rejected the rest.
-
-> [!WARNING]
-> A query with only shape constraints, such as `method { returns(Type.Boolean); paramCount(1) }`, considers most of the app and almost always finds several matches. Give every query at least one of: a string the method loads, a literal, the class it is in, or a method it calls or is called by. Names are fine when scoped to a class.
-
-> [!WARNING]
-> `first()` accepts whichever candidate sorts first by descriptor. Use it only when the matches are interchangeable, for example identical overloads that all need the same change. For anything else, add a constraint or `rankBy` so the choice is explained in the report and survives an app update.
-
-> [!WARNING]
-> `methodTarget { }`, `classTarget { }`, and loops over `bytecode.classes` walk the app by hand and are not indexed. Reach for them when no query expresses the lookup, and keep them narrow: start from a class you already have rather than from `bytecode.classes`.
-
-`rankBy` sees the candidate: `method`, `paramCount`, `type` (its class descriptor), `methods(proto)`, `zeroArgListGetters()`, `callSitesFollowedByCast(type, lookAhead)`.
-
-`methods("label") { }` returns every match, best ranked first. Use `all`, `forEach { }`, or `single { predicate }` on it.
-
-## Classes
-
-```kotlin
-import app.reseam.patch.klass
 
 val mainActivity = klass("com.example.app.MainActivity")
+val onResume = mainActivity.method("onResume") { params() }
+val prefs = mainActivity.fieldOfType("android.content.SharedPreferences")
 
 val adLoaderClass = klass("adLoaderClass") {
     strings("ad_unit_id", "ad_request_failed")
 }
 ```
 
-Without a block, the argument is a class name. With one, it is a label and the block is a query: `strings`, `hasInstanceField(type)`, `extends(type)`, `implements(type)`, `rankBy`, `first`.
+`klass(name)` is a known class; `klass(label) { }` is a query. A class target scopes `method`, `methods`, `field`, and `fieldOfType`. The full constraint list is in the [reference](12_reference.md#targets).
 
-A class target scopes lookups:
+Exactly one method must match. More than one is an error listing the candidates, unless `rankBy` produces a single best score or `first()` is set. `methods { }` returns every match instead.
 
-```kotlin
-val onResume = mainActivity.method("onResume") { params() }
-val toolbar = mainActivity.field("toolbar")
-val prefs = mainActivity.fieldOfType("android.content.SharedPreferences")
-```
+## How a query searches
 
-- `method(name) { }`: adds `inClass` and `name`; the block narrows overloads.
-- `methods(label) { }`: every method of the class matching the block.
-- `field(name)`: a field by name.
-- `fieldOfType(type)`: the one instance field of that type.
+The engine indexes the app once per patch run. A query starts from the constraints that select fewest candidates and checks the rest against them:
 
-`field(owner, name, type)` names a field without looking it up, for classes the bundle adds itself.
+1. `inClass`, `calls`, `calledBy`, `strings`, `literals` seed from the indexes, smallest first.
+2. Failing those, `name`.
+3. Failing those, `returns`, `params`, `hasParam`, `opcode`, which match thousands of methods in a large app.
+4. With nothing selective, every method is a candidate.
+
+> [!WARNING]
+> Give every query a string, a literal, a class, or a call relationship. `method { returns(Type.Boolean); paramCount(1) }` considers most of the app and finds several matches. `first()` then picks whichever sorts first by descriptor, a different method after the next obfuscation pass; use it only for interchangeable matches. `methodTarget { }` and loops over `bytecode.classes` are unindexed hand scans: last resort, kept narrow.
 
 ## Points
 
-A point is one instruction in a method, found by matching:
+A point is one instruction in a method:
 
 ```kotlin
-import app.reseam.patch.point
-
 val premiumCheck = mainActivity
     .method("onCreate") { strings("premium_status") }
     .point { string("premium_status") }
@@ -109,31 +51,14 @@ val premiumCheck = mainActivity
     .callee()
 ```
 
-`point { }` finds the first instruction matching the block. Inside it:
-
-- `opcode(...)`, `string(value)`, `stringContains(part)`, `literal(value)`, `type(descriptor)`, `checkCast(type)`, `newInstance(type)`.
-- `invoke { }`, `invokeStatic { }`, `invokeVirtual { }`, `invokeInterface { }`, `invokeDirect { }` with `owner`, `name`, `returns`, `params`, `hasParam`, `paramCount` on the callee.
-- `calls(methodTarget)`: an invoke of exactly that method.
-- `field { owner; name; type }`: a field access.
-- `resultOf(returns)`: a `move-result` whose invoke returns the type.
-- `where { }`: a predicate over the raw instruction.
-- `then(within = 1) { }`: the next step of a sequence; the point is the last step.
-
-From a point: `previous { }` walks back to the nearest match, `next { }` walks forward. `callee()` is the invoked method as a target. `field()` is the accessed field as a target. `instruction` is the raw instruction, `index` its position.
-
-`captureAs("name")` records the register the instruction writes, typed from the instruction, for `capture("name")` in code emitted at a later point. Pass a type when it cannot be inferred.
+`point { }` matches the first instruction satisfying the block; `then { }` continues a sequence. `previous { }` and `next { }` walk from it, `callee()` and `field()` turn it back into a method or field target, `captureAs("name")` saves the register it writes for `capture("name")` in later code.
 
 > [!WARNING]
-> A point is an instruction index. Inserting code above it in the same method shifts the instruction, and the cached index now names something else. Emit at points before emitting at the method's entry, or resolve every point you need first: `captureAs` and `before` on a point resolve it; reading `point.index` does too. The [Points](6_code.md#points) example captures two points, then emits once.
+> A point is an instruction index. Inserting code above it shifts the instruction. Emit at points before emitting at the method's entry, or resolve every point first (`captureAs`, `before`, or reading `index` resolves it).
 
-> [!WARNING]
-> `previous { }` takes one step; `next { }` takes a sequence and lands on its last step. Both fail when nothing matches; neither wraps around.
+## Custom targets
 
-## Built-in and custom targets
-
-`appEntry` is `onCreate()` of the `Application` subclass the manifest names. When the class does not override it, one calling `super.onCreate()` is added.
-
-When no query fits, resolve by hand with the [raw bytecode layer](10_dex.md):
+`appEntry` is `onCreate()` of the app's `Application` class, added if missing. `methodTarget`, `classTarget`, and `fieldTarget` take a block with the runtime as receiver for lookups no query expresses:
 
 ```kotlin
 val adStateClass = classTarget("adStateClass") {
@@ -141,18 +66,12 @@ val adStateClass = classTarget("adStateClass") {
 }
 ```
 
-`methodTarget`, `classTarget`, and `fieldTarget` take a block with the runtime as receiver that returns a `Method`, `DexClass`, or `FieldRef`.
-
 ## Debugging a target
 
-A target that does not resolve fails the patch with its report: how many candidates were considered, which constraints seeded and rejected them, and the nearest misses with the reason each lost. A target that resolves is logged as a `patch log` line with `level=debug` naming the winner, so the CLI output shows which method each target picked. Inside `execute`, `target.explain()` returns the same report for a resolved target.
+A failed target prints how many candidates were considered, which constraint seeded and rejected them, and the nearest misses with the reason each lost. A resolved target is logged with `level=debug` and its winner; `target.explain()` returns the same report inside `execute`.
 
-When a method that clearly exists is not found:
-
-- Check the type spelling. `returns("boolean")` is not a type; `Type.Boolean` or `"Z"` is. Dotted class names are accepted, primitives are single letters.
-- Check the string exactly. `strings` matches whole constants, not substrings; `point { stringContains(...) }` matches parts, method queries do not.
-- Check the class. `inClass` on a class target that itself resolves to the wrong class shows up as `class mismatch` on every candidate.
-
-When two methods match, the report lists both descriptors. Open them in the decompiler and pick the constraint that tells them apart.
+- `returns("boolean")` is not a type; `Type.Boolean` or `"Z"` is.
+- `strings` matches whole constants. Only `point { stringContains(...) }` matches parts.
+- `class mismatch` on every candidate means the `inClass` target resolved to the wrong class.
 
 Next: [Changing methods](6_code.md).

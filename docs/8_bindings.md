@@ -1,12 +1,8 @@
 # Reading obfuscated objects
 
-Some patches need a value out of an object whose class, fields, and getters are all renamed: the image URL inside a feed post object, for example. A binding describes how to find that class and the path from it to each value (a field read, a call, a cast). Once declared, a patch applies it to any value of that class inside a code block and gets the member out, null-checked along the way.
-
-A binding resolves once per patch.
+Some patches hold an object and need a value from it that sits several renamed classes deep: the video URL of a feed post is `post.attributes.videos[0].getUrl()`, with every class on the way obfuscated. A binding describes that path once, structurally; any patch then applies it to a value inside a code block and gets the null-checked chain emitted.
 
 ```kotlin
-import app.reseam.patch.bind
-
 interface RuntimePost
 
 val post = bind<RuntimePost>("post") {
@@ -14,71 +10,29 @@ val post = bind<RuntimePost>("post") {
         owner(onPostClicked.owner)
         nearestObjectReadBeforeString("post_clicked")
     }
-    string("imageUrl") {
-        field(IMAGE_URL)
-        callVirtual(IMAGE_URL, "getUrl", "()Ljava/lang/String;")
-    }
     string("videoUrl") {
         member("attributes")
-        listGetter("video_versions") {
-            rankBy("callers followed by cast") { callSitesFollowedByCast(VIDEO_VERSION) }
+        listGetter("videos") {
+            rankBy("callers followed by cast") { callSitesFollowedByCast(VIDEO) }
         }
         first()
-        cast(VIDEO_VERSION)
-        callInterface(VIDEO_VERSION, "getUrl", "()Ljava/lang/String;")
+        cast(VIDEO)
+        callInterface(VIDEO, "getUrl", "()Ljava/lang/String;")
     }
 }
-```
-
-The type parameter is a marker for readers. `sourceType` is the root descriptor once resolved; `sourceField` is the field it was located through.
-
-## Sources
-
-- `fromField("label") { }`: locate a field with `owner(type)`, then `firstObjectRead()`, `firstObjectReadAnyOwner()`, `nearestObjectReadBeforeString(value)`, or `rankBy` with `requireScoreAtLeast(score)`.
-- `fromMethod(target)`: anchor paths in a method's instructions.
-- `fromClass(target)`: start from a known class.
-
-`raw { }` is the path from the input value to the bound object. Inside it, `sourceType` is the source's type; after it, the raw path's result.
-
-## Members
-
-`objectValue(name) { }`, `string(name) { }`, `context(name) { }`, `intValue(name) { }` declare members by the kind of value they produce. `bind(name, otherBinding) { }` declares a member whose value is another binding's root when the path does not determine a type itself.
-
-Steps:
-
-| Step | Meaning |
-|---|---|
-| `self()`, `param(i)` | Start from the anchor method's receiver or parameter. |
-| `member(name)` | Start from another member's path. |
-| `field(type)`, `field(name) { locator }`, `field(fieldTarget)` | Read a field. |
-| `instanceField(type)`, `instanceField(listOf(a, b))` | Read the one instance field of a type, or the first present of several. |
-| `objectSlots().firstInstanceOf(type)` | Probe `Object`-typed fields at runtime for the first instance of a type. |
-| `firstFieldRead()`, `nextFieldRead(owner)` | Follow field reads in the anchor method. |
-| `nextInterfaceCall(returning, returningObject)` | Follow an interface call in the anchor method. |
-| `callVirtual(owner, name, proto)`, `callInterface(...)` | Call a method. |
-| `listGetter(name) { rankBy }` | Pick a zero-argument `List` getter on the current type by rank. |
-| `first()`, `last()` | An element of a `List`. |
-| `cast(type)` | Check-cast. |
-
-Every step is null-checked. A null anywhere makes the whole path evaluate to null or zero.
-
-## Applying
-
-```kotlin
-PostRefs.imageUrl.implement { returnValue(post.member("imageUrl", param(0))) }
 
 onPostClicked.before {
-    val handler = thisObject
-    val index = galleryState.member("currentIndex", handler.fieldOfType(galleryStateClass.descriptor))
+    call(Ext.onClick, post.member("videoUrl", thisObject.field(post.sourceField)))
 }
+
+PostRefs.videoUrl.implement { returnValue(post.member("videoUrl", param(0))) }
 ```
 
-`binding.of(value)` applies the raw path. `binding.member(name, value)` applies a member path. The input must be statically assignable to the root type; an `Object`-typed input is cast implicitly, anything else must be cast first.
+The source (`fromField`, `fromMethod`, `fromClass`) finds the root class. Members (`string`, `objectValue`, `intValue`, `context`, `bind`) are named paths of steps: field reads by type or by locator, calls, casts, list element, another member as a prefix. `raw { }` is the path from the input value to the root itself. The type parameter is a marker for readers.
+
+`binding.of(value)` applies the raw path; `binding.member(name, value)` a member. The input must be assignable to the root type; an `Object`-typed input is cast implicitly. A null anywhere on the path makes the result null or zero. Steps and sources are listed in the [reference](12_reference.md#bindings).
 
 > [!WARNING]
-> Bindings and the code that applies them live in the same code block; the input value must come from that block. A binding declared with `fromField` only knows the field, not where the object is held, so the patch still has to read it: `thisObject.field(post.sourceField)`.
-
-> [!WARNING]
-> A path that reaches a null returns null (or zero) for the whole member rather than crashing the app. Code that applies a member should still handle that value; `whenNotNull` is the usual shape.
+> A binding knows the class, not where the object is held. The patch still reads it: `thisObject.field(post.sourceField)`. A member that reaches a null yields null rather than crashing, so handle it with `whenNotNull`.
 
 Next: [Shipping your own code](9_extensions.md).

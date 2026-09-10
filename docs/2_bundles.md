@@ -1,12 +1,8 @@
 # Bundles
 
-A bundle is the unit you publish and users install: one `.reseam` file with every patch you maintain, for as many apps as you like. Users add your bundle to Reseam Manager once; from then on they pick the patches they want for each app, and updates to the bundle reach them through the release index you host.
+A bundle is the file you publish and users install: every patch you maintain, for as many apps as you like, plus the [extension code](9_extensions.md) those patches put into apps and a manifest naming the bundle. It is signed with your key; Reseam Manager and the CLI refuse a bundle whose signature does not match a key the user trusts. It has its own version, independent of the engine and of the apps it patches.
 
-Inside the file are your compiled patches (one jar per app), the [extension code](9_extensions.md) those patches put into apps, and a manifest with the bundle's name, author, and description. The file is signed with your key. Reseam Manager and the `reseam` CLI refuse to load a bundle whose signature does not match a key the user trusts, so a bundle cannot be altered between you and the phone.
-
-A bundle has its own version, independent of the engine's and of the apps it patches. Publishing a new version is a new file at a new URL; [Publishing](11_publish.md) covers the release index.
-
-You develop a bundle as a Gradle project with a fixed directory layout. The `app.reseam.workspace` plugin reads that layout and configures every module from it, so there is one build command and no build scripts to maintain.
+You develop it as a Gradle project with a fixed layout. The `app.reseam.workspace` plugin configures every module from the directories, so there is one build command and no build scripts to maintain.
 
 ![The bundle project on the left: manifest.toml, settings.gradle.kts, gradlew, apps/example with a patch module and an ads extension module (main and stub sources), and shared/settings-runtime. The gradlew bundle task in the middle compiles each patch module to a jar with classes.dex, runs d8 on each extension, then reseam bundle pack hashes every file and signs the manifest. The signed .reseam archive on the right holds mimetype, manifest.toml with a files table of SHA-256 hashes and the engine version, manifest.pubkey, manifest.sig, example-patches.jar, example-ads.dex and settings-runtime.dex. No sources or Gradle scripts ship.](bundle-layout.svg)
 
@@ -60,7 +56,7 @@ plugins {
 rootProject.name = "my-bundle"
 ```
 
-The plugin version is the SDK version. Every patch module gets the SDK dependency automatically.
+The plugin version is the SDK version; every patch module gets the SDK dependency from it.
 
 ## `manifest.toml`
 
@@ -76,11 +72,5 @@ format_version = 1
 - `author`, `description`: shown to users.
 - `format_version`: currently `1`.
 - `engine`: written by `reseam bundle pack`, never by hand. Bundles load on engines of the same major version, or the same minor while the major is 0.
-
-Per-patch metadata lives in the patch code. Release metadata lives in `patches.json`, generated at publish time.
-
-## What ships in the signed archive
-
-`manifest.toml`, one `<app>-patches.jar` per app, and every extension `.dex`. No sources, no Gradle scripts. The engine links extension DEX files into the app when a patch first refers to a class they define, so patches never name them.
 
 Next: [Your first patch](3_first_patch.md).
