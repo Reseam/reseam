@@ -3,9 +3,7 @@
 Some patches hold an object and need a value from it that sits several renamed classes deep: the video URL of a feed post is `post.attributes.videos[0].getUrl()`, with every class on the way obfuscated. A binding describes that path once, structurally; any patch then applies it to a value inside a code block and gets the null-checked chain emitted.
 
 ```kotlin
-interface RuntimePost
-
-val post = bind<RuntimePost>("post") {
+val post = bind("post") {
     fromField("feedPostField") {
         owner(onPostClicked.owner)
         nearestObjectReadBeforeString("post_clicked")
@@ -28,7 +26,7 @@ onPostClicked.before {
 PostRefs.videoUrl.implement { returnValue(post.member("videoUrl", param(0))) }
 ```
 
-The source (`fromField`, `fromMethod`, `fromClass`) finds the root class. Members (`string`, `objectValue`, `intValue`, `context`, `bind`) are named paths of steps: field reads by type or by locator, calls, casts, list element, another member as a prefix. `raw { }` is the path from the input value to the root itself. The type parameter is a marker for readers.
+The source (`fromField`, `fromMethod`, `fromClass`) finds the root class. Members (`string`, `objectValue`, `intValue`, `context`, `bind`) are named paths of steps: field reads by type or by locator, calls, casts, list element, another member as a prefix. The label names the binding in reports and logs. `raw { }` is the path from the input value to the root itself.
 
 `binding.of(value)` applies the raw path; `binding.member(name, value)` a member. The input must be assignable to the root type; an `Object`-typed input is cast implicitly. A null anywhere on the path makes the result null or zero. Steps and sources are listed in the [reference](12_reference.md#bindings).
 

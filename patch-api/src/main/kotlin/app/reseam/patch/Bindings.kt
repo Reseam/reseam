@@ -18,10 +18,9 @@ import app.reseam.patch.dex.returnType
 /**
  * A view over an obfuscated object: a root type found structurally plus named
  * paths (field reads, calls, casts) from it to the values a patch needs.
- * Applied inside code blocks with [of] and [member]. `T` is a marker for the
- * runtime type, used only for readability.
+ * Applied inside code blocks with [of] and [member].
  */
-class BindingTarget<T : Any> internal constructor(
+class BindingTarget internal constructor(
     debugName: String?,
     private val block: BindingQuery.() -> Unit,
 ) : Target<ResolvedBinding>(debugName) {
@@ -48,7 +47,7 @@ class BindingTarget<T : Any> internal constructor(
     }
 }
 
-fun <T : Any> bind(debugName: String? = null, block: BindingQuery.() -> Unit): BindingTarget<T> =
+fun bind(debugName: String? = null, block: BindingQuery.() -> Unit): BindingTarget =
     BindingTarget(debugName, block)
 
 interface BindingQuery {
@@ -64,7 +63,7 @@ interface BindingQuery {
     fun context(name: String, block: PathQuery.() -> Unit)
     fun intValue(name: String, block: PathQuery.() -> Unit)
     /** A member whose value is another binding's root when the path does not say otherwise. */
-    fun bind(name: String, target: BindingTarget<*>, block: PathQuery.() -> Unit)
+    fun bind(name: String, target: BindingTarget, block: PathQuery.() -> Unit)
 }
 
 interface FieldLocator {
@@ -225,7 +224,7 @@ internal class BindingSpec : BindingQuery {
     private var sourceMethod: MethodTarget? = null
     private var sourceClass: ClassTarget? = null
     private var rawBlock: (PathQuery.() -> Unit)? = null
-    private val memberBlocks = linkedMapOf<String, Pair<PathQuery.() -> Unit, BindingTarget<*>?>>()
+    private val memberBlocks = linkedMapOf<String, Pair<PathQuery.() -> Unit, BindingTarget?>>()
     private var compiledSourceType: String? = null
 
     override val sourceType: String
@@ -239,7 +238,7 @@ internal class BindingSpec : BindingQuery {
     override fun string(name: String, block: PathQuery.() -> Unit) { memberBlocks[name] = block to null }
     override fun context(name: String, block: PathQuery.() -> Unit) { memberBlocks[name] = block to null }
     override fun intValue(name: String, block: PathQuery.() -> Unit) { memberBlocks[name] = block to null }
-    override fun bind(name: String, target: BindingTarget<*>, block: PathQuery.() -> Unit) { memberBlocks[name] = block to target }
+    override fun bind(name: String, target: BindingTarget, block: PathQuery.() -> Unit) { memberBlocks[name] = block to target }
 
     fun compile(runtime: PatchRuntime, label: String): ResolvedBinding {
         val index = runtime.index

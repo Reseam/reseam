@@ -126,7 +126,7 @@ Inside `patch { }` (`PatchBuilder`):
 
 | Symbol | Description |
 |---|---|
-| `bind<T>(label) { BindingQuery }` | A `BindingTarget<T>`. |
+| `bind(label) { BindingQuery }` | A `BindingTarget`. |
 | `BindingTarget` | `sourceType`, `sourceField`, `of(value)`, `member(name, value)`. |
 
 `BindingQuery`: `sourceType`, `fromField(label) { FieldLocator }`, `fromMethod(target)`, `fromClass(target)`, `raw { PathQuery }`, `objectValue(name) { }`, `string(name) { }`, `context(name) { }`, `intValue(name) { }`, `bind(name, target) { }`.
