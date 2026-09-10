@@ -59,7 +59,7 @@ JAVA_HOME=/path/to/jdk cargo xtask jni-host
 ## Release
 
 ```bash
-cargo xtask release 0.4.0
+cargo xtask release 0.5.0
 git push --follow-tags
 ```
 

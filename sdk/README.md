@@ -50,7 +50,7 @@ Builds `target/release/libreseam_sdk_jni.so` for the current host.
 The Kotlin packages are built by the Gradle project at the workspace root:
 
 ```bash
-./gradlew publishToMavenLocal -PreseamSdkVersion=0.4.0
+./gradlew publishToMavenLocal -PreseamSdkVersion=0.5.0
 ```
 
 - `app.reseam:reseam-sdk` for managers (Kotlin Multiplatform, Android and JVM)
