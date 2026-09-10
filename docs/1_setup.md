@@ -7,6 +7,8 @@
 - The `reseam` CLI, built from the Reseam repo or installed from a release. Use the release that matches the plugin version in `settings.gradle.kts`.
 - Git.
 
+Linux, macOS, and Windows all work. Commands on these pages use POSIX shell syntax for environment variables; in PowerShell set them first (`$env:RESEAM_BIN = "C:\\reseam\\reseam.exe"`) and run the command on its own line.
+
 ## First build
 
 Generate a bundle signing key once:

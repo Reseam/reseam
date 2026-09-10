@@ -45,7 +45,11 @@ pub fn android_api() -> u32 {
 /// The NDK's `<prefix><api>-clang`, from PATH or the newest NDK under
 /// `$ANDROID_HOME/ndk`.
 pub fn android_clang(prefix: &str, api: u32) -> Result<PathBuf> {
-    let name = format!("{prefix}{api}-clang");
+    let name = if cfg!(windows) {
+        format!("{prefix}{api}-clang.cmd")
+    } else {
+        format!("{prefix}{api}-clang")
+    };
     if let Some(found) = env::var_os("PATH").and_then(|path| {
         env::split_paths(&path)
             .map(|dir| dir.join(&name))

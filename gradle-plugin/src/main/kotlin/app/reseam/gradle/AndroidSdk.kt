@@ -34,11 +34,12 @@ internal object AndroidSdk {
 
     fun d8(): File {
         System.getenv("D8_BIN")?.takeIf { it.isNotBlank() }?.let { return File(it) }
+        val d8 = if (System.getProperty("os.name").startsWith("Windows")) "d8.bat" else "d8"
         return File(home(), "build-tools").listFiles().orEmpty()
-            .filter { File(it, "d8").isFile }
+            .filter { File(it, d8).isFile }
             .maxByOrNull { it.name }
-            ?.resolve("d8")
-            ?: throw GradleException("No build-tools/*/d8 under ${home()}")
+            ?.resolve(d8)
+            ?: throw GradleException("No build-tools/*/$d8 under ${home()}")
     }
 }
 

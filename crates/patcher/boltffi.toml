@@ -1,5 +1,6 @@
 [package]
 name = "reseam_patcher"
+crate = "reseam-patcher"
 
 [targets.apple]
 enabled = false

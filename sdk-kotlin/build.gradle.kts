@@ -19,6 +19,7 @@ val desktopHost: String = run {
     val family = when {
         os.contains("linux") -> "linux"
         os.contains("mac") || os.contains("darwin") -> "darwin"
+        os.contains("windows") -> "windows"
         else -> throw GradleException("unsupported desktop host: $os")
     }
     val cpu = when (arch) {
@@ -28,7 +29,7 @@ val desktopHost: String = run {
     }
     "$family-$cpu"
 }
-val desktopShim = if (desktopHost.startsWith("darwin-")) "libreseam_sdk_jni.dylib" else "libreseam_sdk_jni.so"
+val desktopShim = System.mapLibraryName("reseam_sdk_jni")
 
 val stageJniLibs by tasks.registering(Sync::class) {
     androidAbis.forEach { abi ->

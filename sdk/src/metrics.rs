@@ -255,7 +255,10 @@ fn sample_memory() -> MemorySample {
 
     #[cfg(not(unix))]
     {
-        MemorySample::default()
+        MemorySample {
+            heap_live_bytes: heap_live_bytes(),
+            ..MemorySample::default()
+        }
     }
 }
 
