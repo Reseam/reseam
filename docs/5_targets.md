@@ -1,6 +1,6 @@
 # Finding code in the app
 
-App code is obfuscated and renamed every release, so a patch never refers to a method by name. It describes the method: the strings it loads, its return type, what it calls. Reseam finds the one method matching the description. ReVanced calls the description a fingerprint; here it is a *target*, and a target can be a method, a class, a field, or one instruction.
+App code is obfuscated and renamed every release, so a patch never refers to a method by name. It describes the method: the strings it loads, its return type, what it calls. Reseam finds the one method matching the description. The description is a *target*; a target can be a method, a class, a field, or one instruction.
 
 ![Two releases of the same app on the left. The method is named xyz() in one and q() in the other, but both load the string ad_impression, return a boolean, and call bindFeedItem. On the right, a target declared as method("isAd") with strings("ad_impression") and returns(Type.Boolean) matches both releases. Exactly one method must match.](fingerprint-match.svg)
 

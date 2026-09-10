@@ -28,54 +28,54 @@
 	</defs>
 
 
-	<g transform="translate(80,40)">
-		<rect class="card-accent" x="0" y="0" width="800" height="300" rx="22" />
+	<g transform="translate(50,40)">
+		<rect class="card-accent" x="0" y="0" width="860" height="300" rx="22" />
 		<text class="caption" x="28" y="30">Receiver of execute { } and afterDependents { }</text>
 		<text class="title" x="28" y="54" font-size="18">the patch runtime</text>
 
 		<g transform="translate(28,90)">
-			<rect class="chip" x="0" y="0" width="230" height="80" rx="12" />
+			<rect class="chip" x="0" y="0" width="250" height="80" rx="12" />
 			<circle class="accent-fill" cx="18" cy="22" r="4" />
 			<text class="title" x="32" y="26">manifest</text>
 			<text class="label" x="18" y="50">AndroidManifest.xml</text>
 			<text class="mono-muted" x="18" y="66">addPermission / addActivity</text>
 		</g>
-		<g transform="translate(284,90)">
-			<rect class="chip" x="0" y="0" width="230" height="80" rx="12" />
+		<g transform="translate(302,90)">
+			<rect class="chip" x="0" y="0" width="250" height="80" rx="12" />
 			<circle class="accent-fill" cx="18" cy="22" r="4" />
 			<text class="title" x="32" y="26">resources</text>
 			<text class="label" x="18" y="50">resource table and string pool</text>
 			<text class="mono-muted" x="18" y="66">addString / replaceEntry</text>
 		</g>
-		<g transform="translate(540,90)">
-			<rect class="chip" x="0" y="0" width="230" height="80" rx="12" />
+		<g transform="translate(576,90)">
+			<rect class="chip" x="0" y="0" width="250" height="80" rx="12" />
 			<circle class="accent-fill" cx="18" cy="22" r="4" />
 			<text class="title" x="32" y="26">files</text>
 			<text class="label" x="18" y="50">every entry in the APK</text>
 			<text class="mono-muted" x="18" y="66">read / write / copy / delete</text>
 		</g>
 		<g transform="translate(28,182)">
-			<rect class="chip" x="0" y="0" width="230" height="80" rx="12" />
+			<rect class="chip" x="0" y="0" width="250" height="80" rx="12" />
 			<circle class="accent-fill" cx="18" cy="22" r="4" />
 			<text class="title" x="32" y="26">bytecode</text>
 			<text class="label" x="18" y="50">raw classes, see Raw bytecode</text>
 			<text class="mono-muted" x="18" y="66">findClass / classesExtending</text>
 		</g>
-		<g transform="translate(284,182)">
-			<rect class="chip" x="0" y="0" width="230" height="80" rx="12" />
+		<g transform="translate(302,182)">
+			<rect class="chip" x="0" y="0" width="250" height="80" rx="12" />
 			<circle class="accent-fill" cx="18" cy="22" r="4" />
 			<text class="title" x="32" y="26">options</text>
 			<text class="label" x="18" y="50">values the user set for this patch</text>
 			<text class="mono-muted" x="18" y="66">options[option]</text>
 		</g>
-		<g transform="translate(540,182)">
-			<rect class="chip" x="0" y="0" width="230" height="80" rx="12" />
+		<g transform="translate(576,182)">
+			<rect class="chip" x="0" y="0" width="250" height="80" rx="12" />
 			<circle class="accent-fill" cx="18" cy="22" r="4" />
 			<text class="title" x="32" y="26">log</text>
-			<text class="label" x="18" y="50">shown by the CLI and Reseam Manager</text>
+			<text class="label" x="18" y="50">shown by the CLI and Manager</text>
 			<text class="mono-muted" x="18" y="66">info / warn / debug</text>
 		</g>
 
-		<text class="label" x="28" y="286">Targets and code blocks resolve against the same runtime. manifest, resources, and files take component(name) for one split of a split APK.</text>
+		<text class="label" x="28" y="286">manifest, resources, and files take component(name) to act on one split of a split APK.</text>
 	</g>
 </svg>

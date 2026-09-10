@@ -12,7 +12,7 @@ apps/example/extensions/ads/
 
 `src/main/java` is compiled and dexed. `src/stubs/java` holds compile-time stand-ins for classes the app already has and is never dexed. A module needs a build script only to compile against another extension: `compileOnly(project(":shared:settings-runtime"))`.
 
-Patches never name a DEX file. They declare the classes they call:
+A patch declares the extension classes it calls:
 
 ```kotlin
 object AdBlocker : ExtClass("app.example.ext.AdBlocker") {

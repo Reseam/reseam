@@ -6,7 +6,7 @@ The words used throughout:
 
 - **Patch**: one change to one app that a user can switch on.
 - **Bundle**: the signed file you publish, with every patch you maintain.
-- **Target**: how a patch describes the code it changes without naming it, so it survives obfuscation and updates. ReVanced calls this a fingerprint.
+- **Target**: how a patch describes the code it changes without naming it, so it survives obfuscation and updates.
 - **Extension**: Java you ship in the bundle for the app to run.
 - **Settings**: switches inside the patched app.
 - **Engine**: the program that applies a bundle. Reseam Manager embeds it; the `reseam` CLI wraps it.
@@ -25,6 +25,6 @@ Read in order the first time:
 10. [Raw bytecode](10_dex.md)
 11. [Publishing](11_publish.md)
 
-Look things up afterwards in the [API reference](12_reference.md). [Coming from ReVanced](13_revanced.md) maps the vocabulary.
+Look things up afterwards in the [API reference](12_reference.md).
 
 Warnings mark mistakes that compile and then fail at patch time or on the next app update.

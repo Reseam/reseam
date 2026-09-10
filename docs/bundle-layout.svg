@@ -49,10 +49,10 @@
 		<text class="label" x="36" y="346">Modules have no build script.</text>
 	</g>
 
-	<line class="link" x1="342" y1="220" x2="396" y2="220" marker-end="url(#arrow)" />
+	<line class="link" x1="342" y1="220" x2="386" y2="220" marker-end="url(#arrow)" />
 
-	<g transform="translate(400,150)">
-		<rect class="chip" x="0" y="0" width="180" height="140" rx="12" />
+	<g transform="translate(390,150)">
+		<rect class="chip" x="0" y="0" width="200" height="140" rx="12" />
 		<circle class="accent-fill" cx="20" cy="24" r="4" />
 		<text class="title" x="32" y="28">./gradlew bundle</text>
 		<text class="label" x="18" y="52">compiles each patch module</text>
@@ -62,7 +62,7 @@
 		<text class="label" x="18" y="120">every file and signs the manifest</text>
 	</g>
 
-	<line class="link-accent" x1="582" y1="220" x2="636" y2="220" marker-end="url(#arrow-accent)" />
+	<line class="link-accent" x1="592" y1="220" x2="636" y2="220" marker-end="url(#arrow-accent)" />
 
 	<g transform="translate(640,40)">
 		<rect class="card-accent" x="0" y="0" width="280" height="390" rx="20" />
@@ -71,14 +71,14 @@
 		<text class="mono-muted" x="36" y="68">mimetype</text>
 		<text class="mono" x="36" y="86">manifest.toml</text>
 		<text class="mono-dim" x="52" y="104">[files] sha256 per entry</text>
-		<text class="mono-dim" x="52" y="122">engine = version that packed</text>
+		<text class="mono-dim" x="52" y="122">engine = packer version</text>
 		<text class="mono" x="36" y="140">manifest.pubkey</text>
 		<text class="mono" x="36" y="158">manifest.sig</text>
 		<text class="mono-accent" x="36" y="176">example-patches.jar</text>
 		<text class="mono-accent" x="36" y="194">example-ads.dex</text>
 		<text class="mono-accent" x="36" y="212">settings-runtime.dex</text>
-		<text class="label" x="36" y="286">Clients verify the signature against</text>
-		<text class="label" x="36" y="302">the public key in patches.json.</text>
-		<text class="label" x="36" y="330">No sources, no Gradle scripts.</text>
+		<text class="label" x="36" y="298">Clients verify the signature against</text>
+		<text class="label" x="36" y="314">the public key in patches.json.</text>
+		<text class="label" x="36" y="346">No sources, no Gradle scripts.</text>
 	</g>
 </svg>

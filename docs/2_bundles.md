@@ -22,7 +22,7 @@ my-bundle/
 ```
 
 - `apps/<app>/patch/`: the Kotlin patches for one app. Compiles to `<app>-patches.jar`, which carries both JVM classes and `classes.dex` so the engine loads it on the desktop JVM and on Android.
-- `apps/<app>/extensions/<name>/`: Java compiled against `android.jar` into `<app>-<name>.dex`. See [Extensions](9_extensions.md).
+- `apps/<app>/extensions/<name>/`: Java compiled against `android.jar` into `<app>-<name>.dex`. See [Shipping your own code](9_extensions.md).
 - `shared/<name>/`: extensions used by more than one app. Compiles to `<name>.dex`.
 
 Modules have no build script unless they declare dependencies:

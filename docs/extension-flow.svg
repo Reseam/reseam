@@ -30,24 +30,24 @@
 
 	<text class="caption" x="40" y="30">Build time</text>
 	<g transform="translate(40,44)">
-		<rect class="card" x="0" y="0" width="240" height="150" rx="18" />
+		<rect class="card" x="0" y="0" width="280" height="150" rx="18" />
 		<text class="caption" x="20" y="26">Extension module</text>
-		<rect class="inner" x="16" y="40" width="208" height="94" rx="8" />
+		<rect class="inner" x="16" y="40" width="248" height="94" rx="8" />
 		<text class="mono" x="28" y="62">ads/</text>
 		<text class="mono" x="44" y="80">src/main/java/</text>
 		<text class="mono-accent" x="60" y="98">AdBlocker.java</text>
 		<text class="mono-dim" x="44" y="116">src/stubs/java/ (not dexed)</text>
 	</g>
-	<line class="link" x1="282" y1="119" x2="336" y2="119" marker-end="url(#arrow)" />
-	<g transform="translate(340,79)">
-		<rect class="chip" x="0" y="0" width="120" height="80" rx="12" />
+	<line class="link" x1="322" y1="119" x2="376" y2="119" marker-end="url(#arrow)" />
+	<g transform="translate(380,79)">
+		<rect class="chip" x="0" y="0" width="150" height="80" rx="12" />
 		<circle class="accent-fill" cx="20" cy="22" r="4" />
 		<text class="title" x="32" y="26">d8</text>
 		<text class="label" x="18" y="48">against android.jar</text>
 		<text class="label" x="18" y="62">from ANDROID_HOME</text>
 	</g>
-	<line class="link" x1="462" y1="119" x2="516" y2="119" marker-end="url(#arrow)" />
-	<g transform="translate(520,79)">
+	<line class="link" x1="532" y1="119" x2="586" y2="119" marker-end="url(#arrow)" />
+	<g transform="translate(590,79)">
 		<rect class="card" x="0" y="0" width="240" height="80" rx="12" />
 		<text class="caption" x="120" y="24" text-anchor="middle">In the bundle</text>
 		<text class="mono-accent" x="120" y="50" text-anchor="middle">example-ads.dex</text>
@@ -69,7 +69,6 @@
 		<text class="caption" x="20" y="26">Engine</text>
 		<text class="label" x="20" y="52">The first reference to a class an extension defines merges that</text>
 		<text class="label" x="20" y="68">DEX into the app, plus every extension it refers to.</text>
-		<text class="label" x="20" y="90">Patches never name a DEX file. A class nothing defines is</text>
-		<text class="label" x="20" y="106">logged once as a warning.</text>
+		<text class="label" x="20" y="90">A class nothing defines is logged once as a warning.</text>
 	</g>
 </svg>
