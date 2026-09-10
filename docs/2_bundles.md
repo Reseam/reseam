@@ -41,7 +41,7 @@ pluginManagement {
         mavenCentral()
         gradlePluginPortal()
         maven("https://git.reseam.app/api/packages/reseam/maven") {
-            mavenContent { includeGroup("app.reseam") }
+            mavenContent { includeGroupAndSubgroups("app.reseam") }
         }
     }
     (System.getenv("RESEAM_WORKSPACE") ?: providers.gradleProperty("reseam.workspace").orNull)
