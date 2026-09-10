@@ -75,4 +75,8 @@ feedClickHandler.before {
 
 `binding.of(value)` applies the raw path. `binding.member(name, value)` applies a member path. The input must be statically assignable to the root type; an `Object`-typed input is cast implicitly, anything else must be cast first.
 
-Next: [Shipping your own code](8_extensions.md).
+> **Pitfall.** Bindings and the code that applies them live in the same code block; the input value must come from that block. A binding declared with `fromField` only knows the field, not where the object is held, so the patch still has to read it: `thisObject.field(media.sourceField)`.
+
+> **Pitfall.** A path that reaches a null returns null (or zero) for the whole member rather than crashing the app. Code that applies a member should still handle that value; `whenNotNull` is the usual shape.
+
+Next: [Shipping your own code](9_extensions.md).

@@ -25,6 +25,8 @@ Helpers: `addPermission`, `setVersionCode`, `setVersionName`, `setMinSdk`, `setA
 
 `edit { }` opens the manifest as an [XML document](#xml) and closes it after the block.
 
+> **Pitfall.** Elements from `edit { }` are handles into a document that closes when the block returns. Keep the work inside the block; take plain values (a string, a resource id) out of it, never an `XmlElement`.
+
 ## Resources
 
 ```kotlin
@@ -37,6 +39,8 @@ resources.addString("reseam_label", "Reseam")
 - `add(type, name, value)`, `addString`, `addBool`, `addInteger`, `addColor`, `addDimen`, `addId`, `addRaw`, `getRaw`.
 - `owningComponent(type, name)`, `owningComponent(resId)`: which split defines a resource.
 - `poolGet`, `poolSet`, `poolAdd`, `poolFindRefs`, `replaceEntry(resId, poolIndex)`: the string pool, for apps that strip resource names.
+
+> **Pitfall.** Release builds often strip resource names, so `id("string", "app_name")` returns null even though the resource exists. Take the id from where the app refers to it (the manifest attribute, via `resourceRef`) and work through `replaceEntry`, as the Instagram clone patch does.
 
 ## Files
 
@@ -74,11 +78,11 @@ val app = bytecode.findClass("com.example.App")
 bytecode.classesExtending(Type.Application)
 ```
 
-`classes` lists every class. These return [raw bytecode layer](9_dex.md) handles; targets are the usual way in.
+`classes` lists every class. These return [raw bytecode layer](10_dex.md) handles; targets are the usual way in.
 
 ## Options and log
 
-`options[option]` and `options.getOrNull(option)`. See [Options](3_patches.md#options).
+`options[option]` and `options.getOrNull(option)`. See [Options](4_patches.md#options).
 
 `log.info`, `log.warn`, `log.debug`. Entries are attributed to the running patch and shown by the CLI and Reseam Manager. Resolved targets are logged at debug level.
 
@@ -94,4 +98,6 @@ files.component("config.en").write("assets/marker.txt", bytes)
 
 `components()` lists the base and every split. Without `component(...)`, operations run against the base.
 
-Next: [Reading obfuscated objects](7_bindings.md).
+> **Pitfall.** The platform refuses to install a split set whose APKs disagree on the package name or version. A change to either must be made in every component, as in the loop above, not in the base alone.
+
+Next: [Reading obfuscated objects](8_bindings.md).

@@ -22,7 +22,7 @@ my-bundle/
 ```
 
 - `apps/<app>/patch/`: the Kotlin patches for one app. Compiles to `<app>-patches.jar`, which carries both JVM classes and `classes.dex` so the engine loads it on the desktop JVM and on Android.
-- `apps/<app>/extensions/<name>/`: Java compiled against `android.jar` into `<app>-<name>.dex`. See [Extensions](8_extensions.md).
+- `apps/<app>/extensions/<name>/`: Java compiled against `android.jar` into `<app>-<name>.dex`. See [Extensions](9_extensions.md).
 - `shared/<name>/`: extensions used by more than one app. Compiles to `<name>.dex`.
 
 Modules have no build script unless they declare dependencies:
@@ -79,4 +79,4 @@ Per-patch metadata lives in the patch code. Release metadata lives in `patches.j
 
 `manifest.toml`, one `<app>-patches.jar` per app, and every extension `.dex`. No sources, no Gradle scripts. The engine links extension DEX files into the app when a patch first refers to a class they define, so patches never name them.
 
-Next: [Patches](3_patches.md).
+Next: [Your first patch](3_first_patch.md).

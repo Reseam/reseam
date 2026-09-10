@@ -28,7 +28,21 @@ val addSponsoredMessages = method("addSponsoredMessages") {
 }
 ```
 
-The patch comes first in the file. What it looks for is declared below it as [targets](4_targets.md); what it changes happens inside `execute`. Targets resolve when `execute` first uses them.
+The patch comes first in the file. What it looks for is declared below it as [targets](5_targets.md); what it changes happens inside `execute`. Targets resolve when `execute` first uses them.
+
+## How a patch runs
+
+Three moments matter, and the API is only partly available in each.
+
+1. **Load.** The engine opens the bundle and initialises the patch jar's top-level values: every `patch { }` and every target. It reads metadata (name, description, compatibility, dependencies, options) off the public top-level `val`s of type `ReseamPatch`. Nothing has looked at the app yet. A target is only a description here; `.method`, `.explain()`, `options[...]` and every scope throw `This API is only available while a patch is executing`.
+2. **Selection.** The user, or the CLI flags, decide which patches run. A patch is skipped when its package or version does not match the APK, when a dependency was skipped, or when it is disabled.
+3. **Patch time.** `execute { }` runs once with the runtime as receiver. A target resolves the first time this patch touches it and stays cached until the patch finishes; the next patch resolves it again against the app as that patch sees it. Code blocks such as `before { }` run immediately and emit instructions into the method. After every patch that depends on this one has finished, `afterDependents { }` runs the same way.
+
+> **Pitfall.** Only public top-level `val`s are discovered. A `private val`, a patch inside an `object`, or a `fun` returning a patch is invisible to the engine, and a patch depending on one fails to load with `depends on a patch that is not declared as a public top-level value`.
+
+> **Pitfall.** Top-level initialisers run at load time for the whole file. Code that touches the app there (calling `someTarget.method` outside `execute`) throws while the bundle loads; the engine logs `patch declaration failed to initialize` for the member and skips it, so a typo in one file can make several patches disappear from the list. Keep top-level code to declarations.
+
+> **Pitfall.** Two patches with the same name in one bundle is an error before any patch runs. Names are identities.
 
 ## Declaration
 
@@ -44,7 +58,7 @@ Inside the block:
 - `hidden()`: keep a named patch off the lists.
 - `stringOption(...)` and the other option constructors: declare an [option](#options).
 - `settings(host, section(...), ...)`: register [settings](#settings) with a host, which becomes a dependency.
-- `execute { }`: the patch body. The receiver is the [runtime](6_runtime.md).
+- `execute { }`: the patch body. The receiver is the [runtime](7_runtime.md).
 - `afterDependents { }`: runs after every patch depending on this one has finished. Most patches do not need it.
 
 ## Compatibility
@@ -70,6 +84,8 @@ compatibleWith(TELEGRAM)
 ```
 
 The engine skips a patch whose package or version does not match the APK and reports why. A patch with no `compatibleWith` applies to every app.
+
+> **Pitfall.** Pinning versions means the patch is skipped on every other version, including ones where it would have worked. Leaving versions off means the patch runs everywhere and fails loudly when a target stops matching. Both are defensible; pin when a wrong match would do damage silently (a rewritten constant, a replaced body), leave open when a failed match is the worst case.
 
 ## Dependencies
 
@@ -98,6 +114,8 @@ A dependency runs before its dependents. Skipping a dependency skips its depende
 
 An uncaught exception marks the patch as failed; the run continues, and patches depending on it are skipped. When partial success is acceptable, log a warning and return instead of throwing.
 
+> **Pitfall.** A failed patch does not roll back what it already changed. Resolve every target you need before the first mutation when a half-applied patch would leave the app broken: reading `target.method` (or any property) forces resolution.
+
 ## Options
 
 Options are values the user supplies when applying the patch. Declare them in the patch block and read them by reference in `execute`:
@@ -122,6 +140,8 @@ val cloneInstagram = patch("Clone Instagram") {
 
 `options[option]` returns the value with the engine's defaults applied. It throws for an optional option without a default that the user left empty; `options.getOrNull(option)` returns null instead. A `pathOption` yields an `OptionPath` with `listContents()` and `readFile(relativePath)`.
 
+> **Pitfall.** Options are read inside `execute`, never in the patch block: the block runs at load time, before any user has set anything.
+
 From the CLI: `--option <patch>.<key>=<value>`.
 
 ## Settings
@@ -141,7 +161,9 @@ object TelegramSettings {
 }
 ```
 
-`toggle`, `text`, `folder`, `choice(title, default, choices = listOf(Choice(value, title)))`. Pass `key = "..."` to pin a key; renaming a property otherwise changes the key and resets what users chose.
+`toggle`, `text`, `folder`, `choice(title, default, choices = listOf(Choice(value, title)))`. Pass `key = "..."` to pin a key.
+
+> **Pitfall.** The key is `<object>.<property>` in snake case (`telegram_settings.hide_sponsored_ads`) and is what the patched app stores the value under. Renaming the object or the property changes the key and resets the setting for every user. Pin `key =` before the first release.
 
 A host is an internal patch that installs the settings runtime and screen for one app:
 
@@ -161,6 +183,6 @@ val telegramSettings = settingsHost("telegram") {
 }
 ```
 
-`install` runs after every patch that registered settings with the host, once the host has written `assets/reseam/settings.json` for the runtime to read. Toggles gate emitted code; see [Gates](5_code.md#gates).
+`install` runs after every patch that registered settings with the host, once the host has written `assets/reseam/settings.json` for the runtime to read. Toggles gate emitted code; see [Gates](6_code.md#gates).
 
-Next: [Finding code in the app](4_targets.md).
+Next: [Finding code in the app](5_targets.md).

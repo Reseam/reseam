@@ -39,4 +39,4 @@ reseam patch target.apk \
   --output patched.apk
 ```
 
-Next: [Bundles](2_bundles.md). For the release flow, see [Publishing](10_publish.md).
+Next: [Bundles](2_bundles.md), then [Your first patch](3_first_patch.md). For the release flow, see [Publishing](11_publish.md).

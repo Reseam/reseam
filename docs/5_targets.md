@@ -4,7 +4,7 @@ App code is obfuscated and method names change with every release, so a patch ne
 
 ![Two releases of the same app on the left, 19.42 and 20.08. The method is named xyz() in one and q() in the other, but both load the string sponsored_label, return a boolean, and call renderFeedItem. On the right, a target declared as method("isSponsored") with strings("sponsored_label") and returns(Type.Boolean) matches both releases. Names change between releases; strings, types, and calls usually stay. Exactly one method must match.](fingerprint-match.svg)
 
-Targets are top-level values. They resolve the first time a patch uses them and stay cached for the rest of that patch.
+Targets are top-level values. They resolve the first time a patch uses them and stay cached for the rest of that patch. Outside a running patch a target is only a description: reading `target.method` at load time throws.
 
 Every type is accepted as a descriptor (`Ljava/lang/String;`), a dotted name (`java.lang.String`), or a `Type` constant (`Type.String`, `Type.Boolean`, `Type.Void`, `Type.List`, `Type.Context`, and so on). Arrays take a `[]` suffix or a leading `[`.
 
@@ -41,6 +41,23 @@ The string is a label for reports and errors. The block runs when the target res
 | `first()` | Take the best candidate even when several tie. |
 
 Exactly one method must satisfy the query. More than one is an error listing the candidates, unless `rankBy` produces a single best score or `first()` is set.
+
+### How a query searches
+
+The engine indexes the app once per patch run: strings, literals, names, return and parameter types, opcodes, and who calls whom. A query does not scan every method. It starts from the constraints that select fewest candidates and checks the rest against them:
+
+1. `inClass`, `calls`, `calledBy`, `strings`, `literals` seed the candidate set from the indexes and intersect, smallest first.
+2. With none of those, `name` seeds it.
+3. With none of those either, `returns`, `params`, `hasParam`, and `opcode` seed it. These match thousands of methods in a large app.
+4. With nothing selective at all, every method in the app is a candidate.
+
+The report a failed target prints shows this pipeline: `strings("x"): 3 candidate method(s)`, then which constraint rejected the rest.
+
+> **Pitfall.** A query with only shape constraints, such as `method { returns(Type.Boolean); paramCount(1) }`, considers most of the app and almost always finds several matches. Give every query at least one of: a string the method loads, a literal, the class it is in, or a method it calls or is called by. Names are fine when scoped to a class.
+
+> **Pitfall.** `first()` accepts whichever candidate sorts first by descriptor. Use it only when the matches are interchangeable, for example identical overloads that all need the same change. For anything else, add a constraint or `rankBy` so the choice is explained in the report and survives an app update.
+
+> **Pitfall.** `methodTarget { }`, `classTarget { }`, and loops over `bytecode.classes` walk the app by hand and are not indexed. Reach for them when no query expresses the lookup, and keep them narrow: start from a class you already have rather than from `bytecode.classes`.
 
 `rankBy` sees the candidate: `method`, `paramCount`, `type` (its class descriptor), `methods(proto)`, `zeroArgListGetters()`, `callSitesFollowedByCast(type, lookAhead)`.
 
@@ -103,13 +120,15 @@ From a point: `previous { }` walks back to the nearest match, `next { }` walks f
 
 `captureAs("name")` records the register the instruction writes, typed from the instruction, for `capture("name")` in code emitted at a later point. Pass a type when it cannot be inferred.
 
-Resolve points before mutating their method, or declare them per use: an index goes stale once code is inserted above it.
+> **Pitfall.** A point is an instruction index. Inserting code above it in the same method shifts the instruction, and the cached index now names something else. Emit at points before emitting at the method's entry, or resolve every point you need first: `captureAs` and `before` on a point resolve it; reading `point.index` does too. The Instagram download patch is a worked example: it captures two points, then emits once.
+
+> **Pitfall.** `previous { }` takes one step; `next { }` takes a sequence and lands on its last step. Both fail when nothing matches; neither wraps around.
 
 ## Built-in and custom targets
 
 `appEntry` is `onCreate()` of the `Application` subclass the manifest names. When the class does not override it, one calling `super.onCreate()` is added.
 
-When no query fits, resolve by hand with the [raw bytecode layer](9_dex.md):
+When no query fits, resolve by hand with the [raw bytecode layer](10_dex.md):
 
 ```kotlin
 val carouselStateClass = classTarget("carouselStateClass") {
@@ -119,8 +138,16 @@ val carouselStateClass = classTarget("carouselStateClass") {
 
 `methodTarget`, `classTarget`, and `fieldTarget` take a block with the runtime as receiver that returns a `Method`, `DexClass`, or `FieldRef`.
 
-## Reports
+## Debugging a target
 
-`target.explain()` returns why the target resolved the way it did: the winner, how many candidates were considered, the reasons, and the near misses. A failed resolution throws with the same report. Every resolved target is logged at debug level with its winner.
+A target that does not resolve fails the patch with its report: how many candidates were considered, which constraints seeded and rejected them, and the nearest misses with the reason each lost. A target that resolves is logged as a `patch log` line with `level=debug` naming the winner, so the CLI output shows which method each target picked. Inside `execute`, `target.explain()` returns the same report for a resolved target.
 
-Next: [Changing methods](5_code.md).
+When a method that clearly exists is not found:
+
+- Check the type spelling. `returns("boolean")` is not a type; `Type.Boolean` or `"Z"` is. Dotted class names are accepted, primitives are single letters.
+- Check the string exactly. `strings` matches whole constants, not substrings; `point { stringContains(...) }` matches parts, method queries do not.
+- Check the class. `inClass` on a class target that itself resolves to the wrong class shows up as `class mismatch` on every candidate.
+
+When two methods match, the report lists both descriptors. Open them in the decompiler and pick the constraint that tells them apart.
+
+Next: [Changing methods](6_code.md).

@@ -52,3 +52,5 @@ In CI, the `generatePatchesJson` Gradle task wraps this command. `-PreleaseTag=v
 Host the `.reseam` file and `patches.json` on any static host. Treat `.reseam` files as immutable: publish a new version at a new URL rather than overwriting.
 
 Publish your public key on an identity users already trust, so they can verify the copy embedded in `patches.json`.
+
+Reference: [API reference](12_reference.md). Coming from ReVanced: [what maps to what](13_revanced.md).

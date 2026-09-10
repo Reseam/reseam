@@ -25,6 +25,10 @@ dependencies {
 }
 ```
 
+> **Pitfall.** Dependencies between extensions are `compileOnly`. Each module is dexed from its own classes only, and the engine links the dependency's DEX at patch time from the references in yours, so nothing is gained by bundling it twice. A class that ends up in two extension modules fails the bundle at load with `class ... is defined by both`.
+
+> **Pitfall.** Stubs stand in for classes the app already has. A stub with a method the real class lacks compiles fine and throws `NoSuchMethodError` in the patched app. Copy signatures from the decompiled app, and re-check them when the app updates.
+
 ## Linking
 
 Patches never name a DEX file. Declare the classes a patch calls:
@@ -37,8 +41,10 @@ object DeletedArchive : ExtClass("app.reseam.telegram.antidelete.DeletedArchive"
 
 The first time a patch refers to a class an extension defines, in emitted code, in a lookup, or in a stub implementation, the engine merges that extension's DEX into the app along with every other extension it refers to. A reference nothing defines is logged once as a warning. Two extensions defining the same class is an error at load time.
 
+> **Pitfall.** The warning `... is not defined by the app or any extension in the bundle` almost always means the `ExtClass` name has a typo or the extension module is not in the bundle (check `reseam bundle list`, which prints the DEX files). The patch still applies; the app crashes with `NoClassDefFoundError` when the call runs.
+
 ## The settings runtime
 
 Toggle gates call `app.reseam.runtime.settings.ReseamSettings`, provided by the `settings-runtime` shared extension. A bundle that uses toggles ships it; the engine links it when the first gate is emitted.
 
-Next: [Raw bytecode](9_dex.md).
+Next: [Raw bytecode](10_dex.md).
