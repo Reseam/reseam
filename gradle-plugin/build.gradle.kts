@@ -10,6 +10,10 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.25")
 }
 
+kotlin {
+    jvmToolchain(17)
+}
+
 gradlePlugin {
     plugins {
         create("workspace") {
