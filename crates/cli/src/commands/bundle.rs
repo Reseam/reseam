@@ -43,13 +43,14 @@ pub fn run_bundle_list(command: &BundleListCommand) -> Result<()> {
         return Ok(());
     }
     println!();
-    for (index, patch) in response.patches.iter().enumerate() {
+    let visible = response.patches.iter().filter(|patch| !patch.spec.hidden);
+    for (index, patch) in visible.enumerate() {
         let spec = &patch.spec;
         println!(
             "  {:>3}. [{}] {} - {}",
             index + 1,
             if spec.enabled_by_default { "on" } else { "off" },
-            spec.id,
+            spec.name,
             spec.description
         );
         if !spec.compatibility.is_empty() {
@@ -66,8 +67,19 @@ pub fn run_bundle_list(command: &BundleListCommand) -> Result<()> {
                 .collect();
             println!("       packages: {}", packages.join(", "));
         }
-        if !spec.dependencies.is_empty() {
-            println!("       depends: {}", spec.dependencies.join(", "));
+        let dependencies: Vec<&str> = spec
+            .dependencies
+            .iter()
+            .filter(|id| {
+                response
+                    .patches
+                    .iter()
+                    .any(|patch| &patch.spec.id == *id && !patch.spec.hidden)
+            })
+            .map(String::as_str)
+            .collect();
+        if !dependencies.is_empty() {
+            println!("       depends: {}", dependencies.join(", "));
         }
         if !spec.options.is_empty() {
             println!("       options:");
@@ -84,6 +96,15 @@ pub fn run_bundle_list(command: &BundleListCommand) -> Result<()> {
                 );
             }
         }
+    }
+    let hidden = response
+        .patches
+        .iter()
+        .filter(|patch| patch.spec.hidden)
+        .count();
+    if hidden > 0 {
+        println!();
+        println!("{hidden} internal patch(es) run as dependencies and are not listed");
     }
     Ok(())
 }

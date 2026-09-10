@@ -6,8 +6,9 @@
 
 use std::path::{Path, PathBuf};
 
-use jni::objects::{JObject, JObjectArray, JValue};
+use jni::objects::{GlobalRef, JObject, JObjectArray, JValue};
 use jni::JNIEnv;
+use tracing::warn;
 
 use super::jvm::{self, jvm_err, string_of};
 use super::patch::{load_class, KotlinPatch};
@@ -19,6 +20,14 @@ const PATCH_INTERFACE: &str = "app.reseam.patch.ReseamPatch";
 const NATIVE_CLASS: &str = "app.reseam.patch.Native";
 
 include!(concat!(env!("OUT_DIR"), "/jni_natives.rs"));
+
+/// A patch object and where it was declared, before its metadata is read.
+struct Found {
+    object: GlobalRef,
+    /// `<package>.<property>` of the declaration; the id of a patch that
+    /// has no user-facing name.
+    declaration: String,
+}
 
 pub fn load_patches(jars: &[PathBuf], bundle_dir: &Path) -> Result<Vec<Box<dyn Patch>>> {
     let class_names = class_names(jars);
@@ -37,20 +46,35 @@ pub fn load_patches(jars: &[PathBuf], bundle_dir: &Path) -> Result<Vec<Box<dyn P
         )
         .map_err(|e| jvm_err(format!("register natives: {e}")))?;
         let patch_class = load_class(env, &loader, PATCH_INTERFACE)?;
-        let mut patches: Vec<Box<dyn Patch>> = Vec::new();
+        let mut found: Vec<Found> = Vec::new();
         for name in &class_names {
             let Ok(class) = load_class(env, &loader, name) else {
                 jvm::clear_pending_exception(env);
                 continue;
             };
-            for object in patch_objects(env, &class, &patch_class) {
-                let patch = read_patch(env, &object, bundle_dir)?;
-                if !patch.name().is_empty() {
-                    patches.push(Box::new(patch));
+            let package = name.rsplit_once('.').map_or("", |(package, _)| package);
+            for (object, member) in patch_objects(env, &class, &patch_class) {
+                if found.iter().any(|seen| {
+                    env.is_same_object(seen.object.as_obj(), &object)
+                        .unwrap_or(false)
+                }) {
+                    continue;
                 }
+                found.push(Found {
+                    object: env
+                        .new_global_ref(&object)
+                        .map_err(|e| jvm_err(format!("global ref: {e}")))?,
+                    declaration: format!("{package}.{member}"),
+                });
             }
         }
-        Ok(patches)
+        found
+            .iter()
+            .map(|patch| {
+                read_patch(env, patch, &found, bundle_dir)
+                    .map(|patch| Box::new(patch) as Box<dyn Patch>)
+            })
+            .collect()
     })
 }
 
@@ -178,13 +202,14 @@ fn create_class_loader<'a>(env: &mut JNIEnv<'a>, jars: &[PathBuf]) -> Result<JOb
 }
 
 /// `ReseamPatch` instances exposed by `class` as public static fields or
-/// public static no-argument methods. Members are selected by their declared
-/// type first, so only classes that actually publish a patch get initialized.
+/// public static no-argument methods, each with the property name it was
+/// declared under. Members are selected by their declared type first, so
+/// only classes that actually publish a patch get initialized.
 fn patch_objects<'a>(
     env: &mut JNIEnv<'a>,
     class: &JObject<'_>,
     patch_class: &JObject<'_>,
-) -> Vec<JObject<'a>> {
+) -> Vec<(JObject<'a>, String)> {
     let mut found = Vec::new();
     let members = |env: &mut JNIEnv<'a>, getter: &str, sig: &str| -> Vec<JObject<'a>> {
         let Ok(array) = env.call_method(class, getter, sig, &[]).and_then(|v| v.l()) else {
@@ -222,9 +247,11 @@ fn patch_objects<'a>(
             .and_then(|v| v.l());
         match value {
             Ok(value) if !value.is_null() && is_instance(env, &value, patch_class) => {
-                found.push(value)
+                if let Ok(name) = string(env, &field, "getName") {
+                    found.push((value, name));
+                }
             }
-            _ => jvm::clear_pending_exception(env),
+            _ => report_member_failure(env, &field),
         }
     }
     for method in members(env, "getMethods", "()[Ljava/lang/reflect/Method;") {
@@ -251,11 +278,36 @@ fn patch_objects<'a>(
             )
             .and_then(|v| v.l());
         match value {
-            Ok(value) if !value.is_null() => found.push(value),
-            _ => jvm::clear_pending_exception(env),
+            Ok(value) if !value.is_null() => {
+                if let Ok(name) = string(env, &method, "getName") {
+                    found.push((value, property_name(&name)));
+                }
+            }
+            _ => report_member_failure(env, &method),
         }
     }
     found
+}
+
+/// A patch declaration that threw while initializing is skipped, but never
+/// silently: the class initializer's failure is what the author needs to see.
+fn report_member_failure(env: &mut JNIEnv<'_>, member: &JObject<'_>) {
+    if let Some(exception) = jvm::take_pending_exception(env) {
+        let name = string(env, member, "getName").unwrap_or_default();
+        warn!(member = name, %exception, "patch declaration failed to initialize");
+    }
+}
+
+/// `getFooBar` as the Kotlin property `fooBar`.
+fn property_name(getter: &str) -> String {
+    match getter.strip_prefix("get") {
+        Some(rest) if rest.chars().next().is_some_and(char::is_uppercase) => {
+            let mut chars = rest.chars();
+            let first = chars.next().unwrap_or_default().to_lowercase();
+            format!("{first}{}", chars.as_str())
+        }
+        _ => getter.to_string(),
+    }
 }
 
 fn is_public_static(env: &mut JNIEnv<'_>, member: &JObject<'_>) -> bool {
@@ -294,14 +346,33 @@ fn is_assignable(env: &mut JNIEnv<'_>, class: &JObject<'_>, from: &JObject<'_>) 
     .unwrap_or(false)
 }
 
-fn read_patch(env: &mut JNIEnv<'_>, patch: &JObject<'_>, bundle_dir: &Path) -> Result<KotlinPatch> {
-    let mut extension_dex: Vec<PathBuf> = strings(env, patch, "getExtensionDex")?
+fn read_patch(
+    env: &mut JNIEnv<'_>,
+    found: &Found,
+    all: &[Found],
+    bundle_dir: &Path,
+) -> Result<KotlinPatch> {
+    let patch = found.object.as_obj();
+    let name = optional_string(env, patch, "getName")?;
+    let hidden = name.is_none() || boolean(env, patch, "getHidden")?;
+    let id = name.clone().unwrap_or_else(|| found.declaration.clone());
+    let dependencies = objects(env, patch, "getDependencies")?
         .into_iter()
-        .filter(|path| !path.is_empty())
-        .map(|path| bundle_dir.join(path))
-        .collect();
-    extension_dex.sort();
-    extension_dex.dedup();
+        .map(|dependency| {
+            all.iter()
+                .find(|candidate| {
+                    env.is_same_object(candidate.object.as_obj(), &dependency)
+                        .unwrap_or(false)
+                })
+                .map(|candidate| patch_id(env, candidate))
+                .transpose()?
+                .ok_or_else(|| {
+                    jvm_err(format!(
+                        "patch {id} depends on a patch that is not declared as a public top-level value"
+                    ))
+                })
+        })
+        .collect::<Result<_>>()?;
     let compatibility = objects(env, patch, "getCompatibleWith")?
         .into_iter()
         .map(|entry| {
@@ -316,33 +387,29 @@ fn read_patch(env: &mut JNIEnv<'_>, patch: &JObject<'_>, bundle_dir: &Path) -> R
         .map(|option| read_option(env, &option))
         .collect::<Result<_>>()?;
     let spec = PatchSpec {
-        id: string(env, patch, "getName")?,
+        name: name.unwrap_or_else(|| id.clone()),
+        id,
+        hidden,
         description: string(env, patch, "getDescription")?,
-        enabled_by_default: boolean(env, patch, "getEnabled")?,
-        dependencies: strings(env, patch, "getDependencies")?
-            .into_iter()
-            .filter(|dep| !dep.is_empty())
-            .collect(),
+        enabled_by_default: !hidden && boolean(env, patch, "getEnabled")?,
+        dependencies,
         compatibility,
         options,
-        extension_dex,
     };
     Ok(KotlinPatch {
         spec,
-        object: env
-            .new_global_ref(patch)
-            .map_err(|e| jvm_err(format!("global ref: {e}")))?,
+        object: found.object.clone(),
         bundle_dir: bundle_dir.to_path_buf(),
     })
 }
 
+fn patch_id(env: &mut JNIEnv<'_>, found: &Found) -> Result<String> {
+    Ok(optional_string(env, found.object.as_obj(), "getName")?
+        .unwrap_or_else(|| found.declaration.clone()))
+}
+
 fn read_option(env: &mut JNIEnv<'_>, option: &JObject<'_>) -> Result<OptionDeclaration> {
-    let kind = object(
-        env,
-        option,
-        "getType",
-        "()Lapp/reseam/patch/PatchOptionType;",
-    )?;
+    let kind = object(env, option, "getKind", "()Lapp/reseam/patch/OptionKind;")?;
     let option_type = match string(env, &kind, "name")?.as_str() {
         "STRING" => OptionType::String,
         "BOOL" => OptionType::Bool,
@@ -350,42 +417,40 @@ fn read_option(env: &mut JNIEnv<'_>, option: &JObject<'_>) -> Result<OptionDecla
         "FLOAT" => OptionType::Float,
         "STRING_LIST" => OptionType::StringList,
         "PATH" => OptionType::Path,
-        other => return Err(jvm_err(format!("unknown PatchOptionType {other}"))),
+        other => return Err(jvm_err(format!("unknown OptionKind {other}"))),
     };
-    let default_value = match option_type {
-        OptionType::String => {
-            optional_string(env, option, "getDefaultString")?.map(OptionValue::String)
-        }
-        OptionType::Path => {
-            optional_string(env, option, "getDefaultString")?.map(|p| OptionValue::Path(p.into()))
-        }
-        OptionType::Bool => boxed(
-            env,
-            option,
-            "getDefaultBool",
-            "Ljava/lang/Boolean;",
-            |env, v| env.call_method(v, "booleanValue", "()Z", &[])?.z(),
-        )?
-        .map(OptionValue::Bool),
-        OptionType::Int => boxed(
-            env,
-            option,
-            "getDefaultInt",
-            "Ljava/lang/Long;",
-            |env, v| env.call_method(v, "longValue", "()J", &[])?.j(),
-        )?
-        .map(OptionValue::Int),
-        OptionType::Float => boxed(
-            env,
-            option,
-            "getDefaultFloat",
-            "Ljava/lang/Double;",
-            |env, v| env.call_method(v, "doubleValue", "()D", &[])?.d(),
-        )?
-        .map(OptionValue::Float),
-        OptionType::StringList => {
-            optional_strings(env, option, "getDefaultStringList")?.map(OptionValue::StringList)
-        }
+    let default = object(env, option, "getDefault", "()Ljava/lang/Object;")?;
+    let default_value = if default.is_null() {
+        None
+    } else {
+        Some(match option_type {
+            OptionType::String => OptionValue::String(
+                string_of(env, default).map_err(|e| jvm_err(format!("default: {e}")))?,
+            ),
+            OptionType::Path => OptionValue::Path(
+                string_of(env, default)
+                    .map_err(|e| jvm_err(format!("default: {e}")))?
+                    .into(),
+            ),
+            OptionType::Bool => OptionValue::Bool(
+                env.call_method(&default, "booleanValue", "()Z", &[])
+                    .and_then(|v| v.z())
+                    .map_err(|e| jvm_err(format!("default: {e}")))?,
+            ),
+            OptionType::Int => OptionValue::Int(
+                env.call_method(&default, "longValue", "()J", &[])
+                    .and_then(|v| v.j())
+                    .map_err(|e| jvm_err(format!("default: {e}")))?,
+            ),
+            OptionType::Float => OptionValue::Float(
+                env.call_method(&default, "doubleValue", "()D", &[])
+                    .and_then(|v| v.d())
+                    .map_err(|e| jvm_err(format!("default: {e}")))?,
+            ),
+            OptionType::StringList => {
+                OptionValue::StringList(list_strings(env, default, "default")?)
+            }
+        })
     };
     Ok(OptionDeclaration {
         key: string(env, option, "getKey")?,
@@ -409,32 +474,18 @@ fn object<'a>(
         .map_err(|e| jvm_err(format!("{getter}(): {e}")))
 }
 
-/// A boxed getter (`Boolean`, `Long`, ...) unwrapped with `unbox`, or `None`
-/// when it returns null.
-fn boxed<T>(
-    env: &mut JNIEnv<'_>,
-    target: &JObject<'_>,
-    getter: &str,
-    sig: &str,
-    unbox: impl FnOnce(&mut JNIEnv<'_>, &JObject<'_>) -> jni::errors::Result<T>,
-) -> Result<Option<T>> {
-    let value = object(env, target, getter, &format!("(){sig}"))?;
-    if value.is_null() {
-        return Ok(None);
-    }
-    unbox(env, &value)
-        .map(Some)
-        .map_err(|e| jvm_err(format!("{getter}: {e}")))
-}
-
 fn optional_string(
     env: &mut JNIEnv<'_>,
     target: &JObject<'_>,
     getter: &str,
 ) -> Result<Option<String>> {
-    boxed(env, target, getter, "Ljava/lang/String;", |env, v| {
-        string_of(env, env.new_local_ref(v)?)
-    })
+    let value = object(env, target, getter, "()Ljava/lang/String;")?;
+    if value.is_null() {
+        return Ok(None);
+    }
+    string_of(env, value)
+        .map(Some)
+        .map_err(|e| jvm_err(format!("{getter}: {e}")))
 }
 
 fn string(env: &mut JNIEnv<'_>, target: &JObject<'_>, getter: &str) -> Result<String> {
@@ -466,18 +517,32 @@ fn optional_objects<'a>(
     if list.is_null() {
         return Ok(None);
     }
+    list_objects(env, list, getter).map(Some)
+}
+
+fn list_objects<'a>(
+    env: &mut JNIEnv<'a>,
+    list: JObject<'a>,
+    what: &str,
+) -> Result<Vec<JObject<'a>>> {
     let size = env
         .call_method(&list, "size", "()I", &[])
         .and_then(|v| v.i())
-        .map_err(|e| jvm_err(format!("{getter}().size(): {e}")))?;
+        .map_err(|e| jvm_err(format!("{what}.size(): {e}")))?;
     (0..size)
         .map(|i| {
             env.call_method(&list, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])
                 .and_then(|v| v.l())
-                .map_err(|e| jvm_err(format!("{getter}().get({i}): {e}")))
+                .map_err(|e| jvm_err(format!("{what}.get({i}): {e}")))
         })
-        .collect::<Result<_>>()
-        .map(Some)
+        .collect()
+}
+
+fn list_strings<'a>(env: &mut JNIEnv<'a>, list: JObject<'a>, what: &str) -> Result<Vec<String>> {
+    list_objects(env, list, what)?
+        .into_iter()
+        .map(|item| string_of(env, item).map_err(|e| jvm_err(format!("{what} element: {e}"))))
+        .collect()
 }
 
 fn optional_strings(
@@ -485,18 +550,26 @@ fn optional_strings(
     target: &JObject<'_>,
     getter: &str,
 ) -> Result<Option<Vec<String>>> {
-    optional_objects(env, target, getter)?
-        .map(|items| {
-            items
-                .into_iter()
-                .map(|item| {
-                    string_of(env, item).map_err(|e| jvm_err(format!("{getter}() element: {e}")))
-                })
-                .collect()
-        })
-        .transpose()
+    let list = object(env, target, getter, "()Ljava/util/List;")?;
+    if list.is_null() {
+        return Ok(None);
+    }
+    list_strings(env, list, getter).map(Some)
 }
 
 fn strings(env: &mut JNIEnv<'_>, target: &JObject<'_>, getter: &str) -> Result<Vec<String>> {
     optional_strings(env, target, getter).map(Option::unwrap_or_default)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::property_name;
+
+    #[test]
+    fn getters_map_to_properties() {
+        assert_eq!(property_name("getTelegramSettings"), "telegramSettings");
+        assert_eq!(property_name("getURLPatch"), "uRLPatch");
+        assert_eq!(property_name("settings"), "settings");
+        assert_eq!(property_name("getter"), "getter");
+    }
 }

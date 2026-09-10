@@ -1982,19 +1982,19 @@ private object TryItemWriter {
     }
 }
 
-fun setClassAccessFlags(c: UInt, flags: UInt) {
+internal fun setClassAccessFlags(c: UInt, flags: UInt) {
     Native.boltffi_set_class_access_flags(c.toInt(), flags.toInt())
 }
 
-fun setSuperclass(c: UInt, superclass: String) {
+internal fun setSuperclass(c: UInt, superclass: String) {
     Native.boltffi_set_superclass(c.toInt(), superclass.toByteArray(Charsets.UTF_8))
 }
 
-fun addInterface(c: UInt, interfaceDescriptor: String) {
+internal fun addInterface(c: UInt, interfaceDescriptor: String) {
     Native.boltffi_add_interface(c.toInt(), interfaceDescriptor.toByteArray(Charsets.UTF_8))
 }
 
-fun removeClass(c: UInt) {
+internal fun removeClass(c: UInt) {
     Native.boltffi_remove_class(c.toInt())
 }
 
@@ -2002,15 +2002,15 @@ fun removeClass(c: UInt) {
  * A new empty class in DEX `dex_index`; 0 when creation fails.
  */
 
-fun createClass(dexIndex: UInt, descriptor: String, flags: UInt, superclass: String): UInt {
+internal fun createClass(dexIndex: UInt, descriptor: String, flags: UInt, superclass: String): UInt {
     return Native.boltffi_create_class(dexIndex.toInt(), descriptor.toByteArray(Charsets.UTF_8), flags.toInt(), superclass.toByteArray(Charsets.UTF_8)).toUInt()
 }
 
-fun definalClass(c: UInt) {
+internal fun definalClass(c: UInt) {
     Native.boltffi_definal_class(c.toInt())
 }
 
-fun superclassChain(c: UInt): IntArray {
+internal fun superclassChain(c: UInt): IntArray {
     val buf = Native.boltffi_superclass_chain(c.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
     return useWireBytes(buf) { buffer ->
@@ -2023,7 +2023,7 @@ fun superclassChain(c: UInt): IntArray {
  * rest virtual. Returns its handle, or 0 when the class cannot take it.
  */
 
-fun addMethod(c: UInt, method: NewMethod): UInt {
+internal fun addMethod(c: UInt, method: NewMethod): UInt {
     val wire_writer_method = WireWriterPool.acquire(method.wireEncodedSize())
         kotlin.run {
             val wire = wire_writer_method.writer
@@ -2036,11 +2036,11 @@ fun addMethod(c: UInt, method: NewMethod): UInt {
     }
 }
 
-fun removeMethod(m: UInt) {
+internal fun removeMethod(m: UInt) {
     Native.boltffi_remove_method(m.toInt())
 }
 
-fun setMethodAccessFlags(m: UInt, flags: UInt) {
+internal fun setMethodAccessFlags(m: UInt, flags: UInt) {
     Native.boltffi_set_method_access_flags(m.toInt(), flags.toInt())
 }
 
@@ -2048,7 +2048,7 @@ fun setMethodAccessFlags(m: UInt, flags: UInt) {
  * A copy of the method in the same class, under `new_name` when given.
  */
 
-fun cloneMethod(m: UInt, newName: String?): UInt {
+internal fun cloneMethod(m: UInt, newName: String?): UInt {
     val wire_writer_new_name = WireWriterPool.acquire((newName?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_new_name.writer
@@ -2065,7 +2065,7 @@ fun cloneMethod(m: UInt, newName: String?): UInt {
  * Adds a field; a static field's `initial_value` becomes its static value.
  */
 
-fun addField(c: UInt, `field`: NewField) {
+internal fun addField(c: UInt, `field`: NewField) {
     val wire_writer_field = WireWriterPool.acquire(`field`.wireEncodedSize())
         kotlin.run {
             val wire = wire_writer_field.writer
@@ -2078,15 +2078,15 @@ fun addField(c: UInt, `field`: NewField) {
     }
 }
 
-fun removeField(c: UInt, name: String) {
+internal fun removeField(c: UInt, name: String) {
     Native.boltffi_remove_field(c.toInt(), name.toByteArray(Charsets.UTF_8))
 }
 
-fun setFieldAccessFlags(c: UInt, fieldName: String, flags: UInt) {
+internal fun setFieldAccessFlags(c: UInt, fieldName: String, flags: UInt) {
     Native.boltffi_set_field_access_flags(c.toInt(), fieldName.toByteArray(Charsets.UTF_8), flags.toInt())
 }
 
-fun setStaticFieldValue(c: UInt, fieldName: String, `value`: EncodedVal) {
+internal fun setStaticFieldValue(c: UInt, fieldName: String, `value`: EncodedVal) {
     val wire_writer_value = WireWriterPool.acquire(`value`.wireEncodedSize())
         kotlin.run {
             val wire = wire_writer_value.writer
@@ -2099,7 +2099,7 @@ fun setStaticFieldValue(c: UInt, fieldName: String, `value`: EncodedVal) {
     }
 }
 
-fun addClassAnnotation(c: UInt, `annotation`: AnnotationItem) {
+internal fun addClassAnnotation(c: UInt, `annotation`: AnnotationItem) {
     val wire_writer_annotation = WireWriterPool.acquire(`annotation`.wireEncodedSize())
         kotlin.run {
             val wire = wire_writer_annotation.writer
@@ -2112,7 +2112,7 @@ fun addClassAnnotation(c: UInt, `annotation`: AnnotationItem) {
     }
 }
 
-fun addMethodAnnotation(m: UInt, `annotation`: AnnotationItem) {
+internal fun addMethodAnnotation(m: UInt, `annotation`: AnnotationItem) {
     val wire_writer_annotation = WireWriterPool.acquire(`annotation`.wireEncodedSize())
         kotlin.run {
             val wire = wire_writer_annotation.writer
@@ -2125,7 +2125,7 @@ fun addMethodAnnotation(m: UInt, `annotation`: AnnotationItem) {
     }
 }
 
-fun addFieldAnnotation(c: UInt, fieldName: String, `annotation`: AnnotationItem) {
+internal fun addFieldAnnotation(c: UInt, fieldName: String, `annotation`: AnnotationItem) {
     val wire_writer_annotation = WireWriterPool.acquire(`annotation`.wireEncodedSize())
         kotlin.run {
             val wire = wire_writer_annotation.writer
@@ -2138,89 +2138,80 @@ fun addFieldAnnotation(c: UInt, fieldName: String, `annotation`: AnnotationItem)
     }
 }
 
-fun dexCount(): UInt {
+internal fun dexCount(): UInt {
     return Native.boltffi_dex_count().toUInt()
 }
 
-fun methodDex(m: UInt): UInt {
+internal fun methodDex(m: UInt): UInt {
     return Native.boltffi_method_dex(m.toInt()).toUInt()
 }
 
-fun internString(d: UInt, s: String): UInt {
+internal fun internString(d: UInt, s: String): UInt {
     return Native.boltffi_intern_string(d.toInt(), s.toByteArray(Charsets.UTF_8)).toUInt()
 }
 
-fun internType(d: UInt, descriptor: String): UInt {
+internal fun internType(d: UInt, descriptor: String): UInt {
     return Native.boltffi_intern_type(d.toInt(), descriptor.toByteArray(Charsets.UTF_8)).toUInt()
 }
 
-fun internProto(d: UInt, proto: String): UInt {
+internal fun internProto(d: UInt, proto: String): UInt {
     return Native.boltffi_intern_proto(d.toInt(), proto.toByteArray(Charsets.UTF_8)).toUInt()
 }
 
-fun internMethod(d: UInt, descriptor: String, name: String, proto: String): UInt {
+internal fun internMethod(d: UInt, descriptor: String, name: String, proto: String): UInt {
     return Native.boltffi_intern_method(d.toInt(), descriptor.toByteArray(Charsets.UTF_8), name.toByteArray(Charsets.UTF_8), proto.toByteArray(Charsets.UTF_8)).toUInt()
 }
 
-fun internField(d: UInt, descriptor: String, name: String, fieldType: String): UInt {
+internal fun internField(d: UInt, descriptor: String, name: String, fieldType: String): UInt {
     return Native.boltffi_intern_field(d.toInt(), descriptor.toByteArray(Charsets.UTF_8), name.toByteArray(Charsets.UTF_8), fieldType.toByteArray(Charsets.UTF_8)).toUInt()
 }
 
-fun findStringIdx(d: UInt, s: String): UInt? {
+internal fun findStringIdx(d: UInt, s: String): UInt? {
     val buf = Native.boltffi_find_string_idx(d.toInt(), s.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readU32() }
 }
 
-fun getString(d: UInt, idx: UInt): String {
+internal fun getString(d: UInt, idx: UInt): String {
     val result = Native.boltffi_get_string(d.toInt(), idx.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
     return result
 }
 
-fun getTypeDescriptor(d: UInt, idx: UInt): String {
+internal fun getTypeDescriptor(d: UInt, idx: UInt): String {
     val result = Native.boltffi_get_type_descriptor(d.toInt(), idx.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
     return result
 }
 
-fun buildLookups(d: UInt) {
+internal fun buildLookups(d: UInt) {
     Native.boltffi_build_lookups(d.toInt())
 }
 
-/**
- * Merges DEX files from the bundle into the app; returns how many.
- */
-
-fun mergeExtensionDex(paths: List<String>): UInt {
-    val wire_writer_paths = WireWriterPool.acquire((4 + paths.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }))
-        kotlin.run {
-            val wire = wire_writer_paths.writer
-            wire.writeU32(paths.size.toUInt()); paths.forEach { item -> wire.writeString(item) }
-        }
-    try {
-        return Native.boltffi_merge_extension_dex(wire_writer_paths.buffer).toUInt()
-    } finally {
-        wire_writer_paths.close()
-    }
-}
-
-fun findMethod(classDescriptor: String, methodName: String): UInt? {
+internal fun findMethod(classDescriptor: String, methodName: String): UInt? {
     val buf = Native.boltffi_find_method(classDescriptor.toByteArray(Charsets.UTF_8), methodName.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readU32() }
 }
 
-fun findMethodByName(name: String): UInt? {
+internal fun findMethodByName(name: String): UInt? {
     val buf = Native.boltffi_find_method_by_name(name.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readU32() }
 }
 
-fun findMethodsByStrings(strings: List<String>): IntArray {
+internal fun findMethodsByName(name: String): IntArray {
+    val buf = Native.boltffi_find_methods_by_name(name.toByteArray(Charsets.UTF_8))
+        ?: throw FfiException(-1, "Null buffer returned")
+    return useWireBytes(buf) { buffer ->
+        buffer.asIntBuffer().let { ib -> IntArray(ib.remaining()).also { ib.get(it) } }
+    }
+}
+
+internal fun findMethodsByStrings(strings: List<String>): IntArray {
     val wire_writer_strings = WireWriterPool.acquire((4 + strings.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }))
         kotlin.run {
             val wire = wire_writer_strings.writer
@@ -2242,7 +2233,7 @@ fun findMethodsByStrings(strings: List<String>): IntArray {
  * exact parameter list, and a parameter of `parameter` type anywhere.
  */
 
-fun findMethodsByProto(returnType: String?, parameterTypes: List<String>?, parameter: String?): IntArray {
+internal fun findMethodsByProto(returnType: String?, parameterTypes: List<String>?, parameter: String?): IntArray {
     val wire_writer_return_type = WireWriterPool.acquire((returnType?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_return_type.writer
@@ -2275,7 +2266,7 @@ fun findMethodsByProto(returnType: String?, parameterTypes: List<String>?, param
  * Negative opcodes match any instruction.
  */
 
-fun findMethodsByOpcodes(pattern: IntArray): IntArray {
+internal fun findMethodsByOpcodes(pattern: IntArray): IntArray {
     val buf = Native.boltffi_find_methods_by_opcodes(pattern)
         ?: throw FfiException(-1, "Null buffer returned")
     return useWireBytes(buf) { buffer ->
@@ -2283,7 +2274,7 @@ fun findMethodsByOpcodes(pattern: IntArray): IntArray {
     }
 }
 
-fun findMethodByFingerprint(fp: FingerprintDef): FingerprintResult? {
+internal fun findMethodByFingerprint(fp: FingerprintDef): FingerprintResult? {
     val wire_writer_fp = WireWriterPool.acquire(fp.wireEncodedSize())
         kotlin.run {
             val wire = wire_writer_fp.writer
@@ -2299,7 +2290,7 @@ fun findMethodByFingerprint(fp: FingerprintDef): FingerprintResult? {
     }
 }
 
-fun findMethodsByFingerprint(fp: FingerprintDef): List<FingerprintResult> {
+internal fun findMethodsByFingerprint(fp: FingerprintDef): List<FingerprintResult> {
     val wire_writer_fp = WireWriterPool.acquire(fp.wireEncodedSize())
         kotlin.run {
             val wire = wire_writer_fp.writer
@@ -2316,14 +2307,14 @@ fun findMethodsByFingerprint(fp: FingerprintDef): List<FingerprintResult> {
     }
 }
 
-fun findClass(descriptor: String): UInt? {
+internal fun findClass(descriptor: String): UInt? {
     val buf = Native.boltffi_find_class(descriptor.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readU32() }
 }
 
-fun getAllClasses(): IntArray {
+internal fun getAllClasses(): IntArray {
     val buf = Native.boltffi_get_all_classes()
         ?: throw FfiException(-1, "Null buffer returned")
     return useWireBytes(buf) { buffer ->
@@ -2331,21 +2322,21 @@ fun getAllClasses(): IntArray {
     }
 }
 
-fun getMethodInfo(m: UInt): MethodInfo? {
+internal fun getMethodInfo(m: UInt): MethodInfo? {
     val buf = Native.boltffi_get_method_info(m.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { MethodInfo.decode(reader) }
 }
 
-fun getClassInfo(c: UInt): ClassInfo? {
+internal fun getClassInfo(c: UInt): ClassInfo? {
     val buf = Native.boltffi_get_class_info(c.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { ClassInfo.decode(reader) }
 }
 
-fun classDirectMethods(c: UInt): IntArray {
+internal fun classDirectMethods(c: UInt): IntArray {
     val buf = Native.boltffi_class_direct_methods(c.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
     return useWireBytes(buf) { buffer ->
@@ -2353,7 +2344,7 @@ fun classDirectMethods(c: UInt): IntArray {
     }
 }
 
-fun classVirtualMethods(c: UInt): IntArray {
+internal fun classVirtualMethods(c: UInt): IntArray {
     val buf = Native.boltffi_class_virtual_methods(c.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
     return useWireBytes(buf) { buffer ->
@@ -2365,14 +2356,14 @@ fun classVirtualMethods(c: UInt): IntArray {
  * Static fields first, then instance fields.
  */
 
-fun classFields(c: UInt): List<FieldInfo> {
+internal fun classFields(c: UInt): List<FieldInfo> {
     val buf = Native.boltffi_class_fields(c.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readList { FieldInfo.decode(reader) }
 }
 
-fun setInstructions(m: UInt, insns: List<Instruction>) {
+internal fun setInstructions(m: UInt, insns: List<Instruction>) {
     val wire_writer_insns = WireWriterPool.acquire((4 + insns.sumOf { item -> item.wireEncodedSize() }))
         kotlin.run {
             val wire = wire_writer_insns.writer
@@ -2389,7 +2380,7 @@ fun setInstructions(m: UInt, insns: List<Instruction>) {
  * Replaces the whole body, dropping debug info the new code cannot match.
  */
 
-fun replaceBody(m: UInt, registersSize: UShort, outsSize: UShort, insns: List<Instruction>) {
+internal fun replaceBody(m: UInt, registersSize: UShort, outsSize: UShort, insns: List<Instruction>) {
     val wire_writer_insns = WireWriterPool.acquire((4 + insns.sumOf { item -> item.wireEncodedSize() }))
         kotlin.run {
             val wire = wire_writer_insns.writer
@@ -2402,7 +2393,7 @@ fun replaceBody(m: UInt, registersSize: UShort, outsSize: UShort, insns: List<In
     }
 }
 
-fun insertInstructions(m: UInt, index: UInt, insns: List<Instruction>) {
+internal fun insertInstructions(m: UInt, index: UInt, insns: List<Instruction>) {
     val wire_writer_insns = WireWriterPool.acquire((4 + insns.sumOf { item -> item.wireEncodedSize() }))
         kotlin.run {
             val wire = wire_writer_insns.writer
@@ -2415,7 +2406,7 @@ fun insertInstructions(m: UInt, index: UInt, insns: List<Instruction>) {
     }
 }
 
-fun replaceInstruction(m: UInt, index: UInt, insn: Instruction) {
+internal fun replaceInstruction(m: UInt, index: UInt, insn: Instruction) {
     val wire_writer_insn = WireWriterPool.acquire(insn.wireEncodedSize())
         kotlin.run {
             val wire = wire_writer_insn.writer
@@ -2428,23 +2419,23 @@ fun replaceInstruction(m: UInt, index: UInt, insn: Instruction) {
     }
 }
 
-fun removeInstructions(m: UInt, index: UInt, count: UInt) {
+internal fun removeInstructions(m: UInt, index: UInt, count: UInt) {
     Native.boltffi_remove_instructions(m.toInt(), index.toInt(), count.toInt())
 }
 
-fun returnEarly(m: UInt) {
+internal fun returnEarly(m: UInt) {
     Native.boltffi_return_early(m.toInt())
 }
 
-fun returnEarlyInt(m: UInt, `value`: Int) {
+internal fun returnEarlyInt(m: UInt, `value`: Int) {
     Native.boltffi_return_early_int(m.toInt(), `value`)
 }
 
-fun returnEarlyObjectNull(m: UInt) {
+internal fun returnEarlyObjectNull(m: UInt) {
     Native.boltffi_return_early_object_null(m.toInt())
 }
 
-fun returnEarlyWide(m: UInt, `value`: Long) {
+internal fun returnEarlyWide(m: UInt, `value`: Long) {
     Native.boltffi_return_early_wide(m.toInt(), `value`)
 }
 
@@ -2453,7 +2444,7 @@ fun returnEarlyWide(m: UInt, `value`: Long) {
  * after the first. Returns how many changed.
  */
 
-fun replaceStrings(m: UInt, old: String, new: String, all: Boolean): UInt {
+internal fun replaceStrings(m: UInt, old: String, new: String, all: Boolean): UInt {
     return Native.boltffi_replace_strings(m.toInt(), old.toByteArray(Charsets.UTF_8), new.toByteArray(Charsets.UTF_8), all).toUInt()
 }
 
@@ -2462,15 +2453,15 @@ fun replaceStrings(m: UInt, old: String, new: String, all: Boolean): UInt {
  * `all` decides whether to stop after the first. Returns how many changed.
  */
 
-fun replaceLiterals(m: UInt, old: Long, new: Long, all: Boolean): UInt {
+internal fun replaceLiterals(m: UInt, old: Long, new: Long, all: Boolean): UInt {
     return Native.boltffi_replace_literals(m.toInt(), old, new, all).toUInt()
 }
 
-fun replaceMethodCall(m: UInt, index: UInt, newClass: String, newName: String, newProto: String): Boolean {
+internal fun replaceMethodCall(m: UInt, index: UInt, newClass: String, newName: String, newProto: String): Boolean {
     return Native.boltffi_replace_method_call(m.toInt(), index.toInt(), newClass.toByteArray(Charsets.UTF_8), newName.toByteArray(Charsets.UTF_8), newProto.toByteArray(Charsets.UTF_8))
 }
 
-fun insertInvokeStatic(m: UInt, index: UInt, className: String, name: String, proto: String, registers: ShortArray): Boolean {
+internal fun insertInvokeStatic(m: UInt, index: UInt, className: String, name: String, proto: String, registers: ShortArray): Boolean {
     return Native.boltffi_insert_invoke_static(m.toInt(), index.toInt(), className.toByteArray(Charsets.UTF_8), name.toByteArray(Charsets.UTF_8), proto.toByteArray(Charsets.UTF_8), registers)
 }
 
@@ -2478,11 +2469,11 @@ fun insertInvokeStatic(m: UInt, index: UInt, className: String, name: String, pr
  * Inserts a static call followed by a `move-result` into `result_register`.
  */
 
-fun insertInvokeStaticWithMoveResult(m: UInt, index: UInt, className: String, name: String, proto: String, registers: ShortArray, resultRegister: UShort, isObject: Boolean): Boolean {
+internal fun insertInvokeStaticWithMoveResult(m: UInt, index: UInt, className: String, name: String, proto: String, registers: ShortArray, resultRegister: UShort, isObject: Boolean): Boolean {
     return Native.boltffi_insert_invoke_static_with_move_result(m.toInt(), index.toInt(), className.toByteArray(Charsets.UTF_8), name.toByteArray(Charsets.UTF_8), proto.toByteArray(Charsets.UTF_8), registers, resultRegister.toShort(), isObject)
 }
 
-fun ensureOutsSize(m: UInt, minOutsSize: UShort) {
+internal fun ensureOutsSize(m: UInt, minOutsSize: UShort) {
     Native.boltffi_ensure_outs_size(m.toInt(), minOutsSize.toShort())
 }
 
@@ -2491,27 +2482,27 @@ fun ensureOutsSize(m: UInt, minOutsSize: UShort) {
  * Fails when an instruction cannot encode the shifted register.
  */
 
-fun growLocalRegisters(m: UInt, additionalLocals: UShort): Boolean {
+internal fun growLocalRegisters(m: UInt, additionalLocals: UShort): Boolean {
     return Native.boltffi_grow_local_registers(m.toInt(), additionalLocals.toShort())
 }
 
-fun registersSize(m: UInt): UShort {
+internal fun registersSize(m: UInt): UShort {
     return Native.boltffi_registers_size(m.toInt()).toUShort()
 }
 
-fun insSize(m: UInt): UShort {
+internal fun insSize(m: UInt): UShort {
     return Native.boltffi_ins_size(m.toInt()).toUShort()
 }
 
-fun outsSize(m: UInt): UShort {
+internal fun outsSize(m: UInt): UShort {
     return Native.boltffi_outs_size(m.toInt()).toUShort()
 }
 
-fun findFreeRegister(m: UInt, atIndex: UInt, exclude: ShortArray): UShort {
+internal fun findFreeRegister(m: UInt, atIndex: UInt, exclude: ShortArray): UShort {
     return Native.boltffi_find_free_register(m.toInt(), atIndex.toInt(), exclude).toUShort()
 }
 
-fun findFreeRegisters(m: UInt, atIndex: UInt, count: UInt, exclude: ShortArray): ShortArray {
+internal fun findFreeRegisters(m: UInt, atIndex: UInt, count: UInt, exclude: ShortArray): ShortArray {
     val buf = Native.boltffi_find_free_registers(m.toInt(), atIndex.toInt(), count.toInt(), exclude)
         ?: throw FfiException(-1, "Null buffer returned")
     return useWireBytes(buf) { buffer ->
@@ -2519,7 +2510,7 @@ fun findFreeRegisters(m: UInt, atIndex: UInt, count: UInt, exclude: ShortArray):
     }
 }
 
-fun findContiguousFreeRegisters(m: UInt, atIndex: UInt, count: UInt, exclude: ShortArray): ShortArray {
+internal fun findContiguousFreeRegisters(m: UInt, atIndex: UInt, count: UInt, exclude: ShortArray): ShortArray {
     val buf = Native.boltffi_find_contiguous_free_registers(m.toInt(), atIndex.toInt(), count.toInt(), exclude)
         ?: throw FfiException(-1, "Null buffer returned")
     return useWireBytes(buf) { buffer ->
@@ -2531,15 +2522,15 @@ fun findContiguousFreeRegisters(m: UInt, atIndex: UInt, count: UInt, exclude: Sh
  * The `position`th register operand of the instruction at `index`, or 0.
  */
 
-fun instructionRegister(m: UInt, index: UInt, position: UInt): UShort {
+internal fun instructionRegister(m: UInt, index: UInt, position: UInt): UShort {
     return Native.boltffi_instruction_register(m.toInt(), index.toInt(), position.toInt()).toUShort()
 }
 
-fun instructionWideLiteral(m: UInt, index: UInt): Long {
+internal fun instructionWideLiteral(m: UInt, index: UInt): Long {
     return Native.boltffi_instruction_wide_literal(m.toInt(), index.toInt())
 }
 
-fun getInstructions(m: UInt): List<Instruction> {
+internal fun getInstructions(m: UInt): List<Instruction> {
     val buf = Native.boltffi_get_instructions(m.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
@@ -2550,53 +2541,53 @@ fun getInstructions(m: UInt): List<Instruction> {
  * The instruction at `index`, or a `nop` when there is none.
  */
 
-fun getInstruction(m: UInt, index: UInt): Instruction {
+internal fun getInstruction(m: UInt, index: UInt): Instruction {
     val buf = Native.boltffi_get_instruction(m.toInt(), index.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return Instruction.decode(reader)
 }
 
-fun instructionCount(m: UInt): UInt {
+internal fun instructionCount(m: UInt): UInt {
     return Native.boltffi_instruction_count(m.toInt()).toUInt()
 }
 
-fun indexOfFirst(m: UInt, start: UInt, op: UShort): UInt? {
+internal fun indexOfFirst(m: UInt, start: UInt, op: UShort): UInt? {
     val buf = Native.boltffi_index_of_first(m.toInt(), start.toInt(), op.toShort())
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readU32() }
 }
 
-fun indexOfFirstReversed(m: UInt, start: UInt, op: UShort): UInt? {
+internal fun indexOfFirstReversed(m: UInt, start: UInt, op: UShort): UInt? {
     val buf = Native.boltffi_index_of_first_reversed(m.toInt(), start.toInt(), op.toShort())
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readU32() }
 }
 
-fun indexOfFirstLiteral(m: UInt, literal: Long): UInt? {
+internal fun indexOfFirstLiteral(m: UInt, literal: Long): UInt? {
     val buf = Native.boltffi_index_of_first_literal(m.toInt(), literal)
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readU32() }
 }
 
-fun indexOfFirstLiteralReversed(m: UInt, literal: Long): UInt? {
+internal fun indexOfFirstLiteralReversed(m: UInt, literal: Long): UInt? {
     val buf = Native.boltffi_index_of_first_literal_reversed(m.toInt(), literal)
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readU32() }
 }
 
-fun indexOfFirstString(m: UInt, s: String): UInt? {
+internal fun indexOfFirstString(m: UInt, s: String): UInt? {
     val buf = Native.boltffi_index_of_first_string(m.toInt(), s.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readU32() }
 }
 
-fun findAllIndices(m: UInt, op: UShort): IntArray {
+internal fun findAllIndices(m: UInt, op: UShort): IntArray {
     val buf = Native.boltffi_find_all_indices(m.toInt(), op.toShort())
         ?: throw FfiException(-1, "Null buffer returned")
     return useWireBytes(buf) { buffer ->
@@ -2604,7 +2595,7 @@ fun findAllIndices(m: UInt, op: UShort): IntArray {
     }
 }
 
-fun indexOfFirstMethodCall(m: UInt, definingClass: String, methodName: String, start: UInt): UInt? {
+internal fun indexOfFirstMethodCall(m: UInt, definingClass: String, methodName: String, start: UInt): UInt? {
     val buf = Native.boltffi_index_of_first_method_call(m.toInt(), definingClass.toByteArray(Charsets.UTF_8), methodName.toByteArray(Charsets.UTF_8), start.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
@@ -2615,7 +2606,7 @@ fun indexOfFirstMethodCall(m: UInt, definingClass: String, methodName: String, s
  * A field access matching every given filter; `op` below zero matches any opcode.
  */
 
-fun indexOfFirstFieldAccess(m: UInt, op: Int, fieldType: String?, definingClass: String?, start: UInt): UInt? {
+internal fun indexOfFirstFieldAccess(m: UInt, op: Int, fieldType: String?, definingClass: String?, start: UInt): UInt? {
     val wire_writer_field_type = WireWriterPool.acquire((fieldType?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_field_type.writer
@@ -2642,14 +2633,14 @@ fun indexOfFirstFieldAccess(m: UInt, op: Int, fieldType: String?, definingClass:
  * negative opcodes match anything.
  */
 
-fun indexOfOpcodeSequence(m: UInt, opcodes: IntArray, start: UInt): UInt? {
+internal fun indexOfOpcodeSequence(m: UInt, opcodes: IntArray, start: UInt): UInt? {
     val buf = Native.boltffi_index_of_opcode_sequence(m.toInt(), opcodes, start.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readU32() }
 }
 
-fun findInstructionsByLiteral(literal: Long): List<InstructionHit> {
+internal fun findInstructionsByLiteral(literal: Long): List<InstructionHit> {
     val buf = Native.boltffi_find_instructions_by_literal(literal)
         ?: throw FfiException(-1, "Null buffer returned")
     return useWireBytes(buf) { buffer ->
@@ -2657,7 +2648,7 @@ fun findInstructionsByLiteral(literal: Long): List<InstructionHit> {
     }
 }
 
-fun findInstructionsByString(s: String): List<InstructionHit> {
+internal fun findInstructionsByString(s: String): List<InstructionHit> {
     val buf = Native.boltffi_find_instructions_by_string(s.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     return useWireBytes(buf) { buffer ->
@@ -2665,7 +2656,7 @@ fun findInstructionsByString(s: String): List<InstructionHit> {
     }
 }
 
-fun findInstructionsByStringContains(substring: String): List<InstructionHit> {
+internal fun findInstructionsByStringContains(substring: String): List<InstructionHit> {
     val buf = Native.boltffi_find_instructions_by_string_contains(substring.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     return useWireBytes(buf) { buffer ->
@@ -2673,7 +2664,7 @@ fun findInstructionsByStringContains(substring: String): List<InstructionHit> {
     }
 }
 
-fun findInstructionsByResourceId(resType: String, resName: String): List<InstructionHit> {
+internal fun findInstructionsByResourceId(resType: String, resName: String): List<InstructionHit> {
     val buf = Native.boltffi_find_instructions_by_resource_id(resType.toByteArray(Charsets.UTF_8), resName.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     return useWireBytes(buf) { buffer ->
@@ -2685,7 +2676,7 @@ fun findInstructionsByResourceId(resType: String, resName: String): List<Instruc
  * Call sites of `(class_names[i], method_names[i])` pairs.
  */
 
-fun findMethodCallSites(classNames: List<String>, methodNames: List<String>): List<MethodCallSiteResult> {
+internal fun findMethodCallSites(classNames: List<String>, methodNames: List<String>): List<MethodCallSiteResult> {
     val wire_writer_class_names = WireWriterPool.acquire((4 + classNames.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }))
         kotlin.run {
             val wire = wire_writer_class_names.writer
@@ -2712,7 +2703,7 @@ fun findMethodCallSites(classNames: List<String>, methodNames: List<String>): Li
  * Accesses of `(class_names[i], field_names[i])` pairs.
  */
 
-fun findFieldAccessSites(classNames: List<String>, fieldNames: List<String>): List<MethodCallSiteResult> {
+internal fun findFieldAccessSites(classNames: List<String>, fieldNames: List<String>): List<MethodCallSiteResult> {
     val wire_writer_class_names = WireWriterPool.acquire((4 + classNames.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }))
         kotlin.run {
             val wire = wire_writer_class_names.writer
@@ -2735,7 +2726,7 @@ fun findFieldAccessSites(classNames: List<String>, fieldNames: List<String>): Li
     }
 }
 
-fun findInstructionsByInvoke(definingClass: String, methodName: String): List<InstructionHit> {
+internal fun findInstructionsByInvoke(definingClass: String, methodName: String): List<InstructionHit> {
     val buf = Native.boltffi_find_instructions_by_invoke(definingClass.toByteArray(Charsets.UTF_8), methodName.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     return useWireBytes(buf) { buffer ->
@@ -2743,7 +2734,7 @@ fun findInstructionsByInvoke(definingClass: String, methodName: String): List<In
     }
 }
 
-fun allMethodHandles(): IntArray {
+internal fun allMethodHandles(): IntArray {
     val buf = Native.boltffi_all_method_handles()
         ?: throw FfiException(-1, "Null buffer returned")
     return useWireBytes(buf) { buffer ->
@@ -2751,42 +2742,42 @@ fun allMethodHandles(): IntArray {
     }
 }
 
-fun instructionStringRef(m: UInt, index: UInt): String? {
+internal fun instructionStringRef(m: UInt, index: UInt): String? {
     val buf = Native.boltffi_instruction_string_ref(m.toInt(), index.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readString() }
 }
 
-fun instructionMethodRef(m: UInt, index: UInt): MethodRef? {
+internal fun instructionMethodRef(m: UInt, index: UInt): MethodRef? {
     val buf = Native.boltffi_instruction_method_ref(m.toInt(), index.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { MethodRef.decode(reader) }
 }
 
-fun instructionFieldRef(m: UInt, index: UInt): FieldRef? {
+internal fun instructionFieldRef(m: UInt, index: UInt): FieldRef? {
     val buf = Native.boltffi_instruction_field_ref(m.toInt(), index.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { FieldRef.decode(reader) }
 }
 
-fun instructionTypeRef(m: UInt, index: UInt): String? {
+internal fun instructionTypeRef(m: UInt, index: UInt): String? {
     val buf = Native.boltffi_instruction_type_ref(m.toInt(), index.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readString() }
 }
 
-fun componentNames(): List<String> {
+internal fun componentNames(): List<String> {
     val buf = Native.boltffi_component_names()
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readList { reader.readString() }
 }
 
-fun fileList(component: String?): List<String> {
+internal fun fileList(component: String?): List<String> {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -2802,7 +2793,7 @@ fun fileList(component: String?): List<String> {
     }
 }
 
-fun fileRead(component: String?, apkPath: String): ByteArray? {
+internal fun fileRead(component: String?, apkPath: String): ByteArray? {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -2822,7 +2813,7 @@ fun fileRead(component: String?, apkPath: String): ByteArray? {
  * The original, unmodified bytes of the component's APK file.
  */
 
-fun fileSource(component: String?): ByteArray? {
+internal fun fileSource(component: String?): ByteArray? {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -2842,7 +2833,7 @@ fun fileSource(component: String?): ByteArray? {
  * The DER-encoded X.509 certificate of each signer of the component's APK.
  */
 
-fun fileSigners(component: String?): List<ByteArray> {
+internal fun fileSigners(component: String?): List<ByteArray> {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -2858,7 +2849,7 @@ fun fileSigners(component: String?): List<ByteArray> {
     }
 }
 
-fun fileInject(component: String?, apkPath: String, `data`: ByteArray, stored: Boolean) {
+internal fun fileInject(component: String?, apkPath: String, `data`: ByteArray, stored: Boolean) {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -2871,7 +2862,7 @@ fun fileInject(component: String?, apkPath: String, `data`: ByteArray, stored: B
     }
 }
 
-fun fileDelete(component: String?, apkPath: String) {
+internal fun fileDelete(component: String?, apkPath: String) {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -2888,7 +2879,7 @@ fun fileDelete(component: String?, apkPath: String) {
  * Copies a file from the bundle into the APK.
  */
 
-fun fileCopy(component: String?, bundleRelative: String, apkPath: String) {
+internal fun fileCopy(component: String?, bundleRelative: String, apkPath: String) {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -2901,19 +2892,19 @@ fun fileCopy(component: String?, bundleRelative: String, apkPath: String) {
     }
 }
 
-fun logInfo(msg: String) {
+internal fun logInfo(msg: String) {
     Native.boltffi_log_info(msg.toByteArray(Charsets.UTF_8))
 }
 
-fun logWarn(msg: String) {
+internal fun logWarn(msg: String) {
     Native.boltffi_log_warn(msg.toByteArray(Charsets.UTF_8))
 }
 
-fun logDebug(msg: String) {
+internal fun logDebug(msg: String) {
     Native.boltffi_log_debug(msg.toByteArray(Charsets.UTF_8))
 }
 
-fun manifestPackageName(component: String?): String? {
+internal fun manifestPackageName(component: String?): String? {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -2929,7 +2920,7 @@ fun manifestPackageName(component: String?): String? {
     }
 }
 
-fun manifestVersionCode(component: String?): UInt? {
+internal fun manifestVersionCode(component: String?): UInt? {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -2945,7 +2936,7 @@ fun manifestVersionCode(component: String?): UInt? {
     }
 }
 
-fun manifestVersionName(component: String?): String? {
+internal fun manifestVersionName(component: String?): String? {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -2961,7 +2952,7 @@ fun manifestVersionName(component: String?): String? {
     }
 }
 
-fun manifestMinSdkVersion(component: String?): UInt? {
+internal fun manifestMinSdkVersion(component: String?): UInt? {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -2977,7 +2968,7 @@ fun manifestMinSdkVersion(component: String?): UInt? {
     }
 }
 
-fun manifestSplitName(component: String?): String? {
+internal fun manifestSplitName(component: String?): String? {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -2993,7 +2984,7 @@ fun manifestSplitName(component: String?): String? {
     }
 }
 
-fun manifestSetVersionCode(component: String?, code: UInt) {
+internal fun manifestSetVersionCode(component: String?, code: UInt) {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3006,7 +2997,7 @@ fun manifestSetVersionCode(component: String?, code: UInt) {
     }
 }
 
-fun manifestSetVersionName(component: String?, name: String) {
+internal fun manifestSetVersionName(component: String?, name: String) {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3019,7 +3010,7 @@ fun manifestSetVersionName(component: String?, name: String) {
     }
 }
 
-fun manifestSetMinSdk(component: String?, sdk: UInt) {
+internal fun manifestSetMinSdk(component: String?, sdk: UInt) {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3032,7 +3023,7 @@ fun manifestSetMinSdk(component: String?, sdk: UInt) {
     }
 }
 
-fun manifestAddPermission(component: String?, permission: String) {
+internal fun manifestAddPermission(component: String?, permission: String) {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3050,7 +3041,7 @@ fun manifestAddPermission(component: String?, permission: String) {
  * `element_name`, adding it when the element lacks it.
  */
 
-fun manifestSetAttributeInt(component: String?, elementName: String, attrName: String, `value`: Int) {
+internal fun manifestSetAttributeInt(component: String?, elementName: String, attrName: String, `value`: Int) {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3063,7 +3054,7 @@ fun manifestSetAttributeInt(component: String?, elementName: String, attrName: S
     }
 }
 
-fun manifestSetAttributeString(component: String?, elementName: String, attrName: String, `value`: String) {
+internal fun manifestSetAttributeString(component: String?, elementName: String, attrName: String, `value`: String) {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3076,7 +3067,7 @@ fun manifestSetAttributeString(component: String?, elementName: String, attrName
     }
 }
 
-fun manifestSetActivityConfigChanges(component: String?, activityName: String, configChanges: String) {
+internal fun manifestSetActivityConfigChanges(component: String?, activityName: String, configChanges: String) {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3089,7 +3080,7 @@ fun manifestSetActivityConfigChanges(component: String?, activityName: String, c
     }
 }
 
-fun manifestAddIntentFilter(component: String?, activityName: String, action: String?, category: String?, mimeType: String?) {
+internal fun manifestAddIntentFilter(component: String?, activityName: String, action: String?, category: String?, mimeType: String?) {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3120,7 +3111,7 @@ fun manifestAddIntentFilter(component: String?, activityName: String, action: St
     }
 }
 
-fun manifestAddActivityAlias(component: String?, targetActivity: String, aliasName: String, enabled: Boolean, label: String?) {
+internal fun manifestAddActivityAlias(component: String?, targetActivity: String, aliasName: String, enabled: Boolean, label: String?) {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3143,7 +3134,7 @@ fun manifestAddActivityAlias(component: String?, targetActivity: String, aliasNa
  * Copies every `intent-filter` of `from_activity` to the start of `to_activity`.
  */
 
-fun manifestCopyIntentFilters(component: String?, fromActivity: String, toActivity: String) {
+internal fun manifestCopyIntentFilters(component: String?, fromActivity: String, toActivity: String) {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3161,7 +3152,7 @@ fun manifestCopyIntentFilters(component: String?, fromActivity: String, toActivi
  * shared until the document is closed.
  */
 
-fun manifestGetDocument(component: String?): UInt? {
+internal fun manifestGetDocument(component: String?): UInt? {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3177,73 +3168,73 @@ fun manifestGetDocument(component: String?): UInt? {
     }
 }
 
-fun ctxIsActive(): Boolean {
+internal fun ctxIsActive(): Boolean {
     return Native.boltffi_ctx_is_active()
 }
 
-fun version(): String {
+internal fun version(): String {
     val result = Native.boltffi_version()
         ?: throw FfiException(-1, "Null buffer returned")
     return result
 }
 
-fun optionGetString(key: String): String? {
+internal fun optionGetString(key: String): String? {
     val buf = Native.boltffi_option_get_string(key.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readString() }
 }
 
-fun optionGetBool(key: String): Boolean? {
+internal fun optionGetBool(key: String): Boolean? {
     val buf = Native.boltffi_option_get_bool(key.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readBool() }
 }
 
-fun optionGetInt(key: String): Long? {
+internal fun optionGetInt(key: String): Long? {
     val buf = Native.boltffi_option_get_int(key.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readI64() }
 }
 
-fun optionGetFloat(key: String): Double? {
+internal fun optionGetFloat(key: String): Double? {
     val buf = Native.boltffi_option_get_float(key.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readF64() }
 }
 
-fun optionGetStringList(key: String): List<String>? {
+internal fun optionGetStringList(key: String): List<String>? {
     val buf = Native.boltffi_option_get_string_list(key.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readList { reader.readString() } }
 }
 
-fun optionGetPath(key: String): String? {
+internal fun optionGetPath(key: String): String? {
     val buf = Native.boltffi_option_get_path(key.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readString() }
 }
 
-fun optionListPathContents(key: String): List<String>? {
+internal fun optionListPathContents(key: String): List<String>? {
     val buf = Native.boltffi_option_list_path_contents(key.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readList { reader.readString() } }
 }
 
-fun optionReadPathFile(key: String, relativePath: String): ByteArray? {
+internal fun optionReadPathFile(key: String, relativePath: String): ByteArray? {
     val buf = Native.boltffi_option_read_path_file(key.toByteArray(Charsets.UTF_8), relativePath.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readBytes() }
 }
 
-fun resComponentNames(): List<String> {
+internal fun resComponentNames(): List<String> {
     val buf = Native.boltffi_res_component_names()
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
@@ -3254,14 +3245,14 @@ fun resComponentNames(): List<String> {
  * The component defining `res_type/res_name`, searching all of them.
  */
 
-fun resComponentFor(resType: String, resName: String): String? {
+internal fun resComponentFor(resType: String, resName: String): String? {
     val buf = Native.boltffi_res_component_for(resType.toByteArray(Charsets.UTF_8), resName.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readString() }
 }
 
-fun resComponentForId(resId: UInt): String? {
+internal fun resComponentForId(resId: UInt): String? {
     val buf = Native.boltffi_res_component_for_id(resId.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
@@ -3272,7 +3263,7 @@ fun resComponentForId(resId: UInt): String? {
  * The id of `res_type/res_name`; without a component every one is searched.
  */
 
-fun resId(component: String?, resType: String, resName: String): UInt? {
+internal fun resId(component: String?, resType: String, resName: String): UInt? {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3288,7 +3279,7 @@ fun resId(component: String?, resType: String, resName: String): UInt? {
     }
 }
 
-fun resExists(component: String?, resType: String, resName: String): Boolean {
+internal fun resExists(component: String?, resType: String, resName: String): Boolean {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3301,7 +3292,7 @@ fun resExists(component: String?, resType: String, resName: String): Boolean {
     }
 }
 
-fun resGetString(component: String?, name: String): String? {
+internal fun resGetString(component: String?, name: String): String? {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3317,7 +3308,7 @@ fun resGetString(component: String?, name: String): String? {
     }
 }
 
-fun resSetString(component: String?, name: String, `value`: String): Boolean {
+internal fun resSetString(component: String?, name: String, `value`: String): Boolean {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3336,7 +3327,7 @@ fun resSetString(component: String?, name: String, `value`: String): Boolean {
  * entry keeps the text as is.
  */
 
-fun resAdd(component: String?, resType: String, name: String, `value`: String): UInt? {
+internal fun resAdd(component: String?, resType: String, name: String, `value`: String): UInt? {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3352,7 +3343,7 @@ fun resAdd(component: String?, resType: String, name: String, `value`: String): 
     }
 }
 
-fun resAddId(component: String?, name: String): UInt? {
+internal fun resAddId(component: String?, name: String): UInt? {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3368,7 +3359,7 @@ fun resAddId(component: String?, name: String): UInt? {
     }
 }
 
-fun resAddRaw(component: String?, resType: String, name: String, dataType: UByte, `data`: UInt): UInt? {
+internal fun resAddRaw(component: String?, resType: String, name: String, dataType: UByte, `data`: UInt): UInt? {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3384,7 +3375,7 @@ fun resAddRaw(component: String?, resType: String, name: String, dataType: UByte
     }
 }
 
-fun resGetRaw(component: String?, resType: String, resName: String): Long? {
+internal fun resGetRaw(component: String?, resType: String, resName: String): Long? {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3400,7 +3391,7 @@ fun resGetRaw(component: String?, resType: String, resName: String): Long? {
     }
 }
 
-fun resCopy(bundleRelative: String, apkPath: String) {
+internal fun resCopy(bundleRelative: String, apkPath: String) {
     Native.boltffi_res_copy(bundleRelative.toByteArray(Charsets.UTF_8), apkPath.toByteArray(Charsets.UTF_8))
 }
 
@@ -3408,7 +3399,7 @@ fun resCopy(bundleRelative: String, apkPath: String) {
  * Copies `resources/<res_type>/<file>` from the bundle into `res/<res_type>/`.
  */
 
-fun resCopyGroup(resType: String, files: List<String>) {
+internal fun resCopyGroup(resType: String, files: List<String>) {
     val wire_writer_files = WireWriterPool.acquire((4 + files.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }))
         kotlin.run {
             val wire = wire_writer_files.writer
@@ -3421,22 +3412,22 @@ fun resCopyGroup(resType: String, files: List<String>) {
     }
 }
 
-fun resInject(apkPath: String, `data`: ByteArray) {
+internal fun resInject(apkPath: String, `data`: ByteArray) {
     Native.boltffi_res_inject(apkPath.toByteArray(Charsets.UTF_8), `data`)
 }
 
-fun resDelete(apkPath: String) {
+internal fun resDelete(apkPath: String) {
     Native.boltffi_res_delete(apkPath.toByteArray(Charsets.UTF_8))
 }
 
-fun resList(prefix: String): List<String> {
+internal fun resList(prefix: String): List<String> {
     val buf = Native.boltffi_res_list(prefix.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readList { reader.readString() }
 }
 
-fun resPoolGet(component: String?, index: UInt): String? {
+internal fun resPoolGet(component: String?, index: UInt): String? {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3452,7 +3443,7 @@ fun resPoolGet(component: String?, index: UInt): String? {
     }
 }
 
-fun resPoolSet(component: String?, index: UInt, `value`: String) {
+internal fun resPoolSet(component: String?, index: UInt, `value`: String) {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3465,7 +3456,7 @@ fun resPoolSet(component: String?, index: UInt, `value`: String) {
     }
 }
 
-fun resPoolAdd(component: String?, `value`: String): UInt? {
+internal fun resPoolAdd(component: String?, `value`: String): UInt? {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3481,7 +3472,7 @@ fun resPoolAdd(component: String?, `value`: String): UInt? {
     }
 }
 
-fun resPoolFindRefs(component: String?, stringIndex: UInt): List<ResourceRef> {
+internal fun resPoolFindRefs(component: String?, stringIndex: UInt): List<ResourceRef> {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3502,7 +3493,7 @@ fun resPoolFindRefs(component: String?, stringIndex: UInt): List<ResourceRef> {
  * entry's own component is used.
  */
 
-fun resReplaceEntry(component: String?, resId: UInt, newStringIndex: UInt) {
+internal fun resReplaceEntry(component: String?, resId: UInt, newStringIndex: UInt) {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3519,7 +3510,7 @@ fun resReplaceEntry(component: String?, resId: UInt, newStringIndex: UInt) {
  * Opens `apk_path` from the component (base when `None`) as a document.
  */
 
-fun xmlOpen(component: String?, apkPath: String): UInt? {
+internal fun xmlOpen(component: String?, apkPath: String): UInt? {
     val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
         kotlin.run {
             val wire = wire_writer_component.writer
@@ -3539,15 +3530,15 @@ fun xmlOpen(component: String?, apkPath: String): UInt? {
  * Writes the document back to the APK and releases its handle.
  */
 
-fun xmlClose(doc: UInt) {
+internal fun xmlClose(doc: UInt) {
     Native.boltffi_xml_close(doc.toInt())
 }
 
-fun xmlRoot(doc: UInt): UInt {
+internal fun xmlRoot(doc: UInt): UInt {
     return Native.boltffi_xml_root(doc.toInt()).toUInt()
 }
 
-fun xmlFindByTag(doc: UInt, tag: String): IntArray {
+internal fun xmlFindByTag(doc: UInt, tag: String): IntArray {
     val buf = Native.boltffi_xml_find_by_tag(doc.toInt(), tag.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     return useWireBytes(buf) { buffer ->
@@ -3555,7 +3546,7 @@ fun xmlFindByTag(doc: UInt, tag: String): IntArray {
     }
 }
 
-fun xmlFindByAttribute(doc: UInt, attrName: String, attrValue: String): IntArray {
+internal fun xmlFindByAttribute(doc: UInt, attrName: String, attrValue: String): IntArray {
     val buf = Native.boltffi_xml_find_by_attribute(doc.toInt(), attrName.toByteArray(Charsets.UTF_8), attrValue.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     return useWireBytes(buf) { buffer ->
@@ -3563,7 +3554,7 @@ fun xmlFindByAttribute(doc: UInt, attrName: String, attrValue: String): IntArray
     }
 }
 
-fun xmlChildren(doc: UInt, el: UInt): IntArray {
+internal fun xmlChildren(doc: UInt, el: UInt): IntArray {
     val buf = Native.boltffi_xml_children(doc.toInt(), el.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
     return useWireBytes(buf) { buffer ->
@@ -3571,20 +3562,20 @@ fun xmlChildren(doc: UInt, el: UInt): IntArray {
     }
 }
 
-fun xmlParent(doc: UInt, el: UInt): UInt? {
+internal fun xmlParent(doc: UInt, el: UInt): UInt? {
     val buf = Native.boltffi_xml_parent(doc.toInt(), el.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
     return reader.readOptional { reader.readU32() }
 }
 
-fun xmlTagName(doc: UInt, el: UInt): String {
+internal fun xmlTagName(doc: UInt, el: UInt): String {
     val result = Native.boltffi_xml_tag_name(doc.toInt(), el.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
     return result
 }
 
-fun xmlGetAttribute(doc: UInt, el: UInt, name: String): String? {
+internal fun xmlGetAttribute(doc: UInt, el: UInt, name: String): String? {
     val buf = Native.boltffi_xml_get_attribute(doc.toInt(), el.toInt(), name.toByteArray(Charsets.UTF_8))
         ?: throw FfiException(-1, "Null buffer returned")
     val reader = WireReader(buf)
@@ -3596,15 +3587,15 @@ fun xmlGetAttribute(doc: UInt, el: UInt, name: String): String? {
  * way the XML compiler does.
  */
 
-fun xmlSetAttribute(doc: UInt, el: UInt, name: String, `value`: String) {
+internal fun xmlSetAttribute(doc: UInt, el: UInt, name: String, `value`: String) {
     Native.boltffi_xml_set_attribute(doc.toInt(), el.toInt(), name.toByteArray(Charsets.UTF_8), `value`.toByteArray(Charsets.UTF_8))
 }
 
-fun xmlSetAttributeRef(doc: UInt, el: UInt, name: String, resId: UInt) {
+internal fun xmlSetAttributeRef(doc: UInt, el: UInt, name: String, resId: UInt) {
     Native.boltffi_xml_set_attribute_ref(doc.toInt(), el.toInt(), name.toByteArray(Charsets.UTF_8), resId.toInt())
 }
 
-fun xmlRemoveAttribute(doc: UInt, el: UInt, name: String) {
+internal fun xmlRemoveAttribute(doc: UInt, el: UInt, name: String) {
     Native.boltffi_xml_remove_attribute(doc.toInt(), el.toInt(), name.toByteArray(Charsets.UTF_8))
 }
 
@@ -3612,19 +3603,19 @@ fun xmlRemoveAttribute(doc: UInt, el: UInt, name: String) {
  * A detached element; attach it with `xml_append_child` or `xml_insert_before`.
  */
 
-fun xmlCreateElement(doc: UInt, tag: String): UInt {
+internal fun xmlCreateElement(doc: UInt, tag: String): UInt {
     return Native.boltffi_xml_create_element(doc.toInt(), tag.toByteArray(Charsets.UTF_8)).toUInt()
 }
 
-fun xmlAppendChild(doc: UInt, parent: UInt, child: UInt) {
+internal fun xmlAppendChild(doc: UInt, parent: UInt, child: UInt) {
     Native.boltffi_xml_append_child(doc.toInt(), parent.toInt(), child.toInt())
 }
 
-fun xmlInsertBefore(doc: UInt, child: UInt, before: UInt) {
+internal fun xmlInsertBefore(doc: UInt, child: UInt, before: UInt) {
     Native.boltffi_xml_insert_before(doc.toInt(), child.toInt(), before.toInt())
 }
 
-fun xmlRemoveElement(doc: UInt, el: UInt) {
+internal fun xmlRemoveElement(doc: UInt, el: UInt) {
     Native.boltffi_xml_remove_element(doc.toInt(), el.toInt())
 }
 
@@ -3632,7 +3623,7 @@ fun xmlRemoveElement(doc: UInt, el: UInt) {
  * A detached copy of an element, with or without its children.
  */
 
-fun xmlCloneElement(doc: UInt, el: UInt, deep: Boolean): UInt {
+internal fun xmlCloneElement(doc: UInt, el: UInt, deep: Boolean): UInt {
     return Native.boltffi_xml_clone_element(doc.toInt(), el.toInt(), deep).toUInt()
 }
 
@@ -3786,9 +3777,9 @@ private object Native {
     @JvmStatic external fun boltffi_get_string(d: Int, idx: Int): String?
     @JvmStatic external fun boltffi_get_type_descriptor(d: Int, idx: Int): String?
     @JvmStatic external fun boltffi_build_lookups(d: Int): Unit
-    @JvmStatic external fun boltffi_merge_extension_dex(paths: ByteBuffer): Int
     @JvmStatic external fun boltffi_find_method(class_descriptor: ByteArray, method_name: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_find_method_by_name(name: ByteArray): ByteArray?
+    @JvmStatic external fun boltffi_find_methods_by_name(name: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_find_methods_by_strings(strings: ByteBuffer): ByteArray?
     @JvmStatic external fun boltffi_find_methods_by_proto(return_type: ByteBuffer, parameter_types: ByteBuffer, parameter: ByteBuffer): ByteArray?
     @JvmStatic external fun boltffi_find_methods_by_opcodes(pattern: IntArray): ByteArray?

@@ -11,13 +11,7 @@ repositories {
 
 dependencies {
     implementation(kotlin("stdlib"))
-    implementation(
-        files(
-            fileTree("${projectDir}/../../patch-api/build/libs") {
-                include("reseam-patch-sdk-*.jar")
-            }
-        )
-    )
+    implementation("app.reseam:reseam-patch-sdk:0.0.0-local")
 }
 
 kotlin {

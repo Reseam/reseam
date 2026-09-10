@@ -11,6 +11,7 @@ mod convert;
 mod files;
 mod handles;
 pub(crate) mod jvm;
+mod link;
 mod loader;
 mod log_host;
 mod manifest;

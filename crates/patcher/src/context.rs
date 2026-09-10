@@ -5,7 +5,10 @@
 //! options, and decode caches.
 
 mod dex;
+mod extensions;
 mod files;
+
+pub use extensions::ExtensionSet;
 
 use reseam_apk::reseam_dex::{ClassSkeleton, EncodedMethod};
 use reseam_apk::ApkFile;
@@ -56,6 +59,7 @@ pub struct PatchContext<'a> {
     /// The method most recently decoded for inspection: patches read a
     /// method one instruction per FFI call, and this decodes it once.
     method: Option<CachedMethod>,
+    extensions: ExtensionSet,
 }
 
 struct CachedSkeleton {
@@ -76,6 +80,7 @@ impl<'a> PatchContext<'a> {
             options: PatchOptions::default(),
             skeleton: None,
             method: None,
+            extensions: ExtensionSet::default(),
         }
     }
 

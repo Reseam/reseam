@@ -106,7 +106,7 @@ fn selection(args: &PatchRequestArgs, trust: &TrustStore) -> Result<PatchSelecti
         let declaration = bundles
             .iter()
             .flat_map(|bundle| &bundle.patches)
-            .find(|candidate| candidate.name() == patch)
+            .find(|candidate| candidate.id() == patch)
             .with_context(|| format!("unknown patch '{patch}'"))?
             .spec()
             .options

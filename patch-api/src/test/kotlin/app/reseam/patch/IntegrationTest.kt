@@ -4,13 +4,12 @@
 package app.reseam.patch
 
 import kotlin.test.Test
-import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class IntegrationTest {
 
     @Test
     fun `JNI round-trip works`() {
-        val v = version()
-        assertEquals("0.1.0", v)
+        assertTrue(version().matches(Regex("""\d+\.\d+\.\d+""")))
     }
 }

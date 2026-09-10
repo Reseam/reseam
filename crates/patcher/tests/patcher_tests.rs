@@ -50,13 +50,6 @@ fn build_fixture_jar() -> PathBuf {
             let fixture_dir = root.join("tests/kotlin-runtime-bundle");
 
             run_checked(
-                Command::new(&gradle)
-                    .arg("-p")
-                    .arg(&root)
-                    .arg(":reseam-patch-sdk:jar"),
-                "build reseam patch sdk jar",
-            );
-            run_checked(
                 Command::new(&gradle).arg("-p").arg(&fixture_dir).arg("jar"),
                 "build kotlin runtime test bundle",
             );
@@ -260,11 +253,22 @@ fn kotlin_bundle_executes_against_runtime_api() {
         heap.committed_bytes
     );
 
-    assert_eq!(results.len(), 4);
+    assert_eq!(results.len(), 6);
     let statuses = results
         .iter()
         .map(|result| (result.name.as_str(), &result.status))
         .collect::<std::collections::HashMap<_, _>>();
+    let internal = patches
+        .iter()
+        .find(|patch| patch.spec().hidden)
+        .expect("the fixture declares an internal patch");
+    assert_eq!(internal.id(), "app.reseam.test.internalHelper");
+    assert_eq!(internal.spec().name, internal.id());
+    assert!(!internal.spec().enabled_by_default);
+    assert!(matches!(
+        statuses.get(internal.id()),
+        Some(&PatchStatus::Skipped { .. })
+    ));
     assert_eq!(statuses.get("finalize-owner"), Some(&&PatchStatus::Applied));
     assert_eq!(statuses.get("runtime-api"), Some(&&PatchStatus::Applied));
     assert_eq!(
@@ -316,6 +320,38 @@ fn kotlin_bundle_executes_against_runtime_api() {
         Some(b"dependent".to_vec())
     );
     assert_eq!(entry(0, "assets/split-marker.txt"), None);
+}
+
+#[test]
+fn internal_patches_run_as_dependencies() {
+    let bundle_file = write_bundle_reseam();
+    let bundle = BundleArchive::open(&bundle_file.path)
+        .expect("open runtime bundle")
+        .load()
+        .expect("load runtime bundle");
+    let patches: Vec<&dyn Patch> = bundle.patches.iter().map(Box::as_ref).collect();
+    let (_apk_dir, mut apk) = open_split_test_apk();
+    let mut ctx = PatchContext::new(&mut apk);
+
+    let selection = PatchSelection {
+        enable: ["uses-internal".to_string()].into(),
+        ..Default::default()
+    };
+    let results =
+        engine::apply_patches(&mut ctx, &patches, &selection, |_| {}).expect("apply bundle");
+    let applied: Vec<&str> = results
+        .iter()
+        .filter(|result| result.status == PatchStatus::Applied)
+        .map(|result| result.name.as_str())
+        .collect();
+    assert_eq!(applied, ["app.reseam.test.internalHelper", "uses-internal"]);
+    assert_eq!(
+        apk.component_mut(0)
+            .unwrap()
+            .read_entry("assets/internal-marker.txt")
+            .unwrap(),
+        Some(b"internal".to_vec())
+    );
 }
 
 #[test]

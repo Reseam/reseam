@@ -14,9 +14,10 @@ use reseam_apk::reseam_dex::{
 use crate::context::{ClassLocation, MethodLocation};
 use crate::kotlin::convert::kotlin_to_dex;
 use crate::kotlin::handles::{
-    alloc_class, alloc_method, bundle_path, class_location, method_location, method_ref,
-    with_class_mut, with_ctx, with_method_mut,
+    alloc_class, alloc_method, class_location, method_location, method_ref, with_class_mut,
+    with_ctx, with_method_mut,
 };
+use crate::kotlin::link::{link_descriptors, link_instructions, proto_types};
 use crate::kotlin::types::{AnnotationItem, EncodedVal, NewField, NewMethod};
 
 /// A class's DEX with the class left unmaterialized, for header-level edits.
@@ -38,6 +39,7 @@ pub fn set_class_access_flags(c: u32, flags: u32) {
 
 #[export]
 pub fn set_superclass(c: u32, superclass: String) {
+    link_descriptors([superclass.as_str()]);
     with_class_header(c, |dex, loc| {
         dex.set_superclass(loc.class_idx, &superclass).ok()
     });
@@ -45,6 +47,7 @@ pub fn set_superclass(c: u32, superclass: String) {
 
 #[export]
 pub fn add_interface(c: u32, interface_descriptor: String) {
+    link_descriptors([interface_descriptor.as_str()]);
     with_class_header(c, |dex, loc| {
         let interface = dex.intern_type(&interface_descriptor);
         dex.class_mut(loc.class_idx)
@@ -66,6 +69,7 @@ pub fn remove_class(c: u32) {
 /// A new empty class in DEX `dex_index`; 0 when creation fails.
 #[export]
 pub fn create_class(dex_index: u32, descriptor: String, flags: u32, superclass: String) -> u32 {
+    link_descriptors([superclass.as_str()]);
     with_ctx(|ctx| {
         let dex = ctx.dex_file_mut(dex_index as usize)?;
         let class_idx = dex
@@ -116,6 +120,16 @@ pub fn superclass_chain(c: u32) -> Vec<u32> {
 /// rest virtual. Returns its handle, or 0 when the class cannot take it.
 #[export]
 pub fn add_method(c: u32, method: NewMethod) -> u32 {
+    link_instructions(&method.instructions);
+    link_descriptors(
+        proto_types(&method.proto).into_iter().chain(
+            method
+                .catch_handlers
+                .iter()
+                .flat_map(|handler| handler.typed_catches.iter())
+                .map(|catch| catch.exception_type.as_str()),
+        ),
+    );
     with_class_mut(c, |dex, loc| {
         let class_desc = dex
             .type_descriptor(dex.class_header(loc.class_idx).class_type)
@@ -258,6 +272,7 @@ pub fn clone_method(m: u32, new_name: Option<String>) -> u32 {
 /// Adds a field; a static field's `initial_value` becomes its static value.
 #[export]
 pub fn add_field(c: u32, field: NewField) {
+    link_descriptors([field.field_type.as_str()]);
     with_class_mut(c, |dex, loc| {
         let class_desc = dex
             .type_descriptor(dex.class_header(loc.class_idx).class_type)
@@ -333,6 +348,7 @@ pub fn set_field_access_flags(c: u32, field_name: String, flags: u32) {
 
 #[export]
 pub fn set_static_field_value(c: u32, field_name: String, value: EncodedVal) {
+    link_descriptors(value_types(&value));
     with_class_mut(c, |dex, loc| {
         let slot = dex
             .resident_class(loc.class_idx)?
@@ -349,6 +365,7 @@ pub fn set_static_field_value(c: u32, field_name: String, value: EncodedVal) {
 
 #[export]
 pub fn add_class_annotation(c: u32, annotation: AnnotationItem) {
+    link_descriptors(annotation_types(&annotation));
     with_class_header(c, |dex, loc| {
         let annotation = annotation_item(&annotation, dex);
         let class = dex.class_mut(loc.class_idx).ok()?;
@@ -363,6 +380,7 @@ pub fn add_class_annotation(c: u32, annotation: AnnotationItem) {
 
 #[export]
 pub fn add_method_annotation(m: u32, annotation: AnnotationItem) {
+    link_descriptors(annotation_types(&annotation));
     with_method_mut(m, |dex, loc| {
         let method_idx = method_ref(dex, loc)?.method;
         let annotation = annotation_item(&annotation, dex);
@@ -387,6 +405,7 @@ pub fn add_method_annotation(m: u32, annotation: AnnotationItem) {
 
 #[export]
 pub fn add_field_annotation(c: u32, field_name: String, annotation: AnnotationItem) {
+    link_descriptors(annotation_types(&annotation));
     with_class_mut(c, |dex, loc| {
         let field = field_named(dex, loc.class_idx, &field_name)?;
         let annotation = annotation_item(&annotation, dex);
@@ -500,16 +519,6 @@ pub fn build_lookups(d: u32) {
     });
 }
 
-/// Merges DEX files from the bundle into the app; returns how many.
-#[export]
-pub fn merge_extension_dex(paths: Vec<String>) -> u32 {
-    let paths: Vec<_> = paths.iter().map(|p| bundle_path(p)).collect();
-    with_ctx(|ctx| {
-        ctx.merge_extension_dex(&paths)
-            .map_or(0, |count| count as u32)
-    })
-}
-
 fn encoded_value(value: &EncodedVal, dex: &mut DexFile) -> EncodedValue {
     match value {
         EncodedVal::Null => EncodedValue::Null,
@@ -524,6 +533,21 @@ fn encoded_value(value: &EncodedVal, dex: &mut DexFile) -> EncodedValue {
         EncodedVal::StringVal(s) => EncodedValue::String(dex.intern_string(s)),
         EncodedVal::TypeVal(desc) => EncodedValue::Type(dex.intern_type(desc)),
     }
+}
+
+fn value_types(value: &EncodedVal) -> Option<&str> {
+    match value {
+        EncodedVal::TypeVal(descriptor) => Some(descriptor.as_str()),
+        _ => None,
+    }
+}
+
+fn annotation_types(item: &AnnotationItem) -> impl Iterator<Item = &str> {
+    std::iter::once(item.annotation_type.as_str()).chain(
+        item.elements
+            .iter()
+            .filter_map(|element| value_types(&element.value)),
+    )
 }
 
 fn annotation_item(item: &AnnotationItem, dex: &mut DexFile) -> DexAnnotationItem {

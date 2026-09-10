@@ -30,6 +30,7 @@ dependencyResolutionManagement {
 
 rootProject.name = "reseam"
 
-include(":patch-api", ":sdk-kotlin")
+include(":patch-api", ":sdk-kotlin", ":gradle-plugin")
 project(":patch-api").name = "reseam-patch-sdk"
 project(":sdk-kotlin").name = "reseam-sdk"
+project(":gradle-plugin").name = "reseam-gradle-plugin"

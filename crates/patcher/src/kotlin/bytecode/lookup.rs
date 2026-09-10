@@ -16,12 +16,21 @@ use crate::kotlin::types::{
 
 #[export]
 pub fn find_method(class_descriptor: String, method_name: String) -> Option<u32> {
-    with_ctx(|ctx| ctx.find_method(&class_descriptor, &method_name)).map(alloc_method)
+    with_ctx(|ctx| {
+        ctx.find_or_link_class(&class_descriptor)?;
+        ctx.find_method(&class_descriptor, &method_name)
+    })
+    .map(alloc_method)
 }
 
 #[export]
 pub fn find_method_by_name(name: String) -> Option<u32> {
     with_ctx(|ctx| ctx.find_method_by_name(&name)).map(alloc_method)
+}
+
+#[export]
+pub fn find_methods_by_name(name: String) -> Vec<u32> {
+    alloc_methods(with_ctx(|ctx| ctx.find_methods_by_name(&name)))
 }
 
 #[export]
@@ -74,7 +83,7 @@ pub fn find_methods_by_fingerprint(fp: FingerprintDef) -> Vec<FingerprintResult>
 
 #[export]
 pub fn find_class(descriptor: String) -> Option<u32> {
-    with_ctx(|ctx| ctx.find_class(&descriptor)).map(alloc_class)
+    with_ctx(|ctx| ctx.find_or_link_class(&descriptor)).map(alloc_class)
 }
 
 #[export]

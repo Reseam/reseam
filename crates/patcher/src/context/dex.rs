@@ -7,12 +7,11 @@
 
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::path::Path;
 
 use reseam_apk::reseam_dex::{
     summarize_resident, DexFile, EncodedField, EncodedMethod, FieldIdx, Fingerprint,
     FingerprintHit, InstructionPattern, InstructionSite, MemberCounts, MethodHit, MethodIdx,
-    MethodSummary, MultiDexContainer, ParseOptions, RefKey, RefQuery, StringIdx, TypeIdx,
+    MethodSummary, MultiDexContainer, RefKey, RefQuery, StringIdx, TypeIdx,
 };
 use tracing::{debug, warn};
 
@@ -20,7 +19,6 @@ use super::{
     CachedMethod, CachedSkeleton, ClassLocation, FingerprintLocation, InstructionLocation,
     MethodLocation, PatchContext, SiteHit,
 };
-use crate::error::{PatcherError, Result as PatcherResult};
 
 type DexResult<T> = reseam_apk::reseam_dex::Result<T>;
 
@@ -219,6 +217,21 @@ impl<'a> PatchContext<'a> {
         })
     }
 
+    pub fn find_methods_by_name(&self, method_name: &str) -> Vec<MethodLocation> {
+        self.scan_all("methods by name", |dex_idx, dex| {
+            let Some(name) = dex.find_string_idx(method_name) else {
+                return Ok(Vec::new());
+            };
+            let hits = dex.scan_methods_collect(&RefQuery::default(), |view| {
+                Ok((dex.method_id(view.method).name == name).then(|| view.hit()))
+            })?;
+            Ok(hits
+                .iter()
+                .map(|hit| method_location(dex_idx, hit))
+                .collect())
+        })
+    }
+
     pub fn find_method_by_name(&self, method_name: &str) -> Option<MethodLocation> {
         self.scan_first("method by name", |dex_idx, dex| {
             Ok(dex
@@ -275,28 +288,6 @@ impl<'a> PatchContext<'a> {
             });
             ok_or_warn(dex_idx, "every method", walked);
         }
-    }
-
-    pub fn merge_extension_dex(&mut self, paths: &[impl AsRef<Path>]) -> PatcherResult<usize> {
-        for path in paths {
-            let path = path.as_ref();
-            let bytes = std::fs::read(path).map_err(|e| {
-                PatcherError::Bundle(format!(
-                    "failed to read extension DEX {}: {e}",
-                    path.display()
-                ))
-            })?;
-            let dex = reseam_apk::reseam_dex::parse_owned(bytes, ParseOptions::default()).map_err(
-                |e| {
-                    PatcherError::Bundle(format!(
-                        "failed to parse extension DEX {}: {e}",
-                        path.display()
-                    ))
-                },
-            )?;
-            self.apk.add_dex(dex);
-        }
-        Ok(paths.len())
     }
 
     pub fn find_instructions_by_literal(&self, literal: i64) -> Vec<InstructionLocation> {

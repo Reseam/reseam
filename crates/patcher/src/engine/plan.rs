@@ -84,9 +84,9 @@ impl ResolvedPlan {
                     return Ok(PatchOptions::default());
                 }
                 PatchOptions::resolve(
-                    patch.name(),
+                    patch.id(),
                     &patch.spec().options,
-                    selection.options.get(patch.name()),
+                    selection.options.get(patch.id()),
                 )
             })
             .collect::<Result<_>>()?;
@@ -129,10 +129,10 @@ impl ResolvedPlan {
 fn index_by_name<'a>(patches: &[&'a dyn Patch]) -> Result<HashMap<&'a str, usize>> {
     let mut index = HashMap::with_capacity(patches.len());
     for (idx, patch) in patches.iter().enumerate() {
-        if index.insert(patch.name(), idx).is_some() {
+        if index.insert(patch.id(), idx).is_some() {
             return Err(PatcherError::InvalidSelection(format!(
                 "patch name '{}' is used more than once in the bundle",
-                patch.name()
+                patch.id()
             )));
         }
     }
@@ -148,7 +148,7 @@ fn dependency_edges(patches: &[&dyn Patch], index: &HashMap<&str, usize>) -> Res
         for dependency in &patch.spec().dependencies {
             let Some(&dependency_idx) = index.get(dependency.as_str()) else {
                 return Err(PatcherError::MissingDependency {
-                    patch: patch.name().to_owned(),
+                    patch: patch.id().to_owned(),
                     dependency: dependency.clone(),
                 });
             };
@@ -179,7 +179,7 @@ fn topological_order(
     if order.len() != patches.len() {
         let names = (0..patches.len())
             .filter(|&i| in_degree[i] > 0)
-            .map(|i| patches[i].name().to_owned())
+            .map(|i| patches[i].id().to_owned())
             .collect();
         return Err(PatcherError::DependencyCycle(names));
     }

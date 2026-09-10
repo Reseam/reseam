@@ -47,6 +47,25 @@ const GENERATED_LOADER: &str = r#"    init {
 /// not load a library of its own on any platform.
 const HOST_REGISTERED_LOADER: &str = "";
 
+/// The bridge's transport is not part of the SDK: patch code reaches the
+/// engine through the handwritten wrappers only, so the generated functions
+/// become module-private while the data types they exchange stay public.
+fn restrict_visibility(content: &str) -> String {
+    content
+        .lines()
+        .map(|line| {
+            let restricted = ["fun "];
+            if restricted.iter().any(|prefix| line.starts_with(prefix)) {
+                format!("internal {line}")
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n"
+}
+
 /// Copies the generated bridge into the patch-api sources with the license
 /// header, unused imports dropped, and the native loader removed.
 fn publish_bridge() -> Result<()> {
@@ -75,6 +94,7 @@ fn publish_bridge() -> Result<()> {
         bail!("BoltFFI's native loader template changed; update xtask::patch_api");
     }
     content = content.replace(GENERATED_LOADER, HOST_REGISTERED_LOADER);
+    content = restrict_visibility(&content);
 
     fs::write(&dst, content).with_context(|| format!("writing {}", dst.display()))?;
     println!("Synced bridge to {}", dst.display());

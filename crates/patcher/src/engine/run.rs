@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::borrow::Cow;
-use std::collections::HashSet;
 use std::panic::{self, AssertUnwindSafe};
-use std::path::Path;
 
 use tracing::{info, info_span};
 
@@ -28,11 +26,10 @@ pub fn apply_patches(
     let package = ctx.apk().package_name().map(Cow::into_owned);
     let version = ctx.apk().version_name().map(Cow::into_owned);
     let mut run = Run::new(patches, &plan);
-    let mut merged_extensions = HashSet::new();
 
     for &idx in plan.order() {
         let patch = &patches[idx];
-        let _span = info_span!("patch", patch = patch.name()).entered();
+        let _span = info_span!("patch", patch = patch.id()).entered();
         if let Some(reason) = run.skip_reason(idx, package.as_deref(), version.as_deref()) {
             run.finish(
                 idx,
@@ -43,21 +40,11 @@ pub fn apply_patches(
             continue;
         }
 
-        ctx.begin_patch(patch.name(), plan.options(idx).clone());
+        ctx.begin_patch(patch.id(), plan.options(idx).clone());
         observer(ProgressEvent::PatchStarted {
-            patch: patch.name().to_owned(),
+            patch: patch.id().to_owned(),
         });
-        let new_extensions: Vec<&Path> = patch
-            .spec()
-            .extension_dex
-            .iter()
-            .filter(|path| merged_extensions.insert((*path).clone()))
-            .map(AsRef::as_ref)
-            .collect();
-        let outcome = ctx
-            .merge_extension_dex(&new_extensions)
-            .map_err(|error| format!("extension merge: {error}"))
-            .and_then(|_| guarded(|| patch.execute(ctx)));
+        let outcome = guarded(|| patch.execute(ctx));
         let logs = ctx.take_log_entries();
         for log in &logs {
             observer(ProgressEvent::PatchLog(log.clone()));
@@ -73,8 +60,8 @@ pub fn apply_patches(
         if plan.dependents(idx).is_empty() || !run.applied(idx) {
             continue;
         }
-        let _span = info_span!("after_dependents", patch = patch.name()).entered();
-        ctx.begin_patch(patch.name(), plan.options(idx).clone());
+        let _span = info_span!("after_dependents", patch = patch.id()).entered();
+        ctx.begin_patch(patch.id(), plan.options(idx).clone());
         let outcome = guarded(|| patch.after_dependents(ctx));
         let logs = ctx.take_log_entries();
         for log in &logs {
@@ -150,7 +137,7 @@ impl<'a> Run<'a> {
             };
             return Some(format!(
                 "dependency '{}' {detail}",
-                self.patches[dependency].name()
+                self.patches[dependency].id()
             ));
         }
         self.patches[idx].spec().incompatibility(package, version)
@@ -170,7 +157,7 @@ impl<'a> Run<'a> {
         logs: Vec<LogEntry>,
         observer: &mut impl FnMut(ProgressEvent),
     ) {
-        let name = self.patches[idx].name().to_owned();
+        let name = self.patches[idx].id().to_owned();
         observer(ProgressEvent::PatchFinished {
             patch: name.clone(),
             status: status.clone(),

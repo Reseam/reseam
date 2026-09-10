@@ -13,6 +13,7 @@ Reseam is a Rust APK patching engine. Patches are written in Kotlin against the 
 | `reseam-sdk` | Shared application-facing patch service used by clients |
 | `reseam-cli` | `reseam` command-line interface |
 | `patch-api` | Kotlin patch-author API |
+| `gradle-plugin` | Gradle plugins that build a bundle from its directory layout |
 | `xtask` | Build orchestration tasks (`cargo xtask …`) |
 
 ## Build
@@ -28,7 +29,7 @@ cargo xtask regen all
 cargo build --release
 ```
 
-The Kotlin side is one Gradle build at the workspace root: `patch-api` publishes `reseam-patch-sdk` for patch authors, `sdk-kotlin` publishes `reseam-sdk` for managers. See `sdk/README.md`.
+The Kotlin side is one Gradle build at the workspace root: `patch-api` publishes `reseam-patch-sdk` for patch authors, `gradle-plugin` publishes the `app.reseam.workspace` plugin bundles build with, `sdk-kotlin` publishes `reseam-sdk` for managers. See `sdk/README.md`.
 
 ```bash
 JAVA_HOME=/path/to/jdk cargo xtask jni-host
@@ -50,7 +51,7 @@ Patch an APK:
 
 ```bash
 reseam patch app.apk \
-  --bundle build/bundle/my-bundle.reseam \
+  --bundle build/reseam/my-bundle.reseam \
   --trust <PUBLIC_KEY_HEX> \
   --output patched.apk
 ```
@@ -59,7 +60,7 @@ Measure a real patch run:
 
 ```bash
 target/release/reseam perf app.apk \
-  --bundle build/bundle/my-bundle.reseam \
+  --bundle build/reseam/my-bundle.reseam \
   --warmup 1 \
   --iterations 5
 ```
@@ -74,14 +75,14 @@ Manage bundles:
 
 ```bash
 reseam bundle keygen --out bundle-signing.key
-reseam bundle pack build/staging --key bundle-signing.key --out build/bundle/my-bundle.reseam
-reseam bundle list build/bundle/my-bundle.reseam --trust <PUBLIC_KEY_HEX>
+reseam bundle pack build/reseam/stage --key bundle-signing.key --out build/reseam/my-bundle.reseam
+reseam bundle list build/reseam/my-bundle.reseam --trust <PUBLIC_KEY_HEX>
 ```
 
 Publish a release index:
 
 ```bash
-reseam publish patches build/bundle/my-bundle.reseam \
+reseam publish patches build/reseam/my-bundle.reseam \
   --version v0.1.0 \
   --url https://example.com/releases/my-bundle-v0.1.0.reseam
 ```

@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::path::PathBuf;
-
 use serde::Serialize;
 
 use crate::context::PatchContext;
@@ -12,7 +10,8 @@ use crate::options::OptionDeclaration;
 pub trait Patch: Send + Sync {
     fn spec(&self) -> &PatchSpec;
 
-    fn name(&self) -> &str {
+    /// The identity dependencies and selections refer to.
+    fn id(&self) -> &str {
         &self.spec().id
     }
 
@@ -34,14 +33,17 @@ pub struct Compatibility {
 #[derive(Debug, Clone, Serialize)]
 pub struct PatchSpec {
     pub id: String,
+    /// What users see. Equals `id` unless the patch is hidden.
+    pub name: String,
+    /// Hidden patches are dependencies of other patches: never listed to
+    /// users and never selected on their own.
+    pub hidden: bool,
     pub description: String,
     pub enabled_by_default: bool,
     pub dependencies: Vec<String>,
     /// Empty means every app.
     pub compatibility: Vec<Compatibility>,
     pub options: Vec<OptionDeclaration>,
-    #[serde(skip)]
-    pub extension_dex: Vec<PathBuf>,
 }
 
 impl PatchSpec {
@@ -53,21 +55,26 @@ impl PatchSpec {
         let Some(package) = package else {
             return Some("APK has no package name".to_owned());
         };
-        let Some(entry) = self
+        let entries: Vec<&Compatibility> = self
             .compatibility
             .iter()
-            .find(|entry| entry.package == package)
-        else {
+            .filter(|entry| entry.package == package)
+            .collect();
+        if entries.is_empty() {
             return Some(format!("incompatible package: {package}"));
-        };
-        if entry.versions.is_empty() {
+        }
+        if entries.iter().any(|entry| entry.versions.is_empty()) {
             return None;
         }
+        let allowed: Vec<&str> = entries
+            .iter()
+            .flat_map(|entry| entry.versions.iter().map(String::as_str))
+            .collect();
         match version {
-            Some(version) if entry.versions.iter().any(|allowed| allowed == version) => None,
+            Some(version) if allowed.contains(&version) => None,
             Some(version) => Some(format!(
                 "expected one of [{}], got {version}",
-                entry.versions.join(", ")
+                allowed.join(", ")
             )),
             None => Some("APK has no version name".to_owned()),
         }

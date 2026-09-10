@@ -2,3 +2,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 rootProject.name = "reseam-test-patches"
+
+includeBuild("../..")

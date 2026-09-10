@@ -11,7 +11,8 @@ use tracing::warn;
 
 use crate::kotlin::convert::kotlin_to_dex;
 use crate::kotlin::handles::{code_mut, method_mut, with_method_mut};
-use crate::kotlin::types::Instruction;
+use crate::kotlin::link::{link_instructions, link_method};
+use crate::kotlin::types::{Instruction, MethodRef};
 
 /// Converts instructions with the DEX, then edits the method's code.
 fn edit_code<R>(
@@ -19,6 +20,7 @@ fn edit_code<R>(
     insns: &[Instruction],
     f: impl FnOnce(&mut CodeItem, Vec<DexInsn>) -> Option<R>,
 ) -> Option<R> {
+    link_instructions(insns);
     with_method_mut(m, |dex, loc| {
         let insns: Vec<DexInsn> = insns.iter().map(|insn| kotlin_to_dex(insn, dex)).collect();
         f(code_mut(dex, loc)?, insns)
@@ -196,6 +198,11 @@ pub fn replace_method_call(
     new_name: String,
     new_proto: String,
 ) -> bool {
+    link_method(&MethodRef {
+        defining_class: new_class.clone(),
+        name: new_name.clone(),
+        proto: new_proto.clone(),
+    });
     with_method_mut(m, |dex, loc| {
         let target = dex.intern_method(&new_class, &new_name, &new_proto).ok()?;
         let insn = code_mut(dex, loc)?.instructions.get_mut(index as usize)?;
@@ -251,6 +258,11 @@ fn insert_invoke(
     registers: &[u16],
     move_result: Option<(u16, bool)>,
 ) -> bool {
+    link_method(&MethodRef {
+        defining_class: class.to_owned(),
+        name: name.to_owned(),
+        proto: proto.to_owned(),
+    });
     with_method_mut(m, |dex, loc| {
         let method = dex.intern_method(class, name, proto).ok()?;
         let code = code_mut(dex, loc)?;

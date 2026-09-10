@@ -3,7 +3,7 @@
 
 use anyhow::{ensure, Context, Result};
 use reseam_apk::ApkFile;
-use reseam_patcher::context::PatchContext;
+use reseam_patcher::context::{ExtensionSet, PatchContext};
 use reseam_patcher::engine::{self, PatchResult, PatchStatus};
 use reseam_patcher::Patch;
 
@@ -78,7 +78,12 @@ fn run(
         return Ok((results, output));
     }
 
+    let extension_paths: Vec<_> = bundles
+        .iter()
+        .flat_map(|bundle| bundle.extension_dex.iter().cloned())
+        .collect();
     let mut ctx = PatchContext::new(&mut opened.apk);
+    ctx.set_extensions(ExtensionSet::load(&extension_paths)?);
     let results = profiler
         .measure(PatchPhase::ApplyPatches, || {
             engine::apply_patches(&mut ctx, &patches, &request.selection, |event| {
