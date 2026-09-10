@@ -2461,6 +2461,30 @@ internal fun replaceMethodCall(m: UInt, index: UInt, newClass: String, newName: 
     return Native.boltffi_replace_method_call(m.toInt(), index.toInt(), newClass.toByteArray(Charsets.UTF_8), newName.toByteArray(Charsets.UTF_8), newProto.toByteArray(Charsets.UTF_8))
 }
 
+/**
+ * Every call to `from` in the app becomes a static call to `to` with the
+ * same registers; see `PatchContext::redirect_method_calls`.
+ */
+
+internal fun redirectMethodCalls(from: MethodRef, to: MethodRef): UInt {
+    val wire_writer_from = WireWriterPool.acquire(from.wireEncodedSize())
+        kotlin.run {
+            val wire = wire_writer_from.writer
+            from.wireEncodeTo(wire)
+        }
+    val wire_writer_to = WireWriterPool.acquire(to.wireEncodedSize())
+        kotlin.run {
+            val wire = wire_writer_to.writer
+            to.wireEncodeTo(wire)
+        }
+    try {
+        return Native.boltffi_redirect_method_calls(wire_writer_from.buffer, wire_writer_to.buffer).toUInt()
+    } finally {
+        wire_writer_from.close()
+        wire_writer_to.close()
+    }
+}
+
 internal fun insertInvokeStatic(m: UInt, index: UInt, className: String, name: String, proto: String, registers: ShortArray): Boolean {
     return Native.boltffi_insert_invoke_static(m.toInt(), index.toInt(), className.toByteArray(Charsets.UTF_8), name.toByteArray(Charsets.UTF_8), proto.toByteArray(Charsets.UTF_8), registers)
 }
@@ -3804,6 +3828,7 @@ private object Native {
     @JvmStatic external fun boltffi_replace_strings(m: Int, old: ByteArray, new: ByteArray, all: Boolean): Int
     @JvmStatic external fun boltffi_replace_literals(m: Int, old: Long, new: Long, all: Boolean): Int
     @JvmStatic external fun boltffi_replace_method_call(m: Int, index: Int, new_class: ByteArray, new_name: ByteArray, new_proto: ByteArray): Boolean
+    @JvmStatic external fun boltffi_redirect_method_calls(from: ByteBuffer, to: ByteBuffer): Int
     @JvmStatic external fun boltffi_insert_invoke_static(m: Int, index: Int, class_name: ByteArray, name: ByteArray, proto: ByteArray, registers: ShortArray): Boolean
     @JvmStatic external fun boltffi_insert_invoke_static_with_move_result(m: Int, index: Int, class_name: ByteArray, name: ByteArray, proto: ByteArray, registers: ShortArray, result_register: Short, is_object: Boolean): Boolean
     @JvmStatic external fun boltffi_ensure_outs_size(m: Int, min_outs_size: Short): Unit

@@ -12,6 +12,7 @@ use reseam_apk::reseam_dex::{CodeItem, DexFile, EncodedMethod};
 use rustc_hash::FxHashMap;
 
 use super::xml;
+pub(super) use crate::context::{code_mut, method_mut};
 use crate::context::{ClassLocation, MethodLocation, PatchContext};
 
 thread_local! {
@@ -220,20 +221,6 @@ pub(super) fn method_ref(dex: &DexFile, m: MethodLocation) -> Option<&EncodedMet
         &data.direct_methods
     };
     list.get(m.method_idx)
-}
-
-pub(super) fn method_mut(dex: &mut DexFile, m: MethodLocation) -> Option<&mut EncodedMethod> {
-    let data = dex.class_mut(m.class_idx).ok()?.class_data.as_mut()?;
-    let list = if m.is_virtual {
-        &mut data.virtual_methods
-    } else {
-        &mut data.direct_methods
-    };
-    list.get_mut(m.method_idx)
-}
-
-pub(super) fn code_mut(dex: &mut DexFile, m: MethodLocation) -> Option<&mut CodeItem> {
-    method_mut(dex, m)?.code.as_mut()
 }
 
 #[cfg(test)]

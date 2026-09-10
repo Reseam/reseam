@@ -116,7 +116,7 @@ Inside `patch { }` (`PatchBuilder`):
 | `ManifestScope` | `components()`, `component(name)`, `packageName`, `versionCode`, `versionName`, `minSdkVersion`, `splitName`, `applicationClass`, `setVersionCode`, `setVersionName`, `setMinSdk`, `addPermission`, `setAttributeInt`, `setAttributeString`, `setActivityConfigChanges`, `addIntentFilter`, `addActivityAlias`, `copyIntentFilters`, `addActivity(name) { XmlElement }`, `document()`, `edit { XmlDocument }`. |
 | `ResourceScope` | `components()`, `component(name)`, `owningComponent`, `id`, `exists`, `getString`, `setString`, `add`, `addString`, `addBool`, `addInteger`, `addColor`, `addDimen`, `addId`, `addRaw`, `getRaw`, `poolGet`, `poolSet`, `poolAdd`, `poolFindRefs`, `replaceEntry`. |
 | `FileScope` | `components()`, `component(name)`, `list`, `read`, `source`, `signers`, `write`, `writeStored`, `delete`, `copy(bundlePath, apkPath)`, `xml(path)`, `editXml(path) { }`. |
-| `BytecodeScope` | `classes`, `findClass(name)`, `classesExtending(type)`, `replaceAllStrings(old, new)`. |
+| `BytecodeScope` | `classes`, `findClass(name)`, `classesExtending(type)`, `replaceAllStrings(old, new)`, `redirectCalls(owner, name, to)`, `redirectCalls(from: MethodRef, to)`. |
 | `PatchLogger` | `info`, `warn`, `debug`. |
 | `XmlDocument` | `root`, `findByTag`, `findByAttribute(name, value)`, `createElement`, `close()`; `use { }`. |
 | `XmlElement` | `tag`, `parent`, `children`, `get(attr)`, `set(attr, value)`, `setInt`, `setBool`, `setResourceRef`, `removeAttribute`, `appendChild`, `insertBefore`, `remove`, `clone(deep)`. |

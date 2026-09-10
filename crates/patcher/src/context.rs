@@ -10,11 +10,19 @@ mod files;
 
 pub use extensions::ExtensionSet;
 
-use reseam_apk::reseam_dex::{ClassSkeleton, EncodedMethod};
+use reseam_apk::reseam_dex::{ClassSkeleton, CodeItem, DexFile, EncodedMethod};
 use reseam_apk::ApkFile;
 
 use crate::log::{LogEntry, PatchLog};
 use crate::options::PatchOptions;
+
+/// A method named by class descriptor, name, and prototype.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MethodKey<'a> {
+    pub class: &'a str,
+    pub name: &'a str,
+    pub proto: &'a str,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClassLocation {
@@ -110,4 +118,19 @@ impl<'a> PatchContext<'a> {
     pub(crate) fn take_log_entries(&mut self) -> Vec<LogEntry> {
         self.log.take_entries()
     }
+}
+
+/// The encoded method at `m` in a DEX whose class is materialized.
+pub fn method_mut(dex: &mut DexFile, m: MethodLocation) -> Option<&mut EncodedMethod> {
+    let data = dex.class_mut(m.class_idx).ok()?.class_data.as_mut()?;
+    let list = if m.is_virtual {
+        &mut data.virtual_methods
+    } else {
+        &mut data.direct_methods
+    };
+    list.get_mut(m.method_idx)
+}
+
+pub fn code_mut(dex: &mut DexFile, m: MethodLocation) -> Option<&mut CodeItem> {
+    method_mut(dex, m)?.code.as_mut()
 }

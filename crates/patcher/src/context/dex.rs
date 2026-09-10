@@ -10,14 +10,14 @@ use std::hash::Hash;
 
 use reseam_apk::reseam_dex::{
     summarize_resident, DexFile, EncodedField, EncodedMethod, FieldIdx, Fingerprint,
-    FingerprintHit, InstructionPattern, InstructionSite, MemberCounts, MethodHit, MethodIdx,
-    MethodSummary, MultiDexContainer, RefKey, RefQuery, StringIdx, TypeIdx,
+    FingerprintHit, Instruction, InstructionPattern, InstructionSite, MemberCounts, MethodHit,
+    MethodIdx, MethodSummary, MultiDexContainer, RefKey, RefQuery, StringIdx, TypeIdx,
 };
 use tracing::{debug, warn};
 
 use super::{
-    CachedMethod, CachedSkeleton, ClassLocation, FingerprintLocation, InstructionLocation,
-    MethodLocation, PatchContext, SiteHit,
+    code_mut, CachedMethod, CachedSkeleton, ClassLocation, FingerprintLocation,
+    InstructionLocation, MethodKey, MethodLocation, PatchContext, SiteHit,
 };
 
 type DexResult<T> = reseam_apk::reseam_dex::Result<T>;
@@ -382,6 +382,51 @@ impl<'a> PatchContext<'a> {
         })
     }
 
+    /// Retargets every call to `from` at `to`, keeping the registers: an
+    /// instance call becomes a static call whose first argument is the
+    /// receiver. Calls through `invoke-super` and `invoke-direct` keep their
+    /// meaning and are left alone. Returns how many call sites changed.
+    pub fn redirect_method_calls(&mut self, from: MethodKey<'_>, to: MethodKey<'_>) -> usize {
+        let mut changed = 0;
+        for dex_idx in 0..self.dex().iter().count() {
+            let sites: Vec<InstructionLocation> = {
+                let Some(dex) = self.dex_file(dex_idx) else {
+                    continue;
+                };
+                let Some(from_idx) = find_method_idx(dex, from) else {
+                    continue;
+                };
+                ok_or_warn(
+                    dex_idx,
+                    "redirect call sites",
+                    dex.scan_instructions(&RefQuery::all_of([RefKey::method(from_idx)]), |site| {
+                        (site.instruction.method_ref() == Some(from_idx))
+                            .then(|| instruction_location(dex_idx, site))
+                    }),
+                )
+            };
+            if sites.is_empty() {
+                continue;
+            }
+            let Some(to_idx) = self
+                .dex_file_mut(dex_idx)
+                .and_then(|dex| dex.intern_method(to.class, to.name, to.proto).ok())
+            else {
+                warn!(dex_idx, ?to, "redirect target could not be interned");
+                continue;
+            };
+            for site in sites {
+                let redirected = self
+                    .class_dex_mut(dex_idx, site.method.class_idx)
+                    .and_then(|dex| code_mut(dex, site.method))
+                    .and_then(|code| code.instructions.get_mut(site.insn_idx))
+                    .is_some_and(|insn| redirect_invoke(insn, to_idx));
+                changed += usize::from(redirected);
+            }
+        }
+        changed
+    }
+
     fn scan_all<T>(
         &self,
         what: &str,
@@ -479,4 +524,43 @@ fn instruction_location(dex_idx: usize, site: &InstructionSite<'_>) -> Instructi
         },
         insn_idx: site.insn_idx,
     }
+}
+
+fn find_method_idx(dex: &DexFile, key: MethodKey<'_>) -> Option<MethodIdx> {
+    let class = dex.find_type_idx(key.class)?;
+    let name = dex.find_string_idx(key.name)?;
+    dex.methods
+        .iter()
+        .position(|id| {
+            id.class == class
+                && id.name == name
+                && dex.proto_descriptor(&dex.proto(id.proto)) == key.proto
+        })
+        .map(|index| MethodIdx(index as u32))
+}
+
+fn redirect_invoke(insn: &mut Instruction, target: MethodIdx) -> bool {
+    *insn = match insn {
+        Instruction::InvokeVirtual { args, .. }
+        | Instruction::InvokeInterface { args, .. }
+        | Instruction::InvokeStatic { args, .. } => Instruction::InvokeStatic {
+            method: target,
+            args: args.clone(),
+        },
+        Instruction::InvokeVirtualRange {
+            first_reg, count, ..
+        }
+        | Instruction::InvokeInterfaceRange {
+            first_reg, count, ..
+        }
+        | Instruction::InvokeStaticRange {
+            first_reg, count, ..
+        } => Instruction::InvokeStaticRange {
+            method: target,
+            first_reg: *first_reg,
+            count: *count,
+        },
+        _ => return false,
+    };
+    true
 }

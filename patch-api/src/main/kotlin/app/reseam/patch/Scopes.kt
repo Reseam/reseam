@@ -7,6 +7,9 @@ package app.reseam.patch
 
 import app.reseam.patch.dex.DexClass
 import app.reseam.patch.dex.Method
+import app.reseam.patch.dex.descriptor
+import app.reseam.patch.dex.parameterTypes
+import app.reseam.patch.dex.returnType
 
 class PatchLogger internal constructor() {
     fun info(message: String) = logInfo(message)
@@ -31,6 +34,27 @@ class BytecodeScope internal constructor() {
             .map { Method(it.method) }
             .distinctBy { it.handle }
             .sumOf { it.replaceAllStrings(old, new) }
+
+    /**
+     * Every call to `from` in the app becomes a call to the static `to`, receiver first for
+     * instance methods. Calls through `super` and constructors are left alone. Returns how many
+     * call sites changed.
+     */
+    fun redirectCalls(from: MethodRef, to: ExtMethod): Int {
+        require(to.isStatic) { "redirectCalls target ${to.ref.descriptor} must be static" }
+        return redirectMethodCalls(from, to.ref).toInt()
+    }
+
+    /**
+     * [redirectCalls] with `from` derived from `to`: `to` takes the same parameters as `owner.name`,
+     * preceded by the receiver when `owner.name` is an instance method, and returns the same type.
+     */
+    fun redirectCalls(owner: String, name: String, to: ExtMethod): Int {
+        val ownerDesc = descriptor(owner)
+        val params = to.ref.parameterTypes
+        val fromParams = if (params.firstOrNull() == ownerDesc) params.drop(1) else params
+        return redirectCalls(MethodRef(ownerDesc, name, proto(to.ref.returnType, *fromParams.toTypedArray())), to)
+    }
 }
 
 class FileScope internal constructor(private val componentName: String? = null) {

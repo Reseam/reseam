@@ -9,8 +9,9 @@ use reseam_apk::reseam_dex::{
 };
 use tracing::warn;
 
+use crate::context::MethodKey;
 use crate::kotlin::convert::kotlin_to_dex;
-use crate::kotlin::handles::{code_mut, method_mut, with_method_mut};
+use crate::kotlin::handles::{code_mut, method_mut, with_ctx, with_method_mut};
 use crate::kotlin::link::{link_instructions, link_method};
 use crate::kotlin::types::{Instruction, MethodRef};
 
@@ -211,6 +212,22 @@ pub fn replace_method_call(
             .ok()
     })
     .is_some()
+}
+
+/// Every call to `from` in the app becomes a static call to `to` with the
+/// same registers; see `PatchContext::redirect_method_calls`.
+#[export]
+pub fn redirect_method_calls(from: MethodRef, to: MethodRef) -> u32 {
+    link_method(&to);
+    with_ctx(|ctx| ctx.redirect_method_calls(key(&from), key(&to))) as u32
+}
+
+fn key(method: &MethodRef) -> MethodKey<'_> {
+    MethodKey {
+        class: &method.defining_class,
+        name: &method.name,
+        proto: &method.proto,
+    }
 }
 
 #[export]
