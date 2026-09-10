@@ -8,11 +8,11 @@ A bundle has its own version, independent of the engine's and of the apps it pat
 
 You develop a bundle as a Gradle project with a fixed directory layout. The `app.reseam.workspace` plugin reads that layout and configures every module from it, so there is one build command and no build scripts to maintain.
 
-![The bundle project on the left: manifest.toml, settings.gradle.kts, gradlew, apps/telegram with a patch module and an anti-delete extension module (main and stub sources), and shared/settings-runtime. The gradlew bundle task in the middle compiles each patch module to a jar with classes.dex, runs d8 on each extension, then reseam bundle pack hashes every file and signs the manifest. The signed .reseam archive on the right holds mimetype, manifest.toml with a files table of SHA-256 hashes and the engine version, manifest.pubkey, manifest.sig, telegram-patches.jar, telegram-anti-delete.dex and settings-runtime.dex. No sources or Gradle scripts ship.](bundle-layout.svg)
+![The bundle project on the left: manifest.toml, settings.gradle.kts, gradlew, apps/example with a patch module and an ads extension module (main and stub sources), and shared/settings-runtime. The gradlew bundle task in the middle compiles each patch module to a jar with classes.dex, runs d8 on each extension, then reseam bundle pack hashes every file and signs the manifest. The signed .reseam archive on the right holds mimetype, manifest.toml with a files table of SHA-256 hashes and the engine version, manifest.pubkey, manifest.sig, example-patches.jar, example-ads.dex and settings-runtime.dex. No sources or Gradle scripts ship.](bundle-layout.svg)
 
 ## Project layout
 
-```
+```text
 my-bundle/
   manifest.toml
   settings.gradle.kts

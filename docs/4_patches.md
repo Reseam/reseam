@@ -1,6 +1,6 @@
 # Patches
 
-A patch is one change to one app that a user can switch on: hide sponsored posts, unlock a paid feature, stop an update prompt. Reseam applies it on the phone by rewriting the app itself: it finds the methods the change concerns, alters their code, and re-signs the APK. The patched app installs next to the original.
+A patch is one change to one app that a user can switch on: hide ads, unlock a paid feature, remove an update prompt. Reseam applies it on the phone by rewriting the app itself: it finds the methods the change concerns, alters their code, and re-signs the APK. The patched app installs next to the original.
 
 To you, a patch is a Kotlin value with two halves. The first is what the engine and the user need to know before anything runs: a name and description, which apps and versions it applies to, other patches that must run first, and values the user may set. The second is `execute`, the code that makes the change.
 
@@ -16,18 +16,18 @@ import app.reseam.patch.patch
 import app.reseam.patch.settings.section
 import app.reseam.patch.settings.skipWhen
 
-val hideSponsoredAds = patch("Hide sponsored messages") {
-    description("Removes promoted posts from channels.")
-    compatibleWith("org.telegram.messenger"("12.7.1"))
-    settings(telegramSettings, section("Ads", TelegramSettings.hideSponsoredAds))
+val hideAds = patch("Hide ads") {
+    description("Removes ads from the feed.")
+    compatibleWith("com.example.app"("2.14.0"))
+    settings(appSettings, section("Ads", AppSettings.hideAds))
 
     execute {
-        addSponsoredMessages.skipWhen(TelegramSettings.hideSponsoredAds)
+        showAd.skipWhen(AppSettings.hideAds)
     }
 }
 
-val addSponsoredMessages = method("addSponsoredMessages") {
-    strings("https://t\\.me/(\\w+)(?:/(\\d+))?")
+val showAd = method("showAd") {
+    strings("ad_impression")
     returns(Type.Void)
 }
 ```
@@ -42,11 +42,14 @@ Three moments matter, and the API is only partly available in each.
 2. **Selection.** The user, or the CLI flags, decide which patches run. A patch is skipped when its package or version does not match the APK, when a dependency was skipped, or when it is disabled.
 3. **Patch time.** `execute { }` runs once with the runtime as receiver. A target resolves the first time this patch touches it and stays cached until the patch finishes; the next patch resolves it again against the app as that patch sees it. Code blocks such as `before { }` run immediately and emit instructions into the method. After every patch that depends on this one has finished, `afterDependents { }` runs the same way.
 
-> **Pitfall.** Only public top-level `val`s are discovered. A `private val`, a patch inside an `object`, or a `fun` returning a patch is invisible to the engine, and a patch depending on one fails to load with `depends on a patch that is not declared as a public top-level value`.
+> [!WARNING]
+> Only public top-level `val`s are discovered. A `private val`, a patch inside an `object`, or a `fun` returning a patch is invisible to the engine, and a patch depending on one fails to load with `depends on a patch that is not declared as a public top-level value`.
 
-> **Pitfall.** Top-level initialisers run at load time for the whole file. Code that touches the app there (calling `someTarget.method` outside `execute`) throws while the bundle loads; the engine logs `patch declaration failed to initialize` for the member and skips it, so a typo in one file can make several patches disappear from the list. Keep top-level code to declarations.
+> [!WARNING]
+> Top-level initialisers run at load time for the whole file. Code that touches the app there (calling `someTarget.method` outside `execute`) throws while the bundle loads; the engine logs `patch declaration failed to initialize` for the member and skips it, so a typo in one file can make several patches disappear from the list. Keep top-level code to declarations.
 
-> **Pitfall.** Two patches with the same name in one bundle is an error before any patch runs. Names are identities.
+> [!WARNING]
+> Two patches with the same name in one bundle is an error before any patch runs. Names are identities.
 
 ## Declaration
 
@@ -76,35 +79,36 @@ compatibleWith("com.example.app", "com.example.app.lite")
 `"package"("version", ...)` pins versions:
 
 ```kotlin
-compatibleWith("org.telegram.messenger"("12.7.1", "12.7.2"))
+compatibleWith("com.example.app"("2.14.0", "2.14.1"))
 ```
 
 One patch can cover several apps with different versions each. Call `compatibleWith` once per form, or define the package once and reuse it across the bundle:
 
 ```kotlin
-val TELEGRAM = "org.telegram.messenger"("12.7.1")
+val EXAMPLE_APP = "com.example.app"("2.14.0")
 
-compatibleWith(TELEGRAM)
+compatibleWith(EXAMPLE_APP)
 ```
 
 The engine skips a patch whose package or version does not match the APK and reports why. A patch with no `compatibleWith` applies to every app.
 
-> **Pitfall.** Pinning versions means the patch is skipped on every other version, including ones where it would have worked. Leaving versions off means the patch runs everywhere and fails loudly when a target stops matching. Both are defensible; pin when a wrong match would do damage silently (a rewritten constant, a replaced body), leave open when a failed match is the worst case.
+> [!WARNING]
+> Pinning versions means the patch is skipped on every other version, including ones where it would have worked. Leaving versions off means the patch runs everywhere and fails loudly when a target stops matching. Both are defensible; pin when a wrong match would do damage silently (a rewritten constant, a replaced body), leave open when a failed match is the worst case.
 
 ## Dependencies
 
 ```kotlin
-val antiDeleteRuntime = patch {
-    compatibleWith(TELEGRAM)
+val adBlockerRuntime = patch {
+    compatibleWith(EXAMPLE_APP)
 
     execute {
-        appEntry.before { call(DeletedArchive.init, thisObject) }
+        appEntry.before { call(AdBlocker.init, thisObject) }
     }
 }
 
-val antiDelete = patch("Recover deleted messages") {
-    compatibleWith(TELEGRAM)
-    dependsOn(antiDeleteRuntime)
+val hideAds = patch("Hide ads") {
+    compatibleWith(EXAMPLE_APP)
+    dependsOn(adBlockerRuntime)
 
     execute { }
 }
@@ -118,20 +122,21 @@ A dependency runs before its dependents. Skipping a dependency skips its depende
 
 An uncaught exception marks the patch as failed; the run continues, and patches depending on it are skipped. When partial success is acceptable, log a warning and return instead of throwing.
 
-> **Pitfall.** A failed patch does not roll back what it already changed. Resolve every target you need before the first mutation when a half-applied patch would leave the app broken: reading `target.method` (or any property) forces resolution.
+> [!WARNING]
+> A failed patch does not roll back what it already changed. Resolve every target you need before the first mutation when a half-applied patch would leave the app broken: reading `target.method` (or any property) forces resolution.
 
 ## Options
 
 Options are values the user supplies when applying the patch. Declare them in the patch block and read them by reference in `execute`:
 
 ```kotlin
-val cloneInstagram = patch("Clone Instagram") {
-    compatibleWith(INSTAGRAM)
+val cloneApp = patch("Clone app") {
+    compatibleWith(EXAMPLE_APP)
     val packageName = stringOption(
         "packageName",
         title = "Package name",
-        description = "New package name for the cloned app",
-        default = "com.instagram.android.clone",
+        description = "Package name for the cloned app",
+        default = "com.example.app.clone",
     )
 
     execute {
@@ -144,7 +149,8 @@ val cloneInstagram = patch("Clone Instagram") {
 
 `options[option]` returns the value with the engine's defaults applied. It throws for an optional option without a default that the user left empty; `options.getOrNull(option)` returns null instead. A `pathOption` yields an `OptionPath` with `listContents()` and `readFile(relativePath)`.
 
-> **Pitfall.** Options are read inside `execute`, never in the patch block: the block runs at load time, before any user has set anything.
+> [!WARNING]
+> Options are read inside `execute`, never in the patch block: the block runs at load time, before any user has set anything.
 
 From the CLI: `--option <patch>.<key>=<value>`.
 
@@ -155,11 +161,11 @@ Settings live in the patched app and are shown by the settings screen a host ins
 ```kotlin
 import app.reseam.patch.settings.toggle
 
-object TelegramSettings {
-    val hideSponsoredAds by toggle("Hide sponsored messages", default = true)
-    val recoverDeleted by toggle(
-        "Recover deleted messages",
-        summary = "Keep messages others delete.",
+object AppSettings {
+    val hideAds by toggle("Hide ads", default = true)
+    val unlockFeatures by toggle(
+        "Unlock features",
+        summary = "Features the server checks still need a subscription.",
         default = true,
     )
 }
@@ -167,20 +173,21 @@ object TelegramSettings {
 
 `toggle`, `text`, `folder`, `choice(title, default, choices = listOf(Choice(value, title)))`. Pass `key = "..."` to pin a key.
 
-> **Pitfall.** The key is `<object>.<property>` in snake case (`telegram_settings.hide_sponsored_ads`) and is what the patched app stores the value under. Renaming the object or the property changes the key and resets the setting for every user. Pin `key =` before the first release.
+> [!WARNING]
+> The key is `<object>.<property>` in snake case (`app_settings.hide_ads`) and is what the patched app stores the value under. Renaming the object or the property changes the key and resets the setting for every user. Pin `key =` before the first release.
 
 A host is an internal patch that installs the settings runtime and screen for one app:
 
 ```kotlin
 import app.reseam.patch.settings.settingsHost
 
-val telegramSettings = settingsHost("telegram") {
-    compatibleWith(TELEGRAM)
+val appSettings = settingsHost("example") {
+    compatibleWith(EXAMPLE_APP)
 
     install {
-        appEntry.before { call(TelegramSettingsEntry.init, thisObject) }
-        settingsFillItems.after { call(TelegramSettingsEntry.appendReseamItem, param(0), thisObject) }
-        manifest.addActivity("app.reseam.telegram.settings.TelegramReseamSettingsActivity") {
+        appEntry.before { call(SettingsEntry.init, thisObject) }
+        buildSettingsScreen.after { call(SettingsEntry.appendReseamItem, param(0), thisObject) }
+        manifest.addActivity("app.example.ext.settings.ReseamSettingsActivity") {
             this["android:label"] = "Reseam Settings"
         }
     }

@@ -2,7 +2,7 @@
 
 App code is obfuscated and method names change with every release, so a patch never refers to a method by name. It describes the method instead: the strings it loads, its return type, what it calls. Reseam searches the app for the one method matching that description. ReVanced calls the description a fingerprint; here it is a *target*, and a target can be a method, a class, a field, or one instruction inside a method.
 
-![Two releases of the same app on the left, 19.42 and 20.08. The method is named xyz() in one and q() in the other, but both load the string sponsored_label, return a boolean, and call renderFeedItem. On the right, a target declared as method("isSponsored") with strings("sponsored_label") and returns(Type.Boolean) matches both releases. Names change between releases; strings, types, and calls usually stay. Exactly one method must match.](fingerprint-match.svg)
+![Two releases of the same app on the left, 19.42 and 20.08. The method is named xyz() in one and q() in the other, but both load the string ad_impression, return a boolean, and call bindFeedItem. On the right, a target declared as method("isAd") with strings("ad_impression") and returns(Type.Boolean) matches both releases. Names change between releases; strings, types, and calls usually stay. Exactly one method must match.](fingerprint-match.svg)
 
 Targets are top-level values. They resolve the first time a patch uses them and stay cached for the rest of that patch. Outside a running patch a target is only a description: reading `target.method` at load time throws.
 
@@ -13,8 +13,8 @@ Every type is accepted as a descriptor (`Ljava/lang/String;`), a dotted name (`j
 ```kotlin
 import app.reseam.patch.method
 
-val isSponsored = method("isSponsored") {
-    strings("sponsored_label")
+val isAd = method("isAd") {
+    strings("ad_impression")
     returns(Type.Boolean)
 }
 ```
@@ -53,11 +53,14 @@ The engine indexes the app once per patch run: strings, literals, names, return 
 
 The report a failed target prints shows this pipeline: `strings("x"): 3 candidate method(s)`, then which constraint rejected the rest.
 
-> **Pitfall.** A query with only shape constraints, such as `method { returns(Type.Boolean); paramCount(1) }`, considers most of the app and almost always finds several matches. Give every query at least one of: a string the method loads, a literal, the class it is in, or a method it calls or is called by. Names are fine when scoped to a class.
+> [!WARNING]
+> A query with only shape constraints, such as `method { returns(Type.Boolean); paramCount(1) }`, considers most of the app and almost always finds several matches. Give every query at least one of: a string the method loads, a literal, the class it is in, or a method it calls or is called by. Names are fine when scoped to a class.
 
-> **Pitfall.** `first()` accepts whichever candidate sorts first by descriptor. Use it only when the matches are interchangeable, for example identical overloads that all need the same change. For anything else, add a constraint or `rankBy` so the choice is explained in the report and survives an app update.
+> [!WARNING]
+> `first()` accepts whichever candidate sorts first by descriptor. Use it only when the matches are interchangeable, for example identical overloads that all need the same change. For anything else, add a constraint or `rankBy` so the choice is explained in the report and survives an app update.
 
-> **Pitfall.** `methodTarget { }`, `classTarget { }`, and loops over `bytecode.classes` walk the app by hand and are not indexed. Reach for them when no query expresses the lookup, and keep them narrow: start from a class you already have rather than from `bytecode.classes`.
+> [!WARNING]
+> `methodTarget { }`, `classTarget { }`, and loops over `bytecode.classes` walk the app by hand and are not indexed. Reach for them when no query expresses the lookup, and keep them narrow: start from a class you already have rather than from `bytecode.classes`.
 
 `rankBy` sees the candidate: `method`, `paramCount`, `type` (its class descriptor), `methods(proto)`, `zeroArgListGetters()`, `callSitesFollowedByCast(type, lookAhead)`.
 
@@ -68,10 +71,10 @@ The report a failed target prints shows this pipeline: `strings("x"): 3 candidat
 ```kotlin
 import app.reseam.patch.klass
 
-val secretMediaViewer = klass("org.telegram.ui.SecretMediaViewer")
+val mainActivity = klass("com.example.app.MainActivity")
 
-val signatureCheckClass = klass("signatureCheckClass") {
-    strings("The provider for uri '", "' is not trusted: ")
+val adLoaderClass = klass("adLoaderClass") {
+    strings("ad_unit_id", "ad_request_failed")
 }
 ```
 
@@ -80,9 +83,9 @@ Without a block, the argument is a class name. With one, it is a label and the b
 A class target scopes lookups:
 
 ```kotlin
-val openMedia = secretMediaViewer.method("openMedia") { param(0, "org.telegram.messenger.MessageObject") }
-val windowLayoutParams = secretMediaViewer.field("windowLayoutParams")
-val statusField = secretMediaViewer.fieldOfType("android.view.WindowManager\$LayoutParams")
+val onResume = mainActivity.method("onResume") { params() }
+val toolbar = mainActivity.field("toolbar")
+val prefs = mainActivity.fieldOfType("android.content.SharedPreferences")
 ```
 
 - `method(name) { }`: adds `inClass` and `name`; the block narrows overloads.
@@ -99,9 +102,9 @@ A point is one instruction in a method, found by matching:
 ```kotlin
 import app.reseam.patch.point
 
-val developerMenuGate = clearNotificationReceiver
-    .method("onReceive") { strings("NOTIFICATION_DISMISSED") }
-    .point { string("NOTIFICATION_DISMISSED") }
+val premiumCheck = mainActivity
+    .method("onCreate") { strings("premium_status") }
+    .point { string("premium_status") }
     .previous { invokeStatic { params(USER_SESSION); returns(Type.Boolean) } }
     .callee()
 ```
@@ -120,9 +123,11 @@ From a point: `previous { }` walks back to the nearest match, `next { }` walks f
 
 `captureAs("name")` records the register the instruction writes, typed from the instruction, for `capture("name")` in code emitted at a later point. Pass a type when it cannot be inferred.
 
-> **Pitfall.** A point is an instruction index. Inserting code above it in the same method shifts the instruction, and the cached index now names something else. Emit at points before emitting at the method's entry, or resolve every point you need first: `captureAs` and `before` on a point resolve it; reading `point.index` does too. The Instagram download patch is a worked example: it captures two points, then emits once.
+> [!WARNING]
+> A point is an instruction index. Inserting code above it in the same method shifts the instruction, and the cached index now names something else. Emit at points before emitting at the method's entry, or resolve every point you need first: `captureAs` and `before` on a point resolve it; reading `point.index` does too. The [Points](6_code.md#points) example captures two points, then emits once.
 
-> **Pitfall.** `previous { }` takes one step; `next { }` takes a sequence and lands on its last step. Both fail when nothing matches; neither wraps around.
+> [!WARNING]
+> `previous { }` takes one step; `next { }` takes a sequence and lands on its last step. Both fail when nothing matches; neither wraps around.
 
 ## Built-in and custom targets
 
@@ -131,8 +136,8 @@ From a point: `previous { }` walks back to the nearest match, `next { }` walks f
 When no query fits, resolve by hand with the [raw bytecode layer](10_dex.md):
 
 ```kotlin
-val carouselStateClass = classTarget("carouselStateClass") {
-    bytecode.findClass(carouselIndexField.owner) ?: error("carousel state class missing")
+val adStateClass = classTarget("adStateClass") {
+    bytecode.findClass(adCounterField.owner) ?: error("ad state class missing")
 }
 ```
 

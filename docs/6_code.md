@@ -10,16 +10,16 @@ import app.reseam.patch.before
 import app.reseam.patch.replace
 
 execute {
-    openMedia.before {
-        call(DeletedArchive.stripSecureFlag, thisObject.field(windowLayoutParams))
+    loadFeed.before {
+        call(AdBlocker.onFeedLoad, thisObject.field(feedItems))
     }
 
-    searchSubtitleBuilder.after {
-        returnValue(call(FollowsYouIndicator.appendFromSession, capture("result"), param(1), param(3)))
+    buildTitle.after {
+        returnValue(call(Badges.append, capture("result"), param(1)))
     }
 
-    updateParams.replace {
-        thisObject.set(maxRequests, int(8))
+    configureDownloads.replace {
+        thisObject.set(maxParallelDownloads, int(8))
         returnVoid()
     }
 }
@@ -27,11 +27,14 @@ execute {
 
 Inside `after`, `capture("result")` is the value being returned. Inside `replace`, the original body is gone.
 
-> **Pitfall.** The Kotlin inside a code block runs once, at patch time, and each call adds instructions. A Kotlin `if` decides what gets emitted; it does not branch in the app. To branch in the app use `whenTrue` and friends. Writing `if (settingEnabled) returnVoid()` compiles and does the wrong thing.
+> [!WARNING]
+> The Kotlin inside a code block runs once, at patch time, and each call adds instructions. A Kotlin `if` decides what gets emitted; it does not branch in the app. To branch in the app use `whenTrue` and friends. Writing `if (settingEnabled) returnVoid()` compiles and does the wrong thing.
 
-> **Pitfall.** A value (`param(0)`, the result of `call`) belongs to the block that created it. Passing one into another `before { }` fails with `ValueRef belongs to a different code block`. Read parameters again in the new block.
+> [!WARNING]
+> A value (`param(0)`, the result of `call`) belongs to the block that created it. Passing one into another `before { }` fails with `ValueRef belongs to a different code block`. Read parameters again in the new block.
 
-> **Pitfall.** `after` runs before every return instruction of the method, so the block is emitted once per return. `capture("result")` is only available when the method returns something; in a void method it does not exist. `thisObject` throws in a static method.
+> [!WARNING]
+> `after` runs before every return instruction of the method, so the block is emitted once per return. `capture("result")` is only available when the method returns something; in a void method it does not exist. `thisObject` throws in a static method.
 
 Whole-method shortcuts: `alwaysReturn()`, `alwaysReturn(true)`, `alwaysReturn(0)`, `alwaysReturn(1L)`, `alwaysReturn("text")`, `alwaysReturnNull()`, `replaceAllStrings(old, new)`, `replaceAllLiterals(old, new)`.
 
@@ -68,10 +71,10 @@ whenTrue(handled) {
     returnVoid()
 }
 
-whenEnabled(TelegramSettings.boostDownloads) {
-    thisObject.set(maxRequests, int(8))
+whenEnabled(AppSettings.fasterDownloads) {
+    thisObject.set(maxParallelDownloads, int(8))
 } otherwise {
-    thisObject.set(maxRequests, int(4))
+    thisObject.set(maxParallelDownloads, int(4))
 }
 ```
 
@@ -89,10 +92,10 @@ A toggle gates code at runtime through the settings runtime the bundle ships:
 import app.reseam.patch.settings.before
 import app.reseam.patch.settings.returnFalseWhen
 
-sendTyping.returnFalseWhen(TelegramSettings.hideTyping)
+sendTypingEvent.returnFalseWhen(AppSettings.hideTyping)
 
-isPremiumUser.before(TelegramSettings.unlockPremium) {
-    whenTrue(call(isUserSelf, param(0))) { returnTrue() }
+isPremiumUser.before(AppSettings.unlockFeatures) {
+    whenTrue(call(isCurrentUser, param(0))) { returnTrue() }
 }
 ```
 
@@ -108,40 +111,42 @@ All live in `app.reseam.patch.settings`.
 Declare an extension class once and name the methods patches call:
 
 ```kotlin
-object DeletedArchive : ExtClass("app.reseam.telegram.antidelete.DeletedArchive") {
+object AdBlocker : ExtClass("app.example.ext.AdBlocker") {
     val init = static("init", Type.Context)
-    val markLocalDelete = static("markLocalDelete", Type.Long, Type.ArrayList)
+    val onFeedLoad = static("onFeedLoad", Type.List)
 }
 ```
 
-`static(name, params..., returns = Type.Void)` and `method(name, params..., returns)` for instance methods. `call(DeletedArchive.init, thisObject)` emits the call; the first reference links the extension DEX into the app. See [Shipping your own code](9_extensions.md).
+`static(name, params..., returns = Type.Void)` and `method(name, params..., returns)` for instance methods. `call(AdBlocker.init, thisObject)` emits the call; the first reference links the extension DEX into the app. See [Shipping your own code](9_extensions.md).
 
-> **Pitfall.** The declaration is a promise about the Java. A wrong parameter type or return type compiles and then throws `NoSuchMethodError` inside the patched app at the moment the call runs, not at patch time. Match the Java signature exactly, `Type.Object` for `Object` parameters included.
+> [!WARNING]
+> The declaration is a promise about the Java. A wrong parameter type or return type compiles and then throws `NoSuchMethodError` inside the patched app at the moment the call runs, not at patch time. Match the Java signature exactly, `Type.Object` for `Object` parameters included.
 
-> **Pitfall.** Static methods are called as `call(ext, args)`; instance methods as `receiver.call(ext, args)`. Mixing them up is caught at patch time with a message naming the method.
+> [!WARNING]
+> Static methods are called as `call(ext, args)`; instance methods as `receiver.call(ext, args)`. Mixing them up is caught at patch time with a message naming the method.
 
 `extMethod.implement { }` replaces the extension method's body with emitted code. A stub compiled into the extension gets its real body this way, usually from a [binding](8_bindings.md).
 
 ## Points
 
 ```kotlin
-val feedMenuInsert = feedMenuBuilder
-    .point { checkCast(feedMenuCreator.descriptor) }
-    .captureAs("creator")
+val menuInsert = buildMenu
+    .point { checkCast(menuBuilderClass.descriptor) }
+    .captureAs("builder")
     .previous { resultOf(Type.ArrayList) }
-    .captureAs("menuList")
+    .captureAs("items")
     .next { opcode(Opcode.INVOKE_STATIC_RANGE) }
     .next { opcode(Opcode.IF_EQZ) }
 
-feedMenuInsert.before {
-    call(feedMenuAddItem, enumValue(MEDIA_OPTION, "DOWNLOAD"), capture("creator"), capture("menuList"), int(label))
+menuInsert.before {
+    call(addMenuItem, enumValue(MENU_OPTION, "DOWNLOAD"), capture("builder"), capture("items"), int(label))
 }
 ```
 
 `assign` overwrites a captured value where it lives:
 
 ```kotlin
-safetyNetHandler.point { string("basicIntegrity") }
+integrityCheck.point { string("device_verified") }
     .next { opcode(Opcode.MOVE_RESULT) }
     .captureAs("verdict")
     .after { capture("verdict").assign(bool(true)) }
@@ -151,6 +156,7 @@ safetyNetHandler.point { string("basicIntegrity") }
 
 Inserted code uses registers the method does not need at that point and grows the frame when it must. Replaced bodies get sixteen locals below the parameters; `outs` is sized from the widest call. Invokes with more than five arguments, or arguments in high registers, become range invokes with the arguments moved into a scratch span. Registers appear only in the [raw bytecode layer](10_dex.md).
 
-> **Pitfall.** A `replace { }` body that needs more than sixteen scratch values fails at patch time with `Code exceeded the 16 local registers`. Move the logic into an [extension](9_extensions.md) and call it.
+> [!WARNING]
+> A `replace { }` body that needs more than sixteen scratch values fails at patch time with `Code exceeded the 16 local registers`. Move the logic into an [extension](9_extensions.md) and call it.
 
 Next: [Manifest, resources, and files](7_runtime.md).

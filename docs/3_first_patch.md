@@ -4,7 +4,7 @@ This page writes one patch from nothing to a patched APK. It removes a "rate thi
 
 ## 1. Create the bundle
 
-```
+```text
 my-bundle/
   manifest.toml
   settings.gradle.kts
@@ -75,7 +75,7 @@ The log ends with one line per patch (`patch applied`, `patch skipped`, `patch f
 
 A target that finds nothing fails the patch with a report:
 
-```
+```text
 No method matched 'showRatePrompt'. Searched 3 candidate(s).
 Reasons: strings("rate_prompt_shown"): 3 candidate method(s); no candidate satisfied the full structural query
 Near misses: Lcom/example/a/b;->c()Z [missed: return type mismatch]; ...
@@ -83,13 +83,14 @@ Near misses: Lcom/example/a/b;->c()Z [missed: return type mismatch]; ...
 
 Read the near misses: here the method returns a boolean, so `returns(Type.Void)` is wrong. A target that finds too many fails too:
 
-```
+```text
 2 methods matched 'showRatePrompt'; add constraints, rank them, or take first(): ...
 ```
 
 Add a constraint that separates them (`params()`, `inClass(...)`, `calls(...)`), or `rankBy` when one is preferable. Inside `execute`, `showRatePrompt.explain()` returns the same report for a target that did resolve.
 
-> **Pitfall.** Do not reach for `first()` to silence an ambiguity you have not understood. It picks the alphabetically first descriptor, which is a different method after the next obfuscation pass.
+> [!WARNING]
+> Do not reach for `first()` to silence an ambiguity you have not understood. It picks the alphabetically first descriptor, which is a different method after the next obfuscation pass.
 
 ## 7. Iterate
 

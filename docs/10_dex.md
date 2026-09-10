@@ -8,11 +8,11 @@ Targets and code blocks cover the common cases. Underneath them, `app.reseam.pat
 import app.reseam.patch.dex.Method
 import app.reseam.patch.dex.Opcode
 
-val method: Method = updateParams.method
+val method: Method = configureDownloads.method
 method.instructions
 method.registersSize
 method.indexOfFirst(Opcode.INVOKE_STATIC)
-method.indexOfFirstString("basicIntegrity")
+method.indexOfFirstString("device_verified")
 method.indexOfFirstInstruction { opcode == Opcode.IGET && fieldRef?.fieldType == Type.Int }
 ```
 

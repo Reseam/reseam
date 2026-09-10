@@ -36,11 +36,11 @@
 		<text class="mono" x="52" y="86">manifest.toml</text>
 		<text class="mono-muted" x="52" y="104">settings.gradle.kts</text>
 		<text class="mono-muted" x="52" y="122">gradlew</text>
-		<text class="mono" x="52" y="140">apps/telegram/</text>
+		<text class="mono" x="52" y="140">apps/example/</text>
 		<text class="mono" x="74" y="158">patch/src/main/kotlin/</text>
-		<text class="mono-dim" x="96" y="176">HideSponsoredAdsPatch.kt</text>
-		<text class="mono-dim" x="96" y="194">AntiDeletePatch.kt</text>
-		<text class="mono" x="74" y="212">extensions/anti-delete/</text>
+		<text class="mono-dim" x="96" y="176">HideAdsPatch.kt</text>
+		<text class="mono-dim" x="96" y="194">UnlockFeaturesPatch.kt</text>
+		<text class="mono" x="74" y="212">extensions/ads/</text>
 		<text class="mono-muted" x="96" y="230">src/main/java/</text>
 		<text class="mono-dim" x="96" y="248">src/stubs/java/</text>
 		<text class="mono" x="52" y="266">shared/settings-runtime/</text>
@@ -74,8 +74,8 @@
 		<text class="mono-dim" x="52" y="122">engine = version that packed</text>
 		<text class="mono" x="36" y="140">manifest.pubkey</text>
 		<text class="mono" x="36" y="158">manifest.sig</text>
-		<text class="mono-accent" x="36" y="176">telegram-patches.jar</text>
-		<text class="mono-accent" x="36" y="194">telegram-anti-delete.dex</text>
+		<text class="mono-accent" x="36" y="176">example-patches.jar</text>
+		<text class="mono-accent" x="36" y="194">example-ads.dex</text>
 		<text class="mono-accent" x="36" y="212">settings-runtime.dex</text>
 		<text class="label" x="36" y="286">Clients verify the signature against</text>
 		<text class="label" x="36" y="302">the public key in patches.json.</text>

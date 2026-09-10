@@ -33,9 +33,9 @@
 		<text class="caption" x="20" y="26">App 19.42</text>
 		<rect class="inner" x="16" y="40" width="228" height="94" rx="8" />
 		<text class="mono-struck" x="28" y="60">method: xyz()</text>
-		<text class="mono" x="28" y="82">strings: "sponsored_label"</text>
+		<text class="mono" x="28" y="82">strings: "ad_impression"</text>
 		<text class="mono" x="28" y="100">returns: Z</text>
-		<text class="mono" x="28" y="118">calls: renderFeedItem</text>
+		<text class="mono" x="28" y="118">calls: bindFeedItem</text>
 	</g>
 
 	<g transform="translate(40,220)">
@@ -43,21 +43,21 @@
 		<text class="caption" x="20" y="26">App 20.08 (renamed)</text>
 		<rect class="inner" x="16" y="40" width="228" height="94" rx="8" />
 		<text class="mono-struck" x="28" y="60">method: q()</text>
-		<text class="mono" x="28" y="82">strings: "sponsored_label"</text>
+		<text class="mono" x="28" y="82">strings: "ad_impression"</text>
 		<text class="mono" x="28" y="100">returns: Z</text>
-		<text class="mono" x="28" y="118">calls: renderFeedItem</text>
+		<text class="mono" x="28" y="118">calls: bindFeedItem</text>
 	</g>
 
 	<g transform="translate(600,100)">
 		<rect class="card-accent" x="0" y="0" width="340" height="200" rx="20" />
 		<text class="caption" x="20" y="28">Target: what the patch looks for</text>
 		<rect class="inner" x="16" y="44" width="308" height="140" rx="8" />
-		<text class="mono" x="32" y="68">val isSponsored = method("isSponsored") {</text>
-		<text class="mono" x="52" y="86">strings("sponsored_label")</text>
+		<text class="mono" x="32" y="68">val isAd = method("isAd") {</text>
+		<text class="mono" x="52" y="86">strings("ad_impression")</text>
 		<text class="mono" x="52" y="104">returns(Type.Boolean)</text>
 		<text class="mono" x="32" y="122">}</text>
-		<text class="mono-muted" x="32" y="148">isSponsored.method    // resolved on first use</text>
-		<text class="mono-muted" x="32" y="166">isSponsored.explain() // why it won</text>
+		<text class="mono-muted" x="32" y="148">isAd.method    // resolved on first use</text>
+		<text class="mono-muted" x="32" y="166">isAd.explain() // why it won</text>
 	</g>
 
 	<path class="link-accent" d="M 302 115 C 450 115, 450 180, 596 180" marker-end="url(#arrow-accent)" />
