@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 440" font-family="'InterVariable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+	<style>
+		.card { fill: #121212; stroke: #262626; stroke-width: 1.5; }
+		.card-accent { fill: #121212; stroke: oklch(0.8808 0.0969 156.04); stroke-width: 1.5; }
+		.inner { fill: #171717; stroke: none; }
+		.chip { fill: #0a0a0a; stroke: #262626; stroke-width: 1; }
+		.title { fill: #ededed; font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+		.label { fill: #a3a3a3; font-size: 11px; }
+		.caption { fill: #a3a3a3; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; }
+		.mono { fill: #ededed; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.mono-muted { fill: #a3a3a3; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.mono-dim { fill: #6b6b6b; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.mono-struck { fill: #6b6b6b; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-decoration: line-through; }
+		.mono-accent { fill: oklch(0.8808 0.0969 156.04); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.accent-fill { fill: oklch(0.8808 0.0969 156.04); }
+		.link { stroke: #3f3f46; stroke-width: 1.5; fill: none; }
+		.link-accent { stroke: oklch(0.8808 0.0969 156.04); stroke-width: 1.5; fill: none; }
+		.arrowhead { fill: #3f3f46; }
+		.arrowhead-accent { fill: oklch(0.8808 0.0969 156.04); }
+	</style>
+	<defs>
+		<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+			<path d="M0,0 L10,5 L0,10 z" class="arrowhead" />
+		</marker>
+		<marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+			<path d="M0,0 L10,5 L0,10 z" class="arrowhead-accent" />
+		</marker>
+	</defs>
+
+
+	<g transform="translate(40,40)">
+		<rect class="card" x="0" y="0" width="260" height="150" rx="18" />
+		<text class="caption" x="20" y="26">App 19.42</text>
+		<rect class="inner" x="16" y="40" width="228" height="94" rx="8" />
+		<text class="mono-struck" x="28" y="60">method: xyz()</text>
+		<text class="mono" x="28" y="82">strings: "sponsored_label"</text>
+		<text class="mono" x="28" y="100">returns: Z</text>
+		<text class="mono" x="28" y="118">calls: renderFeedItem</text>
+	</g>
+
+	<g transform="translate(40,220)">
+		<rect class="card" x="0" y="0" width="260" height="150" rx="18" />
+		<text class="caption" x="20" y="26">App 20.08 (renamed)</text>
+		<rect class="inner" x="16" y="40" width="228" height="94" rx="8" />
+		<text class="mono-struck" x="28" y="60">method: q()</text>
+		<text class="mono" x="28" y="82">strings: "sponsored_label"</text>
+		<text class="mono" x="28" y="100">returns: Z</text>
+		<text class="mono" x="28" y="118">calls: renderFeedItem</text>
+	</g>
+
+	<g transform="translate(600,100)">
+		<rect class="card-accent" x="0" y="0" width="340" height="200" rx="20" />
+		<text class="caption" x="20" y="28">Target: what the patch looks for</text>
+		<rect class="inner" x="16" y="44" width="308" height="140" rx="8" />
+		<text class="mono" x="32" y="68">val isSponsored = method("isSponsored") {</text>
+		<text class="mono" x="52" y="86">strings("sponsored_label")</text>
+		<text class="mono" x="52" y="104">returns(Type.Boolean)</text>
+		<text class="mono" x="32" y="122">}</text>
+		<text class="mono-muted" x="32" y="148">isSponsored.method    // resolved on first use</text>
+		<text class="mono-muted" x="32" y="166">isSponsored.explain() // why it won</text>
+	</g>
+
+	<path class="link-accent" d="M 302 115 C 450 115, 450 180, 596 180" marker-end="url(#arrow-accent)" />
+	<text class="label" x="440" y="140" text-anchor="middle">matches</text>
+	<path class="link-accent" d="M 302 295 C 450 295, 450 220, 596 220" marker-end="url(#arrow-accent)" />
+	<text class="label" x="440" y="282" text-anchor="middle">matches</text>
+
+	<text class="label" x="480" y="404" text-anchor="middle">Names change between releases. Strings, types, and calls usually stay.</text>
+	<text class="label" x="480" y="422" text-anchor="middle">Exactly one method must match; two matches are an error until the query narrows or ranks them.</text>
+</svg>

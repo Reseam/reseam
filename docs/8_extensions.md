@@ -1,6 +1,8 @@
-# Extensions
+# Shipping your own code
 
-Extensions are Java compiled against `android.jar` into one DEX file the bundle ships. Use them when the patched app needs new code at runtime: activities, settings screens, or logic too large to emit inline.
+When a patch needs more than a few instructions, for example a settings screen, a download manager, or an activity, write it as Java and ship it in the bundle. Reseam compiles it against `android.jar` into a DEX file and links that file into the app the first time a patch refers to one of its classes. These modules are called extensions.
+
+![Build time on top: an extension module with src/main/java/DeletedArchive.java and compile-only stubs under src/stubs/java goes through d8 against android.jar and lands in the bundle as telegram-anti-delete.dex, one file per module. Patch time below: patch code declares object DeletedArchive : ExtClass and calls DeletedArchive.init from appEntry.before; the engine merges the extension DEX into the app on that first reference, plus every extension it refers to. Patches never name a DEX file.](extension-flow.svg)
 
 ## Modules
 
@@ -39,4 +41,4 @@ The first time a patch refers to a class an extension defines, in emitted code, 
 
 Toggle gates call `app.reseam.runtime.settings.ReseamSettings`, provided by the `settings-runtime` shared extension. A bundle that uses toggles ships it; the engine links it when the first gate is emitted.
 
-Next: [Dex layer](9_dex.md).
+Next: [Raw bytecode](9_dex.md).

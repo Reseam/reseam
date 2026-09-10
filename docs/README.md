@@ -4,13 +4,13 @@ Reseam applies community-written patches to Android apps on-device. A bundle is 
 
 These docs are for patch authors. Read in order:
 
-1. [Setup](1_setup.md). Prerequisites and first build.
-2. [Bundles](2_bundles.md). Project layout and what ships in the signed archive.
-3. [Patches](3_patches.md). The `patch(...)` DSL: metadata, compatibility, dependencies, internal patches, options, settings.
-4. [Targets](4_targets.md). Finding methods, classes, fields, and instructions.
-5. [Code](5_code.md). Adding code to a method: `before`, `after`, `replace`, values, branches, gates.
-6. [Runtime](6_runtime.md). Manifest, resources, files, XML, bytecode, log.
-7. [Bindings](7_bindings.md). Views over obfuscated objects.
-8. [Extensions](8_extensions.md). Java code the bundle ships into the app.
-9. [Dex layer](9_dex.md). Raw methods, classes, instructions, and the instruction builder.
-10. [Publishing](10_publish.md). Build, apply locally, benchmark, release.
+1. [Setup](1_setup.md). Install what you need and build once.
+2. [Bundles](2_bundles.md). What you publish, and how the project is laid out.
+3. [Patches](3_patches.md). Writing a patch: name, apps it applies to, dependencies, options, settings.
+4. [Finding code in the app](4_targets.md). Fingerprints for methods, classes, fields, and single instructions.
+5. [Changing methods](5_code.md). Running your code when a method starts, before it returns, or instead of it.
+6. [Manifest, resources, and files](6_runtime.md). Everything in the APK that is not bytecode.
+7. [Reading obfuscated objects](7_bindings.md). Getting values out of classes whose names change every release.
+8. [Shipping your own code](8_extensions.md). Java compiled into the app.
+9. [Raw bytecode](9_dex.md). Instructions and registers, for when nothing above fits.
+10. [Publishing](10_publish.md). Build, test locally, release.

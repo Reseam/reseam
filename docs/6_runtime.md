@@ -1,6 +1,10 @@
-# Runtime
+# Manifest, resources, and files
 
-`execute { }` and `afterDependents { }` run with the runtime as receiver. It exposes `manifest`, `resources`, `files`, `bytecode`, `options`, and `log`. `manifest`, `resources`, and `files` are split-APK aware: `component(name)` narrows the scope to a named split.
+Besides bytecode, a patch can edit the rest of the APK: the manifest, the resource table, and any file in the archive. Inside `execute { }` and `afterDependents { }` these are reachable as `manifest`, `resources`, and `files`, next to `bytecode` for raw class lookup, `options` for values the user set, and `log`.
+
+![A card labelled the patch runtime, the receiver of execute and afterDependents, with six members: manifest (AndroidManifest.xml: addPermission, addActivity, edit), resources (resource table and string pool: addString, replaceEntry), files (every entry in the APK: read, write, copy, delete), bytecode (raw classes: findClass, classesExtending), options (values the user set for this patch), and log (shown by the CLI and Reseam Manager). Targets and code blocks resolve against the same runtime; manifest, resources, and files take component(name) for one split.](runtime-surface.svg)
+
+`manifest`, `resources`, and `files` are split-APK aware: `component(name)` narrows the scope to a named split.
 
 ## Manifest
 
@@ -70,7 +74,7 @@ val app = bytecode.findClass("com.example.App")
 bytecode.classesExtending(Type.Application)
 ```
 
-`classes` lists every class. These return [dex layer](9_dex.md) handles; targets are the usual way in.
+`classes` lists every class. These return [raw bytecode layer](9_dex.md) handles; targets are the usual way in.
 
 ## Options and log
 
@@ -90,4 +94,4 @@ files.component("config.en").write("assets/marker.txt", bytes)
 
 `components()` lists the base and every split. Without `component(...)`, operations run against the base.
 
-Next: [Bindings](7_bindings.md).
+Next: [Reading obfuscated objects](7_bindings.md).

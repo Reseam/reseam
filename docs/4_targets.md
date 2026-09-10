@@ -1,6 +1,10 @@
-# Targets
+# Finding code in the app
 
-A target is something a patch looks for: a method, a class, a field, or one instruction in a method. Targets are top-level values. They resolve the first time a patch uses them and stay cached for the rest of that patch.
+App code is obfuscated and method names change with every release, so a patch never refers to a method by name. It describes the method instead: the strings it loads, its return type, what it calls. Reseam searches the app for the one method matching that description. ReVanced calls the description a fingerprint; here it is a *target*, and a target can be a method, a class, a field, or one instruction inside a method.
+
+![Two releases of the same app on the left, 19.42 and 20.08. The method is named xyz() in one and q() in the other, but both load the string sponsored_label, return a boolean, and call renderFeedItem. On the right, a target declared as method("isSponsored") with strings("sponsored_label") and returns(Type.Boolean) matches both releases. Names change between releases; strings, types, and calls usually stay. Exactly one method must match.](fingerprint-match.svg)
+
+Targets are top-level values. They resolve the first time a patch uses them and stay cached for the rest of that patch.
 
 Every type is accepted as a descriptor (`Ljava/lang/String;`), a dotted name (`java.lang.String`), or a `Type` constant (`Type.String`, `Type.Boolean`, `Type.Void`, `Type.List`, `Type.Context`, and so on). Arrays take a `[]` suffix or a leading `[`.
 
@@ -105,7 +109,7 @@ Resolve points before mutating their method, or declare them per use: an index g
 
 `appEntry` is `onCreate()` of the `Application` subclass the manifest names. When the class does not override it, one calling `super.onCreate()` is added.
 
-When no query fits, resolve by hand with the [dex layer](9_dex.md):
+When no query fits, resolve by hand with the [raw bytecode layer](9_dex.md):
 
 ```kotlin
 val carouselStateClass = classTarget("carouselStateClass") {
@@ -119,4 +123,4 @@ val carouselStateClass = classTarget("carouselStateClass") {
 
 `target.explain()` returns why the target resolved the way it did: the winner, how many candidates were considered, the reasons, and the near misses. A failed resolution throws with the same report. Every resolved target is logged at debug level with its winner.
 
-Next: [Code](5_code.md).
+Next: [Changing methods](5_code.md).

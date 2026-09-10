@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 380" font-family="'InterVariable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+	<style>
+		.card { fill: #121212; stroke: #262626; stroke-width: 1.5; }
+		.card-accent { fill: #121212; stroke: oklch(0.8808 0.0969 156.04); stroke-width: 1.5; }
+		.inner { fill: #171717; stroke: none; }
+		.chip { fill: #0a0a0a; stroke: #262626; stroke-width: 1; }
+		.title { fill: #ededed; font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+		.label { fill: #a3a3a3; font-size: 11px; }
+		.caption { fill: #a3a3a3; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; }
+		.mono { fill: #ededed; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.mono-muted { fill: #a3a3a3; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.mono-dim { fill: #6b6b6b; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.mono-struck { fill: #6b6b6b; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-decoration: line-through; }
+		.mono-accent { fill: oklch(0.8808 0.0969 156.04); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.accent-fill { fill: oklch(0.8808 0.0969 156.04); }
+		.link { stroke: #3f3f46; stroke-width: 1.5; fill: none; }
+		.link-accent { stroke: oklch(0.8808 0.0969 156.04); stroke-width: 1.5; fill: none; }
+		.arrowhead { fill: #3f3f46; }
+		.arrowhead-accent { fill: oklch(0.8808 0.0969 156.04); }
+	</style>
+	<defs>
+		<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+			<path d="M0,0 L10,5 L0,10 z" class="arrowhead" />
+		</marker>
+		<marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+			<path d="M0,0 L10,5 L0,10 z" class="arrowhead-accent" />
+		</marker>
+	</defs>
+
+
+	<g transform="translate(80,40)">
+		<rect class="card-accent" x="0" y="0" width="800" height="300" rx="22" />
+		<text class="caption" x="28" y="30">Receiver of execute { } and afterDependents { }</text>
+		<text class="title" x="28" y="54" font-size="18">the patch runtime</text>
+
+		<g transform="translate(28,90)">
+			<rect class="chip" x="0" y="0" width="230" height="80" rx="12" />
+			<circle class="accent-fill" cx="18" cy="22" r="4" />
+			<text class="title" x="32" y="26">manifest</text>
+			<text class="label" x="18" y="50">AndroidManifest.xml</text>
+			<text class="mono-muted" x="18" y="66">addPermission / addActivity</text>
+		</g>
+		<g transform="translate(284,90)">
+			<rect class="chip" x="0" y="0" width="230" height="80" rx="12" />
+			<circle class="accent-fill" cx="18" cy="22" r="4" />
+			<text class="title" x="32" y="26">resources</text>
+			<text class="label" x="18" y="50">resource table and string pool</text>
+			<text class="mono-muted" x="18" y="66">addString / replaceEntry</text>
+		</g>
+		<g transform="translate(540,90)">
+			<rect class="chip" x="0" y="0" width="230" height="80" rx="12" />
+			<circle class="accent-fill" cx="18" cy="22" r="4" />
+			<text class="title" x="32" y="26">files</text>
+			<text class="label" x="18" y="50">every entry in the APK</text>
+			<text class="mono-muted" x="18" y="66">read / write / copy / delete</text>
+		</g>
+		<g transform="translate(28,182)">
+			<rect class="chip" x="0" y="0" width="230" height="80" rx="12" />
+			<circle class="accent-fill" cx="18" cy="22" r="4" />
+			<text class="title" x="32" y="26">bytecode</text>
+			<text class="label" x="18" y="50">raw classes, see Raw bytecode</text>
+			<text class="mono-muted" x="18" y="66">findClass / classesExtending</text>
+		</g>
+		<g transform="translate(284,182)">
+			<rect class="chip" x="0" y="0" width="230" height="80" rx="12" />
+			<circle class="accent-fill" cx="18" cy="22" r="4" />
+			<text class="title" x="32" y="26">options</text>
+			<text class="label" x="18" y="50">values the user set for this patch</text>
+			<text class="mono-muted" x="18" y="66">options[option]</text>
+		</g>
+		<g transform="translate(540,182)">
+			<rect class="chip" x="0" y="0" width="230" height="80" rx="12" />
+			<circle class="accent-fill" cx="18" cy="22" r="4" />
+			<text class="title" x="32" y="26">log</text>
+			<text class="label" x="18" y="50">shown by the CLI and Reseam Manager</text>
+			<text class="mono-muted" x="18" y="66">info / warn / debug</text>
+		</g>
+
+		<text class="label" x="28" y="286">Targets and code blocks resolve against the same runtime. manifest, resources, and files take component(name) for one split of a split APK.</text>
+	</g>
+</svg>

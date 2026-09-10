@@ -163,4 +163,4 @@ val telegramSettings = settingsHost("telegram") {
 
 `install` runs after every patch that registered settings with the host, once the host has written `assets/reseam/settings.json` for the runtime to read. Toggles gate emitted code; see [Gates](5_code.md#gates).
 
-Next: [Targets](4_targets.md).
+Next: [Finding code in the app](4_targets.md).

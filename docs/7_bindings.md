@@ -1,6 +1,8 @@
-# Bindings
+# Reading obfuscated objects
 
-A binding is a view over an obfuscated object: a root type found structurally, plus named paths from it to the values a patch needs. It resolves once per patch and is applied inside code blocks.
+Some patches need a value out of an object whose class, fields, and getters are all renamed: the image URL inside Instagram's media object, for example. A binding describes how to find that class and the path from it to each value (a field read, a call, a cast). Once declared, a patch applies it to any value of that class inside a code block and gets the member out, null-checked along the way.
+
+A binding resolves once per patch.
 
 ```kotlin
 import app.reseam.patch.bind
@@ -73,4 +75,4 @@ feedClickHandler.before {
 
 `binding.of(value)` applies the raw path. `binding.member(name, value)` applies a member path. The input must be statically assignable to the root type; an `Object`-typed input is cast implicitly, anything else must be cast first.
 
-Next: [Extensions](8_extensions.md).
+Next: [Shipping your own code](8_extensions.md).

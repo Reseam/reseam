@@ -1,6 +1,6 @@
-# Dex layer
+# Raw bytecode
 
-`app.reseam.patch.dex` is the layer under targets and code blocks: methods and classes as handles, instructions as data, registers as numbers. Reach it through `target.method`, `target.classDef`, `bytecode`, or the custom target constructors.
+Targets and code blocks cover the common cases. Underneath them, `app.reseam.patch.dex` exposes methods and classes as handles, instructions as data, and registers as numbers. Use it for a lookup no query expresses or an edit no code block emits. Reach it through `target.method`, `target.classDef`, `bytecode`, or the `methodTarget`, `classTarget`, and `fieldTarget` constructors.
 
 ## Method
 

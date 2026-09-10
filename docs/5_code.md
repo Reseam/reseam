@@ -1,4 +1,6 @@
-# Code
+# Changing methods
+
+Once a target is found, a patch changes it by adding code: when the method starts, right before every return, or instead of the whole body. The code is written as Kotlin calls that describe values and calls; Reseam turns them into Dalvik instructions and picks the registers.
 
 Three words place code: `before`, `after`, `replace`. On a method target they mean entry, every return, and the whole body. On a point they mean just before or just after that instruction.
 
@@ -135,6 +137,6 @@ safetyNetHandler.point { string("basicIntegrity") }
 
 ## Registers
 
-Inserted code uses registers the method does not need at that point and grows the frame when it must. Replaced bodies get sixteen locals below the parameters; `outs` is sized from the widest call. Invokes with more than five arguments, or arguments in high registers, become range invokes with the arguments moved into a scratch span. Registers appear only in the [dex layer](9_dex.md).
+Inserted code uses registers the method does not need at that point and grows the frame when it must. Replaced bodies get sixteen locals below the parameters; `outs` is sized from the widest call. Invokes with more than five arguments, or arguments in high registers, become range invokes with the arguments moved into a scratch span. Registers appear only in the [raw bytecode layer](9_dex.md).
 
-Next: [Runtime](6_runtime.md).
+Next: [Manifest, resources, and files](6_runtime.md).

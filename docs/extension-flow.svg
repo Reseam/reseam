@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" font-family="'InterVariable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+	<style>
+		.card { fill: #121212; stroke: #262626; stroke-width: 1.5; }
+		.card-accent { fill: #121212; stroke: oklch(0.8808 0.0969 156.04); stroke-width: 1.5; }
+		.inner { fill: #171717; stroke: none; }
+		.chip { fill: #0a0a0a; stroke: #262626; stroke-width: 1; }
+		.title { fill: #ededed; font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+		.label { fill: #a3a3a3; font-size: 11px; }
+		.caption { fill: #a3a3a3; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; }
+		.mono { fill: #ededed; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.mono-muted { fill: #a3a3a3; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.mono-dim { fill: #6b6b6b; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.mono-struck { fill: #6b6b6b; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-decoration: line-through; }
+		.mono-accent { fill: oklch(0.8808 0.0969 156.04); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+		.accent-fill { fill: oklch(0.8808 0.0969 156.04); }
+		.link { stroke: #3f3f46; stroke-width: 1.5; fill: none; }
+		.link-accent { stroke: oklch(0.8808 0.0969 156.04); stroke-width: 1.5; fill: none; }
+		.arrowhead { fill: #3f3f46; }
+		.arrowhead-accent { fill: oklch(0.8808 0.0969 156.04); }
+	</style>
+	<defs>
+		<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+			<path d="M0,0 L10,5 L0,10 z" class="arrowhead" />
+		</marker>
+		<marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+			<path d="M0,0 L10,5 L0,10 z" class="arrowhead-accent" />
+		</marker>
+	</defs>
+
+
+	<text class="caption" x="40" y="30">Build time</text>
+	<g transform="translate(40,44)">
+		<rect class="card" x="0" y="0" width="240" height="150" rx="18" />
+		<text class="caption" x="20" y="26">Extension module</text>
+		<rect class="inner" x="16" y="40" width="208" height="94" rx="8" />
+		<text class="mono" x="28" y="62">anti-delete/</text>
+		<text class="mono" x="44" y="80">src/main/java/</text>
+		<text class="mono-accent" x="60" y="98">DeletedArchive.java</text>
+		<text class="mono-dim" x="44" y="116">src/stubs/java/ (not dexed)</text>
+	</g>
+	<line class="link" x1="282" y1="119" x2="336" y2="119" marker-end="url(#arrow)" />
+	<g transform="translate(340,79)">
+		<rect class="chip" x="0" y="0" width="120" height="80" rx="12" />
+		<circle class="accent-fill" cx="20" cy="22" r="4" />
+		<text class="title" x="32" y="26">d8</text>
+		<text class="label" x="18" y="48">against android.jar</text>
+		<text class="label" x="18" y="62">from ANDROID_HOME</text>
+	</g>
+	<line class="link" x1="462" y1="119" x2="516" y2="119" marker-end="url(#arrow)" />
+	<g transform="translate(520,79)">
+		<rect class="card" x="0" y="0" width="240" height="80" rx="12" />
+		<text class="caption" x="120" y="24" text-anchor="middle">In the bundle</text>
+		<text class="mono-accent" x="120" y="50" text-anchor="middle">telegram-anti-delete.dex</text>
+		<text class="label" x="120" y="66" text-anchor="middle">one file per extension module</text>
+	</g>
+
+	<text class="caption" x="40" y="250">Patch time</text>
+	<g transform="translate(40,264)">
+		<rect class="card" x="0" y="0" width="360" height="120" rx="18" />
+		<text class="caption" x="20" y="26">Patch code</text>
+		<rect class="inner" x="16" y="40" width="328" height="64" rx="8" />
+		<text class="mono" x="28" y="62">object DeletedArchive : ExtClass(...) { }</text>
+		<text class="mono" x="28" y="80">appEntry.before {</text>
+		<text class="mono" x="44" y="96">call(DeletedArchive.init, thisObject)</text>
+	</g>
+	<line class="link-accent" x1="402" y1="324" x2="456" y2="324" marker-end="url(#arrow-accent)" />
+	<g transform="translate(460,264)">
+		<rect class="card-accent" x="0" y="0" width="460" height="120" rx="18" />
+		<text class="caption" x="20" y="26">Engine</text>
+		<text class="label" x="20" y="52">The first reference to a class an extension defines merges that</text>
+		<text class="label" x="20" y="68">DEX into the app, plus every extension it refers to.</text>
+		<text class="label" x="20" y="90">Patches never name a DEX file. A class nothing defines is</text>
+		<text class="label" x="20" y="106">logged once as a warning.</text>
+	</g>
+</svg>
