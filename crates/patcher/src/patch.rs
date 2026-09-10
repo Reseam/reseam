@@ -49,20 +49,11 @@ pub struct PatchSpec {
 impl PatchSpec {
     /// Why the patch does not apply to `package`/`version`, if it does not.
     pub fn incompatibility(&self, package: Option<&str>, version: Option<&str>) -> Option<String> {
-        if self.compatibility.is_empty() {
-            return None;
-        }
-        let Some(package) = package else {
-            return Some("APK has no package name".to_owned());
+        let entries = match self.package_compatibility(package) {
+            Ok(Some(entries)) => entries,
+            Ok(None) => return None,
+            Err(reason) => return Some(reason),
         };
-        let entries: Vec<&Compatibility> = self
-            .compatibility
-            .iter()
-            .filter(|entry| entry.package == package)
-            .collect();
-        if entries.is_empty() {
-            return Some(format!("incompatible package: {package}"));
-        }
         if entries.iter().any(|entry| entry.versions.is_empty()) {
             return None;
         }
@@ -78,5 +69,33 @@ impl PatchSpec {
             )),
             None => Some("APK has no version name".to_owned()),
         }
+    }
+
+    /// Why the patch does not apply to `package` at any version, if it does not.
+    pub fn package_incompatibility(&self, package: Option<&str>) -> Option<String> {
+        self.package_compatibility(package).err()
+    }
+
+    /// The compatibility entries for `package`; `Ok(None)` when the patch
+    /// applies to every app.
+    fn package_compatibility(
+        &self,
+        package: Option<&str>,
+    ) -> std::result::Result<Option<Vec<&Compatibility>>, String> {
+        if self.compatibility.is_empty() {
+            return Ok(None);
+        }
+        let Some(package) = package else {
+            return Err("APK has no package name".to_owned());
+        };
+        let entries: Vec<&Compatibility> = self
+            .compatibility
+            .iter()
+            .filter(|entry| entry.package == package)
+            .collect();
+        if entries.is_empty() {
+            return Err(format!("incompatible package: {package}"));
+        }
+        Ok(Some(entries))
     }
 }

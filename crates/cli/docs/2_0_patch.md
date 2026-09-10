@@ -54,6 +54,7 @@ XAPKs containing or declaring OBB expansion files are rejected: Reseam currently
 | `--disable <PATCH>` | Repeatable. Force a patch off. |
 | `--option PATCH.KEY=VALUE` | Repeatable. Set a patch option. Parsed against the patch's declared option type. |
 | `--dry-run` | Resolve and validate without applying patches or writing output. |
+| `--ignore-versions` | Run patches on app versions they were not declared for. The package check still applies. |
 
 ## Signing
 

@@ -92,6 +92,7 @@ fn selection(args: &PatchRequestArgs, trust: &TrustStore) -> Result<PatchSelecti
     let mut selection = PatchSelection {
         enable: args.enable.iter().cloned().collect(),
         disable: args.disable.iter().cloned().collect(),
+        ignore_versions: args.ignore_versions,
         ..Default::default()
     };
     if args.option.is_empty() {

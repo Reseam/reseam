@@ -17,6 +17,9 @@ pub struct PatchSelection {
     pub enable: HashSet<String>,
     pub disable: HashSet<String>,
     pub options: HashMap<String, PatchOptions>,
+    /// Run patches on app versions they were not declared for. The package
+    /// check still applies.
+    pub ignore_versions: bool,
 }
 
 /// A selection checked against a patch list: dependency order, the patches
@@ -29,6 +32,7 @@ pub(crate) struct ResolvedPlan {
     desired: Vec<bool>,
     disabled: Vec<bool>,
     options: Vec<PatchOptions>,
+    ignore_versions: bool,
 }
 
 impl ResolvedPlan {
@@ -98,6 +102,7 @@ impl ResolvedPlan {
             desired,
             disabled,
             options,
+            ignore_versions: selection.ignore_versions,
         })
     }
 
@@ -123,6 +128,10 @@ impl ResolvedPlan {
 
     pub fn options(&self, idx: usize) -> &PatchOptions {
         &self.options[idx]
+    }
+
+    pub fn ignores_versions(&self) -> bool {
+        self.ignore_versions
     }
 }
 

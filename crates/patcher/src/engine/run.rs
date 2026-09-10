@@ -140,7 +140,12 @@ impl<'a> Run<'a> {
                 self.patches[dependency].id()
             ));
         }
-        self.patches[idx].spec().incompatibility(package, version)
+        let spec = self.patches[idx].spec();
+        if self.plan.ignores_versions() {
+            spec.package_incompatibility(package)
+        } else {
+            spec.incompatibility(package, version)
+        }
     }
 
     fn applied(&self, idx: usize) -> bool {
@@ -204,5 +209,77 @@ fn guarded(hook: impl FnOnce() -> Result<()>) -> std::result::Result<(), String>
                 .or_else(|| panic.downcast_ref::<&str>().map(|s| s.to_string()))
                 .unwrap_or_else(|| "unknown panic".to_owned())
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::patch::{Compatibility, PatchSpec};
+
+    struct Declared(PatchSpec);
+
+    impl Patch for Declared {
+        fn spec(&self) -> &PatchSpec {
+            &self.0
+        }
+
+        fn execute(&self, _ctx: &mut PatchContext) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    fn declared(id: &str, package: &str, versions: &[&str]) -> Declared {
+        Declared(PatchSpec {
+            id: id.to_owned(),
+            name: id.to_owned(),
+            hidden: false,
+            description: String::new(),
+            enabled_by_default: true,
+            dependencies: Vec::new(),
+            compatibility: vec![Compatibility {
+                package: package.to_owned(),
+                versions: versions.iter().map(|v| (*v).to_owned()).collect(),
+            }],
+            options: Vec::new(),
+        })
+    }
+
+    fn statuses(selection: &PatchSelection) -> Vec<PatchStatus> {
+        let pinned = declared("pinned", "com.example", &["1.0"]);
+        let other = declared("other", "com.other", &[]);
+        let patches: Vec<&dyn Patch> = vec![&pinned, &other];
+        validate_patches(&patches, selection, Some("com.example"), Some("2.0"))
+            .unwrap()
+            .into_iter()
+            .map(|result| result.status)
+            .collect()
+    }
+
+    #[test]
+    fn version_mismatch_skips_unless_versions_are_ignored() {
+        assert_eq!(
+            statuses(&PatchSelection::default()),
+            vec![
+                PatchStatus::Skipped {
+                    reason: "expected one of [1.0], got 2.0".to_owned()
+                },
+                PatchStatus::Skipped {
+                    reason: "incompatible package: com.example".to_owned()
+                },
+            ]
+        );
+        assert_eq!(
+            statuses(&PatchSelection {
+                ignore_versions: true,
+                ..Default::default()
+            }),
+            vec![
+                PatchStatus::Applied,
+                PatchStatus::Skipped {
+                    reason: "incompatible package: com.example".to_owned()
+                },
+            ]
+        );
     }
 }

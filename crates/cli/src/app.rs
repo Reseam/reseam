@@ -54,6 +54,9 @@ pub struct PatchRequestArgs {
     pub option: Vec<String>,
     #[arg(long)]
     pub dry_run: bool,
+    /// Run patches on app versions they were not declared for.
+    #[arg(long)]
+    pub ignore_versions: bool,
 }
 
 #[derive(Args)]
