@@ -3,54 +3,40 @@
 ## Prerequisites
 
 - JDK 17.
-- Android SDK with `ANDROID_HOME` set to its root. Extension modules invoke `d8` from `$ANDROID_HOME/build-tools/*/` and link against the latest `platforms/android-*/android.jar`.
-- The `reseam` CLI, built from the Reseam repo or installed from a release.
+- Android SDK with `ANDROID_HOME` set to its root. The build runs `d8` from `$ANDROID_HOME/build-tools/*/` and compiles extensions against the latest `platforms/android-*/android.jar`.
+- The `reseam` CLI, built from the Reseam repo or installed from a release. Use the release that matches the plugin version in `settings.gradle.kts`.
 - Git.
 
 ## First build
 
-Generate a bundle signing key the first time:
+Generate a bundle signing key once:
 
 ```bash
-reseam bundle keygen --out bundle-signing.key
+reseam bundle keygen --out ~/.reseam/bundle-signing.key
 ```
 
-Keep it private and store it outside the repository. The corresponding public key is embedded in `patches.json` so clients can verify the bundles you publish.
+Keep it private and outside the repository. The public key is embedded in `patches.json` so clients can verify the bundles you publish.
 
 Build:
 
 ```bash
-export RESEAM_BUNDLE_KEY=$PWD/bundle-signing.key
 ./gradlew bundle
 ```
 
-Gradle needs to know which `reseam` CLI to use when packing the bundle. Pick one:
+The build locates the CLI in this order: `RESEAM_BIN` (or `-Preseam.bin`), then `<RESEAM_WORKSPACE>/target/release/reseam` (or `-Preseam.workspace`), then `reseam` on `PATH`. The signing key comes from `RESEAM_BUNDLE_KEY`, `-Preseam.signingKey`, or `~/.reseam/bundle-signing.key`.
 
-- `-Preseam.workspace=/path/to/reseam` (or `RESEAM_WORKSPACE`): point at a sibling Reseam checkout. Gradle uses `<workspace>/target/release/reseam` and includes the workspace's own Gradle build, so the patch SDK is compiled from source and any local SDK edits are picked up.
-- `RESEAM_BIN=/abs/path/to/reseam`: point at a prebuilt CLI binary. The patch SDK is resolved from Maven (released versions only).
+Set `RESEAM_WORKSPACE` to a checkout of the Reseam repo to build against its SDK and Gradle plugin from source instead of the published versions.
 
-Without one of those the build fails with `RESEAM_BIN env var or -Preseam.workspace property required to locate the reseam CLI`.
+Output: `build/reseam/<name>.reseam`.
 
-Output: `build/bundle/<name>.reseam`.
-
-Inspect and apply to a local APK to check:
+Inspect the bundle and apply it to a local APK:
 
 ```bash
-reseam bundle list build/bundle/<name>.reseam --trust <PUBLIC_KEY_HEX>
+reseam bundle list build/reseam/<name>.reseam --trust <PUBLIC_KEY_HEX>
 reseam patch target.apk \
-  --bundle build/bundle/<name>.reseam \
+  --bundle build/reseam/<name>.reseam \
   --trust <PUBLIC_KEY_HEX> \
   --output patched.apk
 ```
 
-## Tuning the patcher
-
-The Kotlin patch host runs in an embedded JVM. Heap defaults to `256m`, enough for most APKs, but very large targets (Instagram, Facebook) can OOM during patch search-index construction. Bump it via `RESEAM_JVM_HEAP`:
-
-```bash
-RESEAM_JVM_HEAP=4g reseam patch target.apk --bundle ...
-```
-
-Don't set this preemptively; only when you actually see `OutOfMemoryError: Java heap space` from the patcher. Going past your machine's free RAM gets you a SIGKILL (exit 137), not a Java exception.
-
-For the project layout itself, see [Bundles](2_bundles.md). For the full release flow, see [Publishing](5_publish.md).
+Next: [Bundles](2_bundles.md). For the release flow, see [Publishing](10_publish.md).
