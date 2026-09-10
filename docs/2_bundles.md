@@ -1,8 +1,12 @@
 # Bundles
 
-A bundle is what you publish: one signed `.reseam` file holding your compiled patches, any extra code they put into apps, and a manifest naming the bundle. Reseam Manager downloads it and applies the patches on the phone; the `reseam` CLI applies it on your machine.
+A bundle is the unit you publish and users install: one `.reseam` file with every patch you maintain, for as many apps as you like. Users add your bundle to Reseam Manager once; from then on they pick the patches they want for each app, and updates to the bundle reach them through the release index you host.
 
-You develop a bundle as a Gradle project with a fixed directory layout. The `app.reseam.workspace` plugin reads that layout and configures every module from it.
+Inside the file are your compiled patches (one jar per app), the [extension code](9_extensions.md) those patches put into apps, and a manifest with the bundle's name, author, and description. The file is signed with your key. Reseam Manager and the `reseam` CLI refuse to load a bundle whose signature does not match a key the user trusts, so a bundle cannot be altered between you and the phone.
+
+A bundle has its own version, independent of the engine's and of the apps it patches. Publishing a new version is a new file at a new URL; [Publishing](11_publish.md) covers the release index.
+
+You develop a bundle as a Gradle project with a fixed directory layout. The `app.reseam.workspace` plugin reads that layout and configures every module from it, so there is one build command and no build scripts to maintain.
 
 ![The bundle project on the left: manifest.toml, settings.gradle.kts, gradlew, apps/telegram with a patch module and an anti-delete extension module (main and stub sources), and shared/settings-runtime. The gradlew bundle task in the middle compiles each patch module to a jar with classes.dex, runs d8 on each extension, then reseam bundle pack hashes every file and signs the manifest. The signed .reseam archive on the right holds mimetype, manifest.toml with a files table of SHA-256 hashes and the engine version, manifest.pubkey, manifest.sig, telegram-patches.jar, telegram-anti-delete.dex and settings-runtime.dex. No sources or Gradle scripts ship.](bundle-layout.svg)
 

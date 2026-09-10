@@ -2,7 +2,17 @@
 
 Reseam applies community-written patches to Android apps on-device. A bundle is the unit patch authors build, sign, and publish; the engine loads a bundle, resolves patch order, and runs each patch against a mutable APK. Reseam Manager on Android invokes the engine for end users; the `reseam` CLI invokes it during development.
 
-These docs are for patch authors. Read in order the first time:
+These docs are for patch authors. The words used throughout:
+
+- **App**: an Android app a user already has, as an APK. Reseam never modifies the installed copy; it produces a patched copy that installs alongside.
+- **Patch**: one change to one app that a user can switch on. Written in Kotlin against the Reseam SDK.
+- **Bundle**: the file a patch author publishes, holding every patch they maintain plus the code those patches inject. Signed, so users can trust it.
+- **Target**: how a patch describes the method, class, or instruction it wants to change, without naming it, so the description survives the app's obfuscation and updates. ReVanced calls this a fingerprint.
+- **Extension**: Java the bundle ships and the engine links into the app when a patch calls it. For anything too big to express as a few instructions.
+- **Settings**: switches inside the patched app that let the user turn parts of a patch on and off without patching again.
+- **Engine**: the Rust program that loads a bundle, runs the patches, and writes the patched APK. Reseam Manager embeds it on the phone; the `reseam` CLI wraps it on a computer.
+
+Read in order the first time:
 
 1. [Setup](1_setup.md). Install what you need and build once.
 2. [Bundles](2_bundles.md). What you publish, and how the project is laid out.

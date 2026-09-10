@@ -1,6 +1,10 @@
 # Patches
 
-Patches are Kotlin. Sources live under `apps/<app>/patch/src/main/kotlin/`. Every patch is a public top-level `val` built with `patch(...)`; the engine discovers them from the compiled jar, not by file path.
+A patch is one change to one app that a user can switch on: hide sponsored posts, unlock a paid feature, stop an update prompt. Reseam applies it on the phone by rewriting the app itself: it finds the methods the change concerns, alters their code, and re-signs the APK. The patched app installs next to the original.
+
+To you, a patch is a Kotlin value with two halves. The first is what the engine and the user need to know before anything runs: a name and description, which apps and versions it applies to, other patches that must run first, and values the user may set. The second is `execute`, the code that makes the change.
+
+You write patches in files under `apps/<app>/patch/src/main/kotlin/`. Each patch is a public top-level `val`. The engine finds patches by looking through the compiled classes for such values, so file names and property names are yours to choose; only the name inside `patch("...")` is what users see.
 
 ## Shape of a patch
 
