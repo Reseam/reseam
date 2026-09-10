@@ -17,7 +17,7 @@ pub trait PatchEventSink {
 #[export]
 pub fn inspect_json(request_json: String) -> Result<String, String> {
     let request: InspectRequest = serde_json::from_str(&request_json).map_err(display)?;
-    json(&crate::inspect(&request).map_err(display)?)
+    json(&crate::inspect(&request).map_err(failure)?)
 }
 
 #[export]
@@ -26,7 +26,7 @@ pub fn patch_json(request_json: String, event_sink: impl PatchEventSink) -> Resu
     let outcome = crate::patch(&request, |event| {
         event_sink.on_event(serde_json::to_string(&event).expect("event serializes"))
     })
-    .map_err(display)?;
+    .map_err(failure)?;
     json(&outcome)
 }
 
@@ -35,7 +35,11 @@ fn json<T: Serialize>(value: &T) -> Result<String, String> {
 }
 
 fn display(error: impl std::fmt::Display) -> String {
-    format!("{error:#}")
+    failure(anyhow::anyhow!("{error:#}"))
+}
+
+fn failure(error: anyhow::Error) -> String {
+    serde_json::to_string(&crate::SdkError::from(&error)).unwrap_or_else(|_| format!("{error:#}"))
 }
 
 #[cfg(target_os = "android")]
@@ -69,7 +73,7 @@ impl ApkInspection {
             &splits,
             &reseam_apk::ApkFile::patch_options(),
         )
-        .map_err(display)?;
+        .map_err(failure)?;
         Ok(Self {
             opened: std::sync::Mutex::new(opened),
         })
@@ -77,7 +81,7 @@ impl ApkInspection {
 
     pub fn metadata_json(&self) -> Result<String, String> {
         let mut opened = self.opened.lock().map_err(display)?;
-        json(&crate::inspect::apk_metadata(&mut opened).map_err(display)?)
+        json(&crate::inspect::apk_metadata(&mut opened).map_err(failure)?)
     }
 
     pub fn base_path(&self) -> Result<String, String> {

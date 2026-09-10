@@ -5,6 +5,7 @@
 //! request, and the JSON exports the Kotlin SDK binds to.
 
 mod dto;
+mod error;
 mod ffi;
 mod inspect;
 mod metrics;
@@ -16,6 +17,7 @@ pub use dto::{
     ApkMetadata, BundleMetadata, InspectRequest, InspectResponse, PatchArtifact, PatchMetadata,
     PatchOutcome, PatchOutput, PatchRequest, RunEvent, SigningKeyFiles,
 };
+pub use error::{Problem, SdkError};
 pub use inspect::{inspect, inspect_apk, load_bundles};
 pub use metrics::{
     trace_heap_growth, ApplyDiagnostics, CountingAllocator, PatchMetrics, PatchPhase,

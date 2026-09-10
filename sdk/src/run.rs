@@ -8,6 +8,7 @@ use reseam_patcher::engine::{self, PatchResult, PatchStatus};
 use reseam_patcher::Patch;
 
 use crate::dto::{PatchArtifact, PatchOutcome, PatchRequest, RunEvent};
+use crate::error::Problem;
 use crate::inspect::{load_bundles, open_apk, OpenedApk};
 use crate::metrics::{ApplyDiagnostics, PatchPhase, PatchProfiler};
 use crate::output::write_signed;
@@ -120,9 +121,9 @@ fn ensure_none_failed(results: &[PatchResult]) -> Result<()> {
         .collect();
     ensure!(
         failed.is_empty(),
-        "{} patch(es) failed: {}",
-        failed.len(),
-        failed.join(", ")
+        Problem::PatchesFailed {
+            patches: failed.iter().map(|name| (*name).to_owned()).collect(),
+        }
     );
     Ok(())
 }

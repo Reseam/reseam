@@ -9,6 +9,8 @@ use reseam_patcher::log::LogEntry;
 use reseam_patcher::PatchSpec;
 use serde::{Deserialize, Serialize};
 
+use crate::error::Problem;
+
 use crate::metrics::PatchMetrics;
 use crate::trust::TrustStore;
 
@@ -37,6 +39,8 @@ pub struct BundleMetadata {
     pub public_key: String,
     pub engine: String,
     pub trusted: bool,
+    /// Set when the bundle cannot be used; its patches are then absent from the response.
+    pub problem: Option<Problem>,
 }
 
 #[derive(Debug, Clone, Serialize)]

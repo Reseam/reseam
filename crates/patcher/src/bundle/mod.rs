@@ -65,23 +65,30 @@ fn engine_compatibility(
 }
 
 fn check_engine(info: &BundleInfo) -> crate::error::Result<()> {
+    let mismatch = |ordering: std::cmp::Ordering| {
+        let (bundle, built, running) = (
+            info.name.clone(),
+            info.engine.clone(),
+            ENGINE_VERSION.to_owned(),
+        );
+        match ordering {
+            std::cmp::Ordering::Equal => Ok(()),
+            std::cmp::Ordering::Greater => Err(PatcherError::EngineTooOld {
+                bundle,
+                built,
+                running,
+            }),
+            std::cmp::Ordering::Less => Err(PatcherError::BundleTooOld {
+                bundle,
+                built,
+                running,
+            }),
+        }
+    };
     if info.engine.is_empty() {
-        return Err(bundle_error(format!(
-            "bundle {} was packed before engines were versioned; ask its author for a build with Reseam {ENGINE_VERSION} or newer",
-            info.name
-        )));
+        return mismatch(std::cmp::Ordering::Less);
     }
-    match engine_compatibility(&info.engine, ENGINE_VERSION).map_err(bundle_error)? {
-        std::cmp::Ordering::Equal => Ok(()),
-        std::cmp::Ordering::Greater => Err(bundle_error(format!(
-            "bundle {} needs Reseam engine {} or newer; this is {ENGINE_VERSION}. Update Reseam",
-            info.name, info.engine
-        ))),
-        std::cmp::Ordering::Less => Err(bundle_error(format!(
-            "bundle {} was built for Reseam engine {}, which this engine ({ENGINE_VERSION}) no longer loads; ask its author for a rebuild",
-            info.name, info.engine
-        ))),
-    }
+    mismatch(engine_compatibility(&info.engine, ENGINE_VERSION).map_err(bundle_error)?)
 }
 
 #[cfg(test)]

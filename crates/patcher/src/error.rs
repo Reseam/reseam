@@ -8,6 +8,22 @@ pub enum PatcherError {
     #[error("bundle error: {0}")]
     Bundle(String),
 
+    #[error("bundle {bundle} was built for Reseam engine {built}, which this engine ({running}) no longer loads; ask its author for a rebuild")]
+    BundleTooOld {
+        bundle: String,
+        built: String,
+        running: String,
+    },
+
+    #[error(
+        "bundle {bundle} needs Reseam engine {built} or newer; this is {running}. Update Reseam"
+    )]
+    EngineTooOld {
+        bundle: String,
+        built: String,
+        running: String,
+    },
+
     #[error("not found: {0}")]
     NotFound(String),
 

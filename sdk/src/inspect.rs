@@ -10,6 +10,7 @@ use reseam_patcher::bundle::{BundleArchive, PatchBundle};
 use reseam_patcher::PatchSpec;
 
 use crate::dto::{ApkMetadata, BundleMetadata, InspectRequest, InspectResponse, PatchMetadata};
+use crate::error::Problem;
 use crate::trust::TrustStore;
 
 pub fn inspect_apk(apk_path: &Path, split_paths: &[PathBuf]) -> Result<ApkMetadata> {
@@ -47,34 +48,67 @@ pub fn inspect(request: &InspectRequest) -> Result<InspectResponse> {
         .as_deref()
         .map(|path| inspect_apk(path, &request.split_paths))
         .transpose()?;
-    let archives = request
-        .bundle_paths
-        .iter()
-        .map(|path| open_bundle(path))
-        .collect::<Result<Vec<_>>>()?;
-    let bundles: Vec<BundleMetadata> = request
-        .bundle_paths
-        .iter()
-        .zip(&archives)
-        .map(|(path, archive)| bundle_metadata(path, archive, &request.trust))
-        .collect();
+    let mut bundles = Vec::with_capacity(request.bundle_paths.len());
     let mut patches = Vec::new();
-    if bundles.iter().all(|bundle| bundle.trusted) {
-        for archive in archives {
-            let bundle = archive.load()?;
-            patches.extend(
-                bundle
-                    .patches
-                    .iter()
-                    .map(|patch| patch_metadata(&bundle.info.name, patch.spec(), apk.as_ref())),
-            );
+    for path in &request.bundle_paths {
+        let archive = match open_bundle(path) {
+            Ok(archive) => archive,
+            Err(error) => {
+                bundles.push(unreadable_bundle(path, &error));
+                continue;
+            }
+        };
+        let mut metadata = bundle_metadata(path, &archive, &request.trust);
+        if !metadata.trusted {
+            metadata.problem = Some(Problem::UntrustedBundle {
+                path: path.display().to_string(),
+                public_key: metadata.public_key.clone(),
+            });
+        } else {
+            match archive.load() {
+                Ok(bundle) => patches.extend(
+                    bundle
+                        .patches
+                        .iter()
+                        .map(|patch| patch_metadata(&bundle.info.name, patch.spec(), apk.as_ref())),
+                ),
+                Err(error) => metadata.problem = Some(load_problem(path, &error.into())),
+            }
         }
+        bundles.push(metadata);
     }
     Ok(InspectResponse {
         apk,
         bundles,
         patches,
     })
+}
+
+fn unreadable_bundle(path: &Path, error: &anyhow::Error) -> BundleMetadata {
+    BundleMetadata {
+        file_name: file_name(path),
+        name: String::new(),
+        author: String::new(),
+        description: String::new(),
+        files: Vec::new(),
+        public_key: String::new(),
+        engine: String::new(),
+        trusted: false,
+        problem: Some(load_problem(path, error)),
+    }
+}
+
+fn load_problem(path: &Path, error: &anyhow::Error) -> Problem {
+    match Problem::classify(error) {
+        Problem::Other | Problem::UnreadableApk { .. } => Problem::unreadable_bundle(path),
+        problem => problem,
+    }
+}
+
+fn file_name(path: &Path) -> String {
+    path.file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 /// An opened APK plus the container bundle it came from, when the input was
@@ -114,9 +148,10 @@ pub fn load_bundles(paths: &[PathBuf], trust: &TrustStore) -> Result<Vec<PatchBu
             let archive = open_bundle(path)?;
             ensure!(
                 trust.contains(&archive.public_key),
-                "bundle {} is signed by an untrusted key {}",
-                path.display(),
-                hex::encode(archive.public_key)
+                Problem::UntrustedBundle {
+                    path: path.display().to_string(),
+                    public_key: hex::encode(archive.public_key),
+                }
             );
             archive
                 .load()
@@ -132,10 +167,7 @@ fn open_bundle(path: &Path) -> Result<BundleArchive> {
 fn bundle_metadata(path: &Path, archive: &BundleArchive, trust: &TrustStore) -> BundleMetadata {
     let info = archive.info();
     BundleMetadata {
-        file_name: path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default(),
+        file_name: file_name(path),
         name: info.name.clone(),
         author: info.author.clone(),
         description: info.description.clone(),
@@ -143,6 +175,7 @@ fn bundle_metadata(path: &Path, archive: &BundleArchive, trust: &TrustStore) -> 
         public_key: hex::encode(archive.public_key),
         engine: info.engine.clone(),
         trusted: trust.contains(&archive.public_key),
+        problem: None,
     }
 }
 
