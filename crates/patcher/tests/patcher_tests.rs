@@ -253,14 +253,14 @@ fn kotlin_bundle_executes_against_runtime_api() {
         heap.committed_bytes
     );
 
-    assert_eq!(results.len(), 7);
+    assert_eq!(results.len(), 11);
     let statuses = results
         .iter()
         .map(|result| (result.name.as_str(), &result.status))
         .collect::<std::collections::HashMap<_, _>>();
     let internal = patches
         .iter()
-        .find(|patch| patch.spec().hidden)
+        .find(|patch| patch.id() == "app.reseam.test.internalHelper")
         .expect("the fixture declares an internal patch");
     assert_eq!(internal.id(), "app.reseam.test.internalHelper");
     assert_eq!(internal.spec().name, internal.id());
@@ -269,14 +269,14 @@ fn kotlin_bundle_executes_against_runtime_api() {
         statuses.get(internal.id()),
         Some(&PatchStatus::Skipped { .. })
     ));
-    assert_eq!(statuses.get("finalize-owner"), Some(&&PatchStatus::Applied));
-    assert_eq!(statuses.get("runtime-api"), Some(&&PatchStatus::Applied));
+    assert_eq!(statuses.get("app.reseam.test.finalizeOwner"), Some(&&PatchStatus::Applied));
+    assert_eq!(statuses.get("app.reseam.test.runtimeApi"), Some(&&PatchStatus::Applied));
     assert_eq!(
-        statuses.get("dependent-runtime"),
+        statuses.get("app.reseam.test.dependentRuntime"),
         Some(&&PatchStatus::Applied)
     );
     assert!(matches!(
-        statuses.get("required-option"),
+        statuses.get("app.reseam.test.requiredOption"),
         Some(&PatchStatus::Skipped { .. })
     ));
 
@@ -344,7 +344,7 @@ fn internal_patches_run_as_dependencies() {
         .filter(|result| result.status == PatchStatus::Applied)
         .map(|result| result.name.as_str())
         .collect();
-    assert_eq!(applied, ["app.reseam.test.internalHelper", "uses-internal"]);
+    assert_eq!(applied, ["app.reseam.test.internalHelper", "app.reseam.test.usesInternal"]);
     assert_eq!(
         apk.component_mut(0)
             .unwrap()
@@ -664,7 +664,7 @@ fn after_hooks_preserve_entry_arguments_when_parameter_registers_are_reused() {
     assert_eq!(
         results
             .iter()
-            .find(|r| r.name == "after-entry-values")
+            .find(|r| r.name == "app.reseam.test.afterEntryValues")
             .unwrap()
             .status,
         PatchStatus::Applied
@@ -739,4 +739,134 @@ fn after_hooks_preserve_entry_arguments_when_parameter_registers_are_reused() {
             other => panic!("unexpected method {other}"),
         }
     }
+}
+
+
+#[test]
+fn same_named_patches_keep_independent_identity_options_dependencies_and_settings() {
+    use reseam_patcher::engine::{validate_patches, PatchIndex};
+    let bundle_file = write_bundle_reseam();
+    let bundle = BundleArchive::open(&bundle_file.path)
+        .unwrap()
+        .load()
+        .unwrap();
+    let patches: Vec<&dyn Patch> = bundle.patches.iter().map(Box::as_ref).collect();
+    let first = "app.reseam.test.firstAds";
+    let second = "app.reseam.test.secondAds";
+    let other = "app.reseam.test.otherAds";
+    let index = PatchIndex::new(&patches).unwrap();
+    for id in [first, second, other] {
+        let patch = patches[index.resolve(id, None).unwrap()];
+        assert_eq!(patch.id(), id);
+        assert_eq!(patch.spec().name, "Hide Ads");
+    }
+    assert!(patches[index.resolve(second, None).unwrap()]
+        .spec()
+        .dependencies
+        .iter()
+        .any(|id| id == first));
+    let error = index
+        .resolve("Hide Ads", Some("com.example.test"))
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("ambiguous") && error.contains(first) && error.contains(second));
+    assert!(!error.contains(other));
+
+    let selection = PatchSelection {
+        enable: ["Hide Ads".to_owned()].into(),
+        ..Default::default()
+    };
+    let results = validate_patches(&patches, &selection, Some("com.example.other"), None).unwrap();
+    let applied: Vec<_> = results
+        .iter()
+        .filter(|r| r.status == PatchStatus::Applied)
+        .map(|r| r.name.as_str())
+        .collect();
+    assert_eq!(applied, [other]);
+
+    let (_apk_dir, mut apk) = open_split_test_apk();
+    let mut first_options = PatchOptions::default();
+    first_options.set("marker", OptionValue::String("one".into()));
+    let mut second_options = PatchOptions::default();
+    second_options.set("marker", OptionValue::String("two".into()));
+    let selection = PatchSelection {
+        enable: [second.to_owned()].into(),
+        options: [
+            (first.to_owned(), first_options),
+            (second.to_owned(), second_options),
+        ]
+        .into(),
+        ..Default::default()
+    };
+    let results = engine::apply_patches(
+        &mut PatchContext::new(&mut apk),
+        &patches,
+        &selection,
+        |_| {},
+    )
+    .unwrap();
+    let applied: Vec<_> = results
+        .iter()
+        .filter(|r| r.status == PatchStatus::Applied)
+        .map(|r| r.name.as_str())
+        .collect();
+    assert!(
+        applied.iter().position(|id| *id == first).unwrap()
+            < applied.iter().position(|id| *id == second).unwrap()
+    );
+    for (path, expected) in [
+        ("assets/first-ads.txt", b"one"),
+        ("assets/second-ads.txt", b"two"),
+    ] {
+        assert_eq!(
+            apk.component_mut(0)
+                .unwrap()
+                .read_entry(path)
+                .unwrap()
+                .unwrap(),
+            expected
+        );
+    }
+    let schema = apk
+        .component_mut(0)
+        .unwrap()
+        .read_entry("assets/reseam/settings.json")
+        .unwrap()
+        .unwrap();
+    let schema: serde_json::Value = serde_json::from_slice(&schema).unwrap();
+    let sections = schema["sections"].as_array().unwrap();
+    assert_eq!(sections.len(), 2);
+    assert_eq!(sections[0]["title"], "First");
+    assert_eq!(sections[1]["title"], "Second");
+
+    let selection = PatchSelection {
+        disable: [first.to_owned()].into(),
+        ..selection
+    };
+    let results = validate_patches(
+        &patches,
+        &PatchSelection {
+            options: Default::default(),
+            ..selection
+        },
+        Some("com.example.test"),
+        None,
+    )
+    .unwrap();
+    assert!(results
+        .iter()
+        .filter(|r| r.name == first || r.name == second)
+        .all(|r| matches!(r.status, PatchStatus::Skipped { .. })));
+
+    let conflict = PatchSelection {
+        enable: ["app.reseam.test.runtimeApi".to_owned()].into(),
+        disable: ["runtime-api".to_owned()].into(),
+        ..Default::default()
+    };
+    assert!(
+        validate_patches(&patches, &conflict, Some("com.example.test"), None)
+            .unwrap_err()
+            .to_string()
+            .contains("both selected and disabled")
+    );
 }

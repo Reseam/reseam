@@ -87,10 +87,12 @@ class SettingsHost internal constructor(
     override val name: String? = null
     override val description = "Settings for $appId"
 
-    private val registered = LinkedHashMap<String, List<SettingsSection>>()
+    private val registered = mutableListOf<Pair<ReseamPatch, List<SettingsSection>>>()
 
     fun register(patch: ReseamPatch, sections: List<SettingsSection>) {
-        if (sections.isNotEmpty()) registered[patch.name ?: patch.toString()] = sections
+        if (sections.isEmpty()) return
+        val index = registered.indexOfFirst { it.first === patch }
+        if (index < 0) registered += patch to sections else registered[index] = patch to sections
     }
 
     override fun execute(ctx: PatchRuntime) = Unit
@@ -108,12 +110,12 @@ class SettingsHost internal constructor(
         appendJson(appId)
         append(",\"sections\":[")
         var first = true
-        for ((patchName, sections) in registered) {
+        for ((patch, sections) in registered) {
             for (section in sections) {
                 if (!first) append(',')
                 first = false
                 append("{\"patch\":")
-                appendJson(patchName)
+                appendJson(patch.name ?: patch.toString())
                 append(",\"title\":")
                 appendJson(section.title)
                 append(",\"settings\":[")

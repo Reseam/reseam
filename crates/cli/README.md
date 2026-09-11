@@ -32,7 +32,7 @@ Options:
 - `--output <FILE>`: output path for single-APK mode
 - `--output-dir <DIR>`: output directory for one or more APK components; mutually exclusive with `--output`
 - `--key <PK8>` and `--cert <DER>`: sign with an existing PKCS#8 key and X.509 certificate, provided together; otherwise Reseam reuses or generates key material next to the output
-- `--enable <PATCH>` and `--disable <PATCH>`: toggle patches by name, repeatable
+- `--enable <PATCH>` and `--disable <PATCH>`: toggle patches by ID or an unambiguous display name for the input app, repeatable
 - `--option PATCH.KEY=VALUE`: set a patch option, typed by the patch's declaration
 - `--dry-run`: resolve and validate without applying patches or writing output
 
@@ -101,3 +101,13 @@ Both `publish` commands accept `--out`, `--description` or `--description-file`,
 ## Documentation
 
 Full reference for every command lives in `docs/`.
+
+Patch IDs come from their Kotlin declarations, such as `app.reseam.patches.x.hideAds`.
+`bundle list` shows both IDs and display names. Different patches may share a name:
+`--enable "Hide Ads"` selects the uniquely matching patch for the input package; if
+several apply, the CLI reports their IDs so you can choose one explicitly. Version
+compatibility is checked separately and does not decide which name match to select.
+
+Options accept either selector, for example
+`--option app.reseam.patches.x.hideAds.enabled=true` when that patch declares an
+`enabled` option. Dependencies, results, and SDK selections use patch IDs.

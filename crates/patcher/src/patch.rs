@@ -33,7 +33,7 @@ pub struct Compatibility {
 #[derive(Debug, Clone, Serialize)]
 pub struct PatchSpec {
     pub id: String,
-    /// What users see. Equals `id` unless the patch is hidden.
+    /// What users see. Different patches may share a display name.
     pub name: String,
     /// Hidden patches are dependencies of other patches: never listed to
     /// users and never selected on their own.

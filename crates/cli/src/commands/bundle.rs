@@ -53,6 +53,7 @@ pub fn run_bundle_list(command: &BundleListCommand) -> Result<()> {
             spec.name,
             spec.description
         );
+        println!("       id: {}", spec.id);
         if !spec.compatibility.is_empty() {
             let packages: Vec<String> = spec
                 .compatibility

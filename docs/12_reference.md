@@ -34,6 +34,8 @@ Inside `patch { }` (`PatchBuilder`):
 | `execute { }` | The body. Receiver `PatchRuntime`. |
 | `afterDependents { }` | Runs after every dependent finished. |
 
+Patch display names need not be unique. Each patch's ID derives from its public declaration (`package.property`), including named patches. Dependencies refer to those IDs through the patch objects passed to `dependsOn`. Renaming the property or its package changes its ID; changing the display name does not. CLI selection and options accept IDs or display names that resolve unambiguously for the target package; `bundle list` prints the IDs. SDK metadata exposes both `id` and `name`, while results and progress events identify patches by ID.
+
 ### Options
 
 | Symbol | Description |

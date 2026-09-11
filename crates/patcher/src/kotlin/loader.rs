@@ -24,8 +24,7 @@ include!(concat!(env!("OUT_DIR"), "/jni_natives.rs"));
 /// A patch object and where it was declared, before its metadata is read.
 struct Found {
     object: GlobalRef,
-    /// `<package>.<property>` of the declaration; the id of a patch that
-    /// has no user-facing name.
+    /// `<package>.<property>` identity, independent of the display name.
     declaration: String,
 }
 
@@ -54,17 +53,27 @@ pub fn load_patches(jars: &[PathBuf], bundle_dir: &Path) -> Result<Vec<Box<dyn P
             };
             let package = name.rsplit_once('.').map_or("", |(package, _)| package);
             for (object, member) in patch_objects(env, &class, &patch_class) {
-                if found.iter().any(|seen| {
+                let declaration = if package.is_empty() {
+                    member
+                } else {
+                    format!("{package}.{member}")
+                };
+                if let Some(seen) = found.iter_mut().find(|seen| {
                     env.is_same_object(seen.object.as_obj(), &object)
                         .unwrap_or(false)
                 }) {
+                    // Export aliases refer to one patch. Pick the same identity
+                    // regardless of reflection or jar-entry enumeration order.
+                    if declaration < seen.declaration {
+                        seen.declaration = declaration;
+                    }
                     continue;
                 }
                 found.push(Found {
                     object: env
                         .new_global_ref(&object)
                         .map_err(|e| jvm_err(format!("global ref: {e}")))?,
-                    declaration: format!("{package}.{member}"),
+                    declaration,
                 });
             }
         }
@@ -355,7 +364,7 @@ fn read_patch(
     let patch = found.object.as_obj();
     let name = optional_string(env, patch, "getName")?;
     let hidden = name.is_none() || boolean(env, patch, "getHidden")?;
-    let id = name.clone().unwrap_or_else(|| found.declaration.clone());
+    let id = found.declaration.clone();
     let dependencies = objects(env, patch, "getDependencies")?
         .into_iter()
         .map(|dependency| {
@@ -364,8 +373,7 @@ fn read_patch(
                     env.is_same_object(candidate.object.as_obj(), &dependency)
                         .unwrap_or(false)
                 })
-                .map(|candidate| patch_id(env, candidate))
-                .transpose()?
+                .map(|candidate| candidate.declaration.clone())
                 .ok_or_else(|| {
                     jvm_err(format!(
                         "patch {id} depends on a patch that is not declared as a public top-level value"
@@ -401,11 +409,6 @@ fn read_patch(
         object: found.object.clone(),
         bundle_dir: bundle_dir.to_path_buf(),
     })
-}
-
-fn patch_id(env: &mut JNIEnv<'_>, found: &Found) -> Result<String> {
-    Ok(optional_string(env, found.object.as_obj(), "getName")?
-        .unwrap_or_else(|| found.declaration.clone()))
 }
 
 fn read_option(env: &mut JNIEnv<'_>, option: &JObject<'_>) -> Result<OptionDeclaration> {

@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use anyhow::{anyhow, ensure, Context, Result};
-use reseam_patcher::engine::{PatchSelection, PatchStatus};
+use reseam_patcher::engine::{PatchIndex, PatchSelection, PatchStatus};
+use reseam_patcher::error::PatcherError;
 use reseam_sdk::{
-    load_bundles, patch, PatchOutput, PatchRequest, RunEvent, SigningKeyFiles, TrustStore,
+    inspect_apk, load_bundles, patch, PatchOutput, PatchRequest, RunEvent, SigningKeyFiles,
+    TrustStore,
 };
 use tracing::{error, info, warn};
 
@@ -99,16 +101,18 @@ fn selection(args: &PatchRequestArgs, trust: &TrustStore) -> Result<PatchSelecti
         return Ok(selection);
     }
     let bundles = load_bundles(std::slice::from_ref(&args.bundle), trust)?;
+    let patches: Vec<_> = bundles
+        .iter()
+        .flat_map(|bundle| bundle.patches.iter().map(Box::as_ref))
+        .collect();
+    let index = PatchIndex::new(&patches)?;
+    let apk = inspect_apk(&args.apk, &args.split)?;
     for raw in &args.option {
         let invalid = || anyhow!("invalid option '{raw}': expected PATCH.KEY=VALUE");
         let (lhs, value) = raw.split_once('=').ok_or_else(invalid)?;
-        let (patch, key) = lhs.split_once('.').ok_or_else(invalid)?;
-        ensure!(!patch.is_empty() && !key.is_empty(), invalid());
-        let declaration = bundles
-            .iter()
-            .flat_map(|bundle| &bundle.patches)
-            .find(|candidate| candidate.id() == patch)
-            .with_context(|| format!("unknown patch '{patch}'"))?
+        let (patch_index, key) = option_target(&index, lhs, apk.package_name.as_deref())?;
+        let patch = patches[patch_index].id();
+        let declaration = patches[patch_index]
             .spec()
             .options
             .iter()
@@ -124,4 +128,28 @@ fn selection(args: &PatchRequestArgs, trust: &TrustStore) -> Result<PatchSelecti
             .set(key, value);
     }
     Ok(selection)
+}
+
+/// IDs and option keys may contain dots. Resolve the longest recognized patch
+/// prefix instead of assuming the first dot separates the patch from its option.
+fn option_target<'a>(
+    index: &PatchIndex<'_>,
+    lhs: &'a str,
+    package: Option<&str>,
+) -> Result<(usize, &'a str)> {
+    for (separator, _) in lhs.rmatch_indices('.') {
+        let (selector, key) = (&lhs[..separator], &lhs[separator + 1..]);
+        ensure!(
+            !selector.is_empty() && !key.is_empty(),
+            "invalid option '{lhs}': expected PATCH.KEY"
+        );
+        match index.resolve(selector, package) {
+            Ok(patch) => return Ok((patch, key)),
+            Err(PatcherError::UnknownPatch(_)) => continue,
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Err(anyhow!(
+        "unknown patch in option '{lhs}'; expected PATCH.KEY (use a patch ID or unambiguous name)"
+    ))
 }

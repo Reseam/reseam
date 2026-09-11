@@ -7,7 +7,7 @@ import app.reseam.patch.settings.SettingsHost
 import app.reseam.patch.settings.SettingsSection
 
 interface ReseamPatch {
-    /** Shown to users. A patch without one is internal: it only runs as a dependency and is never listed. */
+    /** Display name; need not be unique. Identity comes from the public declaration. Null means an internal dependency, never listed. */
     val name: String?
     val hidden: Boolean get() = name == null
     val description: String get() = ""

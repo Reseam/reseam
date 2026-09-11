@@ -3,6 +3,7 @@
 
 //! Resolving which patches run and running them in dependency order.
 
+mod index;
 mod plan;
 mod run;
 
@@ -10,12 +11,14 @@ use serde::Serialize;
 
 use crate::log::LogEntry;
 
+pub use index::PatchIndex;
 pub use plan::PatchSelection;
 pub(crate) use plan::ResolvedPlan;
 pub use run::{apply_patches, validate_patches};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PatchResult {
+    /// Patch ID, retained under this field name for the JSON API.
     pub name: String,
     pub status: PatchStatus,
     pub logs: Vec<LogEntry>,

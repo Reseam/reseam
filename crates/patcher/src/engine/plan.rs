@@ -5,6 +5,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use serde::Deserialize;
 
+use super::PatchIndex;
+
 use crate::error::{PatcherError, Result};
 use crate::options::PatchOptions;
 use crate::patch::Patch;
@@ -36,24 +38,24 @@ pub(crate) struct ResolvedPlan {
 }
 
 impl ResolvedPlan {
-    pub fn resolve(patches: &[&dyn Patch], selection: &PatchSelection) -> Result<Self> {
-        let index = index_by_name(patches)?;
-        let (dependencies, dependents) = dependency_edges(patches, &index)?;
+    pub fn resolve(
+        patches: &[&dyn Patch],
+        selection: &PatchSelection,
+        package: Option<&str>,
+    ) -> Result<Self> {
+        let index = PatchIndex::new(patches)?;
+        let (dependencies, dependents) = dependency_edges(patches, &index.ids)?;
         let order = topological_order(patches, &dependencies, &dependents)?;
 
-        let lookup = |patch: &String| {
-            index
-                .get(patch.as_str())
-                .copied()
-                .ok_or_else(|| PatcherError::UnknownPatch(patch.clone()))
-        };
+        let lookup = |patch: &String| index.resolve(patch, package);
+        let enabled: HashSet<usize> = selection.enable.iter().map(lookup).collect::<Result<_>>()?;
         let mut desired = vec![false; patches.len()];
         let mut stack: Vec<usize> = if selection.enable.is_empty() {
             (0..patches.len())
                 .filter(|&i| patches[i].spec().enabled_by_default)
                 .collect()
         } else {
-            selection.enable.iter().map(lookup).collect::<Result<_>>()?
+            enabled.iter().copied().collect()
         };
         while let Some(idx) = stack.pop() {
             if !std::mem::replace(&mut desired[idx], true) {
@@ -64,7 +66,7 @@ impl ResolvedPlan {
         let mut disabled = vec![false; patches.len()];
         for patch in &selection.disable {
             let idx = lookup(patch)?;
-            if selection.enable.contains(patch) {
+            if enabled.contains(&idx) {
                 return Err(PatcherError::InvalidSelection(format!(
                     "patch '{patch}' cannot be both selected and disabled"
                 )));
@@ -72,8 +74,15 @@ impl ResolvedPlan {
             disabled[idx] = true;
         }
 
-        for patch in selection.options.keys() {
+        let mut configured = HashMap::new();
+        for (patch, options) in &selection.options {
             let idx = lookup(patch)?;
+            if configured.insert(idx, options).is_some() {
+                return Err(PatcherError::InvalidSelection(format!(
+                    "options for patch '{}' were supplied under multiple selectors",
+                    patches[idx].id()
+                )));
+            }
             if !desired[idx] || disabled[idx] {
                 return Err(PatcherError::InvalidSelection(format!(
                     "patch '{patch}' has options configured but is not enabled by the selection"
@@ -90,7 +99,7 @@ impl ResolvedPlan {
                 PatchOptions::resolve(
                     patch.id(),
                     &patch.spec().options,
-                    selection.options.get(patch.id()),
+                    configured.get(&idx).copied(),
                 )
             })
             .collect::<Result<_>>()?;
@@ -133,19 +142,6 @@ impl ResolvedPlan {
     pub fn ignores_versions(&self) -> bool {
         self.ignore_versions
     }
-}
-
-fn index_by_name<'a>(patches: &[&'a dyn Patch]) -> Result<HashMap<&'a str, usize>> {
-    let mut index = HashMap::with_capacity(patches.len());
-    for (idx, patch) in patches.iter().enumerate() {
-        if index.insert(patch.id(), idx).is_some() {
-            return Err(PatcherError::InvalidSelection(format!(
-                "patch name '{}' is used more than once in the bundle",
-                patch.id()
-            )));
-        }
-    }
-    Ok(index)
 }
 
 type Edges = (Vec<Vec<usize>>, Vec<Vec<usize>>);

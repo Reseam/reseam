@@ -22,9 +22,9 @@ pub fn apply_patches(
     mut observer: impl FnMut(ProgressEvent),
 ) -> Result<Vec<PatchResult>> {
     info!(patch_count = patches.len(), "starting patch application");
-    let plan = ResolvedPlan::resolve(patches, selection)?;
     let package = ctx.apk().package_name().map(Cow::into_owned);
     let version = ctx.apk().version_name().map(Cow::into_owned);
+    let plan = ResolvedPlan::resolve(patches, selection, package.as_deref())?;
     let mut run = Run::new(patches, &plan);
 
     for &idx in plan.order() {
@@ -86,7 +86,7 @@ pub fn validate_patches(
     package: Option<&str>,
     version: Option<&str>,
 ) -> Result<Vec<PatchResult>> {
-    let plan = ResolvedPlan::resolve(patches, selection)?;
+    let plan = ResolvedPlan::resolve(patches, selection, package)?;
     let mut run = Run::new(patches, &plan);
     for &idx in plan.order() {
         let status = match run.skip_reason(idx, package, version) {

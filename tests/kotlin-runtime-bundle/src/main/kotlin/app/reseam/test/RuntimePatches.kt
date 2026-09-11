@@ -8,6 +8,9 @@ import app.reseam.patch.after
 import app.reseam.patch.klass
 import app.reseam.patch.method
 import app.reseam.patch.patch
+import app.reseam.patch.settings.section
+import app.reseam.patch.settings.settingsHost
+import app.reseam.patch.settings.ToggleSetting
 
 val finalizeOwner = patch("finalize-owner") {
     description("Exercises afterDependents through the real Kotlin runtime")
@@ -117,4 +120,39 @@ val afterEntryValues = patch("after-entry-values") {
             capture("result").assign(int(42))
         }
     }
+}
+
+val duplicateSettings = settingsHost("duplicates") {
+    compatibleWith("com.example.test")
+    install { }
+}
+
+val firstAds = patch("Hide Ads") {
+    compatibleWith("com.example.test")
+    enabledByDefault(false)
+    val marker = stringOption("marker", default = "first")
+    val label = stringOption("label.detail", default = "nested")
+    settings(duplicateSettings, section("First", ToggleSetting("first.enabled", "Enabled", default = true)))
+    execute {
+        files.write("assets/first-ads.txt", options[marker].encodeToByteArray())
+        files.write("assets/first-label.txt", options[label].encodeToByteArray())
+    }
+}
+
+val firstAdsAlias = firstAds
+
+val secondAds = patch("Hide Ads") {
+    compatibleWith("com.example.test")
+    enabledByDefault(false)
+    dependsOn(firstAds)
+    val marker = stringOption("marker", default = "second")
+    settings(duplicateSettings, section("Second", ToggleSetting("second.enabled", "Enabled", default = true)))
+    execute { files.write("assets/second-ads.txt", options[marker].encodeToByteArray()) }
+}
+
+val otherAds = patch("Hide Ads") {
+    compatibleWith("com.example.other")
+    enabledByDefault(false)
+    val marker = stringOption("marker", default = "other")
+    execute { files.write("assets/other-ads.txt", options[marker].encodeToByteArray()) }
 }

@@ -30,6 +30,7 @@ hex         = { workspace = true }
 libloading  = { workspace = true }
 
 [dev-dependencies]
+serde_json = { workspace = true }
 
 [features]
 default = ["kotlin"]
