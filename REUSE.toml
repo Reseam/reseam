@@ -15,6 +15,7 @@ path = [
     "patch-api/app/**",
     "tests/**",
     ".gitignore",
+    ".boltffi-version",
     "README.md",
     "patch-api/README.md",
 ]

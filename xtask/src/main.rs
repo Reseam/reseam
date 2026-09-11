@@ -4,6 +4,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 
+mod boltffi;
 mod jni;
 mod ndk;
 mod patch_api;
@@ -44,6 +45,7 @@ enum RegenTarget {
 fn main() -> Result<()> {
     match Cli::parse().cmd {
         Cmd::Regen { target } => {
+            boltffi::check_version()?;
             if matches!(target, RegenTarget::PatchApi | RegenTarget::All) {
                 patch_api::regen()?;
             }

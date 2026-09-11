@@ -26,10 +26,10 @@ Reseam is a Rust APK patching engine. Patches are written in Kotlin against the 
 
 - JDK 17 in `JAVA_HOME`.
 - Android SDK in `ANDROID_HOME` with a platform, build-tools, and an NDK. `cargo xtask` finds the newest NDK under `$ANDROID_HOME/ndk`.
-- The BoltFFI CLI, only when you change a `#[export]` function and regenerate the Kotlin bridge. Newer releases changed the generated code; install the version the checked-in bindings were made with:
+- The BoltFFI CLI, to generate the JNI bridge on a fresh checkout or after changing a `#[export]` function. Install the exact version pinned in [`.boltffi-version`](.boltffi-version), from the workspace root:
 
   ```bash
-  cargo install boltffi_cli --version 0.24.1
+  cargo install boltffi_cli --version "=$(cat .boltffi-version)" --locked
   ```
 
 Commands below use POSIX shell syntax for environment variables. In PowerShell, set them first (`$env:JAVA_HOME = "C:\\jdk-17"`) and run the command on its own line.
@@ -39,6 +39,7 @@ Windows builds the CLI and the engine with the MSVC toolchain. `cargo xtask jni-
 ## Build
 
 ```bash
+cargo xtask regen patch-api
 cargo build --release
 ```
 
@@ -48,6 +49,8 @@ This builds the `reseam` CLI plus the embedded patcher and SDK shim. The checked
 cargo xtask regen all
 cargo build --release
 ```
+
+Regeneration checks the generator version before writing files. With unchanged Rust inputs, it must leave tracked sources unchanged; release CI checks this too. When updating `.boltffi-version`, regenerate and commit the resulting source changes together.
 
 The Kotlin side is one Gradle build at the workspace root: `patch-api` publishes `reseam-patch-sdk` for patch authors, `gradle-plugin` publishes the `app.reseam.workspace` plugin bundles build with, `sdk-kotlin` publishes `reseam-sdk` for managers. See `sdk/README.md`.
 

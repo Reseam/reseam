@@ -8,8 +8,9 @@ use std::path::{Path, PathBuf};
 
 fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-env-changed=RESEAM_SKIP_JNI_GLUE");
 
-    if env::var("CARGO_FEATURE_KOTLIN").is_err() {
+    if env::var("CARGO_FEATURE_KOTLIN").is_err() || !should_compile_jni_glue() {
         write_empty_jni_natives()?;
         return Ok(());
     }
@@ -17,29 +18,28 @@ fn main() -> Result<(), Box<dyn Error>> {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
     let jni_dir = manifest_dir.join("../../patch-api/generated/jni");
     let glue_path = jni_dir.join("jni_glue.c");
-
-    if !glue_path.exists() {
-        write_empty_jni_natives()?;
-        return Ok(());
-    }
-
     println!("cargo:rerun-if-changed={}", glue_path.display());
 
-    if should_compile_jni_glue() {
-        let jni_includes = jni_include_dirs()?;
-
-        let mut build = cc::Build::new();
-        build.file(&glue_path).include(&jni_dir);
-        for include in jni_includes {
-            build.include(include);
-        }
-
-        // The JNI glue is generated and intentionally keeps the standard JNI
-        // parameter shape even when some exports do not use `env`/`cls`.
-        build.flag_if_supported("-Wno-unused-parameter");
-
-        build.compile("reseam_jni_glue");
+    if !glue_path.exists() {
+        return Err(
+            "JNI bridge is missing; run `cargo xtask regen patch-api` before building the engine"
+                .into(),
+        );
     }
+
+    let jni_includes = jni_include_dirs()?;
+
+    let mut build = cc::Build::new();
+    build.file(&glue_path).include(&jni_dir);
+    for include in jni_includes {
+        build.include(include);
+    }
+
+    // The JNI glue is generated and intentionally keeps the standard JNI
+    // parameter shape even when some exports do not use `env`/`cls`.
+    build.flag_if_supported("-Wno-unused-parameter");
+
+    build.compile("reseam_jni_glue");
 
     let content = fs::read_to_string(&glue_path)?;
     let natives = parse_jni_exports(&content)?;

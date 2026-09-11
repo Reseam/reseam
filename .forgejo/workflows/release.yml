@@ -34,11 +34,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/boltffi
-          key: boltffi-cli-0.24.1
+          key: boltffi-cli-${{ hashFiles('.boltffi-version') }}
 
       - name: Install boltffi_cli
         if: steps.boltffi-cache.outputs.cache-hit != 'true'
-        run: cargo install boltffi_cli --version 0.24.1 --locked
+        run: cargo install boltffi_cli --version "=$(cat .boltffi-version)" --locked
 
       - name: Set up Gradle
         uses: https://github.com/gradle/actions/setup-gradle@v5
@@ -48,6 +48,9 @@ jobs:
 
       - name: Regenerate SDK bindings and Android jniLibs
         run: cargo xtask regen sdk
+
+      - name: Check generated sources are committed
+        run: git diff --exit-code
 
       - name: Build reseam-cli release binary
         run: cargo build --release -p reseam-cli
