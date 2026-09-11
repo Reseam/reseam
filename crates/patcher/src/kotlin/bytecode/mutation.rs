@@ -4,6 +4,7 @@
 //! Instruction-level mutation of one method.
 
 use boltffi::export;
+use reseam_apk::reseam_dex::types::code_rewrite::InstructionExpansion;
 use reseam_apk::reseam_dex::{
     find_contiguous_free_registers, CodeItem, Instruction as DexInsn, MethodIdx, RegList,
 };
@@ -60,6 +61,20 @@ pub fn insert_instructions(m: u32, index: u32, insns: Vec<Instruction>) {
             code.insert_instructions(index as usize, &insns),
         )
     });
+}
+
+#[export]
+pub fn insert_before_instruction(m: u32, index: u32, insns: Vec<Instruction>) -> bool {
+    edit_code(m, &insns, |code, insns| {
+        let mut expansions: Vec<InstructionExpansion> =
+            code.instructions.iter().cloned().map(Into::into).collect();
+        expansions.get_mut(index as usize)?.before = insns;
+        logged(
+            "insert_before_instruction",
+            code.rewrite_instructions(expansions),
+        )
+    })
+    .is_some()
 }
 
 #[export]

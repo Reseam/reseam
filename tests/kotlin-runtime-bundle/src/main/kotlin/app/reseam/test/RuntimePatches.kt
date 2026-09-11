@@ -3,6 +3,10 @@
 
 package app.reseam.test
 
+import app.reseam.patch.Type
+import app.reseam.patch.after
+import app.reseam.patch.klass
+import app.reseam.patch.method
 import app.reseam.patch.patch
 
 val finalizeOwner = patch("finalize-owner") {
@@ -71,5 +75,46 @@ val usesInternal = patch("uses-internal") {
 
     execute {
         log.info("uses-internal execute")
+    }
+}
+
+val afterEntryValues = patch("after-entry-values") {
+    description("Checks entry argument lifetimes through the real code emitter")
+    compatibleWith("com.example.test")
+    enabledByDefault(false)
+
+    execute {
+        val target = klass("com.example.HookTarget")
+        check(target.method("invokeGrowth").method.growLocalRegisters(10))
+        target.method("invokeGrowth").after {
+            callStatic("com.example.Observer", "entry", "(I)V", param(3))
+        }
+        val receiver = target.method("receiver").method
+        val noRegister = runCatching { receiver.findFreeRegister(0, (0 until receiver.registersSize).toList()) }
+        check(noRegister.exceptionOrNull()?.message?.contains("No free register") == true)
+        target.method("temporaryReuse").after {
+            val held = long(0x123456789abcdef0L)
+            repeat(32) {
+                callStatic("com.example.Observer", "wide", "(J)V", long(it.toLong()))
+                callStatic("com.example.Observer", "scalar", "(I)V", int(it))
+            }
+            whenTrue(param(0)) {
+                callStatic("com.example.Observer", "wide", "(J)V", held)
+            } otherwise {
+                callStatic("com.example.Observer", "wide", "(J)V", held)
+            }
+            capture("result").assign(held)
+        }
+        target.method("getFeatureSwitchValue").after {
+            val marker = int(42)
+            callStatic("com.example.Observer", "record", "(ILjava/lang/String;JDLjava/lang/String;Ljava/lang/String;Ljava/lang/Object;)V",
+                marker, param(0), paramOfType(Type.Long), param(2), lastParam, paramOfType(Type.String), capture("result"))
+        }
+        target.method("receiver").after {
+            callStatic("com.example.Observer", "receiver", "(Lcom/example/HookTarget;)V", thisObject)
+        }
+        target.method("resultOnly").after {
+            capture("result").assign(int(42))
+        }
     }
 }

@@ -5,6 +5,7 @@ pub mod access_flags;
 pub mod annotation;
 pub mod class;
 pub mod code;
+pub mod code_rewrite;
 pub mod debug;
 pub mod encoded_value;
 pub mod header;
@@ -17,7 +18,10 @@ mod instruction_registers;
 pub mod label;
 pub mod map;
 pub mod method_handle;
+pub mod register_allocation;
 pub mod register_analysis;
+mod register_operands;
+mod register_types;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct StringIdx(pub u32);

@@ -253,7 +253,7 @@ fn kotlin_bundle_executes_against_runtime_api() {
         heap.committed_bytes
     );
 
-    assert_eq!(results.len(), 6);
+    assert_eq!(results.len(), 7);
     let statuses = results
         .iter()
         .map(|result| (result.name.as_str(), &result.status))
@@ -377,4 +377,366 @@ fn kotlin_bundle_required_option_is_enforced() {
         "got: {message}"
     );
     assert!(message.contains("token"), "got: {message}");
+}
+
+// Follow the fixture's register values through the emitted DEX. Distinct words
+// make lost arguments, overlapping scratch spans, and broken wide moves visible.
+fn hook_calls(
+    code: &reseam_apk::reseam_dex::CodeItem,
+    incoming: &[i64],
+) -> (Vec<Vec<i64>>, Option<i64>) {
+    use reseam_apk::reseam_dex::Instruction::*;
+    let mut registers = vec![-1; code.registers_size as usize];
+    registers[(code.registers_size - code.ins_size) as usize..].copy_from_slice(incoming);
+    let mut calls = Vec::new();
+    let offsets: Vec<u32> = code
+        .instructions
+        .iter()
+        .scan(0, |addr, insn| {
+            let current = *addr;
+            *addr += insn.code_units() as u32;
+            Some(current)
+        })
+        .collect();
+    let mut pc = 0;
+    for _ in 0..code.instructions.len() * 2 {
+        let insn = &code.instructions[pc];
+        let movement = match *insn {
+            Move { dest, src } | MoveObject { dest, src } => Some((dest as usize, src as usize, 1)),
+            MoveFrom16 { dest, src } | MoveObjectFrom16 { dest, src } => {
+                Some((dest as usize, src as usize, 1))
+            }
+            Move16 { dest, src } | MoveObject16 { dest, src } => {
+                Some((dest as usize, src as usize, 1))
+            }
+            MoveWide { dest, src } => Some((dest as usize, src as usize, 2)),
+            MoveWideFrom16 { dest, src } => Some((dest as usize, src as usize, 2)),
+            MoveWide16 { dest, src } => Some((dest as usize, src as usize, 2)),
+            _ => None,
+        };
+        let wide_constant = match insn {
+            ConstWide16 { dest, value } => Some((*dest, i64::from(*value))),
+            ConstWide32 { dest, value } => Some((*dest, i64::from(*value))),
+            ConstWide { dest, value } => Some((*dest, *value)),
+            ConstWideHigh16 { dest, value } => Some((*dest, i64::from(*value) << 48)),
+            _ => None,
+        };
+        if let Some((dest, value)) = wide_constant {
+            registers[dest as usize] = i64::from(value as u32);
+            registers[dest as usize + 1] = i64::from((value >> 32) as u32);
+        } else if let Some((dest, src, width)) = movement {
+            registers.copy_within(src..src + width, dest);
+        } else {
+            match insn {
+                Nop => {}
+                Const4 { dest, value } => registers[*dest as usize] = *value as i64,
+                Const16 { dest, value } => registers[*dest as usize] = *value as i64,
+                Const { dest, value } => registers[*dest as usize] = *value as i64,
+                InvokeStatic { args, .. } => {
+                    calls.push(args.iter().map(|r| registers[*r as usize]).collect())
+                }
+                InvokeStaticRange {
+                    first_reg, count, ..
+                } => calls.push(
+                    registers[*first_reg as usize..*first_reg as usize + *count as usize].to_vec(),
+                ),
+                IfEqz { a, offset } if registers[*a as usize] == 0 => {
+                    let target = (offsets[pc] as i32 + *offset as i32) as u32;
+                    pc = (0..code.instructions.len())
+                        .find(|i| offsets[*i] == target)
+                        .expect("branch target");
+                    continue;
+                }
+                IfEqz { .. } => {}
+                Return { src } | ReturnObject { src } => {
+                    return (calls, Some(registers[*src as usize]))
+                }
+                ReturnWide { src } => {
+                    return (
+                        calls,
+                        Some(registers[*src as usize] | (registers[*src as usize + 1] << 32)),
+                    )
+                }
+                IfNez { a, offset } if registers[*a as usize] != 0 => {
+                    let target = (offsets[pc] as i32 + *offset as i32) as u32;
+                    pc = offsets.iter().position(|addr| *addr == target).unwrap();
+                    continue;
+                }
+                IfNez { .. } => {}
+                Goto { offset } => {
+                    let target = (offsets[pc] as i32 + *offset as i32) as u32;
+                    pc = offsets.iter().position(|addr| *addr == target).unwrap();
+                    continue;
+                }
+                ReturnVoid => return (calls, None),
+                _ => panic!("unexpected fixture instruction: {insn:?}"),
+            }
+        }
+        pc += 1;
+    }
+    panic!("fixture did not return");
+}
+
+#[test]
+fn after_hooks_preserve_entry_arguments_when_parameter_registers_are_reused() {
+    use reseam_apk::reseam_dex::{
+        self as dex, AccessFlags, CodeItem, DexFile, DexHeader, DexVersion, EncodedMethod,
+        Instruction::*,
+    };
+
+    fn empty_dex_header(version: DexVersion) -> DexHeader {
+        DexHeader {
+            version,
+            checksum: 0,
+            signature: [0; 20],
+            file_size: 0,
+            link_size: 0,
+            link_off: 0,
+            map_off: 0,
+            string_ids_size: 0,
+            string_ids_off: 0,
+            type_ids_size: 0,
+            type_ids_off: 0,
+            proto_ids_size: 0,
+            proto_ids_off: 0,
+            field_ids_size: 0,
+            field_ids_off: 0,
+            method_ids_size: 0,
+            method_ids_off: 0,
+            class_defs_size: 0,
+            class_defs_off: 0,
+            data_size: 0,
+            data_off: 0,
+            container_size: 0,
+            header_offset: 0,
+        }
+    }
+
+    let mut dex = DexFile::new(empty_dex_header(DexVersion::V035));
+    let owner = "Lcom/example/HookTarget;";
+    let class = dex
+        .create_class(owner, AccessFlags::PUBLIC, Some("Ljava/lang/Object;"))
+        .unwrap();
+    let five = dex
+        .intern_method("Lcom/example/Observer;", "five", "(IJII)V")
+        .unwrap();
+    let all = dex
+        .intern_method("Lcom/example/Observer;", "all", "(IIIIIIIIIJIII)V")
+        .unwrap();
+    let mut invoke_growth: Vec<_> = (0..9)
+        .map(|dest| Const16 {
+            dest,
+            value: dest as i16,
+        })
+        .collect();
+    invoke_growth.extend([
+        InvokeStatic {
+            method: five,
+            args: [0, 9, 10, 5, 12].into_iter().collect(),
+        },
+        InvokeStaticRange {
+            method: all,
+            first_reg: 0,
+            count: 14,
+        },
+        Return { src: 13 },
+    ]);
+    for (name, proto, access_flags, ins_size, instructions) in [
+        (
+            "invokeGrowth",
+            "(JIII)I",
+            AccessFlags::PUBLIC | AccessFlags::STATIC,
+            5,
+            invoke_growth,
+        ),
+        (
+            "temporaryReuse",
+            "(Z)J",
+            AccessFlags::PUBLIC | AccessFlags::STATIC,
+            1,
+            vec![ConstWide16 { dest: 0, value: 7 }, ReturnWide { src: 0 }],
+        ),
+        (
+            "getFeatureSwitchValue",
+            "(Ljava/lang/String;JDLjava/lang/String;)Ljava/lang/Object;",
+            AccessFlags::PUBLIC | AccessFlags::STATIC,
+            6,
+            vec![
+                IfEqz { a: 10, offset: 5 },
+                Const16 { dest: 5, value: 0 },
+                ReturnObject { src: 5 },
+                ReturnObject { src: 5 },
+            ],
+        ),
+        (
+            "receiver",
+            "()V",
+            AccessFlags::PUBLIC,
+            1,
+            vec![Const16 { dest: 5, value: 0 }, ReturnVoid],
+        ),
+        (
+            "resultOnly",
+            "(I)I",
+            AccessFlags::PUBLIC | AccessFlags::STATIC,
+            1,
+            vec![Return { src: 5 }],
+        ),
+    ] {
+        let method = dex.intern_method(owner, name, proto).unwrap();
+        let encoded = EncodedMethod {
+            method,
+            access_flags,
+            code: Some(CodeItem {
+                registers_size: if name == "invokeGrowth" {
+                    14
+                } else {
+                    5 + ins_size
+                },
+                ins_size,
+                outs_size: 0,
+                debug_info: None,
+                instructions,
+                tries: vec![],
+                catch_handlers: vec![],
+            }),
+        };
+        let class = dex.class_mut(class).unwrap();
+        if access_flags.contains(AccessFlags::STATIC) {
+            class.add_direct_method(encoded);
+        } else {
+            class.add_virtual_method(encoded);
+        }
+    }
+    let init = dex.intern_method(owner, "<init>", "()V").unwrap();
+    let object_init = dex
+        .intern_method("Ljava/lang/Object;", "<init>", "()V")
+        .unwrap();
+    dex.class_mut(class)
+        .unwrap()
+        .add_direct_method(EncodedMethod {
+            method: init,
+            access_flags: AccessFlags::PUBLIC | AccessFlags::CONSTRUCTOR,
+            code: Some(CodeItem {
+                registers_size: 1,
+                ins_size: 1,
+                outs_size: 1,
+                debug_info: None,
+                instructions: vec![
+                    InvokeDirect {
+                        method: object_init,
+                        args: [0].into_iter().collect(),
+                    },
+                    ReturnVoid,
+                ],
+                tries: vec![],
+                catch_handlers: vec![],
+            }),
+        });
+    let (_apk_dir, mut apk) = open_split_test_apk();
+    // Round trip before and after patching to exercise lazy decoding and writing.
+    apk.add_dex(
+        dex::parse(
+            &dex::write(&dex).unwrap(),
+            ParseOptions {
+                lazy: true,
+                ..Default::default()
+            },
+        )
+        .unwrap(),
+    );
+    let bundle_file = write_bundle_reseam();
+    let bundle = BundleArchive::open(&bundle_file.path)
+        .unwrap()
+        .load()
+        .unwrap();
+    let patches: Vec<&dyn Patch> = bundle.patches.iter().map(Box::as_ref).collect();
+    let results = engine::apply_patches(
+        &mut PatchContext::new(&mut apk),
+        &patches,
+        &PatchSelection {
+            enable: ["after-entry-values".to_string()].into(),
+            ..Default::default()
+        },
+        |_| {},
+    )
+    .unwrap();
+    assert_eq!(
+        results
+            .iter()
+            .find(|r| r.name == "after-entry-values")
+            .unwrap()
+            .status,
+        PatchStatus::Applied
+    );
+    let mut dex = dex::parse(
+        &dex::write(apk.dex().dex(0).unwrap()).unwrap(),
+        ParseOptions::default(),
+    )
+    .unwrap();
+    dex.resolve_all_class_data().unwrap();
+    let class = dex
+        .resident_class(dex.find_class_index(owner).unwrap())
+        .unwrap();
+    let data = class.class_data.as_ref().unwrap();
+    for method in data.direct_methods.iter().chain(&data.virtual_methods) {
+        let name = dex.string(dex.method_id(method.method).name);
+        let code = method.code().unwrap();
+        match name.as_ref() {
+            "<init>" => {}
+            "invokeGrowth" => {
+                assert_eq!(
+                    hook_calls(code, &[101, 102, 103, 104, 105]),
+                    (
+                        vec![
+                            vec![0, 101, 102, 5, 104],
+                            vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 101, 102, 103, 104, 105],
+                            vec![105]
+                        ],
+                        Some(105),
+                    )
+                );
+            }
+            "getFeatureSwitchValue" => {
+                for last in [0, 106] {
+                    let result = if last == 0 { 101 } else { 0 };
+                    assert_eq!(
+                        hook_calls(code, &[101, 102, 103, 104, 105, last]),
+                        (
+                            vec![vec![42, 101, 102, 103, 104, 105, last, 101, result]],
+                            Some(result)
+                        )
+                    );
+                }
+            }
+            "receiver" => assert_eq!(hook_calls(code, &[201]), (vec![vec![201]], None)),
+            "temporaryReuse" => {
+                assert!(
+                    code.registers_size <= 9,
+                    "temporaries must follow peak liveness, got {} registers",
+                    code.registers_size
+                );
+                let mut expected = Vec::new();
+                for value in 0..32 {
+                    expected.push(vec![value, 0]);
+                    expected.push(vec![value]);
+                }
+                expected.push(vec![0x9abcdef0, 0x12345678]);
+                for condition in [0, 1] {
+                    assert_eq!(
+                        hook_calls(code, &[condition]),
+                        (expected.clone(), Some(0x123456789abcdef0))
+                    );
+                }
+            }
+            "resultOnly" => {
+                assert_eq!(
+                    code.registers_size, 6,
+                    "no entry reads need no saved locals"
+                );
+                assert_eq!(hook_calls(code, &[301]), (vec![], Some(42)));
+            }
+            other => panic!("unexpected method {other}"),
+        }
+    }
 }

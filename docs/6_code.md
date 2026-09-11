@@ -21,6 +21,10 @@ execute {
 
 `before`, `after`, `replace` on a method mean entry, every return, whole body. On a point they mean just before or after that instruction. In `after`, `capture("result")` is the value being returned. Shortcuts: `alwaysReturn(...)`, `alwaysReturnNull()`, `replaceAllStrings`, `replaceAllLiterals`.
 
+In a method's `after` block, `param(i)`, `paramOfType(type)`, `lastParam`, and `thisObject` read values saved at method entry. Only the values referenced by the block are saved, in dedicated locals shared by its return sites. This remains safe when the original method overwrites or reuses its incoming registers. Object values are saved references, not copies of the objects. Assigning to a saved parameter changes that local; use `capture("result").assign(...)` or `returnValue(...)` to change what the method returns.
+
+Point hooks read registers at the selected instruction. They do not snapshot entry arguments; use a point capture when you need a value produced by the method body.
+
 > [!WARNING]
 > The Kotlin in a code block runs once at patch time; each call adds instructions. A Kotlin `if` chooses what to emit, it does not branch in the app. Use `whenTrue` and friends for branches. Values belong to the block that made them; passing a `param(0)` into another block fails with `ValueRef belongs to a different code block`.
 
@@ -81,6 +85,8 @@ integrityCheck.point { string("device_verified") }
 
 ## Registers
 
-Inserted code uses registers the method does not need at that point and grows the frame when it must. A replaced body gets sixteen locals below its parameters; more than that fails with `Code exceeded the 16 local registers`, and the logic belongs in an extension. Invokes the 35c format cannot encode become range invokes automatically. Registers appear only in the [raw bytecode layer](10_dex.md).
+Inserted code uses registers the method does not need at that point and grows the frame when it must. Temporary values share registers after their last use, accounting for branches, loops, and wide values. Entry snapshots stay reserved across the method. A replaced body gets sixteen locals below its parameters; exceeding that simultaneous register requirement fails with `Code exceeded the 16 local registers`, and the logic belongs in an extension.
+
+Frame growth widens instruction encodings where possible and stages overflowing operands through dead low registers using moves of the appropriate type. Invokes the 35c format cannot encode become range invokes automatically. When no dead contiguous span is available, these invokes share an additional argument area. Incoming arguments are copied at entry to preserve the body's register layout; the argument area does not overlap hook locals or the incoming window. Growth fails without changing the method if a narrow operand has no safe scratch space, the frame exceeds the DEX limit, or the code cannot be relocated. Registers appear only in the [raw bytecode layer](10_dex.md).
 
 Next: [Manifest, resources, and files](7_runtime.md).

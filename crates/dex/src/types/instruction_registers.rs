@@ -7,19 +7,90 @@ impl Instruction {
     /// Calls `visit` for each register read by this instruction.
     pub fn visit_read_registers(&self, mut visit: impl FnMut(u16)) {
         match self {
-            Instruction::Move { src, .. }
-            | Instruction::MoveWide { src, .. }
-            | Instruction::MoveObject { src, .. } => visit(u16::from(*src)),
+            Instruction::MoveWide { src, .. }
+            | Instruction::ReturnWide { src, .. }
+            | Instruction::NegLong { src, .. }
+            | Instruction::NotLong { src, .. }
+            | Instruction::NegDouble { src, .. }
+            | Instruction::LongToInt { src, .. }
+            | Instruction::LongToFloat { src, .. }
+            | Instruction::LongToDouble { src, .. }
+            | Instruction::DoubleToInt { src, .. }
+            | Instruction::DoubleToLong { src, .. }
+            | Instruction::DoubleToFloat { src, .. }
+            | Instruction::SputWide { src, .. } => {
+                visit_pair(u16::from(*src), &mut visit);
+            }
+            Instruction::MoveWideFrom16 { src, .. } | Instruction::MoveWide16 { src, .. } => {
+                visit_pair(*src, &mut visit);
+            }
+            Instruction::CmpLDouble { a, b, .. }
+            | Instruction::CmpGDouble { a, b, .. }
+            | Instruction::CmpLong { a, b, .. }
+            | Instruction::AddLong { a, b, .. }
+            | Instruction::SubLong { a, b, .. }
+            | Instruction::MulLong { a, b, .. }
+            | Instruction::DivLong { a, b, .. }
+            | Instruction::RemLong { a, b, .. }
+            | Instruction::AndLong { a, b, .. }
+            | Instruction::OrLong { a, b, .. }
+            | Instruction::XorLong { a, b, .. }
+            | Instruction::AddDouble { a, b, .. }
+            | Instruction::SubDouble { a, b, .. }
+            | Instruction::MulDouble { a, b, .. }
+            | Instruction::DivDouble { a, b, .. }
+            | Instruction::RemDouble { a, b, .. } => {
+                visit_pair(u16::from(*a), &mut visit);
+                visit_pair(u16::from(*b), &mut visit);
+            }
+            Instruction::ShlLong { a, b, .. }
+            | Instruction::ShrLong { a, b, .. }
+            | Instruction::UshrLong { a, b, .. } => {
+                visit_pair(u16::from(*a), &mut visit);
+                visit(u16::from(*b));
+            }
+            Instruction::AddLong2Addr { dest_a, b }
+            | Instruction::SubLong2Addr { dest_a, b }
+            | Instruction::MulLong2Addr { dest_a, b }
+            | Instruction::DivLong2Addr { dest_a, b }
+            | Instruction::RemLong2Addr { dest_a, b }
+            | Instruction::AndLong2Addr { dest_a, b }
+            | Instruction::OrLong2Addr { dest_a, b }
+            | Instruction::XorLong2Addr { dest_a, b }
+            | Instruction::AddDouble2Addr { dest_a, b }
+            | Instruction::SubDouble2Addr { dest_a, b }
+            | Instruction::MulDouble2Addr { dest_a, b }
+            | Instruction::DivDouble2Addr { dest_a, b }
+            | Instruction::RemDouble2Addr { dest_a, b } => {
+                visit_pair(u16::from(*dest_a), &mut visit);
+                visit_pair(u16::from(*b), &mut visit);
+            }
+            Instruction::ShlLong2Addr { dest_a, b }
+            | Instruction::ShrLong2Addr { dest_a, b }
+            | Instruction::UshrLong2Addr { dest_a, b } => {
+                visit_pair(u16::from(*dest_a), &mut visit);
+                visit(u16::from(*b));
+            }
+            Instruction::IputWide { src, obj, .. } => {
+                visit_pair(u16::from(*src), &mut visit);
+                visit(u16::from(*obj));
+            }
+            Instruction::AputWide { src, array, index } => {
+                visit_pair(u16::from(*src), &mut visit);
+                visit(u16::from(*array));
+                visit(u16::from(*index));
+            }
+
+            Instruction::Move { src, .. } | Instruction::MoveObject { src, .. } => {
+                visit(u16::from(*src))
+            }
 
             Instruction::MoveFrom16 { src, .. }
-            | Instruction::MoveWideFrom16 { src, .. }
             | Instruction::MoveObjectFrom16 { src, .. }
             | Instruction::Move16 { src, .. }
-            | Instruction::MoveWide16 { src, .. }
             | Instruction::MoveObject16 { src, .. } => visit(*src),
 
             Instruction::Return { src }
-            | Instruction::ReturnWide { src }
             | Instruction::ReturnObject { src }
             | Instruction::MonitorEnter { ref_: src }
             | Instruction::MonitorExit { ref_: src }
@@ -61,9 +132,6 @@ impl Instruction {
             | Instruction::IfLe { a, b, .. }
             | Instruction::CmpLFloat { a, b, .. }
             | Instruction::CmpGFloat { a, b, .. }
-            | Instruction::CmpLDouble { a, b, .. }
-            | Instruction::CmpGDouble { a, b, .. }
-            | Instruction::CmpLong { a, b, .. }
             | Instruction::AddInt { a, b, .. }
             | Instruction::SubInt { a, b, .. }
             | Instruction::MulInt { a, b, .. }
@@ -75,27 +143,11 @@ impl Instruction {
             | Instruction::ShlInt { a, b, .. }
             | Instruction::ShrInt { a, b, .. }
             | Instruction::UshrInt { a, b, .. }
-            | Instruction::AddLong { a, b, .. }
-            | Instruction::SubLong { a, b, .. }
-            | Instruction::MulLong { a, b, .. }
-            | Instruction::DivLong { a, b, .. }
-            | Instruction::RemLong { a, b, .. }
-            | Instruction::AndLong { a, b, .. }
-            | Instruction::OrLong { a, b, .. }
-            | Instruction::XorLong { a, b, .. }
-            | Instruction::ShlLong { a, b, .. }
-            | Instruction::ShrLong { a, b, .. }
-            | Instruction::UshrLong { a, b, .. }
             | Instruction::AddFloat { a, b, .. }
             | Instruction::SubFloat { a, b, .. }
             | Instruction::MulFloat { a, b, .. }
             | Instruction::DivFloat { a, b, .. }
-            | Instruction::RemFloat { a, b, .. }
-            | Instruction::AddDouble { a, b, .. }
-            | Instruction::SubDouble { a, b, .. }
-            | Instruction::MulDouble { a, b, .. }
-            | Instruction::DivDouble { a, b, .. }
-            | Instruction::RemDouble { a, b, .. } => {
+            | Instruction::RemFloat { a, b, .. } => {
                 visit(u16::from(*a));
                 visit(u16::from(*b));
             }
@@ -108,22 +160,13 @@ impl Instruction {
             | Instruction::IfLez { a, .. }
             | Instruction::NegInt { src: a, .. }
             | Instruction::NotInt { src: a, .. }
-            | Instruction::NegLong { src: a, .. }
-            | Instruction::NotLong { src: a, .. }
             | Instruction::NegFloat { src: a, .. }
-            | Instruction::NegDouble { src: a, .. }
             | Instruction::IntToLong { src: a, .. }
             | Instruction::IntToFloat { src: a, .. }
             | Instruction::IntToDouble { src: a, .. }
-            | Instruction::LongToInt { src: a, .. }
-            | Instruction::LongToFloat { src: a, .. }
-            | Instruction::LongToDouble { src: a, .. }
             | Instruction::FloatToInt { src: a, .. }
             | Instruction::FloatToLong { src: a, .. }
             | Instruction::FloatToDouble { src: a, .. }
-            | Instruction::DoubleToInt { src: a, .. }
-            | Instruction::DoubleToLong { src: a, .. }
-            | Instruction::DoubleToFloat { src: a, .. }
             | Instruction::IntToByte { src: a, .. }
             | Instruction::IntToChar { src: a, .. }
             | Instruction::IntToShort { src: a, .. } => visit(u16::from(*a)),
@@ -140,9 +183,6 @@ impl Instruction {
             }
 
             Instruction::Aput {
-                src, array, index, ..
-            }
-            | Instruction::AputWide {
                 src, array, index, ..
             }
             | Instruction::AputObject {
@@ -174,7 +214,6 @@ impl Instruction {
             | Instruction::IgetShort { obj, .. } => visit(u16::from(*obj)),
 
             Instruction::Iput { src, obj, .. }
-            | Instruction::IputWide { src, obj, .. }
             | Instruction::IputObject { src, obj, .. }
             | Instruction::IputBoolean { src, obj, .. }
             | Instruction::IputByte { src, obj, .. }
@@ -185,7 +224,6 @@ impl Instruction {
             }
 
             Instruction::Sput { src, .. }
-            | Instruction::SputWide { src, .. }
             | Instruction::SputObject { src, .. }
             | Instruction::SputBoolean { src, .. }
             | Instruction::SputByte { src, .. }
@@ -203,27 +241,11 @@ impl Instruction {
             | Instruction::ShlInt2Addr { dest_a, b }
             | Instruction::ShrInt2Addr { dest_a, b }
             | Instruction::UshrInt2Addr { dest_a, b }
-            | Instruction::AddLong2Addr { dest_a, b }
-            | Instruction::SubLong2Addr { dest_a, b }
-            | Instruction::MulLong2Addr { dest_a, b }
-            | Instruction::DivLong2Addr { dest_a, b }
-            | Instruction::RemLong2Addr { dest_a, b }
-            | Instruction::AndLong2Addr { dest_a, b }
-            | Instruction::OrLong2Addr { dest_a, b }
-            | Instruction::XorLong2Addr { dest_a, b }
-            | Instruction::ShlLong2Addr { dest_a, b }
-            | Instruction::ShrLong2Addr { dest_a, b }
-            | Instruction::UshrLong2Addr { dest_a, b }
             | Instruction::AddFloat2Addr { dest_a, b }
             | Instruction::SubFloat2Addr { dest_a, b }
             | Instruction::MulFloat2Addr { dest_a, b }
             | Instruction::DivFloat2Addr { dest_a, b }
-            | Instruction::RemFloat2Addr { dest_a, b }
-            | Instruction::AddDouble2Addr { dest_a, b }
-            | Instruction::SubDouble2Addr { dest_a, b }
-            | Instruction::MulDouble2Addr { dest_a, b }
-            | Instruction::DivDouble2Addr { dest_a, b }
-            | Instruction::RemDouble2Addr { dest_a, b } => {
+            | Instruction::RemFloat2Addr { dest_a, b } => {
                 visit(u16::from(*dest_a));
                 visit(u16::from(*b));
             }
@@ -310,8 +332,66 @@ impl Instruction {
     /// Calls `visit` for each register written by this instruction.
     pub fn visit_written_registers(&self, mut visit: impl FnMut(u16)) {
         match self {
+            Instruction::MoveWide { dest, .. }
+            | Instruction::MoveWideFrom16 { dest, .. }
+            | Instruction::MoveResultWide { dest, .. }
+            | Instruction::ConstWide16 { dest, .. }
+            | Instruction::ConstWide32 { dest, .. }
+            | Instruction::ConstWide { dest, .. }
+            | Instruction::ConstWideHigh16 { dest, .. }
+            | Instruction::SgetWide { dest, .. }
+            | Instruction::IgetWide { dest, .. }
+            | Instruction::AgetWide { dest, .. }
+            | Instruction::NegLong { dest, .. }
+            | Instruction::NotLong { dest, .. }
+            | Instruction::NegDouble { dest, .. }
+            | Instruction::IntToLong { dest, .. }
+            | Instruction::IntToDouble { dest, .. }
+            | Instruction::LongToDouble { dest, .. }
+            | Instruction::FloatToLong { dest, .. }
+            | Instruction::FloatToDouble { dest, .. }
+            | Instruction::DoubleToLong { dest, .. }
+            | Instruction::AddLong { dest, .. }
+            | Instruction::SubLong { dest, .. }
+            | Instruction::MulLong { dest, .. }
+            | Instruction::DivLong { dest, .. }
+            | Instruction::RemLong { dest, .. }
+            | Instruction::AndLong { dest, .. }
+            | Instruction::OrLong { dest, .. }
+            | Instruction::XorLong { dest, .. }
+            | Instruction::AddDouble { dest, .. }
+            | Instruction::SubDouble { dest, .. }
+            | Instruction::MulDouble { dest, .. }
+            | Instruction::DivDouble { dest, .. }
+            | Instruction::RemDouble { dest, .. }
+            | Instruction::ShlLong { dest, .. }
+            | Instruction::ShrLong { dest, .. }
+            | Instruction::UshrLong { dest, .. } => {
+                visit_pair(u16::from(*dest), &mut visit);
+            }
+            Instruction::MoveWide16 { dest, .. } => {
+                visit_pair(*dest, &mut visit);
+            }
+            Instruction::AddLong2Addr { dest_a, .. }
+            | Instruction::SubLong2Addr { dest_a, .. }
+            | Instruction::MulLong2Addr { dest_a, .. }
+            | Instruction::DivLong2Addr { dest_a, .. }
+            | Instruction::RemLong2Addr { dest_a, .. }
+            | Instruction::AndLong2Addr { dest_a, .. }
+            | Instruction::OrLong2Addr { dest_a, .. }
+            | Instruction::XorLong2Addr { dest_a, .. }
+            | Instruction::AddDouble2Addr { dest_a, .. }
+            | Instruction::SubDouble2Addr { dest_a, .. }
+            | Instruction::MulDouble2Addr { dest_a, .. }
+            | Instruction::DivDouble2Addr { dest_a, .. }
+            | Instruction::RemDouble2Addr { dest_a, .. }
+            | Instruction::ShlLong2Addr { dest_a, .. }
+            | Instruction::ShrLong2Addr { dest_a, .. }
+            | Instruction::UshrLong2Addr { dest_a, .. } => {
+                visit_pair(u16::from(*dest_a), &mut visit);
+            }
+
             Instruction::Move { dest, .. }
-            | Instruction::MoveWide { dest, .. }
             | Instruction::MoveObject { dest, .. }
             | Instruction::Const4 { dest, .. }
             | Instruction::InstanceOf { dest, .. }
@@ -319,21 +399,12 @@ impl Instruction {
             | Instruction::NewArray { dest, .. }
             | Instruction::NegInt { dest, .. }
             | Instruction::NotInt { dest, .. }
-            | Instruction::NegLong { dest, .. }
-            | Instruction::NotLong { dest, .. }
             | Instruction::NegFloat { dest, .. }
-            | Instruction::NegDouble { dest, .. }
-            | Instruction::IntToLong { dest, .. }
             | Instruction::IntToFloat { dest, .. }
-            | Instruction::IntToDouble { dest, .. }
             | Instruction::LongToInt { dest, .. }
             | Instruction::LongToFloat { dest, .. }
-            | Instruction::LongToDouble { dest, .. }
             | Instruction::FloatToInt { dest, .. }
-            | Instruction::FloatToLong { dest, .. }
-            | Instruction::FloatToDouble { dest, .. }
             | Instruction::DoubleToInt { dest, .. }
-            | Instruction::DoubleToLong { dest, .. }
             | Instruction::DoubleToFloat { dest, .. }
             | Instruction::IntToByte { dest, .. }
             | Instruction::IntToChar { dest, .. }
@@ -349,42 +420,20 @@ impl Instruction {
             | Instruction::ShlInt2Addr { dest_a: dest, .. }
             | Instruction::ShrInt2Addr { dest_a: dest, .. }
             | Instruction::UshrInt2Addr { dest_a: dest, .. }
-            | Instruction::AddLong2Addr { dest_a: dest, .. }
-            | Instruction::SubLong2Addr { dest_a: dest, .. }
-            | Instruction::MulLong2Addr { dest_a: dest, .. }
-            | Instruction::DivLong2Addr { dest_a: dest, .. }
-            | Instruction::RemLong2Addr { dest_a: dest, .. }
-            | Instruction::AndLong2Addr { dest_a: dest, .. }
-            | Instruction::OrLong2Addr { dest_a: dest, .. }
-            | Instruction::XorLong2Addr { dest_a: dest, .. }
-            | Instruction::ShlLong2Addr { dest_a: dest, .. }
-            | Instruction::ShrLong2Addr { dest_a: dest, .. }
-            | Instruction::UshrLong2Addr { dest_a: dest, .. }
             | Instruction::AddFloat2Addr { dest_a: dest, .. }
             | Instruction::SubFloat2Addr { dest_a: dest, .. }
             | Instruction::MulFloat2Addr { dest_a: dest, .. }
             | Instruction::DivFloat2Addr { dest_a: dest, .. }
-            | Instruction::RemFloat2Addr { dest_a: dest, .. }
-            | Instruction::AddDouble2Addr { dest_a: dest, .. }
-            | Instruction::SubDouble2Addr { dest_a: dest, .. }
-            | Instruction::MulDouble2Addr { dest_a: dest, .. }
-            | Instruction::DivDouble2Addr { dest_a: dest, .. }
-            | Instruction::RemDouble2Addr { dest_a: dest, .. } => visit(u16::from(*dest)),
+            | Instruction::RemFloat2Addr { dest_a: dest, .. } => visit(u16::from(*dest)),
 
             Instruction::MoveFrom16 { dest, .. }
-            | Instruction::MoveWideFrom16 { dest, .. }
             | Instruction::MoveObjectFrom16 { dest, .. }
             | Instruction::MoveResult { dest }
-            | Instruction::MoveResultWide { dest }
             | Instruction::MoveResultObject { dest }
             | Instruction::MoveException { dest }
             | Instruction::Const16 { dest, .. }
             | Instruction::Const { dest, .. }
             | Instruction::ConstHigh16 { dest, .. }
-            | Instruction::ConstWide16 { dest, .. }
-            | Instruction::ConstWide32 { dest, .. }
-            | Instruction::ConstWide { dest, .. }
-            | Instruction::ConstWideHigh16 { dest, .. }
             | Instruction::ConstString { dest, .. }
             | Instruction::ConstStringJumbo { dest, .. }
             | Instruction::ConstClass { dest, .. }
@@ -392,7 +441,6 @@ impl Instruction {
             | Instruction::ConstMethodHandle { dest, .. }
             | Instruction::ConstMethodType { dest, .. }
             | Instruction::Sget { dest, .. }
-            | Instruction::SgetWide { dest, .. }
             | Instruction::SgetObject { dest, .. }
             | Instruction::SgetBoolean { dest, .. }
             | Instruction::SgetByte { dest, .. }
@@ -414,29 +462,12 @@ impl Instruction {
             | Instruction::ShlInt { dest, .. }
             | Instruction::ShrInt { dest, .. }
             | Instruction::UshrInt { dest, .. }
-            | Instruction::AddLong { dest, .. }
-            | Instruction::SubLong { dest, .. }
-            | Instruction::MulLong { dest, .. }
-            | Instruction::DivLong { dest, .. }
-            | Instruction::RemLong { dest, .. }
-            | Instruction::AndLong { dest, .. }
-            | Instruction::OrLong { dest, .. }
-            | Instruction::XorLong { dest, .. }
-            | Instruction::ShlLong { dest, .. }
-            | Instruction::ShrLong { dest, .. }
-            | Instruction::UshrLong { dest, .. }
             | Instruction::AddFloat { dest, .. }
             | Instruction::SubFloat { dest, .. }
             | Instruction::MulFloat { dest, .. }
             | Instruction::DivFloat { dest, .. }
             | Instruction::RemFloat { dest, .. }
-            | Instruction::AddDouble { dest, .. }
-            | Instruction::SubDouble { dest, .. }
-            | Instruction::MulDouble { dest, .. }
-            | Instruction::DivDouble { dest, .. }
-            | Instruction::RemDouble { dest, .. }
             | Instruction::Aget { dest, .. }
-            | Instruction::AgetWide { dest, .. }
             | Instruction::AgetObject { dest, .. }
             | Instruction::AgetBoolean { dest, .. }
             | Instruction::AgetByte { dest, .. }
@@ -454,7 +485,6 @@ impl Instruction {
             | Instruction::ShrIntLit8 { dest, .. }
             | Instruction::UshrIntLit8 { dest, .. }
             | Instruction::Iget { dest, .. }
-            | Instruction::IgetWide { dest, .. }
             | Instruction::IgetObject { dest, .. }
             | Instruction::IgetBoolean { dest, .. }
             | Instruction::IgetByte { dest, .. }
@@ -469,9 +499,9 @@ impl Instruction {
             | Instruction::OrIntLit16 { dest, .. }
             | Instruction::XorIntLit16 { dest, .. } => visit(u16::from(*dest)),
 
-            Instruction::Move16 { dest, .. }
-            | Instruction::MoveWide16 { dest, .. }
-            | Instruction::MoveObject16 { dest, .. } => visit(*dest),
+            Instruction::Move16 { dest, .. } | Instruction::MoveObject16 { dest, .. } => {
+                visit(*dest)
+            }
 
             Instruction::Nop
             | Instruction::ReturnVoid
@@ -545,6 +575,13 @@ impl Instruction {
     }
 }
 
+fn visit_pair(register: u16, visit: &mut impl FnMut(u16)) {
+    visit(register);
+    if let Some(high) = register.checked_add(1) {
+        visit(high);
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -596,5 +633,69 @@ mod tests {
 
         assert_eq!(collected_reads(&insn), vec![5, 6, 7]);
         assert!(collected_writes(&insn).is_empty());
+    }
+    #[test]
+    fn wide_conversions_comparisons_and_shifts_use_the_correct_word_widths() {
+        for (insn, reads, writes) in [
+            (
+                Instruction::MoveWide { dest: 1, src: 0 },
+                vec![0, 1],
+                vec![1, 2],
+            ),
+            (
+                Instruction::LongToInt { dest: 0, src: 2 },
+                vec![2, 3],
+                vec![0],
+            ),
+            (
+                Instruction::IntToDouble { dest: 2, src: 0 },
+                vec![0],
+                vec![2, 3],
+            ),
+            (
+                Instruction::CmpLong {
+                    dest: 0,
+                    a: 1,
+                    b: 3,
+                },
+                vec![1, 2, 3, 4],
+                vec![0],
+            ),
+            (
+                Instruction::ShlLong {
+                    dest: 0,
+                    a: 2,
+                    b: 4,
+                },
+                vec![2, 3, 4],
+                vec![0, 1],
+            ),
+            (
+                Instruction::ShrLong2Addr { dest_a: 0, b: 2 },
+                vec![0, 1, 2],
+                vec![0, 1],
+            ),
+            (
+                Instruction::AgetWide {
+                    dest: 0,
+                    array: 2,
+                    index: 3,
+                },
+                vec![2, 3],
+                vec![0, 1],
+            ),
+            (
+                Instruction::AputWide {
+                    src: 0,
+                    array: 2,
+                    index: 3,
+                },
+                vec![0, 1, 2, 3],
+                vec![],
+            ),
+        ] {
+            assert_eq!(collected_reads(&insn), reads, "{insn:?}");
+            assert_eq!(collected_writes(&insn), writes, "{insn:?}");
+        }
     }
 }

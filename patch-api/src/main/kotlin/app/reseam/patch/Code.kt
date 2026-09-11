@@ -11,7 +11,9 @@ package app.reseam.patch
  * the patch is applied; `when*` blocks become branches in the app.
  */
 interface CodeScope {
+    /** The receiver; saved at entry for a method-level [after] hook. */
     val thisObject: ValueRef
+    /** The parameter value; saved at entry for a method-level [after] hook. */
     fun param(index: Int): ValueRef
     fun paramOfType(type: String): ValueRef
     val lastParam: ValueRef

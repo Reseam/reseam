@@ -92,13 +92,17 @@ Inside `patch { }` (`PatchBuilder`):
 | Symbol | Description |
 |---|---|
 | `MethodTarget.before { CodeScope }` | Emit at entry. |
-| `MethodTarget.after { CodeScope }` | Emit before every return; `capture("result")` is the return value. |
+| `MethodTarget.after { CodeScope }` | Emit before every return; `capture("result")` is the return value. Referenced parameters and receiver are saved at entry in dedicated locals. |
 | `MethodTarget.replace { CodeScope }` | Replace the body. |
 | `PointTarget.before { }`, `.after { }` | Emit around the instruction. |
 | `MethodTarget.alwaysReturn()`, `(Boolean)`, `(Int)`, `(Long)`, `(String)`, `alwaysReturnNull()` | Replace the body with a constant return. |
 | `MethodTarget.replaceAllStrings(old, new)`, `replaceAllLiterals(old, new)` | Rewrite constants; returns the count. |
 
 `CodeScope`: `thisObject`, `param(i)`, `paramOfType(type)`, `lastParam`, `capture(name)`, `int`, `long`, `bool`, `string`, `nullObject`, `enumValue(type, name)`, `staticField(FieldTarget | FieldRef)`, `newInstance(type, ctorProto, args)`, `call(ExtMethod | MethodTarget, args)`, `callStatic(owner, name, proto, args)`, `whenTrue`, `whenFalse`, `whenNull`, `whenNotNull`, `whenEqual`, `whenNotEqual` (each returns `Otherwise` with `otherwise { }`), `returnVoid`, `returnValue`, `returnTrue`, `returnFalse`, `returnNull`.
+
+Inside `MethodTarget.after`, `param(i)`, `paramOfType(type)`, `lastParam`, and `thisObject` refer to entry snapshots, even if the method body reuses their incoming registers. Assigning to a snapshot changes the saved local, independently of `capture("result")`. Object snapshots preserve references, not object state. Point hooks read values at their instruction and do not take entry snapshots.
+
+Temporary registers are reused after their last use across the block's control flow. Frame growth lowers operands that exceed their instruction format through dead scratch registers. Range invokes can also share an additional argument area, with entry copies preserving the body's parameter values. `Method.growLocalRegisters` reserves at least the requested number of locals; invoke lowering may require additional registers. It returns `false` without changing the body when safe lowering is unavailable. Successful growth can expand instructions and invalidate previously saved instruction indices. Register searches account for branches, exception handlers, and both words of wide values; `findFreeRegister` throws when no register is available.
 
 `ValueRef`: `type`, `cast(type)`, `field(FieldTarget | FieldRef)`, `fieldOfType(type)`, `set(field, value)`, `assign(value)`, `call(ExtMethod | MethodTarget, args)`, `callVirtual(owner, name, proto, args)`, `callInterface(...)`, `size()`, `get(index)`, `plus`, `minus`.
 

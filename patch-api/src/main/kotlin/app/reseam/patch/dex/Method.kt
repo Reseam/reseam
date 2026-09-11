@@ -144,9 +144,16 @@ value class Method(val handle: UInt) {
     }
 
     fun ensureOutsSize(minOutsSize: Int) = ensureOutsSize(handle, minOutsSize.toUShort())
-    fun growLocalRegisters(additionalLocals: Int): Boolean = growLocalRegisters(handle, additionalLocals.toUShort())
+    /** Reserves at least this many locals; lowering may add registers and change instruction indices. */
+    fun growLocalRegisters(additionalLocals: Int): Boolean = growLocals(additionalLocals) != null
+
+    internal fun growLocals(additionalLocals: Int): List<Int>? {
+        require(additionalLocals in 0..UShort.MAX_VALUE.toInt()) { "Invalid local register growth: $additionalLocals" }
+        return growLocalRegisters(handle, additionalLocals.toUShort())?.map { it.toInt() }
+    }
     fun findFreeRegister(atIndex: Int, exclude: List<Int> = emptyList()): Int =
-        findFreeRegister(handle, atIndex.toUInt(), ShortArray(exclude.size) { exclude[it].toShort() }).toInt()
+        findFreeRegister(handle, atIndex.toUInt(), ShortArray(exclude.size) { exclude[it].toShort() })?.toInt()
+            ?: error("No free register at $descriptor[$atIndex]")
     fun findFreeRegisters(atIndex: Int, count: Int, exclude: List<Int> = emptyList()): List<Int> =
         findFreeRegisters(handle, atIndex.toUInt(), count.toUInt(), ShortArray(exclude.size) { exclude[it].toShort() }).map { it.toInt() }
     fun findContiguousFreeRegisters(atIndex: Int, count: Int, exclude: List<Int> = emptyList()): List<Int> =

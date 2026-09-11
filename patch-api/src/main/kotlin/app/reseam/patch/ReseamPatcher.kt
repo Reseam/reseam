@@ -1040,9 +1040,9 @@ data class ClassInfo(
     fun wireEncodedSize(): Int =
         (4 + Utf8Codec.maxBytes(descriptor)) +
         4 +
-        (superclass?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()) +
-        (4 + interfaces.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }) +
-        (sourceFile?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()) +
+        (superclass?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1) +
+        (4 + interfaces.sumOf { item -> ((4 + Utf8Codec.maxBytes(item))).toInt() }) +
+        (sourceFile?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1) +
         4 +
         4 +
         4 +
@@ -1084,7 +1084,7 @@ data class FieldInfo(
         (4 + Utf8Codec.maxBytes(name)) +
         (4 + Utf8Codec.maxBytes(fieldType)) +
         4 +
-        (initialValue?.let { v -> 1 + v.wireEncodedSize() } ?: 1.toInt())
+        (initialValue?.let { v -> 1 + v.wireEncodedSize() } ?: 1)
 
     fun wireEncodeTo(wire: WireWriter) {
         wire.writeString(classDescriptor)
@@ -1118,14 +1118,14 @@ data class FingerprintDef(
         )
     }
     fun wireEncodedSize(): Int =
-        (name?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()) +
-        (definingClass?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()) +
-        (accessFlags?.let { v -> 1 + 4 } ?: 1.toInt()) +
-        (returnType?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()) +
-        (parameters?.let { v -> 1 + (4 + v.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }) } ?: 1.toInt()) +
-        (opcodes?.let { v -> 1 + (4 + v.size * 4) } ?: 1.toInt()) +
-        (strings?.let { v -> 1 + (4 + v.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }) } ?: 1.toInt()) +
-        (literals?.let { v -> 1 + (4 + v.size * 8) } ?: 1.toInt())
+        (name?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1) +
+        (definingClass?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1) +
+        (accessFlags?.let { v -> 1 + 4 } ?: 1) +
+        (returnType?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1) +
+        (parameters?.let { v -> 1 + (4 + v.sumOf { item -> ((4 + Utf8Codec.maxBytes(item))).toInt() }) } ?: 1) +
+        (opcodes?.let { v -> 1 + (4 + v.size * 4) } ?: 1) +
+        (strings?.let { v -> 1 + (4 + v.sumOf { item -> ((4 + Utf8Codec.maxBytes(item))).toInt() }) } ?: 1) +
+        (literals?.let { v -> 1 + (4 + v.size * 8) } ?: 1)
 
     fun wireEncodeTo(wire: WireWriter) {
         name?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -1256,9 +1256,9 @@ data class NewMethod(
         2 +
         2 +
         2 +
-        (4 + instructions.sumOf { item -> item.wireEncodedSize() }) +
+        (4 + instructions.sumOf { item -> (item.wireEncodedSize()).toInt() }) +
         (4 + tries.size * 12) +
-        (4 + catchHandlers.sumOf { item -> item.wireEncodedSize() })
+        (4 + catchHandlers.sumOf { item -> (item.wireEncodedSize()).toInt() })
 
     fun wireEncodeTo(wire: WireWriter) {
         wire.writeString(name)
@@ -1308,8 +1308,8 @@ data class CatchHandler(
         )
     }
     fun wireEncodedSize(): Int =
-        (4 + typedCatches.sumOf { item -> item.wireEncodedSize() }) +
-        (catchAllAddr?.let { v -> 1 + 4 } ?: 1.toInt())
+        (4 + typedCatches.sumOf { item -> (item.wireEncodedSize()).toInt() }) +
+        (catchAllAddr?.let { v -> 1 + 4 } ?: 1)
 
     fun wireEncodeTo(wire: WireWriter) {
         wire.writeU32(typedCatches.size.toUInt()); typedCatches.forEach { item -> item.wireEncodeTo(wire) }
@@ -1355,7 +1355,7 @@ data class NewField(
         (4 + Utf8Codec.maxBytes(name)) +
         (4 + Utf8Codec.maxBytes(fieldType)) +
         4 +
-        (initialValue?.let { v -> 1 + v.wireEncodedSize() } ?: 1.toInt())
+        (initialValue?.let { v -> 1 + v.wireEncodedSize() } ?: 1)
 
     fun wireEncodeTo(wire: WireWriter) {
         wire.writeString(name)
@@ -1380,7 +1380,7 @@ data class AnnotationItem(
     fun wireEncodedSize(): Int =
         1 +
         (4 + Utf8Codec.maxBytes(annotationType)) +
-        (4 + elements.sumOf { item -> item.wireEncodedSize() })
+        (4 + elements.sumOf { item -> (item.wireEncodedSize()).toInt() })
 
     fun wireEncodeTo(wire: WireWriter) {
         wire.writeU8(visibility)
@@ -2049,7 +2049,7 @@ internal fun setMethodAccessFlags(m: UInt, flags: UInt) {
  */
 
 internal fun cloneMethod(m: UInt, newName: String?): UInt {
-    val wire_writer_new_name = WireWriterPool.acquire((newName?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_new_name = WireWriterPool.acquire((newName?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_new_name.writer
             newName?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -2174,15 +2174,17 @@ internal fun findStringIdx(d: UInt, s: String): UInt? {
 }
 
 internal fun getString(d: UInt, idx: UInt): String {
-    val result = Native.boltffi_get_string(d.toInt(), idx.toInt())
+    val buf = Native.boltffi_get_string(d.toInt(), idx.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
-    return result
+    val reader = WireReader(buf)
+    return reader.readString()
 }
 
 internal fun getTypeDescriptor(d: UInt, idx: UInt): String {
-    val result = Native.boltffi_get_type_descriptor(d.toInt(), idx.toInt())
+    val buf = Native.boltffi_get_type_descriptor(d.toInt(), idx.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
-    return result
+    val reader = WireReader(buf)
+    return reader.readString()
 }
 
 internal fun buildLookups(d: UInt) {
@@ -2212,7 +2214,7 @@ internal fun findMethodsByName(name: String): IntArray {
 }
 
 internal fun findMethodsByStrings(strings: List<String>): IntArray {
-    val wire_writer_strings = WireWriterPool.acquire((4 + strings.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }))
+    val wire_writer_strings = WireWriterPool.acquire((4 + strings.sumOf { item -> ((4 + Utf8Codec.maxBytes(item))).toInt() }))
         kotlin.run {
             val wire = wire_writer_strings.writer
             wire.writeU32(strings.size.toUInt()); strings.forEach { item -> wire.writeString(item) }
@@ -2234,17 +2236,17 @@ internal fun findMethodsByStrings(strings: List<String>): IntArray {
  */
 
 internal fun findMethodsByProto(returnType: String?, parameterTypes: List<String>?, parameter: String?): IntArray {
-    val wire_writer_return_type = WireWriterPool.acquire((returnType?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_return_type = WireWriterPool.acquire((returnType?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_return_type.writer
             returnType?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
         }
-    val wire_writer_parameter_types = WireWriterPool.acquire((parameterTypes?.let { v -> 1 + (4 + v.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }) } ?: 1.toInt()))
+    val wire_writer_parameter_types = WireWriterPool.acquire((parameterTypes?.let { v -> 1 + (4 + v.sumOf { item -> ((4 + Utf8Codec.maxBytes(item))).toInt() }) } ?: 1))
         kotlin.run {
             val wire = wire_writer_parameter_types.writer
             parameterTypes?.let { v -> wire.writeU8(1u); wire.writeU32(v.size.toUInt()); v.forEach { item -> wire.writeString(item) } } ?: wire.writeU8(0u)
         }
-    val wire_writer_parameter = WireWriterPool.acquire((parameter?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_parameter = WireWriterPool.acquire((parameter?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_parameter.writer
             parameter?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -2364,7 +2366,7 @@ internal fun classFields(c: UInt): List<FieldInfo> {
 }
 
 internal fun setInstructions(m: UInt, insns: List<Instruction>) {
-    val wire_writer_insns = WireWriterPool.acquire((4 + insns.sumOf { item -> item.wireEncodedSize() }))
+    val wire_writer_insns = WireWriterPool.acquire((4 + insns.sumOf { item -> (item.wireEncodedSize()).toInt() }))
         kotlin.run {
             val wire = wire_writer_insns.writer
             wire.writeU32(insns.size.toUInt()); insns.forEach { item -> item.wireEncodeTo(wire) }
@@ -2381,7 +2383,7 @@ internal fun setInstructions(m: UInt, insns: List<Instruction>) {
  */
 
 internal fun replaceBody(m: UInt, registersSize: UShort, outsSize: UShort, insns: List<Instruction>) {
-    val wire_writer_insns = WireWriterPool.acquire((4 + insns.sumOf { item -> item.wireEncodedSize() }))
+    val wire_writer_insns = WireWriterPool.acquire((4 + insns.sumOf { item -> (item.wireEncodedSize()).toInt() }))
         kotlin.run {
             val wire = wire_writer_insns.writer
             wire.writeU32(insns.size.toUInt()); insns.forEach { item -> item.wireEncodeTo(wire) }
@@ -2394,13 +2396,26 @@ internal fun replaceBody(m: UInt, registersSize: UShort, outsSize: UShort, insns
 }
 
 internal fun insertInstructions(m: UInt, index: UInt, insns: List<Instruction>) {
-    val wire_writer_insns = WireWriterPool.acquire((4 + insns.sumOf { item -> item.wireEncodedSize() }))
+    val wire_writer_insns = WireWriterPool.acquire((4 + insns.sumOf { item -> (item.wireEncodedSize()).toInt() }))
         kotlin.run {
             val wire = wire_writer_insns.writer
             wire.writeU32(insns.size.toUInt()); insns.forEach { item -> item.wireEncodeTo(wire) }
         }
     try {
         Native.boltffi_insert_instructions(m.toInt(), index.toInt(), wire_writer_insns.buffer)
+    } finally {
+        wire_writer_insns.close()
+    }
+}
+
+internal fun insertBeforeInstruction(m: UInt, index: UInt, insns: List<Instruction>): Boolean {
+    val wire_writer_insns = WireWriterPool.acquire((4 + insns.sumOf { item -> (item.wireEncodedSize()).toInt() }))
+        kotlin.run {
+            val wire = wire_writer_insns.writer
+            wire.writeU32(insns.size.toUInt()); insns.forEach { item -> item.wireEncodeTo(wire) }
+        }
+    try {
+        return Native.boltffi_insert_before_instruction(m.toInt(), index.toInt(), wire_writer_insns.buffer)
     } finally {
         wire_writer_insns.close()
     }
@@ -2502,12 +2517,15 @@ internal fun ensureOutsSize(m: UInt, minOutsSize: UShort) {
 }
 
 /**
- * Adds locals below the parameter registers, renumbering parameter uses.
- * Fails when an instruction cannot encode the shifted register.
+ * Adds locals below the incoming registers and returns relocated instruction
+ * indices, including the end boundary. The method is unchanged on failure.
  */
 
-internal fun growLocalRegisters(m: UInt, additionalLocals: UShort): Boolean {
-    return Native.boltffi_grow_local_registers(m.toInt(), additionalLocals.toShort())
+internal fun growLocalRegisters(m: UInt, additionalLocals: UShort): IntArray? {
+    val buf = Native.boltffi_grow_local_registers(m.toInt(), additionalLocals.toShort())
+        ?: throw FfiException(-1, "Null buffer returned")
+    val reader = WireReader(buf)
+    return reader.readOptional { reader.readIntArray() }
 }
 
 internal fun registersSize(m: UInt): UShort {
@@ -2522,8 +2540,11 @@ internal fun outsSize(m: UInt): UShort {
     return Native.boltffi_outs_size(m.toInt()).toUShort()
 }
 
-internal fun findFreeRegister(m: UInt, atIndex: UInt, exclude: ShortArray): UShort {
-    return Native.boltffi_find_free_register(m.toInt(), atIndex.toInt(), exclude).toUShort()
+internal fun findFreeRegister(m: UInt, atIndex: UInt, exclude: ShortArray): UShort? {
+    val buf = Native.boltffi_find_free_register(m.toInt(), atIndex.toInt(), exclude)
+        ?: throw FfiException(-1, "Null buffer returned")
+    val reader = WireReader(buf)
+    return reader.readOptional { reader.readU16() }
 }
 
 internal fun findFreeRegisters(m: UInt, atIndex: UInt, count: UInt, exclude: ShortArray): ShortArray {
@@ -2631,12 +2652,12 @@ internal fun indexOfFirstMethodCall(m: UInt, definingClass: String, methodName: 
  */
 
 internal fun indexOfFirstFieldAccess(m: UInt, op: Int, fieldType: String?, definingClass: String?, start: UInt): UInt? {
-    val wire_writer_field_type = WireWriterPool.acquire((fieldType?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_field_type = WireWriterPool.acquire((fieldType?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_field_type.writer
             fieldType?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
         }
-    val wire_writer_defining_class = WireWriterPool.acquire((definingClass?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_defining_class = WireWriterPool.acquire((definingClass?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_defining_class.writer
             definingClass?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -2701,12 +2722,12 @@ internal fun findInstructionsByResourceId(resType: String, resName: String): Lis
  */
 
 internal fun findMethodCallSites(classNames: List<String>, methodNames: List<String>): List<MethodCallSiteResult> {
-    val wire_writer_class_names = WireWriterPool.acquire((4 + classNames.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }))
+    val wire_writer_class_names = WireWriterPool.acquire((4 + classNames.sumOf { item -> ((4 + Utf8Codec.maxBytes(item))).toInt() }))
         kotlin.run {
             val wire = wire_writer_class_names.writer
             wire.writeU32(classNames.size.toUInt()); classNames.forEach { item -> wire.writeString(item) }
         }
-    val wire_writer_method_names = WireWriterPool.acquire((4 + methodNames.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }))
+    val wire_writer_method_names = WireWriterPool.acquire((4 + methodNames.sumOf { item -> ((4 + Utf8Codec.maxBytes(item))).toInt() }))
         kotlin.run {
             val wire = wire_writer_method_names.writer
             wire.writeU32(methodNames.size.toUInt()); methodNames.forEach { item -> wire.writeString(item) }
@@ -2728,12 +2749,12 @@ internal fun findMethodCallSites(classNames: List<String>, methodNames: List<Str
  */
 
 internal fun findFieldAccessSites(classNames: List<String>, fieldNames: List<String>): List<MethodCallSiteResult> {
-    val wire_writer_class_names = WireWriterPool.acquire((4 + classNames.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }))
+    val wire_writer_class_names = WireWriterPool.acquire((4 + classNames.sumOf { item -> ((4 + Utf8Codec.maxBytes(item))).toInt() }))
         kotlin.run {
             val wire = wire_writer_class_names.writer
             wire.writeU32(classNames.size.toUInt()); classNames.forEach { item -> wire.writeString(item) }
         }
-    val wire_writer_field_names = WireWriterPool.acquire((4 + fieldNames.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }))
+    val wire_writer_field_names = WireWriterPool.acquire((4 + fieldNames.sumOf { item -> ((4 + Utf8Codec.maxBytes(item))).toInt() }))
         kotlin.run {
             val wire = wire_writer_field_names.writer
             wire.writeU32(fieldNames.size.toUInt()); fieldNames.forEach { item -> wire.writeString(item) }
@@ -2802,7 +2823,7 @@ internal fun componentNames(): List<String> {
 }
 
 internal fun fileList(component: String?): List<String> {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -2818,7 +2839,7 @@ internal fun fileList(component: String?): List<String> {
 }
 
 internal fun fileRead(component: String?, apkPath: String): ByteArray? {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -2838,7 +2859,7 @@ internal fun fileRead(component: String?, apkPath: String): ByteArray? {
  */
 
 internal fun fileSource(component: String?): ByteArray? {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -2858,7 +2879,7 @@ internal fun fileSource(component: String?): ByteArray? {
  */
 
 internal fun fileSigners(component: String?): List<ByteArray> {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -2874,7 +2895,7 @@ internal fun fileSigners(component: String?): List<ByteArray> {
 }
 
 internal fun fileInject(component: String?, apkPath: String, `data`: ByteArray, stored: Boolean) {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -2887,7 +2908,7 @@ internal fun fileInject(component: String?, apkPath: String, `data`: ByteArray, 
 }
 
 internal fun fileDelete(component: String?, apkPath: String) {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -2904,7 +2925,7 @@ internal fun fileDelete(component: String?, apkPath: String) {
  */
 
 internal fun fileCopy(component: String?, bundleRelative: String, apkPath: String) {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -2929,7 +2950,7 @@ internal fun logDebug(msg: String) {
 }
 
 internal fun manifestPackageName(component: String?): String? {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -2945,7 +2966,7 @@ internal fun manifestPackageName(component: String?): String? {
 }
 
 internal fun manifestVersionCode(component: String?): UInt? {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -2961,7 +2982,7 @@ internal fun manifestVersionCode(component: String?): UInt? {
 }
 
 internal fun manifestVersionName(component: String?): String? {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -2977,7 +2998,7 @@ internal fun manifestVersionName(component: String?): String? {
 }
 
 internal fun manifestMinSdkVersion(component: String?): UInt? {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -2993,7 +3014,7 @@ internal fun manifestMinSdkVersion(component: String?): UInt? {
 }
 
 internal fun manifestSplitName(component: String?): String? {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3009,7 +3030,7 @@ internal fun manifestSplitName(component: String?): String? {
 }
 
 internal fun manifestSetVersionCode(component: String?, code: UInt) {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3022,7 +3043,7 @@ internal fun manifestSetVersionCode(component: String?, code: UInt) {
 }
 
 internal fun manifestSetVersionName(component: String?, name: String) {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3035,7 +3056,7 @@ internal fun manifestSetVersionName(component: String?, name: String) {
 }
 
 internal fun manifestSetMinSdk(component: String?, sdk: UInt) {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3048,7 +3069,7 @@ internal fun manifestSetMinSdk(component: String?, sdk: UInt) {
 }
 
 internal fun manifestAddPermission(component: String?, permission: String) {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3066,7 +3087,7 @@ internal fun manifestAddPermission(component: String?, permission: String) {
  */
 
 internal fun manifestSetAttributeInt(component: String?, elementName: String, attrName: String, `value`: Int) {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3079,7 +3100,7 @@ internal fun manifestSetAttributeInt(component: String?, elementName: String, at
 }
 
 internal fun manifestSetAttributeString(component: String?, elementName: String, attrName: String, `value`: String) {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3092,7 +3113,7 @@ internal fun manifestSetAttributeString(component: String?, elementName: String,
 }
 
 internal fun manifestSetActivityConfigChanges(component: String?, activityName: String, configChanges: String) {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3105,22 +3126,22 @@ internal fun manifestSetActivityConfigChanges(component: String?, activityName: 
 }
 
 internal fun manifestAddIntentFilter(component: String?, activityName: String, action: String?, category: String?, mimeType: String?) {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
         }
-    val wire_writer_action = WireWriterPool.acquire((action?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_action = WireWriterPool.acquire((action?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_action.writer
             action?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
         }
-    val wire_writer_category = WireWriterPool.acquire((category?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_category = WireWriterPool.acquire((category?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_category.writer
             category?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
         }
-    val wire_writer_mime_type = WireWriterPool.acquire((mimeType?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_mime_type = WireWriterPool.acquire((mimeType?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_mime_type.writer
             mimeType?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3136,12 +3157,12 @@ internal fun manifestAddIntentFilter(component: String?, activityName: String, a
 }
 
 internal fun manifestAddActivityAlias(component: String?, targetActivity: String, aliasName: String, enabled: Boolean, label: String?) {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
         }
-    val wire_writer_label = WireWriterPool.acquire((label?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_label = WireWriterPool.acquire((label?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_label.writer
             label?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3159,7 +3180,7 @@ internal fun manifestAddActivityAlias(component: String?, targetActivity: String
  */
 
 internal fun manifestCopyIntentFilters(component: String?, fromActivity: String, toActivity: String) {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3177,7 +3198,7 @@ internal fun manifestCopyIntentFilters(component: String?, fromActivity: String,
  */
 
 internal fun manifestGetDocument(component: String?): UInt? {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3197,9 +3218,10 @@ internal fun ctxIsActive(): Boolean {
 }
 
 internal fun version(): String {
-    val result = Native.boltffi_version()
+    val buf = Native.boltffi_version()
         ?: throw FfiException(-1, "Null buffer returned")
-    return result
+    val reader = WireReader(buf)
+    return reader.readString()
 }
 
 internal fun optionGetString(key: String): String? {
@@ -3288,7 +3310,7 @@ internal fun resComponentForId(resId: UInt): String? {
  */
 
 internal fun resId(component: String?, resType: String, resName: String): UInt? {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3304,7 +3326,7 @@ internal fun resId(component: String?, resType: String, resName: String): UInt? 
 }
 
 internal fun resExists(component: String?, resType: String, resName: String): Boolean {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3317,7 +3339,7 @@ internal fun resExists(component: String?, resType: String, resName: String): Bo
 }
 
 internal fun resGetString(component: String?, name: String): String? {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3333,7 +3355,7 @@ internal fun resGetString(component: String?, name: String): String? {
 }
 
 internal fun resSetString(component: String?, name: String, `value`: String): Boolean {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3352,7 +3374,7 @@ internal fun resSetString(component: String?, name: String, `value`: String): Bo
  */
 
 internal fun resAdd(component: String?, resType: String, name: String, `value`: String): UInt? {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3368,7 +3390,7 @@ internal fun resAdd(component: String?, resType: String, name: String, `value`: 
 }
 
 internal fun resAddId(component: String?, name: String): UInt? {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3384,7 +3406,7 @@ internal fun resAddId(component: String?, name: String): UInt? {
 }
 
 internal fun resAddRaw(component: String?, resType: String, name: String, dataType: UByte, `data`: UInt): UInt? {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3400,7 +3422,7 @@ internal fun resAddRaw(component: String?, resType: String, name: String, dataTy
 }
 
 internal fun resGetRaw(component: String?, resType: String, resName: String): Long? {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3424,7 +3446,7 @@ internal fun resCopy(bundleRelative: String, apkPath: String) {
  */
 
 internal fun resCopyGroup(resType: String, files: List<String>) {
-    val wire_writer_files = WireWriterPool.acquire((4 + files.sumOf { item -> (4 + Utf8Codec.maxBytes(item)) }))
+    val wire_writer_files = WireWriterPool.acquire((4 + files.sumOf { item -> ((4 + Utf8Codec.maxBytes(item))).toInt() }))
         kotlin.run {
             val wire = wire_writer_files.writer
             wire.writeU32(files.size.toUInt()); files.forEach { item -> wire.writeString(item) }
@@ -3452,7 +3474,7 @@ internal fun resList(prefix: String): List<String> {
 }
 
 internal fun resPoolGet(component: String?, index: UInt): String? {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3468,7 +3490,7 @@ internal fun resPoolGet(component: String?, index: UInt): String? {
 }
 
 internal fun resPoolSet(component: String?, index: UInt, `value`: String) {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3481,7 +3503,7 @@ internal fun resPoolSet(component: String?, index: UInt, `value`: String) {
 }
 
 internal fun resPoolAdd(component: String?, `value`: String): UInt? {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3497,7 +3519,7 @@ internal fun resPoolAdd(component: String?, `value`: String): UInt? {
 }
 
 internal fun resPoolFindRefs(component: String?, stringIndex: UInt): List<ResourceRef> {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3518,7 +3540,7 @@ internal fun resPoolFindRefs(component: String?, stringIndex: UInt): List<Resour
  */
 
 internal fun resReplaceEntry(component: String?, resId: UInt, newStringIndex: UInt) {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3535,7 +3557,7 @@ internal fun resReplaceEntry(component: String?, resId: UInt, newStringIndex: UI
  */
 
 internal fun xmlOpen(component: String?, apkPath: String): UInt? {
-    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1.toInt()))
+    val wire_writer_component = WireWriterPool.acquire((component?.let { v -> 1 + (4 + Utf8Codec.maxBytes(v)) } ?: 1))
         kotlin.run {
             val wire = wire_writer_component.writer
             component?.let { v -> wire.writeU8(1u); wire.writeString(v) } ?: wire.writeU8(0u)
@@ -3594,9 +3616,10 @@ internal fun xmlParent(doc: UInt, el: UInt): UInt? {
 }
 
 internal fun xmlTagName(doc: UInt, el: UInt): String {
-    val result = Native.boltffi_xml_tag_name(doc.toInt(), el.toInt())
+    val buf = Native.boltffi_xml_tag_name(doc.toInt(), el.toInt())
         ?: throw FfiException(-1, "Null buffer returned")
-    return result
+    val reader = WireReader(buf)
+    return reader.readString()
 }
 
 internal fun xmlGetAttribute(doc: UInt, el: UInt, name: String): String? {
@@ -3798,8 +3821,8 @@ private object Native {
     @JvmStatic external fun boltffi_intern_method(d: Int, descriptor: ByteArray, name: ByteArray, proto: ByteArray): Int
     @JvmStatic external fun boltffi_intern_field(d: Int, descriptor: ByteArray, name: ByteArray, field_type: ByteArray): Int
     @JvmStatic external fun boltffi_find_string_idx(d: Int, s: ByteArray): ByteArray?
-    @JvmStatic external fun boltffi_get_string(d: Int, idx: Int): String?
-    @JvmStatic external fun boltffi_get_type_descriptor(d: Int, idx: Int): String?
+    @JvmStatic external fun boltffi_get_string(d: Int, idx: Int): ByteArray?
+    @JvmStatic external fun boltffi_get_type_descriptor(d: Int, idx: Int): ByteArray?
     @JvmStatic external fun boltffi_build_lookups(d: Int): Unit
     @JvmStatic external fun boltffi_find_method(class_descriptor: ByteArray, method_name: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_find_method_by_name(name: ByteArray): ByteArray?
@@ -3819,6 +3842,7 @@ private object Native {
     @JvmStatic external fun boltffi_set_instructions(m: Int, insns: ByteBuffer): Unit
     @JvmStatic external fun boltffi_replace_body(m: Int, registers_size: Short, outs_size: Short, insns: ByteBuffer): Unit
     @JvmStatic external fun boltffi_insert_instructions(m: Int, index: Int, insns: ByteBuffer): Unit
+    @JvmStatic external fun boltffi_insert_before_instruction(m: Int, index: Int, insns: ByteBuffer): Boolean
     @JvmStatic external fun boltffi_replace_instruction(m: Int, index: Int, insn: ByteBuffer): Unit
     @JvmStatic external fun boltffi_remove_instructions(m: Int, index: Int, count: Int): Unit
     @JvmStatic external fun boltffi_return_early(m: Int): Unit
@@ -3832,11 +3856,11 @@ private object Native {
     @JvmStatic external fun boltffi_insert_invoke_static(m: Int, index: Int, class_name: ByteArray, name: ByteArray, proto: ByteArray, registers: ShortArray): Boolean
     @JvmStatic external fun boltffi_insert_invoke_static_with_move_result(m: Int, index: Int, class_name: ByteArray, name: ByteArray, proto: ByteArray, registers: ShortArray, result_register: Short, is_object: Boolean): Boolean
     @JvmStatic external fun boltffi_ensure_outs_size(m: Int, min_outs_size: Short): Unit
-    @JvmStatic external fun boltffi_grow_local_registers(m: Int, additional_locals: Short): Boolean
+    @JvmStatic external fun boltffi_grow_local_registers(m: Int, additional_locals: Short): ByteArray?
     @JvmStatic external fun boltffi_registers_size(m: Int): Short
     @JvmStatic external fun boltffi_ins_size(m: Int): Short
     @JvmStatic external fun boltffi_outs_size(m: Int): Short
-    @JvmStatic external fun boltffi_find_free_register(m: Int, at_index: Int, exclude: ShortArray): Short
+    @JvmStatic external fun boltffi_find_free_register(m: Int, at_index: Int, exclude: ShortArray): ByteArray?
     @JvmStatic external fun boltffi_find_free_registers(m: Int, at_index: Int, count: Int, exclude: ShortArray): ByteArray?
     @JvmStatic external fun boltffi_find_contiguous_free_registers(m: Int, at_index: Int, count: Int, exclude: ShortArray): ByteArray?
     @JvmStatic external fun boltffi_instruction_register(m: Int, index: Int, position: Int): Short
@@ -3893,7 +3917,7 @@ private object Native {
     @JvmStatic external fun boltffi_manifest_copy_intent_filters(component: ByteBuffer, from_activity: ByteArray, to_activity: ByteArray): Unit
     @JvmStatic external fun boltffi_manifest_get_document(component: ByteBuffer): ByteArray?
     @JvmStatic external fun boltffi_ctx_is_active(): Boolean
-    @JvmStatic external fun boltffi_version(): String?
+    @JvmStatic external fun boltffi_version(): ByteArray?
     @JvmStatic external fun boltffi_option_get_string(key: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_option_get_bool(key: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_option_get_int(key: ByteArray): ByteArray?
@@ -3930,7 +3954,7 @@ private object Native {
     @JvmStatic external fun boltffi_xml_find_by_attribute(doc: Int, attr_name: ByteArray, attr_value: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_xml_children(doc: Int, el: Int): ByteArray?
     @JvmStatic external fun boltffi_xml_parent(doc: Int, el: Int): ByteArray?
-    @JvmStatic external fun boltffi_xml_tag_name(doc: Int, el: Int): String?
+    @JvmStatic external fun boltffi_xml_tag_name(doc: Int, el: Int): ByteArray?
     @JvmStatic external fun boltffi_xml_get_attribute(doc: Int, el: Int, name: ByteArray): ByteArray?
     @JvmStatic external fun boltffi_xml_set_attribute(doc: Int, el: Int, name: ByteArray, value: ByteArray): Unit
     @JvmStatic external fun boltffi_xml_set_attribute_ref(doc: Int, el: Int, name: ByteArray, res_id: Int): Unit

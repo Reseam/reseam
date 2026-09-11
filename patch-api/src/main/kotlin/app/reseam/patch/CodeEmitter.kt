@@ -30,9 +30,29 @@ internal enum class RegisterConstraint(val maxRegister: Int) {
     ANY(0xFFFF),
 }
 
-private class TempAllocation(val baseRegister: Int, val wordCount: Int)
+internal class EntrySnapshot(val offset: Int, val register: Int, val type: String)
 
-private typealias Op = (InstructionBuilder, resolve: (Int) -> Int) -> Unit
+private class TempAllocation(val wordCount: Int, var constraint: RegisterConstraint, val entryOffset: Int? = null) {
+    var baseRegister = -1
+}
+
+private class InvokeAllocation(val registers: List<Int>, val types: List<String>) {
+    var scratch: Int? = null
+    lateinit var operation: Op
+}
+
+private typealias Emit = (InstructionBuilder, resolve: (Int) -> Int) -> Unit
+
+private class Op(
+    val reads: List<Int> = emptyList(),
+    val writes: List<Int> = emptyList(),
+    val label: String? = null,
+    val target: String? = null,
+    val fallsThrough: Boolean = true,
+    val emit: Emit,
+)
+
+private data class Lifetime(val first: Int, val last: Int)
 
 /**
  * Emits [CodeScope] code into a method. Values live in virtual registers
@@ -44,21 +64,23 @@ internal class CodeEmitter private constructor(
     private val insertIndex: Int?,
     private val replaceMode: Boolean,
     private val captures: List<Capture>,
+    private val entrySnapshots: MutableMap<Int, EntrySnapshot>? = null,
 ) : CodeScope {
     private val ops = mutableListOf<Op>()
     private val usedRegisters = mutableSetOf<Int>()
-    private var nextReplaceLocal = 0
     private var nextTempId = 0
     private var plannedLocalGrowth = 0
     private var maxOutRegisters = 0
     private var labelCounter = 0
     private val tempAllocations = mutableMapOf<Int, TempAllocation>()
+    private val entryValues = mutableMapOf<Int, Value>()
+    private val invokes = mutableListOf<InvokeAllocation>()
     /** Low-register copies of incoming registers, reused until the register is assigned. */
     private val lowCopies = mutableMapOf<Int, Value>()
 
     companion object {
-        fun forInsertion(method: Method, index: Int, captures: List<Capture>) =
-            CodeEmitter(method, index, replaceMode = false, captures = captures)
+        fun forInsertion(method: Method, index: Int, captures: List<Capture>, entrySnapshots: MutableMap<Int, EntrySnapshot>? = null) =
+            CodeEmitter(method, index, replaceMode = false, captures = captures, entrySnapshots = entrySnapshots)
 
         fun forReplacement(method: Method) =
             CodeEmitter(method, insertIndex = null, replaceMode = true, captures = emptyList())
@@ -72,14 +94,25 @@ internal class CodeEmitter private constructor(
     override val thisObject: ValueRef
         get() {
             require(!isStaticMethod) { "thisObject is not available in static ${info.descriptor}" }
-            return Value(incomingBase, info.classDescriptor)
+            return incomingValue(0, info.classDescriptor)
         }
 
     override fun param(index: Int): ValueRef {
         val params = method.parameterTypes
         require(index in params.indices) { "Parameter index $index out of bounds for ${info.descriptor}" }
-        val register = incomingBase + (if (isStaticMethod) 0 else 1) + params.take(index).sumOf(::registerWordCount)
-        return Value(register, params[index])
+        val offset = (if (isStaticMethod) 0 else 1) + params.take(index).sumOf(::registerWordCount)
+        return incomingValue(offset, params[index])
+    }
+
+    private fun incomingValue(offset: Int, type: String): Value {
+        val snapshots = entrySnapshots ?: return Value(incomingBase + offset, type)
+        return entryValues.getOrPut(offset) {
+            snapshots[offset]?.let { Value(it.register, type) } ?: run {
+                val id = nextTempId++
+                tempAllocations[id] = TempAllocation(registerWordCount(type), RegisterConstraint.ANY, offset)
+                Value(virtualRegister(id), type)
+            }
+        }
     }
 
     override fun paramOfType(type: String): ValueRef {
@@ -100,32 +133,32 @@ internal class CodeEmitter private constructor(
 
     override fun int(value: Int): ValueRef {
         val dest = allocTemp()
-        op { b, r -> b.constInt(byte(r(dest), "const"), value) }
+        op(writes = listOf(dest)) { b, r -> b.constInt(byte(r(dest), "const"), value) }
         return Value(dest, Type.Int)
     }
 
     override fun long(value: Long): ValueRef {
         val dest = allocTemp(wordCount = 2)
-        op { b, r -> b.constLong(byte(r(dest), "const-wide"), value) }
+        op(writes = listOf(dest)) { b, r -> b.constLong(byte(r(dest), "const-wide"), value) }
         return Value(dest, Type.Long)
     }
 
     override fun bool(value: Boolean): ValueRef {
         val dest = allocTemp()
-        op { b, r -> b.constInt(byte(r(dest), "const"), if (value) 1 else 0) }
+        op(writes = listOf(dest)) { b, r -> b.constInt(byte(r(dest), "const"), if (value) 1 else 0) }
         return Value(dest, Type.Boolean)
     }
 
     override fun string(value: String): ValueRef {
         val dest = allocTemp()
-        op { b, r -> b.constString(byte(r(dest), "const-string"), value) }
+        op(writes = listOf(dest)) { b, r -> b.constString(byte(r(dest), "const-string"), value) }
         return Value(dest, Type.String)
     }
 
     override val nullObject: ValueRef
         get() {
             val dest = allocTemp()
-            op { b, r -> b.constInt(byte(r(dest), "const"), 0) }
+            op(writes = listOf(dest)) { b, r -> b.constInt(byte(r(dest), "const"), 0) }
             return Value(dest, Type.Object)
         }
 
@@ -138,14 +171,14 @@ internal class CodeEmitter private constructor(
 
     override fun staticField(field: FieldRef): ValueRef {
         val dest = allocTemp(registerWordCount(field.fieldType))
-        op { b, r -> b.sgetTyped(byte(r(dest), "sget"), field) }
+        op(writes = listOf(dest)) { b, r -> b.sgetTyped(byte(r(dest), "sget"), field) }
         return Value(dest, field.fieldType)
     }
 
     override fun newInstance(type: String, ctorProto: String, vararg args: ValueRef): ValueRef {
         val owner = descriptorOf(type)
         val dest = allocTemp()
-        op { b, r -> b.newInstance(byte(r(dest), "new-instance"), owner) }
+        op(writes = listOf(dest)) { b, r -> b.newInstance(byte(r(dest), "new-instance"), owner) }
         val instance = Value(dest, owner)
         invoke(Opcode.INVOKE_DIRECT, MethodRef(owner, "<init>", ctorProto), listOf(instance) + args.map { it.impl() })
         return instance
@@ -166,12 +199,12 @@ internal class CodeEmitter private constructor(
 
     override fun whenTrue(value: ValueRef, block: CodeScope.() -> Unit): Otherwise {
         val register = value.impl().asByte().register
-        return branch(block) { elseLabel -> op { b, r -> b.ifEqz(byte(r(register), "if-eqz"), elseLabel) } }
+        return branch(block) { elseLabel -> op(reads = listOf(register), target = elseLabel) { b, r -> b.ifEqz(byte(r(register), "if-eqz"), elseLabel) } }
     }
 
     override fun whenFalse(value: ValueRef, block: CodeScope.() -> Unit): Otherwise {
         val register = value.impl().asByte().register
-        return branch(block) { elseLabel -> op { b, r -> b.ifNez(byte(r(register), "if-nez"), elseLabel) } }
+        return branch(block) { elseLabel -> op(reads = listOf(register), target = elseLabel) { b, r -> b.ifNez(byte(r(register), "if-nez"), elseLabel) } }
     }
 
     override fun whenNull(value: ValueRef, block: CodeScope.() -> Unit): Otherwise = whenFalse(value, block)
@@ -180,12 +213,12 @@ internal class CodeEmitter private constructor(
 
     override fun whenEqual(left: ValueRef, right: ValueRef, block: CodeScope.() -> Unit): Otherwise {
         val (a, c) = left.impl().asLow().register to right.impl().asLow().register
-        return branch(block) { elseLabel -> op { b, r -> b.ifNe(low(r(a), "if-ne A"), low(r(c), "if-ne B"), elseLabel) } }
+        return branch(block) { elseLabel -> op(reads = listOf(a, c), target = elseLabel) { b, r -> b.ifNe(low(r(a), "if-ne A"), low(r(c), "if-ne B"), elseLabel) } }
     }
 
     override fun whenNotEqual(left: ValueRef, right: ValueRef, block: CodeScope.() -> Unit): Otherwise {
         val (a, c) = left.impl().asLow().register to right.impl().asLow().register
-        return branch(block) { elseLabel -> op { b, r -> b.ifEq(low(r(a), "if-eq A"), low(r(c), "if-eq B"), elseLabel) } }
+        return branch(block) { elseLabel -> op(reads = listOf(a, c), target = elseLabel) { b, r -> b.ifEq(low(r(a), "if-eq A"), low(r(c), "if-eq B"), elseLabel) } }
     }
 
     private fun branch(block: CodeScope.() -> Unit, condition: (elseLabel: String) -> Unit): Otherwise {
@@ -197,19 +230,19 @@ internal class CodeEmitter private constructor(
         label(elseLabel)
         return object : Otherwise {
             override fun otherwise(block: CodeScope.() -> Unit) {
-                ops.add(elseIndex) { b, _ -> b.goto(endLabel) }
+                ops.add(elseIndex, Op(target = endLabel, fallsThrough = false) { b, _ -> b.goto(endLabel) })
                 this@CodeEmitter.block()
                 label(endLabel)
             }
         }
     }
 
-    override fun returnVoid() = op { b, _ -> b.returnVoid() }
+    override fun returnVoid() { op(fallsThrough = false) { b, _ -> b.returnVoid() } }
 
     override fun returnValue(value: ValueRef) {
         val impl = value.impl().asByte()
         val type = impl.type
-        op { b, r ->
+        op(reads = listOf(impl.register), fallsThrough = false) { b, r ->
             val register = byte(r(impl.register), "return")
             when {
                 isReferenceType(type) -> b.returnObject(register)
@@ -228,8 +261,9 @@ internal class CodeEmitter private constructor(
     internal fun buildReplacement() = ReplacementPlan(REPLACE_LOCAL_BUDGET + method.insSize, maxOutRegisters, build())
 
     private fun build(): List<Instruction> {
+        layoutRegisters()
         val builder = InstructionBuilder()
-        for (op in ops) op(builder, ::resolveRegister)
+        for (op in ops) op.emit(builder, ::resolveRegister)
         return builder.build()
     }
 
@@ -240,42 +274,45 @@ internal class CodeEmitter private constructor(
         val returnType = ref.returnType
         if (returnType == Type.Void) return Value(VOID_REGISTER, Type.Void)
         val dest = allocTemp(registerWordCount(returnType))
-        op { b, r -> b.moveResultTyped(byte(r(dest), "move-result"), returnType) }
+        op(writes = listOf(dest)) { b, r -> b.moveResultTyped(byte(r(dest), "move-result"), returnType) }
         return Value(dest, returnType)
     }
 
     private fun emitInvoke(opcode: Opcode, ref: MethodRef, args: List<Value>, registers: List<Int>) {
-        val resolved = registers.map(::resolvedForCheck)
-        if (resolved.size <= 5 && resolved.all { it in 0..15 }) {
-            op { b, r -> b.invoke(opcode, ref, registers.map(r)) }
-            return
+        val invoke = InvokeAllocation(registers, args.map { it.type })
+        invokes += invoke
+        invoke.operation = op(reads = registers) { b, r ->
+            val resolved = registers.map(r)
+            if (resolved.fitsInvoke()) {
+                b.invoke(opcode, ref, resolved)
+            } else {
+                val range = opcode.rangeVariant ?: error("$opcode does not support invoke/range lowering")
+                val scratch = invoke.scratch
+                if (scratch == null) {
+                    b.invokeRange(range, ref, resolved.first(), resolved.size)
+                } else {
+                    var word = 0
+                    for (type in invoke.types) {
+                        b.moveTyped(r(scratch) + word, resolved[word], type)
+                        word += registerWordCount(type)
+                    }
+                    b.invokeRange(range, ref, r(scratch), resolved.size)
+                }
+            }
         }
-        val range = opcode.rangeVariant ?: error("$opcode does not support invoke/range lowering")
-        if (resolved.isConsecutive()) {
-            op { b, r -> b.invokeRange(range, ref, r(registers.first()), registers.size) }
-            return
-        }
-        val scratch = allocTemp(registers.size, RegisterConstraint.ANY, excludeRegisters = resolved.filter { it >= 0 }.toSet())
-        val scratchWords = registerWords(scratch, registers.size)
-        var dest = 0
-        for (arg in args) {
-            moveValue(scratchWords[dest], arg.register, arg.type)
-            dest += arg.wordCount
-        }
-        op { b, r -> b.invokeRange(range, ref, r(scratch), registers.size) }
     }
 
     internal fun readField(value: Value, field: FieldRef): ValueRef {
         val dest = allocTemp(registerWordCount(field.fieldType), RegisterConstraint.LOW)
         val obj = value.asLow()
-        op { b, r -> b.igetTyped(low(r(dest), "iget A"), low(r(obj.register), "iget B"), field) }
+        op(reads = listOf(obj.register), writes = listOf(dest)) { b, r -> b.igetTyped(low(r(dest), "iget A"), low(r(obj.register), "iget B"), field) }
         return Value(dest, field.fieldType)
     }
 
     internal fun writeField(value: Value, field: FieldRef, newValue: Value) {
         val src = newValue.asLow()
         val obj = value.asLow()
-        op { b, r -> b.iputTyped(low(r(src.register), "iput A"), low(r(obj.register), "iput B"), field) }
+        op(reads = listOf(src.register, obj.register)) { b, r -> b.iputTyped(low(r(src.register), "iput A"), low(r(obj.register), "iput B"), field) }
     }
 
     internal fun uniqueField(owner: String, type: String): FieldRef {
@@ -298,87 +335,194 @@ internal class CodeEmitter private constructor(
         val dest = allocTemp()
         val a = left.asByte()
         val c = right.asByte()
-        op { b, r -> b.reg3(opcode, byte(r(dest), "binop A"), byte(r(a.register), "binop B"), byte(r(c.register), "binop C")) }
+        op(reads = listOf(a.register, c.register), writes = listOf(dest)) { b, r -> b.reg3(opcode, byte(r(dest), "binop A"), byte(r(a.register), "binop B"), byte(r(c.register), "binop C")) }
         return Value(dest, Type.Int)
     }
 
     internal fun cast(value: Value, type: String): ValueRef {
         val target = value.asByte()
-        op { b, r -> b.checkCast(byte(r(target.register), "check-cast"), type) }
+        op(reads = listOf(target.register), writes = listOf(target.register)) { b, r -> b.checkCast(byte(r(target.register), "check-cast"), type) }
         return Value(target.register, type)
     }
 
-    internal fun label(name: String) = op { b, _ -> b.label(name) }
+    internal fun label(name: String) {
+        lowCopies.clear()
+        op(label = name) { b, _ -> b.label(name) }
+    }
 
-    internal fun goto(label: String) = op { b, _ -> b.goto(label) }
+    internal fun goto(label: String) { op(target = label, fallsThrough = false) { b, _ -> b.goto(label) } }
 
     internal fun ifZero(value: Value, label: String) {
         val v = value.asByte()
-        op { b, r -> b.ifEqz(byte(r(v.register), "if-eqz"), label) }
+        op(reads = listOf(v.register), target = label) { b, r -> b.ifEqz(byte(r(v.register), "if-eqz"), label) }
     }
 
     internal fun ifNonZero(value: Value, label: String) {
         val v = value.asByte()
-        op { b, r -> b.ifNez(byte(r(v.register), "if-nez"), label) }
+        op(reads = listOf(v.register), target = label) { b, r -> b.ifNez(byte(r(v.register), "if-nez"), label) }
     }
 
-    internal fun constZero(dest: Int, type: String) = op { b, r ->
-        if (registerWordCount(type) == 2) b.constLong(byte(r(dest), "const-wide"), 0) else b.constInt(byte(r(dest), "const"), 0)
+    internal fun constZero(dest: Int, type: String) {
+        op(writes = listOf(dest)) { b, r ->
+            if (registerWordCount(type) == 2) b.constLong(byte(r(dest), "const-wide"), 0) else b.constInt(byte(r(dest), "const"), 0)
+        }
     }
 
     internal fun instanceOf(value: Value, type: String): Value {
         val dest = allocTemp(constraint = RegisterConstraint.LOW)
         val ref = value.asLow()
-        op { b, r -> b.instanceOf(low(r(dest), "instance-of A"), low(r(ref.register), "instance-of B"), type) }
+        op(reads = listOf(ref.register), writes = listOf(dest)) { b, r -> b.instanceOf(low(r(dest), "instance-of A"), low(r(ref.register), "instance-of B"), type) }
         return Value(dest, Type.Boolean)
     }
 
     internal fun nextLabel(prefix: String): String = "${prefix}_${labelCounter++}"
 
-    private fun op(op: Op) {
-        ops += op
-    }
+    private fun op(
+        reads: List<Int> = emptyList(),
+        writes: List<Int> = emptyList(),
+        label: String? = null,
+        target: String? = null,
+        fallsThrough: Boolean = true,
+        emit: Emit,
+    ): Op = Op(reads, writes, label, target, fallsThrough, emit).also { ops += it }
 
     internal fun allocTemp(
         wordCount: Int = 1,
         constraint: RegisterConstraint = RegisterConstraint.BYTE,
-        excludeRegisters: Set<Int> = emptySet(),
     ): Int {
         require(wordCount > 0)
         val tempId = nextTempId++
-        val register = virtualRegister(tempId)
-        val base = if (replaceMode) {
-            require(nextReplaceLocal + wordCount <= REPLACE_LOCAL_BUDGET) {
-                "Code exceeded the $REPLACE_LOCAL_BUDGET local registers a replaced body gets in ${info.descriptor}"
-            }
-            nextReplaceLocal.also { nextReplaceLocal += wordCount }
-        } else {
-            allocateInsertionTemp(wordCount, constraint, excludeRegisters)
-        }
-        tempAllocations[tempId] = TempAllocation(base, wordCount)
-        return register
+        tempAllocations[tempId] = TempAllocation(wordCount, constraint)
+        return virtualRegister(tempId)
     }
 
-    private fun allocateInsertionTemp(wordCount: Int, constraint: RegisterConstraint, excludeRegisters: Set<Int>): Int {
-        val index = insertIndex ?: 0
-        val registers = method.findContiguousFreeRegisters(index, wordCount, (usedRegisters + excludeRegisters).toList())
-        if (registers.size == wordCount && registers.last() <= constraint.maxRegister) {
-            usedRegisters += registers
-            return registers.first()
+    /** Allocate values after their uses and control-flow edges have been recorded. */
+    private fun layoutRegisters() {
+        val lifetimes = lifetimes()
+        do {
+            plannedLocalGrowth = 0
+            usedRegisters.clear()
+            for (allocation in tempAllocations.values) allocation.baseRegister = -1
+            for (allocation in tempAllocations.values.filter { it.entryOffset != null }) {
+                allocation.baseRegister = allocateLocal(allocation.wordCount, allocation.constraint)
+            }
+            val savedGrowth = plannedLocalGrowth
+            val protected = usedRegisters.toMutableSet()
+            for (capture in captures) protected += capture.register until capture.register + registerWordCount(capture.type)
+            entrySnapshots?.values?.forEach { protected += it.register until it.register + registerWordCount(it.type) }
+            protected += incomingBase until originalRegistersSize
+            for (invoke in invokes) {
+                invoke.scratch?.let {
+                    val position = ops.indexOf(invoke.operation) * 2
+                    lifetimes[virtualRegisterId(it)] = Lifetime(position, position + 1)
+                }
+            }
+            val active = mutableListOf<Pair<TempAllocation, Int>>()
+            val allocations = tempAllocations.entries.filter { it.value.entryOffset == null }
+                .sortedWith(compareBy({ lifetimes[it.key]?.first ?: 0 }, { it.value.constraint.maxRegister }, { it.key }))
+            for ((id, allocation) in allocations) {
+                val lifetime = lifetimes[id] ?: Lifetime(0, 0)
+                active.removeAll { (_, last) -> last < lifetime.first }
+                usedRegisters.clear()
+                usedRegisters += protected
+                for ((slot, _) in active) usedRegisters += slot.baseRegister until slot.baseRegister + slot.wordCount
+                val occupied = active.flatMap { (slot, _) ->
+                    (slot.baseRegister until slot.baseRegister + slot.wordCount).toList()
+                }.toSet()
+                allocation.baseRegister = allocateTemp(allocation, savedGrowth, occupied)
+                active += allocation to lifetime.last
+            }
+
+            // New staging spans participate in the same lifetime allocation.
+            // Each invoke can add at most one; rerun layout until encodings fit.
+            var allocated = false
+            for (invoke in invokes) {
+                val registers = invoke.registers.map(::resolveRegister)
+                if (invoke.scratch == null && !registers.fitsInvoke() && !registers.isConsecutive()) {
+                    invoke.scratch = allocTemp(registers.size, RegisterConstraint.ANY)
+                    allocated = true
+                }
+            }
+        } while (allocated)
+        for ((offset, value) in entryValues) {
+            entrySnapshots!![offset] = EntrySnapshot(offset, resolveRegister(value.register), value.type)
         }
+    }
+
+    private fun lifetimes(): MutableMap<Int, Lifetime> {
+        fun virtualIds(registers: List<Int>) = registers.filter(::isVirtualRegister).map(::virtualRegisterId).toSet()
+        val reads = ops.map { virtualIds(it.reads) }
+        val writes = ops.map { virtualIds(it.writes) }
+        val labels = ops.mapIndexedNotNull { index, op -> op.label?.let { it to index } }.toMap()
+        val successors = ops.mapIndexed { index, op ->
+            buildList {
+                if (op.fallsThrough && index + 1 < ops.size) add(index + 1)
+                op.target?.let { add(labels.getValue(it)) }
+            }
+        }
+        val liveIn = List(ops.size) { mutableSetOf<Int>() }
+        val liveOut = List(ops.size) { mutableSetOf<Int>() }
+        do {
+            var changed = false
+            for (index in ops.indices.reversed()) {
+                val out = successors[index].flatMap { liveIn[it] }.toSet()
+                val input = reads[index] + (out - writes[index])
+                if (input != liveIn[index] || out != liveOut[index]) {
+                    liveIn[index].clear()
+                    liveIn[index] += input
+                    liveOut[index].clear()
+                    liveOut[index] += out
+                    changed = true
+                }
+            }
+        } while (changed)
+        val lifetimes = mutableMapOf<Int, Lifetime>()
+        fun touch(ids: Set<Int>, position: Int) {
+            for (id in ids) {
+                val previous = lifetimes[id]
+                lifetimes[id] = Lifetime(minOf(previous?.first ?: position, position), maxOf(previous?.last ?: position, position))
+            }
+        }
+        for (index in ops.indices) {
+            touch(liveIn[index] + reads[index], index * 2)
+            touch(liveOut[index] + writes[index], index * 2 + 1)
+        }
+        return lifetimes
+    }
+
+    private fun allocateTemp(allocation: TempAllocation, savedGrowth: Int, occupied: Set<Int>): Int {
+        val words = allocation.wordCount
+        fun available(first: Int, end: Int): Int? = (first..end - words).firstOrNull { base ->
+            base + words - 1 <= allocation.constraint.maxRegister && (base until base + words).none { it in occupied }
+        }
+        if (replaceMode) {
+            return requireNotNull(available(0, REPLACE_LOCAL_BUDGET)) {
+                "Code exceeded the $REPLACE_LOCAL_BUDGET local registers a replaced body gets in ${info.descriptor}"
+            }
+        }
+        val registers = method.findContiguousFreeRegisters(insertIndex ?: 0, words, usedRegisters.toList())
+        if (registers.size == words && registers.last() <= allocation.constraint.maxRegister) return registers.first()
+        available(incomingBase + savedGrowth, incomingBase + plannedLocalGrowth)?.let { return it }
+        return allocateLocal(words, allocation.constraint)
+    }
+
+    private fun allocateLocal(wordCount: Int, constraint: RegisterConstraint): Int {
+        val index = insertIndex ?: 0
         val grownBase = incomingBase + plannedLocalGrowth
         val grownLast = grownBase + wordCount - 1
         val newRegistersSize = originalRegistersSize + plannedLocalGrowth + wordCount
         require(grownLast <= constraint.maxRegister && newRegistersSize <= UShort.MAX_VALUE.toInt()) {
             "Cannot allocate $wordCount ${constraint.name.lowercase()} scratch register(s) at ${info.descriptor}[$index]; " +
-                "free candidates=$registers, plannedLocalGrowth=$plannedLocalGrowth, registersSize=$originalRegistersSize, insSize=${method.insSize}"
+                "plannedLocalGrowth=$plannedLocalGrowth, registersSize=$originalRegistersSize, insSize=${method.insSize}"
         }
         plannedLocalGrowth += wordCount
         usedRegisters += (grownBase..grownLast)
         return grownBase
     }
 
-    internal fun moveValue(dest: Int, src: Int, type: String) = op { b, r -> b.moveTyped(r(dest), r(src), type) }
+    internal fun moveValue(dest: Int, src: Int, type: String) {
+        op(reads = listOf(src), writes = listOf(dest)) { b, r -> b.moveTyped(r(dest), r(src), type) }
+    }
 
     internal fun registerWords(register: Int, wordCount: Int): List<Int> =
         if (isVirtualRegister(register)) {
@@ -389,14 +533,10 @@ internal class CodeEmitter private constructor(
 
     private fun registerFits(register: Int, wordCount: Int, constraint: RegisterConstraint): Boolean {
         if (register == VOID_REGISTER) return false
-        val base = resolvedForCheck(register)
-        return base >= 0 && base + wordCount - 1 <= constraint.maxRegister
-    }
-
-    private fun resolvedForCheck(register: Int): Int = when {
-        isVirtualRegister(register) -> tempAllocations[virtualRegisterId(register)]?.let { it.baseRegister + virtualRegisterOffset(register) } ?: -1
-        !replaceMode && register >= incomingBase -> register + plannedLocalGrowth
-        else -> register
+        if (isVirtualRegister(register)) {
+            return tempAllocations.getValue(virtualRegisterId(register)).constraint.maxRegister <= constraint.maxRegister
+        }
+        return register >= 0 && register + wordCount - 1 <= constraint.maxRegister && !isShiftedPhysical(register)
     }
 
     private fun isShiftedPhysical(register: Int): Boolean = !replaceMode && register >= incomingBase
@@ -405,6 +545,7 @@ internal class CodeEmitter private constructor(
         require(register != VOID_REGISTER) { "a void value has no register" }
         if (isVirtualRegister(register)) {
             val allocation = tempAllocations[virtualRegisterId(register)] ?: error("unallocated virtual register $register")
+            check(allocation.baseRegister >= 0) { "virtual register $register has not been laid out" }
             return allocation.baseRegister + virtualRegisterOffset(register)
         }
         return if (isShiftedPhysical(register)) register + plannedLocalGrowth else register
@@ -431,7 +572,14 @@ internal class CodeEmitter private constructor(
         fun asByte(): Value = fitted(RegisterConstraint.BYTE)
 
         private fun fitted(constraint: RegisterConstraint): Value {
-            if (registerFits(register, wordCount, constraint) && !isShiftedPhysical(register)) return this
+            if (registerFits(register, wordCount, constraint)) return this
+            if (isVirtualRegister(register)) {
+                val allocation = tempAllocations.getValue(virtualRegisterId(register))
+                if (allocation.entryOffset == null) {
+                    allocation.constraint = constraint
+                    return this
+                }
+            }
             lowCopies[register]?.takeIf { it.type == type && registerFits(it.register, wordCount, constraint) }?.let { return it }
             val dest = allocTemp(wordCount, constraint)
             moveValue(dest, register, type)
@@ -485,6 +633,7 @@ internal class CodeEmitter private constructor(
 }
 
 private fun List<Int>.isConsecutive(): Boolean = indices.all { it == 0 || this[it] == this[it - 1] + 1 }
+private fun List<Int>.fitsInvoke(): Boolean = size <= 5 && all { it in 0..15 }
 
 private fun virtualRegister(tempId: Int, offset: Int = 0): Int = -1 - (tempId * VIRTUAL_REGISTER_STRIDE + offset)
 private fun isVirtualRegister(register: Int): Boolean = register < 0 && register != VOID_REGISTER
