@@ -4,6 +4,20 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to release
+        required: true
+        type: string
+      mode:
+        description: Resume CLI publication after the SDKs have been published
+        required: true
+        default: full
+        type: choice
+        options:
+          - full
+          - cli-only
 
 jobs:
   build:
@@ -11,18 +25,24 @@ jobs:
     runs-on: docker
     container:
       image: cimg/android:2026.03-node
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
       - name: Install Rust toolchain
         uses: https://github.com/dtolnay/rust-toolchain@stable
 
       - name: Install Android NDK
+        if: ${{ inputs.mode != 'cli-only' }}
         run: sdkmanager "ndk;29.0.14206865"
 
       - name: Add Rust Android targets
+        if: ${{ inputs.mode != 'cli-only' }}
         run: rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
-
-      - name: Checkout sources
-        uses: actions/checkout@v4
 
       - name: Cache cargo build
         uses: https://github.com/Swatinem/rust-cache@v2
@@ -40,13 +60,33 @@ jobs:
         if: steps.boltffi-cache.outputs.cache-hit != 'true'
         run: cargo install boltffi_cli --version "=$(cat .boltffi-version)" --locked
 
+      - name: Check release tag and commit
+        id: release
+        run: |
+          cargo xtask check-tag "$RELEASE_TAG"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Check the SDKs are already published
+        if: ${{ inputs.mode == 'cli-only' }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          registry="https://git.reseam.app/api/packages/reseam/maven/app/reseam"
+          for artifact in reseam-patch-sdk.jar reseam-sdk.module reseam-sdk-jvm.jar reseam-sdk-android.aar reseam-gradle-plugin.jar; do
+            name="${artifact%.*}"
+            extension="${artifact##*.}"
+            curl --fail --silent --show-error --head --retry 5 "$registry/$name/$version/$name-$version.$extension" > /dev/null
+          done
+
       - name: Set up Gradle
+        if: ${{ inputs.mode != 'cli-only' }}
         uses: https://github.com/gradle/actions/setup-gradle@v5
 
       - name: Regenerate patch-api bindings
         run: cargo xtask regen patch-api
 
       - name: Regenerate SDK bindings and Android jniLibs
+        if: ${{ inputs.mode != 'cli-only' }}
         run: cargo xtask regen sdk
 
       - name: Check generated sources are committed
@@ -56,15 +96,14 @@ jobs:
         run: cargo build --release -p reseam-cli
 
       - name: Build desktop JNI shim
+        if: ${{ inputs.mode != 'cli-only' }}
         run: cargo xtask jni-host
 
-      - name: Check the tag names the workspace version
-        run: cargo xtask check-tag ${{ github.ref_name }}
-
       - name: Publish the SDKs to the Forgejo Maven registry
+        if: ${{ inputs.mode != 'cli-only' }}
         env:
           FORGEJO_PACKAGES_TOKEN: ${{ secrets.FORGEJO_PACKAGES_TOKEN }}
-        run: ./gradlew publishAllPublicationsToForgejoRepository -PreseamSdkVersion=${{ github.ref_name }} --no-daemon
+        run: ./gradlew publishAllPublicationsToForgejoRepository -PreseamSdkVersion="$RELEASE_TAG" --no-daemon
 
       - name: Stage the CLI
         run: install -D target/release/reseam dist/reseam-linux-x64
@@ -75,8 +114,8 @@ jobs:
           direction: upload
           url: https://git.reseam.app
           repo: reseam/reseam
-          tag: ${{ github.ref_name }}
-          sha: ${{ github.sha }}
+          tag: ${{ env.RELEASE_TAG }}
+          sha: ${{ steps.release.outputs.sha }}
           token: ${{ secrets.RELEASE_TOKEN }}
           release-dir: dist
           override: true

@@ -68,6 +68,8 @@ git push --follow-tags
 
 One version for the engine, the SDK, and the patch API, set in `Cargo.toml` by that command. CI refuses a tag that does not match it, publishes both SDK packages, and uploads the CLI. The full order across repositories is in `RELEASING.md`.
 
+If the SDKs were published but the CLI upload failed, dispatch the `release` workflow from `main` with the existing version tag and mode `cli-only`. It verifies the SDK artifacts exist and rebuilds the CLI from that exact tag. This resumes publication without overwriting Maven packages or moving the tag.
+
 ## CLI
 
 Patch an APK:
