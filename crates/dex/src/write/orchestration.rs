@@ -195,7 +195,7 @@ impl<S: DexSink> DexWriterWriteExt for DexWriter<S> {
         if let Some(ref hidden_api) = dex.hidden_api {
             self.align(4);
             let hidden_api_off = self.pos();
-            encoded_arrays::write_hidden_api(self, hidden_api, dex);
+            encoded_arrays::write_hidden_api(self, hidden_api, plan);
             self.map_entries.push(MapItem {
                 type_code: crate::types::map::TYPE_HIDDENAPI_CLASS_DATA_ITEM,
                 size: 1,

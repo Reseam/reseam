@@ -7,9 +7,13 @@
 //! stays consistent afterwards and can be written again.
 
 use std::borrow::Cow;
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
+
+use rustc_hash::FxHashMap;
 
 use super::sort::{fixup_code, Remap, RemapTables};
-use crate::error::Result;
+use crate::error::{invalid, Result};
 use crate::file::{ClassHeader, DexFile, RawClassDef};
 use crate::read::annotation::read_annotations_directory;
 use crate::read::encoded_value::read_encoded_array_with_opts;
@@ -41,6 +45,8 @@ pub(crate) struct WritePlan<'a> {
     pub order: Option<PoolOrder>,
     pub remap: Option<RemapTables>,
     pub classes: Vec<WriteClass<'a>>,
+    /// Source class-table index for each output class, including class-indexed metadata.
+    pub class_order: Vec<usize>,
 }
 
 impl<'a> WritePlan<'a> {
@@ -155,20 +161,81 @@ impl<'a> WritePlan<'a> {
                 (None, None) => unreachable!("every slot is resident or raw"),
             });
         }
-        let type_of = |class: &WriteClass<'_>| match class {
-            WriteClass::Resident(c) => c.class_type.0,
-            WriteClass::Raw(raw) => remap
-                .as_ref()
-                .map_or(raw.class_type, |r| r.type_[raw.class_type as usize]),
-        };
-        classes.sort_by_key(type_of);
-
-        Ok(Self {
+        let mut plan = Self {
             dex,
             order,
             remap,
             classes,
-        })
+            class_order: Vec::new(),
+        };
+        plan.class_order = plan.order_classes()?;
+        let mut slots: Vec<_> = plan.classes.drain(..).map(Some).collect();
+        for &source in &plan.class_order {
+            plan.classes
+                .push(slots[source].take().expect("class order is a permutation"));
+        }
+        Ok(plan)
+    }
+
+    /// DEX class definitions must follow their locally defined superclass and
+    /// interfaces. Kahn's algorithm with an input-index priority queue preserves
+    /// an already valid order and deterministically prefers the earliest ready
+    /// class otherwise. It takes O(E + V log V) time and O(E + V) space, without
+    /// recursion or materializing file-backed class bodies.
+    fn order_classes(&self) -> Result<Vec<usize>> {
+        let count = self.classes.len();
+        let mut index_of = FxHashMap::default();
+        for i in 0..count {
+            let type_idx = self.class_header(i).class_type;
+            if index_of.insert(type_idx, i).is_some() {
+                return Err(invalid(
+                    "class_defs",
+                    format!("duplicate class type index {}", type_idx.0),
+                ));
+            }
+        }
+
+        let mut dependents = vec![Vec::new(); count];
+        let mut pending = vec![0usize; count];
+        for (i, dependencies) in pending.iter_mut().enumerate() {
+            let interfaces = self.class_interfaces(i);
+            for dependency in self
+                .class_header(i)
+                .superclass
+                .into_iter()
+                .chain(interfaces)
+            {
+                // A superclass or interface in another DEX has no ordering
+                // constraint in this file.
+                if let Some(&parent) = index_of.get(&dependency) {
+                    dependents[parent].push(i);
+                    *dependencies += 1;
+                }
+            }
+        }
+
+        let mut ready: BinaryHeap<_> = pending
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &n)| (n == 0).then_some(Reverse(i)))
+            .collect();
+        let mut order = Vec::with_capacity(count);
+        while let Some(Reverse(i)) = ready.pop() {
+            order.push(i);
+            for &child in &dependents[i] {
+                pending[child] -= 1;
+                if pending[child] == 0 {
+                    ready.push(Reverse(child));
+                }
+            }
+        }
+        if order.len() != count {
+            return Err(invalid(
+                "class_defs",
+                "cycle in superclass/interface dependencies",
+            ));
+        }
+        Ok(order)
     }
 
     pub(crate) fn remap(&self) -> Option<Remap<'_>> {

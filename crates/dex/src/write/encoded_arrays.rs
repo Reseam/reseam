@@ -7,7 +7,6 @@ use super::plan::WritePlan;
 use super::sink::DexSink;
 use super::DexWriter;
 use crate::error::Result;
-use crate::file::DexFile;
 use crate::types::encoded_value::EncodedValue;
 use crate::types::map::{MapItem, TYPE_ENCODED_ARRAY_ITEM, TYPE_TYPE_LIST};
 use crate::types::method_handle::CallSiteItem;
@@ -74,16 +73,16 @@ fn intern_type_list<S: DexSink>(
 pub(crate) fn write_hidden_api<S: DexSink>(
     w: &mut DexWriter<S>,
     hidden_api: &crate::types::hidden_api::HiddenApiData,
-    dex: &DexFile,
+    plan: &WritePlan<'_>,
 ) {
     let offset_table_start = w.pos() as usize;
-    let class_count = dex.classes.len();
+    let class_count = plan.classes.len();
     for _ in 0..class_count {
         w.write_u32(0);
     }
 
-    for (i, flags) in hidden_api.class_flags.iter().enumerate() {
-        if let Some(cf) = flags {
+    for (i, &source) in plan.class_order.iter().enumerate() {
+        if let Some(cf) = hidden_api.class_flags.get(source).and_then(Option::as_ref) {
             let rel_off = w.pos() as usize - offset_table_start;
             w.patch_u32(offset_table_start + i * 4, rel_off as u32);
 
