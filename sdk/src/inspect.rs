@@ -124,9 +124,8 @@ pub(crate) fn open_apk(
     split_paths: &[PathBuf],
     options: &ParseOptions,
 ) -> Result<OpenedApk> {
-    let bundle = ContainerBundle::open(apk_path)
-        .with_context(|| format!("failed to open APK bundle {}", apk_path.display()))
-        .context(Problem::unreadable_apk(apk_path))?;
+    let bundle =
+        ContainerBundle::open(apk_path).map_err(|error| unreadable_apk(apk_path, error.into()))?;
     ensure!(
         bundle.is_none() || split_paths.is_empty(),
         "split files cannot be combined with an APKM/XAPK container"
@@ -136,9 +135,14 @@ pub(crate) fn open_apk(
         None => (apk_path, split_paths),
     };
     let apk = ApkFile::open_split(base, splits, options)
-        .with_context(|| format!("failed to open APK {}", apk_path.display()))
-        .context(Problem::unreadable_apk(apk_path))?;
+        .map_err(|error| unreadable_apk(apk_path, error.into()))?;
     Ok(OpenedApk { apk, bundle })
+}
+
+/// The problem is the root cause so `Problem::classify` finds it; the engine's own text stays as the detail.
+fn unreadable_apk(path: &Path, error: anyhow::Error) -> anyhow::Error {
+    anyhow::Error::new(Problem::unreadable_apk(path))
+        .context(format!("failed to open APK {}: {error:#}", path.display()))
 }
 
 /// Loads bundles signed by a key in `trust`; anything else is an error.

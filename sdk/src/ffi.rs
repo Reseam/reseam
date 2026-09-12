@@ -42,6 +42,17 @@ fn failure(error: anyhow::Error) -> String {
     serde_json::to_string(&crate::SdkError::from(&error)).unwrap_or_else(|_| format!("{error:#}"))
 }
 
+/// A constructor's error reaches the host through boltffi's last-error slot
+/// in its `Debug` form, so that form is the JSON the host expects, not a
+/// quoted string.
+pub struct ConstructorFailure(String);
+
+impl std::fmt::Debug for ConstructorFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_app_reseam_sdk_ReseamAndroidHost_setClassLoader(
@@ -63,7 +74,7 @@ pub struct ApkInspection {
 
 #[export]
 impl ApkInspection {
-    pub fn new(apk_path: String, split_paths: Vec<String>) -> Result<Self, String> {
+    pub fn new(apk_path: String, split_paths: Vec<String>) -> Result<Self, ConstructorFailure> {
         let splits = split_paths
             .into_iter()
             .map(std::path::PathBuf::from)
@@ -73,7 +84,7 @@ impl ApkInspection {
             &splits,
             &reseam_apk::ApkFile::patch_options(),
         )
-        .map_err(failure)?;
+        .map_err(|error| ConstructorFailure(failure(error)))?;
         Ok(Self {
             opened: std::sync::Mutex::new(opened),
         })
@@ -149,5 +160,22 @@ impl From<reseam_apk::IconLayer> for IconLayer {
             reseam_apk::IconLayer::Bitmap(bytes) => Self::Bitmap(bytes),
             reseam_apk::IconLayer::Color(argb) => Self::Color(argb),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ApkInspection;
+
+    #[test]
+    fn a_failed_open_reports_the_problem_as_json_in_debug_form() {
+        let path = std::env::temp_dir().join("reseam-not-an-apk.jpg");
+        std::fs::write(&path, b"not a zip").unwrap();
+        let error = ApkInspection::new(path.display().to_string(), Vec::new())
+            .err()
+            .expect("a jpeg is not an APK");
+        let json: serde_json::Value = serde_json::from_str(&format!("{error:?}")).unwrap();
+        assert_eq!(json["problem"]["type"], "unreadable_apk");
+        assert_eq!(json["problem"]["path"], path.display().to_string());
     }
 }
