@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use anyhow::{anyhow, ensure, Context, Result};
-use reseam_patcher::engine::{PatchIndex, PatchSelection, PatchStatus};
+use reseam_patcher::engine::{PatchIndex, PatchResult, PatchSelection, PatchStatus};
 use reseam_patcher::error::PatcherError;
 use reseam_sdk::{
     inspect_apk, load_bundles, patch, PatchOutput, PatchRequest, RunEvent, SigningKeyFiles,
@@ -30,17 +30,13 @@ pub fn run_patch(command: &PatchCommand) -> Result<()> {
 
     let request = request(&command.request, output)?;
     let outcome = patch(&request, log_event)?;
-    let count = |wanted: fn(&PatchStatus) -> bool| {
-        outcome
-            .results
-            .iter()
-            .filter(|result| wanted(&result.status))
-            .count()
-    };
+    let count =
+        |wanted: fn(&PatchResult) -> bool| outcome.results.iter().filter(|r| wanted(r)).count();
     info!(
-        applied = count(|status| matches!(status, PatchStatus::Applied)),
-        skipped = count(|status| matches!(status, PatchStatus::Skipped { .. })),
-        failed = count(|status| matches!(status, PatchStatus::Failed { .. })),
+        applied = count(|result| applied(result) && result.chosen()),
+        dependencies = count(|result| applied(result) && !result.chosen()),
+        skipped = count(|result| matches!(result.status, PatchStatus::Skipped { .. })),
+        failed = count(|result| matches!(result.status, PatchStatus::Failed { .. })),
         "patch run finished"
     );
     if request.dry_run {
@@ -49,6 +45,10 @@ pub fn run_patch(command: &PatchCommand) -> Result<()> {
         info!(path = %outcome.output.path().display(), "patched output ready");
     }
     Ok(())
+}
+
+fn applied(result: &PatchResult) -> bool {
+    matches!(result.status, PatchStatus::Applied)
 }
 
 fn log_event(event: RunEvent) {

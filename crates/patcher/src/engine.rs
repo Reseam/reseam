@@ -29,6 +29,13 @@ pub struct PatchResult {
     pub logs: Vec<LogEntry>,
 }
 
+impl PatchResult {
+    /// Work the user asked for, rather than a dependency that came with it.
+    pub fn chosen(&self) -> bool {
+        !self.hidden && self.required_by.is_empty()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PatchStatus {
