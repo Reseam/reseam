@@ -14,6 +14,7 @@ pub fn init_logging() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(env_filter)
         .with_target(true)
+        .with_writer(std::io::stderr)
         .try_init()
         .map_err(|error| anyhow::anyhow!("failed to initialize logging: {error}"))
 }
