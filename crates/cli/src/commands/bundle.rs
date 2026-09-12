@@ -20,6 +20,10 @@ pub fn run_bundle_list(command: &BundleListCommand) -> Result<()> {
         bundle_paths: vec![command.bundle.clone()],
         trust: command.trust.store()?,
     })?;
+    if command.json {
+        println!("{}", serde_json::to_string_pretty(&response)?);
+        return Ok(());
+    }
     let bundle = &response.bundles[0];
     println!("bundle: {}", bundle.name);
     if !bundle.author.is_empty() {
@@ -74,11 +78,11 @@ pub fn run_bundle_list(command: &BundleListCommand) -> Result<()> {
         let dependencies: Vec<&str> = spec
             .dependencies
             .iter()
-            .filter(|id| {
-                response
+            .filter(|reference| {
+                !response
                     .patches
                     .iter()
-                    .any(|patch| &patch.spec.id == *id && !patch.spec.hidden)
+                    .any(|patch| &patch.spec.reference() == *reference && patch.spec.hidden)
             })
             .map(String::as_str)
             .collect();

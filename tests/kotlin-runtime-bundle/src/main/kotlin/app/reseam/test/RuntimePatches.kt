@@ -3,6 +3,7 @@
 
 package app.reseam.test
 
+import app.reseam.patch.ExternalPatch
 import app.reseam.patch.Type
 import app.reseam.patch.after
 import app.reseam.patch.klass
@@ -155,6 +156,15 @@ val otherAds = patch("Hide Ads") {
     enabledByDefault(false)
     val marker = stringOption("marker", default = "other")
     execute { files.write("assets/other-ads.txt", options[marker].encodeToByteArray()) }
+}
+
+val otherBundleHelper = ExternalPatch("other-bundle", "app.reseam.other.helper")
+
+val needsOtherBundle = patch("needs-other-bundle") {
+    description("Depends on a patch from a bundle that is not loaded")
+    compatibleWith("com.example.test")
+    dependsOn(otherBundleHelper)
+    execute { }
 }
 
 val universalMarker = patch("universal-marker") {

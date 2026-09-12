@@ -253,36 +253,39 @@ fn kotlin_bundle_executes_against_runtime_api() {
         heap.committed_bytes
     );
 
-    assert_eq!(results.len(), 12);
+    assert_eq!(results.len(), 13);
     let statuses = results
         .iter()
-        .map(|result| (result.name.as_str(), &result.status))
+        .map(|result| (result.patch.as_str(), &result.status))
         .collect::<std::collections::HashMap<_, _>>();
     let internal = patches
         .iter()
-        .find(|patch| patch.id() == "app.reseam.test.internalHelper")
+        .find(|patch| patch.reference() == "runtime-test-bundle/app.reseam.test.internalHelper")
         .expect("the fixture declares an internal patch");
-    assert_eq!(internal.id(), "app.reseam.test.internalHelper");
-    assert_eq!(internal.spec().name, internal.id());
+    assert_eq!(
+        internal.reference(),
+        "runtime-test-bundle/app.reseam.test.internalHelper"
+    );
+    assert_eq!(internal.spec().name, "app.reseam.test.internalHelper");
     assert!(!internal.spec().enabled_by_default);
     assert!(matches!(
-        statuses.get(internal.id()),
+        statuses.get(internal.reference().as_str()),
         Some(&PatchStatus::Skipped { .. })
     ));
     assert_eq!(
-        statuses.get("app.reseam.test.finalizeOwner"),
+        statuses.get("runtime-test-bundle/app.reseam.test.finalizeOwner"),
         Some(&&PatchStatus::Applied)
     );
     assert_eq!(
-        statuses.get("app.reseam.test.runtimeApi"),
+        statuses.get("runtime-test-bundle/app.reseam.test.runtimeApi"),
         Some(&&PatchStatus::Applied)
     );
     assert_eq!(
-        statuses.get("app.reseam.test.dependentRuntime"),
+        statuses.get("runtime-test-bundle/app.reseam.test.dependentRuntime"),
         Some(&&PatchStatus::Applied)
     );
     assert!(matches!(
-        statuses.get("app.reseam.test.requiredOption"),
+        statuses.get("runtime-test-bundle/app.reseam.test.requiredOption"),
         Some(&PatchStatus::Skipped { .. })
     ));
 
@@ -348,24 +351,27 @@ fn internal_patches_run_as_dependencies() {
     let applied: Vec<&str> = results
         .iter()
         .filter(|result| result.status == PatchStatus::Applied)
-        .map(|result| result.name.as_str())
+        .map(|result| result.patch.as_str())
         .collect();
     assert_eq!(
         applied,
         [
-            "app.reseam.test.internalHelper",
-            "app.reseam.test.usesInternal"
+            "runtime-test-bundle/app.reseam.test.internalHelper",
+            "runtime-test-bundle/app.reseam.test.usesInternal"
         ]
     );
     let helper = results
         .iter()
-        .find(|result| result.name == "app.reseam.test.internalHelper")
+        .find(|result| result.patch == "runtime-test-bundle/app.reseam.test.internalHelper")
         .expect("the internal helper ran");
     assert!(helper.hidden);
-    assert_eq!(helper.required_by, ["app.reseam.test.usesInternal"]);
+    assert_eq!(
+        helper.required_by,
+        ["runtime-test-bundle/app.reseam.test.usesInternal"]
+    );
     let dependent = results
         .iter()
-        .find(|result| result.name == "app.reseam.test.usesInternal")
+        .find(|result| result.patch == "runtime-test-bundle/app.reseam.test.usesInternal")
         .expect("the selected patch ran");
     assert!(!dependent.hidden);
     assert!(
@@ -382,6 +388,50 @@ fn internal_patches_run_as_dependencies() {
 }
 
 #[test]
+fn a_patch_whose_bundle_is_missing_skips_unless_selected() {
+    let bundle_file = write_bundle_reseam();
+    let bundle = BundleArchive::open(&bundle_file.path)
+        .expect("open runtime bundle")
+        .load()
+        .expect("load runtime bundle");
+    let patches: Vec<&dyn Patch> = bundle.patches.iter().map(Box::as_ref).collect();
+    assert!(
+        !patches
+            .iter()
+            .any(|patch| patch.reference().contains("otherBundleHelper")),
+        "an ExternalPatch is a reference, not a declaration"
+    );
+    let results = engine::validate_patches(
+        &patches,
+        &PatchSelection::default(),
+        Some("com.example.test"),
+        None,
+    )
+    .unwrap();
+    let skipped = results
+        .iter()
+        .find(|result| result.patch == "runtime-test-bundle/app.reseam.test.needsOtherBundle")
+        .expect("the fixture declares a patch needing another bundle");
+    assert_eq!(
+        skipped.status,
+        PatchStatus::Skipped {
+            reason: "depends on other-bundle/app.reseam.other.helper; load bundle 'other-bundle' alongside".to_owned()
+        }
+    );
+    let selection = PatchSelection {
+        enable: ["needs-other-bundle".to_string()].into(),
+        ..Default::default()
+    };
+    let error = engine::validate_patches(&patches, &selection, Some("com.example.test"), None)
+        .unwrap_err()
+        .to_string();
+    assert_eq!(
+        error,
+        "missing bundle: patch runtime-test-bundle/app.reseam.test.needsOtherBundle depends on other-bundle/app.reseam.other.helper; load bundle 'other-bundle' alongside"
+    );
+}
+
+#[test]
 fn universal_patches_wait_to_be_selected() {
     let bundle_file = write_bundle_reseam();
     let bundle = BundleArchive::open(&bundle_file.path)
@@ -391,7 +441,7 @@ fn universal_patches_wait_to_be_selected() {
     let patches: Vec<&dyn Patch> = bundle.patches.iter().map(Box::as_ref).collect();
     let universal = patches
         .iter()
-        .find(|patch| patch.id() == "app.reseam.test.universalMarker")
+        .find(|patch| patch.reference() == "runtime-test-bundle/app.reseam.test.universalMarker")
         .expect("the fixture declares a universal patch");
     assert!(universal.spec().compatibility.is_universal());
     assert!(
@@ -410,7 +460,7 @@ fn universal_patches_wait_to_be_selected() {
     assert_eq!(
         results
             .iter()
-            .find(|result| result.name == universal.id())
+            .find(|result| result.patch == universal.reference())
             .map(|result| &result.status),
         Some(&PatchStatus::Applied),
         "selecting it explicitly still runs it"
@@ -734,7 +784,7 @@ fn after_hooks_preserve_entry_arguments_when_parameter_registers_are_reused() {
     assert_eq!(
         results
             .iter()
-            .find(|r| r.name == "app.reseam.test.afterEntryValues")
+            .find(|r| r.patch == "runtime-test-bundle/app.reseam.test.afterEntryValues")
             .unwrap()
             .status,
         PatchStatus::Applied
@@ -820,13 +870,13 @@ fn same_named_patches_keep_independent_identity_options_dependencies_and_setting
         .load()
         .unwrap();
     let patches: Vec<&dyn Patch> = bundle.patches.iter().map(Box::as_ref).collect();
-    let first = "app.reseam.test.firstAds";
-    let second = "app.reseam.test.secondAds";
-    let other = "app.reseam.test.otherAds";
+    let first = "runtime-test-bundle/app.reseam.test.firstAds";
+    let second = "runtime-test-bundle/app.reseam.test.secondAds";
+    let other = "runtime-test-bundle/app.reseam.test.otherAds";
     let index = PatchIndex::new(&patches).unwrap();
     for id in [first, second, other] {
         let patch = patches[index.resolve(id, None).unwrap()];
-        assert_eq!(patch.id(), id);
+        assert_eq!(patch.reference(), id);
         assert_eq!(patch.spec().name, "Hide Ads");
     }
     assert!(patches[index.resolve(second, None).unwrap()]
@@ -849,7 +899,7 @@ fn same_named_patches_keep_independent_identity_options_dependencies_and_setting
     let applied: Vec<_> = results
         .iter()
         .filter(|r| r.status == PatchStatus::Applied)
-        .map(|r| r.name.as_str())
+        .map(|r| r.patch.as_str())
         .collect();
     assert_eq!(applied, [other]);
 
@@ -877,7 +927,7 @@ fn same_named_patches_keep_independent_identity_options_dependencies_and_setting
     let applied: Vec<_> = results
         .iter()
         .filter(|r| r.status == PatchStatus::Applied)
-        .map(|r| r.name.as_str())
+        .map(|r| r.patch.as_str())
         .collect();
     assert!(
         applied.iter().position(|id| *id == first).unwrap()
@@ -924,11 +974,11 @@ fn same_named_patches_keep_independent_identity_options_dependencies_and_setting
     .unwrap();
     assert!(results
         .iter()
-        .filter(|r| r.name == first || r.name == second)
+        .filter(|r| r.patch == first || r.patch == second)
         .all(|r| matches!(r.status, PatchStatus::Skipped { .. })));
 
     let conflict = PatchSelection {
-        enable: ["app.reseam.test.runtimeApi".to_owned()].into(),
+        enable: ["runtime-test-bundle/app.reseam.test.runtimeApi".to_owned()].into(),
         disable: ["runtime-api".to_owned()].into(),
         ..Default::default()
     };

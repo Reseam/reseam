@@ -7,7 +7,6 @@ import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.file.DuplicatesStrategy
-import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.Sync
@@ -22,7 +21,7 @@ class ReseamBundlePlugin : Plugin<Project> {
     override fun apply(project: Project) {
         val manifest = project.layout.projectDirectory.file("manifest.toml")
         val bundleName = project.provider { bundleName(manifest.asFile) }
-        val reseamBin = reseamBinary(project)
+        val reseamBin = project.reseamBinary()
         val stageDir = project.layout.buildDirectory.dir("reseam/stage")
         val bundleFile = project.layout.buildDirectory.file(bundleName.map { "reseam/$it.reseam" })
 
@@ -115,14 +114,4 @@ class ReseamBundlePlugin : Plugin<Project> {
         return Regex("""^\s*name\s*=\s*"([^"]+)"""", RegexOption.MULTILINE).find(manifest.readText())?.groupValues?.get(1)
             ?: throw GradleException("manifest.toml declares no bundle name")
     }
-
-    private fun reseamBinary(project: Project): Provider<String> =
-        project.providers.environmentVariable("RESEAM_BIN")
-            .orElse(project.providers.gradleProperty("reseam.bin"))
-            .orElse(
-                project.providers.environmentVariable("RESEAM_WORKSPACE")
-                    .orElse(project.providers.gradleProperty("reseam.workspace"))
-                    .map { "$it/target/release/reseam" },
-            )
-            .orElse("reseam")
 }

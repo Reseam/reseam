@@ -75,14 +75,15 @@ signer: 1f3c... (trusted)
 engine: 0.3.0
 files: example-patches.jar, example-extension.dex
 
-    1. [on] example-patch - One-line description.
+    1. [on] Example patch - One-line description.
+       id: app.example.examplePatch
        packages: com.example.app (1.0.0, 1.1.0)
-       depends: example-core
+       depends: example-bundle/app.example.exampleCore
        options:
          - mode (String, optional)
 ```
 
-`signer` is the bundle's public key and whether it matched `--trust`; `engine` is the version of the CLI that packed it; `files` lists the payload, jars and extension DEX alike. `(String, optional)` is the option's declared type and required flag.
+`signer` is the bundle's public key and whether it matched `--trust`; `engine` is the version of the CLI that packed it; `files` lists the payload, jars and extension DEX alike. `(String, optional)` is the option's declared type and required flag. `--json` prints the same inspection as JSON, which is what the Gradle plugin reads to generate references to another bundle's patches.
 
 The bundle is loaded through the same path `reseam patch` uses: its signature is verified against the bundle's embedded public key, then that key is checked against `--trust`. Without a matching `--trust` the command prints the bundle metadata and signer but not the patches, since listing them means loading the bundle's code. A bundle with an invalid signature or the wrong `format_version` fails before any metadata is printed.
 

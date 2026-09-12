@@ -64,6 +64,34 @@ val hideAds = patch("Hide ads") {
 
 `dependsOn` takes references, never names. A dependency runs first; skipping it skips its dependents.
 
+## Depending on another bundle
+
+A patch can depend on a patch from a bundle someone else publishes. Declare that bundle in the module's build script, by its `patches.json` and the version you build against, or by a file when it is a bundle you are developing next door:
+
+```kotlin
+reseam {
+    bundle(index = "https://api.reseam.app/patches.json", version = "1.4.0")
+    bundle(file = file("../other-bundle/build/reseam/other-bundle.reseam"))
+}
+```
+
+The build fetches the bundle and generates a reference for each of its patches, in the same package as the original, so the dependency reads like a local one:
+
+```kotlin
+import app.reseam.patches.universal.removeProtection
+
+val hideBanners = patch("Hide banners") {
+    compatibleWith(EXAMPLE_APP)
+    dependsOn(removeProtection)
+
+    execute { }
+}
+```
+
+A wrong name is a compile error, and when the other bundle moves or renames a patch, your build breaks when you bump the version instead of a user's run. `signer = "<public key hex>"` on `bundle(index, ...)` pins the key the index must carry; fetching a bundle loads its code, so it is checked against the index's key either way.
+
+The user loads that bundle alongside yours. When it is missing, the patch is skipped with `depends on other-bundle/…; load bundle 'other-bundle' alongside`, and selecting it explicitly fails with the same message.
+
 ## Compatibility
 
 ```kotlin

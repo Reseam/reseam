@@ -4,7 +4,7 @@
 
 - JDK 17.
 - Android SDK with `ANDROID_HOME` set to its root. The build runs `d8` from `$ANDROID_HOME/build-tools/*/` and compiles extensions against the latest `platforms/android-*/android.jar`.
-- The `reseam` CLI, built from the Reseam repo or installed from a release. Use the release that matches the plugin version in `settings.gradle.kts`.
+- The `reseam` CLI from a release, the one matching the plugin version in `settings.gradle.kts`. The build packs and signs bundles with it. You only need to build it from source when you are changing the engine itself.
 - Git.
 
 Linux, macOS, and Windows all work. Commands on these pages use POSIX shell syntax for environment variables; in PowerShell set them first (`$env:RESEAM_BIN = "C:\\reseam\\reseam.exe"`) and run the command on its own line.
@@ -27,7 +27,7 @@ Build:
 
 The build locates the CLI in this order: `RESEAM_BIN` (or `-Preseam.bin`), then `<RESEAM_WORKSPACE>/target/release/reseam` (or `-Preseam.workspace`), then `reseam` on `PATH`. The signing key comes from `RESEAM_BUNDLE_KEY`, `-Preseam.signingKey`, or `~/.reseam/bundle-signing.key`.
 
-Set `RESEAM_WORKSPACE` to a checkout of the Reseam repo to build against its SDK and Gradle plugin from source instead of the published versions.
+`RESEAM_WORKSPACE` is for working on the engine and a bundle at the same time: it points at a Reseam checkout, and the build then uses that checkout's SDK, Gradle plugin, and CLI instead of the published ones. With a released CLI on `PATH`, leave it unset.
 
 Output: `build/reseam/<name>.reseam`.
 

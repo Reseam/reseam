@@ -12,7 +12,7 @@ use tracing::info;
 use zip::ZipArchive;
 
 use super::{
-    bundle_error, check_engine, is_payload, BundleInfo, BundleManifest, PatchBundle,
+    bundle_error, check_engine, check_name, is_payload, BundleInfo, BundleManifest, PatchBundle,
     BUNDLE_FORMAT_VERSION, BUNDLE_MIMETYPE, CONTROL_ENTRIES,
 };
 use crate::error::Result;
@@ -57,6 +57,7 @@ impl BundleArchive {
                 manifest.bundle.format_version, BUNDLE_FORMAT_VERSION
             )));
         }
+        check_name(&manifest.bundle.name)?;
         check_engine(&manifest.bundle)?;
         Ok(Self {
             archive,
@@ -122,7 +123,8 @@ impl BundleArchive {
         extension_dex.sort();
 
         #[cfg(feature = "kotlin")]
-        let patches = crate::kotlin::load_patches(&jars, extracted.path())?;
+        let patches =
+            crate::kotlin::load_patches(&jars, extracted.path(), &self.manifest.bundle.name)?;
         #[cfg(not(feature = "kotlin"))]
         let patches = Vec::new();
 

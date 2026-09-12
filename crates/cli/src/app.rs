@@ -38,8 +38,9 @@ pub struct PatchRequestArgs {
     pub apk: PathBuf,
     #[arg(long = "split")]
     pub split: Vec<PathBuf>,
-    #[arg(long)]
-    pub bundle: PathBuf,
+    /// Repeatable; a patch may depend on one from another loaded bundle.
+    #[arg(long = "bundle", required = true)]
+    pub bundle: Vec<PathBuf>,
     #[command(flatten)]
     pub trust: TrustArgs,
     #[arg(long, requires = "cert")]
@@ -115,6 +116,9 @@ pub struct BundleListCommand {
     pub bundle: PathBuf,
     #[command(flatten)]
     pub trust: TrustArgs,
+    /// Print the inspect response as JSON instead of the listing.
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Subcommand)]

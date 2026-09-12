@@ -95,7 +95,12 @@ pub fn run_perf(command: &PerfCommand) -> Result<()> {
 
     let report = PerfReport {
         apk_path: args.apk.display().to_string(),
-        bundle_path: args.bundle.display().to_string(),
+        bundle_path: args
+            .bundle
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", "),
         split_count: args.split.len(),
         dry_run: args.dry_run,
         warmup_iterations: command.warmup,

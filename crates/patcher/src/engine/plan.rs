@@ -35,6 +35,8 @@ pub(crate) struct ResolvedPlan {
     selected: Vec<bool>,
     desired: Vec<bool>,
     disabled: Vec<bool>,
+    /// Why the patch cannot run: a dependency no loaded bundle provides.
+    unavailable: Vec<Option<String>>,
     options: Vec<PatchOptions>,
     ignore_versions: bool,
 }
@@ -46,11 +48,20 @@ impl ResolvedPlan {
         package: Option<&str>,
     ) -> Result<Self> {
         let index = PatchIndex::new(patches)?;
-        let (dependencies, dependents) = dependency_edges(patches, &index.ids)?;
+        let (dependencies, dependents, missing) = dependency_edges(patches, &index.references);
         let order = topological_order(patches, &dependencies, &dependents)?;
 
         let lookup = |patch: &String| index.resolve(patch, package);
         let enabled: HashSet<usize> = selection.enable.iter().map(lookup).collect::<Result<_>>()?;
+        for &idx in &enabled {
+            if let Some(missing) = &missing[idx] {
+                return Err(missing.error(patches[idx].reference()));
+            }
+        }
+        let unavailable = missing
+            .iter()
+            .map(|missing| missing.as_ref().map(MissingDependency::skip_reason))
+            .collect();
         let mut desired = vec![false; patches.len()];
         let mut stack: Vec<usize> = if selection.enable.is_empty() {
             (0..patches.len())
@@ -86,7 +97,7 @@ impl ResolvedPlan {
             if configured.insert(idx, options).is_some() {
                 return Err(PatcherError::InvalidSelection(format!(
                     "options for patch '{}' were supplied under multiple selectors",
-                    patches[idx].id()
+                    patches[idx].reference()
                 )));
             }
             if !desired[idx] || disabled[idx] {
@@ -103,7 +114,7 @@ impl ResolvedPlan {
                     return Ok(PatchOptions::default());
                 }
                 PatchOptions::resolve(
-                    patch.id(),
+                    &patch.reference(),
                     &patch.spec().options,
                     configured.get(&idx).copied(),
                 )
@@ -117,6 +128,7 @@ impl ResolvedPlan {
             selected,
             desired,
             disabled,
+            unavailable,
             options,
             ignore_versions: selection.ignore_versions,
         })
@@ -156,6 +168,10 @@ impl ResolvedPlan {
         self.disabled[idx]
     }
 
+    pub fn unavailable(&self, idx: usize) -> Option<&str> {
+        self.unavailable[idx].as_deref()
+    }
+
     pub fn options(&self, idx: usize) -> &PatchOptions {
         &self.options[idx]
     }
@@ -165,24 +181,74 @@ impl ResolvedPlan {
     }
 }
 
-type Edges = (Vec<Vec<usize>>, Vec<Vec<usize>>);
+/// A dependency no loaded bundle provides. Selecting the patch is an error;
+/// otherwise it is skipped, so one bundle loads without every bundle it
+/// refers to.
+struct MissingDependency {
+    dependency: String,
+    bundle: String,
+    bundle_loaded: bool,
+}
 
-fn dependency_edges(patches: &[&dyn Patch], index: &HashMap<&str, usize>) -> Result<Edges> {
+impl MissingDependency {
+    fn error(&self, patch: String) -> PatcherError {
+        let (dependency, bundle) = (self.dependency.clone(), self.bundle.clone());
+        if self.bundle_loaded {
+            PatcherError::MissingDependency {
+                patch,
+                dependency,
+                bundle,
+            }
+        } else {
+            PatcherError::MissingBundle {
+                patch,
+                dependency,
+                bundle,
+            }
+        }
+    }
+
+    fn skip_reason(&self) -> String {
+        if self.bundle_loaded {
+            format!(
+                "depends on {}, which bundle '{}' does not declare",
+                self.dependency, self.bundle
+            )
+        } else {
+            format!(
+                "depends on {}; load bundle '{}' alongside",
+                self.dependency, self.bundle
+            )
+        }
+    }
+}
+
+type Edges = (
+    Vec<Vec<usize>>,
+    Vec<Vec<usize>>,
+    Vec<Option<MissingDependency>>,
+);
+
+fn dependency_edges(patches: &[&dyn Patch], index: &HashMap<String, usize>) -> Edges {
     let mut dependencies = vec![Vec::new(); patches.len()];
     let mut dependents = vec![Vec::new(); patches.len()];
+    let mut missing: Vec<Option<MissingDependency>> = (0..patches.len()).map(|_| None).collect();
     for (idx, patch) in patches.iter().enumerate() {
         for dependency in &patch.spec().dependencies {
-            let Some(&dependency_idx) = index.get(dependency.as_str()) else {
-                return Err(PatcherError::MissingDependency {
-                    patch: patch.id().to_owned(),
+            let Some(&dependency_idx) = index.get(dependency) else {
+                let bundle = dependency.split_once('/').map_or("", |(bundle, _)| bundle);
+                missing[idx].get_or_insert_with(|| MissingDependency {
                     dependency: dependency.clone(),
+                    bundle: bundle.to_owned(),
+                    bundle_loaded: patches.iter().any(|patch| patch.spec().bundle == bundle),
                 });
+                continue;
             };
             dependencies[idx].push(dependency_idx);
             dependents[dependency_idx].push(idx);
         }
     }
-    Ok((dependencies, dependents))
+    (dependencies, dependents, missing)
 }
 
 fn topological_order(
@@ -205,7 +271,7 @@ fn topological_order(
     if order.len() != patches.len() {
         let names = (0..patches.len())
             .filter(|&i| in_degree[i] > 0)
-            .map(|i| patches[i].id().to_owned())
+            .map(|i| patches[i].reference())
             .collect();
         return Err(PatcherError::DependencyCycle(names));
     }

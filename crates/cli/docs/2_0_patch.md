@@ -43,14 +43,14 @@ XAPKs containing or declaring OBB expansion files are rejected: Reseam currently
 | Argument | Purpose |
 |----------|---------|
 | `<apk>` | Base APK, APKM, or XAPK path. |
-| `--bundle <PATH>` | Signed `.reseam` bundle to load. Verified on open. |
+| `--bundle <PATH>` | Signed `.reseam` bundle to load. Verified on open. Repeatable, since a patch may depend on one from another bundle. |
 | `--trust <PUBLIC_KEY_HEX>` | Repeatable. Ed25519 public key of a bundle signer to accept. Without it no bundle loads. |
 | `--split <APK>` | Repeatable split APK alongside the base. |
 | `--output <FILE>` | Output path for single-APK mode. Mutually exclusive with `--output-dir`. |
 | `--output-dir <DIR>` | Output directory for APK components (one or more). Mutually exclusive with `--output`. |
 | `--key <PK8>` | PKCS#8 private key for APK signing. Requires `--cert`. |
 | `--cert <DER>` | DER-encoded X.509 certificate matching `--key`. Requires `--key`. |
-| `--enable <PATCH>` | Repeatable. Force a patch on, even if disabled by default. |
+| `--enable <PATCH>` | Repeatable. Force a patch on, even if disabled by default. `PATCH` is `<bundle>/<id>`, an ID unique across the loaded bundles, or an unambiguous display name. |
 | `--disable <PATCH>` | Repeatable. Force a patch off. |
 | `--option PATCH.KEY=VALUE` | Repeatable. Set a patch option. Parsed against the patch's declared option type. |
 | `--dry-run` | Resolve and validate without applying patches or writing output. |

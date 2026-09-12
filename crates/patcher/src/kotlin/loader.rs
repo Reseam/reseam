@@ -14,9 +14,10 @@ use super::jvm::{self, jvm_err, string_of};
 use super::patch::{load_class, KotlinPatch};
 use crate::error::Result;
 use crate::options::{OptionDeclaration, OptionType, OptionValue};
-use crate::patch::{CompatiblePackage, Patch, PatchSpec};
+use crate::patch::{is_slug, CompatiblePackage, Patch, PatchSpec};
 
 const PATCH_INTERFACE: &str = "app.reseam.patch.ReseamPatch";
+const EXTERNAL_PATCH: &str = "app.reseam.patch.ExternalPatch";
 const NATIVE_CLASS: &str = "app.reseam.patch.Native";
 
 include!(concat!(env!("OUT_DIR"), "/jni_natives.rs"));
@@ -28,7 +29,11 @@ struct Found {
     declaration: String,
 }
 
-pub fn load_patches(jars: &[PathBuf], bundle_dir: &Path) -> Result<Vec<Box<dyn Patch>>> {
+pub fn load_patches(
+    jars: &[PathBuf],
+    bundle_dir: &Path,
+    bundle: &str,
+) -> Result<Vec<Box<dyn Patch>>> {
     let class_names = class_names(jars);
     if class_names.is_empty() {
         return Ok(Vec::new());
@@ -45,6 +50,7 @@ pub fn load_patches(jars: &[PathBuf], bundle_dir: &Path) -> Result<Vec<Box<dyn P
         )
         .map_err(|e| jvm_err(format!("register natives: {e}")))?;
         let patch_class = load_class(env, &loader, PATCH_INTERFACE)?;
+        let external_class = load_class(env, &loader, EXTERNAL_PATCH)?;
         let mut found: Vec<Found> = Vec::new();
         for name in &class_names {
             let Ok(class) = load_class(env, &loader, name) else {
@@ -53,6 +59,10 @@ pub fn load_patches(jars: &[PathBuf], bundle_dir: &Path) -> Result<Vec<Box<dyn P
             };
             let package = name.rsplit_once('.').map_or("", |(package, _)| package);
             for (object, member) in patch_objects(env, &class, &patch_class) {
+                // A generated reference to another bundle's patch, not a declaration.
+                if is_instance(env, &object, &external_class) {
+                    continue;
+                }
                 let declaration = if package.is_empty() {
                     member
                 } else {
@@ -80,7 +90,7 @@ pub fn load_patches(jars: &[PathBuf], bundle_dir: &Path) -> Result<Vec<Box<dyn P
         found
             .iter()
             .map(|patch| {
-                read_patch(env, patch, &found, bundle_dir)
+                read_patch(env, patch, &found, &external_class, bundle_dir, bundle)
                     .map(|patch| Box::new(patch) as Box<dyn Patch>)
             })
             .collect()
@@ -359,7 +369,9 @@ fn read_patch(
     env: &mut JNIEnv<'_>,
     found: &Found,
     all: &[Found],
+    external_class: &JObject<'_>,
     bundle_dir: &Path,
+    bundle: &str,
 ) -> Result<KotlinPatch> {
     let patch = found.object.as_obj();
     let name = optional_string(env, patch, "getName")?;
@@ -368,12 +380,21 @@ fn read_patch(
     let dependencies = objects(env, patch, "getDependencies")?
         .into_iter()
         .map(|dependency| {
+            if is_instance(env, &dependency, external_class) {
+                let other = string(env, &dependency, "getBundle")?;
+                if !is_slug(&other) {
+                    return Err(jvm_err(format!(
+                        "patch {id} depends on a bundle named '{other}'; bundle names are lowercase letters, digits, and hyphens"
+                    )));
+                }
+                return Ok(format!("{other}/{}", string(env, &dependency, "getId")?));
+            }
             all.iter()
                 .find(|candidate| {
                     env.is_same_object(candidate.object.as_obj(), &dependency)
                         .unwrap_or(false)
                 })
-                .map(|candidate| candidate.declaration.clone())
+                .map(|candidate| format!("{bundle}/{}", candidate.declaration))
                 .ok_or_else(|| {
                     jvm_err(format!(
                         "patch {id} depends on a patch that is not declared as a public top-level value"
@@ -395,6 +416,7 @@ fn read_patch(
         .map(|option| read_option(env, &option))
         .collect::<Result<_>>()?;
     let spec = PatchSpec {
+        bundle: bundle.to_owned(),
         name: name.unwrap_or_else(|| id.clone()),
         id,
         hidden,

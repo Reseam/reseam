@@ -29,7 +29,7 @@ pub fn apply_patches(
 
     for &idx in plan.order() {
         let patch = &patches[idx];
-        let _span = info_span!("patch", patch = patch.id()).entered();
+        let _span = info_span!("patch", patch = patch.reference()).entered();
         if let Some(reason) = run.skip_reason(idx, package.as_deref(), version.as_deref()) {
             run.finish(
                 idx,
@@ -40,9 +40,9 @@ pub fn apply_patches(
             continue;
         }
 
-        ctx.begin_patch(patch.id(), plan.options(idx).clone());
+        ctx.begin_patch(&patch.reference(), plan.options(idx).clone());
         observer(ProgressEvent::PatchStarted {
-            patch: patch.id().to_owned(),
+            patch: patch.reference(),
         });
         let outcome = guarded(|| patch.execute(ctx));
         let logs = ctx.take_log_entries();
@@ -60,8 +60,8 @@ pub fn apply_patches(
         if plan.dependents(idx).is_empty() || !run.applied(idx) {
             continue;
         }
-        let _span = info_span!("after_dependents", patch = patch.id()).entered();
-        ctx.begin_patch(patch.id(), plan.options(idx).clone());
+        let _span = info_span!("after_dependents", patch = patch.reference()).entered();
+        ctx.begin_patch(&patch.reference(), plan.options(idx).clone());
         let outcome = guarded(|| patch.after_dependents(ctx));
         let logs = ctx.take_log_entries();
         for log in &logs {
@@ -125,6 +125,9 @@ impl<'a> Run<'a> {
         if self.plan.is_disabled(idx) {
             return Some("disabled explicitly".to_owned());
         }
+        if let Some(reason) = self.plan.unavailable(idx) {
+            return Some(reason.to_owned());
+        }
         for &dependency in self.plan.dependencies(idx) {
             let detail = match self.results[dependency]
                 .as_ref()
@@ -137,7 +140,7 @@ impl<'a> Run<'a> {
             };
             return Some(format!(
                 "dependency '{}' {detail}",
-                self.patches[dependency].id()
+                self.patches[dependency].reference()
             ));
         }
         let spec = self.patches[idx].spec();
@@ -162,18 +165,18 @@ impl<'a> Run<'a> {
         logs: Vec<LogEntry>,
         observer: &mut impl FnMut(ProgressEvent),
     ) {
-        let name = self.patches[idx].id().to_owned();
+        let patch = self.patches[idx].reference();
         observer(ProgressEvent::PatchFinished {
-            patch: name.clone(),
+            patch: patch.clone(),
             status: status.clone(),
         });
         self.results[idx] = Some(PatchResult {
-            name,
+            patch,
             hidden: self.patches[idx].spec().hidden,
             required_by: self
                 .plan
                 .required_by(idx)
-                .map(|dependent| self.patches[dependent].id().to_owned())
+                .map(|dependent| self.patches[dependent].reference())
                 .collect(),
             status,
             logs,
@@ -192,7 +195,7 @@ impl<'a> Run<'a> {
         };
         result.status = PatchStatus::Failed { reason };
         observer(ProgressEvent::PatchFinished {
-            patch: result.name.clone(),
+            patch: result.patch.clone(),
             status: result.status.clone(),
         });
     }
@@ -240,13 +243,24 @@ mod tests {
     }
 
     fn declared(id: &str, package: &str, versions: &[&str]) -> Declared {
+        declared_in("bundle", id, package, versions, &[])
+    }
+
+    fn declared_in(
+        bundle: &str,
+        id: &str,
+        package: &str,
+        versions: &[&str],
+        dependencies: &[&str],
+    ) -> Declared {
         Declared(PatchSpec {
+            bundle: bundle.to_owned(),
             id: id.to_owned(),
             name: id.to_owned(),
             hidden: false,
             description: String::new(),
             enabled_by_default: true,
-            dependencies: Vec::new(),
+            dependencies: dependencies.iter().map(|d| (*d).to_owned()).collect(),
             compatibility: [CompatiblePackage {
                 package: package.to_owned(),
                 versions: versions.iter().map(|v| (*v).to_owned()).collect(),
@@ -266,6 +280,103 @@ mod tests {
             .into_iter()
             .map(|result| result.status)
             .collect()
+    }
+
+    #[test]
+    fn patches_resolve_across_bundles_by_reference_or_unique_id() {
+        let official = declared_in("official", "pairip", "com.example", &[], &[]);
+        let fork = declared_in("fork", "pairip", "com.example", &[], &[]);
+        let uses = declared_in(
+            "fork",
+            "uses-pairip",
+            "com.example",
+            &[],
+            &["official/pairip"],
+        );
+        let patches: Vec<&dyn Patch> = vec![&official, &fork, &uses];
+        let selection = PatchSelection {
+            enable: ["uses-pairip".to_owned()].into(),
+            ..Default::default()
+        };
+        let results = validate_patches(&patches, &selection, Some("com.example"), None).unwrap();
+        let applied: Vec<&str> = results
+            .iter()
+            .filter(|result| result.status == PatchStatus::Applied)
+            .map(|result| result.patch.as_str())
+            .collect();
+        assert_eq!(applied, ["official/pairip", "fork/uses-pairip"]);
+
+        let ambiguous = PatchSelection {
+            enable: ["pairip".to_owned()].into(),
+            ..Default::default()
+        };
+        let error = validate_patches(&patches, &ambiguous, Some("com.example"), None)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("fork/pairip") && error.contains("official/pairip"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn missing_dependencies_skip_unless_selected() {
+        let uses = declared_in(
+            "fork",
+            "uses-pairip",
+            "com.example",
+            &[],
+            &["official/pairip"],
+        );
+        let patches: Vec<&dyn Patch> = vec![&uses];
+        let results = validate_patches(
+            &patches,
+            &PatchSelection::default(),
+            Some("com.example"),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            results[0].status,
+            PatchStatus::Skipped {
+                reason: "depends on official/pairip; load bundle 'official' alongside".to_owned()
+            }
+        );
+        let selection = PatchSelection {
+            enable: ["uses-pairip".to_owned()].into(),
+            ..Default::default()
+        };
+        let error = validate_patches(&patches, &selection, Some("com.example"), None)
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            error,
+            "missing bundle: patch fork/uses-pairip depends on official/pairip; load bundle 'official' alongside"
+        );
+
+        let official = declared_in("official", "other", "com.example", &[], &[]);
+        let patches: Vec<&dyn Patch> = vec![&official, &uses];
+        let results = validate_patches(
+            &patches,
+            &PatchSelection::default(),
+            Some("com.example"),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            results[1].status,
+            PatchStatus::Skipped {
+                reason: "depends on official/pairip, which bundle 'official' does not declare"
+                    .to_owned()
+            }
+        );
+        let error = validate_patches(&patches, &selection, Some("com.example"), None)
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            error,
+            "missing dependency: patch fork/uses-pairip depends on official/pairip, which bundle 'official' does not declare"
+        );
     }
 
     #[test]

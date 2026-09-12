@@ -16,7 +16,7 @@ use reseam_apk::scratch::ScratchDir;
 use serde::{Deserialize, Serialize};
 
 use crate::error::PatcherError;
-use crate::patch::Patch;
+use crate::patch::{is_slug, Patch};
 
 pub use archive::BundleArchive;
 pub use pack::pack;
@@ -145,4 +145,15 @@ pub struct PatchBundle {
 
 fn bundle_error(reason: impl Into<String>) -> PatcherError {
     PatcherError::Bundle(reason.into())
+}
+
+/// The name qualifies patch references (`<bundle>/<id>`), so it has the same shape as an ID.
+fn check_name(name: &str) -> crate::error::Result<()> {
+    if is_slug(name) {
+        Ok(())
+    } else {
+        Err(bundle_error(format!(
+            "bundle name '{name}' must be lowercase letters, digits, and hyphens"
+        )))
+    }
 }

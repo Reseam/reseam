@@ -12,8 +12,8 @@ use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 use super::{
-    bundle_error, is_payload, BundleInfo, BundleManifest, BUNDLE_FORMAT_VERSION, BUNDLE_MIMETYPE,
-    ENGINE_VERSION,
+    bundle_error, check_name, is_payload, BundleInfo, BundleManifest, BUNDLE_FORMAT_VERSION,
+    BUNDLE_MIMETYPE, ENGINE_VERSION,
 };
 use crate::error::Result;
 
@@ -23,6 +23,7 @@ use crate::error::Result;
 pub fn pack(dir: &Path, signing_key: &SigningKey, out: &Path) -> Result<()> {
     let manifest: BundleManifest =
         toml::from_str(&std::fs::read_to_string(dir.join("manifest.toml"))?)?;
+    check_name(&manifest.bundle.name)?;
     if manifest.bundle.format_version != BUNDLE_FORMAT_VERSION {
         return Err(bundle_error(format!(
             "unsupported format_version {} (this build packs {})",

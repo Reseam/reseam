@@ -30,6 +30,16 @@ data class CompatiblePackage(
 
 operator fun String.invoke(vararg versions: String) = CompatiblePackage(this, versions.toList())
 
+/**
+ * A patch in another bundle, for `dependsOn`. The Gradle plugin generates one
+ * per patch of every bundle a module declares; it is never written by hand.
+ */
+class ExternalPatch(val bundle: String, val id: String) : ReseamPatch {
+    override val name: String? = null
+    override fun execute(ctx: PatchRuntime) = error("$this belongs to another bundle")
+    override fun toString() = "$bundle/$id"
+}
+
 fun patch(name: String, block: PatchBuilder.() -> Unit): ReseamPatch =
     PatchBuilder(name).apply(block).build()
 

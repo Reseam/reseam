@@ -33,8 +33,21 @@ pub enum PatcherError {
     #[error("dependency cycle: {}", .0.join(" -> "))]
     DependencyCycle(Vec<String>),
 
-    #[error("missing dependency: patch {patch} depends on {dependency}")]
-    MissingDependency { patch: String, dependency: String },
+    #[error("missing dependency: patch {patch} depends on {dependency}, which bundle '{bundle}' does not declare")]
+    MissingDependency {
+        patch: String,
+        dependency: String,
+        bundle: String,
+    },
+
+    #[error(
+        "missing bundle: patch {patch} depends on {dependency}; load bundle '{bundle}' alongside"
+    )]
+    MissingBundle {
+        patch: String,
+        dependency: String,
+        bundle: String,
+    },
 
     #[error("unknown patch: {0}")]
     UnknownPatch(String),

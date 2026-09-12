@@ -30,8 +30,11 @@ Modules have no build script unless they declare dependencies:
 ```kotlin
 dependencies {
     compileOnly(project(":shared:settings-runtime"))
+    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
 }
 ```
+
+Maven Central, Google's Maven, and the Reseam registry are available to every module. See [Shipping your own code](9_extensions.md) for what each dependency scope means in an extension, and [Depending on another bundle](4_patches.md#depending-on-another-bundle) for a patch module's `reseam { bundle(...) }` block.
 
 ## `settings.gradle.kts`
 
@@ -56,6 +59,8 @@ plugins {
 rootProject.name = "my-bundle"
 ```
 
+The `RESEAM_WORKSPACE` lines make the build use an engine checkout instead of the published plugin and SDK. They only matter when you change the engine alongside your patches; a bundle built with the released CLI does not need them.
+
 The plugin version is the SDK version; every patch module gets the SDK dependency from it.
 
 ## `manifest.toml`
@@ -68,7 +73,7 @@ description = "One-line description"
 format_version = 1
 ```
 
-- `name`: short identifier, lowercase, no spaces. Names the output file and appears in `patches.json`.
+- `name`: lowercase letters, digits, and hyphens. Names the output file, appears in `patches.json`, and qualifies patch references (`<name>/<id>`) from other bundles.
 - `author`, `description`: shown to users.
 - `format_version`: currently `1`.
 - `engine`: written by `reseam bundle pack`, never by hand. Bundles load on engines of the same major version, or the same minor while the major is 0.

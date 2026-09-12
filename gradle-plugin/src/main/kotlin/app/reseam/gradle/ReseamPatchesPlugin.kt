@@ -20,6 +20,17 @@ class ReseamPatchesPlugin : Plugin<Project> {
         project.extensions.configure(KotlinJvmProjectExtension::class.java) { jvmToolchain(17) }
         project.dependencies.add("implementation", "app.reseam:reseam-patch-sdk:$reseamVersion")
 
+        val reseam = project.extensions.create("reseam", ReseamPatchesExtension::class.java)
+        val refs = project.tasks.register("generatePatchRefs", GeneratePatchRefsTask::class.java) {
+            description = "Generates references to the patches of the bundles this module depends on."
+            published.set(project.provider { reseam.published })
+            local.from(project.provider { reseam.local })
+            reseamBinary.set(project.reseamBinary())
+            cache.set(project.layout.buildDirectory.dir("reseam/bundles"))
+            output.set(project.layout.buildDirectory.dir("generated/reseam/refs"))
+        }
+        project.extensions.getByType(KotlinJvmProjectExtension::class.java).sourceSets.getByName("main").kotlin.srcDir(refs)
+
         val main = project.extensions.getByType(SourceSetContainer::class.java).getByName("main")
         val runtimeClasspath = project.configurations.getByName("runtimeClasspath")
         val classesJar = project.tasks.register("patchClassesJar", Jar::class.java) {
@@ -34,6 +45,7 @@ class ReseamPatchesPlugin : Plugin<Project> {
         val dex = project.tasks.register("patchDex", DexTask::class.java) {
             description = "Dexes the patch jar so it loads on Android."
             sources.from(classesJar)
+            libraries.from(project.provider { AndroidSdk.platformJar() })
             output.set(project.layout.buildDirectory.dir("reseam/patch-dex"))
         }
         val universal = project.tasks.register("patchJar", Jar::class.java) {

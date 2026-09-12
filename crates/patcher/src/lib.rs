@@ -13,7 +13,7 @@ pub mod patch;
 
 use serde::{Deserialize, Serialize};
 
-pub use crate::patch::{Compatibility, CompatiblePackage, Patch, PatchSpec};
+pub use crate::patch::{is_slug, Compatibility, CompatiblePackage, Patch, PatchSpec};
 pub use reseam_apk;
 pub use reseam_apk::reseam_dex;
 

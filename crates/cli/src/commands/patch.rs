@@ -4,11 +4,12 @@
 use anyhow::{anyhow, ensure, Context, Result};
 use reseam_patcher::engine::{PatchIndex, PatchResult, PatchSelection, PatchStatus};
 use reseam_patcher::error::PatcherError;
+use reseam_patcher::log::LogLevel;
 use reseam_sdk::{
     inspect_apk, load_bundles, patch, PatchOutput, PatchRequest, RunEvent, SigningKeyFiles,
     TrustStore,
 };
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::app::{PatchCommand, PatchRequestArgs};
 
@@ -60,12 +61,11 @@ fn log_event(event: RunEvent) {
             PatchStatus::Skipped { reason } => warn!(patch, reason, "patch skipped"),
             PatchStatus::Failed { reason } => error!(patch, reason, "patch failed"),
         },
-        RunEvent::PatchLog(entry) => info!(
-            patch = entry.patch,
-            level = %entry.level,
-            entry.message,
-            "patch log"
-        ),
+        RunEvent::PatchLog(entry) => match entry.level {
+            LogLevel::Debug => debug!(patch = entry.patch, "{}", entry.message),
+            LogLevel::Info => info!(patch = entry.patch, "{}", entry.message),
+            LogLevel::Warn => warn!(patch = entry.patch, "{}", entry.message),
+        },
     }
 }
 
@@ -75,7 +75,7 @@ pub(crate) fn request(args: &PatchRequestArgs, output: PatchOutput) -> Result<Pa
     Ok(PatchRequest {
         apk_path: args.apk.clone(),
         split_paths: args.split.clone(),
-        bundle_paths: vec![args.bundle.clone()],
+        bundle_paths: args.bundle.clone(),
         trust,
         selection,
         output,
@@ -100,7 +100,7 @@ fn selection(args: &PatchRequestArgs, trust: &TrustStore) -> Result<PatchSelecti
     if args.option.is_empty() {
         return Ok(selection);
     }
-    let bundles = load_bundles(std::slice::from_ref(&args.bundle), trust)?;
+    let bundles = load_bundles(&args.bundle, trust)?;
     let patches: Vec<_> = bundles
         .iter()
         .flat_map(|bundle| bundle.patches.iter().map(Box::as_ref))
@@ -111,7 +111,7 @@ fn selection(args: &PatchRequestArgs, trust: &TrustStore) -> Result<PatchSelecti
         let invalid = || anyhow!("invalid option '{raw}': expected PATCH.KEY=VALUE");
         let (lhs, value) = raw.split_once('=').ok_or_else(invalid)?;
         let (patch_index, key) = option_target(&index, lhs, apk.package_name.as_deref())?;
-        let patch = patches[patch_index].id();
+        let patch = patches[patch_index].reference();
         let declaration = patches[patch_index]
             .spec()
             .options
@@ -121,17 +121,14 @@ fn selection(args: &PatchRequestArgs, trust: &TrustStore) -> Result<PatchSelecti
         let value = declaration
             .parse(value)
             .map_err(|reason| anyhow!("invalid --option {raw}: {reason}"))?;
-        selection
-            .options
-            .entry(patch.to_string())
-            .or_default()
-            .set(key, value);
+        selection.options.entry(patch).or_default().set(key, value);
     }
     Ok(selection)
 }
 
-/// IDs and option keys may contain dots. Resolve the longest recognized patch
-/// prefix instead of assuming the first dot separates the patch from its option.
+/// Display names and option keys may contain dots. Resolve the longest
+/// recognized patch prefix instead of assuming the first dot separates the
+/// patch from its option.
 fn option_target<'a>(
     index: &PatchIndex<'_>,
     lhs: &'a str,
@@ -150,6 +147,6 @@ fn option_target<'a>(
         }
     }
     Err(anyhow!(
-        "unknown patch in option '{lhs}'; expected PATCH.KEY (use a patch ID or unambiguous name)"
+        "unknown patch in option '{lhs}'; expected PATCH.KEY (use <bundle>/<id>, an ID, or an unambiguous name)"
     ))
 }

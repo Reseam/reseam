@@ -10,9 +10,9 @@ use crate::options::OptionDeclaration;
 pub trait Patch: Send + Sync {
     fn spec(&self) -> &PatchSpec;
 
-    /// The identity dependencies and selections refer to.
-    fn id(&self) -> &str {
-        &self.spec().id
+    /// `<bundle>/<id>`: the identity dependencies, selections, and results refer to.
+    fn reference(&self) -> String {
+        self.spec().reference()
     }
 
     fn execute(&self, ctx: &mut PatchContext) -> Result<()>;
@@ -58,8 +58,21 @@ impl FromIterator<CompatiblePackage> for Compatibility {
     }
 }
 
+/// Bundle names and patch IDs: lowercase letters and digits, single hyphens between them.
+pub fn is_slug(value: &str) -> bool {
+    !value.is_empty()
+        && !value.starts_with('-')
+        && !value.ends_with('-')
+        && !value.contains("--")
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct PatchSpec {
+    pub bundle: String,
+    /// `<package>.<property>` of the public declaration; unique within the bundle.
     pub id: String,
     /// What users see. Different patches may share a display name.
     pub name: String,
@@ -68,12 +81,17 @@ pub struct PatchSpec {
     pub hidden: bool,
     pub description: String,
     pub enabled_by_default: bool,
+    /// References (`<bundle>/<id>`) to the patches that run first.
     pub dependencies: Vec<String>,
     pub compatibility: Compatibility,
     pub options: Vec<OptionDeclaration>,
 }
 
 impl PatchSpec {
+    pub fn reference(&self) -> String {
+        format!("{}/{}", self.bundle, self.id)
+    }
+
     /// Why the patch does not apply to `package`/`version`, if it does not.
     pub fn incompatibility(&self, package: Option<&str>, version: Option<&str>) -> Option<String> {
         let entries = match self.package_compatibility(package) {

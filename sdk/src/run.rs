@@ -71,7 +71,7 @@ fn run(
         })?;
         for result in &results {
             emit(RunEvent::PatchFinished {
-                patch: result.name.clone(),
+                patch: result.patch.clone(),
                 status: result.status.clone(),
             });
         }
@@ -117,12 +117,12 @@ fn ensure_none_failed(results: &[PatchResult]) -> Result<()> {
     let failed: Vec<&str> = results
         .iter()
         .filter(|result| matches!(result.status, PatchStatus::Failed { .. }))
-        .map(|result| result.name.as_str())
+        .map(|result| result.patch.as_str())
         .collect();
     ensure!(
         failed.is_empty(),
         Problem::PatchesFailed {
-            patches: failed.iter().map(|name| (*name).to_owned()).collect(),
+            patches: failed.iter().map(|patch| (*patch).to_owned()).collect(),
         }
     );
     Ok(())
