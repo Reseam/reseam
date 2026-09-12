@@ -20,6 +20,11 @@ pub use run::{apply_patches, validate_patches};
 pub struct PatchResult {
     /// Patch ID, retained under this field name for the JSON API.
     pub name: String,
+    /// Internal patches run as dependencies and are never listed to users.
+    pub hidden: bool,
+    /// IDs of the running patches that pulled this one in, empty when it was
+    /// asked for directly.
+    pub required_by: Vec<String>,
     pub status: PatchStatus,
     pub logs: Vec<LogEntry>,
 }

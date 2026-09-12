@@ -31,6 +31,8 @@ pub(crate) struct ResolvedPlan {
     order: Vec<usize>,
     dependencies: Vec<Vec<usize>>,
     dependents: Vec<Vec<usize>>,
+    /// Asked for directly, rather than pulled in as someone's dependency.
+    selected: Vec<bool>,
     desired: Vec<bool>,
     disabled: Vec<bool>,
     options: Vec<PatchOptions>,
@@ -57,6 +59,10 @@ impl ResolvedPlan {
         } else {
             enabled.iter().copied().collect()
         };
+        let mut selected = vec![false; patches.len()];
+        for &idx in &stack {
+            selected[idx] = true;
+        }
         while let Some(idx) = stack.pop() {
             if !std::mem::replace(&mut desired[idx], true) {
                 stack.extend(&dependencies[idx]);
@@ -108,6 +114,7 @@ impl ResolvedPlan {
             order,
             dependencies,
             dependents,
+            selected,
             desired,
             disabled,
             options,
@@ -129,6 +136,20 @@ impl ResolvedPlan {
 
     pub fn is_desired(&self, idx: usize) -> bool {
         self.desired[idx]
+    }
+
+    /// The running patches that pulled `idx` in, empty when it was asked for
+    /// directly. Only direct dependents: a longer chain is noise to a reader.
+    pub fn required_by(&self, idx: usize) -> impl Iterator<Item = usize> + '_ {
+        let dependents = if self.selected[idx] {
+            &[][..]
+        } else {
+            &self.dependents[idx]
+        };
+        dependents
+            .iter()
+            .copied()
+            .filter(|&dependent| self.desired[dependent])
     }
 
     pub fn is_disabled(&self, idx: usize) -> bool {

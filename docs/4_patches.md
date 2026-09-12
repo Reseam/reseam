@@ -71,7 +71,7 @@ compatibleWith("com.example.app", "com.example.app.lite")
 compatibleWith("com.example.app"("2.14.0", "2.14.1"))
 ```
 
-A package alone means every version; `"package"("version", ...)` pins versions. One patch can cover several apps. Define the package once and share it across the bundle: `val EXAMPLE_APP = "com.example.app"("2.14.0")`. A patch with no `compatibleWith` applies to every app.
+A package alone means every version; `"package"("version", ...)` pins versions. One patch can cover several apps. Define the package once and share it across the bundle: `val EXAMPLE_APP = "com.example.app"("2.14.0")`. A patch with no `compatibleWith` is universal: it applies to every app, and because the engine cannot know it suits an arbitrary app, it is off until the user selects it. Declare `enabledByDefault(true)` to override that.
 
 > [!WARNING]
 > Pinned versions skip the patch on every other version, including ones where it would work. Unpinned, it runs everywhere and fails loudly when a target stops matching. Pin when a wrong match does damage silently (a rewritten constant, a replaced body).

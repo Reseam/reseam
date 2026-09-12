@@ -12,7 +12,7 @@ Every public symbol of the patch SDK, by package. Types are accepted as descript
 | `patch { }` | An internal patch: hidden, runs only as a dependency. |
 | `"pkg"("1.0", "1.1")` | `String.invoke`: a `CompatiblePackage` with versions. |
 | `CompatiblePackage(name, versions)` | A package the patch applies to; empty `versions` means all. |
-| `ReseamPatch` | The interface the engine reads: `name`, `hidden`, `description`, `dependencies`, `compatibleWith`, `enabled`, `options`, `execute(ctx)`, `afterDependents(ctx)`. |
+| `ReseamPatch` | The interface the engine reads: `name`, `hidden`, `description`, `dependencies`, `compatibleWith`, `universal`, `enabled`, `options`, `execute(ctx)`, `afterDependents(ctx)`. |
 
 Inside `patch { }` (`PatchBuilder`):
 
@@ -22,7 +22,7 @@ Inside `patch { }` (`PatchBuilder`):
 | `compatibleWith(vararg packageNames)` | Packages, any version. |
 | `compatibleWith(vararg packages: CompatiblePackage)` | Packages with versions. |
 | `dependsOn(vararg patches)` | Patches that run first. |
-| `enabledByDefault(Boolean)` | Initial selection state. Default `true`. |
+| `enabledByDefault(Boolean)` | Initial selection state. Defaults to `true`, or `false` for a universal patch. |
 | `hidden()` | Keep a named patch off the lists. |
 | `stringOption(key, title, description, default, validValues, required)` | Declares and registers a `StringOption`. |
 | `boolOption(key, title, description, default, required)` | `BoolOption`. |
@@ -35,6 +35,8 @@ Inside `patch { }` (`PatchBuilder`):
 | `afterDependents { }` | Runs after every dependent finished. |
 
 Patch display names need not be unique. Each patch's ID derives from its public declaration (`package.property`), including named patches. Dependencies refer to those IDs through the patch objects passed to `dependsOn`. Renaming the property or its package changes its ID; changing the display name does not. CLI selection and options accept IDs or display names that resolve unambiguously for the target package; `bundle list` prints the IDs. SDK metadata exposes both `id` and `name`, while results and progress events identify patches by ID.
+
+Each result also carries `hidden` and `required_by`, so a client can report a run without re-deriving it. `required_by` lists the running patches that pulled this one in and is empty when the user asked for it directly, which is what separates "7 patches applied" from the dependencies that came with them. Count user-facing work as the results where `hidden` is false and `required_by` is empty.
 
 ### Options
 

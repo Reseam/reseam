@@ -13,7 +13,9 @@ interface ReseamPatch {
     val description: String get() = ""
     val dependencies: List<ReseamPatch> get() = emptyList()
     val compatibleWith: List<CompatiblePackage> get() = emptyList()
-    val enabled: Boolean get() = !hidden
+    /** A patch with no declared package works with every app, so it stays opt-in. */
+    val universal: Boolean get() = compatibleWith.isEmpty()
+    val enabled: Boolean get() = !hidden && !universal
     val options: List<Option<*>> get() = emptyList()
 
     fun execute(ctx: PatchRuntime)
@@ -54,7 +56,7 @@ abstract class PatchDeclaration internal constructor() {
 class PatchBuilder internal constructor(private val name: String?) : PatchDeclaration() {
     private var description = ""
     private var hidden = name == null
-    private var enabledByDefault = true
+    private var enabledByDefault: Boolean? = null
     private val options = mutableListOf<Option<*>>()
     private var settingsHost: SettingsHost? = null
     private val settings = mutableListOf<SettingsSection>()
@@ -117,7 +119,7 @@ class PatchBuilder internal constructor(private val name: String?) : PatchDeclar
             override val description = builder.description
             override val dependencies = builder.dependencies.toList()
             override val compatibleWith = builder.compatibility.toList()
-            override val enabled = !builder.hidden && builder.enabledByDefault
+            override val enabled = !builder.hidden && (builder.enabledByDefault ?: !universal)
             override val options = builder.options.toList()
 
             override fun execute(ctx: PatchRuntime) {

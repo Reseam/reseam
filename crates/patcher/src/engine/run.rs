@@ -167,7 +167,17 @@ impl<'a> Run<'a> {
             patch: name.clone(),
             status: status.clone(),
         });
-        self.results[idx] = Some(PatchResult { name, status, logs });
+        self.results[idx] = Some(PatchResult {
+            name,
+            hidden: self.patches[idx].spec().hidden,
+            required_by: self
+                .plan
+                .required_by(idx)
+                .map(|dependent| self.patches[dependent].id().to_owned())
+                .collect(),
+            status,
+            logs,
+        });
     }
 
     fn append_logs(&mut self, idx: usize, logs: Vec<LogEntry>) {
@@ -215,7 +225,7 @@ fn guarded(hook: impl FnOnce() -> Result<()>) -> std::result::Result<(), String>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::patch::{Compatibility, PatchSpec};
+    use crate::patch::{CompatiblePackage, PatchSpec};
 
     struct Declared(PatchSpec);
 
@@ -237,10 +247,12 @@ mod tests {
             description: String::new(),
             enabled_by_default: true,
             dependencies: Vec::new(),
-            compatibility: vec![Compatibility {
+            compatibility: [CompatiblePackage {
                 package: package.to_owned(),
                 versions: versions.iter().map(|v| (*v).to_owned()).collect(),
-            }],
+            }]
+            .into_iter()
+            .collect(),
             options: Vec::new(),
         })
     }

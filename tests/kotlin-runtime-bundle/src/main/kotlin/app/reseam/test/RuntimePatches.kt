@@ -156,3 +156,8 @@ val otherAds = patch("Hide Ads") {
     val marker = stringOption("marker", default = "other")
     execute { files.write("assets/other-ads.txt", options[marker].encodeToByteArray()) }
 }
+
+val universalMarker = patch("universal-marker") {
+    description("Declares no package, so it works with any app and waits to be asked for")
+    execute { files.write("assets/universal-marker.txt", "universal".encodeToByteArray()) }
+}

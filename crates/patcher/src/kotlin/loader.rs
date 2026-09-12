@@ -14,7 +14,7 @@ use super::jvm::{self, jvm_err, string_of};
 use super::patch::{load_class, KotlinPatch};
 use crate::error::Result;
 use crate::options::{OptionDeclaration, OptionType, OptionValue};
-use crate::patch::{Compatibility, Patch, PatchSpec};
+use crate::patch::{CompatiblePackage, Patch, PatchSpec};
 
 const PATCH_INTERFACE: &str = "app.reseam.patch.ReseamPatch";
 const NATIVE_CLASS: &str = "app.reseam.patch.Native";
@@ -384,7 +384,7 @@ fn read_patch(
     let compatibility = objects(env, patch, "getCompatibleWith")?
         .into_iter()
         .map(|entry| {
-            Ok(Compatibility {
+            Ok(CompatiblePackage {
                 package: string(env, &entry, "getName")?,
                 versions: strings(env, &entry, "getVersions")?,
             })

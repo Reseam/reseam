@@ -6,6 +6,7 @@ use std::io::Write;
 use anyhow::{ensure, Context, Result};
 use ed25519_dalek::SigningKey;
 use rand::RngCore;
+use reseam_patcher::Compatibility;
 use reseam_sdk::{inspect, InspectRequest};
 use tracing::info;
 
@@ -54,19 +55,21 @@ pub fn run_bundle_list(command: &BundleListCommand) -> Result<()> {
             spec.description
         );
         println!("       id: {}", spec.id);
-        if !spec.compatibility.is_empty() {
-            let packages: Vec<String> = spec
-                .compatibility
-                .iter()
-                .map(|entry| {
-                    if entry.versions.is_empty() {
-                        entry.package.clone()
-                    } else {
-                        format!("{} ({})", entry.package, entry.versions.join(", "))
-                    }
-                })
-                .collect();
-            println!("       packages: {}", packages.join(", "));
+        match &spec.compatibility {
+            Compatibility::Universal => println!("       packages: any app"),
+            Compatibility::Packages { packages } => {
+                let packages: Vec<String> = packages
+                    .iter()
+                    .map(|entry| {
+                        if entry.versions.is_empty() {
+                            entry.package.clone()
+                        } else {
+                            format!("{} ({})", entry.package, entry.versions.join(", "))
+                        }
+                    })
+                    .collect();
+                println!("       packages: {}", packages.join(", "));
+            }
         }
         let dependencies: Vec<&str> = spec
             .dependencies

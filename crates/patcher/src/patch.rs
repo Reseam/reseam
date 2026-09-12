@@ -24,10 +24,38 @@ pub trait Patch: Send + Sync {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Compatibility {
+pub struct CompatiblePackage {
     pub package: String,
     /// Empty means every version.
     pub versions: Vec<String>,
+}
+
+/// Which apps a patch declares itself for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Compatibility {
+    /// Declares no package, so it applies to every app and stays opt-in.
+    Universal,
+    Packages {
+        packages: Vec<CompatiblePackage>,
+    },
+}
+
+impl Compatibility {
+    pub fn is_universal(&self) -> bool {
+        matches!(self, Self::Universal)
+    }
+}
+
+impl FromIterator<CompatiblePackage> for Compatibility {
+    fn from_iter<I: IntoIterator<Item = CompatiblePackage>>(packages: I) -> Self {
+        let packages: Vec<_> = packages.into_iter().collect();
+        if packages.is_empty() {
+            Self::Universal
+        } else {
+            Self::Packages { packages }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -41,8 +69,7 @@ pub struct PatchSpec {
     pub description: String,
     pub enabled_by_default: bool,
     pub dependencies: Vec<String>,
-    /// Empty means every app.
-    pub compatibility: Vec<Compatibility>,
+    pub compatibility: Compatibility,
     pub options: Vec<OptionDeclaration>,
 }
 
@@ -76,20 +103,19 @@ impl PatchSpec {
         self.package_compatibility(package).err()
     }
 
-    /// The compatibility entries for `package`; `Ok(None)` when the patch
-    /// applies to every app.
+    /// The declared entries for `package`; `Ok(None)` when the patch applies
+    /// to every app.
     fn package_compatibility(
         &self,
         package: Option<&str>,
-    ) -> std::result::Result<Option<Vec<&Compatibility>>, String> {
-        if self.compatibility.is_empty() {
+    ) -> std::result::Result<Option<Vec<&CompatiblePackage>>, String> {
+        let Compatibility::Packages { packages } = &self.compatibility else {
             return Ok(None);
-        }
+        };
         let Some(package) = package else {
             return Err("APK has no package name".to_owned());
         };
-        let entries: Vec<&Compatibility> = self
-            .compatibility
+        let entries: Vec<&CompatiblePackage> = packages
             .iter()
             .filter(|entry| entry.package == package)
             .collect();

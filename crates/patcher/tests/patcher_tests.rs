@@ -253,7 +253,7 @@ fn kotlin_bundle_executes_against_runtime_api() {
         heap.committed_bytes
     );
 
-    assert_eq!(results.len(), 11);
+    assert_eq!(results.len(), 12);
     let statuses = results
         .iter()
         .map(|result| (result.name.as_str(), &result.status))
@@ -269,8 +269,14 @@ fn kotlin_bundle_executes_against_runtime_api() {
         statuses.get(internal.id()),
         Some(&PatchStatus::Skipped { .. })
     ));
-    assert_eq!(statuses.get("app.reseam.test.finalizeOwner"), Some(&&PatchStatus::Applied));
-    assert_eq!(statuses.get("app.reseam.test.runtimeApi"), Some(&&PatchStatus::Applied));
+    assert_eq!(
+        statuses.get("app.reseam.test.finalizeOwner"),
+        Some(&&PatchStatus::Applied)
+    );
+    assert_eq!(
+        statuses.get("app.reseam.test.runtimeApi"),
+        Some(&&PatchStatus::Applied)
+    );
     assert_eq!(
         statuses.get("app.reseam.test.dependentRuntime"),
         Some(&&PatchStatus::Applied)
@@ -344,13 +350,77 @@ fn internal_patches_run_as_dependencies() {
         .filter(|result| result.status == PatchStatus::Applied)
         .map(|result| result.name.as_str())
         .collect();
-    assert_eq!(applied, ["app.reseam.test.internalHelper", "app.reseam.test.usesInternal"]);
+    assert_eq!(
+        applied,
+        [
+            "app.reseam.test.internalHelper",
+            "app.reseam.test.usesInternal"
+        ]
+    );
+    let helper = results
+        .iter()
+        .find(|result| result.name == "app.reseam.test.internalHelper")
+        .expect("the internal helper ran");
+    assert!(helper.hidden);
+    assert_eq!(helper.required_by, ["app.reseam.test.usesInternal"]);
+    let dependent = results
+        .iter()
+        .find(|result| result.name == "app.reseam.test.usesInternal")
+        .expect("the selected patch ran");
+    assert!(!dependent.hidden);
+    assert!(
+        dependent.required_by.is_empty(),
+        "it was asked for directly"
+    );
     assert_eq!(
         apk.component_mut(0)
             .unwrap()
             .read_entry("assets/internal-marker.txt")
             .unwrap(),
         Some(b"internal".to_vec())
+    );
+}
+
+#[test]
+fn universal_patches_wait_to_be_selected() {
+    let bundle_file = write_bundle_reseam();
+    let bundle = BundleArchive::open(&bundle_file.path)
+        .expect("open runtime bundle")
+        .load()
+        .expect("load runtime bundle");
+    let patches: Vec<&dyn Patch> = bundle.patches.iter().map(Box::as_ref).collect();
+    let universal = patches
+        .iter()
+        .find(|patch| patch.id() == "app.reseam.test.universalMarker")
+        .expect("the fixture declares a universal patch");
+    assert!(universal.spec().compatibility.is_universal());
+    assert!(
+        !universal.spec().enabled_by_default,
+        "a patch that works with any app is opt-in"
+    );
+
+    let (_apk_dir, mut apk) = open_split_test_apk();
+    let mut ctx = PatchContext::new(&mut apk);
+    let selection = PatchSelection {
+        enable: ["universal-marker".to_string()].into(),
+        ..Default::default()
+    };
+    let results =
+        engine::apply_patches(&mut ctx, &patches, &selection, |_| {}).expect("apply bundle");
+    assert_eq!(
+        results
+            .iter()
+            .find(|result| result.name == universal.id())
+            .map(|result| &result.status),
+        Some(&PatchStatus::Applied),
+        "selecting it explicitly still runs it"
+    );
+    assert_eq!(
+        apk.component_mut(0)
+            .unwrap()
+            .read_entry("assets/universal-marker.txt")
+            .unwrap(),
+        Some(b"universal".to_vec())
     );
 }
 
@@ -740,7 +810,6 @@ fn after_hooks_preserve_entry_arguments_when_parameter_registers_are_reused() {
         }
     }
 }
-
 
 #[test]
 fn same_named_patches_keep_independent_identity_options_dependencies_and_settings() {
