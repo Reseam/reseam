@@ -125,7 +125,8 @@ pub(crate) fn open_apk(
     options: &ParseOptions,
 ) -> Result<OpenedApk> {
     let bundle = ContainerBundle::open(apk_path)
-        .with_context(|| format!("failed to open APK bundle {}", apk_path.display()))?;
+        .with_context(|| format!("failed to open APK bundle {}", apk_path.display()))
+        .context(Problem::unreadable_apk(apk_path))?;
     ensure!(
         bundle.is_none() || split_paths.is_empty(),
         "split files cannot be combined with an APKM/XAPK container"
@@ -135,7 +136,8 @@ pub(crate) fn open_apk(
         None => (apk_path, split_paths),
     };
     let apk = ApkFile::open_split(base, splits, options)
-        .with_context(|| format!("failed to open APK {}", apk_path.display()))?;
+        .with_context(|| format!("failed to open APK {}", apk_path.display()))
+        .context(Problem::unreadable_apk(apk_path))?;
     Ok(OpenedApk { apk, bundle })
 }
 

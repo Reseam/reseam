@@ -6,7 +6,6 @@
 
 use std::path::Path;
 
-use reseam_apk::ApkError;
 use reseam_patcher::error::PatcherError;
 use serde::Serialize;
 use thiserror::Error;
@@ -45,6 +44,12 @@ impl Problem {
         }
     }
 
+    pub fn unreadable_apk(path: &Path) -> Self {
+        Self::UnreadableApk {
+            path: path.display().to_string(),
+        }
+    }
+
     /// The problem an error chain describes, `Other` when none is recognised.
     pub fn classify(error: &anyhow::Error) -> Self {
         error
@@ -72,11 +77,7 @@ impl Problem {
                         built: built.clone(),
                         running: running.clone(),
                     }),
-                    _ => cause
-                        .downcast_ref::<ApkError>()
-                        .map(|_| Self::UnreadableApk {
-                            path: String::new(),
-                        }),
+                    _ => None,
                 }
             })
             .unwrap_or(Self::Other)
