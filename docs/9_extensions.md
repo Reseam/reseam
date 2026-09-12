@@ -10,7 +10,16 @@ apps/example/extensions/ads/
   src/stubs/java/com/example/app/FeedItem.java
 ```
 
-`src/main/java` is compiled and dexed. `src/stubs/java` holds compile-time stand-ins for classes the app already has and is never dexed. A module needs a build script only to compile against another extension: `compileOnly(project(":shared:settings-runtime"))`.
+`src/main/java` is compiled and dexed. `src/stubs/java` holds compile-time stand-ins for classes the app already has and is never dexed. A module needs a build script only to declare dependencies. `implementation` dependencies are dexed into the extension, Android libraries (`.aar`) included; `compileOnly` ones are expected from the app or from another module of the bundle:
+
+```kotlin
+dependencies {
+    compileOnly(project(":shared:settings-runtime"))
+    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
+}
+```
+
+Only the classes of an `.aar` are used. Its resources and manifest have no place in an app that is already built, and a library shipping native code is refused. A library the app already contains belongs in `compileOnly`, so the DEX does not carry a second copy of it.
 
 A patch declares the extension classes it calls:
 

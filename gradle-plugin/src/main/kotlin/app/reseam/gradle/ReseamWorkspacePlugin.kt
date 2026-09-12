@@ -18,6 +18,7 @@ class ReseamWorkspacePlugin : Plugin<Settings> {
         val root = settings.rootDir
         settings.dependencyResolutionManagement.repositories.apply {
             mavenCentral()
+            google { mavenContent { includeGroupAndSubgroups("androidx"); includeGroupAndSubgroups("com.android"); includeGroupAndSubgroups("com.google") } }
             maven { url = settings.providers.provider { java.net.URI(RESEAM_MAVEN) }.get(); mavenContent { includeGroup("app.reseam") } }
         }
         workspace(settings)?.let { settings.includeBuild(it) }

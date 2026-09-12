@@ -6,6 +6,7 @@ package app.reseam.gradle
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
@@ -16,6 +17,10 @@ import javax.inject.Inject
 abstract class DexTask @Inject constructor(private val exec: ExecOperations) : DefaultTask() {
     @get:InputFiles
     abstract val sources: ConfigurableFileCollection
+
+    /** Classes referenced but not dexed, so d8 can desugar against them. */
+    @get:Classpath
+    abstract val libraries: ConfigurableFileCollection
 
     @get:OutputDirectory
     abstract val output: DirectoryProperty
@@ -30,6 +35,7 @@ abstract class DexTask @Inject constructor(private val exec: ExecOperations) : D
         exec.exec {
             commandLine(
                 listOf(AndroidSdk.d8().absolutePath, "--release", "--min-api", MIN_API.toString(), "--output", outDir.absolutePath) +
+                    libraries.files.flatMap { listOf("--lib", it.absolutePath) } +
                     files.map { it.absolutePath },
             )
         }
