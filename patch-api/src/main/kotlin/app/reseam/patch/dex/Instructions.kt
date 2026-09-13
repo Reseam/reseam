@@ -25,26 +25,26 @@ import app.reseam.patch.SimpleInsn
 
 val Instruction.opcodeValue: Int
     get() = when (this) {
-        is Instruction.Simple -> value0.opcode.toInt()
-        is Instruction.Reg1 -> value0.opcode.toInt()
-        is Instruction.Reg2 -> value0.opcode.toInt()
-        is Instruction.Reg3 -> value0.opcode.toInt()
-        is Instruction.RegLiteral -> value0.opcode.toInt()
-        is Instruction.RegString -> value0.opcode.toInt()
-        is Instruction.RegType -> value0.opcode.toInt()
-        is Instruction.RegField -> value0.opcode.toInt()
-        is Instruction.Invoke -> value0.opcode.toInt()
-        is Instruction.InvokeRange -> value0.opcode.toInt()
-        is Instruction.Branch0 -> value0.opcode.toInt()
-        is Instruction.Branch -> value0.opcode.toInt()
-        is Instruction.Branch2 -> value0.opcode.toInt()
-        is Instruction.FilledArray -> value0.opcode.toInt()
-        is Instruction.FilledArrayRange -> value0.opcode.toInt()
+        is Instruction.Simple -> field0.opcode.toInt()
+        is Instruction.Reg1 -> field0.opcode.toInt()
+        is Instruction.Reg2 -> field0.opcode.toInt()
+        is Instruction.Reg3 -> field0.opcode.toInt()
+        is Instruction.RegLiteral -> field0.opcode.toInt()
+        is Instruction.RegString -> field0.opcode.toInt()
+        is Instruction.RegType -> field0.opcode.toInt()
+        is Instruction.RegField -> field0.opcode.toInt()
+        is Instruction.Invoke -> field0.opcode.toInt()
+        is Instruction.InvokeRange -> field0.opcode.toInt()
+        is Instruction.Branch0 -> field0.opcode.toInt()
+        is Instruction.Branch -> field0.opcode.toInt()
+        is Instruction.Branch2 -> field0.opcode.toInt()
+        is Instruction.FilledArray -> field0.opcode.toInt()
+        is Instruction.FilledArrayRange -> field0.opcode.toInt()
         is Instruction.PackedSwitchData,
         is Instruction.SparseSwitchData,
         is Instruction.FillArrayData,
         -> -1
-        is Instruction.Raw -> value0[0].toInt() and 0xFF
+        is Instruction.Raw -> field0[0].toInt() and 0xFF
     }
 
 val Instruction.opcode: Opcode?
@@ -52,62 +52,62 @@ val Instruction.opcode: Opcode?
 
 val Instruction.regA: Int?
     get() = when (this) {
-        is Instruction.Reg1 -> value0.regA.toInt()
-        is Instruction.Reg2 -> value0.regA.toInt()
-        is Instruction.Reg3 -> value0.regA.toInt()
-        is Instruction.RegLiteral -> value0.regA.toInt()
-        is Instruction.RegString -> value0.regA.toInt()
-        is Instruction.RegType -> value0.regA.toInt()
-        is Instruction.RegField -> value0.regA.toInt()
-        is Instruction.Branch -> value0.regA.toInt()
-        is Instruction.Branch2 -> value0.regA.toInt()
+        is Instruction.Reg1 -> field0.regA.toInt()
+        is Instruction.Reg2 -> field0.regA.toInt()
+        is Instruction.Reg3 -> field0.regA.toInt()
+        is Instruction.RegLiteral -> field0.regA.toInt()
+        is Instruction.RegString -> field0.regA.toInt()
+        is Instruction.RegType -> field0.regA.toInt()
+        is Instruction.RegField -> field0.regA.toInt()
+        is Instruction.Branch -> field0.regA.toInt()
+        is Instruction.Branch2 -> field0.regA.toInt()
         else -> null
     }
 
 val Instruction.regB: Int?
     get() = when (this) {
-        is Instruction.Reg2 -> value0.regB.toInt()
-        is Instruction.Reg3 -> value0.regB.toInt()
-        is Instruction.RegLiteral -> value0.regB.toInt()
-        is Instruction.RegType -> value0.regB.toInt()
-        is Instruction.RegField -> value0.regB.toInt()
-        is Instruction.Branch2 -> value0.regB.toInt()
+        is Instruction.Reg2 -> field0.regB.toInt()
+        is Instruction.Reg3 -> field0.regB.toInt()
+        is Instruction.RegLiteral -> field0.regB.toInt()
+        is Instruction.RegType -> field0.regB.toInt()
+        is Instruction.RegField -> field0.regB.toInt()
+        is Instruction.Branch2 -> field0.regB.toInt()
         else -> null
     }
 
 val Instruction.regC: Int?
-    get() = (this as? Instruction.Reg3)?.value0?.regC?.toInt()
+    get() = (this as? Instruction.Reg3)?.field0?.regC?.toInt()
 
 val Instruction.invokeRegisters: List<Int>?
     get() = when (this) {
-        is Instruction.Invoke -> value0.registers.map { it.toInt() }
-        is Instruction.InvokeRange -> (value0.startReg.toInt() until value0.startReg.toInt() + value0.regCount.toInt()).toList()
+        is Instruction.Invoke -> field0.registers.map { it.toInt() }
+        is Instruction.InvokeRange -> (field0.startReg.toInt() until field0.startReg.toInt() + field0.regCount.toInt()).toList()
         else -> null
     }
 
 val Instruction.methodRef: MethodRef?
     get() = when (this) {
-        is Instruction.Invoke -> value0.method
-        is Instruction.InvokeRange -> value0.method
+        is Instruction.Invoke -> field0.method
+        is Instruction.InvokeRange -> field0.method
         else -> null
     }
 
 val Instruction.fieldRef: FieldRef?
-    get() = (this as? Instruction.RegField)?.value0?.field
+    get() = (this as? Instruction.RegField)?.field0?.field
 
 val Instruction.stringValue: String?
-    get() = (this as? Instruction.RegString)?.value0?.value
+    get() = (this as? Instruction.RegString)?.field0?.value
 
 val Instruction.typeRef: String?
     get() = when (this) {
-        is Instruction.RegType -> value0.typeDescriptor
-        is Instruction.FilledArray -> value0.typeDescriptor
-        is Instruction.FilledArrayRange -> value0.typeDescriptor
+        is Instruction.RegType -> field0.typeDescriptor
+        is Instruction.FilledArray -> field0.typeDescriptor
+        is Instruction.FilledArrayRange -> field0.typeDescriptor
         else -> null
     }
 
 val Instruction.literal: Long?
-    get() = (this as? Instruction.RegLiteral)?.value0?.literal
+    get() = (this as? Instruction.RegLiteral)?.field0?.literal
 
 val Instruction.referencedRegisters: List<Int>
     get() = when (this) {
@@ -117,19 +117,19 @@ val Instruction.referencedRegisters: List<Int>
         is Instruction.SparseSwitchData,
         is Instruction.FillArrayData,
         is Instruction.Raw -> emptyList()
-        is Instruction.Reg1 -> listOf(value0.regA.toInt())
-        is Instruction.Reg2 -> listOf(value0.regA.toInt(), value0.regB.toInt())
-        is Instruction.Reg3 -> listOf(value0.regA.toInt(), value0.regB.toInt(), value0.regC.toInt())
-        is Instruction.RegLiteral -> listOf(value0.regA.toInt(), value0.regB.toInt())
-        is Instruction.RegString -> listOf(value0.regA.toInt())
-        is Instruction.RegType -> listOf(value0.regA.toInt(), value0.regB.toInt())
-        is Instruction.RegField -> listOf(value0.regA.toInt(), value0.regB.toInt())
-        is Instruction.Invoke -> value0.registers.map { it.toInt() }
+        is Instruction.Reg1 -> listOf(field0.regA.toInt())
+        is Instruction.Reg2 -> listOf(field0.regA.toInt(), field0.regB.toInt())
+        is Instruction.Reg3 -> listOf(field0.regA.toInt(), field0.regB.toInt(), field0.regC.toInt())
+        is Instruction.RegLiteral -> listOf(field0.regA.toInt(), field0.regB.toInt())
+        is Instruction.RegString -> listOf(field0.regA.toInt())
+        is Instruction.RegType -> listOf(field0.regA.toInt(), field0.regB.toInt())
+        is Instruction.RegField -> listOf(field0.regA.toInt(), field0.regB.toInt())
+        is Instruction.Invoke -> field0.registers.map { it.toInt() }
         is Instruction.InvokeRange -> invokeRegisters.orEmpty()
-        is Instruction.Branch -> listOf(value0.regA.toInt())
-        is Instruction.Branch2 -> listOf(value0.regA.toInt(), value0.regB.toInt())
-        is Instruction.FilledArray -> value0.registers.map { it.toInt() }
-        is Instruction.FilledArrayRange -> (value0.startReg.toInt() until value0.startReg.toInt() + value0.regCount.toInt()).toList()
+        is Instruction.Branch -> listOf(field0.regA.toInt())
+        is Instruction.Branch2 -> listOf(field0.regA.toInt(), field0.regB.toInt())
+        is Instruction.FilledArray -> field0.registers.map { it.toInt() }
+        is Instruction.FilledArrayRange -> (field0.startReg.toInt() until field0.startReg.toInt() + field0.regCount.toInt()).toList()
     }
 
 val Instruction.codeUnitSize: Int
@@ -163,10 +163,10 @@ val Instruction.codeUnitSize: Int
         is Instruction.Branch2 -> 2
         is Instruction.FilledArray -> 3
         is Instruction.FilledArrayRange -> 3
-        is Instruction.PackedSwitchData -> 4 + 2 * value0.targets.size
-        is Instruction.SparseSwitchData -> 2 + 4 * value0.keys.size
-        is Instruction.FillArrayData -> 4 + (value0.data.size + 1) / 2
-        is Instruction.Raw -> (value0.size + 1) / 2
+        is Instruction.PackedSwitchData -> 4 + 2 * field0.targets.size
+        is Instruction.SparseSwitchData -> 2 + 4 * field0.keys.size
+        is Instruction.FillArrayData -> 4 + (field0.data.size + 1) / 2
+        is Instruction.Raw -> (field0.size + 1) / 2
     }
 
 val MethodRef.returnType: String
@@ -318,7 +318,7 @@ class InstructionBuilder {
         invoke(Opcode.INVOKE_INTERFACE, MethodRef(owner, name, proto), registers.toList())
 
     fun invoke(opcode: Opcode, method: MethodRef, registers: List<Int>) =
-        add(Instruction.Invoke(InvokeInsn(opcode.value.toUShort(), ShortArray(registers.size) { registers[it].toShort() }, method)))
+        add(Instruction.Invoke(InvokeInsn(opcode.value.toUShort(), UShortArray(registers.size) { registers[it].toUShort() }, method)))
 
     fun invokeRange(opcode: Opcode, method: MethodRef, startReg: Int, count: Int) =
         add(Instruction.InvokeRange(InvokeRangeInsn(opcode.value.toUShort(), startReg.toUShort(), count.toUShort(), method)))

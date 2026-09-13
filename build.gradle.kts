@@ -5,9 +5,10 @@ import org.gradle.api.credentials.HttpHeaderCredentials
 import org.gradle.authentication.http.HttpHeaderAuthentication
 
 plugins {
-    kotlin("jvm") version "1.9.25" apply false
-    kotlin("multiplatform") version "1.9.25" apply false
-    id("com.android.library") version "8.11.2" apply false
+    kotlin("plugin.sam.with.receiver") version "2.4.10" apply false
+    kotlin("jvm") version "2.4.10" apply false
+    kotlin("multiplatform") version "2.4.10" apply false
+    id("com.android.kotlin.multiplatform.library") version "9.1.1" apply false
 }
 
 val sdkVersion = providers.gradleProperty("reseamSdkVersion").orElse("0.0.0-local").get().removePrefix("v")

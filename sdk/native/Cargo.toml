@@ -1,0 +1,17 @@
+[package]
+name = "reseam-sdk-native"
+version.workspace = true
+edition = "2021"
+publish = false
+description = "BoltFFI application bindings for the Reseam SDK"
+
+[lib]
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+reseam-model = { workspace = true }
+reseam-sdk = { workspace = true }
+boltffi = { workspace = true }
+anyhow = { workspace = true }
+jni = { workspace = true }
+serde_json = { workspace = true }

@@ -46,7 +46,10 @@ jobs:
       - name: Regenerate patch-api bindings
         run: cargo xtask regen patch-api
 
-      - name: Regenerate SDK bindings and Android jniLibs
+      - name: Put the NDK host clang on PATH
+        run: echo "$ANDROID_HOME/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+
+      - name: Regenerate SDK bindings and Android/desktop JNI libraries
         run: cargo xtask regen sdk
 
       - name: Check generated sources are committed
@@ -54,9 +57,6 @@ jobs:
 
       - name: Build reseam-cli release binary
         run: cargo build --release -p reseam-cli
-
-      - name: Build desktop JNI shim
-        run: cargo xtask jni-host
 
       - name: Check the tag names the workspace version
         run: cargo xtask check-tag ${{ github.ref_name }}

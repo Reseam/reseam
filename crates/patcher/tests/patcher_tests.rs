@@ -14,7 +14,7 @@ use reseam_apk::{ApkFile, ResValue, ResourceTable, StringPool};
 use reseam_patcher::bundle::{BundleArchive, ENGINE_VERSION};
 use reseam_patcher::context::PatchContext;
 use reseam_patcher::engine::{self, PatchSelection, PatchStatus};
-use reseam_patcher::options::{OptionValue, PatchOptions};
+use reseam_patcher::options::OptionValue;
 use reseam_patcher::Patch;
 
 static FIXTURE_JAR: OnceLock<PathBuf> = OnceLock::new();
@@ -226,12 +226,18 @@ fn kotlin_bundle_executes_against_runtime_api() {
     let (_apk_dir, mut apk) = open_split_test_apk();
     let mut ctx = PatchContext::new(&mut apk);
 
-    let mut options = PatchOptions::default();
-    options.set("baseVersion", OptionValue::String("9.9-base".to_string()));
-    options.set("splitVersion", OptionValue::String("9.9-split".to_string()));
-    options.set(
-        "splitText",
-        OptionValue::String("Split patched by runtime".to_string()),
+    let mut options = std::collections::HashMap::new();
+    options.insert(
+        "baseVersion".to_owned(),
+        OptionValue::Text("9.9-base".to_string()),
+    );
+    options.insert(
+        "splitVersion".to_owned(),
+        OptionValue::Text("9.9-split".to_string()),
+    );
+    options.insert(
+        "splitText".to_owned(),
+        OptionValue::Text("Split patched by runtime".to_string()),
     );
     let selection = PatchSelection {
         enable: ["runtime-api", "dependent-runtime"]
@@ -904,10 +910,10 @@ fn same_named_patches_keep_independent_identity_options_dependencies_and_setting
     assert_eq!(applied, [other]);
 
     let (_apk_dir, mut apk) = open_split_test_apk();
-    let mut first_options = PatchOptions::default();
-    first_options.set("marker", OptionValue::String("one".into()));
-    let mut second_options = PatchOptions::default();
-    second_options.set("marker", OptionValue::String("two".into()));
+    let mut first_options = std::collections::HashMap::new();
+    first_options.insert("marker".to_owned(), OptionValue::Text("one".into()));
+    let mut second_options = std::collections::HashMap::new();
+    second_options.insert("marker".to_owned(), OptionValue::Text("two".into()));
     let selection = PatchSelection {
         enable: [second.to_owned()].into(),
         options: [

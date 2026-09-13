@@ -20,13 +20,9 @@ cargo xtask regen patch-api      # this directory only
 cargo xtask regen all            # patch-api and sdk together (recommended)
 ```
 
-This runs BoltFFI with `RESEAM_SKIP_JNI_GLUE=1` so type generation is not blocked by the current JNI bridge, then post-processes the Kotlin bridge into the publishable source tree. `regen all` also rebuilds and links the Android `jniLibs/*.so` under `sdk/`, which is what you want on a fresh clone or when those binaries have gone stale.
+This reads BoltFFI Binding IR from the patcher rlib with `RESEAM_SKIP_JNI_GLUE=1` so type generation is not blocked by the current JNI bridge, then post-processes the Kotlin bridge into the publishable source tree. `regen all` also rebuilds and links the Android `jniLibs/*.so` under `sdk/`, which is what you want on a fresh clone or when those binaries have gone stale.
 
-Build the JNI wrapper library:
-
-```bash
-JAVA_HOME=/usr/lib/jvm/java-17-temurin-jdk cargo xtask jni-host
-```
+The JNI registration table is derived from the same resolved Binding IR as Kotlin and C. The engine compiles it with the untouched generated C bridge. SDK regeneration delegates Android and desktop JNI packaging to BoltFFI. See [the architecture review](../docs/bindings.md).
 
 Run SDK tests, from the workspace root:
 

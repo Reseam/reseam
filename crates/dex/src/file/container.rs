@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use serde::{Deserialize, Serialize};
-
 use crate::error::Result;
 use crate::file::DexFile;
 use crate::types::header::{DexHeader, DexVersion, ParseOptions};
@@ -17,40 +15,7 @@ pub struct MultiDexContainer {
 
 /// How much class-data IR is currently materialized across all DEXes. Used to
 /// attribute apply-phase memory to decoded instructions vs everything else.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
-pub struct MaterializationStats {
-    pub total_classes: u64,
-    pub resolved_classes: u64,
-    pub methods: u64,
-    pub instructions: u64,
-}
-
-impl MaterializationStats {
-    /// Lower bound on heap held by materialized IR (ignores Vec overhead,
-    /// tries, and debug info). Uses live type sizes so it tracks layout changes.
-    pub fn estimated_ir_bytes(&self) -> u64 {
-        use crate::types::class::{ClassData, EncodedMethod};
-        use crate::types::instruction::Instruction;
-        use std::mem::size_of;
-
-        self.instructions * size_of::<Instruction>() as u64
-            + self.methods * size_of::<EncodedMethod>() as u64
-            + self.resolved_classes * size_of::<ClassData>() as u64
-    }
-}
-
-/// Full native heap attribution for a container, so RSS can be split into its
-/// contributors rather than guessed at. All figures are lower bounds (they
-/// exclude `Vec` capacity slack and allocator overhead).
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
-pub struct MemoryBreakdown {
-    pub raw_buffer_bytes: u64,
-    pub string_pool_bytes: u64,
-    pub string_count: u64,
-    pub id_table_bytes: u64,
-    pub class_def_bytes: u64,
-    pub materialized: MaterializationStats,
-}
+pub use reseam_model::{MaterializationStats, MemoryBreakdown};
 
 impl MultiDexContainer {
     pub fn new() -> Self {
@@ -324,4 +289,16 @@ impl<'a> IntoIterator for &'a mut MultiDexContainer {
     fn into_iter(self) -> Self::IntoIter {
         self.dex_files.iter_mut()
     }
+}
+
+/// Lower bound on heap held by materialized IR (ignores Vec overhead,
+/// tries, and debug info). Uses live type sizes so it tracks layout changes.
+pub fn estimated_ir_bytes(stats: &MaterializationStats) -> u64 {
+    use crate::types::class::{ClassData, EncodedMethod};
+    use crate::types::instruction::Instruction;
+    use std::mem::size_of;
+
+    stats.instructions * size_of::<Instruction>() as u64
+        + stats.methods * size_of::<EncodedMethod>() as u64
+        + stats.resolved_classes * size_of::<ClassData>() as u64
 }

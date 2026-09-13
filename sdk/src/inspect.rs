@@ -9,9 +9,9 @@ use reseam_apk::{ApkFile, ContainerBundle};
 use reseam_patcher::bundle::{BundleArchive, PatchBundle};
 use reseam_patcher::PatchSpec;
 
-use crate::dto::{ApkMetadata, BundleMetadata, InspectRequest, InspectResponse, PatchMetadata};
 use crate::error::Problem;
 use crate::trust::TrustStore;
+use crate::{ApkMetadata, BundleMetadata, InspectRequest, InspectResponse, PatchMetadata};
 
 pub fn inspect_apk(apk_path: &Path, split_paths: &[PathBuf]) -> Result<ApkMetadata> {
     // Same tolerance as patching: a repacked APK (stale DEX checksums and
@@ -43,14 +43,21 @@ pub(crate) fn apk_metadata(opened: &mut OpenedApk) -> Result<ApkMetadata> {
 }
 
 pub fn inspect(request: &InspectRequest) -> Result<InspectResponse> {
+    let trust = TrustStore::from_hex(&request.trust.keys).map_err(anyhow::Error::msg)?;
+    let splits = request
+        .split_paths
+        .iter()
+        .map(PathBuf::from)
+        .collect::<Vec<_>>();
     let apk = request
         .apk_path
         .as_deref()
-        .map(|path| inspect_apk(path, &request.split_paths))
+        .map(|path| inspect_apk(Path::new(path), &splits))
         .transpose()?;
     let mut bundles = Vec::with_capacity(request.bundle_paths.len());
     let mut patches = Vec::new();
     for path in &request.bundle_paths {
+        let path = Path::new(path);
         let archive = match open_bundle(path) {
             Ok(archive) => archive,
             Err(error) => {
@@ -58,7 +65,7 @@ pub fn inspect(request: &InspectRequest) -> Result<InspectResponse> {
                 continue;
             }
         };
-        let mut metadata = bundle_metadata(path, &archive, &request.trust);
+        let mut metadata = bundle_metadata(path, &archive, &trust);
         if !metadata.trusted {
             metadata.problem = Some(Problem::UntrustedBundle {
                 path: path.display().to_string(),
@@ -70,7 +77,7 @@ pub fn inspect(request: &InspectRequest) -> Result<InspectResponse> {
                     bundle
                         .patches
                         .iter()
-                        .map(|patch| patch_metadata(&bundle.info.name, patch.spec(), apk.as_ref())),
+                        .map(|patch| patch_metadata(patch.spec(), apk.as_ref())),
                 ),
                 Err(error) => metadata.problem = Some(load_problem(path, &error.into())),
             }
@@ -99,7 +106,7 @@ fn unreadable_bundle(path: &Path, error: &anyhow::Error) -> BundleMetadata {
 }
 
 fn load_problem(path: &Path, error: &anyhow::Error) -> Problem {
-    match Problem::classify(error) {
+    match crate::error::classify(error) {
         Problem::Other | Problem::UnreadableApk { .. } => Problem::unreadable_bundle(path),
         problem => problem,
     }
@@ -139,7 +146,7 @@ pub(crate) fn open_apk(
     Ok(OpenedApk { apk, bundle })
 }
 
-/// The problem is the root cause so `Problem::classify` finds it; the engine's own text stays as the detail.
+/// The problem is the root cause so `classify` finds it; the engine's own text stays as the detail.
 fn unreadable_apk(path: &Path, error: anyhow::Error) -> anyhow::Error {
     anyhow::Error::new(Problem::unreadable_apk(path))
         .context(format!("failed to open APK {}: {error:#}", path.display()))
@@ -185,13 +192,51 @@ fn bundle_metadata(path: &Path, archive: &BundleArchive, trust: &TrustStore) -> 
     }
 }
 
-fn patch_metadata(bundle: &str, spec: &PatchSpec, apk: Option<&ApkMetadata>) -> PatchMetadata {
+fn patch_metadata(spec: &PatchSpec, apk: Option<&ApkMetadata>) -> PatchMetadata {
     PatchMetadata {
-        bundle: bundle.to_string(),
         spec: spec.clone(),
         incompatibility: spec.incompatibility(
             apk.and_then(|apk| apk.package_name.as_deref()),
             apk.and_then(|apk| apk.version_name.as_deref()),
         ),
+    }
+}
+
+/// An opened APK whose extracted component files remain valid until it is dropped.
+///
+/// Owns the container extraction directory. Consumers must finish reading component
+/// paths before dropping this inspection.
+pub struct ApkInspection {
+    opened: OpenedApk,
+}
+
+impl ApkInspection {
+    /// Opens an APK or container, returning an error for unreadable input.
+    pub fn open(path: &Path, split_paths: &[PathBuf]) -> Result<Self> {
+        Ok(Self {
+            opened: open_apk(path, split_paths, &ApkFile::patch_options())?,
+        })
+    }
+
+    /// Reads application and bytecode metadata, propagating malformed-input errors.
+    pub fn metadata(&mut self) -> Result<ApkMetadata> {
+        apk_metadata(&mut self.opened)
+    }
+
+    /// Returns the base component path, valid for this inspection's lifetime.
+    pub fn base_path(&self) -> &Path {
+        self.opened.apk.base().path()
+    }
+
+    /// Returns additional component paths in their original order.
+    pub fn split_paths(&self) -> impl Iterator<Item = &Path> {
+        self.opened.apk.components()[1..]
+            .iter()
+            .map(|apk| apk.path())
+    }
+
+    /// Resolves a bitmap or adaptive icon, or none when no icon can be resolved.
+    pub fn application_icon(&mut self) -> Result<Option<reseam_apk::ApplicationIcon>> {
+        Ok(self.opened.apk.application_icon()?)
     }
 }

@@ -1,0 +1,14 @@
+[package]
+name = "reseam-model"
+version.workspace = true
+edition = "2021"
+description = "Shared Reseam application and patch metadata"
+
+[dependencies]
+boltffi = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

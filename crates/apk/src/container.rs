@@ -11,7 +11,7 @@ use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tracing::instrument;
 
 use crate::axml::AxmlDocument;
@@ -23,21 +23,7 @@ use crate::zip::reader::{self, Archive};
 const INFO_JSON: &str = "info.json";
 const MANIFEST_JSON: &str = "manifest.json";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ContainerFormat {
-    Apkm,
-    Xapk,
-}
-
-impl ContainerFormat {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Apkm => "apkm",
-            Self::Xapk => "xapk",
-        }
-    }
-}
+pub use reseam_model::ContainerFormat;
 
 #[derive(Debug, Deserialize)]
 struct ContainerMetadata {

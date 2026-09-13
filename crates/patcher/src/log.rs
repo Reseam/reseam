@@ -1,24 +1,7 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::fmt;
-
-use serde::Serialize;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum LogLevel {
-    Debug,
-    Info,
-    Warn,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct LogEntry {
-    pub level: LogLevel,
-    pub patch: String,
-    pub message: String,
-}
+pub use reseam_model::{LogEntry, LogLevel};
 
 /// Messages a patch emits while it runs, tagged with the patch's name.
 #[derive(Debug, Clone, Default)]
@@ -57,21 +40,5 @@ impl PatchLog {
 
     pub(crate) fn take_entries(&mut self) -> Vec<LogEntry> {
         std::mem::take(&mut self.entries)
-    }
-}
-
-impl fmt::Display for LogLevel {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Debug => "DEBUG",
-            Self::Info => "INFO",
-            Self::Warn => "WARN",
-        })
-    }
-}
-
-impl fmt::Display for LogEntry {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}] {}: {}", self.level, self.patch, self.message)
     }
 }

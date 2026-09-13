@@ -17,23 +17,7 @@ use crate::ResValue;
 const BITMAP_EXTENSIONS: [&str; 4] = [".png", ".webp", ".jpg", ".jpeg"];
 
 /// A launcher icon as the manifest declares it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ApplicationIcon {
-    /// An encoded PNG, WebP or JPEG.
-    Bitmap(Vec<u8>),
-    /// Layers on a 108dp canvas of which a launcher shows the central 72dp.
-    Adaptive {
-        background: IconLayer,
-        foreground: IconLayer,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IconLayer {
-    Bitmap(Vec<u8>),
-    /// ARGB.
-    Color(u32),
-}
+pub use reseam_model::{ApplicationIcon, IconLayer};
 
 /// What a resource attribute finally resolves to in one configuration.
 struct Resolved {

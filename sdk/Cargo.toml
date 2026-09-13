@@ -5,23 +5,21 @@ edition = "2021"
 description = "Application integration SDK for Reseam clients"
 
 [lib]
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [dependencies]
-boltffi        = { workspace = true }
+reseam-model = { workspace = true }
 reseam-apk     = { workspace = true }
 reseam-sign    = { workspace = true }
 reseam-patcher = { workspace = true }
 anyhow         = { workspace = true }
-thiserror      = { workspace = true }
 serde          = { workspace = true }
-serde_json     = { workspace = true }
 hex            = { workspace = true }
-jni            = { workspace = true }
 tracing        = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }
 
 [dev-dependencies]
+serde_json = { workspace = true }
 zip = { workspace = true }

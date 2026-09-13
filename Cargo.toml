@@ -2,10 +2,12 @@
 resolver = "2"
 members = [
     "crates/dex",
+    "crates/model",
     "crates/apk",
     "crates/sign",
     "crates/patcher",
     "sdk",
+    "sdk/native",
     "crates/cli",
     "xtask",
 ]
@@ -15,10 +17,11 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.8.1"
+version = "0.9.0"
 
 [workspace.dependencies]
 # Internal crates
+reseam-model = { path = "crates/model" }
 reseam-dex     = { path = "crates/dex" }
 reseam-apk     = { path = "crates/apk" }
 reseam-sign    = { path = "crates/sign" }
@@ -46,7 +49,10 @@ toml        = "0.8"
 serde       = { version = "1", features = ["derive"] }
 serde_json  = "1"
 time        = { version = "0.3", features = ["formatting", "parsing"] }
-boltffi     = "0.2"
+boltffi_backend = "=0.30.1"
+boltffi_bindgen = "=0.30.1"
+boltffi_binding = "=0.30.1"
+boltffi     = { version = "=0.30.1", default-features = false }
 jni         = { version = "0.21", features = ["invocation"] }
 clap        = { version = "4", features = ["derive"] }
 anyhow      = "1"

@@ -16,16 +16,23 @@ use crate::app::{PatchCommand, PatchRequestArgs};
 pub fn run_patch(command: &PatchCommand) -> Result<()> {
     let apk = &command.request.apk;
     let output = if let Some(path) = &command.output {
-        PatchOutput::SingleFile { path: path.clone() }
+        PatchOutput::SingleFile {
+            path: path.display().to_string(),
+        }
     } else if let Some(path) = &command.output_dir {
-        PatchOutput::SplitDir { path: path.clone() }
+        PatchOutput::SplitDir {
+            path: path.display().to_string(),
+        }
     } else {
         let stem = apk
             .file_stem()
             .context("invalid APK path")?
             .to_string_lossy();
         PatchOutput::Auto {
-            path: apk.with_file_name(format!("{stem}-patched")),
+            path: apk
+                .with_file_name(format!("{stem}-patched"))
+                .display()
+                .to_string(),
         }
     };
 
@@ -73,17 +80,28 @@ pub(crate) fn request(args: &PatchRequestArgs, output: PatchOutput) -> Result<Pa
     let trust = args.trust.store()?;
     let selection = selection(args, &trust)?;
     Ok(PatchRequest {
-        apk_path: args.apk.clone(),
-        split_paths: args.split.clone(),
-        bundle_paths: args.bundle.clone(),
-        trust,
+        apk_path: args.apk.display().to_string(),
+        split_paths: args
+            .split
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect(),
+        bundle_paths: args
+            .bundle
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect(),
+        trust: (&trust).into(),
         selection,
         output,
         signing: args
             .key
             .clone()
             .zip(args.cert.clone())
-            .map(|(key, cert)| SigningKeyFiles { key, cert }),
+            .map(|(key, cert)| SigningKeyFiles {
+                key: key.display().to_string(),
+                cert: cert.display().to_string(),
+            }),
         dry_run: args.dry_run,
     })
 }
@@ -121,7 +139,11 @@ fn selection(args: &PatchRequestArgs, trust: &TrustStore) -> Result<PatchSelecti
         let value = declaration
             .parse(value)
             .map_err(|reason| anyhow!("invalid --option {raw}: {reason}"))?;
-        selection.options.entry(patch).or_default().set(key, value);
+        selection
+            .options
+            .entry(patch)
+            .or_default()
+            .insert(key.to_owned(), value);
     }
     Ok(selection)
 }

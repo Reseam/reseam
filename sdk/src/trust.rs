@@ -55,3 +55,11 @@ impl TryFrom<TrustSpec> for TrustStore {
         Self::from_hex(&spec.keys)
     }
 }
+
+impl From<&TrustStore> for reseam_model::Trust {
+    fn from(store: &TrustStore) -> Self {
+        Self {
+            keys: store.keys.iter().map(hex::encode).collect(),
+        }
+    }
+}

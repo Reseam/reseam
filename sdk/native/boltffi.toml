@@ -1,6 +1,6 @@
 [package]
 name = "reseam_sdk"
-crate = "reseam-sdk"
+crate = "reseam-sdk-native"
 
 [targets.apple]
 enabled = false
@@ -10,13 +10,16 @@ enabled = false
 
 [targets.android]
 enabled = true
+output = "../dist/android"
 
 [targets.android.kotlin]
 package = "app.reseam.sdk"
-output = "generated"
+output = "../generated"
 module_name = "ReseamSdk"
-library_name = "reseam_sdk"
-desktop_loader = "system"
+desktop_loader = "bundled"
+
+[targets.android.kotlin.desktop_pack]
+enabled = true
 
 [targets.android.pack]
-output = "jniLibs"
+output = "../jniLibs"

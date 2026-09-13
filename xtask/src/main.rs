@@ -5,8 +5,6 @@ use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 
 mod boltffi;
-mod jni;
-mod ndk;
 mod patch_api;
 mod paths;
 mod release;
@@ -22,13 +20,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Regenerates the BoltFFI Kotlin bindings, and for the sdk the Android jniLibs.
+    /// Regenerates the BoltFFI Kotlin bindings, and packages SDK Android and desktop JNI libraries.
     Regen {
         #[arg(value_enum)]
         target: RegenTarget,
     },
-    /// Builds the desktop JNI shim the JVM sdk loads.
-    JniHost,
     /// Sets the workspace version, commits, and tags the release.
     Release { version: String },
     /// Fails unless the tag names the workspace version.
@@ -53,7 +49,6 @@ fn main() -> Result<()> {
                 sdk::regen()?;
             }
         }
-        Cmd::JniHost => sdk::build_jni_host()?,
         Cmd::Release { version } => release::release(&version)?,
         Cmd::CheckTag { tag } => release::check_tag(&tag)?,
     }

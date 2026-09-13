@@ -1,26 +1,25 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::path::{Path, PathBuf};
-
-use reseam_apk::ContainerFormat;
-use reseam_patcher::engine::{PatchResult, PatchSelection, PatchStatus, ProgressEvent};
-use reseam_patcher::log::LogEntry;
-use reseam_patcher::PatchSpec;
+use crate::{
+    ContainerFormat, LogEntry, PatchMetrics, PatchResult, PatchSelection, PatchSpec, PatchStatus,
+    Problem, ProgressEvent, Trust,
+};
 use serde::{Deserialize, Serialize};
-
-use crate::error::Problem;
-
-use crate::metrics::PatchMetrics;
-use crate::trust::TrustStore;
-
-#[derive(Debug, Clone, Serialize)]
+use std::path::Path;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[boltffi::data]
 pub struct ApkMetadata {
+    #[boltffi::default(None)]
     pub application_label: Option<String>,
+    #[boltffi::default(None)]
     pub package_name: Option<String>,
+    #[boltffi::default(None)]
     pub version_name: Option<String>,
+    #[boltffi::default(None)]
     pub version_code: Option<u32>,
     /// The container format the input came from, when it was an APKM/XAPK file.
+    #[boltffi::default(None)]
     pub bundle_kind: Option<ContainerFormat>,
     pub dex_files: usize,
     pub component_count: usize,
@@ -29,7 +28,8 @@ pub struct ApkMetadata {
     pub method_count: usize,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[boltffi::data]
 pub struct BundleMetadata {
     pub file_name: String,
     pub name: String,
@@ -40,89 +40,101 @@ pub struct BundleMetadata {
     pub engine: String,
     pub trusted: bool,
     /// Set when the bundle cannot be used; its patches are then absent from the response.
+    #[boltffi::default(None)]
     pub problem: Option<Problem>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[boltffi::data]
 pub struct PatchMetadata {
-    pub bundle: String,
     #[serde(flatten)]
     pub spec: PatchSpec,
+    #[boltffi::default(None)]
     pub incompatibility: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[boltffi::data]
 pub struct InspectRequest {
     #[serde(default)]
-    pub apk_path: Option<PathBuf>,
+    #[boltffi::default(None)]
+    pub apk_path: Option<String>,
     #[serde(default)]
-    pub split_paths: Vec<PathBuf>,
+    pub split_paths: Vec<String>,
     #[serde(default)]
-    pub bundle_paths: Vec<PathBuf>,
+    pub bundle_paths: Vec<String>,
     #[serde(default)]
-    pub trust: TrustStore,
+    pub trust: Trust,
 }
 
 /// `patches` is empty while any bundle is untrusted: untrusted code is never
 /// loaded, and loading is what reveals the patches.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[boltffi::data]
 pub struct InspectResponse {
+    #[boltffi::default(None)]
     pub apk: Option<ApkMetadata>,
     pub bundles: Vec<BundleMetadata>,
     pub patches: Vec<PatchMetadata>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[boltffi::data]
 pub struct PatchRequest {
-    pub apk_path: PathBuf,
+    pub apk_path: String,
     #[serde(default)]
-    pub split_paths: Vec<PathBuf>,
-    pub bundle_paths: Vec<PathBuf>,
+    pub split_paths: Vec<String>,
+    pub bundle_paths: Vec<String>,
     #[serde(default)]
-    pub trust: TrustStore,
+    pub trust: Trust,
     #[serde(default)]
     pub selection: PatchSelection,
     pub output: PatchOutput,
     /// Generated next to the output when absent.
     #[serde(default)]
+    #[boltffi::default(None)]
     pub signing: Option<SigningKeyFiles>,
     #[serde(default)]
+    #[boltffi::default(false)]
     pub dry_run: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[boltffi::data]
 pub struct SigningKeyFiles {
-    pub key: PathBuf,
-    pub cert: PathBuf,
+    pub key: String,
+    pub cert: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+#[boltffi::data]
 pub enum PatchOutput {
     /// Use `path` as a directory for splits, or append `.apk` for one component.
     Auto {
-        path: PathBuf,
+        path: String,
     },
     SingleFile {
-        path: PathBuf,
+        path: String,
     },
     SplitDir {
-        path: PathBuf,
+        path: String,
     },
 }
 
 /// The concrete output selected after opening the input, including for dry runs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+#[boltffi::data]
 pub enum PatchArtifact {
-    SingleFile { path: PathBuf },
-    SplitDir { path: PathBuf },
+    SingleFile { path: String },
+    SplitDir { path: String },
 }
 
 impl PatchArtifact {
     pub fn path(&self) -> &Path {
         match self {
-            Self::SingleFile { path } | Self::SplitDir { path } => path,
+            Self::SingleFile { path } | Self::SplitDir { path } => Path::new(path),
         }
     }
 }
@@ -131,16 +143,18 @@ impl PatchOutput {
     /// Requested destination. For automatic output, use the outcome for the final path.
     pub fn path(&self) -> &Path {
         match self {
-            Self::Auto { path } | Self::SingleFile { path } | Self::SplitDir { path } => path,
+            Self::Auto { path } | Self::SingleFile { path } | Self::SplitDir { path } => {
+                Path::new(path)
+            }
         }
     }
 
-    pub(crate) fn resolve(&self, components: usize) -> anyhow::Result<PatchArtifact> {
+    pub fn resolve(&self, components: usize) -> anyhow::Result<PatchArtifact> {
         Ok(match self {
             Self::Auto { path } if components == 1 => {
-                let mut name = path.as_os_str().to_os_string();
-                name.push(".apk");
-                PatchArtifact::SingleFile { path: name.into() }
+                let mut name = path.clone();
+                name.push_str(".apk");
+                PatchArtifact::SingleFile { path: name }
             }
             Self::Auto { path } | Self::SplitDir { path } => {
                 PatchArtifact::SplitDir { path: path.clone() }
@@ -153,15 +167,17 @@ impl PatchOutput {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[boltffi::data]
 pub struct PatchOutcome {
     pub output: PatchArtifact,
     pub results: Vec<PatchResult>,
     pub metrics: PatchMetrics,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[boltffi::data]
 pub enum RunEvent {
     Info { message: String },
     PatchStarted { patch: String },
@@ -204,7 +220,7 @@ mod tests {
 
     #[test]
     fn explicit_outputs_are_honored_or_rejected_never_redirected() {
-        let path = PathBuf::from("chosen");
+        let path = String::from("chosen");
         let directory = PatchOutput::SplitDir { path: path.clone() };
         for count in [1, 2] {
             assert_eq!(

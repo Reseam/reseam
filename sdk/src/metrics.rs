@@ -5,10 +5,6 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
-use reseam_apk::reseam_dex::MemoryBreakdown;
-use reseam_patcher::JvmHeapStats;
-use serde::{Deserialize, Serialize};
-
 static HEAP_LIVE: AtomicUsize = AtomicUsize::new(0);
 static HEAP_PEAK: AtomicUsize = AtomicUsize::new(0);
 static TRACE_STEP: AtomicUsize = AtomicUsize::new(0);
@@ -112,64 +108,7 @@ fn reset_heap_peak() {
     HEAP_PEAK.store(HEAP_LIVE.load(Ordering::Relaxed), Ordering::Relaxed);
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PatchPhase {
-    OpenApk,
-    LoadBundles,
-    ValidatePatches,
-    ApplyPatches,
-    WriteUnsignedArtifacts,
-    LoadSigningKey,
-    SignArtifacts,
-}
-
-impl PatchPhase {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::OpenApk => "open_apk",
-            Self::LoadBundles => "load_bundles",
-            Self::ValidatePatches => "validate_patches",
-            Self::ApplyPatches => "apply_patches",
-            Self::WriteUnsignedArtifacts => "write_unsigned_artifacts",
-            Self::LoadSigningKey => "load_signing_key",
-            Self::SignArtifacts => "sign_artifacts",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PatchPhaseMetrics {
-    pub phase: PatchPhase,
-    pub duration_ms: u64,
-    pub rss_bytes: Option<u64>,
-    pub peak_rss_bytes: Option<u64>,
-    pub heap_live_bytes: Option<u64>,
-    /// Highest live heap during the phase, independent of what the allocator
-    /// keeps cached afterwards.
-    pub heap_peak_bytes: Option<u64>,
-}
-
-/// Sampled right after `apply_patches`, at the apply-phase memory peak, to
-/// attribute RSS to materialized DEX IR vs the in-process JVM vs everything else.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ApplyDiagnostics {
-    pub rss_bytes: Option<u64>,
-    pub dex: MemoryBreakdown,
-    pub jvm: Option<JvmHeapStats>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct PatchMetrics {
-    pub total_duration_ms: u64,
-    pub final_rss_bytes: Option<u64>,
-    pub peak_rss_bytes: Option<u64>,
-    pub final_heap_live_bytes: Option<u64>,
-    pub final_rss_anon_bytes: Option<u64>,
-    pub final_rss_file_bytes: Option<u64>,
-    pub phases: Vec<PatchPhaseMetrics>,
-    pub apply_diagnostics: Option<ApplyDiagnostics>,
-}
+pub use reseam_model::{ApplyDiagnostics, PatchMetrics, PatchPhase, PatchPhaseMetrics};
 
 #[derive(Debug, Clone, Copy, Default)]
 struct MemorySample {

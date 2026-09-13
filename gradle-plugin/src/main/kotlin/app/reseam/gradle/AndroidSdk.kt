@@ -20,7 +20,7 @@ internal val reseamVersion: String by lazy {
 internal object AndroidSdk {
     private fun home(): File {
         val path = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
-            ?: throw GradleException("ANDROID_HOME is not set; it is needed for android.jar and d8")
+            ?: throw GradleException("ANDROID_HOME is not set; it is needed for android.jar")
         return File(path).takeIf { it.isDirectory }
             ?: throw GradleException("ANDROID_HOME points to a missing directory: $path")
     }
@@ -32,15 +32,6 @@ internal object AndroidSdk {
             ?.resolve("android.jar")
             ?: throw GradleException("No platforms/android-*/android.jar under ${home()}")
 
-    fun d8(): File {
-        System.getenv("D8_BIN")?.takeIf { it.isNotBlank() }?.let { return File(it) }
-        val d8 = if (System.getProperty("os.name").startsWith("Windows")) "d8.bat" else "d8"
-        return File(home(), "build-tools").listFiles().orEmpty()
-            .filter { File(it, d8).isFile }
-            .maxByOrNull { it.name }
-            ?.resolve(d8)
-            ?: throw GradleException("No build-tools/*/$d8 under ${home()}")
-    }
 }
 
 /** `apps/telegram/extensions/anti-delete` as `telegram-anti-delete`; `shared/settings-runtime` as `settings-runtime`. */

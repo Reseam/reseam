@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 plugins {
-    kotlin("jvm") version "1.9.25"
+    kotlin("jvm") version "2.4.10"
 }
 
 repositories {

@@ -3,26 +3,13 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use serde::Deserialize;
-
 use super::PatchIndex;
 
 use crate::error::{PatcherError, Result};
 use crate::options::PatchOptions;
 use crate::patch::Patch;
 
-/// What the caller asked for: an empty `enable` set means every patch that
-/// is enabled by default.
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
-pub struct PatchSelection {
-    pub enable: HashSet<String>,
-    pub disable: HashSet<String>,
-    pub options: HashMap<String, PatchOptions>,
-    /// Run patches on app versions they were not declared for. The package
-    /// check still applies.
-    pub ignore_versions: bool,
-}
+pub use reseam_model::PatchSelection;
 
 /// A selection checked against a patch list: dependency order, the patches
 /// to run, and their validated options. Indices are into the patch list.
@@ -116,7 +103,10 @@ impl ResolvedPlan {
                 PatchOptions::resolve(
                     &patch.reference(),
                     &patch.spec().options,
-                    configured.get(&idx).copied(),
+                    configured
+                        .get(&idx)
+                        .map(|values| PatchOptions::from((*values).clone()))
+                        .as_ref(),
                 )
             })
             .collect::<Result<_>>()?;

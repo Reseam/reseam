@@ -11,20 +11,11 @@ pub mod log;
 pub mod options;
 pub mod patch;
 
-use serde::{Deserialize, Serialize};
-
 pub use crate::patch::{is_slug, Compatibility, CompatiblePackage, Patch, PatchSpec};
 pub use reseam_apk;
 pub use reseam_apk::reseam_dex;
 
-/// Java-heap usage of the in-process patch JVM. Part of this process's RSS, so
-/// it must be subtracted to attribute memory to the native side.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct JvmHeapStats {
-    pub used_bytes: u64,
-    pub committed_bytes: u64,
-    pub max_bytes: u64,
-}
+pub use reseam_model::JvmHeapStats;
 
 /// Java-heap stats of the running patch JVM, or `None` if no JVM is live.
 pub fn jvm_heap_stats() -> Option<JvmHeapStats> {

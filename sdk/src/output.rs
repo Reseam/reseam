@@ -10,8 +10,8 @@ use reseam_apk::{ApkFile, ApkWriteOptions};
 use reseam_sign::{GeneratedKey, SigningKey};
 use tracing::info;
 
-use crate::dto::{PatchArtifact, SigningKeyFiles};
 use crate::metrics::{PatchPhase, PatchProfiler};
+use crate::{PatchArtifact, SigningKeyFiles};
 
 /// Writes every component unsigned into the output directory, signs each in
 /// place, and only then links it under its final name.
@@ -23,12 +23,13 @@ pub(crate) fn write_signed(
 ) -> Result<()> {
     let (dir, key_stem): (&Path, PathBuf) = match output {
         PatchArtifact::SingleFile { path } => (
-            path.parent()
+            Path::new(path)
+                .parent()
                 .filter(|parent| !parent.as_os_str().is_empty())
                 .unwrap_or(Path::new(".")),
-            path.with_extension(""),
+            Path::new(path).with_extension(""),
         ),
-        PatchArtifact::SplitDir { path } => (path, path.join("reseam")),
+        PatchArtifact::SplitDir { path } => (Path::new(path), Path::new(path).join("reseam")),
     };
     std::fs::create_dir_all(dir)
         .with_context(|| format!("failed to create output directory {}", dir.display()))?;
@@ -44,8 +45,8 @@ pub(crate) fn write_signed(
     profiler.measure(PatchPhase::SignArtifacts, || {
         unsigned.iter().try_for_each(|(name, file)| {
             let destination = match output {
-                PatchArtifact::SingleFile { path } => path.clone(),
-                PatchArtifact::SplitDir { path } => path.join(name),
+                PatchArtifact::SingleFile { path } => PathBuf::from(path),
+                PatchArtifact::SplitDir { path } => Path::new(path).join(name),
             };
             sign_into_place(file, &destination, &key)
         })
@@ -55,7 +56,7 @@ pub(crate) fn write_signed(
 /// The caller's key pair, or one generated beside the output on first use.
 fn signing_key(files: Option<&SigningKeyFiles>, default_stem: &Path) -> Result<SigningKey> {
     let (key, cert) = match files {
-        Some(files) => (files.key.clone(), files.cert.clone()),
+        Some(files) => (PathBuf::from(&files.key), PathBuf::from(&files.cert)),
         None => (
             default_stem.with_extension("pk8"),
             default_stem.with_extension("der"),

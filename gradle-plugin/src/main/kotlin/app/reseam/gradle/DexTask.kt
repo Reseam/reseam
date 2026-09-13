@@ -13,8 +13,16 @@ import org.gradle.api.tasks.TaskAction
 import org.gradle.process.ExecOperations
 import javax.inject.Inject
 
-/** Runs d8 over class files or jars into `classes*.dex` files in the output directory. */
+/** Runs the Kotlin 2.4-compatible D8 compiler over class files or jars into `classes*.dex` files in the output directory. */
 abstract class DexTask @Inject constructor(private val exec: ExecOperations) : DefaultTask() {
+    /** Pinned with Kotlin: installed Android build-tools may contain an older D8. */
+    @get:Classpath
+    val compiler: ConfigurableFileCollection = project.objects.fileCollection().from(
+        project.configurations.detachedConfiguration(
+            project.dependencies.create("com.android.tools:r8:9.4.17"),
+        ),
+    )
+
     @get:InputFiles
     abstract val sources: ConfigurableFileCollection
 
@@ -32,9 +40,11 @@ abstract class DexTask @Inject constructor(private val exec: ExecOperations) : D
         outDir.mkdirs()
         val files = sources.asFileTree.files.filter { it.extension == "class" } + sources.files.filter { it.extension == "jar" }
         check(files.isNotEmpty()) { "nothing to dex in ${project.path}" }
-        exec.exec {
-            commandLine(
-                listOf(AndroidSdk.d8().absolutePath, "--release", "--min-api", MIN_API.toString(), "--output", outDir.absolutePath) +
+        exec.javaexec {
+            classpath = compiler
+            mainClass.set("com.android.tools.r8.D8")
+            args(
+                listOf("--release", "--min-api", MIN_API.toString(), "--output", outDir.absolutePath) +
                     libraries.files.flatMap { listOf("--lib", it.absolutePath) } +
                     files.map { it.absolutePath },
             )

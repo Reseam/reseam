@@ -5,13 +5,18 @@ import java.util.Locale
 
 plugins {
     kotlin("multiplatform")
-    id("com.android.library")
+    id("com.android.kotlin.multiplatform.library")
     `maven-publish`
 }
 
 val rustSdk = rootProject.layout.projectDirectory.dir("sdk")
-val rustRelease = rootProject.layout.projectDirectory.dir("target/release")
-val androidAbis = listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+val desktopNatives = rustSdk.dir("dist/android/desktopJniLibs")
+
+val androidNatives = layout.buildDirectory.dir("staged/jniLibs")
+val stageJniLibs by tasks.registering(Sync::class) {
+    from(rustSdk.dir("jniLibs")) { include("*/libreseam-sdk-native.so") }
+    into(androidNatives)
+}
 
 val desktopHost: String = run {
     val os = System.getProperty("os.name").lowercase(Locale.ROOT)
@@ -29,26 +34,21 @@ val desktopHost: String = run {
     }
     "$family-$cpu"
 }
-val desktopShim = System.mapLibraryName("reseam_sdk_jni")
-
-val stageJniLibs by tasks.registering(Sync::class) {
-    androidAbis.forEach { abi ->
-        from(rustSdk.file("jniLibs/$abi/libreseam-sdk.so")) {
-            into(abi)
-            rename { "libreseam_sdk.so" }
-        }
-    }
-    into(layout.buildDirectory.dir("staged/jniLibs"))
-}
+val desktopShim = System.mapLibraryName("reseam_sdk_native_jni")
 
 val stageDesktopShim by tasks.registering(Sync::class) {
-    from(rustRelease.file(desktopShim))
+    from(desktopNatives.file("$desktopHost/$desktopShim"))
     into(layout.buildDirectory.dir("staged/desktop/native/$desktopHost"))
 }
 
 kotlin {
     jvmToolchain(17)
-    androidTarget { publishLibraryVariants("release") }
+    android {
+        namespace = "app.reseam.sdk"
+        compileSdk = 36
+        minSdk = 24
+        compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
+    }
     jvm()
 
     sourceSets {
@@ -65,16 +65,12 @@ kotlin {
     }
 }
 
-android {
-    namespace = "app.reseam.sdk"
-    compileSdk = 36
-    defaultConfig { minSdk = 24 }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+androidComponents {
+    onVariants { variant ->
+        variant.sources.jniLibs?.addStaticSourceDirectory(androidNatives.get().asFile.path)
     }
-    sourceSets["main"].jniLibs.srcDir(layout.buildDirectory.dir("staged/jniLibs"))
 }
 
 tasks.matching { it.name == "jvmProcessResources" }.configureEach { dependsOn(stageDesktopShim) }
-tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders") }.configureEach { dependsOn(stageJniLibs) }
+
+tasks.matching { it.name.endsWith("JniLibFolders") }.configureEach { dependsOn(stageJniLibs) }

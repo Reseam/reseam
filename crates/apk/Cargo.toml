@@ -6,6 +6,7 @@ description = "APK container support for Reseam: ZIP, AXML, resources, and DEX e
 readme = "README.md"
 
 [dependencies]
+reseam-model = { workspace = true }
 reseam-dex = { workspace = true }
 rustc-hash = { workspace = true }
 serde      = { workspace = true }

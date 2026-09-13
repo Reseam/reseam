@@ -125,7 +125,7 @@ value class Method(val handle: UInt) {
     fun indexOfFirstLiteralReversed(literal: Long): Int? = indexOfFirstLiteralReversed(handle, literal)?.toInt()
     fun containsLiteral(literal: Long): Boolean = indexOfFirstLiteral(literal) != null
     fun indexOfFirstString(value: String): Int? = indexOfFirstString(handle, value)?.toInt()
-    fun findAllIndices(opcode: Opcode): List<Int> = findAllIndices(handle, opcode.value.toUShort()).toList()
+    fun findAllIndices(opcode: Opcode): List<Int> = findAllIndices(handle, opcode.value.toUShort()).map { it.toInt() }
     fun indexOfFirstMethodCall(owner: String, name: String, start: Int = 0): Int? =
         indexOfFirstMethodCall(handle, owner, name, start.toUInt())?.toInt()
     fun indexOfFirstFieldAccess(opcode: Opcode, fieldType: String? = null, owner: String? = null, start: Int = 0): Int? =
@@ -152,12 +152,12 @@ value class Method(val handle: UInt) {
         return growLocalRegisters(handle, additionalLocals.toUShort())?.map { it.toInt() }
     }
     fun findFreeRegister(atIndex: Int, exclude: List<Int> = emptyList()): Int =
-        findFreeRegister(handle, atIndex.toUInt(), ShortArray(exclude.size) { exclude[it].toShort() })?.toInt()
+        findFreeRegister(handle, atIndex.toUInt(), UShortArray(exclude.size) { exclude[it].toUShort() })?.toInt()
             ?: error("No free register at $descriptor[$atIndex]")
     fun findFreeRegisters(atIndex: Int, count: Int, exclude: List<Int> = emptyList()): List<Int> =
-        findFreeRegisters(handle, atIndex.toUInt(), count.toUInt(), ShortArray(exclude.size) { exclude[it].toShort() }).map { it.toInt() }
+        findFreeRegisters(handle, atIndex.toUInt(), count.toUInt(), UShortArray(exclude.size) { exclude[it].toUShort() }).map { it.toInt() }
     fun findContiguousFreeRegisters(atIndex: Int, count: Int, exclude: List<Int> = emptyList()): List<Int> =
-        findContiguousFreeRegisters(handle, atIndex.toUInt(), count.toUInt(), ShortArray(exclude.size) { exclude[it].toShort() }).map { it.toInt() }
+        findContiguousFreeRegisters(handle, atIndex.toUInt(), count.toUInt(), UShortArray(exclude.size) { exclude[it].toUShort() }).map { it.toInt() }
 
     fun registerA(index: Int): Int = instructionRegister(handle, index.toUInt(), 0u).toInt()
     fun registerB(index: Int): Int = instructionRegister(handle, index.toUInt(), 1u).toInt()
@@ -198,12 +198,12 @@ fun lowerInvokes(insns: List<Instruction>, scratch: (wordCount: Int) -> List<Int
 
 private fun lowerInvoke(insn: Instruction, scratch: (wordCount: Int) -> List<Int>): List<Instruction> {
     val invoke = insn as? Instruction.Invoke ?: return listOf(insn)
-    val regs = invoke.value0.registers.map { it.toInt() }
+    val regs = invoke.field0.registers.map { it.toInt() }
     if (regs.size <= 5 && regs.all { it in 0..15 }) return listOf(insn)
 
-    val opcode = Opcode.of(invoke.value0.opcode.toInt())
+    val opcode = Opcode.of(invoke.field0.opcode.toInt())
     val rangeOpcode = opcode?.rangeVariant ?: error("$opcode does not support invoke/range lowering")
-    val method = invoke.value0.method
+    val method = invoke.field0.method
     if (regs.isConsecutive()) {
         return listOf(Instruction.InvokeRange(InvokeRangeInsn(rangeOpcode.value.toUShort(), (regs.firstOrNull() ?: 0).toUShort(), regs.size.toUShort(), method)))
     }

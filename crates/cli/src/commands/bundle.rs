@@ -17,8 +17,8 @@ pub fn run_bundle_list(command: &BundleListCommand) -> Result<()> {
     let response = inspect(&InspectRequest {
         apk_path: None,
         split_paths: Vec::new(),
-        bundle_paths: vec![command.bundle.clone()],
-        trust: command.trust.store()?,
+        bundle_paths: vec![command.bundle.display().to_string()],
+        trust: (&command.trust.store()?).into(),
     })?;
     if command.json {
         println!("{}", serde_json::to_string_pretty(&response)?);

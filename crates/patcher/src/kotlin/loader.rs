@@ -20,7 +20,34 @@ const PATCH_INTERFACE: &str = "app.reseam.patch.ReseamPatch";
 const EXTERNAL_PATCH: &str = "app.reseam.patch.ExternalPatch";
 const NATIVE_CLASS: &str = "app.reseam.patch.Native";
 
-include!(concat!(env!("OUT_DIR"), "/jni_natives.rs"));
+#[cfg(not(reseam_skip_jni_glue))]
+extern "C" {
+    fn reseam_register_patch_natives(
+        env: *mut jni::sys::JNIEnv,
+        class: jni::sys::jclass,
+    ) -> jni::sys::jint;
+}
+
+/// Registers the IR-generated method table on this bundle's own Native class.
+fn register_natives(env: &mut JNIEnv<'_>, native: &JObject<'_>) -> Result<()> {
+    #[cfg(reseam_skip_jni_glue)]
+    {
+        let _ = (env, native);
+        Err(jvm_err(
+            "JNI registration is unavailable in a metadata-only build",
+        ))
+    }
+    #[cfg(not(reseam_skip_jni_glue))]
+    {
+        // SAFETY: both JNI references belong to this thread and frame. The C
+        // function registers static generated entry points and retains no locals.
+        let status = unsafe { reseam_register_patch_natives(env.get_raw(), native.as_raw()) };
+        if status != jni::sys::JNI_OK {
+            return Err(jvm_err(format!("register natives failed: {status}")));
+        }
+        Ok(())
+    }
+}
 
 /// A patch object and where it was declared, before its metadata is read.
 struct Found {
@@ -44,11 +71,7 @@ pub fn load_patches(
     jvm::with_frame(&mut env, |env| {
         let loader = create_class_loader(env, jars)?;
         let native = load_class(env, &loader, NATIVE_CLASS)?;
-        env.register_native_methods(
-            <&jni::objects::JClass>::from(&native),
-            &jni_native_methods(),
-        )
-        .map_err(|e| jvm_err(format!("register natives: {e}")))?;
+        register_natives(env, &native)?;
         let patch_class = load_class(env, &loader, PATCH_INTERFACE)?;
         let external_class = load_class(env, &loader, EXTERNAL_PATCH)?;
         let mut found: Vec<Found> = Vec::new();
@@ -449,7 +472,7 @@ fn read_option(env: &mut JNIEnv<'_>, option: &JObject<'_>) -> Result<OptionDecla
         None
     } else {
         Some(match option_type {
-            OptionType::String => OptionValue::String(
+            OptionType::String => OptionValue::Text(
                 string_of(env, default).map_err(|e| jvm_err(format!("default: {e}")))?,
             ),
             OptionType::Path => OptionValue::Path(
@@ -472,9 +495,7 @@ fn read_option(env: &mut JNIEnv<'_>, option: &JObject<'_>) -> Result<OptionDecla
                     .and_then(|v| v.d())
                     .map_err(|e| jvm_err(format!("default: {e}")))?,
             ),
-            OptionType::StringList => {
-                OptionValue::StringList(list_strings(env, default, "default")?)
-            }
+            OptionType::StringList => OptionValue::TextList(list_strings(env, default, "default")?),
         })
     };
     Ok(OptionDeclaration {

@@ -6,9 +6,10 @@ description = "Patch execution engine for Reseam with Kotlin JVM bridge support"
 readme = "README.md"
 
 [lib]
-crate-type = ["lib"]
+crate-type = ["rlib"]
 
 [dependencies]
+reseam-model = { workspace = true }
 reseam-apk          = { workspace = true }
 reseam-sign         = { workspace = true, optional = true }
 thiserror   = { workspace = true }

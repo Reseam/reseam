@@ -5,7 +5,7 @@ package app.reseam.sdk
 
 object ReseamAndroidHost {
     init {
-        System.loadLibrary("reseam_sdk")
+        System.loadLibrary("reseam-sdk-native")
     }
 
     @JvmStatic

@@ -74,7 +74,7 @@ pub fn run_perf(command: &PerfCommand) -> Result<()> {
         eprintln!("{label}");
         let scratch = ScratchDir::new("perf")?;
         let output = PatchOutput::Auto {
-            path: scratch.path().join("patched"),
+            path: scratch.path().join("patched").display().to_string(),
         };
         Ok(patch(&request(args, output)?, |_| {})?.metrics)
     };
@@ -269,7 +269,7 @@ fn print_apply_diagnostics(d: &ApplyDiagnostics) {
     println!("  native heap attribution (all lower bounds):");
     println!(
         "    materialized IR:         {}",
-        format_bytes(ir.estimated_ir_bytes())
+        format_bytes(reseam_sdk::estimated_ir_bytes(ir))
     );
     println!(
         "    raw dex buffers:         {}",
@@ -288,7 +288,7 @@ fn print_apply_diagnostics(d: &ApplyDiagnostics) {
         "    class-def structs:       {}",
         format_bytes(dex.class_def_bytes)
     );
-    let accounted = ir.estimated_ir_bytes()
+    let accounted = reseam_sdk::estimated_ir_bytes(ir)
         + dex.raw_buffer_bytes
         + dex.string_pool_bytes
         + dex.id_table_bytes

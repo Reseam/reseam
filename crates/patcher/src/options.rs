@@ -2,158 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::error::{PatcherError, Result};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum OptionType {
-    String,
-    Bool,
-    Int,
-    Float,
-    StringList,
-    Path,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct OptionDeclaration {
-    pub key: String,
-    pub title: String,
-    pub description: String,
-    pub option_type: OptionType,
-    pub default_value: Option<OptionValue>,
-    pub valid_values: Option<Vec<String>>,
-    pub required: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", content = "value", rename_all = "snake_case")]
-pub enum OptionValue {
-    String(String),
-    Bool(bool),
-    Int(i64),
-    Float(f64),
-    StringList(Vec<String>),
-    Path(PathBuf),
-}
-
-impl OptionValue {
-    pub fn option_type(&self) -> OptionType {
-        match self {
-            Self::String(_) => OptionType::String,
-            Self::Bool(_) => OptionType::Bool,
-            Self::Int(_) => OptionType::Int,
-            Self::Float(_) => OptionType::Float,
-            Self::StringList(_) => OptionType::StringList,
-            Self::Path(_) => OptionType::Path,
-        }
-    }
-
-    pub fn as_str(&self) -> Option<&str> {
-        match self {
-            Self::String(s) => Some(s),
-            _ => None,
-        }
-    }
-
-    pub fn as_bool(&self) -> Option<bool> {
-        match self {
-            Self::Bool(b) => Some(*b),
-            _ => None,
-        }
-    }
-
-    pub fn as_int(&self) -> Option<i64> {
-        match self {
-            Self::Int(i) => Some(*i),
-            _ => None,
-        }
-    }
-
-    pub fn as_float(&self) -> Option<f64> {
-        match self {
-            Self::Float(f) => Some(*f),
-            _ => None,
-        }
-    }
-
-    pub fn as_string_list(&self) -> Option<&[String]> {
-        match self {
-            Self::StringList(l) => Some(l),
-            _ => None,
-        }
-    }
-
-    pub fn as_path(&self) -> Option<&Path> {
-        match self {
-            Self::Path(p) => Some(p),
-            _ => None,
-        }
-    }
-}
-
-impl OptionDeclaration {
-    pub fn parse(&self, raw: &str) -> std::result::Result<OptionValue, String> {
-        let value = match self.option_type {
-            OptionType::String => OptionValue::String(raw.to_string()),
-            OptionType::Bool => OptionValue::Bool(
-                raw.parse()
-                    .map_err(|_| format!("expected bool, got '{raw}'"))?,
-            ),
-            OptionType::Int => OptionValue::Int(
-                raw.parse()
-                    .map_err(|_| format!("expected int, got '{raw}'"))?,
-            ),
-            OptionType::Float => OptionValue::Float(
-                raw.parse()
-                    .map_err(|_| format!("expected float, got '{raw}'"))?,
-            ),
-            OptionType::StringList => OptionValue::StringList(
-                raw.split(',')
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(str::to_string)
-                    .collect(),
-            ),
-            OptionType::Path => OptionValue::Path(PathBuf::from(raw)),
-        };
-        self.validate(&value)?;
-        Ok(value)
-    }
-
-    pub fn validate(&self, value: &OptionValue) -> std::result::Result<(), String> {
-        if value.option_type() != self.option_type {
-            return Err(format!(
-                "expected {:?}, got {:?}",
-                self.option_type,
-                value.option_type()
-            ));
-        }
-        if let Some(valid) = &self.valid_values {
-            let candidates: &[String] = match value {
-                OptionValue::String(s) => std::slice::from_ref(s),
-                OptionValue::StringList(list) => list,
-                _ => &[],
-            };
-            if let Some(bad) = candidates
-                .iter()
-                .find(|candidate| !valid.contains(candidate))
-            {
-                return Err(format!("'{bad}' is not in [{}]", valid.join(", ")));
-            }
-        }
-        if let OptionValue::Path(path) = value {
-            if !path.exists() {
-                return Err(format!("path does not exist: {}", path.display()));
-            }
-        }
-        Ok(())
-    }
-}
+pub use reseam_model::{OptionDeclaration, OptionType, OptionValue};
 
 /// The option values one patch runs with.
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -255,5 +109,11 @@ impl PatchOptions {
             )));
         }
         Ok(Some(std::fs::read(&full)?))
+    }
+}
+
+impl From<HashMap<String, OptionValue>> for PatchOptions {
+    fn from(values: HashMap<String, OptionValue>) -> Self {
+        Self { values }
     }
 }

@@ -2,12 +2,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 plugins {
-    `kotlin-dsl`
+    kotlin("jvm")
+    kotlin("plugin.sam.with.receiver")
+    `java-gradle-plugin`
     `maven-publish`
 }
 
+samWithReceiver { annotation("org.gradle.api.HasImplicitReceiver") }
+
 dependencies {
-    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.25")
+    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.10")
 }
 
 kotlin {

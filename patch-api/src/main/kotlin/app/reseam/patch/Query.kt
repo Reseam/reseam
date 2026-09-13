@@ -332,8 +332,8 @@ internal class SearchIndex(private val runtime: PatchRuntime) {
     fun methodsInClass(descriptor: String): List<Method> =
         methodsByClass.getOrPut(descriptor) { classFor(descriptor)?.methods.orEmpty() }
 
-    private fun seed(key: String, compute: () -> IntArray): Set<UInt> =
-        seeds.getOrPut(key) { compute().mapTo(linkedSetOf()) { it.toUInt() } }
+    private fun seed(key: String, compute: () -> UIntArray): Set<UInt> =
+        seeds.getOrPut(key) { compute().toCollection(linkedSetOf()) }
 
     fun methodsWithName(name: String) = seed("name:$name") { findMethodsByName(name) }
     fun methodsWithReturnType(type: String) = seed("returns:$type") { findMethodsByProto(type, null, null) }
@@ -344,7 +344,7 @@ internal class SearchIndex(private val runtime: PatchRuntime) {
         val key = values.distinct().sorted()
         return seed("strings:${key.joinToString(" ")}") { findMethodsByStrings(key) }
     }
-    fun methodsWithLiteral(value: Long) = seed("literal:$value") { findInstructionsByLiteral(value).map { it.method.toInt() }.toIntArray() }
+    fun methodsWithLiteral(value: Long) = seed("literal:$value") { findInstructionsByLiteral(value).map { it.method }.toUIntArray() }
 
     fun classesWithString(value: String): Set<DexClass> =
         classesByString.getOrPut(value) {

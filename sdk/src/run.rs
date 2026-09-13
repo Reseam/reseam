@@ -7,15 +7,19 @@ use reseam_patcher::context::{ExtensionSet, PatchContext};
 use reseam_patcher::engine::{self, PatchResult, PatchStatus};
 use reseam_patcher::Patch;
 
-use crate::dto::{PatchArtifact, PatchOutcome, PatchRequest, RunEvent};
 use crate::error::Problem;
 use crate::inspect::{load_bundles, open_apk, OpenedApk};
 use crate::metrics::{ApplyDiagnostics, PatchPhase, PatchProfiler};
 use crate::output::write_signed;
+use crate::TrustStore;
+use crate::{PatchArtifact, PatchOutcome, PatchRequest, RunEvent};
+use std::path::{Path, PathBuf};
 
 /// Runs the request end to end: open, load, apply, write, sign. A dry run
 /// stops after validation and reports what would run.
 pub fn patch(request: &PatchRequest, mut emit: impl FnMut(RunEvent)) -> Result<PatchOutcome> {
+    // Reject malformed trust before opening or loading any bundle.
+    TrustStore::from_hex(&request.trust.keys).map_err(anyhow::Error::msg)?;
     let mut profiler = PatchProfiler::new();
     let (results, output) = run(request, &mut emit, &mut profiler)?;
     Ok(PatchOutcome {
@@ -30,11 +34,15 @@ fn run(
     emit: &mut impl FnMut(RunEvent),
     profiler: &mut PatchProfiler,
 ) -> Result<(Vec<PatchResult>, PatchArtifact)> {
-    emit(info(format!("Opening APK {}", request.apk_path.display())));
+    emit(info(format!("Opening APK {}", request.apk_path)));
     let mut opened = profiler.measure(PatchPhase::OpenApk, || {
         open_apk(
-            &request.apk_path,
-            &request.split_paths,
+            Path::new(&request.apk_path),
+            &request
+                .split_paths
+                .iter()
+                .map(PathBuf::from)
+                .collect::<Vec<_>>(),
             &ApkFile::patch_options(),
         )
     })?;
@@ -53,7 +61,14 @@ fn run(
 
     emit(info("Loading bundles".to_string()));
     let bundles = profiler.measure(PatchPhase::LoadBundles, || {
-        load_bundles(&request.bundle_paths, &request.trust)
+        load_bundles(
+            &request
+                .bundle_paths
+                .iter()
+                .map(PathBuf::from)
+                .collect::<Vec<_>>(),
+            &TrustStore::from_hex(&request.trust.keys).map_err(anyhow::Error::msg)?,
+        )
     })?;
     let patches: Vec<&dyn Patch> = bundles
         .iter()

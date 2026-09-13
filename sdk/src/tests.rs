@@ -69,7 +69,7 @@ fn containers_and_plain_apks_use_the_same_output_pipeline() {
             let destination = tmp.path().join(format!("output-{count}-{extension}"));
             let opened = open_apk(&input, &[], &ApkFile::patch_options()).unwrap();
             let output = PatchOutput::Auto {
-                path: destination.clone(),
+                path: destination.display().to_string(),
             }
             .resolve(opened.apk.components().len())
             .unwrap();
@@ -79,10 +79,12 @@ fn containers_and_plain_apks_use_the_same_output_pipeline() {
             assert!(!extracted.exists());
             match output {
                 PatchArtifact::SingleFile { path } => {
+                    let path = Path::new(&path);
                     assert_eq!(path, destination.with_extension("apk"));
                     assert_eq!(inspect_apk(&path, &[]).unwrap().component_count, 1);
                 }
                 PatchArtifact::SplitDir { path } => {
+                    let path = Path::new(&path);
                     assert_eq!(path, destination);
                     let metadata =
                         inspect_apk(&path.join("base.apk"), &[path.join("config.en.apk")]).unwrap();
@@ -98,7 +100,7 @@ fn containers_and_plain_apks_use_the_same_output_pipeline() {
     assert!(opened.bundle.is_none());
     let destination = tmp.path().join("chosen-directory");
     let output = PatchOutput::SplitDir {
-        path: destination.clone(),
+        path: destination.display().to_string(),
     }
     .resolve(1)
     .unwrap();
@@ -124,13 +126,13 @@ fn incompatible_inputs_and_output_fail_before_loading_patches() {
         .contains("cannot be combined"));
     let error = patch(
         &PatchRequest {
-            apk_path: input,
+            apk_path: input.display().to_string(),
             split_paths: Vec::new(),
             bundle_paths: Vec::new(),
             trust: Default::default(),
             selection: Default::default(),
             output: PatchOutput::SingleFile {
-                path: tmp.path().join("out.apk"),
+                path: tmp.path().join("out.apk").display().to_string(),
             },
             signing: None,
             dry_run: true,
