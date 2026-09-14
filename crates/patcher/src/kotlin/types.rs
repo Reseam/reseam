@@ -100,6 +100,8 @@ pub struct NewMethod {
 }
 
 #[data]
+// Padded layout: sent encoded, not blitted (docs/bindings.md).
+#[repr(Rust)]
 #[derive(Debug, Clone, Copy)]
 pub struct TryItem {
     pub start_addr: u32,
@@ -215,6 +217,8 @@ pub struct Reg3Insn {
 }
 
 #[data]
+// Padded layout: sent encoded, not blitted (docs/bindings.md).
+#[repr(Rust)]
 #[derive(Debug, Clone, Copy)]
 pub struct RegLiteralInsn {
     pub opcode: u16,
@@ -267,6 +271,8 @@ pub struct InvokeRangeInsn {
 }
 
 #[data]
+// Padded layout: sent encoded, not blitted (docs/bindings.md).
+#[repr(Rust)]
 #[derive(Debug, Clone, Copy)]
 pub struct Branch0Insn {
     pub opcode: u16,
@@ -282,6 +288,8 @@ pub struct BranchInsn {
 }
 
 #[data]
+// Padded layout: sent encoded, not blitted (docs/bindings.md).
+#[repr(Rust)]
 #[derive(Debug, Clone, Copy)]
 pub struct Branch2Insn {
     pub opcode: u16,
