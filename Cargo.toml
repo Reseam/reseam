@@ -11,10 +11,6 @@ members = [
     "crates/cli",
     "xtask",
 ]
-exclude = [
-    "crates/patcher/target/boltffi_bindgen_type_resolution",
-    "sdk/target/boltffi_bindgen_type_resolution",
-]
 
 [workspace.package]
 version = "0.9.0"

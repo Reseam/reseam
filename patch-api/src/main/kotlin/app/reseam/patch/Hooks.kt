@@ -8,6 +8,7 @@ package app.reseam.patch
 import app.reseam.patch.dex.Method
 import app.reseam.patch.dex.buildInstructions
 import app.reseam.patch.dex.opcode
+import app.reseam.patch.native.insertBeforeInstruction
 
 /** Runs `block` when the method is entered. */
 fun MethodTarget.before(block: CodeScope.() -> Unit) = method.insertCode(0, emptyList(), block)

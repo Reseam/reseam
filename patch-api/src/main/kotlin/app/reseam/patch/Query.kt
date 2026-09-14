@@ -12,6 +12,17 @@ import app.reseam.patch.dex.isSet
 import app.reseam.patch.dex.methodRef
 import app.reseam.patch.dex.opcode
 import app.reseam.patch.dex.typeRef
+import app.reseam.patch.native.MethodRef
+import app.reseam.patch.native.allMethodHandles
+import app.reseam.patch.native.findClass
+import app.reseam.patch.native.findInstructionsByInvoke
+import app.reseam.patch.native.findInstructionsByLiteral
+import app.reseam.patch.native.findMethodsByName
+import app.reseam.patch.native.findMethodsByOpcodes
+import app.reseam.patch.native.findMethodsByProto
+import app.reseam.patch.native.findMethodsByStrings
+import app.reseam.patch.native.getAllClasses
+import app.reseam.patch.native.getInstruction
 
 interface MethodQuery {
     fun name(value: String)
@@ -305,8 +316,8 @@ internal data class MethodSignature(val owner: String, val name: String, val pro
 
 /** Per-patch caches over the engine's search primitives. */
 internal class SearchIndex(private val runtime: PatchRuntime) {
-    val allClasses: List<DexClass> by lazy { getAllClasses().map { DexClass(it.toUInt()) } }
-    val allMethods: List<Method> by lazy { allMethodHandles().map { Method(it.toUInt()) } }
+    val allClasses: List<DexClass> by lazy { getAllClasses().map { DexClass(it) } }
+    val allMethods: List<Method> by lazy { allMethodHandles().map { Method(it) } }
 
     private val classByDescriptor = HashMap<String, DexClass?>()
     private val methodBySignature = HashMap<MethodSignature, Method?>()

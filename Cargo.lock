@@ -1447,6 +1447,7 @@ dependencies = [
  "jni",
  "reseam-model",
  "reseam-sdk",
+ "serde",
  "serde_json",
 ]
 

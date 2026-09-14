@@ -29,8 +29,3 @@ pub use loader::load_patches;
 pub fn ctx_is_active() -> bool {
     handles::context_is_active()
 }
-
-#[export]
-pub fn version() -> String {
-    env!("CARGO_PKG_VERSION").to_string()
-}

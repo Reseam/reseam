@@ -10,6 +10,70 @@ import app.reseam.patch.dex.Method
 import app.reseam.patch.dex.descriptor
 import app.reseam.patch.dex.parameterTypes
 import app.reseam.patch.dex.returnType
+import app.reseam.patch.native.MethodRef
+import app.reseam.patch.native.ResourceRef
+import app.reseam.patch.native.componentNames
+import app.reseam.patch.native.fileCopy
+import app.reseam.patch.native.fileDelete
+import app.reseam.patch.native.fileInject
+import app.reseam.patch.native.fileList
+import app.reseam.patch.native.fileRead
+import app.reseam.patch.native.fileSigners
+import app.reseam.patch.native.fileSource
+import app.reseam.patch.native.findInstructionsByString
+import app.reseam.patch.native.logDebug
+import app.reseam.patch.native.logInfo
+import app.reseam.patch.native.logWarn
+import app.reseam.patch.native.manifestAddActivityAlias
+import app.reseam.patch.native.manifestAddIntentFilter
+import app.reseam.patch.native.manifestAddPermission
+import app.reseam.patch.native.manifestCopyIntentFilters
+import app.reseam.patch.native.manifestGetDocument
+import app.reseam.patch.native.manifestMinSdkVersion
+import app.reseam.patch.native.manifestPackageName
+import app.reseam.patch.native.manifestSetActivityConfigChanges
+import app.reseam.patch.native.manifestSetAttributeInt
+import app.reseam.patch.native.manifestSetAttributeString
+import app.reseam.patch.native.manifestSetMinSdk
+import app.reseam.patch.native.manifestSetVersionCode
+import app.reseam.patch.native.manifestSetVersionName
+import app.reseam.patch.native.manifestSplitName
+import app.reseam.patch.native.manifestVersionCode
+import app.reseam.patch.native.manifestVersionName
+import app.reseam.patch.native.redirectMethodCalls
+import app.reseam.patch.native.resAdd
+import app.reseam.patch.native.resAddId
+import app.reseam.patch.native.resAddRaw
+import app.reseam.patch.native.resComponentFor
+import app.reseam.patch.native.resComponentForId
+import app.reseam.patch.native.resComponentNames
+import app.reseam.patch.native.resExists
+import app.reseam.patch.native.resGetRaw
+import app.reseam.patch.native.resGetString
+import app.reseam.patch.native.resId
+import app.reseam.patch.native.resPoolAdd
+import app.reseam.patch.native.resPoolFindRefs
+import app.reseam.patch.native.resPoolGet
+import app.reseam.patch.native.resPoolSet
+import app.reseam.patch.native.resReplaceEntry
+import app.reseam.patch.native.resSetString
+import app.reseam.patch.native.xmlAppendChild
+import app.reseam.patch.native.xmlChildren
+import app.reseam.patch.native.xmlCloneElement
+import app.reseam.patch.native.xmlClose
+import app.reseam.patch.native.xmlCreateElement
+import app.reseam.patch.native.xmlFindByAttribute
+import app.reseam.patch.native.xmlFindByTag
+import app.reseam.patch.native.xmlGetAttribute
+import app.reseam.patch.native.xmlInsertBefore
+import app.reseam.patch.native.xmlOpen
+import app.reseam.patch.native.xmlParent
+import app.reseam.patch.native.xmlRemoveAttribute
+import app.reseam.patch.native.xmlRemoveElement
+import app.reseam.patch.native.xmlRoot
+import app.reseam.patch.native.xmlSetAttribute
+import app.reseam.patch.native.xmlSetAttributeRef
+import app.reseam.patch.native.xmlTagName
 
 class PatchLogger internal constructor() {
     fun info(message: String) = logInfo(message)
@@ -160,8 +224,8 @@ class ManifestScope internal constructor(private val componentName: String? = nu
 
 class XmlDocument(val handle: UInt) : AutoCloseable {
     val root: XmlElement get() = XmlElement(handle, xmlRoot(handle))
-    fun findByTag(tag: String): List<XmlElement> = xmlFindByTag(handle, tag).map { XmlElement(handle, it.toUInt()) }
-    fun findByAttribute(name: String, value: String): List<XmlElement> = xmlFindByAttribute(handle, name, value).map { XmlElement(handle, it.toUInt()) }
+    fun findByTag(tag: String): List<XmlElement> = xmlFindByTag(handle, tag).map { XmlElement(handle, it) }
+    fun findByAttribute(name: String, value: String): List<XmlElement> = xmlFindByAttribute(handle, name, value).map { XmlElement(handle, it) }
     fun createElement(tag: String): XmlElement = XmlElement(handle, xmlCreateElement(handle, tag))
     override fun close() = xmlClose(handle)
 }
@@ -169,7 +233,7 @@ class XmlDocument(val handle: UInt) : AutoCloseable {
 class XmlElement(val doc: UInt, val handle: UInt) {
     val tag: String get() = xmlTagName(doc, handle)
     val parent: XmlElement? get() = xmlParent(doc, handle)?.let { XmlElement(doc, it) }
-    val children: List<XmlElement> get() = xmlChildren(doc, handle).map { XmlElement(doc, it.toUInt()) }
+    val children: List<XmlElement> get() = xmlChildren(doc, handle).map { XmlElement(doc, it) }
 
     operator fun get(attr: String): String? = xmlGetAttribute(doc, handle, attr)
     operator fun set(attr: String, value: String) = xmlSetAttribute(doc, handle, attr, value)

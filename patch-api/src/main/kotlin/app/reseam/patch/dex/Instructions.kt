@@ -5,23 +5,23 @@
 
 package app.reseam.patch.dex
 
-import app.reseam.patch.Branch0Insn
-import app.reseam.patch.Branch2Insn
-import app.reseam.patch.BranchInsn
-import app.reseam.patch.FieldRef
-import app.reseam.patch.Instruction
-import app.reseam.patch.InvokeInsn
-import app.reseam.patch.InvokeRangeInsn
-import app.reseam.patch.MethodInfo
-import app.reseam.patch.MethodRef
-import app.reseam.patch.Reg1Insn
-import app.reseam.patch.Reg2Insn
-import app.reseam.patch.Reg3Insn
-import app.reseam.patch.RegFieldInsn
-import app.reseam.patch.RegLiteralInsn
-import app.reseam.patch.RegStringInsn
-import app.reseam.patch.RegTypeInsn
-import app.reseam.patch.SimpleInsn
+import app.reseam.patch.native.Branch0Insn
+import app.reseam.patch.native.Branch2Insn
+import app.reseam.patch.native.BranchInsn
+import app.reseam.patch.native.FieldRef
+import app.reseam.patch.native.Instruction
+import app.reseam.patch.native.InvokeInsn
+import app.reseam.patch.native.InvokeRangeInsn
+import app.reseam.patch.native.MethodInfo
+import app.reseam.patch.native.MethodRef
+import app.reseam.patch.native.Reg1Insn
+import app.reseam.patch.native.Reg2Insn
+import app.reseam.patch.native.Reg3Insn
+import app.reseam.patch.native.RegFieldInsn
+import app.reseam.patch.native.RegLiteralInsn
+import app.reseam.patch.native.RegStringInsn
+import app.reseam.patch.native.RegTypeInsn
+import app.reseam.patch.native.SimpleInsn
 
 val Instruction.opcodeValue: Int
     get() = when (this) {

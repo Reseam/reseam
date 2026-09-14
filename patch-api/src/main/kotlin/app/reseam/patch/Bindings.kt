@@ -14,6 +14,8 @@ import app.reseam.patch.dex.methodRef
 import app.reseam.patch.dex.opcode
 import app.reseam.patch.dex.registerWordCount
 import app.reseam.patch.dex.returnType
+import app.reseam.patch.native.FieldRef
+import app.reseam.patch.native.MethodRef
 
 /**
  * A view over an obfuscated object: a root type found structurally plus named

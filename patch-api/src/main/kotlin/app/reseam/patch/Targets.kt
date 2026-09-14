@@ -9,6 +9,9 @@ import app.reseam.patch.dex.AccessFlags
 import app.reseam.patch.dex.DexClass
 import app.reseam.patch.dex.Method
 import app.reseam.patch.dex.buildInstructions
+import app.reseam.patch.native.FieldRef
+import app.reseam.patch.native.MethodRef
+import app.reseam.patch.native.NewMethod
 
 class MethodTarget internal constructor(
     debugName: String?,

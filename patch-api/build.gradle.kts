@@ -8,18 +8,12 @@ plugins {
 
 dependencies {
     implementation(kotlin("stdlib"))
-    testImplementation(kotlin("test"))
 }
 
 kotlin {
     jvmToolchain(17)
+    sourceSets.main { kotlin.srcDir("generated/app") }
     sourceSets.all { languageSettings.optIn("kotlin.ExperimentalUnsignedTypes") }
-}
-
-tasks.test {
-    val libDir = rootProject.layout.projectDirectory.dir("target/debug").asFile.path
-    jvmArgs("-Djava.library.path=$libDir")
-    environment("LD_LIBRARY_PATH", libDir)
 }
 
 publishing {

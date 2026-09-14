@@ -110,8 +110,8 @@ pub(crate) fn request(args: &PatchRequestArgs, output: PatchOutput) -> Result<Pa
 /// which means loading the bundle once up front.
 fn selection(args: &PatchRequestArgs, trust: &TrustStore) -> Result<PatchSelection> {
     let mut selection = PatchSelection {
-        enable: args.enable.iter().cloned().collect(),
-        disable: args.disable.iter().cloned().collect(),
+        enable: args.enable.clone(),
+        disable: args.disable.clone(),
         ignore_versions: args.ignore_versions,
         ..Default::default()
     };

@@ -13,6 +13,9 @@ import app.reseam.patch.dex.isSet
 import app.reseam.patch.dex.rangeVariant
 import app.reseam.patch.dex.registerWordCount
 import app.reseam.patch.dex.returnType
+import app.reseam.patch.native.FieldRef
+import app.reseam.patch.native.Instruction
+import app.reseam.patch.native.MethodRef
 import app.reseam.patch.descriptor as descriptorOf
 
 /** Locals a replaced body gets below its incoming parameters. */

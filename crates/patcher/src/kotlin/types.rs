@@ -22,8 +22,10 @@ pub struct MethodInfo {
 pub struct ClassInfo {
     pub descriptor: String,
     pub access_flags: u32,
+    #[boltffi::default(None)]
     pub superclass: Option<String>,
     pub interfaces: Vec<String>,
+    #[boltffi::default(None)]
     pub source_file: Option<String>,
     pub dex_index: u32,
     pub direct_method_count: u32,
@@ -39,19 +41,28 @@ pub struct FieldInfo {
     pub name: String,
     pub field_type: String,
     pub access_flags: u32,
+    #[boltffi::default(None)]
     pub initial_value: Option<EncodedVal>,
 }
 
 #[data]
 #[derive(Debug, Clone)]
 pub struct FingerprintDef {
+    #[boltffi::default(None)]
     pub name: Option<String>,
+    #[boltffi::default(None)]
     pub defining_class: Option<String>,
+    #[boltffi::default(None)]
     pub access_flags: Option<u32>,
+    #[boltffi::default(None)]
     pub return_type: Option<String>,
+    #[boltffi::default(None)]
     pub parameters: Option<Vec<String>>,
+    #[boltffi::default(None)]
     pub opcodes: Option<Vec<i32>>,
+    #[boltffi::default(None)]
     pub strings: Option<Vec<String>>,
+    #[boltffi::default(None)]
     pub literals: Option<Vec<i64>>,
 }
 
@@ -72,14 +83,6 @@ pub struct InstructionHit {
 #[data]
 #[derive(Debug, Clone, Copy)]
 pub struct MethodCallSiteResult {
-    pub method: u32,
-    pub index: u32,
-    pub target_index: u32,
-}
-
-#[data]
-#[derive(Debug, Clone, Copy)]
-pub struct FieldAccessSiteResult {
     pub method: u32,
     pub index: u32,
     pub target_index: u32,
@@ -113,6 +116,7 @@ pub struct TryItem {
 #[derive(Debug, Clone)]
 pub struct CatchHandler {
     pub typed_catches: Vec<TypedCatch>,
+    #[boltffi::default(None)]
     pub catch_all_addr: Option<u32>,
 }
 
@@ -129,6 +133,7 @@ pub struct NewField {
     pub name: String,
     pub field_type: String,
     pub access_flags: u32,
+    #[boltffi::default(None)]
     pub initial_value: Option<EncodedVal>,
 }
 

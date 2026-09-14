@@ -56,6 +56,7 @@ kotlin {
         val jvmCommonMain by creating {
             dependsOn(commonMain)
             kotlin.srcDir(rustSdk.dir("generated/app"))
+            dependencies { api(project(":reseam-patch-sdk")) }
         }
         val androidMain by getting { dependsOn(jvmCommonMain) }
         val jvmMain by getting {

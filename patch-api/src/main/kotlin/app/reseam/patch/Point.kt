@@ -16,6 +16,9 @@ import app.reseam.patch.dex.regA
 import app.reseam.patch.dex.returnType
 import app.reseam.patch.dex.stringValue
 import app.reseam.patch.dex.typeRef
+import app.reseam.patch.native.FieldRef
+import app.reseam.patch.native.Instruction
+import app.reseam.patch.native.MethodRef
 
 /** One instruction in a method, found by matching, with the values captured on the way. */
 class PointTarget internal constructor(

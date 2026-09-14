@@ -6,29 +6,29 @@
 package app.reseam.patch.dex
 
 import app.reseam.patch.ActiveRuntime
-import app.reseam.patch.AnnotationItem
-import app.reseam.patch.ClassInfo
-import app.reseam.patch.EncodedVal
-import app.reseam.patch.FieldInfo
-import app.reseam.patch.FieldRef
-import app.reseam.patch.NewField
-import app.reseam.patch.NewMethod
-import app.reseam.patch.addClassAnnotation
-import app.reseam.patch.addField
-import app.reseam.patch.addFieldAnnotation
-import app.reseam.patch.addInterface
-import app.reseam.patch.addMethod
-import app.reseam.patch.classDirectMethods
-import app.reseam.patch.classFields
-import app.reseam.patch.classVirtualMethods
-import app.reseam.patch.definalClass
-import app.reseam.patch.removeClass
-import app.reseam.patch.removeField
-import app.reseam.patch.setClassAccessFlags
-import app.reseam.patch.setFieldAccessFlags
-import app.reseam.patch.setStaticFieldValue
-import app.reseam.patch.setSuperclass
-import app.reseam.patch.superclassChain
+import app.reseam.patch.native.AnnotationItem
+import app.reseam.patch.native.ClassInfo
+import app.reseam.patch.native.EncodedVal
+import app.reseam.patch.native.FieldInfo
+import app.reseam.patch.native.FieldRef
+import app.reseam.patch.native.NewField
+import app.reseam.patch.native.NewMethod
+import app.reseam.patch.native.addClassAnnotation
+import app.reseam.patch.native.addField
+import app.reseam.patch.native.addFieldAnnotation
+import app.reseam.patch.native.addInterface
+import app.reseam.patch.native.addMethod
+import app.reseam.patch.native.classDirectMethods
+import app.reseam.patch.native.classFields
+import app.reseam.patch.native.classVirtualMethods
+import app.reseam.patch.native.definalClass
+import app.reseam.patch.native.removeClass
+import app.reseam.patch.native.removeField
+import app.reseam.patch.native.setClassAccessFlags
+import app.reseam.patch.native.setFieldAccessFlags
+import app.reseam.patch.native.setStaticFieldValue
+import app.reseam.patch.native.setSuperclass
+import app.reseam.patch.native.superclassChain
 
 /** A class in the app's bytecode, identified by an engine handle valid for the running patch. */
 @JvmInline
@@ -43,14 +43,14 @@ value class DexClass(val handle: UInt) {
     val isInterface: Boolean get() = AccessFlags.INTERFACE.isSet(info.accessFlags)
 
     val methods: List<Method> get() = directMethods + virtualMethods
-    val directMethods: List<Method> get() = classDirectMethods(handle).map { Method(it.toUInt()) }
-    val virtualMethods: List<Method> get() = classVirtualMethods(handle).map { Method(it.toUInt()) }
+    val directMethods: List<Method> get() = classDirectMethods(handle).map { Method(it) }
+    val virtualMethods: List<Method> get() = classVirtualMethods(handle).map { Method(it) }
 
     val fields: List<FieldInfo> get() = classFields(handle)
     val staticFields: List<FieldInfo> get() = fields.filter { AccessFlags.STATIC.isSet(it.accessFlags) }
     val instanceFields: List<FieldInfo> get() = fields.filterNot { AccessFlags.STATIC.isSet(it.accessFlags) }
 
-    val superclassChain: List<DexClass> get() = superclassChain(handle).map { DexClass(it.toUInt()) }
+    val superclassChain: List<DexClass> get() = superclassChain(handle).map { DexClass(it) }
 
     /** The method called `name`, narrowed by `proto` when more than one overload exists. */
     fun method(name: String, proto: String? = null): Method? =

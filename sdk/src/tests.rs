@@ -81,7 +81,7 @@ fn containers_and_plain_apks_use_the_same_output_pipeline() {
                 PatchArtifact::SingleFile { path } => {
                     let path = Path::new(&path);
                     assert_eq!(path, destination.with_extension("apk"));
-                    assert_eq!(inspect_apk(&path, &[]).unwrap().component_count, 1);
+                    assert_eq!(inspect_apk(path, &[]).unwrap().component_count, 1);
                 }
                 PatchArtifact::SplitDir { path } => {
                     let path = Path::new(&path);

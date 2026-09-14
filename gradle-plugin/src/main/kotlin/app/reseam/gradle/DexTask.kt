@@ -13,7 +13,7 @@ import org.gradle.api.tasks.TaskAction
 import org.gradle.process.ExecOperations
 import javax.inject.Inject
 
-/** Runs the Kotlin 2.4-compatible D8 compiler over class files or jars into `classes*.dex` files in the output directory. */
+/** Runs d8 over class files or jars into `classes*.dex` files in the output directory. */
 abstract class DexTask @Inject constructor(private val exec: ExecOperations) : DefaultTask() {
     /** Pinned with Kotlin: installed Android build-tools may contain an older D8. */
     @get:Classpath

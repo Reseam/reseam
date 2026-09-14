@@ -5,6 +5,9 @@
 
 package app.reseam.patch
 
+import app.reseam.patch.native.FieldRef
+import app.reseam.patch.native.MethodRef
+
 /**
  * Code a patch adds to a method. Values are [ValueRef]s; the engine assigns
  * registers and picks instruction encodings. Kotlin control flow runs while

@@ -5,6 +5,15 @@
 
 package app.reseam.patch
 
+import app.reseam.patch.native.optionGetBool
+import app.reseam.patch.native.optionGetFloat
+import app.reseam.patch.native.optionGetInt
+import app.reseam.patch.native.optionGetPath
+import app.reseam.patch.native.optionGetString
+import app.reseam.patch.native.optionGetStringList
+import app.reseam.patch.native.optionListPathContents
+import app.reseam.patch.native.optionReadPathFile
+
 enum class OptionKind { STRING, BOOL, INT, FLOAT, STRING_LIST, PATH }
 
 /** A value the user supplies when applying the patch; declared in the patch block, read with `options[it]`. */

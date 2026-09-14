@@ -3,6 +3,10 @@
 
 package app.reseam.patch
 
+import app.reseam.patch.native.ClassInfo
+import app.reseam.patch.native.MethodInfo
+import app.reseam.patch.native.getClassInfo
+import app.reseam.patch.native.getMethodInfo
 import java.util.IdentityHashMap
 
 /**
