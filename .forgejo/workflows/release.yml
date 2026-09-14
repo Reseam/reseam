@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+  # Builds everything a release would, without publishing, to validate a release or warm the caches.
+  workflow_dispatch:
 
 jobs:
   build:
@@ -12,24 +14,45 @@ jobs:
     container:
       image: cimg/android:2026.03-node
     env:
+      RUST_VERSION: 1.98.1
+      RUST_TARGETS: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
       NDK_VERSION: 29.0.14206865
     steps:
-      - name: Install Rust toolchain
-        uses: https://github.com/dtolnay/rust-toolchain@stable
-
-      - name: Install Android NDK
-        run: sdkmanager "ndk;$NDK_VERSION"
-
-      - name: Add Rust Android targets
-        run: rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+      # actions/cache compresses with zstd when it is on PATH; the image only has gzip.
+      - name: Install zstd
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zstd
 
       - name: Checkout sources
         uses: actions/checkout@v4
 
+      - name: Cache the Rust toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.rustup
+          key: rustup-${{ env.RUST_VERSION }}-${{ env.RUST_TARGETS }}
+
+      - name: Install Rust toolchain
+        uses: https://github.com/dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: ${{ env.RUST_TARGETS }}
+
+      - name: Cache the Android NDK
+        id: ndk-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/android-sdk/ndk/${{ env.NDK_VERSION }}
+          key: ndk-${{ env.NDK_VERSION }}
+
+      - name: Install Android NDK
+        if: steps.ndk-cache.outputs.cache-hit != 'true'
+        run: sdkmanager "ndk;$NDK_VERSION"
+
       - name: Cache cargo build
         uses: https://github.com/Swatinem/rust-cache@v2
         with:
-          key: ${{ hashFiles('.cargo/config.toml') }}
+          cache-on-failure: true
+          cache-bin: false
 
       - name: Cache boltffi_cli binary
         id: boltffi-cache
@@ -42,8 +65,12 @@ jobs:
         if: steps.boltffi-cache.outputs.cache-hit != 'true'
         run: cargo install boltffi_cli --version "=$(cat .boltffi-version)" --locked
 
+      # Releases run on tags, which setup-gradle treats as read-only by default.
       - name: Set up Gradle
-        uses: https://github.com/gradle/actions/setup-gradle@v5
+        uses: https://github.com/gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: false
 
       - name: Regenerate patch-api bindings
         run: cargo xtask regen patch-api
@@ -59,18 +86,25 @@ jobs:
       - name: Build reseam-cli release binary
         run: cargo build --release -p reseam-cli
 
+      - name: Build the SDKs
+        run: ./gradlew assemble --no-daemon
+
       - name: Check the tag names the workspace version
+        if: startsWith(github.ref, 'refs/tags/')
         run: cargo xtask check-tag ${{ github.ref_name }}
 
       - name: Publish the SDKs to the Forgejo Maven registry
+        if: startsWith(github.ref, 'refs/tags/')
         env:
           FORGEJO_PACKAGES_TOKEN: ${{ secrets.FORGEJO_PACKAGES_TOKEN }}
         run: ./gradlew publishAllPublicationsToForgejoRepository -PreseamSdkVersion=${{ github.ref_name }} --no-daemon
 
       - name: Stage the CLI
+        if: startsWith(github.ref, 'refs/tags/')
         run: install -D target/release/reseam dist/reseam-linux-x64
 
       - name: Upload to the Forgejo release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: https://code.forgejo.org/actions/forgejo-release@v2.13.4
         with:
           direction: upload
