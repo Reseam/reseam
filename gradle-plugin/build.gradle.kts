@@ -24,18 +24,6 @@ gradlePlugin {
             id = "app.reseam.workspace"
             implementationClass = "app.reseam.gradle.ReseamWorkspacePlugin"
         }
-        create("bundle") {
-            id = "app.reseam.bundle"
-            implementationClass = "app.reseam.gradle.ReseamBundlePlugin"
-        }
-        create("patches") {
-            id = "app.reseam.patches"
-            implementationClass = "app.reseam.gradle.ReseamPatchesPlugin"
-        }
-        create("extension") {
-            id = "app.reseam.extension"
-            implementationClass = "app.reseam.gradle.ReseamExtensionPlugin"
-        }
     }
 }
 
