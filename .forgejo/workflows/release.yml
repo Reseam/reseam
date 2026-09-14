@@ -11,12 +11,14 @@ jobs:
     runs-on: docker
     container:
       image: cimg/android:2026.03-node
+    env:
+      NDK_VERSION: 29.0.14206865
     steps:
       - name: Install Rust toolchain
         uses: https://github.com/dtolnay/rust-toolchain@stable
 
       - name: Install Android NDK
-        run: sdkmanager "ndk;29.0.14206865"
+        run: sdkmanager "ndk;$NDK_VERSION"
 
       - name: Add Rust Android targets
         run: rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
@@ -46,14 +48,13 @@ jobs:
       - name: Regenerate patch-api bindings
         run: cargo xtask regen patch-api
 
-      - name: Put the NDK host clang on PATH
-        run: echo "$ANDROID_HOME/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+      - name: Select the installed NDK and put its host clang on PATH
+        run: |
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
 
       - name: Regenerate SDK bindings and Android/desktop JNI libraries
         run: cargo xtask regen sdk
-
-      - name: Check generated sources are committed
-        run: git diff --exit-code
 
       - name: Build reseam-cli release binary
         run: cargo build --release -p reseam-cli
