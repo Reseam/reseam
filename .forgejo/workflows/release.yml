@@ -29,7 +29,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.rustup
-          key: rustup-${{ env.RUST_VERSION }}-${{ env.RUST_TARGETS }}
+          key: rustup-${{ env.RUST_VERSION }}-android
 
       - name: Install Rust toolchain
         uses: https://github.com/dtolnay/rust-toolchain@master
