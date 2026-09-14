@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - JDK 17.
-- Android SDK with `ANDROID_HOME` set to its root. The build runs `d8` from `$ANDROID_HOME/build-tools/*/` and compiles extensions against the latest `platforms/android-*/android.jar`.
+- Android SDK with `ANDROID_HOME` set to its root. The build compiles extensions against the latest `platforms/android-*/android.jar`. It downloads the `d8` version the plugin pins, so build-tools are not needed.
 - The `reseam` CLI from a release, the one matching the plugin version in `settings.gradle.kts`. The build packs and signs bundles with it. You only need to build it from source when you are changing the engine itself.
 - Git.
 

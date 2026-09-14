@@ -1,46 +1,74 @@
 # Reseam SDK
 
-The Rust service in this directory is used directly by the CLI. Shared public data lives in `crates/model`; `sdk/native` exposes it through BoltFFI 0.30.1 for Android and desktop JVM clients.
+Application integration SDK for Reseam clients.
 
-The generated Kotlin API provides `inspect(InspectRequest)`, `patch(PatchRequest, callback)`, typed `SdkError` exceptions, and a closeable `ApkInspection`. Requests, results, events, options, and icons use generated types. No JSON transport or duplicate Kotlin DTO schema is needed. Trust is explicit: an empty `Trust.keys` trusts no bundle.
+This crate is the Rust service; the CLI calls it directly. `sdk/native` exports it through BoltFFI, with the types from `crates/model`:
 
-Calls are synchronous; clients choose their executor. Progress callbacks run on the calling thread and must not re-enter the engine. Keep an `ApkInspection` open while using extracted component paths.
+- `inspect(InspectRequest): InspectResponse`
+- `patch(PatchRequest, onEvent): PatchOutcome`, with progress delivered as `RunEvent`
+- `ApkInspection(apkPath, splitPaths)`: `metadata()`, `basePath()`, `splitPaths()`, `applicationIcon()`, `close()`
+- `encodeSelection` / `decodeSelection` and `encodePatchMetadata` / `decodePatchMetadata`
 
-## Generate and package
+Failures throw `SdkError`, which carries a typed `Problem`. A request names the bundle signers it trusts under `trust.keys`; the engine trusts nobody on its own.
 
-From the workspace root, install the pinned CLI and configure JDK 17, the Android SDK/NDK, Rust's four Android targets, and a host `clang` on `PATH`:
+Calls are synchronous; run them off the main thread. `onEvent` runs on the calling thread and must not call back into the SDK. Component paths from an `ApkInspection` stay valid until it is closed.
 
-```bash
-cargo install boltffi_cli --version "=$(cat .boltffi-version)" --locked
-cargo xtask regen all
-```
+Store selections and patch metadata with the encode functions. They write the serde JSON schema, which does not change with BoltFFI's wire format.
 
-`regen patch-api` bootstraps the embedded patch bridge. `regen sdk` then runs BoltFFI's Android packer with `--deny-skipped`, including its desktop packer. The configuration is [native/boltffi.toml](native/boltffi.toml).
+`sdk/native` is a separate crate because BoltFFI exports the `#[export]` functions of every direct dependency, and this crate depends on the patcher. See [BoltFFI integration](../docs/bindings.md).
 
-Outputs are disposable build products:
+## Build
 
-- `sdk/generated`: Kotlin and JNI sources.
-- `sdk/jniLibs/<abi>/libreseam-sdk-native.so`: four Android ABIs.
-- `sdk/dist/android/desktopJniLibs/<host>/`: desktop JNI library for the build host.
-
-There is no separate desktop-linking task. Cross-host desktop publishing requires building the corresponding host artifact.
-
-## Kotlin artifacts
-
-The root Gradle build publishes `app.reseam:reseam-sdk` for applications and `app.reseam:reseam-patch-sdk` for patch authors. The application SDK shares generated JVM-compatible Kotlin between Android and desktop. It uses the Android KMP library plugin; it does not claim support for Kotlin/Native.
+Install Rust Android targets:
 
 ```bash
-./gradlew publishToMavenLocal -PreseamSdkVersion=0.9.0
+rustup target add \
+  aarch64-linux-android \
+  armv7-linux-androideabi \
+  x86_64-linux-android \
+  i686-linux-android
 ```
 
-Android hosts must install their application classloader before loading bundles:
+Set the Android NDK toolchain on `PATH`. Adjust the NDK version if needed:
+
+```bash
+export ANDROID_NDK_BIN="$ANDROID_HOME/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin"
+export PATH="$ANDROID_NDK_BIN:$PATH"
+```
+
+Generate Kotlin bindings and package the native libraries, with JDK 17 in `JAVA_HOME`:
+
+```bash
+cargo xtask regen sdk
+```
+
+This runs `boltffi pack android` in `sdk/native`, configured by [`native/boltffi.toml`](native/boltffi.toml). Outputs are build products, not sources:
+
+- `sdk/generated/`: Kotlin and JNI sources
+- `sdk/jniLibs/<abi>/libreseam-sdk-native.so`: the four Android ABIs
+- `sdk/dist/android/desktopJniLibs/<host>/`: the desktop JNI library, for the current host only
+
+## Publishing
+
+The Kotlin packages are built by the Gradle project at the workspace root:
+
+```bash
+./gradlew publishToMavenLocal -PreseamSdkVersion=0.5.0
+```
+
+- `app.reseam:reseam-sdk` for managers (Kotlin Multiplatform, Android and JVM)
+- `app.reseam:reseam-patch-sdk` for patch authors
+
+`reseam-sdk` depends on `reseam-patch-sdk`. Bundles then resolve the host's copy of the patch runtime, whose native calls reach the SDK library the host already loaded.
+
+CI publishes both to the Reseam Maven registry on every `v*` tag, with the version taken from the tag.
+
+## Patcher Host Requirement
+
+Android hosts must install a classloader before inspecting or patching bundles:
 
 ```kotlin
 ReseamAndroidHost.setClassLoader(classLoader)
 ```
 
-Desktop hosts attach to the app's existing JVM. BoltFFI handles native library loading and foreign-object cleanup.
-
-For persisted selection and patch metadata, use the generated `encodeSelection` / `decodeSelection` and `encodePatchMetadata` / `decodePatchMetadata` functions. These preserve the Rust serde schema independently of the transient FFI ABI. They are not required for inspect or patch calls.
-
-See [the architecture and migration review](../docs/bindings.md) for the two binding roots, remaining host policy, and upstream limitations.
+The classloader must be able to resolve the Reseam SDK and patch classes. Desktop hosts need nothing: the engine attaches to the JVM it was loaded into.

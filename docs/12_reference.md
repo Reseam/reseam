@@ -184,3 +184,23 @@ Temporary registers are reused after their last use across the block's control f
 | `AccessFlags` | Flag constants; `Int.isSet(flags)`. |
 | `InstructionBuilder`, `buildInstructions { }` | See [Raw bytecode](10_dex.md#instruction-builder). |
 | `lowerInvokes(insns, scratch)` | Rewrites invokes the 35c format cannot encode into range form. |
+
+## `app.reseam.patch.native`
+
+Generated from the engine's Rust types. Import the data types below from here. The package's top-level functions are the raw engine calls the other packages wrap; patch code does not call them, and they change with the engine.
+
+| Symbol | Description |
+|---|---|
+| `Instruction` | One instruction. Variants: `Simple`, `Reg1`, `Reg2`, `Reg3`, `RegLiteral`, `RegString`, `RegType`, `RegField`, `Invoke`, `InvokeRange`, `Branch0`, `Branch`, `Branch2`, `FilledArray`, `FilledArrayRange`, `PackedSwitchData`, `SparseSwitchData`, `FillArrayData`, `Raw`. Each holds its payload as `field0`: an `*Insn` record, or the bytes for `Raw`. Read it through the `Instruction.*` properties. |
+| `MethodRef` | `definingClass`, `name`, `proto`. |
+| `FieldRef` | `definingClass`, `name`, `fieldType`. |
+| `MethodInfo` | `Method.info`: `classDescriptor`, `methodName`, `proto`, `accessFlags`, `dexIndex`, `registerCount`, `insSize`, `outsSize`, `instructionCount`. |
+| `ClassInfo` | `DexClass.info`: `descriptor`, `accessFlags`, `superclass`, `interfaces`, `sourceFile`, `dexIndex`, `directMethodCount`, `virtualMethodCount`, `staticFieldCount`, `instanceFieldCount`. |
+| `FieldInfo` | `DexClass.fields`: `classDescriptor`, `name`, `fieldType`, `accessFlags`, `initialValue`. |
+| `NewMethod` | `DexClass.addMethod`: `name`, `proto`, `accessFlags`, `registersSize`, `insSize`, `outsSize`, `instructions`, `tries: List<TryItem>`, `catchHandlers: List<CatchHandler>`. |
+| `NewField` | `DexClass.addField`: `name`, `fieldType`, `accessFlags`, `initialValue`. |
+| `AnnotationItem` | `addAnnotation`, `addFieldAnnotation`: `visibility`, `annotationType`, `elements: List<AnnotationElement>` of `name` and `value`. |
+| `EncodedVal` | A constant: `Null`, `BoolVal`, `ByteVal`, `ShortVal`, `CharVal`, `IntVal`, `LongVal`, `FloatVal`, `DoubleVal`, `StringVal`, `TypeVal`, each holding `field0`. |
+| `ResourceRef` | `ResourceScope.poolFindRefs`: `resId`, `keyName`. |
+
+Registers and counts are unsigned (`UShort`, `UInt`, `UShortArray`), as the engine declares them.
