@@ -16,7 +16,7 @@ use crate::error::{invalid, invalid_mutf8, invalid_offset, Result};
 use crate::read::header::u32_at;
 use crate::types::header::ParseOptions;
 use crate::types::StringIdx;
-use crate::util::sort::dex_string_compare;
+use crate::util::sort::mutf8_compare;
 
 /// The string table left in the file: raw entries are read through the
 /// `string_ids` table on access, and only strings added after parse are owned.
@@ -97,7 +97,7 @@ impl StringPool {
             let mid = lo + (hi - lo) / 2;
             let ord = match self.plain(mid) {
                 Some(bytes) if bmp => bytes.cmp(s.as_bytes()),
-                _ => dex_string_compare(&self.get(StringIdx(mid as u32)), s),
+                _ => mutf8_compare(&self.mutf8(mid), &encode_mutf8(s)),
             };
             match ord {
                 Ordering::Less => lo = mid + 1,
@@ -128,10 +128,21 @@ impl StringPool {
     pub(crate) fn compare(&self, a: u32, b: u32) -> Ordering {
         // A raw payload that is valid UTF-8 holds only U+0001..U+FFFF (NUL and
         // supplementary characters have non-UTF-8 encodings in MUTF-8), and for
-        // that range byte order equals UTF-16 code unit order.
+        // that range byte order equals UTF-16 code unit order. Otherwise compare
+        // the MUTF-8 payloads directly: a scalar decode drops surrogate halves to
+        // U+FFFD, which would order an entry differently from the bytes written.
         match (self.plain(a as usize), self.plain(b as usize)) {
             (Some(x), Some(y)) => x.cmp(y),
-            _ => dex_string_compare(&self.get(StringIdx(a)), &self.get(StringIdx(b))),
+            _ => mutf8_compare(&self.mutf8(a as usize), &self.mutf8(b as usize)),
+        }
+    }
+
+    /// The MUTF-8 payload of any entry: raw entries verbatim, owned entries encoded.
+    fn mutf8(&self, i: usize) -> Cow<'_, [u8]> {
+        if i < self.raw_len {
+            Cow::Borrowed(self.payload(self.raw_offset(i)))
+        } else {
+            Cow::Owned(encode_mutf8(&self.owned[i - self.raw_len]))
         }
     }
 
