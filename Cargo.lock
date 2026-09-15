@@ -1323,7 +1323,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "reseam-apk"
-version = "0.9.1"
+version = "0.10.0"
 dependencies = [
  "flate2",
  "libc",
@@ -1346,7 +1346,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-cli"
-version = "0.9.1"
+version = "0.10.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1365,7 +1365,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-dex"
-version = "0.9.1"
+version = "0.10.0"
 dependencies = [
  "adler",
  "bitflags",
@@ -1386,7 +1386,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-model"
-version = "0.9.1"
+version = "0.10.0"
 dependencies = [
  "anyhow",
  "boltffi",
@@ -1397,7 +1397,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-patcher"
-version = "0.9.1"
+version = "0.10.0"
 dependencies = [
  "anyhow",
  "boltffi",
@@ -1423,7 +1423,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-sdk"
-version = "0.9.1"
+version = "0.10.0"
 dependencies = [
  "anyhow",
  "hex",
@@ -1440,7 +1440,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-sdk-native"
-version = "0.9.1"
+version = "0.10.0"
 dependencies = [
  "anyhow",
  "boltffi",
@@ -1453,7 +1453,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-sign"
-version = "0.9.1"
+version = "0.10.0"
 dependencies = [
  "memmap2",
  "rayon",
