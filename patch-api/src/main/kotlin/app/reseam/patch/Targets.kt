@@ -45,13 +45,26 @@ class MethodsTarget internal constructor(
 
     fun forEach(block: MethodTarget.() -> Unit) = all.forEach(block)
 
-    /** The one method matching `predicate`; fails listing the candidates otherwise. */
-    fun single(predicate: MethodTarget.() -> Boolean): MethodTarget {
-        val matches = all.filter(predicate)
-        return matches.singleOrNull() ?: error(
-            "$label: expected one method, got ${matches.size} of ${all.size}: ${all.joinToString { it.descriptor }}",
-        )
-    }
+    /**
+     * A deferred target for the one method matching [predicate].
+     *
+     * Creating the target does not resolve candidates or run the predicate, so
+     * it may be declared at top level. On first use in a patch runtime, the
+     * predicate runs for each candidate with that runtime active and may read
+     * other targets. The selected method is cached for the rest of that runtime.
+     *
+     * @throws IllegalStateException when the target resolves and zero or multiple
+     * candidates match, with the match count and all candidate descriptors.
+     */
+    fun single(predicate: MethodTarget.() -> Boolean): MethodTarget =
+        MethodTarget(debugName) { runtime ->
+            val candidates = runtime.resolve(this).value.map { MethodTarget.of(it, debugName) }
+            val matches = candidates.filter(predicate)
+            val winner = matches.singleOrNull() ?: error(
+                "$label: expected one method, got ${matches.size} of ${candidates.size}: ${candidates.joinToString { it.descriptor }}",
+            )
+            runtime.resolve(winner)
+        }
 }
 
 class ClassTarget internal constructor(

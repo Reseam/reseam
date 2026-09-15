@@ -70,6 +70,8 @@ Each result carries `patch` (the reference), `hidden`, and `required_by`, so a c
 
 `MethodTarget`: `method`, `owner`, `name`, `proto`, `returnType`, `parameterTypes`, `descriptor`, `ref`. `MethodsTarget`: `all`, `forEach { }`, `single { }`. `ClassTarget`: `classDef`, `descriptor`. `FieldTarget`: `ref`, `owner`, `name`, `type`.
 
+`MethodsTarget.single { predicate }` returns a deferred `MethodTarget` and can be declared at top level. The predicate has a `MethodTarget` receiver and returns a Boolean. It resolves the candidates and evaluates the predicate on first use in an active patch runtime, then caches the selected method for that runtime. Zero or multiple matches fail at resolution with the match count and all candidate descriptors. Calling `single` without using its result does not validate the selection. `all` and `forEach` resolve immediately and require an active runtime.
+
 `MethodQuery`: `name`, `strings`, `literals`, `returns`, `params`, `param(index, type)`, `hasParam`, `paramCount`, `flags`, `inClass`, `calls`, `calledBy`, `callsMethod { MethodRef }`, `opcode`, `rankBy(label) { MethodRankScope }`, `first()`.
 
 `ClassQuery`: `strings`, `hasInstanceField`, `extends`, `implements`, `rankBy(label) { ClassRankScope }`, `first()`.
