@@ -109,6 +109,10 @@ impl ApkFile {
         self.dex_origins.push(DexOrigin::Added);
     }
 
+    pub fn is_added_dex(&self, index: usize) -> bool {
+        matches!(self.dex_origins.get(index), Some(DexOrigin::Added))
+    }
+
     pub fn resolve_dex_class_mut(
         &mut self,
         index: usize,

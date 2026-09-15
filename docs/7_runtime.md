@@ -23,7 +23,7 @@ bytecode.redirectCalls("android.telephony.TelephonyManager", "getDeviceId", Iden
 log.info("renamed package")
 ```
 
-`redirectCalls` sends every call to a method anywhere in the app to a static [extension](9_extensions.md) method instead, passing the receiver as the first argument for instance methods. It is the primitive for patches that apply to any app: identity spoofing, blocking a library call, replacing a platform API. `Identity.deviceId` above is declared as `static("deviceId", "android.telephony.TelephonyManager", returns = Type.String)`.
+`redirectCalls` sends every call to a method anywhere in the app to a static [extension](9_extensions.md) method instead, passing the receiver as the first argument for instance methods. Calls made from extension code keep their target, so the extension method can call the one it replaces. It is the primitive for patches that apply to any app: identity spoofing, blocking a library call, replacing a platform API. `Identity.deviceId` above is declared as `static("deviceId", "android.telephony.TelephonyManager", returns = Type.String)`.
 
 `edit { }` opens the manifest as an XML document and closes it after the block; `files.editXml(path) { }` does the same for any XML entry. Every member is listed in the [reference](12_reference.md#runtime).
 

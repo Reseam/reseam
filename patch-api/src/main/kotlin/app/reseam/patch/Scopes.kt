@@ -101,8 +101,8 @@ class BytecodeScope internal constructor() {
 
     /**
      * Every call to `from` in the app becomes a call to the static `to`, receiver first for
-     * instance methods. Calls through `super` and constructors are left alone. Returns how many
-     * call sites changed.
+     * instance methods. Calls through `super`, constructor calls, and calls from extensions are
+     * left alone, so `to` can call `from`. Returns how many call sites changed.
      */
     fun redirectCalls(from: MethodRef, to: ExtMethod): Int {
         require(to.isStatic) { "redirectCalls target ${to.ref.descriptor} must be static" }

@@ -385,10 +385,15 @@ impl<'a> PatchContext<'a> {
     /// Retargets every call to `from` at `to`, keeping the registers: an
     /// instance call becomes a static call whose first argument is the
     /// receiver. Calls through `invoke-super` and `invoke-direct` keep their
-    /// meaning and are left alone. Returns how many call sites changed.
+    /// meaning and are left alone, as are calls in DEX files added while
+    /// patching, so an extension can call the method it stands in for.
+    /// Returns how many call sites changed.
     pub fn redirect_method_calls(&mut self, from: MethodKey<'_>, to: MethodKey<'_>) -> usize {
         let mut changed = 0;
-        for dex_idx in 0..self.dex().iter().count() {
+        let app_dex: Vec<usize> = (0..self.dex().iter().count())
+            .filter(|&i| !self.apk.is_added_dex(i))
+            .collect();
+        for dex_idx in app_dex {
             let sites: Vec<InstructionLocation> = {
                 let Some(dex) = self.dex_file(dex_idx) else {
                     continue;
