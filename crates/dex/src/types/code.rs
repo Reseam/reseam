@@ -50,7 +50,7 @@ impl CodeItem {
                 self.instructions.insert(index + 1, Instruction::Nop);
                 delta += 1;
             }
-            self.fixup_offsets(change_addr + old_size as u32, delta)?;
+            self.fixup_offsets(change_addr + old_size as u32, delta, Layout::AfterEdit)?;
         }
         Ok(())
     }
@@ -59,23 +59,31 @@ impl CodeItem {
         self.insert_instructions(index, &[insn])
     }
 
+    /// Inserts before the instruction at `index`. Branches that targeted that
+    /// instruction keep targeting it, so the inserted code runs only on the
+    /// fall-through into it.
     pub fn insert_instructions(&mut self, index: usize, insns: &[Instruction]) -> Result<()> {
         self.ensure_insert_index(index)?;
         let mut delta: i32 = insns.iter().map(|i| i.code_units() as i32).sum();
         let insert_addr = self.code_unit_offset(index);
 
         let needs_pad = delta % 2 != 0 && self.has_payload_after(insert_addr);
-
-        self.instructions
-            .splice(index..index, insns.iter().cloned());
-
         if needs_pad {
-            let pad_pos = index + insns.len();
-            self.instructions.insert(pad_pos, Instruction::Nop);
             delta += 1;
         }
 
-        self.fixup_offsets(insert_addr, delta)
+        // Relocation reads the layout the branches were encoded against, so a
+        // branch spanning the insertion point widens by what lands between it
+        // and its target however far apart the two are.
+        self.fixup_offsets(insert_addr, delta, Layout::BeforeEdit)?;
+
+        self.instructions
+            .splice(index..index, insns.iter().cloned());
+        if needs_pad {
+            self.instructions
+                .insert(index + insns.len(), Instruction::Nop);
+        }
+        Ok(())
     }
 
     pub fn remove_instruction(&mut self, index: usize) -> Result<()> {
@@ -83,7 +91,7 @@ impl CodeItem {
         let delta = -(self.instructions[index].code_units() as i32);
         let remove_addr = self.code_unit_offset(index);
         self.instructions.remove(index);
-        self.fixup_offsets(remove_addr, delta)
+        self.fixup_offsets(remove_addr, delta, Layout::AfterEdit)
     }
 
     pub fn set_instructions(&mut self, insns: Vec<Instruction>) {
@@ -193,7 +201,7 @@ impl CodeItem {
         false
     }
 
-    fn fixup_offsets(&mut self, addr: u32, delta: i32) -> Result<()> {
+    fn fixup_offsets(&mut self, addr: u32, delta: i32, layout: Layout) -> Result<()> {
         let mut switch_bases: HashMap<u32, SwitchBase> = HashMap::new();
         let mut total_growth: i32 = 0;
         let mut cur_addr: u32 = 0;
@@ -203,6 +211,7 @@ impl CodeItem {
                 cur_addr,
                 addr,
                 delta + total_growth,
+                layout,
                 &mut switch_bases,
             )?;
             total_growth += growth;
@@ -246,11 +255,20 @@ struct SwitchBase {
 }
 
 /// Returns additional code-unit growth if a goto was promoted to a wider form.
+/// Whether the instructions being relocated are still in the layout their
+/// branch offsets were encoded against, or already in the one the edit left.
+#[derive(Clone, Copy, PartialEq)]
+enum Layout {
+    BeforeEdit,
+    AfterEdit,
+}
+
 fn fixup_branch(
     insn: &mut Instruction,
     insn_addr: u32,
     change_addr: u32,
     delta: i32,
+    layout: Layout,
     switch_bases: &mut HashMap<u32, SwitchBase>,
 ) -> Result<i32> {
     match insn {
@@ -309,8 +327,14 @@ fn fixup_branch(
         }
         Instruction::PackedSwitch { payload_offset, .. }
         | Instruction::SparseSwitch { payload_offset, .. } => {
+            // Keyed by where the payload sits in the layout being walked, which
+            // is the address the payload is reached at further down the walk.
+            let before = (insn_addr as i32 + *payload_offset) as u32;
             *payload_offset = fixup_i32(*payload_offset, insn_addr, change_addr, delta);
-            let payload_addr = (insn_addr as i32 + *payload_offset) as u32;
+            let payload_addr = match layout {
+                Layout::BeforeEdit => before,
+                Layout::AfterEdit => (insn_addr as i32 + *payload_offset) as u32,
+            };
             switch_bases.insert(
                 payload_addr,
                 SwitchBase {
@@ -350,7 +374,15 @@ fn fixup_i32(offset: i32, insn_addr: u32, change_addr: u32, delta: i32) -> i32 {
     let caddr = change_addr as i32;
 
     if offset > 0 {
-        if caddr > iaddr && caddr <= target {
+        // Code inserted at the target goes before it, so the branch widens to keep
+        // its instruction. Code removed at the target takes the instruction with it,
+        // and the successor slides into that address, so the branch stays put.
+        let reaches_change = if delta >= 0 {
+            caddr <= target
+        } else {
+            caddr < target
+        };
+        if caddr > iaddr && reaches_change {
             offset + delta
         } else {
             offset
@@ -533,5 +565,78 @@ mod tests {
             }
             other => panic!("expected sparse payload, got {other:?}"),
         }
+    }
+
+    /// Removing the instruction a forward branch targets leaves the branch on the
+    /// successor, which slides into the removed instruction's address.
+    #[test]
+    fn removing_a_branch_target_keeps_the_branch_on_its_successor() {
+        let mut code = code_item();
+        code.instructions = vec![
+            Instruction::Goto { offset: 2 },
+            Instruction::Nop,
+            Instruction::Nop,
+            Instruction::ReturnVoid,
+        ];
+        code.remove_instruction(2).expect("remove");
+        let Some(Instruction::Goto { offset }) = code.instructions.first() else {
+            panic!("expected the goto first, got {:?}", code.instructions);
+        };
+        assert_eq!(
+            *offset as i32, 2,
+            "the branch must now reach the return at the same address"
+        );
+    }
+
+    /// A loop whose back edge crosses the insertion point: the branch and its
+    /// target move apart by exactly what was inserted between them.
+    #[test]
+    fn a_back_edge_over_an_insert_keeps_its_target() {
+        for inserted in 1..6 {
+            let mut code = code_item();
+            code.instructions = vec![
+                Instruction::Nop,
+                Instruction::Nop,
+                Instruction::Goto { offset: -2 },
+            ];
+            let insertion = vec![Instruction::Nop; inserted];
+            code.insert_instructions(1, &insertion).expect("insert");
+            let Some(Instruction::Goto { offset }) = code.instructions.last() else {
+                panic!("expected the goto last, got {:?}", code.instructions);
+            };
+            assert_eq!(
+                *offset as i32,
+                -2 - inserted as i32,
+                "inserting {inserted} unit(s) at addr 1 must widen a back edge over it",
+            );
+        }
+    }
+
+    /// A branch that targeted the instruction at the insertion point still
+    /// targets that instruction, from either side, so inserted code runs only
+    /// on the fall-through into it.
+    #[test]
+    fn branches_to_the_insertion_point_skip_what_was_inserted() {
+        let mut code = code_item();
+        code.instructions = vec![
+            Instruction::Goto { offset: 3 },
+            Instruction::Nop,
+            Instruction::Goto { offset: 2 },
+            Instruction::Nop,
+            Instruction::Goto { offset: -2 },
+        ];
+        code.insert_instructions(3, &[Instruction::Nop, Instruction::Nop])
+            .expect("insert");
+        let offsets: Vec<i32> = code
+            .instructions
+            .iter()
+            .filter_map(|insn| match insn {
+                Instruction::Goto { offset } => Some(*offset as i32),
+                _ => None,
+            })
+            .collect();
+        // The forward branches land past the two inserted Nops; the back edge at
+        // addr 6 still reaches the Nop that was at addr 3 and is now at addr 5.
+        assert_eq!(offsets, [5, 4, -4]);
     }
 }

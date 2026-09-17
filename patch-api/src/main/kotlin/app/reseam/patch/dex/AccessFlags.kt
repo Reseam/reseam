@@ -25,5 +25,10 @@ object AccessFlags {
     const val DECLARED_SYNCHRONIZED = 0x20000
 }
 
+/** True when `flags` carries any bit of the receiver. Use it with one constant at a time. */
 fun Int.isSet(flags: Int): Boolean = flags and this != 0
 fun Int.isSet(flags: UInt): Boolean = flags.toInt() and this != 0
+
+/** True when `flags` carries every bit of the receiver, so `PUBLIC or FINAL` means both. */
+fun Int.allSet(flags: Int): Boolean = flags and this == this
+fun Int.allSet(flags: UInt): Boolean = flags.toInt() and this == this

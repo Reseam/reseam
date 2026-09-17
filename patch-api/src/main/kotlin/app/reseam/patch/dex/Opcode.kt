@@ -237,6 +237,10 @@ enum class Opcode(val value: Int) {
     val isReturn: Boolean
         get() = this == RETURN_VOID || this == RETURN || this == RETURN_WIDE || this == RETURN_OBJECT
 
+    /** Execution never falls through to the next instruction. */
+    val endsFlow: Boolean
+        get() = isReturn || this == THROW || this == GOTO || this == GOTO_16 || this == GOTO_32
+
     val isMoveResult: Boolean
         get() = this == MOVE_RESULT || this == MOVE_RESULT_WIDE || this == MOVE_RESULT_OBJECT
 

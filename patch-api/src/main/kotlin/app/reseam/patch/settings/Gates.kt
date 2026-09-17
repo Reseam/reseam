@@ -12,6 +12,7 @@ import app.reseam.patch.PointTarget
 import app.reseam.patch.Type
 import app.reseam.patch.after
 import app.reseam.patch.before
+import app.reseam.patch.skipWhen
 
 /** Runs `block` in the app when the toggle is on. */
 fun CodeScope.whenEnabled(setting: ToggleSetting, block: CodeScope.() -> Unit): Otherwise =
@@ -27,6 +28,10 @@ fun MethodTarget.skipWhen(setting: ToggleSetting) {
     require(returnType == Type.Void) { "skipWhen(${setting.key}) needs a void method, got $returnType in $descriptor" }
     before(setting) { returnVoid() }
 }
+
+/** Skips the call at the point when the toggle is on; the call's result must be unused. */
+fun PointTarget.skipWhen(setting: ToggleSetting) =
+    skipWhen { call(ReseamSettings.getBoolean, string(setting.key), bool(setting.default)) }
 
 fun MethodTarget.returnNullWhen(setting: ToggleSetting) {
     require(returnType.startsWith("L") || returnType.startsWith("[")) { "returnNullWhen(${setting.key}) needs an object method, got $returnType in $descriptor" }

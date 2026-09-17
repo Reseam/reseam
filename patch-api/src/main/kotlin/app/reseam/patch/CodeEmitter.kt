@@ -10,6 +10,7 @@ import app.reseam.patch.dex.Opcode
 import app.reseam.patch.dex.descriptor
 import app.reseam.patch.dex.isReferenceType
 import app.reseam.patch.dex.isSet
+import app.reseam.patch.dex.parameterTypes
 import app.reseam.patch.dex.rangeVariant
 import app.reseam.patch.dex.registerWordCount
 import app.reseam.patch.dex.returnType
@@ -90,6 +91,9 @@ internal class CodeEmitter private constructor(
     }
 
     private val info = method.info
+    private val access = Access(info.classDescriptor)
+    /** Registers this method's patches hold across insertions, which temporaries must not take. */
+    private val reservedLocals = if (replaceMode) emptyList() else ActiveRuntime.current.edits.reserved(method)
     private val isStaticMethod = AccessFlags.STATIC.isSet(info.accessFlags)
     private val originalRegistersSize = if (replaceMode) REPLACE_LOCAL_BUDGET + method.insSize else method.registersSize
     private val incomingBase = if (replaceMode) REPLACE_LOCAL_BUDGET else method.registersSize - method.insSize
@@ -134,6 +138,13 @@ internal class CodeEmitter private constructor(
         return Value(capture.register, capture.type)
     }
 
+    override fun local(slot: MethodLocal): ValueRef {
+        require(!replaceMode) { "$slot is a register of the original body, which this block replaces" }
+        require(!slot.lost) { "$slot no longer exists: the method body was replaced after it was reserved" }
+        require(slot.method.handle == method.handle) { "$slot is a local of another method, not ${info.descriptor}" }
+        return Value(slot.register, slot.type)
+    }
+
     override fun int(value: Int): ValueRef {
         val dest = allocTemp()
         op(writes = listOf(dest)) { b, r -> b.constInt(byte(r(dest), "const"), value) }
@@ -173,13 +184,23 @@ internal class CodeEmitter private constructor(
     override fun staticField(field: FieldTarget): ValueRef = staticField(field.ref)
 
     override fun staticField(field: FieldRef): ValueRef {
+        access.requireField(field)
         val dest = allocTemp(registerWordCount(field.fieldType))
         op(writes = listOf(dest)) { b, r -> b.sgetTyped(byte(r(dest), "sget"), field) }
-        return Value(dest, field.fieldType)
+        return Value(dest, field.fieldType, source = field)
+    }
+
+    override fun setStatic(field: FieldTarget, value: ValueRef) = setStatic(field.ref, value)
+
+    override fun setStatic(field: FieldRef, value: ValueRef) {
+        access.requireField(field)
+        val src = value.impl().asByte()
+        op(reads = listOf(src.register)) { b, r -> b.sputTyped(byte(r(src.register), "sput"), field) }
     }
 
     override fun newInstance(type: String, ctorProto: String, vararg args: ValueRef): ValueRef {
         val owner = descriptorOf(type)
+        access.requireClass(owner)
         val dest = allocTemp()
         op(writes = listOf(dest)) { b, r -> b.newInstance(byte(r(dest), "new-instance"), owner) }
         val instance = Value(dest, owner)
@@ -189,6 +210,7 @@ internal class CodeEmitter private constructor(
 
     override fun call(method: ExtMethod, vararg args: ValueRef): ValueRef {
         require(method.isStatic) { "$method is an instance method; call it on a value: receiver.call(...)" }
+        method.target.method
         return invoke(Opcode.INVOKE_STATIC, method.ref, args.map { it.impl() })
     }
 
@@ -233,7 +255,11 @@ internal class CodeEmitter private constructor(
         label(elseLabel)
         return object : Otherwise {
             override fun otherwise(block: CodeScope.() -> Unit) {
-                ops.add(elseIndex, Op(target = endLabel, fallsThrough = false) { b, _ -> b.goto(endLabel) })
+                // A then-block that already returned needs no jump over the else-block; the dead
+                // goto would aim past the end of a replaced body, which the verifier rejects.
+                if (ops[elseIndex - 1].fallsThrough) {
+                    ops.add(elseIndex, Op(target = endLabel, fallsThrough = false) { b, _ -> b.goto(endLabel) })
+                }
                 this@CodeEmitter.block()
                 label(endLabel)
             }
@@ -261,7 +287,14 @@ internal class CodeEmitter private constructor(
 
     internal fun buildInsertion() = CompiledCode(build(), plannedLocalGrowth)
 
-    internal fun buildReplacement() = ReplacementPlan(REPLACE_LOCAL_BUDGET + method.insSize, maxOutRegisters, build())
+    internal fun buildReplacement(): ReplacementPlan {
+        // Trailing labels may otherwise leave branches targeting past the method body.
+        val trailingLabels = ops.takeLastWhile { it.label != null }.mapNotNull { it.label }.toSet()
+        check(ops.lastOrNull { it.label == null }?.fallsThrough == false && ops.none { it.target in trailingLabels }) {
+            "The replacement for ${info.descriptor} falls off the end of the method; end every path with a return"
+        }
+        return ReplacementPlan(REPLACE_LOCAL_BUDGET + method.insSize, maxOutRegisters, build())
+    }
 
     private fun build(): List<Instruction> {
         layoutRegisters()
@@ -271,6 +304,13 @@ internal class CodeEmitter private constructor(
     }
 
     internal fun invoke(opcode: Opcode, ref: MethodRef, args: List<Value>): ValueRef {
+        val receiver = if (opcode == Opcode.INVOKE_STATIC) 0 else 1
+        val expected = ref.parameterTypes.size + receiver
+        require(args.size == expected) {
+            val receiverNote = if (receiver == 1) " plus the receiver" else ""
+            "${ref.definingClass}->${ref.name}${ref.proto} takes ${ref.parameterTypes.size} argument(s)$receiverNote, but ${args.size} value(s) were passed"
+        }
+        access.requireMethod(ref)
         val registers = args.flatMap { it.registerWords() }
         maxOutRegisters = maxOf(maxOutRegisters, registers.size)
         emitInvoke(opcode, ref, args, registers)
@@ -279,6 +319,14 @@ internal class CodeEmitter private constructor(
         val dest = allocTemp(registerWordCount(returnType))
         op(writes = listOf(dest)) { b, r -> b.moveResultTyped(byte(r(dest), "move-result"), returnType) }
         return Value(dest, returnType)
+    }
+
+    /** Emits an app call again from the captured registers it read, leaving its result unread. */
+    internal fun callCaptured(opcode: Opcode, ref: MethodRef, arguments: List<String>) {
+        val args = arguments.map { capture(it).impl() }
+        val registers = args.flatMap { it.registerWords() }
+        maxOutRegisters = maxOf(maxOutRegisters, registers.size)
+        emitInvoke(opcode, ref, args, registers)
     }
 
     private fun emitInvoke(opcode: Opcode, ref: MethodRef, args: List<Value>, registers: List<Int>) {
@@ -306,13 +354,15 @@ internal class CodeEmitter private constructor(
     }
 
     internal fun readField(value: Value, field: FieldRef): ValueRef {
+        access.requireField(field)
         val dest = allocTemp(registerWordCount(field.fieldType), RegisterConstraint.LOW)
         val obj = value.asLow()
         op(reads = listOf(obj.register), writes = listOf(dest)) { b, r -> b.igetTyped(low(r(dest), "iget A"), low(r(obj.register), "iget B"), field) }
-        return Value(dest, field.fieldType)
+        return Value(dest, field.fieldType, source = field)
     }
 
     internal fun writeField(value: Value, field: FieldRef, newValue: Value) {
+        access.requireField(field)
         val src = newValue.asLow()
         val obj = value.asLow()
         op(reads = listOf(src.register, obj.register)) { b, r -> b.iputTyped(low(r(src.register), "iput A"), low(r(obj.register), "iput B"), field) }
@@ -343,6 +393,7 @@ internal class CodeEmitter private constructor(
     }
 
     internal fun cast(value: Value, type: String): ValueRef {
+        access.requireClass(type)
         val target = value.asByte()
         op(reads = listOf(target.register), writes = listOf(target.register)) { b, r -> b.checkCast(byte(r(target.register), "check-cast"), type) }
         return Value(target.register, type)
@@ -412,6 +463,7 @@ internal class CodeEmitter private constructor(
             val savedGrowth = plannedLocalGrowth
             val protected = usedRegisters.toMutableSet()
             for (capture in captures) protected += capture.register until capture.register + registerWordCount(capture.type)
+            for (local in reservedLocals) protected += local.register until local.register + local.wordCount
             entrySnapshots?.values?.forEach { protected += it.register until it.register + registerWordCount(it.type) }
             protected += incomingBase until originalRegistersSize
             for (invoke in invokes) {
@@ -564,7 +616,12 @@ internal class CodeEmitter private constructor(
         return register
     }
 
-    internal inner class Value(val register: Int, override val type: String) : ValueRef {
+    /** [source] is the field a value was read from; the value is a copy of it. */
+    internal inner class Value(
+        val register: Int,
+        override val type: String,
+        private val source: FieldRef? = null,
+    ) : ValueRef {
         val wordCount: Int = registerWordCount(type)
         val emitter: CodeEmitter get() = this@CodeEmitter
 
@@ -590,10 +647,14 @@ internal class CodeEmitter private constructor(
         }
 
         override fun assign(value: ValueRef) {
-            val source = value.impl()
-            require(registerWordCount(source.type) == wordCount) { "cannot assign a ${source.type} to a $type" }
+            require(source == null) {
+                "cannot assign to the value read from ${source!!.definingClass}->${source.name}: it is a copy; " +
+                    "write the field with set(field, value) or setStatic(field, value)"
+            }
+            val newValue = value.impl()
+            require(registerWordCount(newValue.type) == wordCount) { "cannot assign a ${newValue.type} to a $type" }
             lowCopies.remove(register)
-            moveValue(register, source.register, type)
+            moveValue(register, newValue.register, type)
         }
 
         override fun cast(type: String): ValueRef = cast(this, descriptorOf(type))
@@ -605,6 +666,7 @@ internal class CodeEmitter private constructor(
 
         override fun call(method: ExtMethod, vararg args: ValueRef): ValueRef {
             require(!method.isStatic) { "$method is static; call it without a receiver" }
+            method.target.method
             return invoke(Opcode.INVOKE_VIRTUAL, method.ref, listOf(this) + args.map { it.impl() })
         }
 

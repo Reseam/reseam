@@ -32,6 +32,8 @@ object AdBlocker : ExtClass("app.example.ext.AdBlocker") {
 
 The first reference to a class an extension defines merges that DEX into the app, plus every extension it refers to. Two extensions defining one class fail the bundle at load. A reference nothing defines is logged once: `... is not defined by the app or any extension in the bundle`.
 
+Queries skip extension classes so matches do not depend on which extensions earlier patches linked. `includeExtensions()` searches them too. `inClass` searches the class it names in any DEX; `ExtClass` and `ExtMethod` resolve by name and are unaffected.
+
 > [!WARNING]
 > That warning means a typo in the `ExtClass` name or a module missing from the bundle (`reseam bundle list` prints the DEX files); the app crashes with `NoClassDefFoundError` when the call runs. Stubs are promises too: a stub method the real class lacks throws `NoSuchMethodError` in the app.
 

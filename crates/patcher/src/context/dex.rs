@@ -9,15 +9,15 @@ use std::collections::HashMap;
 use std::hash::Hash;
 
 use reseam_apk::reseam_dex::{
-    summarize_resident, DexFile, EncodedField, EncodedMethod, FieldIdx, Fingerprint,
-    FingerprintHit, Instruction, InstructionPattern, InstructionSite, MemberCounts, MethodHit,
-    MethodIdx, MethodSummary, MultiDexContainer, RefKey, RefQuery, StringIdx, TypeIdx,
+    DexFile, EncodedField, EncodedMethod, FieldIdx, Fingerprint, FingerprintHit,
+    InstructionPattern, InstructionSite, MemberCounts, MethodHit, MethodIdx, MethodSummary,
+    MultiDexContainer, RefKey, RefQuery, StringIdx, TypeIdx, summarize_resident,
 };
 use tracing::{debug, warn};
 
 use super::{
-    code_mut, CachedMethod, CachedSkeleton, ClassLocation, FingerprintLocation,
-    InstructionLocation, MethodKey, MethodLocation, PatchContext, SiteHit,
+    CachedMethod, CachedSkeleton, ClassLocation, FingerprintLocation, InstructionLocation,
+    MethodLocation, PatchContext, SiteHit,
 };
 
 type DexResult<T> = reseam_apk::reseam_dex::Result<T>;
@@ -359,6 +359,104 @@ impl<'a> PatchContext<'a> {
         })
     }
 
+    /// Match referenced method IDs before scanning their indexed call sites. Platform
+    /// references are included even when their declaring class is not in the APK.
+    pub fn find_calls_matching(
+        &self,
+        owner: Option<&str>,
+        name: Option<&str>,
+        return_type: Option<&str>,
+        parameters: Option<&[&str]>,
+    ) -> Vec<InstructionLocation> {
+        self.scan_all("calls matching reference", |dex_idx, dex| {
+            let owner = match owner {
+                Some(v) => match dex.find_type_idx(v) {
+                    Some(v) => Some(v),
+                    None => return Ok(Vec::new()),
+                },
+                None => None,
+            };
+            let name = match name {
+                Some(v) => match dex.find_string_idx(v) {
+                    Some(v) => Some(v),
+                    None => return Ok(Vec::new()),
+                },
+                None => None,
+            };
+            let matches_proto = |proto: reseam_apk::reseam_dex::ProtoIdx| {
+                let proto = dex.proto(proto);
+                return_type.is_none_or(|v| dex.type_descriptor(proto.return_type) == v)
+                    && parameters.is_none_or(|v| {
+                        v.len() == proto.parameters.len()
+                            && v.iter()
+                                .zip(&proto.parameters)
+                                .all(|(v, t)| *v == dex.type_descriptor(*t))
+                    })
+            };
+            // Owner/name typically select one or two IDs. Only precompute all
+            // matching prototypes for a signature-only query.
+            let matching_protos = if owner.is_none()
+                && name.is_none()
+                && (return_type.is_some() || parameters.is_some())
+            {
+                Some(
+                    (0..dex.prototypes.len())
+                        .filter_map(|i| {
+                            matches_proto(reseam_apk::reseam_dex::ProtoIdx(i as u16))
+                                .then_some(i as u16)
+                        })
+                        .collect::<std::collections::HashSet<_>>(),
+                )
+            } else {
+                None
+            };
+            let members: std::collections::HashSet<_> = dex
+                .methods
+                .iter()
+                .enumerate()
+                .filter_map(|(i, id)| {
+                    (owner.is_none_or(|v| id.class == v)
+                        && name.is_none_or(|v| id.name == v)
+                        && matching_protos.as_ref().map_or_else(
+                            || matches_proto(id.proto),
+                            |protos| protos.contains(&id.proto.0),
+                        ))
+                    .then_some(MethodIdx(i as u32))
+                })
+                .collect();
+            if members.is_empty() {
+                return Ok(Vec::new());
+            }
+            let query = RefQuery::any_of(members.iter().copied().map(RefKey::method));
+            dex.scan_instructions(&query, |site| {
+                members
+                    .contains(&site.instruction.method_ref()?)
+                    .then(|| instruction_location(dex_idx, site))
+            })
+        })
+    }
+
+    /// Read encoded fields in one native pass, without decoding method bodies.
+    pub fn find_classes_with_instance_field(&self, field_type: &str) -> Vec<ClassLocation> {
+        self.scan_all("classes with instance field", |dex_idx, dex| {
+            let Some(wanted) = dex.find_type_idx(field_type) else {
+                return Ok(Vec::new());
+            };
+            let mut matches = Vec::new();
+            for class_idx in 0..dex.classes.len() {
+                if dex
+                    .decode_class_fields(class_idx)?
+                    .is_some_and(|(_, fields)| {
+                        fields.iter().any(|f| dex.field_id(f.field).type_ == wanted)
+                    })
+                {
+                    matches.push(ClassLocation { dex_idx, class_idx });
+                }
+            }
+            Ok(matches)
+        })
+    }
+
     /// Accesses of `(class, field)` targets; hits carry the target's index.
     pub fn find_field_access_sites(&self, targets: &[(String, String)]) -> Vec<SiteHit> {
         self.scan_all("field access sites", |dex_idx, dex| {
@@ -380,56 +478,6 @@ impl<'a> PatchContext<'a> {
                 })
             })
         })
-    }
-
-    /// Retargets every call to `from` at `to`, keeping the registers: an
-    /// instance call becomes a static call whose first argument is the
-    /// receiver. Calls through `invoke-super` and `invoke-direct` keep their
-    /// meaning and are left alone, as are calls in DEX files added while
-    /// patching, so an extension can call the method it stands in for.
-    /// Returns how many call sites changed.
-    pub fn redirect_method_calls(&mut self, from: MethodKey<'_>, to: MethodKey<'_>) -> usize {
-        let mut changed = 0;
-        let app_dex: Vec<usize> = (0..self.dex().iter().count())
-            .filter(|&i| !self.apk.is_added_dex(i))
-            .collect();
-        for dex_idx in app_dex {
-            let sites: Vec<InstructionLocation> = {
-                let Some(dex) = self.dex_file(dex_idx) else {
-                    continue;
-                };
-                let Some(from_idx) = find_method_idx(dex, from) else {
-                    continue;
-                };
-                ok_or_warn(
-                    dex_idx,
-                    "redirect call sites",
-                    dex.scan_instructions(&RefQuery::all_of([RefKey::method(from_idx)]), |site| {
-                        (site.instruction.method_ref() == Some(from_idx))
-                            .then(|| instruction_location(dex_idx, site))
-                    }),
-                )
-            };
-            if sites.is_empty() {
-                continue;
-            }
-            let Some(to_idx) = self
-                .dex_file_mut(dex_idx)
-                .and_then(|dex| dex.intern_method(to.class, to.name, to.proto).ok())
-            else {
-                warn!(dex_idx, ?to, "redirect target could not be interned");
-                continue;
-            };
-            for site in sites {
-                let redirected = self
-                    .class_dex_mut(dex_idx, site.method.class_idx)
-                    .and_then(|dex| code_mut(dex, site.method))
-                    .and_then(|code| code.instructions.get_mut(site.insn_idx))
-                    .is_some_and(|insn| redirect_invoke(insn, to_idx));
-                changed += usize::from(redirected);
-            }
-        }
-        changed
     }
 
     fn scan_all<T>(
@@ -529,43 +577,4 @@ fn instruction_location(dex_idx: usize, site: &InstructionSite<'_>) -> Instructi
         },
         insn_idx: site.insn_idx,
     }
-}
-
-fn find_method_idx(dex: &DexFile, key: MethodKey<'_>) -> Option<MethodIdx> {
-    let class = dex.find_type_idx(key.class)?;
-    let name = dex.find_string_idx(key.name)?;
-    dex.methods
-        .iter()
-        .position(|id| {
-            id.class == class
-                && id.name == name
-                && dex.proto_descriptor(&dex.proto(id.proto)) == key.proto
-        })
-        .map(|index| MethodIdx(index as u32))
-}
-
-fn redirect_invoke(insn: &mut Instruction, target: MethodIdx) -> bool {
-    *insn = match insn {
-        Instruction::InvokeVirtual { args, .. }
-        | Instruction::InvokeInterface { args, .. }
-        | Instruction::InvokeStatic { args, .. } => Instruction::InvokeStatic {
-            method: target,
-            args: args.clone(),
-        },
-        Instruction::InvokeVirtualRange {
-            first_reg, count, ..
-        }
-        | Instruction::InvokeInterfaceRange {
-            first_reg, count, ..
-        }
-        | Instruction::InvokeStaticRange {
-            first_reg, count, ..
-        } => Instruction::InvokeStaticRange {
-            method: target,
-            first_reg: *first_reg,
-            count: *count,
-        },
-        _ => return false,
-    };
-    true
 }

@@ -80,6 +80,16 @@ pub struct InstructionHit {
     pub index: u32,
 }
 
+/// Where the value a register holds at one instruction came from.
+#[data]
+#[derive(Debug, Clone)]
+pub struct RegisterWriters {
+    /// Instructions whose write of the register reaches that instruction.
+    pub indices: Vec<u32>,
+    /// Whether the value the method was entered with reaches it as well.
+    pub from_entry: bool,
+}
+
 #[data]
 #[derive(Debug, Clone, Copy)]
 pub struct MethodCallSiteResult {
@@ -173,6 +183,14 @@ pub struct AnnotationElement {
 pub struct ResourceRef {
     pub res_id: u32,
     pub key_name: String,
+}
+
+/// One `<item>` of a style: an attribute name and its value as text.
+#[data]
+#[derive(Debug, Clone)]
+pub struct StyleItem {
+    pub name: String,
+    pub value: String,
 }
 
 #[data]

@@ -80,7 +80,6 @@ fn class_mut_marks_dirty_and_headers_follow() {
     dex.class_mut(0).unwrap().superclass = Some(super_idx);
     assert!(dex.is_dirty());
     assert_eq!(dex.class_header(0).superclass, Some(super_idx));
-    assert_eq!(dex.superclass_chain(0), Vec::<usize>::new());
 }
 
 #[test]

@@ -97,7 +97,19 @@ impl ResType {
         self.len == 0
     }
 
-    pub(crate) fn is_default_config(&self) -> bool {
+    /// The size of the chunk's `ResTable_config` block, so a chunk this crate
+    /// creates matches the shape the app's own already have.
+    pub(crate) fn config_len(&self) -> usize {
+        self.config.len()
+    }
+
+    /// The raw `ResTable_config` block, size field included.
+    pub fn config(&self) -> &[u8] {
+        &self.config
+    }
+
+    /// Whether the chunk is the configuration the loader falls back to.
+    pub fn is_default_config(&self) -> bool {
         self.config.len() <= 4 || self.config[4..].iter().all(|&b| b == 0)
     }
 

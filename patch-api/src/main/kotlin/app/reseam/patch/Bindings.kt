@@ -191,28 +191,11 @@ class ResolvedBinding internal constructor(
     private fun adaptInput(emitter: CodeEmitter, start: CodeEmitter.Value, rootType: String, label: String): CodeEmitter.Value {
         if (!isReferenceType(start.type) || !isReferenceType(rootType) || start.type == rootType) return start
         if (start.type == Type.Object) return emitter.cast(start, rootType).value(emitter)
-        val index = ActiveRuntime.current.index
-        check(isAssignable(index, start.type, rootType)) {
+        check(isAssignableType(start.type, rootType)) {
             "$label expects a value statically assignable to $rootType, got ${start.type}. " +
                 "Only Object-typed inputs get the root check-cast implicitly; cast the value first."
         }
         return start
-    }
-
-    private fun isAssignable(index: SearchIndex, actual: String, expected: String): Boolean {
-        if (actual == expected || expected == Type.Object) return true
-        if (actual.startsWith("[") || expected.startsWith("[")) {
-            return actual.startsWith("[") && expected in setOf("Ljava/lang/Cloneable;", "Ljava/io/Serializable;")
-        }
-        val visited = mutableSetOf<String>()
-        fun known(descriptor: String): Boolean {
-            if (!visited.add(descriptor)) return false
-            if (descriptor == expected) return true
-            val classDef = index.classFor(descriptor) ?: return false
-            if (classDef.interfaces.any { it == expected || known(it) }) return true
-            return classDef.superclass?.let(::known) == true
-        }
-        return known(actual)
     }
 }
 

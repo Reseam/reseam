@@ -143,7 +143,24 @@ val appSettings = settingsHost("example") {
 }
 ```
 
-`settings(host, section(...))` in a patch registers its sections and adds the host as a dependency. `install` runs after every registering patch, once the host has written `assets/reseam/settings.json`. Toggles gate emitted code; see [Gates](6_code.md#gates).
+`settings(host, section(...))` in a patch registers its sections and adds the host as a dependency. `settings(section(...))` inside `settingsHost { }` does the same for sections the host owns, for a switch that belongs to no single feature patch; they lead the screen, since the host runs before its dependents. `install` runs after every registering patch, once the host has written `assets/reseam/settings.json`. Toggles gate emitted code; see [Gates](6_code.md#gates).
+
+### Subpages
+
+A page groups sections behind a row on the settings screen. Share the page between patches; give it a parent to nest it:
+
+```kotlin
+val mediaPage = SettingsPage("media", "Media", order = 10)
+val playbackPage = SettingsPage("playback", "Playback", parent = mediaPage)
+
+val playback = patch("Playback options") {
+    settings(appSettings, section(playbackPage, "Playback", AppSettings.unlockFeatures))
+}
+```
+
+`section(title, ...)` adds a root section; `section(page, title, ...)` adds one to a page. Only pages with settings from applied patches, and their parents, appear. Lower `order` values come first among siblings; ties keep registration order. Sections on the same page with the same heading merge, each setting key shown once. Pages sharing an id must agree on title, parent, and order. Moving a setting leaves its storage key unchanged.
+
+The schema records `pages` (`id`, `title`, `parent`) and `sections` (`page`, `title`, `settings`); a null parent or page means the root. The shared runtime opens each page in another instance of the host's settings activity. Keep its launch mode `standard` so Android handles Back and restores scroll positions. The host builds the screen with `ReseamSettingsScreen.build(this)` and forwards activity results to `ReseamSettingsScreen.onActivityResult`, which refreshes a folder selection on the current page.
 
 > [!WARNING]
 > The key (`app_settings.hide_ads`) is what the app stores the value under. Renaming the object or property resets the setting for every user. Pin `key =` before the first release.

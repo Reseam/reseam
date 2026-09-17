@@ -22,6 +22,8 @@ interface CodeScope {
     val lastParam: ValueRef
     /** A value captured by a [PointTarget.captureAs], or `result` inside [after]. */
     fun capture(name: String): ValueRef
+    /** The register [MethodTarget.reserveLocal] holds for this method, as a value of this block. */
+    fun local(slot: MethodLocal): ValueRef
 
     fun int(value: Int): ValueRef
     fun long(value: Long): ValueRef
@@ -31,6 +33,8 @@ interface CodeScope {
     fun enumValue(type: String, name: String): ValueRef
     fun staticField(field: FieldTarget): ValueRef
     fun staticField(field: FieldRef): ValueRef
+    fun setStatic(field: FieldTarget, value: ValueRef)
+    fun setStatic(field: FieldRef, value: ValueRef)
     fun newInstance(type: String, ctorProto: String = "()V", vararg args: ValueRef): ValueRef
 
     fun call(method: ExtMethod, vararg args: ValueRef): ValueRef
@@ -64,7 +68,11 @@ interface ValueRef {
     fun fieldOfType(type: String): ValueRef
     fun set(field: FieldTarget, value: ValueRef)
     fun set(ref: FieldRef, value: ValueRef)
-    /** Overwrites this value in place: a parameter, a capture, or an earlier result. */
+    /**
+     * Overwrites this value in place: a parameter, a capture, or an earlier result.
+     * A value read from a field is a copy, so assigning it fails; write the field
+     * with [set] or [CodeScope.setStatic].
+     */
     fun assign(value: ValueRef)
     fun call(method: ExtMethod, vararg args: ValueRef): ValueRef
     fun call(method: MethodTarget, vararg args: ValueRef): ValueRef
@@ -108,9 +116,15 @@ class ExtMethod internal constructor(
 
     val target: MethodTarget by lazy {
         MethodTarget("${className(owner)}.$name") { runtime ->
-            val method = runtime.index.methodFor(ref) ?: error("$owner->$name$proto is not in the app or any extension")
+            val method = runtime.index.methodFor(ref) ?: error(missing(runtime))
             Resolution(method, wrapped("${className(owner)}.$name", method.descriptor))
         }
+    }
+
+    private fun missing(runtime: PatchRuntime): String {
+        val declared = runtime.index.methodsInClass(owner).filter { it.name == name }.map { it.proto }
+        val hint = if (declared.isEmpty()) "" else "; ${className(owner)} declares " + declared.joinToString(" and ") { "$name$it" }
+        return "$owner->$name$proto is not in the app or any extension$hint"
     }
 
     /** Replaces the method's body with emitted code. */

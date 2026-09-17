@@ -10,7 +10,8 @@ use reseam_apk::{ResValue, ResourceTable};
 
 use super::files::{inject, with_component};
 use super::handles::{bundle_path, with_ctx};
-use super::types::ResourceRef;
+use super::types::{ResourceRef, StyleItem};
+use crate::context::PatchContext;
 use reseam_apk::Compression;
 
 /// Runs `f` on the named component's resource table, logging when the
@@ -129,7 +130,7 @@ pub fn res_add(
         if res_type == "string" {
             return res.add_string_resource(&name, &value);
         }
-        match axml::parse_attribute_value(&value, Some(res)) {
+        match axml::parse_attribute_value(&value, None, Some(res)) {
             Ok(AttributeValue::Value(parsed)) => res.add_resource(&res_type, &name, parsed),
             _ => None,
         }
@@ -164,6 +165,220 @@ pub fn res_get_raw(component: Option<String>, res_type: String, res_name: String
             .map(|v| v.data as i64)
     })
     .flatten()
+}
+
+/// Runs `f` on the component's resource table, failing if it is missing or unreadable.
+fn resources_of<R>(
+    ctx: &mut PatchContext<'_>,
+    index: usize,
+    f: impl FnOnce(&mut ResourceTable) -> Result<R, String>,
+) -> Result<R, String> {
+    match ctx
+        .component_mut(index)
+        .and_then(|c| Ok(c.resources_mut()?))
+    {
+        Ok(Some(resources)) => f(resources),
+        Ok(None) => Err("the component has no resource table".to_string()),
+        Err(error) => Err(format!("resources: {error}")),
+    }
+}
+
+/// APK paths for every configuration of a file resource, default first.
+#[export]
+pub fn res_file_paths(
+    component: Option<String>,
+    res_type: String,
+    res_name: String,
+) -> Result<Vec<String>, String> {
+    let component = component.or_else(|| res_component_for(res_type.clone(), res_name.clone()));
+    with_component(component, |ctx, index| {
+        let paths = resources_of(ctx, index, |resources| {
+            resources
+                .file_paths(&res_type, &res_name)
+                .map_err(|error| error.to_string())
+        })?;
+        let component = ctx.apk().component(index).ok_or("unknown component")?;
+        match paths.iter().find(|path| !component.contains(path)) {
+            Some(missing) => Err(format!(
+                "{res_type}/{res_name} is not file-backed: its value {missing} is not an entry of the APK"
+            )),
+            None => Ok(paths),
+        }
+    })
+    .unwrap_or_else(|| Err("unknown component".to_string()))
+}
+
+/// The default configuration's path, which is the file aapt built from
+/// `res/<type>/<name>` with no qualifier.
+#[export]
+pub fn res_file_path(
+    component: Option<String>,
+    res_type: String,
+    res_name: String,
+) -> Result<String, String> {
+    Ok(res_file_paths(component, res_type, res_name)?.swap_remove(0))
+}
+
+/// Registers an APK entry as `res_type/name` in `qualifiers` (empty for default).
+#[export]
+pub fn res_add_file(
+    component: Option<String>,
+    res_type: String,
+    name: String,
+    apk_path: String,
+    qualifiers: String,
+) -> Result<u32, String> {
+    with_component(component, |ctx, index| {
+        if !ctx
+            .apk()
+            .component(index)
+            .is_some_and(|component| component.contains(&apk_path))
+        {
+            return Err(format!(
+                "{res_type}/{name}: the APK has no entry {apk_path} to register"
+            ));
+        }
+        resources_of(ctx, index, |resources| {
+            resources
+                .add_file_resource(&res_type, &name, &apk_path, &qualifiers)
+                .map_err(|error| format!("{res_type}/{name}: {error}"))
+        })
+    })
+    .unwrap_or_else(|| Err("unknown component".to_string()))
+}
+
+/// Writes `data` to `apk_path` and registers it as `res_type/name` in
+/// `qualifiers`. XML is compiled on the way, and each `<aapt:attr>` in it
+/// becomes a resource of its own beside the file, as aapt builds them.
+#[export]
+pub fn res_add_file_data(
+    component: Option<String>,
+    res_type: String,
+    name: String,
+    apk_path: String,
+    data: Vec<u8>,
+    qualifiers: String,
+) -> Result<u32, String> {
+    with_component(component, |ctx, index| {
+        let data = match std::str::from_utf8(&data) {
+            Ok(text) if apk_path.ends_with(".xml") && !axml::is_compiled_axml(&data) => {
+                let (text, inline) = axml::extract_inline_resources(text, &name, &res_type)
+                    .map_err(|error| format!("{res_type}/{name}: {error}"))?;
+                let dir = apk_path.rsplit_once('/').map_or("", |(dir, _)| dir);
+                for resource in inline {
+                    let path = format!("{dir}/{}.xml", resource.name);
+                    write_file_resource(
+                        ctx,
+                        index,
+                        (&res_type, &resource.name),
+                        &path,
+                        resource.xml.into_bytes(),
+                        &qualifiers,
+                    )?;
+                }
+                text.into_bytes()
+            }
+            _ => data,
+        };
+        write_file_resource(ctx, index, (&res_type, &name), &apk_path, data, &qualifiers)
+    })
+    .unwrap_or_else(|| Err("unknown component".to_string()))
+}
+
+fn write_file_resource(
+    ctx: &mut PatchContext<'_>,
+    index: usize,
+    (res_type, name): (&str, &str),
+    apk_path: &str,
+    data: Vec<u8>,
+    qualifiers: &str,
+) -> Result<u32, String> {
+    ctx.inject_file(index, apk_path, data, Compression::Deflated)
+        .map_err(|error| format!("{res_type}/{name}: {error}"))?;
+    resources_of(ctx, index, |resources| {
+        resources
+            .add_file_resource(res_type, name, apk_path, qualifiers)
+            .map_err(|error| format!("{res_type}/{name}: {error}"))
+    })
+}
+
+/// Renames the component's resource package, which by-name lookups against the
+/// installed package name match.
+#[export]
+pub fn res_set_package_name(component: Option<String>, name: String) -> Result<(), String> {
+    with_component(component, |ctx, index| {
+        resources_of(ctx, index, |resources| {
+            resources
+                .set_package_name(&name)
+                .map_err(|error| error.to_string())
+        })
+    })
+    .unwrap_or_else(|| Err("unknown component".to_string()))
+}
+
+/// Adds or replaces `items` in `style/name`, creating the style with `parent`
+/// when the table has none.
+#[export]
+pub fn res_style_set(
+    component: Option<String>,
+    name: String,
+    parent: Option<String>,
+    items: Vec<StyleItem>,
+) -> Result<u32, String> {
+    let items: Vec<(String, String)> = items
+        .into_iter()
+        .map(|item| (item.name, item.value))
+        .collect();
+    with_component(component, |ctx, index| {
+        resources_of(ctx, index, |resources| {
+            resources
+                .set_style_items(&name, parent.as_deref(), &items)
+                .map_err(|error| error.to_string())
+        })
+    })
+    .unwrap_or_else(|| Err("unknown component".to_string()))
+}
+
+#[export]
+pub fn res_array_get(component: Option<String>, name: String) -> Result<Vec<String>, String> {
+    with_component(component, |ctx, index| {
+        resources_of(ctx, index, |resources| {
+            resources.array(&name).map_err(|error| error.to_string())
+        })
+    })
+    .unwrap_or_else(|| Err("unknown component".to_string()))
+}
+
+#[export]
+pub fn res_array_set(
+    component: Option<String>,
+    name: String,
+    values: Vec<String>,
+) -> Result<u32, String> {
+    with_component(component, |ctx, index| {
+        resources_of(ctx, index, |resources| {
+            resources
+                .set_array(&name, &values)
+                .map_err(|error| error.to_string())
+        })
+    })
+    .unwrap_or_else(|| Err("unknown component".to_string()))
+}
+
+#[export]
+pub fn res_string_array_set(
+    component: Option<String>,
+    name: String,
+    values: Vec<String>,
+) -> Result<u32, String> {
+    with_component(component, |ctx, index| {
+        resources_of(ctx, index, |resources| {
+            resources
+                .set_string_array(&name, &values)
+                .map_err(|error| error.to_string())
+        })
+    })
+    .unwrap_or_else(|| Err("unknown component".to_string()))
 }
 
 #[export]

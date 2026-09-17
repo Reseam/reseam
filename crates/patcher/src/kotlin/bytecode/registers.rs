@@ -7,6 +7,7 @@ use boltffi::export;
 use reseam_apk::reseam_dex::{self as dex, AccessFlags};
 
 use crate::kotlin::handles::{code_mut, method_mut, with_code, with_method_mut};
+use crate::kotlin::types::RegisterWriters;
 
 #[export]
 pub fn ensure_outs_size(m: u32, min_outs_size: u16) {
@@ -19,8 +20,13 @@ pub fn ensure_outs_size(m: u32, min_outs_size: u16) {
 
 /// Adds locals below the incoming registers and returns relocated instruction
 /// indices, including the end boundary. The method is unchanged on failure.
+/// `protected` registers are never used to stage operands the growth displaces.
 #[export]
-pub fn grow_local_registers(m: u32, additional_locals: u16) -> Option<Vec<u32>> {
+pub fn grow_local_registers(
+    m: u32,
+    additional_locals: u16,
+    protected: Vec<u16>,
+) -> Option<Vec<u32>> {
     with_method_mut(m, |dex, loc| {
         let method = method_mut(dex, loc)?.clone();
         let id = dex.method_id(method.method);
@@ -40,6 +46,7 @@ pub fn grow_local_registers(m: u32, additional_locals: u16) -> Option<Vec<u32>> 
             &mut code,
             additional_locals,
             &incoming,
+            &protected,
             dex,
         ) {
             Ok(indices) => indices,
@@ -94,6 +101,19 @@ pub fn find_contiguous_free_registers(
         dex::find_contiguous_free_registers(code, at_index as usize, count as usize, &exclude)
     })
     .unwrap_or_default()
+}
+
+/// The instructions that wrote the value the register holds on entry to the one
+/// at `index`. `None` when the method's control flow cannot be followed.
+#[export]
+pub fn register_writers(m: u32, index: u32, register: u16) -> Option<RegisterWriters> {
+    with_code(m, |_, code| {
+        let (indices, from_entry) = dex::reaching_definitions(code, index as usize, register)?;
+        Some(RegisterWriters {
+            indices: indices.into_iter().map(|index| index as u32).collect(),
+            from_entry,
+        })
+    })
 }
 
 /// The `position`th register operand of the instruction at `index`, or 0.

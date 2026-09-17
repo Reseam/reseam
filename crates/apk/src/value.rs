@@ -43,6 +43,12 @@ impl ResValue {
         Self::new(Self::INT_BOOLEAN, if value { 0xFFFF_FFFF } else { 0 })
     }
 
+    /// What aapt stores in an `id` entry. A reference to the entry resolves to
+    /// the id itself, where a `@null` value would resolve it to nothing.
+    pub const fn id_entry() -> Self {
+        Self::boolean(false)
+    }
+
     pub const fn reference(id: u32) -> Self {
         Self::new(Self::REFERENCE, id)
     }

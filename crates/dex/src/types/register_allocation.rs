@@ -14,10 +14,14 @@ use super::register_types::RegisterTypes;
 use crate::error::{invalid, Result};
 use crate::DexFile;
 
+/// `protected` names registers the caller holds across edits, which no operand
+/// may stage through even where liveness says they are dead: a value one patch
+/// block wrote for a block not yet emitted has no reader the analysis can see.
 pub fn grow_registers(
     code: &mut CodeItem,
     additional: u16,
     incoming: &[String],
+    protected: &[u16],
     dex: &DexFile,
 ) -> Result<Vec<usize>> {
     if additional == 0 {
@@ -61,6 +65,10 @@ pub fn grow_registers(
             used: vec![false; size as usize],
             arguments: &mut arguments,
         };
+        for &register in protected {
+            let shifted = allocation.shift(register);
+            allocation.used[usize::from(shifted)] = true;
+        }
         instruction.visit_read_registers(|reg| {
             let shifted = allocation.shift(reg);
             allocation.used[shifted as usize] = true;
@@ -926,7 +934,7 @@ mod tests {
             typed_catches: vec![],
             catch_all_addr: Some(8),
         });
-        let indices = grow_registers(&mut code, 3, &["LExample;".into()], &dex).unwrap();
+        let indices = grow_registers(&mut code, 3, &["LExample;".into()], &[], &dex).unwrap();
         assert_eq!(code.registers_size, 19);
         assert_eq!(indices, [0, 1, 2, 3, 5, 6, 7, 8]);
         assert_eq!(code.instructions[3], MoveObjectFrom16 { dest: 0, src: 18 });
@@ -942,6 +950,45 @@ mod tests {
         assert_eq!(code.tries[0].start_addr, 5);
         assert_eq!(code.tries[0].insn_count, 4);
         assert_eq!(code.catch_handlers[0].catch_all_addr, Some(10));
+    }
+
+    /// A register the caller holds is dead by liveness once its writer is in
+    /// and its reader is not yet emitted; staging must still leave it alone.
+    #[test]
+    fn a_protected_register_is_never_staged_through() {
+        use Instruction::*;
+        let mut dex = dex();
+        let field = dex.intern_field("LExample;", "value", "J").unwrap();
+        let body = vec![
+            Const4 { dest: 0, value: 0 },
+            IgetWide {
+                dest: 12,
+                obj: 15,
+                field,
+            },
+            ReturnWide { src: 12 },
+        ];
+        let mut unprotected = code(1, body.clone());
+        grow_registers(&mut unprotected, 3, &["LExample;".into()], &[], &dex).unwrap();
+        assert_eq!(
+            unprotected.instructions[1],
+            MoveObjectFrom16 { dest: 0, src: 18 },
+            "v0 is the dead register staging picks first"
+        );
+        let mut protected = code(1, body);
+        grow_registers(&mut protected, 3, &["LExample;".into()], &[0], &dex).unwrap();
+        assert_eq!(
+            protected.instructions[1],
+            MoveObjectFrom16 { dest: 1, src: 18 }
+        );
+        assert_eq!(
+            protected.instructions[2],
+            IgetWide {
+                dest: 12,
+                obj: 1,
+                field
+            }
+        );
     }
 
     #[test]
@@ -964,6 +1011,7 @@ mod tests {
             &mut code,
             3,
             &["Ljava/lang/Object;".into(), "Ljava/lang/Object;".into()],
+            &[],
             &dex,
         )
         .unwrap();
@@ -1010,7 +1058,7 @@ mod tests {
         let original = code.clone();
         let mut incoming = vec!["I".to_string(); 15];
         incoming.push("LExample;".into());
-        assert!(grow_registers(&mut code, 3, &incoming, &dex).is_err());
+        assert!(grow_registers(&mut code, 3, &incoming, &[], &dex).is_err());
         assert_eq!(code, original);
     }
     #[test]
@@ -1032,7 +1080,7 @@ mod tests {
             ],
         );
         code.registers_size = 2;
-        let indices = grow_registers(&mut code, 32, &["LExample;".into()], &dex).unwrap();
+        let indices = grow_registers(&mut code, 32, &["LExample;".into()], &[], &dex).unwrap();
         assert_eq!(indices, [0, 2, 3]);
         assert_eq!(code.registers_size, 34);
         assert_eq!(

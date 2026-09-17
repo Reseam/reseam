@@ -6,12 +6,15 @@
 package app.reseam.patch
 
 import app.reseam.patch.dex.Method
+import app.reseam.patch.dex.Opcode
 import app.reseam.patch.dex.buildInstructions
+import app.reseam.patch.dex.descriptor
+import app.reseam.patch.dex.methodRef
 import app.reseam.patch.dex.opcode
-import app.reseam.patch.native.insertBeforeInstruction
+import app.reseam.patch.dex.rangeVariant
 
 /** Runs `block` when the method is entered. */
-fun MethodTarget.before(block: CodeScope.() -> Unit) = method.insertCode(0, emptyList(), block)
+fun MethodTarget.before(block: CodeScope.() -> Unit) = method.insertCode(method.edits?.entry(method) ?: 0, emptyList(), block)
 
 /**
  * Runs `block` before every return; `capture("result")` is the value being returned.
@@ -43,6 +46,30 @@ fun MethodTarget.after(block: CodeScope.() -> Unit) {
 /** Replaces the method body with `block`. */
 fun MethodTarget.replace(block: CodeScope.() -> Unit) = method.replaceCode(block)
 
+/**
+ * Reserves a register shared across this method's code blocks, accessed as `local(slot)`.
+ * Grows the frame and initializes the register to zero or null before entry hooks.
+ */
+fun MethodTarget.reserveLocal(name: String, type: String): MethodLocal {
+    val target = method
+    val local = MethodLocal(name, descriptor(type), target)
+    val register = target.registersSize - target.insSize
+    require(register <= 0xFF) {
+        "Cannot reserve '$name' in ${target.descriptor}: v$register is past the 8-bit register a constant can name"
+    }
+    requireNotNull(target.growLocals(local.wordCount)) {
+        "Cannot reserve '$name' in ${target.descriptor}: the frame would not grow by ${local.wordCount}"
+    }
+    local.register = register
+    ActiveRuntime.current.edits.reserve(local)
+    val initializer = buildInstructions {
+        if (local.wordCount == 2) constLong(register, 0) else constInt(register, 0)
+    }
+    target.insertInstructions(ActiveRuntime.current.edits.entry(target), initializer)
+    ActiveRuntime.current.edits.initialized(target, initializer.size)
+    return local
+}
+
 fun MethodTarget.alwaysReturn() = method.alwaysReturn()
 fun MethodTarget.alwaysReturn(value: Boolean) = method.alwaysReturn(value)
 fun MethodTarget.alwaysReturn(value: Int) = method.alwaysReturn(value)
@@ -53,19 +80,56 @@ fun MethodTarget.alwaysReturnNull() = method.alwaysReturnNull()
 fun MethodTarget.replaceAllStrings(old: String, new: String): Int = method.replaceAllStrings(old, new)
 fun MethodTarget.replaceAllLiterals(old: Long, new: Long): Int = method.replaceAllLiterals(old, new)
 
-/** Runs `block` just before the instruction at the point. */
+/** Runs `block` just before the instruction at the point, after anything an earlier block put there. */
 fun PointTarget.before(block: CodeScope.() -> Unit) {
     val point = resolved
-    point.method.insertCode(point.index, point.captures, block)
+    point.method.insertCode(point.anchor.head, point.captures, block)
 }
 
-/** Runs `block` just after the instruction at the point. */
+/** Runs `block` just after the instruction at the point, after anything an earlier block put there. */
 fun PointTarget.after(block: CodeScope.() -> Unit) {
     val point = resolved
-    point.method.insertCode(minOf(point.index + 1, point.method.instructionCount), point.captures, block)
+    val opcode = point.method.instructions[point.index].opcode
+    require(opcode?.endsFlow != true) {
+        "$label: nothing runs after the $opcode at ${point.method.descriptor}[${point.index}]; use before"
+    }
+    point.method.insertCode(minOf(point.anchor.tail, point.method.instructionCount), point.captures, block)
 }
 
-internal fun Method.insertCode(index: Int, captures: List<Capture>, block: CodeScope.() -> Unit, entrySnapshots: MutableMap<Int, EntrySnapshot>? = null) {
+/**
+ * Runs the call only when `condition` is false, including on branches targeting the call.
+ * The result must be unused: a skipped call cannot supply a following `move-result`.
+ */
+fun PointTarget.skipWhen(condition: CodeScope.() -> ValueRef) {
+    val point = resolved
+    val method = point.method
+    val call = method.instructions[point.index]
+    val callOpcode = call.opcode?.takeIf { it.isInvoke }
+        ?: error("$label: skipWhen needs a call, got ${call.opcode} at ${method.descriptor}[${point.index}]")
+    val ref = call.methodRef ?: error("$label: the call at ${method.descriptor}[${point.index}] names no method")
+    require(method.instructions.getOrNull(point.index + 1)?.opcode?.isMoveResult != true) {
+        "$label: the result of ${ref.descriptor} is used; skipWhen needs a call whose result is unused"
+    }
+    val opcode = Opcode.entries.firstOrNull { it.rangeVariant == callOpcode } ?: callOpcode
+    val arguments = call.arguments("$label: ${method.descriptor}[${point.index}]").mapIndexed { i, arg ->
+        Capture("skipWhen$i", arg.type, arg.register)
+    }
+    method.insertCode(
+        point.anchor.head,
+        point.captures + arguments,
+        { whenFalse(condition()) { (this as CodeEmitter).callCaptured(opcode, ref, arguments.map { it.name }) } },
+        everyPath = true,
+    )
+    method.removeInstruction(point.anchor.head)
+}
+
+internal fun Method.insertCode(
+    index: Int,
+    captures: List<Capture>,
+    block: CodeScope.() -> Unit,
+    entrySnapshots: MutableMap<Int, EntrySnapshot>? = null,
+    everyPath: Boolean = entrySnapshots != null,
+) {
     val emitter = CodeEmitter.forInsertion(this, index, captures, entrySnapshots)
     emitter.block()
     val compiled = emitter.buildInsertion()
@@ -75,9 +139,9 @@ internal fun Method.insertCode(index: Int, captures: List<Capture>, block: CodeS
         }
         indices[index]
     } else index
-    if (entrySnapshots != null) {
-        check(insertBeforeInstruction(handle, insertionIndex.toUInt(), compiled.instructions)) {
-            "Cannot insert return hook in $descriptor[$index]"
+    if (everyPath) {
+        check(insertOnEveryPath(insertionIndex, compiled.instructions)) {
+            "Cannot insert code on every path into $descriptor[$index]"
         }
     } else {
         insertInstructions(insertionIndex, compiled.instructions)

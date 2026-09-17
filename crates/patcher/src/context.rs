@@ -16,14 +16,6 @@ use reseam_apk::ApkFile;
 use crate::log::{LogEntry, PatchLog};
 use crate::options::PatchOptions;
 
-/// A method named by class descriptor, name, and prototype.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MethodKey<'a> {
-    pub class: &'a str,
-    pub name: &'a str,
-    pub proto: &'a str,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClassLocation {
     pub dex_idx: usize,

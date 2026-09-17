@@ -62,7 +62,7 @@ impl AxmlDocument {
         self.string_pool.intern(value)
     }
 
-    pub(crate) fn resource_id_for(&self, name: u32) -> Option<u32> {
+    pub fn resource_id_for(&self, name: u32) -> Option<u32> {
         self.resource_ids
             .get(name as usize)
             .copied()

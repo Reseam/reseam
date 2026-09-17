@@ -5,6 +5,8 @@
 //! type chunks are read in place; only entries a patch adds or changes are
 //! owned, and serialization copies every untouched chunk verbatim.
 
+mod complex;
+mod config;
 mod entry;
 mod package;
 mod res_type;
@@ -16,12 +18,14 @@ use std::io::{BufWriter, Write};
 
 use reseam_dex::file::DexBytes;
 
+use crate::axml;
 use crate::buf::{read_u16_le, require_len, write_u32};
 use crate::chunk::{self, write_header};
 use crate::error::{invalid, Result};
 use crate::string_pool::{StringPool, CHUNK_STRING_POOL};
 use crate::value::ResValue;
 
+pub use config::config_for_qualifiers;
 pub use entry::{EntryValue, MapEntry, ResEntry};
 pub use package::ResPackage;
 pub use res_type::ResType;
@@ -38,6 +42,18 @@ const MAX_TYPE_ENTRIES: usize = 1_000_000;
 pub struct ResourceTable {
     pub global_strings: StringPool,
     pub packages: Vec<ResPackage>,
+}
+
+/// `ResTable_map::ATTR_TYPE`, the item of an `attr` bag that holds its format mask.
+const ATTR_TYPE: u32 = 0x0100_0000;
+const ATTR_FORMAT_ENUM: u32 = 1 << 16;
+const ATTR_FORMAT_FLAGS: u32 = 1 << 17;
+
+/// The value an `attr` gives one of its enum or flag names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AttrSymbol {
+    pub value: u32,
+    pub flags: bool,
 }
 
 /// A string-typed entry and the key it is filed under.
@@ -186,6 +202,24 @@ impl ResourceTable {
             .any(|res_type| res_type.id == type_id && res_type.entry(entry_index).is_some())
     }
 
+    /// Renames the first package. `Resources.getIdentifier(name, type, context.getPackageName())`
+    /// matches the table's package name, so an app installed under a new package name finds
+    /// none of its own resources by name until the table is renamed with it.
+    pub fn set_package_name(&mut self, name: &str) -> Result<()> {
+        if name.encode_utf16().count() >= package::NAME_UNITS {
+            return Err(invalid(
+                "resource package",
+                format!("{name} is longer than a package header holds"),
+            ));
+        }
+        let package = self
+            .packages
+            .first_mut()
+            .ok_or_else(|| invalid("resource package", "the table has no package"))?;
+        package.name = name.to_string();
+        Ok(())
+    }
+
     /// Adds or replaces the default-configuration entry `type_name/entry_name`
     /// in the first package and returns its id.
     pub fn add_resource(
@@ -194,45 +228,48 @@ impl ResourceTable {
         entry_name: &str,
         value: ResValue,
     ) -> Option<u32> {
-        let package = self.packages.first_mut()?;
-        let type_id = package.ensure_type(type_name)?;
-        let key = package.key_strings.intern(entry_name);
-        let default_type = package
-            .types
-            .iter_mut()
-            .find(|res_type| res_type.id == type_id && res_type.is_default_config())?;
-        let existing = (0..default_type.len())
-            .find(|&i| default_type.entry_head(i).is_some_and(|(k, _)| k == key));
-        let entry_index = match existing {
-            Some(i) => {
-                let mut current = default_type.entry(i)?;
-                current.value = EntryValue::Simple(value);
-                default_type.set(i, Some(current));
-                i
-            }
-            None => default_type.push(Some(ResEntry {
-                flags: 0,
-                key,
-                value: EntryValue::Simple(value),
-            })),
+        self.set_entry(type_name, entry_name, EntryValue::Simple(value))
+    }
+
+    /// Writes `value` as the default-configuration entry `type_name/entry_name`
+    /// of the first package, keeping the index and flags an existing entry of
+    /// that name already has in any configuration.
+    pub(crate) fn set_entry(
+        &mut self,
+        type_name: &str,
+        entry_name: &str,
+        value: EntryValue,
+    ) -> Option<u32> {
+        self.set_entry_in(type_name, entry_name, value, "")
+            .ok()
+            .flatten()
+    }
+
+    /// [`set_entry`](Self::set_entry) in the configuration `qualifiers` names,
+    /// creating that configuration's chunk when the type has none.
+    fn set_entry_in(
+        &mut self,
+        type_name: &str,
+        entry_name: &str,
+        value: EntryValue,
+        qualifiers: &str,
+    ) -> Result<Option<u32>> {
+        let Some(package) = self.packages.first_mut() else {
+            return Ok(None);
         };
-        if let Some(spec) = package
-            .type_specs
-            .iter_mut()
-            .find(|spec| spec.id == type_id)
-        {
-            while spec.len() <= entry_index {
-                spec.push(0);
-            }
-        }
-        for res_type in package
-            .types
-            .iter_mut()
-            .filter(|res_type| res_type.id == type_id)
-        {
-            res_type.pad_to(entry_index + 1);
-        }
-        Some(res_id(package.id, type_id, entry_index))
+        let config = config_for_qualifiers(qualifiers, package.config_len())?;
+        let Some(type_id) = package.ensure_type(type_name) else {
+            return Ok(None);
+        };
+        let key = package.key_strings.intern(entry_name);
+        let entry_index = package
+            .entry_index(type_id, key)
+            .unwrap_or_else(|| package.entry_count(type_id));
+        let chunk = package.config_type(type_id, config);
+        let flags = chunk.entry(entry_index).map_or(0, |current| current.flags);
+        chunk.set(entry_index, Some(ResEntry { flags, key, value }));
+        package.grow_type(type_id, entry_index + 1);
+        Ok(Some(res_id(package.id, type_id, entry_index)))
     }
 
     pub fn add_string_resource(&mut self, name: &str, value: &str) -> Option<u32> {
@@ -240,9 +277,31 @@ impl ResourceTable {
         self.add_resource("string", name, ResValue::string(index))
     }
 
+    /// Registers `apk_path` as the file behind `type_name/entry_name` in the
+    /// configuration `qualifiers` names (`""`, `xxhdpi`, `night-v26`). aapt
+    /// writes a file resource as a string entry holding the path the file was
+    /// packed to, and the loader follows that path.
+    pub fn add_file_resource(
+        &mut self,
+        type_name: &str,
+        entry_name: &str,
+        apk_path: &str,
+        qualifiers: &str,
+    ) -> Result<u32> {
+        let index = self.add_global_string(apk_path);
+        let value = EntryValue::Simple(ResValue::string(index));
+        self.set_entry_in(type_name, entry_name, value, qualifiers)?
+            .ok_or_else(|| {
+                invalid(
+                    "resource table",
+                    format!("{type_name}/{entry_name}: the table refused the entry"),
+                )
+            })
+    }
+
     pub fn ensure_id(&mut self, name: &str) -> Option<u32> {
         self.find_resource_id("id", name)
-            .or_else(|| self.add_resource("id", name, ResValue::reference(0)))
+            .or_else(|| self.add_resource("id", name, ResValue::id_entry()))
     }
 
     pub fn find_resource_id(&self, type_name: &str, entry_name: &str) -> Option<u32> {
@@ -271,6 +330,165 @@ impl ResourceTable {
             }
             None => false,
         }
+    }
+
+    /// The path each configuration of `type_name/entry_name` points at, the
+    /// default configuration first. A file resource is a string entry holding
+    /// the path aapt packed the file to.
+    pub fn file_paths(&self, type_name: &str, entry_name: &str) -> Result<Vec<String>> {
+        let location = self.find_entry(type_name, entry_name).ok_or_else(|| {
+            invalid(
+                "resource entry",
+                format!("the table has no {type_name}/{entry_name}"),
+            )
+        })?;
+        let mut paths: Vec<(bool, String)> = Vec::new();
+        for (res_type, value) in self.values(location.res_id()) {
+            let path = value
+                .string_index()
+                .and_then(|index| self.get_string(index))
+                .ok_or_else(|| {
+                    invalid(
+                        "resource entry",
+                        format!(
+                            "{type_name}/{entry_name} is not file-backed: its value is of kind {:#04x}, not a string",
+                            value.kind
+                        ),
+                    )
+                })?;
+            paths.push((res_type.is_default_config(), path.into_owned()));
+        }
+        if paths.is_empty() {
+            return Err(invalid(
+                "resource entry",
+                format!("{type_name}/{entry_name} is not file-backed: it is a complex entry"),
+            ));
+        }
+        paths.sort_by_key(|(is_default, _)| !is_default);
+        Ok(paths.into_iter().map(|(_, path)| path).collect())
+    }
+
+    /// The map of the complex entry `type_name/entry_name` in the default
+    /// configuration.
+    pub fn complex_entries(&self, type_name: &str, entry_name: &str) -> Option<Vec<MapEntry>> {
+        let location = self.find_entry(type_name, entry_name)?;
+        match self.default_entry(location.res_id())?.1.value {
+            EntryValue::Complex { entries, .. } => Some(entries),
+            EntryValue::Simple(_) => None,
+        }
+    }
+
+    /// The value the app's `attr` `attr_id` gives the enum or flag name
+    /// `symbol`; `None` when its format takes neither or it has no such name.
+    pub fn attr_symbol(&self, attr_id: u32, symbol: &str) -> Option<AttrSymbol> {
+        let EntryValue::Complex { entries, .. } = self.default_entry(attr_id)?.1.value else {
+            return None;
+        };
+        let format = entries
+            .iter()
+            .find(|item| item.name == ATTR_TYPE)?
+            .value
+            .data;
+        let flags = format & ATTR_FORMAT_FLAGS != 0;
+        if !flags && format & ATTR_FORMAT_ENUM == 0 {
+            return None;
+        }
+        entries
+            .iter()
+            .find(|item| self.entry_name(item.name).as_deref() == Some(symbol))
+            .map(|item| AttrSymbol {
+                value: item.value.data,
+                flags,
+            })
+    }
+
+    fn entry_name(&self, res_id: u32) -> Option<Cow<'_, str>> {
+        let (package, entry) = self.default_entry(res_id)?;
+        package.key_strings.get(entry.key)
+    }
+
+    fn default_entry(&self, res_id: u32) -> Option<(&ResPackage, ResEntry)> {
+        let (package_id, type_id, entry_index) = split_res_id(res_id);
+        self.packages
+            .iter()
+            .filter(|package| package.id == package_id)
+            .find_map(|package| {
+                package
+                    .types
+                    .iter()
+                    .filter(|res_type| res_type.id == type_id && res_type.is_default_config())
+                    .find_map(|res_type| res_type.entry(entry_index))
+                    .map(|entry| (package, entry))
+            })
+    }
+
+    /// Runs `edit` on the complex value of `type_name/entry_name` in every
+    /// configuration that defines it, so a `values-night` variant cannot mask
+    /// the change, and returns the entry's id with how many it edited.
+    pub(crate) fn edit_complex_entries(
+        &mut self,
+        type_name: &str,
+        entry_name: &str,
+        mut edit: impl FnMut(&mut u32, &mut Vec<MapEntry>),
+    ) -> Option<(u32, usize)> {
+        let location = self.find_entry(type_name, entry_name)?;
+        let mut edited = 0;
+        for res_type in self
+            .packages
+            .iter_mut()
+            .filter(|package| package.id == location.package_id)
+            .flat_map(|package| package.types.iter_mut())
+            .filter(|res_type| res_type.id == location.type_id)
+        {
+            let Some(mut entry) = res_type.entry(location.entry_index) else {
+                continue;
+            };
+            let EntryValue::Complex { parent, entries } = &mut entry.value else {
+                continue;
+            };
+            edit(parent, entries);
+            res_type.set(location.entry_index, Some(entry));
+            edited += 1;
+        }
+        Some((location.res_id(), edited))
+    }
+
+    /// The `attr` id a bag item name refers to: `android:name` reads the
+    /// framework table, an unprefixed name the app's own `attr` entries, which
+    /// is what a `<style>` item name means in resource XML.
+    pub fn attr_id(&self, name: &str) -> Option<u32> {
+        match name.strip_prefix("android:") {
+            Some(local) => crate::axml::android_attr_res_id(local),
+            None => self.find_resource_id("attr", name),
+        }
+    }
+
+    /// A value as the text that parses back to it, or `None` for a kind that
+    /// has no such form.
+    pub fn value_text(&self, value: ResValue) -> Option<String> {
+        Some(match value.kind {
+            ResValue::STRING => self.get_string(value.data)?.into_owned(),
+            ResValue::REFERENCE if value.data == 0 => "@null".to_string(),
+            ResValue::REFERENCE => format!("@0x{:08x}", value.data),
+            ResValue::ATTRIBUTE => format!("?0x{:08x}", value.data),
+            ResValue::INT_BOOLEAN => (value.data != 0).to_string(),
+            ResValue::INT_DEC => (value.data as i32).to_string(),
+            ResValue::INT_HEX => format!("0x{:x}", value.data),
+            ResValue::FLOAT => f32::from_bits(value.data).to_string(),
+            ResValue::INT_COLOR_ARGB8..=ResValue::INT_COLOR_RGB4 => {
+                format!("#{:08x}", value.data)
+            }
+            _ => return None,
+        })
+    }
+
+    /// Reads `text` the way a value of `attr` is read, interning plain text
+    /// into the global pool the way a resource entry holds it.
+    pub(crate) fn parse_value(&mut self, text: &str, attr: Option<u32>) -> Result<ResValue> {
+        Ok(match axml::parse_attribute_value(text, attr, Some(self))? {
+            axml::AttributeValue::Value(value) => value,
+            axml::AttributeValue::Text => ResValue::string(self.add_global_string(text)),
+        })
     }
 
     fn find_entry(&self, type_name: &str, entry_name: &str) -> Option<EntryLocation> {

@@ -9,6 +9,7 @@ import app.reseam.patch.dex.AccessFlags
 import app.reseam.patch.dex.DexClass
 import app.reseam.patch.dex.Method
 import app.reseam.patch.dex.buildInstructions
+import app.reseam.patch.dex.isSet
 import app.reseam.patch.native.FieldRef
 import app.reseam.patch.native.MethodRef
 import app.reseam.patch.native.NewMethod
@@ -56,7 +57,7 @@ class MethodsTarget internal constructor(
      * @throws IllegalStateException when the target resolves and zero or multiple
      * candidates match, with the match count and all candidate descriptors.
      */
-    fun single(predicate: MethodTarget.() -> Boolean): MethodTarget =
+    fun single(predicate: MethodTarget.() -> Boolean = { true }): MethodTarget =
         MethodTarget(debugName) { runtime ->
             val candidates = runtime.resolve(this).value.map { MethodTarget.of(it, debugName) }
             val matches = candidates.filter(predicate)
@@ -137,20 +138,23 @@ fun klass(name: String): ClassTarget {
 fun klass(debugName: String, block: ClassQuery.() -> Unit): ClassTarget =
     ClassTarget(debugName) { runtime -> ClassQuerySpec().apply(block).resolveOne(runtime, debugName) }
 
-/** A method of this class by name, narrowed by the query when overloaded. */
-fun ClassTarget.method(name: String, block: MethodQuery.() -> Unit = {}): MethodTarget {
+/**
+ * A method of this class by name, narrowed by the query when overloaded.
+ * `inherited` includes methods inherited from app classes.
+ */
+fun ClassTarget.method(name: String, inherited: Boolean = false, block: MethodQuery.() -> Unit = {}): MethodTarget {
     val owner = this
     return app.reseam.patch.method("${owner.label}.$name") {
-        inClass(owner)
+        inClass(owner, inherited)
         name(name)
         block()
     }
 }
 
-fun ClassTarget.methods(debugName: String? = null, block: MethodQuery.() -> Unit): MethodsTarget {
+fun ClassTarget.methods(debugName: String? = null, inherited: Boolean = false, block: MethodQuery.() -> Unit): MethodsTarget {
     val owner = this
     return app.reseam.patch.methods(debugName ?: owner.label) {
-        inClass(owner)
+        inClass(owner, inherited)
         block()
     }
 }
@@ -186,8 +190,9 @@ fun field(owner: String, name: String, type: String): FieldTarget =
 
 /**
  * `onCreate()` of the app's `Application` subclass named in the manifest.
- * Added when the class does not override it, so there is always a method
- * that runs once at process start.
+ * Added when the class does not override it, so the entry point is always on
+ * the class the manifest names and there is always a method that runs once at
+ * process start.
  */
 val appEntry: MethodTarget = MethodTarget("appEntry") { runtime ->
     val name = runtime.manifest.applicationClass
@@ -195,22 +200,7 @@ val appEntry: MethodTarget = MethodTarget("appEntry") { runtime ->
     val desc = descriptor(name)
     val classDef = runtime.index.classFor(desc) ?: error("Application class $desc is not in the app")
     val existing = classDef.method("onCreate", "()V")
-    val method = existing ?: classDef.addMethod(
-        NewMethod(
-            name = "onCreate",
-            proto = "()V",
-            accessFlags = AccessFlags.PUBLIC.toUInt(),
-            registersSize = 1u,
-            insSize = 1u,
-            outsSize = 1u,
-            instructions = buildInstructions {
-                invokeSuper(classDef.superclass ?: Type.Application, "onCreate", "()V", 0)
-                returnVoid()
-            },
-            tries = emptyList(),
-            catchHandlers = emptyList(),
-        ),
-    )
+    val method = existing ?: classDef.addOnCreate()
     Resolution(
         method,
         SearchMatchReport(
@@ -221,4 +211,40 @@ val appEntry: MethodTarget = MethodTarget("appEntry") { runtime ->
             nearMisses = emptyList(),
         ),
     )
+}
+
+/** An `onCreate()` that calls the one this class inherits. */
+private fun DexClass.addOnCreate(): Method {
+    unsealInheritedOnCreate()
+    return addMethod(
+        NewMethod(
+            name = "onCreate",
+            proto = "()V",
+            accessFlags = AccessFlags.PUBLIC.toUInt(),
+            registersSize = 1u,
+            insSize = 1u,
+            outsSize = 1u,
+            instructions = buildInstructions {
+                invokeSuper(superclass ?: Type.Application, "onCreate", "()V", 0)
+                returnVoid()
+            },
+            tries = emptyList(),
+            catchHandlers = emptyList(),
+        ),
+    )
+}
+
+/**
+ * Clears `final` on the inherited `onCreate()` so ART accepts the added override.
+ */
+private fun DexClass.unsealInheritedOnCreate() {
+    // A private declaration is not in the vtable, so it is not what an override collides with.
+    val inherited = superclassChain.firstNotNullOfOrNull { ancestor ->
+        ancestor.method("onCreate", "()V")?.takeUnless { AccessFlags.PRIVATE.isSet(it.info.accessFlags) }
+    } ?: return
+    val flags = inherited.info.accessFlags.toInt()
+    check(!AccessFlags.STATIC.isSet(flags)) {
+        "${inherited.descriptor} is static, so $descriptor cannot override it; target that method directly instead of appEntry"
+    }
+    if (AccessFlags.FINAL.isSet(flags)) inherited.setAccessFlags(flags and AccessFlags.FINAL.inv())
 }

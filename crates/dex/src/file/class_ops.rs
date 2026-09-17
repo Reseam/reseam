@@ -54,22 +54,4 @@ impl DexFile {
         self.class_mut(class_idx)?.superclass = Some(type_idx);
         Ok(())
     }
-
-    /// Class indices of the superclass chain, nearest first, ending at the
-    /// first superclass defined outside this DEX.
-    pub fn superclass_chain(&self, class_idx: usize) -> Vec<usize> {
-        let mut chain = Vec::new();
-        let mut current = class_idx;
-        while let Some(superclass) = self.classes.header(current).superclass {
-            let Some(pos) = self.class_index_of(superclass) else {
-                break;
-            };
-            if chain.contains(&pos) {
-                break;
-            }
-            chain.push(pos);
-            current = pos;
-        }
-        chain
-    }
 }

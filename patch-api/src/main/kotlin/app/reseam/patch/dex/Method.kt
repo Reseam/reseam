@@ -6,6 +6,7 @@
 package app.reseam.patch.dex
 
 import app.reseam.patch.ActiveRuntime
+import app.reseam.patch.edits
 import app.reseam.patch.native.AnnotationItem
 import app.reseam.patch.native.FieldRef
 import app.reseam.patch.native.Instruction
@@ -31,6 +32,7 @@ import app.reseam.patch.native.indexOfFirstReversed
 import app.reseam.patch.native.indexOfFirstString
 import app.reseam.patch.native.indexOfOpcodeSequence
 import app.reseam.patch.native.insSize
+import app.reseam.patch.native.insertBeforeInstruction
 import app.reseam.patch.native.insertInstructions
 import app.reseam.patch.native.instructionCount
 import app.reseam.patch.native.instructionFieldRef
@@ -80,37 +82,47 @@ value class Method(val handle: UInt) {
     val outsSize: Int get() = outsSize(handle).toInt()
     val dexIndex: Int get() = methodDex(handle).toInt()
 
-    fun alwaysReturn() = returnEarly(handle)
-    fun alwaysReturn(value: Int) = returnEarlyInt(handle, value)
-    fun alwaysReturn(value: Boolean) = returnEarlyInt(handle, if (value) 1 else 0)
-    fun alwaysReturn(value: Long) = returnEarlyWide(handle, value)
+    fun alwaysReturn() = bodyReplaced { returnEarly(handle) }
+    fun alwaysReturn(value: Int) = bodyReplaced { returnEarlyInt(handle, value) }
+    fun alwaysReturn(value: Boolean) = bodyReplaced { returnEarlyInt(handle, if (value) 1 else 0) }
+    fun alwaysReturn(value: Long) = bodyReplaced { returnEarlyWide(handle, value) }
     fun alwaysReturn(value: String) = replaceBody(insSize + 1, 0, buildInstructions { constString(0, value); returnObject(0) })
-    fun alwaysReturnNull() = returnEarlyObjectNull(handle)
+    fun alwaysReturnNull() = bodyReplaced { returnEarlyObjectNull(handle) }
 
-    fun setInstructions(insns: List<Instruction>) = setInstructions(handle, lowerInvokesForBody(insns))
+    fun setInstructions(insns: List<Instruction>) = bodyReplaced { setInstructions(handle, lowerInvokesForBody(insns)) }
 
-    fun replaceBody(registersSize: Int, outsSize: Int, insns: List<Instruction>) =
+    fun replaceBody(registersSize: Int, outsSize: Int, insns: List<Instruction>) = bodyReplaced {
         replaceBody(handle, registersSize.toUShort(), outsSize.toUShort(), lowerInvokesForBody(insns, registersSize))
+    }
 
     fun insertInstruction(index: Int, insn: Instruction) = insertInstructions(index, listOf(insn))
 
-    fun insertInstructions(index: Int, insns: List<Instruction>) =
+    fun insertInstructions(index: Int, insns: List<Instruction>) {
+        val before = instructionCount
         insertInstructions(handle, index.toUInt(), lowerInvokesAt(index, insns))
+        edits?.inserted(handle, index, instructionCount - before)
+    }
 
     fun addInstructions(index: Int, block: InstructionBuilder.() -> Unit) = insertInstructions(index, buildInstructions(block))
 
     fun replaceInstruction(index: Int, insn: Instruction) {
         val lowered = lowerInvokesAt(index, listOf(insn))
+        val before = instructionCount
         if (lowered.size == 1) {
             replaceInstruction(handle, index.toUInt(), lowered.single())
         } else {
             removeInstructions(handle, index.toUInt(), 1u)
             insertInstructions(handle, index.toUInt(), lowered)
         }
+        edits?.replaced(handle, index, instructionCount - before)
     }
 
     fun removeInstruction(index: Int) = removeInstructions(index, 1)
-    fun removeInstructions(index: Int, count: Int) = removeInstructions(handle, index.toUInt(), count.toUInt())
+    fun removeInstructions(index: Int, count: Int) {
+        val before = instructionCount
+        removeInstructions(handle, index.toUInt(), count.toUInt())
+        edits?.removed(handle, index, before - instructionCount)
+    }
 
     fun replaceString(old: String, new: String): Boolean = replaceStrings(handle, old, new, false) > 0u
     fun replaceAllStrings(old: String, new: String): Int = replaceStrings(handle, old, new, true).toInt()
@@ -130,8 +142,9 @@ value class Method(val handle: UInt) {
         indexOfFirstMethodCall(handle, owner, name, start.toUInt())?.toInt()
     fun indexOfFirstFieldAccess(opcode: Opcode, fieldType: String? = null, owner: String? = null, start: Int = 0): Int? =
         indexOfFirstFieldAccess(handle, opcode.value, fieldType, owner, start.toUInt())?.toInt()
-    fun indexOfOpcodeSequence(vararg opcodes: Opcode, start: Int = 0): Int? =
-        indexOfOpcodeSequence(handle, opcodes.map { it.value }.toIntArray(), start.toUInt())?.toInt()
+    /** The first index where these opcodes run back to back, `null` matching any one instruction. */
+    fun indexOfOpcodeSequence(vararg opcodes: Opcode?, start: Int = 0): Int? =
+        indexOfOpcodeSequence(handle, opcodes.map { it?.value ?: -1 }.toIntArray(), start.toUInt())?.toInt()
 
     fun indexOfFirstInstruction(start: Int = 0, predicate: Instruction.() -> Boolean): Int? {
         val insns = instructions
@@ -149,8 +162,35 @@ value class Method(val handle: UInt) {
 
     internal fun growLocals(additionalLocals: Int): List<Int>? {
         require(additionalLocals in 0..UShort.MAX_VALUE.toInt()) { "Invalid local register growth: $additionalLocals" }
-        return growLocalRegisters(handle, additionalLocals.toUShort())?.map { it.toInt() }
+        val base = registersSize - insSize
+        // A reserved local is dead between the block that writes it and the one that reads it
+        // until the reader is emitted, so liveness alone would let growth stage operands through it.
+        val held = edits?.reserved(this).orEmpty().flatMap { it.register until it.register + it.wordCount }
+        val indices = growLocalRegisters(handle, additionalLocals.toUShort(), UShortArray(held.size) { held[it].toUShort() })
+            ?.map { it.toInt() } ?: return null
+        edits?.relocated(handle, indices)
+        edits?.grewRegisters(handle, base, additionalLocals)
+        return indices
     }
+
+    /**
+     * Inserts on every path into the instruction at [index], the branches to it
+     * included, unlike [insertInstructions]. Returns false without changing the
+     * method when the code cannot be relocated around the insertion.
+     */
+    internal fun insertOnEveryPath(index: Int, insns: List<Instruction>): Boolean {
+        val lowered = lowerInvokesAt(index, insns)
+        val indices = insertBeforeInstruction(handle, index.toUInt(), lowered)?.map { it.toInt() } ?: return false
+        edits?.relocated(handle, indices, expandedAt = index, expandedBy = lowered.size)
+        return true
+    }
+
+    private inline fun <R> bodyReplaced(edit: () -> R): R {
+        val result = edit()
+        edits?.bodyReplaced(handle)
+        return result
+    }
+
     fun findFreeRegister(atIndex: Int, exclude: List<Int> = emptyList()): Int =
         findFreeRegister(handle, atIndex.toUInt(), UShortArray(exclude.size) { exclude[it].toUShort() })?.toInt()
             ?: error("No free register at $descriptor[$atIndex]")

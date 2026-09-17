@@ -26,6 +26,7 @@ class PatchRuntime {
     private val methodInfos = HashMap<UInt, MethodInfo>()
     private val classInfos = HashMap<UInt, ClassInfo>()
     internal val index: SearchIndex by lazy { SearchIndex(this) }
+    internal val edits: MethodEdits = MethodEdits()
 
     /** Why a target resolved the way it did. */
     fun explain(target: Target<*>): MatchReport = resolve(target).report
@@ -61,6 +62,8 @@ internal object ActiveRuntime {
 
     val current: PatchRuntime
         get() = active ?: error("This API is only available while a patch is executing.")
+
+    val currentOrNull: PatchRuntime? get() = active
 
     fun <T> run(runtime: PatchRuntime, block: () -> T): T {
         val previous = active

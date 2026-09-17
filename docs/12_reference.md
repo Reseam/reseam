@@ -53,46 +53,70 @@ Each result carries `patch` (the reference), `hidden`, and `required_by`, so a c
 
 | Symbol | Description |
 |---|---|
-| `method(label) { MethodQuery }` | The one method matching the query. `MethodTarget`. |
-| `methods(label) { MethodQuery }` | Every matching method, best ranked first. `MethodsTarget`. |
+| `method(debugName = null) { MethodQuery }` | The unique matching method, or the best candidate with `first()`. `MethodTarget`. |
+| `methods(debugName = null) { MethodQuery }` | Every matching method, best ranked first. `MethodsTarget`. |
 | `klass(name)` | A class by name. `ClassTarget`. |
-| `klass(label) { ClassQuery }` | The one class matching the query. |
-| `ClassTarget.method(name) { MethodQuery }` | A method of the class by name, narrowed by the block. |
-| `ClassTarget.methods(label) { }` | Matching methods of the class. |
+| `klass(debugName) { ClassQuery }` | The unique matching class, or the best candidate with `first()`. |
+| `ClassTarget.method(name, inherited = false) { MethodQuery }` | A method of the class by name, narrowed by the optional block. |
+| `ClassTarget.methods(debugName = null, inherited = false) { }` | Matching methods of the class. |
 | `ClassTarget.field(name)` | A field by name. `FieldTarget`. |
 | `ClassTarget.fieldOfType(type)` | The one instance field of that type. |
 | `field(owner, name, type)` | A field reference without lookup. |
-| `methodTarget(label) { PatchRuntime.() -> Method }` | A method resolved by hand. |
-| `classTarget(label) { PatchRuntime.() -> DexClass }` | A class resolved by hand. |
-| `fieldTarget(label) { PatchRuntime.() -> FieldRef }` | A field resolved by hand. |
-| `appEntry` | `onCreate()` of the manifest's `Application` class, added if missing. |
+| `methodTarget(debugName) { PatchRuntime.() -> Method }` | A method resolved by hand. |
+| `classTarget(debugName) { PatchRuntime.() -> DexClass }` | A class resolved by hand. |
+| `fieldTarget(debugName) { PatchRuntime.() -> FieldRef }` | A field resolved by hand. |
+| `appEntry` | `onCreate()` of the manifest's `Application` class, added if missing. Clears `final` on the inherited `onCreate` an added override would collide with; fails when that method is static. |
 | `Target.explain()` | The `MatchReport`: `name`, `winner`, `considered`, `reasons`, `nearMisses`. |
 
-`MethodTarget`: `method`, `owner`, `name`, `proto`, `returnType`, `parameterTypes`, `descriptor`, `ref`. `MethodsTarget`: `all`, `forEach { }`, `single { }`. `ClassTarget`: `classDef`, `descriptor`. `FieldTarget`: `ref`, `owner`, `name`, `type`.
+`debugName` is a diagnostic label, not a matching constraint. Targets resolve on first use in an active runtime and cache their result for that runtime.
 
-`MethodsTarget.single { predicate }` returns a deferred `MethodTarget` and can be declared at top level. The predicate has a `MethodTarget` receiver and returns a Boolean. It resolves the candidates and evaluates the predicate on first use in an active patch runtime, then caches the selected method for that runtime. Zero or multiple matches fail at resolution with the match count and all candidate descriptors. Calling `single` without using its result does not validate the selection. `all` and `forEach` resolve immediately and require an active runtime.
+`MethodTarget`: `method`, `owner`, `name`, `proto`, `returnType`, `parameterTypes`, `descriptor`, `ref`. `MethodsTarget`: `all`, `forEach { }`, `single()`, `single { }`. `ClassTarget`: `classDef`, `descriptor`. `FieldTarget`: `ref`, `owner`, `name`, `type`.
 
-`MethodQuery`: `name`, `strings`, `literals`, `returns`, `params`, `param(index, type)`, `hasParam`, `paramCount`, `flags`, `inClass`, `calls`, `calledBy`, `callsMethod { MethodRef }`, `opcode`, `rankBy(label) { MethodRankScope }`, `first()`.
+`MethodsTarget.single()` requires one method; `single { predicate }` narrows candidates first. It returns a deferred `MethodTarget` and can be declared at top level. The predicate has a `MethodTarget` receiver and returns a Boolean. It resolves the candidates and evaluates the predicate on first use in an active patch runtime, then caches the selected method for that runtime. Zero or multiple matches fail at resolution with the match count and all candidate descriptors. Calling `single` without using its result does not validate the selection. `all` and `forEach` resolve immediately and require an active runtime.
 
-`ClassQuery`: `strings`, `hasInstanceField`, `extends`, `implements`, `rankBy(label) { ClassRankScope }`, `first()`.
+`MethodQuery`: `name`, `strings`, `stringsStartingWith(prefix)`, `literals`, `returns`, `params`, `param(index, type)`, `hasParam`, `paramCount`, `flags`, `inClass(target, inherited = false)`, `calls(target)`, `calls(ref)`, `calls { MethodRefMatch }`, `calledBy`, `callsMethod { MethodRef }`, `opcode`, `opcodeSequence`, `custom { Method }`, `rankBy(label) { MethodRankScope }`, `first()`, `includeExtensions()`.
 
-`RankScope`: `type`, `methods(proto)`, `zeroArgListGetters()`. `MethodRankScope` adds `method`, `paramCount`, `callSitesFollowedByCast(type, lookAhead)`. `ClassRankScope` adds `classDef`.
+`ClassQuery`: `strings`, `hasInstanceField`, `extends`, `implements`, `sourceFile`, `custom { DexClass }`, `rankBy(label) { ClassRankScope }`, `first()`, `includeExtensions()`.
+
+`opcode(vararg)` needs each opcode somewhere in the method; `opcodeSequence(vararg)` needs them consecutive, with `null` for any one instruction. Both seed only when no constraint is more selective. `custom { }` filters the selected candidates and never seeds; `sourceFile` seeds a class query from the compiler-recorded file names.
+
+`inClass(target)` matches declared methods. `inherited = true` includes inherited app methods, nearest declaration first, excluding overrides. A failed lookup without it reports how many inherited methods it skipped.
+
+`flags(mask)` requires every bit of the mask, so `flags(AccessFlags.PUBLIC or AccessFlags.FINAL)` matches only a method that is both.
+
+Both queries search the app's own code. A class an [extension](9_extensions.md) defines is a candidate only under `includeExtensions()`, since extension DEX files link on first reference and would otherwise make a match depend on patch order. A method query with `inClass` already names its owner, so it searches that class whichever DEX it came from. Lookups by name (`klass(name)`, `ClassTarget.field`, `ExtClass.target`, `ExtMethod.target`) and `bytecode.classes` are not queries and still see them.
+
+`RankScope`: `type`, `methods(proto)`, `zeroArgListGetters()`. `MethodRankScope` adds `method`, `paramCount`, `callSitesFollowedByCast(type, lookAhead = 40)`. `ClassRankScope` adds `classDef`.
+
+`MethodQuery.calls(ref: MethodRef)` uses the same indexed call selection as `calls(target)` and can name platform methods outside the app. `calls { }` needs an owner, name, return type, or exact parameter list; `ownerAssignableTo`, `hasParam`, and `paramCount` alone are insufficient. `callsMethod { }` filters candidate bodies and never seeds. `stringsStartingWith(prefix)` requires a non-empty prefix.
 
 ### Points
 
 | Symbol | Description |
 |---|---|
-| `MethodTarget.point(label) { PointMatch }` | The first instruction matching; a sequence ends at its last step. `PointTarget`. |
+| `MethodTarget.point(debugName = null) { PointMatch }` | The first instruction matching; a sequence ends at its last step. `PointTarget`. |
+| `MethodTarget.points(debugName = null) { PointMatch }`, `MethodsTarget.points(debugName = null) { PointMatch }` | All matches in the selected methods, fetched once per method and anchored before edits. `PointsTarget`. |
+| `PointsTarget.all`, `.forEach { }`, `.single()` | `all` and `forEach` resolve immediately; the block has a `PointTarget` receiver. `single()` defers resolution and fails unless exactly one point matches. |
+| `PointTarget.redirectTo(ExtMethod)` | Redirect a static, virtual, or interface invoke to a static extension method, receiver first for instance calls. Validates access, arguments, and any consumed result; preserves branches and anchors. |
 | `PointTarget.previous { }` | Nearest earlier match, one step. |
-| `PointTarget.next { }` | Nearest later match, may be a sequence. |
-| `PointTarget.captureAs(name, type?)` | Records the register written here for `capture(name)`. |
-| `PointTarget.callee(label?)` | The invoked method as a `MethodTarget`. |
-| `PointTarget.field(label?)` | The accessed field as a `FieldTarget`. |
-| `PointTarget.index`, `.instruction`, `.method` | The resolved position and its method target. |
+| `PointTarget.next { }` | Nearest later match, may be a sequence. On an invoke, a leading `resultOf` must match its immediate result. |
+| `PointTarget.captureAs(name, type = null)` | Records the register written here for `capture(name)`. |
+| `PointTarget.skipWhen { condition }` | Runs the call at the point only when the condition is false; the call's result must be unused. |
+| `PointTarget.captureArgumentAs(name, argument, type = null)` | Records the register of argument `argument` of the invoke here. The receiver is argument 0 of an instance invoke; a wide argument counts once. |
+| `PointTarget.writer(argument, debugName = null)` | The instruction that wrote the argument, as a `PointTarget`. Fails for an incoming parameter or multiple writers, reporting the paths. |
+| `PointTarget.callee(debugName = null)` | The invoked method as a `MethodTarget`, resolved to the nearest declaration up the owner's superclass chain. |
+| `PointTarget.field(debugName = null)` | The accessed field as a `FieldTarget`. |
+| `PointTarget.index`, `.instruction`, `.method` | Current index, instruction, and method target. Points follow edits; using one after body replacement fails. |
 
-`PointMatch`: `opcode`, `string`, `stringContains`, `literal`, `type`, `checkCast`, `newInstance`, `invoke(opcodes) { MethodRefMatch }`, `invokeStatic`, `invokeVirtual`, `invokeInterface`, `invokeDirect`, `calls(target)`, `field { FieldRefMatch }`, `resultOf(returns?)`, `where { Instruction }`, `then(within) { }`.
+`PointMatch`: `opcode`, `string`, `stringContains`, `literal`, `type`, `checkCast`, `newInstance`, `invoke(opcodes) { MethodRefMatch }`, `invokeStatic`, `invokeVirtual`, `invokeInterface`, `invokeDirect`, `calls(target)`, `field { FieldRefMatch }`, `argument(index) { PointMatch }`, `resultOf(returns = null)`, `where { Instruction }`, `then(within = 1) { }`.
 
-`MethodRefMatch`: `owner`, `name`, `returns`, `params`, `hasParam`, `paramCount`. `FieldRefMatch`: `owner`, `name`, `type`.
+`MethodRefMatch`: `owner`, `ownerAssignableTo`, `name`, `returns`, `params`, `hasParam`, `paramCount`. `FieldRefMatch`: `owner`, `name`, `type`.
+
+`PointMatch.opcode(vararg)` accepts any listed opcode. Invoke helpers match both ordinary and range forms, and their blocks are optional. `then(within = 1)` requires the next instruction; a larger value allows that many following instructions. A sequence selects its final instruction.
+
+`argument(index) { }` matches every source of an invoke argument, following copies across branches and exception handlers. The receiver is argument 0 of an instance invoke; a wide argument counts once. Incoming parameters, conflicting sources, cyclic copies, and unsupported control flow do not match; `explain().reasons` reports why. `writer(argument)` requires a single writing instruction and does not follow copies.
+
+`ownerAssignableTo(type)` follows app classes, interfaces, and their external superclass names. Known `java.*` relationships use host platform classes; unknown Android relationships do not match.
 
 ### Changing methods
 
@@ -101,21 +125,22 @@ Each result carries `patch` (the reference), `hidden`, and `required_by`, so a c
 | `MethodTarget.before { CodeScope }` | Emit at entry. |
 | `MethodTarget.after { CodeScope }` | Emit before every return; `capture("result")` is the return value. Referenced parameters and receiver are saved at entry in dedicated locals. |
 | `MethodTarget.replace { CodeScope }` | Replace the body. |
-| `PointTarget.before { }`, `.after { }` | Emit around the instruction. |
+| `PointTarget.before { }`, `.after { }` | Emit around the instruction. Repeated emissions at one point stack in emission order. `after` fails on a return, `throw` or `goto`, since nothing after it runs. |
+| `MethodTarget.reserveLocal(name, type)` | A `MethodLocal`, zeroed at entry and read in blocks of the same method as `local(slot)`. Reserves both words for a wide type; body replacement invalidates it. |
 | `MethodTarget.alwaysReturn()`, `(Boolean)`, `(Int)`, `(Long)`, `(String)`, `alwaysReturnNull()` | Replace the body with a constant return. |
 | `MethodTarget.replaceAllStrings(old, new)`, `replaceAllLiterals(old, new)` | Rewrite constants; returns the count. |
 
-`CodeScope`: `thisObject`, `param(i)`, `paramOfType(type)`, `lastParam`, `capture(name)`, `int`, `long`, `bool`, `string`, `nullObject`, `enumValue(type, name)`, `staticField(FieldTarget | FieldRef)`, `newInstance(type, ctorProto, args)`, `call(ExtMethod | MethodTarget, args)`, `callStatic(owner, name, proto, args)`, `whenTrue`, `whenFalse`, `whenNull`, `whenNotNull`, `whenEqual`, `whenNotEqual` (each returns `Otherwise` with `otherwise { }`), `returnVoid`, `returnValue`, `returnTrue`, `returnFalse`, `returnNull`.
+`CodeScope`: `thisObject`, `param(i)`, `paramOfType(type)`, `lastParam`, `capture(name)`, `local(slot)`, `int`, `long`, `bool`, `string`, `nullObject`, `enumValue(type, name)`, `staticField(FieldTarget | FieldRef)`, `setStatic(FieldTarget | FieldRef, value)`, `newInstance(type, ctorProto = "()V", vararg args)`, `call(ExtMethod | MethodTarget, args)` (fails when the extension method does not exist or the argument count does not match), `callStatic(owner, name, proto, args)`, `whenTrue`, `whenFalse`, `whenNull`, `whenNotNull`, `whenEqual`, `whenNotEqual` (each returns `Otherwise` with `otherwise { }`), `returnVoid`, `returnValue`, `returnTrue`, `returnFalse`, `returnNull`.
 
 Inside `MethodTarget.after`, `param(i)`, `paramOfType(type)`, `lastParam`, and `thisObject` refer to entry snapshots, even if the method body reuses their incoming registers. Assigning to a snapshot changes the saved local, independently of `capture("result")`. Object snapshots preserve references, not object state. Point hooks read values at their instruction and do not take entry snapshots.
 
-Temporary registers are reused after their last use across the block's control flow. Frame growth lowers operands that exceed their instruction format through dead scratch registers. Range invokes can also share an additional argument area, with entry copies preserving the body's parameter values. `Method.growLocalRegisters` reserves at least the requested number of locals; invoke lowering may require additional registers. It returns `false` without changing the body when safe lowering is unavailable. Successful growth can expand instructions and invalidate previously saved instruction indices. Register searches account for branches, exception handlers, and both words of wide values; `findFreeRegister` throws when no register is available.
+Temporary registers are reused after their last use across the block's control flow. Frame growth lowers operands that exceed their instruction format through dead scratch registers. Range invokes can also share an additional argument area, with entry copies preserving the body's parameter values. `Method.growLocalRegisters` reserves at least the requested number of locals; invoke lowering may require additional registers. It returns `false` without changing the body when safe lowering is unavailable. Successful growth can expand instructions, so an index saved by patch code goes stale; a `PointTarget` follows its instruction. Reserved locals are never used as scratch, by emitted code or by growth. Register searches account for branches, exception handlers, and both words of wide values; `findFreeRegister` throws when no register is available.
 
-`ValueRef`: `type`, `cast(type)`, `field(FieldTarget | FieldRef)`, `fieldOfType(type)`, `set(field, value)`, `assign(value)`, `call(ExtMethod | MethodTarget, args)`, `callVirtual(owner, name, proto, args)`, `callInterface(...)`, `size()`, `get(index)`, `plus`, `minus`.
+`ValueRef`: `type`, `cast(type)`, `field(FieldTarget | FieldRef)`, `fieldOfType(type)`, `set(field, value)`, `assign(value)` (fails on a value read from a field), `call(ExtMethod | MethodTarget, args)`, `callVirtual(owner, name, proto, args)`, `callInterface(...)`, `size()`, `get(index)`, `plus`, `minus`.
 
 | Symbol | Description |
 |---|---|
-| `ExtClass(name)` | A class an extension ships: `descriptor`, `target`, `static(name, params, returns)`, `method(name, params, returns)`, `field(name, type)`. |
+| `ExtClass(name)` | A class an extension ships: `descriptor`, `target`, `static(name, vararg params, returns = Type.Void)`, `method(name, vararg params, returns = Type.Void)`, `field(name, type)`. |
 | `ExtMethod` | `owner`, `name`, `proto`, `isStatic`, `ref`, `target`, `implement { CodeScope }`. |
 
 ### Runtime
@@ -124,14 +149,35 @@ Temporary registers are reused after their last use across the block's control f
 
 | Scope | Members |
 |---|---|
-| `ManifestScope` | `components()`, `component(name)`, `packageName`, `versionCode`, `versionName`, `minSdkVersion`, `splitName`, `applicationClass`, `setVersionCode`, `setVersionName`, `setMinSdk`, `addPermission`, `setAttributeInt`, `setAttributeString`, `setActivityConfigChanges`, `addIntentFilter`, `addActivityAlias`, `copyIntentFilters`, `addActivity(name) { XmlElement }`, `document()`, `edit { XmlDocument }`. |
-| `ResourceScope` | `components()`, `component(name)`, `owningComponent`, `id`, `exists`, `getString`, `setString`, `add`, `addString`, `addBool`, `addInteger`, `addColor`, `addDimen`, `addId`, `addRaw`, `getRaw`, `poolGet`, `poolSet`, `poolAdd`, `poolFindRefs`, `replaceEntry`. |
+| `ManifestScope` | `components()`, `component(name)`, `packageName`, `versionCode`, `versionName`, `minSdkVersion`, `splitName`, `applicationClass`, `setVersionCode`, `setVersionName`, `setMinSdk`, `addPermission`, `setAttributeInt`, `setAttributeString` (`@type/name` and `?attr` become references, enum and flag names their values), `setActivityConfigChanges`, `addIntentFilter`, `addActivityAlias` (appended after the activities, `label` read like `setAttributeString`), `copyIntentFilters` (activities or aliases), `addActivity(name) { XmlElement }`, `document()`, `edit { XmlDocument }`. |
+| `ResourceScope` | `components()`, `component(name)`, `owningComponent`, `setPackageName` (rename with the manifest package so by-name lookups resolve), `id`, `exists`, `getString`, `setString`, `add`, `addString`, `addBool`, `addInteger`, `addColor`, `addDimen`, `addId`, `addRaw`, `getRaw`, `path(type, name)`, `paths(type, name)`, `xml(type, name)`, `editXml(type, name) { }`, `addFile`, `style(name, parent = null) { StyleScope }`, `getArray(name)`, `setArray(name, values)`, `setStringArray(name, values)`, `poolGet`, `poolSet`, `poolAdd`, `poolFindRefs`, `replaceEntry`. |
+| `StyleScope` | `set(attr, value)`: an `<item>` of the style. `android:name` reads the framework table, an unprefixed name the app's own `attr` entries. |
 | `FileScope` | `components()`, `component(name)`, `list`, `read`, `source`, `signers`, `write`, `writeStored`, `delete`, `copy(bundlePath, apkPath)`, `xml(path)`, `editXml(path) { }`. |
-| `BytecodeScope` | `classes`, `findClass(name)`, `classesExtending(type)`, `replaceAllStrings(old, new)`, `redirectCalls(owner, name, to)`, `redirectCalls(from: MethodRef, to)`. |
+| `BytecodeScope` | `classes`, `findClass(name)`, `classesExtending(type)`, `replaceAllStrings(old, new)`, `replaceStringsContaining(substring) { old -> new? }`, `redirectCalls(owner, name, to)`, `redirectCalls(from: MethodRef, to)`. |
 | `PatchLogger` | `info`, `warn`, `debug`. |
-| `XmlDocument` | `root`, `findByTag`, `findByAttribute(name, value)`, `createElement`, `close()`; `use { }`. |
-| `XmlElement` | `tag`, `parent`, `children`, `get(attr)`, `set(attr, value)`, `setInt`, `setBool`, `setResourceRef`, `removeAttribute`, `appendChild`, `insertBefore`, `remove`, `clone(deep)`. |
+| `XmlDocument` | `root`, `findByTag`, `findByAttribute(name, value)`, `createElement`, `declareNamespace(prefix, uri)`, `adopt(element)`, `close()`; `use { }`. `XmlDocument.compile(text)` compiles XML text into a document backed by no APK entry. |
+| `XmlElement` | `tag`, `parent`, `children`, `get(attr)`, `set(attr, value)` (binds the attribute's resource id, failing when it has none; enum and flag names become their values), `setInt`, `setBool`, `setResourceRef`, `removeAttribute`, `appendChild`, `insertBefore` (returns the inserted element's handle), `remove`, `clone(deep)`. `appendChild` and `insertBefore` take elements of their own document; `adopt` brings one over from another. A created or adopted element is used up once attached, and a handle that names no element fails the patch. |
 | `resourceRef(value)` | `@0x...` or `@ref/0x...` as a `UInt?`. |
+
+`BytecodeScope.redirectCalls(from: MethodRef, to: ExtMethod)` returns the number of changed call sites. It validates all selected calls before editing, skips super and constructor calls, and excludes extension callers so the replacement can call the original. The `(owner, name, to)` overload derives the original prototype from `to`, dropping its first parameter when it equals `owner`; use `MethodRef` for an explicit prototype.
+
+Resource file and value helpers:
+
+| Member of `ResourceScope` | Description |
+|---|---|
+| `owningComponent(resType, resName)`, `owningComponent(resId: UInt)` | Name of the component defining the resource, or null. |
+| `path(resType, resName)` | Default configuration's APK path. Fails for a missing entry or a value that is not a file path. |
+| `paths(resType, resName)` | Paths for every configuration defining the resource, default first. |
+| `xml(resType, resName)` | Opens the default file as an `XmlDocument`, finding its component unless one was selected. Close it with `use { }`. |
+| `editXml(resType, resName) { }` | Opens and closes the document around the block; returns the block's result. |
+| `addFile(resType, name, apkPath, qualifiers = "")` | Registers an existing APK entry; returns its resource ID (`UInt`). Qualifiers support density, `night`, `notnight`, and `vN`. |
+| `addFile(resType, name, apkPath, data: ByteArray, qualifiers = "")` | Writes and registers the file. Compiles XML, including `<aapt:attr>` inline resources; returns its resource ID. |
+| `style(name, parent = null) { }` | Sets items in every existing configuration; returns the resource ID. Creating a style requires a parent. A supplied parent replaces an existing one. |
+| `getArray(name)` | Array elements as a `List<String>`. |
+| `setArray(name, values: List<String>)` | Replaces every configuration's elements, parsing references and typed values; returns the resource ID. |
+| `setStringArray(name, values: List<String>)` | Replaces every configuration's elements with literal strings, including numbers and text starting with `@`; returns the resource ID. |
+
+`FileScope.editXml(path) { }` also closes its document and returns the block's result. `XmlDocument.compile(text)` creates a standalone document; `adopt(element)` copies an element into the receiving document before attachment. `declareNamespace(prefix, uri)` supplies a namespace for attributes on that document. Structural edits change element indices; reacquire existing elements after declaring namespaces or attaching children.
 
 ### Bindings
 
@@ -154,37 +200,49 @@ Temporary registers are reused after their last use across the block's control f
 | `descriptor(type)` | Any accepted form to a descriptor. |
 | `className(descriptor)` | Descriptor to dotted name. |
 | `proto(returns, vararg params)` | A method prototype string. |
+| `MethodLocal` | A register reserved by `reserveLocal`: `name`, `type`. |
+| `Capture` | A value a point recorded: `name`, `type`, `register`, renumbered when the frame grows. |
 
 ## `app.reseam.patch.settings`
 
 | Symbol | Description |
 |---|---|
-| `toggle(title, summary, default, key)` | Property delegate for a `ToggleSetting`. |
-| `text(...)`, `folder(...)` | `TextSetting`, `FolderSetting`. |
-| `choice(title, summary, default, choices, key)` | `ChoiceSetting` with `Choice(value, title)`. |
+| `toggle(title, summary = null, default, key = null)` | Property delegate for a `ToggleSetting`. |
+| `text(title, summary = null, default, key = null)`, `folder(...)` | Property delegates for `TextSetting` and `FolderSetting`; `default` is a string. |
+| `SettingDelegate<S>` | Derives an omitted key from the property name in snake case, prefixed by the declaring object or class name when present. |
+| `choice(title, summary = null, default, choices, key = null)` | `ChoiceSetting` with `Choice(value, title)`. |
 | `Setting<T>` | `key`, `title`, `summary`, `default`. |
-| `section(title, vararg settings)` | A `SettingsSection`. |
-| `settingsHost(appId) { }` | An internal patch installing the settings runtime: `compatibleWith`, `dependsOn`, `install { PatchRuntime }`. |
+| `ToggleSetting(key, title, summary = null, default)` | Boolean setting with an explicit key. `TextSetting` and `FolderSetting` take the same arguments with a string default. |
+| `ChoiceSetting(key, title, summary = null, default, choices)` | String setting with a `List<Choice>`; each `Choice(value, title)` supplies the stored value and displayed title. |
+| `SettingsSection(title, settings, page = null)` | A `List<Setting<*>>` under a heading; null `page` places it at the root. |
+| `SettingsPage(id, title, parent = null, order = 0)` | A settings page; `parent` nests it, `order` sorts siblings. Only populated pages and their parents appear. |
+| `section(title, vararg settings)` | A root `SettingsSection`. |
+| `section(page, title, vararg settings)` | A section on a page; sections with the same page and title merge. |
+| `settingsHost(appId) { }` | An internal patch installing the settings runtime: `compatibleWith`, `dependsOn`, `settings(vararg sections)` for the host's own sections, `install { PatchRuntime }`. |
+| `SettingsHost` | A `ReseamPatch` with `appId`; `register(patch, sections)` collects contributions. `PatchBuilder.settings` registers them during execution. |
 | `ReseamSettings` | The runtime `ExtClass`: `getBoolean`, `getString`. |
 | `SETTINGS_SCHEMA_PATH` | `assets/reseam/settings.json`. |
 | `CodeScope.whenEnabled(toggle) { }` | Branch on a toggle at runtime; returns `Otherwise`. |
+| `PointTarget.skipWhen(toggle)` | Skips the call at the point when the toggle is on. |
 | `MethodTarget.before(toggle) { }`, `.after(toggle) { }` | Gated emission. Same on `PointTarget`. |
 | `MethodTarget.skipWhen(toggle)` | Return early from a void method. |
 | `MethodTarget.returnTrueWhen`, `returnFalseWhen`, `returnNullWhen` | Gated constant returns. |
+
+Page IDs and titles must be non-blank, and a page cannot reuse an ancestor's ID. Contributions sharing a page ID must have identical page definitions. Empty sections are omitted; sections on the same page with the same title merge, keeping the first setting for each key. Only patches running in the current selection, including dependencies, contribute. Sibling pages sort by `order`, preserving registration order for ties. The schema records page parents and section pages by ID, with null for the root.
 
 ## `app.reseam.patch.dex`
 
 | Symbol | Description |
 |---|---|
-| `Method` | Handle to a method. Reads: `info`, `classDef`, `descriptor`, `name`, `owner`, `proto`, `returnType`, `parameterTypes`, `isStatic`, `instructions`, `instructionCount`, `registersSize`, `insSize`, `outsSize`, `dexIndex`, `registerA..D(index)`, `wideLiteral`, `stringRef`, `methodRef`, `fieldRef`, `typeRef`. Searches: `indexOfFirst`, `indexOfFirstReversed`, `indexOfFirstLiteral`, `indexOfFirstLiteralReversed`, `containsLiteral`, `indexOfFirstString`, `findAllIndices`, `indexOfFirstMethodCall`, `indexOfFirstFieldAccess`, `indexOfOpcodeSequence`, `indexOfFirstInstruction { }`, `indexOfFirstInstructionReversed { }`. Mutation: `alwaysReturn*`, `setInstructions`, `replaceBody`, `insertInstruction(s)`, `addInstructions(index) { }`, `replaceInstruction`, `removeInstruction(s)`, `replaceString`, `replaceAllStrings`, `replaceLiteral`, `replaceAllLiterals`, `replaceMethodCall`, `ensureOutsSize`, `growLocalRegisters`, `findFreeRegister(s)`, `findContiguousFreeRegisters`, `setAccessFlags`, `clone`, `remove`, `addAnnotation`. |
-| `DexClass` | Handle to a class: `info`, `descriptor`, `superclass`, `interfaces`, `sourceFile`, `isInterface`, `methods`, `directMethods`, `virtualMethods`, `fields`, `staticFields`, `instanceFields`, `superclassChain`, `method(name, proto?)`, `field(name)`, `setAccessFlags`, `setSuperclass`, `addInterface`, `definal`, `remove`, `addMethod`, `addField`, `removeField`, `setFieldAccessFlags`, `setStaticFieldValue`, `addAnnotation`, `addFieldAnnotation`. |
+| `Method` | Handle to a method. Reads: `info`, `classDef`, `descriptor`, `name`, `owner`, `proto`, `returnType`, `parameterTypes`, `isStatic`, `instructions`, `instructionCount`, `registersSize`, `insSize`, `outsSize`, `dexIndex`, `registerA..D(index)`, `wideLiteral`, `stringRef`, `methodRef`, `fieldRef`, `typeRef`. Searches: `indexOfFirst`, `indexOfFirstReversed`, `indexOfFirstLiteral`, `indexOfFirstLiteralReversed`, `containsLiteral`, `indexOfFirstString`, `findAllIndices`, `indexOfFirstMethodCall`, `indexOfFirstFieldAccess`, `indexOfOpcodeSequence` (`null` matches any one instruction), `indexOfFirstInstruction { }`, `indexOfFirstInstructionReversed { }`. Mutation: `alwaysReturn*`, `setInstructions`, `replaceBody`, `insertInstruction(s)`, `addInstructions(index) { }`, `replaceInstruction`, `removeInstruction(s)`, `replaceString`, `replaceAllStrings`, `replaceLiteral`, `replaceAllLiterals`, `replaceMethodCall`, `ensureOutsSize`, `growLocalRegisters`, `findFreeRegister(s)`, `findContiguousFreeRegisters`, `setAccessFlags`, `clone`, `remove`, `addAnnotation`. |
+| `DexClass` | Handle to a class: `info`, `descriptor`, `superclass`, `interfaces`, `sourceFile`, `isInterface`, `methods`, `directMethods`, `virtualMethods`, `fields`, `staticFields`, `instanceFields`, `superclassChain` (nearest first, across every DEX of the app, ending where the platform starts), `method(name, proto?)`, `field(name)`, `setAccessFlags`, `setSuperclass`, `addInterface`, `definal`, `remove`, `addMethod`, `addField`, `removeField`, `setFieldAccessFlags`, `setStaticFieldValue`, `addAnnotation`, `addFieldAnnotation`. |
 | `FieldInfo.ref` | The `FieldRef` of a field. |
 | `Instruction.*` | `opcodeValue`, `opcode`, `regA`, `regB`, `regC`, `invokeRegisters`, `methodRef`, `fieldRef`, `stringValue`, `typeRef`, `literal`, `referencedRegisters`, `codeUnitSize`. |
 | `MethodRef.*`, `MethodInfo.*` | `returnType`, `parameterTypes`, `descriptor`; `MethodInfo.isStatic`. |
 | `parseParameterTypes(proto)`, `registerWordCount(type)`, `isReferenceType(type)` | Descriptor helpers. |
 | `Opcode` | Enum of Dalvik opcodes: `value`, `isInvoke`, `isReturn`, `isMoveResult`, `rangeVariant`, `Opcode.of(value)`. |
-| `AccessFlags` | Flag constants; `Int.isSet(flags)`. |
-| `InstructionBuilder`, `buildInstructions { }` | See [Raw bytecode](10_dex.md#instruction-builder). |
+| `AccessFlags` | Flag constants; `Int.isSet(flags)` for any bit of the mask, `Int.allSet(flags)` for every bit. |
+| `InstructionBuilder`, `buildInstructions { }` | See [Raw bytecode](10_dex.md). |
 | `lowerInvokes(insns, scratch)` | Rewrites invokes the 35c format cannot encode into range form. |
 
 ## `app.reseam.patch.native`

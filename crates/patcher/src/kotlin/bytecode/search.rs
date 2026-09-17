@@ -301,3 +301,24 @@ fn site_results(sites: Vec<SiteHit>) -> Vec<MethodCallSiteResult> {
         })
         .collect()
 }
+
+/// Indexed calls of references matching all supplied signature constraints.
+#[export]
+pub fn find_calls_matching(
+    owner: Option<String>,
+    name: Option<String>,
+    return_type: Option<String>,
+    parameters: Option<Vec<String>>,
+) -> Vec<InstructionHit> {
+    let parameters: Option<Vec<&str>> = parameters
+        .as_ref()
+        .map(|v| v.iter().map(String::as_str).collect());
+    hits(with_ctx(|ctx| {
+        ctx.find_calls_matching(
+            owner.as_deref(),
+            name.as_deref(),
+            return_type.as_deref(),
+            parameters.as_deref(),
+        )
+    }))
+}

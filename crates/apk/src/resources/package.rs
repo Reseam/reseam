@@ -6,6 +6,7 @@ use std::ops::Range;
 
 use reseam_dex::file::DexBytes;
 
+use super::config::{config_for_qualifiers, same_config};
 use super::res_type::TypePlan;
 use super::{ResType, TypeSpec, RES_TABLE_PACKAGE_TYPE, RES_TABLE_TYPE_SPEC, RES_TABLE_TYPE_TYPE};
 use crate::buf::{read_u16_le, read_u32_le, require_len, write_u16, write_u32};
@@ -14,7 +15,7 @@ use crate::error::{malformed, Result};
 use crate::string_pool::{PoolPlan, StringPool};
 
 const HEADER_LEN: usize = 288;
-const NAME_UNITS: usize = 128;
+pub(super) const NAME_UNITS: usize = 128;
 
 #[derive(Debug, Clone)]
 pub struct ResPackage {
@@ -124,8 +125,75 @@ impl ResPackage {
         self.type_strings.push(type_name);
         let type_id = self.type_strings.len() as u8;
         self.type_specs.push(TypeSpec::new(type_id, Vec::new()));
-        self.types.push(ResType::new(type_id, Vec::new()));
+        let config = config_for_qualifiers("", self.config_len()).ok()?;
+        self.types.push(ResType::new(type_id, config));
         Some(type_id)
+    }
+
+    /// The `ResTable_config` size the package's own type chunks use, so a
+    /// chunk this crate creates has the same shape.
+    pub(crate) fn config_len(&self) -> usize {
+        self.types
+            .first()
+            .map_or(4, |res_type| res_type.config_len())
+            .max(4)
+    }
+
+    /// How many entries the type has: every configuration and the spec agree on
+    /// the count, so a new entry goes after the longest of them.
+    pub(crate) fn entry_count(&self, type_id: u8) -> usize {
+        self.types
+            .iter()
+            .filter(|res_type| res_type.id == type_id)
+            .map(ResType::len)
+            .chain(
+                self.type_specs
+                    .iter()
+                    .filter(|spec| spec.id == type_id)
+                    .map(TypeSpec::len),
+            )
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// The index `key` is filed under in any configuration of the type. An
+    /// entry defined only in `values-night` still owns its index, so writing it
+    /// must reuse that index rather than append a second entry of the same name.
+    pub(crate) fn entry_index(&self, type_id: u8, key: u32) -> Option<usize> {
+        self.types
+            .iter()
+            .filter(|res_type| res_type.id == type_id)
+            .find_map(|res_type| {
+                (0..res_type.len()).find(|&i| res_type.entry_head(i).is_some_and(|(k, _)| k == key))
+            })
+    }
+
+    /// The type's chunk for `config`, created when it has none. A type such as
+    /// `mipmap` can ship density variants only, so even the default
+    /// configuration may have to be made.
+    pub(crate) fn config_type(&mut self, type_id: u8, config: Vec<u8>) -> &mut ResType {
+        let existing = self
+            .types
+            .iter()
+            .position(|res_type| res_type.id == type_id && same_config(res_type.config(), &config));
+        let index = existing.unwrap_or_else(|| {
+            self.types.push(ResType::new(type_id, config));
+            self.types.len() - 1
+        });
+        &mut self.types[index]
+    }
+
+    /// Grows the type's spec and every configuration of it to `len` entries, so
+    /// an added index is addressable in all of them.
+    pub(crate) fn grow_type(&mut self, type_id: u8, len: usize) {
+        for spec in self.type_specs.iter_mut().filter(|spec| spec.id == type_id) {
+            while spec.len() < len {
+                spec.push(0);
+            }
+        }
+        for res_type in self.types.iter_mut().filter(|t| t.id == type_id) {
+            res_type.pad_to(len);
+        }
     }
 
     pub(super) fn plan(&self) -> Result<PackagePlan<'_>> {

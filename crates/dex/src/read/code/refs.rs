@@ -6,7 +6,7 @@
 
 use super::decode::{opcode_units, payload_units};
 use super::format::{u16_at, u32_at};
-use crate::error::{require_len, Result};
+use crate::error::{Result, require_len};
 use crate::types::{FieldIdx, MethodIdx, StringIdx, TypeIdx};
 
 /// One instruction located in a code item's instruction stream.
@@ -66,7 +66,9 @@ impl RawInstruction {
         let at = |units: usize| self.unit_off + units * 2;
         Some(match self.opcode {
             0x12 => i64::from(((u16_at(buf, at(0)) >> 12) as u8 as i8) << 4 >> 4),
-            0x13 | 0x15 | 0x16 | 0x19 | 0xd0..=0xd7 => i64::from(u16_at(buf, at(1)) as i16),
+            0x13 | 0x16 | 0xd0..=0xd7 => i64::from(u16_at(buf, at(1)) as i16),
+            0x15 => i64::from(u16_at(buf, at(1)) as i16) << 16,
+            0x19 => i64::from(u16_at(buf, at(1)) as i16) << 48,
             0x14 | 0x17 => i64::from(u32_at(buf, at(1)) as i32),
             0x18 => i64::from(u32_at(buf, at(1))) | i64::from(u32_at(buf, at(3))) << 32,
             0xd8..=0xe2 => i64::from((u16_at(buf, at(1)) >> 8) as i8),
@@ -127,6 +129,43 @@ mod tests {
             .iter()
             .flat_map(|u| u.to_le_bytes())
             .collect()
+    }
+
+    #[test]
+    fn high16_literals_are_runtime_values() {
+        let cases = [
+            (
+                Instruction::ConstHigh16 {
+                    dest: 0,
+                    value: 0x400,
+                },
+                0x0400_0000i64,
+            ),
+            (Instruction::ConstHigh16 { dest: 0, value: -1 }, -65536),
+            (
+                Instruction::ConstWideHigh16 {
+                    dest: 0,
+                    value: 0x400,
+                },
+                0x0400_0000_0000_0000,
+            ),
+            (
+                Instruction::ConstWideHigh16 {
+                    dest: 0,
+                    value: i16::MIN,
+                },
+                i64::MIN,
+            ),
+        ];
+        for (instruction, expected) in cases {
+            assert_eq!(instruction.literal(), Some(expected));
+            let buf = units(&[instruction]);
+            walk_instructions(&buf, 0, buf.len() / 2, |raw| {
+                assert_eq!(raw.literal(&buf), Some(expected));
+                true
+            })
+            .unwrap();
+        }
     }
 
     #[test]

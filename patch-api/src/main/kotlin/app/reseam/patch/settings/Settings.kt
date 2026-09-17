@@ -35,9 +35,36 @@ class ChoiceSetting(key: String, title: String, summary: String? = null, default
 
 data class Choice(val value: String, val title: String)
 
-data class SettingsSection(val title: String, val settings: List<Setting<*>>)
+/** A reusable destination. Parents allow arbitrary nesting; lower orders appear first. */
+data class SettingsPage(
+    val id: String,
+    val title: String,
+    val parent: SettingsPage? = null,
+    val order: Int = 0,
+) {
+    init {
+        require(id.isNotBlank()) { "A settings page needs a non-blank id" }
+        require(title.isNotBlank()) { "A settings page needs a non-blank title" }
+        var ancestor = parent
+        while (ancestor != null) {
+            require(ancestor.id != id) { "Settings page '$id' cannot be its own ancestor" }
+            ancestor = ancestor.parent
+        }
+    }
+}
 
+data class SettingsSection(
+    val title: String,
+    val settings: List<Setting<*>>,
+    val page: SettingsPage? = null,
+)
+
+/** A section on the root settings screen. */
 fun section(title: String, vararg settings: Setting<*>) = SettingsSection(title, settings.toList())
+
+/** Contributes settings to a page shared by any number of patches. */
+fun section(page: SettingsPage, title: String, vararg settings: Setting<*>) =
+    SettingsSection(title, settings.toList(), page)
 
 /**
  * Declares a setting as a property: `val hideAds by toggle("Hide ads", default = true)`.
@@ -82,6 +109,7 @@ class SettingsHost internal constructor(
     val appId: String,
     override val compatibleWith: List<CompatiblePackage>,
     override val dependencies: List<ReseamPatch>,
+    private val ownSections: List<SettingsSection>,
     private val install: PatchRuntime.() -> Unit,
 ) : ReseamPatch {
     override val name: String? = null
@@ -95,38 +123,61 @@ class SettingsHost internal constructor(
         if (index < 0) registered += patch to sections else registered[index] = patch to sections
     }
 
-    override fun execute(ctx: PatchRuntime) = Unit
+    /** The host runs before its dependents, so its own sections lead the schema. */
+    override fun execute(ctx: PatchRuntime) = register(this, ownSections)
 
     override fun afterDependents(ctx: PatchRuntime) {
-        ActiveRuntime.run(ctx) {
-            ctx.files.write(SETTINGS_SCHEMA_PATH, schema().toByteArray(Charsets.UTF_8))
-            ctx.install()
+        try {
+            ActiveRuntime.run(ctx) {
+                ctx.files.write(SETTINGS_SCHEMA_PATH, schema().toByteArray(Charsets.UTF_8))
+                ctx.install()
+            }
+        } finally {
+            registered.clear()
         }
-        registered.clear()
     }
 
-    private fun schema(): String = buildString {
-        append("{\"appId\":")
-        appendJson(appId)
-        append(",\"sections\":[")
-        var first = true
-        for ((patch, sections) in registered) {
-            for (section in sections) {
-                if (!first) append(',')
-                first = false
-                append("{\"patch\":")
-                appendJson(patch.name ?: patch.toString())
+    private fun schema(): String {
+        val sections = registered.flatMap { it.second }.filter { it.settings.isNotEmpty() }
+        val pages = linkedMapOf<String, SettingsPage>()
+        fun addPage(page: SettingsPage) {
+            page.parent?.let(::addPage)
+            val previous = pages.putIfAbsent(page.id, page)
+            require(previous == null || previous == page) { "Conflicting settings page '${page.id}'" }
+        }
+        sections.forEach { it.page?.let(::addPage) }
+
+        return buildString {
+            append("{\"appId\":")
+            appendJson(appId)
+            append(",\"pages\":[")
+            pages.values.sortedBy { it.order }.forEachIndexed { index, page ->
+                if (index > 0) append(',')
+                append("{\"id\":")
+                appendJson(page.id)
                 append(",\"title\":")
-                appendJson(section.title)
+                appendJson(page.title)
+                append(",\"parent\":")
+                page.parent?.let { appendJson(it.id) } ?: append("null")
+                append('}')
+            }
+            append("],\"sections\":[")
+            // Contributions to the same heading on the same page form one section.
+            sections.groupBy { it.page?.id to it.title }.entries.forEachIndexed { index, (location, contributions) ->
+                if (index > 0) append(',')
+                append("{\"page\":")
+                location.first?.let(::appendJson) ?: append("null")
+                append(",\"title\":")
+                appendJson(location.second)
                 append(",\"settings\":[")
-                section.settings.forEachIndexed { index, setting ->
-                    if (index > 0) append(',')
+                contributions.flatMap { it.settings }.distinctBy { it.key }.forEachIndexed { settingIndex, setting ->
+                    if (settingIndex > 0) append(',')
                     appendSetting(setting)
                 }
                 append("]}")
             }
+            append("]}")
         }
-        append("]}")
     }
 
     override fun toString() = "$appId settings"
@@ -134,13 +185,20 @@ class SettingsHost internal constructor(
 
 class SettingsHostBuilder internal constructor() : PatchDeclaration() {
     private var installBlock: PatchRuntime.() -> Unit = {}
+    private val sections = mutableListOf<SettingsSection>()
+
+    /** Sections the host owns, for settings that belong to no single feature patch. */
+    fun settings(vararg sections: SettingsSection) {
+        this.sections += sections
+    }
 
     /** Wires the settings screen into the app; runs once every patch has registered its sections. */
     fun install(block: PatchRuntime.() -> Unit) {
         installBlock = block
     }
 
-    internal fun build(appId: String) = SettingsHost(appId, compatibility.toList(), dependencies.toList(), installBlock)
+    internal fun build(appId: String) =
+        SettingsHost(appId, compatibility.toList(), dependencies.toList(), sections.toList(), installBlock)
 }
 
 fun settingsHost(appId: String, block: SettingsHostBuilder.() -> Unit): SettingsHost =

@@ -10,9 +10,8 @@ use reseam_apk::reseam_dex::{
 };
 use tracing::warn;
 
-use crate::context::MethodKey;
 use crate::kotlin::convert::kotlin_to_dex;
-use crate::kotlin::handles::{code_mut, method_mut, with_ctx, with_method_mut};
+use crate::kotlin::handles::{code_mut, method_mut, with_method_mut};
 use crate::kotlin::link::{link_instructions, link_method};
 use crate::kotlin::types::{Instruction, MethodRef};
 
@@ -63,18 +62,22 @@ pub fn insert_instructions(m: u32, index: u32, insns: Vec<Instruction>) {
     });
 }
 
+/// Inserts on every path into the instruction at `index`, branches to it
+/// included, and returns the relocated index of each original instruction
+/// boundary. Relocation can widen branches anywhere in the method, so the
+/// mapping is what callers holding an index must be corrected against.
 #[export]
-pub fn insert_before_instruction(m: u32, index: u32, insns: Vec<Instruction>) -> bool {
+pub fn insert_before_instruction(m: u32, index: u32, insns: Vec<Instruction>) -> Option<Vec<u32>> {
     edit_code(m, &insns, |code, insns| {
         let mut expansions: Vec<InstructionExpansion> =
             code.instructions.iter().cloned().map(Into::into).collect();
         expansions.get_mut(index as usize)?.before = insns;
-        logged(
+        let indices = logged(
             "insert_before_instruction",
             code.rewrite_instructions(expansions),
-        )
+        )?;
+        Some(indices.into_iter().map(|index| index as u32).collect())
     })
-    .is_some()
 }
 
 #[export]
@@ -227,22 +230,6 @@ pub fn replace_method_call(
             .ok()
     })
     .is_some()
-}
-
-/// Every call to `from` in the app becomes a static call to `to` with the
-/// same registers; see `PatchContext::redirect_method_calls`.
-#[export]
-pub fn redirect_method_calls(from: MethodRef, to: MethodRef) -> u32 {
-    link_method(&to);
-    with_ctx(|ctx| ctx.redirect_method_calls(key(&from), key(&to))) as u32
-}
-
-fn key(method: &MethodRef) -> MethodKey<'_> {
-    MethodKey {
-        class: &method.defining_class,
-        name: &method.name,
-        proto: &method.proto,
-    }
 }
 
 #[export]
@@ -451,7 +438,10 @@ fn set_literal(insn: &mut DexInsn, value: i64) -> Result<(), &'static str> {
         DexInsn::Const16 { value: v, .. } => *v = fit(value, "literal does not fit const/16")?,
         DexInsn::Const { value: v, .. } => *v = fit(value, "literal does not fit const")?,
         DexInsn::ConstHigh16 { value: v, .. } => {
-            *v = fit(value, "literal does not fit const/high16")?
+            if value as i32 as i64 != value || value & 0xffff != 0 {
+                return Err("literal does not fit const/high16");
+            }
+            *v = (value >> 16) as i16
         }
         DexInsn::ConstWide16 { value: v, .. } => {
             *v = fit(value, "literal does not fit const-wide/16")?
@@ -461,7 +451,10 @@ fn set_literal(insn: &mut DexInsn, value: i64) -> Result<(), &'static str> {
         }
         DexInsn::ConstWide { value: v, .. } => *v = value,
         DexInsn::ConstWideHigh16 { value: v, .. } => {
-            *v = fit(value, "literal does not fit const-wide/high16")?
+            if value & 0x0000_ffff_ffff_ffff != 0 {
+                return Err("literal does not fit const-wide/high16");
+            }
+            *v = (value >> 48) as i16
         }
         DexInsn::AddIntLit16 { literal, .. }
         | DexInsn::RsubIntLit16 { literal, .. }

@@ -67,7 +67,7 @@ pub use types::label::{CodeBuilder, Label};
 pub use types::map::MapItem;
 pub use types::method_handle::{CallSiteIdx, CallSiteItem, MethodHandle, MethodHandleIdx};
 pub use types::register_analysis::{
-    find_contiguous_free_registers, find_free_register, find_free_registers,
+    find_contiguous_free_registers, find_free_register, find_free_registers, reaching_definitions,
 };
 pub use types::{FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx};
 pub use write::write;

@@ -7,18 +7,23 @@ pub mod android_attrs;
 mod compiler;
 mod document;
 mod edit;
+mod inline;
 mod manifest;
 mod reader;
 mod writer;
 
-pub use android_attrs::android_attr_res_id;
+pub use android_attrs::{android_attr_res_id, android_attr_symbol, android_res_id};
 pub use compiler::{
-    build_document, compile_xml, is_compiled_axml, parse_attribute_value, AttributeValue,
+    attribute_symbols, build_document, compile_xml, is_compiled_axml, parse_attribute_value,
+    AttributeValue,
 };
 pub use document::{AxmlAttribute, AxmlDocument, AxmlEvent};
+pub use inline::{extract_inline_resources, InlineResource, AAPT_NS};
 
 pub const ANDROID_NS: &str = "http://schemas.android.com/apk/res/android";
 pub const APP_NS: &str = "http://schemas.android.com/apk/res-auto";
+/// Build-time hints. aapt strips them, and so does the compiler.
+pub const TOOLS_NS: &str = "http://schemas.android.com/tools";
 
 const CHUNK_XML_DOCUMENT: u16 = 0x0003;
 const CHUNK_RESOURCE_IDS: u16 = 0x0180;

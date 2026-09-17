@@ -84,11 +84,11 @@ impl Instruction {
             Self::Const4 { value, .. } => Some(i64::from(*value)),
             Self::Const16 { value, .. } => Some(i64::from(*value)),
             Self::Const { value, .. } => Some(i64::from(*value)),
-            Self::ConstHigh16 { value, .. } => Some(i64::from(*value)),
+            Self::ConstHigh16 { value, .. } => Some(i64::from(*value) << 16),
             Self::ConstWide16 { value, .. } => Some(i64::from(*value)),
             Self::ConstWide32 { value, .. } => Some(i64::from(*value)),
             Self::ConstWide { value, .. } => Some(*value),
-            Self::ConstWideHigh16 { value, .. } => Some(i64::from(*value)),
+            Self::ConstWideHigh16 { value, .. } => Some(i64::from(*value) << 48),
             Self::AddIntLit16 { literal, .. }
             | Self::RsubIntLit16 { literal, .. }
             | Self::MulIntLit16 { literal, .. }

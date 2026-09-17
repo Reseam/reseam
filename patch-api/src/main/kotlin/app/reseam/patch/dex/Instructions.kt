@@ -85,6 +85,15 @@ val Instruction.invokeRegisters: List<Int>?
         else -> null
     }
 
+/** What an invoke passes, the receiver first for an instance invoke; null for anything else. */
+val Instruction.invokeArgumentTypes: List<String>?
+    get() = methodRef?.let { ref ->
+        buildList {
+            if (opcode != Opcode.INVOKE_STATIC && opcode != Opcode.INVOKE_STATIC_RANGE) add(ref.definingClass)
+            addAll(ref.parameterTypes)
+        }
+    }
+
 val Instruction.methodRef: MethodRef?
     get() = when (this) {
         is Instruction.Invoke -> field0.method
@@ -107,7 +116,14 @@ val Instruction.typeRef: String?
     }
 
 val Instruction.literal: Long?
-    get() = (this as? Instruction.RegLiteral)?.field0?.literal
+    get() {
+        val bits = (this as? Instruction.RegLiteral)?.field0?.literal ?: return null
+        return when (opcode) {
+            Opcode.CONST_HIGH16 -> bits.toInt().shl(16).toLong()
+            Opcode.CONST_WIDE_HIGH16 -> bits shl 48
+            else -> bits
+        }
+    }
 
 val Instruction.referencedRegisters: List<Int>
     get() = when (this) {

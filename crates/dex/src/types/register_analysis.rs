@@ -5,9 +5,10 @@ use super::code::CodeItem;
 
 pub fn find_free_register(code: &CodeItem, at_index: usize, exclude: &[u16]) -> Option<u16> {
     let live = live_registers(code, at_index);
-    let excluded = RegisterSet::from_slice(code.registers_size, exclude);
+    let excluded = BitSet::from_slice(usize::from(code.registers_size), exclude);
 
-    (0..code.registers_size).find(|&reg| !live.contains(reg) && !excluded.contains(reg))
+    (0..code.registers_size)
+        .find(|&reg| !live.contains(usize::from(reg)) && !excluded.contains(usize::from(reg)))
 }
 
 pub fn find_free_registers(
@@ -21,11 +22,11 @@ pub fn find_free_registers(
     }
 
     let live = live_registers(code, at_index);
-    let excluded = RegisterSet::from_slice(code.registers_size, exclude);
+    let excluded = BitSet::from_slice(usize::from(code.registers_size), exclude);
     let mut free = Vec::with_capacity(count);
 
     for reg in 0..code.registers_size {
-        if live.contains(reg) || excluded.contains(reg) {
+        if live.contains(usize::from(reg)) || excluded.contains(usize::from(reg)) {
             continue;
         }
         free.push(reg);
@@ -48,12 +49,12 @@ pub fn find_contiguous_free_registers(
     }
 
     let live = live_registers(code, at_index);
-    let excluded = RegisterSet::from_slice(code.registers_size, exclude);
+    let excluded = BitSet::from_slice(usize::from(code.registers_size), exclude);
     let mut run_start = None;
     let mut run_len = 0usize;
 
     for reg in 0..code.registers_size {
-        if live.contains(reg) || excluded.contains(reg) {
+        if live.contains(usize::from(reg)) || excluded.contains(usize::from(reg)) {
             run_start = None;
             run_len = 0;
             continue;
@@ -76,10 +77,71 @@ pub fn find_contiguous_free_registers(
     None
 }
 
+/// The instructions whose write of `register` reaches the start of the one at
+/// `index`, and whether the value the method was entered with reaches it too.
+/// `None` when control flow cannot be followed, which is what an unknown
+/// instruction or a branch off an instruction boundary leaves behind.
+///
+/// An instruction can throw before writing its result, so along an exception
+/// edge the register still holds what it held on entry to the throwing
+/// instruction. Both words of a wide value are written, so a wide write to the
+/// register below this one is a definition of this one.
+pub fn reaching_definitions(
+    code: &CodeItem,
+    index: usize,
+    register: u16,
+) -> Option<(Vec<usize>, bool)> {
+    let count = code.instructions.len();
+    if index >= count {
+        return None;
+    }
+    let ControlFlow {
+        successors,
+        handlers,
+        ..
+    } = ControlFlow::new(code)?;
+    // One bit per instruction that could have defined the register, plus one
+    // for the value the method was called with.
+    let entry = count;
+    let mut before = vec![BitSet::new(count + 1); count];
+    before[0].insert(entry);
+    let mut pending = std::collections::VecDeque::from([0usize]);
+    let mut queued = vec![false; count];
+    queued[0] = true;
+    while let Some(index) = pending.pop_front() {
+        queued[index] = false;
+        let incoming = before[index].clone();
+        let mut writes = false;
+        code.instructions[index].visit_written_registers(|reg| writes |= reg == register);
+        let outgoing = if writes {
+            let mut defined = BitSet::new(count + 1);
+            defined.insert(index);
+            defined
+        } else {
+            incoming.clone()
+        };
+        let mut propagate = |edges: &[usize], set: &BitSet, before: &mut Vec<BitSet>| {
+            for &next in edges {
+                if before[next].merge(set) && !queued[next] {
+                    queued[next] = true;
+                    pending.push_back(next);
+                }
+            }
+        };
+        propagate(&successors[index], &outgoing, &mut before);
+        propagate(&handlers[index], &incoming, &mut before);
+    }
+    let reaching = &before[index];
+    Some((
+        (0..count).filter(|&i| reaching.contains(i)).collect(),
+        reaching.contains(entry),
+    ))
+}
+
 /// Register-word liveness at instruction boundaries, including exception edges.
 /// Unknown instructions or malformed control flow conservatively keep every register live.
 pub struct RegisterLiveness {
-    before: Vec<RegisterSet>,
+    before: Vec<BitSet>,
     register_count: u16,
 }
 
@@ -87,7 +149,7 @@ impl RegisterLiveness {
     pub fn new(code: &CodeItem) -> Self {
         let count = code.instructions.len();
         let before = Self::analyze(code)
-            .unwrap_or_else(|| vec![RegisterSet::full(code.registers_size); count]);
+            .unwrap_or_else(|| vec![BitSet::full(usize::from(code.registers_size)); count]);
         Self {
             before,
             register_count: code.registers_size,
@@ -97,31 +159,31 @@ impl RegisterLiveness {
     pub fn is_live(&self, index: usize, register: u16) -> bool {
         self.before
             .get(index)
-            .is_some_and(|live| live.contains(register))
+            .is_some_and(|live| live.contains(usize::from(register)))
     }
 
-    fn analyze(code: &CodeItem) -> Option<Vec<RegisterSet>> {
+    fn analyze(code: &CodeItem) -> Option<Vec<BitSet>> {
         let ControlFlow {
             successors,
             handlers,
             predecessors,
         } = ControlFlow::new(code)?;
         let count = code.instructions.len();
-        let mut before = vec![RegisterSet::new(code.registers_size); count];
+        let mut before = vec![BitSet::new(usize::from(code.registers_size)); count];
         let mut pending: std::collections::VecDeque<usize> = (0..count).rev().collect();
         let mut queued = vec![true; count];
         while let Some(index) = pending.pop_front() {
             queued[index] = false;
-            let mut live = RegisterSet::new(code.registers_size);
+            let mut live = BitSet::new(usize::from(code.registers_size));
             for &next in &successors[index] {
                 live.union(&before[next]);
             }
-            code.instructions[index].visit_written_registers(|reg| live.remove(reg));
+            code.instructions[index].visit_written_registers(|reg| live.remove(usize::from(reg)));
             // An instruction can throw before writing its result.
             for &handler in &handlers[index] {
                 live.union(&before[handler]);
             }
-            code.instructions[index].visit_read_registers(|reg| live.insert(reg));
+            code.instructions[index].visit_read_registers(|reg| live.insert(usize::from(reg)));
             if before[index] != live {
                 before[index] = live;
                 for &previous in &predecessors[index] {
@@ -252,50 +314,51 @@ impl ControlFlow {
     }
 }
 
-fn live_registers(code: &CodeItem, at_index: usize) -> RegisterSet {
+fn live_registers(code: &CodeItem, at_index: usize) -> BitSet {
     let mut liveness = RegisterLiveness::new(code);
     if at_index < liveness.before.len() {
         liveness.before.swap_remove(at_index)
     } else {
-        RegisterSet::new(liveness.register_count)
+        BitSet::new(usize::from(liveness.register_count))
     }
 }
 
+/// A set of registers, or of the instruction indices that defined one.
 #[derive(Clone, PartialEq, Eq)]
-struct RegisterSet {
+struct BitSet {
     words: Vec<u64>,
 }
 
-impl RegisterSet {
-    fn new(register_count: u16) -> Self {
+impl BitSet {
+    fn new(capacity: usize) -> Self {
         Self {
-            words: vec![0; usize::from(register_count).div_ceil(64)],
+            words: vec![0; capacity.div_ceil(64)],
         }
     }
 
-    fn full(register_count: u16) -> Self {
+    fn full(capacity: usize) -> Self {
         Self {
-            words: vec![u64::MAX; usize::from(register_count).div_ceil(64)],
+            words: vec![u64::MAX; capacity.div_ceil(64)],
         }
     }
 
-    fn from_slice(register_count: u16, registers: &[u16]) -> Self {
-        let mut set = Self::new(register_count);
-        for &register in registers {
-            set.insert(register);
+    fn from_slice(capacity: usize, members: &[u16]) -> Self {
+        let mut set = Self::new(capacity);
+        for &member in members {
+            set.insert(usize::from(member));
         }
         set
     }
 
-    fn insert(&mut self, register: u16) {
-        if let Some(word) = self.words.get_mut(usize::from(register) / 64) {
-            *word |= 1 << (register % 64);
+    fn insert(&mut self, member: usize) {
+        if let Some(word) = self.words.get_mut(member / 64) {
+            *word |= 1 << (member % 64);
         }
     }
 
-    fn remove(&mut self, register: u16) {
-        if let Some(word) = self.words.get_mut(usize::from(register) / 64) {
-            *word &= !(1 << (register % 64));
+    fn remove(&mut self, member: usize) {
+        if let Some(word) = self.words.get_mut(member / 64) {
+            *word &= !(1 << (member % 64));
         }
     }
 
@@ -305,10 +368,21 @@ impl RegisterSet {
         }
     }
 
-    fn contains(&self, register: u16) -> bool {
+    /// Unions `other` in and reports whether that added anything.
+    fn merge(&mut self, other: &Self) -> bool {
+        let mut changed = false;
+        for (word, other) in self.words.iter_mut().zip(&other.words) {
+            let merged = *word | other;
+            changed |= merged != *word;
+            *word = merged;
+        }
+        changed
+    }
+
+    fn contains(&self, member: usize) -> bool {
         self.words
-            .get(usize::from(register) / 64)
-            .is_some_and(|word| word & (1 << (register % 64)) != 0)
+            .get(member / 64)
+            .is_some_and(|word| word & (1 << (member % 64)) != 0)
     }
 }
 
@@ -317,7 +391,10 @@ mod tests {
     use crate::types::code::CodeItem;
     use crate::types::instruction::Instruction;
 
-    use super::{find_contiguous_free_registers, find_free_register, find_free_registers};
+    use super::{
+        find_contiguous_free_registers, find_free_register, find_free_registers,
+        reaching_definitions,
+    };
 
     fn code(instructions: Vec<Instruction>, registers_size: u16) -> CodeItem {
         CodeItem {
@@ -457,5 +534,52 @@ mod tests {
             catch_all_addr: Some(3),
         });
         assert_eq!(find_free_register(&code, 0, &[]), None);
+    }
+
+    /// Both words of a wide write are definitions, so the pair below a
+    /// register redefines it.
+    #[test]
+    fn a_wide_write_to_the_register_below_defines_this_one() {
+        let code = code(
+            vec![
+                Instruction::Const { dest: 1, value: 1 },
+                Instruction::ConstWide16 { dest: 0, value: 7 },
+                Instruction::Return { src: 1 },
+            ],
+            3,
+        );
+        assert_eq!(reaching_definitions(&code, 2, 1), Some((vec![1], false)));
+        assert_eq!(reaching_definitions(&code, 0, 1), Some((vec![], true)));
+    }
+
+    /// An instruction inside a try can throw before it writes, so its handler
+    /// sees what reached the instruction, not what it would have written.
+    #[test]
+    fn an_exception_edge_carries_the_definitions_reaching_the_thrower() {
+        let mut code = code(
+            vec![
+                Instruction::Const4 { dest: 1, value: 1 },
+                Instruction::IgetWide {
+                    dest: 1,
+                    obj: 0,
+                    field: crate::FieldIdx(0),
+                },
+                Instruction::ReturnWide { src: 1 },
+                Instruction::MoveException { dest: 0 },
+                Instruction::Return { src: 1 },
+            ],
+            3,
+        );
+        code.tries.push(crate::TryItem {
+            start_addr: 1,
+            insn_count: 2,
+            handler_idx: 0,
+        });
+        code.catch_handlers.push(crate::CatchHandler {
+            typed_catches: vec![],
+            catch_all_addr: Some(4),
+        });
+        assert_eq!(reaching_definitions(&code, 2, 1), Some((vec![1], false)));
+        assert_eq!(reaching_definitions(&code, 4, 1), Some((vec![0], false)));
     }
 }
