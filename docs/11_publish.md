@@ -43,6 +43,8 @@ reseam publish patches \
   --url https://example.com/releases/<name>-v0.5.0.reseam
 ```
 
+The release entry includes the bundle's complete patch catalog. Publishing loads the Kotlin declarations to obtain that metadata, so it requires a JVM and should only be run on a bundle you trust.
+
 Required: `--version`, `--url`. Optional: `--homepage`, `--description` or `--description-file`, `--created-at`, `--prerelease`, `--out` (defaults to `patches.json`). An existing `patches.json` keeps prior releases; an entry matching `--version` is replaced.
 
 In CI, the `generatePatchesJson` Gradle task wraps this command. `-PreleaseTag=vX.Y.Z` derives the version and the official download URL; `RESEAM_RELEASE_VERSION`, `RESEAM_BUNDLE_URL`, `RESEAM_RELEASE_DESCRIPTION` or `RESEAM_RELEASE_DESCRIPTION_FILE`, `RESEAM_HOMEPAGE`, `RESEAM_RELEASE_CREATED_AT`, `RESEAM_RELEASE_PRERELEASE`, and `RESEAM_PATCHES_JSON_OUT` override each value. `stageRelease` collects the bundle and `patches.json` under `build/reseam/release/`.

@@ -16,11 +16,12 @@ reseam publish patches \
 
 ## What it does
 
-1. Opens the bundle archive, reads `manifest.pubkey`, and verifies `manifest.sig` against it. Whether the key is trusted is not decided here; that check only happens when a client loads the bundle to apply it.
-2. Reads bundle `name`, `author`, and `description` from `manifest.toml`. Records the public key as hex in the index.
-3. If `--out` already exists, loads it and refuses to continue when the recorded `bundle.public_key` doesn't match the archive's key. This is the safety net against publishing a differently-keyed bundle to the same index.
-4. Replaces any existing release with the same `--version`.
-5. Inserts the new release at the top of `releases` and writes the file atomically (temp file, then rename).
+1. Opens the bundle archive, reads `manifest.pubkey`, and verifies `manifest.sig` against it.
+2. Loads the bundle's declarations and records their patch metadata on the release. Publishing therefore requires a JVM and executes the bundle's initialization code, just like `reseam bundle list`.
+3. Reads bundle `name`, `author`, and `description` from `manifest.toml`. Records the public key as hex in the index.
+4. If `--out` already exists, loads it and refuses to continue when the recorded `bundle.public_key` doesn't match the archive's key. This is the safety net against publishing a differently-keyed bundle to the same index.
+5. Replaces any existing release with the same `--version`.
+6. Inserts the new release at the top of `releases` and writes the file atomically (temp file, then rename).
 
 ## Arguments
 
@@ -53,13 +54,29 @@ reseam publish patches \
       "created_at": "2026-04-19T12:00:00Z",
       "description": "Initial release.",
       "download_url": "https://reseam.app/releases/example-bundle-v0.1.0.reseam",
-      "prerelease": false
+      "prerelease": false,
+      "patches": [
+        {
+          "bundle": "example-bundle",
+          "id": "app.example.hideAds",
+          "name": "Hide ads",
+          "hidden": false,
+          "description": "Removes advertisements.",
+          "enabled_by_default": true,
+          "dependencies": [],
+          "compatibility": {
+            "kind": "packages",
+            "packages": [{ "package": "com.example.app", "versions": [] }]
+          },
+          "options": []
+        }
+      ]
     }
   ]
 }
 ```
 
-The Reseam API reads this file from whatever URL you configure in `PATCHES_URL` and serves it back under `*.reseam.app` paths.
+Patch catalogs belong to individual releases because declarations can change between versions. The Reseam API reads this file from whatever URL you configure in `PATCHES_URL` and serves it back under `*.reseam.app` paths.
 
 ## `reseam publish manager`
 

@@ -5,6 +5,7 @@ use std::path::Path;
 
 use anyhow::{ensure, Context, Result};
 use reseam_patcher::bundle::BundleArchive;
+use reseam_patcher::PatchSpec;
 use serde::{Deserialize, Serialize};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
@@ -40,6 +41,8 @@ struct Release {
     description: String,
     download_url: String,
     prerelease: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    patches: Option<Vec<PatchSpec>>,
 }
 
 /// Adds a bundle release to `patches.json`, taking the publisher identity
@@ -47,15 +50,24 @@ struct Release {
 pub fn run_publish_patches(command: &PublishPatchesCommand) -> Result<()> {
     let archive = BundleArchive::open(&command.bundle)
         .with_context(|| format!("failed to open bundle {}", command.bundle.display()))?;
-    let info = archive.info();
-    let publisher = Publisher {
-        name: info.name.clone(),
-        author: info.author.clone(),
-        description: info.description.clone(),
-        homepage: None,
-        public_key: Some(hex::encode(archive.public_key)),
+    let publisher = {
+        let info = archive.info();
+        Publisher {
+            name: info.name.clone(),
+            author: info.author.clone(),
+            description: info.description.clone(),
+            homepage: None,
+            public_key: Some(hex::encode(archive.public_key)),
+        }
     };
-    publish(&command.out, publisher, &command.release)
+    let patches = archive
+        .load()
+        .with_context(|| format!("failed to inspect bundle {}", command.bundle.display()))?
+        .patches
+        .iter()
+        .map(|patch| patch.spec().clone())
+        .collect();
+    publish(&command.out, publisher, &command.release, Some(patches))
 }
 
 /// Adds a manager release to `manager.json`.
@@ -68,12 +80,17 @@ pub fn run_publish_manager(command: &PublishManagerCommand) -> Result<()> {
         homepage: None,
         public_key: None,
     };
-    publish(&command.out, publisher, &command.release)
+    publish(&command.out, publisher, &command.release, None)
 }
 
 /// Rewrites `out` with `release` on top, replacing any release of the same
 /// version. An existing index must belong to the same signer.
-fn publish(out: &Path, mut publisher: Publisher, release: &ReleaseArgs) -> Result<()> {
+fn publish(
+    out: &Path,
+    mut publisher: Publisher,
+    release: &ReleaseArgs,
+    patches: Option<Vec<PatchSpec>>,
+) -> Result<()> {
     ensure!(
         !release.version.trim().is_empty(),
         "--version must not be empty"
@@ -128,6 +145,7 @@ fn publish(out: &Path, mut publisher: Publisher, release: &ReleaseArgs) -> Resul
             description,
             download_url: release.url.clone(),
             prerelease: release.prerelease,
+            patches,
         },
     );
 

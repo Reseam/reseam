@@ -82,7 +82,7 @@ reseam bundle list patches.reseam --trust <PUBLIC_KEY_HEX>
 
 ### `reseam publish patches`
 
-Add a release to a `patches.json` index, the file Reseam Manager and the Reseam API read to find bundle releases. Takes the publisher identity and public key from the signed archive, replaces any release with the same version, and refuses to change the index's signer.
+Add a release to a `patches.json` index, including the bundle's patch catalog for that version. The command takes the publisher identity and public key from the signed archive, replaces any release with the same version, and refuses to change the index's signer. It loads the patch declarations, so publishing requires a JVM and runs the bundle's initialization code.
 
 ```bash
 reseam publish patches patches.reseam --version v0.1.0 --url https://example.com/patches-v0.1.0.reseam --description-file CHANGELOG.md
