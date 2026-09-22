@@ -24,7 +24,7 @@ pub fn apply_patches(
     info!(patch_count = patches.len(), "starting patch application");
     let package = ctx.apk().package_name().map(Cow::into_owned);
     let version = ctx.apk().version_name().map(Cow::into_owned);
-    let plan = ResolvedPlan::resolve(patches, selection, package.as_deref())?;
+    let plan = ResolvedPlan::resolve(patches, selection, package.as_deref(), version.as_deref())?;
     let mut run = Run::new(patches, &plan);
 
     for &idx in plan.order() {
@@ -86,7 +86,7 @@ pub fn validate_patches(
     package: Option<&str>,
     version: Option<&str>,
 ) -> Result<Vec<PatchResult>> {
-    let plan = ResolvedPlan::resolve(patches, selection, package)?;
+    let plan = ResolvedPlan::resolve(patches, selection, package, version)?;
     let mut run = Run::new(patches, &plan);
     for &idx in plan.order() {
         let status = match run.skip_reason(idx, package, version) {
@@ -128,6 +128,14 @@ impl<'a> Run<'a> {
         if let Some(reason) = self.plan.unavailable(idx) {
             return Some(reason.to_owned());
         }
+        let spec = self.patches[idx].spec();
+        if let Some(reason) = if self.plan.ignores_versions() {
+            spec.package_incompatibility(package)
+        } else {
+            spec.incompatibility(package, version)
+        } {
+            return Some(reason);
+        }
         for &dependency in self.plan.dependencies(idx) {
             let detail = match self.results[dependency]
                 .as_ref()
@@ -143,12 +151,7 @@ impl<'a> Run<'a> {
                 self.patches[dependency].reference()
             ));
         }
-        let spec = self.patches[idx].spec();
-        if self.plan.ignores_versions() {
-            spec.package_incompatibility(package)
-        } else {
-            spec.incompatibility(package, version)
-        }
+        None
     }
 
     fn applied(&self, idx: usize) -> bool {
@@ -228,7 +231,7 @@ fn guarded(hook: impl FnOnce() -> Result<()>) -> std::result::Result<(), String>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::patch::{CompatiblePackage, PatchSpec};
+    use crate::patch::{Compatibility, CompatiblePackage, PatchSpec};
 
     struct Declared(PatchSpec);
 
@@ -280,6 +283,41 @@ mod tests {
             .into_iter()
             .map(|result| result.status)
             .collect()
+    }
+
+    fn dependency_pair() -> (Declared, Declared) {
+        let mut helper = declared_in("bundle", "helper", "unused", &[], &[]);
+        helper.0.hidden = true;
+        helper.0.enabled_by_default = false;
+        helper.0.compatibility = Compatibility::Universal;
+        let consumer = declared_in(
+            "bundle",
+            "consumer",
+            "com.example.a",
+            &["1.0"],
+            &["bundle/helper"],
+        );
+        (helper, consumer)
+    }
+
+    fn dependency_pair_statuses(
+        selection: PatchSelection,
+        package: &str,
+        version: Option<&str>,
+    ) -> Vec<PatchStatus> {
+        let (helper, consumer) = dependency_pair();
+        let patches: Vec<&dyn Patch> = vec![&helper, &consumer];
+        validate_patches(&patches, &selection, Some(package), version)
+            .unwrap()
+            .into_iter()
+            .map(|result| result.status)
+            .collect()
+    }
+
+    fn skipped(reason: &str) -> PatchStatus {
+        PatchStatus::Skipped {
+            reason: reason.to_owned(),
+        }
     }
 
     #[test]
@@ -403,6 +441,123 @@ mod tests {
                     reason: "incompatible package: com.example".to_owned()
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn dependencies_of_incompatible_default_patches_are_not_applied() {
+        for (package, version, consumer_reason) in [
+            (
+                "com.example.b",
+                "1.0",
+                "incompatible package: com.example.b",
+            ),
+            ("com.example.a", "2.0", "expected one of [1.0], got 2.0"),
+        ] {
+            assert_eq!(
+                dependency_pair_statuses(PatchSelection::default(), package, Some(version)),
+                vec![skipped("not selected"), skipped(consumer_reason)]
+            );
+        }
+
+        assert_eq!(
+            dependency_pair_statuses(
+                PatchSelection {
+                    ignore_versions: true,
+                    ..Default::default()
+                },
+                "com.example.a",
+                Some("2.0"),
+            ),
+            vec![PatchStatus::Applied, PatchStatus::Applied]
+        );
+    }
+
+    #[test]
+    fn explicitly_selected_incompatible_patch_keeps_its_reason() {
+        assert_eq!(
+            dependency_pair_statuses(
+                PatchSelection {
+                    enable: vec!["bundle/consumer".to_owned()],
+                    ..Default::default()
+                },
+                "com.example.b",
+                Some("1.0"),
+            ),
+            vec![
+                skipped("not selected"),
+                skipped("incompatible package: com.example.b"),
+            ]
+        );
+    }
+
+    #[test]
+    fn incompatibility_and_disabling_stop_transitive_dependencies() {
+        let mut leaf = declared_in("bundle", "leaf", "unused", &[], &[]);
+        leaf.0.hidden = true;
+        leaf.0.enabled_by_default = false;
+        leaf.0.compatibility = Compatibility::Universal;
+        let mut middle = declared_in("bundle", "middle", "com.example.a", &[], &["bundle/leaf"]);
+        middle.0.enabled_by_default = false;
+        let root = declared_in("bundle", "root", "com.example.b", &[], &["bundle/middle"]);
+        let patches: Vec<&dyn Patch> = vec![&leaf, &middle, &root];
+        let statuses: Vec<_> = validate_patches(
+            &patches,
+            &PatchSelection::default(),
+            Some("com.example.b"),
+            None,
+        )
+        .unwrap()
+        .into_iter()
+        .map(|result| result.status)
+        .collect();
+        assert_eq!(
+            statuses,
+            vec![
+                skipped("not selected"),
+                skipped("incompatible package: com.example.b"),
+                skipped("dependency 'bundle/middle' skipped: incompatible package: com.example.b"),
+            ]
+        );
+
+        let mut middle = declared_in(
+            "bundle",
+            "middle",
+            "com.example.b",
+            &[],
+            &["bundle/leaf", "other/missing"],
+        );
+        middle.0.enabled_by_default = false;
+        let root = declared_in("bundle", "root", "com.example.b", &[], &["bundle/middle"]);
+        let patches: Vec<&dyn Patch> = vec![&leaf, &middle, &root];
+        let statuses: Vec<_> = validate_patches(
+            &patches,
+            &PatchSelection::default(),
+            Some("com.example.b"),
+            None,
+        )
+        .unwrap()
+        .into_iter()
+        .map(|result| result.status)
+        .collect();
+        assert_eq!(
+            statuses[0..2],
+            [
+                skipped("not selected"),
+                skipped("depends on other/missing; load bundle 'other' alongside"),
+            ]
+        );
+
+        assert_eq!(
+            dependency_pair_statuses(
+                PatchSelection {
+                    disable: vec!["bundle/consumer".to_owned()],
+                    ..Default::default()
+                },
+                "com.example.a",
+                Some("1.0"),
+            ),
+            vec![skipped("not selected"), skipped("disabled explicitly")]
         );
     }
 }

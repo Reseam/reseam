@@ -75,7 +75,7 @@ Validates each patch against the APK's package and version and logs one line per
 
 ## Selecting patches
 
-By default, every patch in the bundle runs if its `enabled_by_default` flag is set. Override per patch:
+By default, every patch whose `enabled_by_default` flag is set is selected. Compatibility can still skip it, and a skipped patch does not pull in its dependencies. Override per patch:
 
 ```bash
 reseam patch app.apk --bundle patches.reseam --trust <PUBLIC_KEY_HEX> \

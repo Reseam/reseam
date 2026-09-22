@@ -18,7 +18,8 @@ pub(crate) struct ResolvedPlan {
     order: Vec<usize>,
     dependencies: Vec<Vec<usize>>,
     dependents: Vec<Vec<usize>>,
-    /// Asked for directly, rather than pulled in as someone's dependency.
+    /// A selection root: explicitly enabled, or enabled by default when no
+    /// explicit enable list was supplied.
     selected: Vec<bool>,
     desired: Vec<bool>,
     disabled: Vec<bool>,
@@ -33,6 +34,7 @@ impl ResolvedPlan {
         patches: &[&dyn Patch],
         selection: &PatchSelection,
         package: Option<&str>,
+        version: Option<&str>,
     ) -> Result<Self> {
         let index = PatchIndex::new(patches)?;
         let (dependencies, dependents, missing) = dependency_edges(patches, &index.references);
@@ -45,12 +47,11 @@ impl ResolvedPlan {
                 return Err(missing.error(patches[idx].reference()));
             }
         }
-        let unavailable = missing
+        let unavailable: Vec<Option<String>> = missing
             .iter()
             .map(|missing| missing.as_ref().map(MissingDependency::skip_reason))
             .collect();
-        let mut desired = vec![false; patches.len()];
-        let mut stack: Vec<usize> = if selection.enable.is_empty() {
+        let roots: Vec<usize> = if selection.enable.is_empty() {
             (0..patches.len())
                 .filter(|&i| patches[i].spec().enabled_by_default)
                 .collect()
@@ -58,13 +59,8 @@ impl ResolvedPlan {
             enabled.iter().copied().collect()
         };
         let mut selected = vec![false; patches.len()];
-        for &idx in &stack {
+        for &idx in &roots {
             selected[idx] = true;
-        }
-        while let Some(idx) = stack.pop() {
-            if !std::mem::replace(&mut desired[idx], true) {
-                stack.extend(&dependencies[idx]);
-            }
         }
 
         let mut disabled = vec![false; patches.len()];
@@ -76,6 +72,40 @@ impl ResolvedPlan {
                 )));
             }
             disabled[idx] = true;
+        }
+
+        // A dependency is desired only while an applicable, enabled patch
+        // needs it. Selection roots remain desired so validation can report
+        // why they cannot run, but incompatibility or explicit disabling
+        // stops their dependency chain from propagating further.
+        let can_propagate = |idx: usize| {
+            if disabled[idx] || unavailable[idx].is_some() {
+                return false;
+            }
+            let spec = patches[idx].spec();
+            if selection.ignore_versions {
+                spec.package_incompatibility(package).is_none()
+            } else {
+                spec.incompatibility(package, version).is_none()
+            }
+        };
+        let mut desired = selected.clone();
+        let mut expanded = vec![false; patches.len()];
+        let mut stack: Vec<usize> = roots
+            .iter()
+            .copied()
+            .filter(|&idx| can_propagate(idx))
+            .collect();
+        while let Some(idx) = stack.pop() {
+            if std::mem::replace(&mut expanded[idx], true) {
+                continue;
+            }
+            for &dependency in &dependencies[idx] {
+                desired[dependency] = true;
+                if can_propagate(dependency) {
+                    stack.push(dependency);
+                }
+            }
         }
 
         let mut configured = HashMap::new();

@@ -43,7 +43,7 @@ An uncaught exception fails the patch, skips its dependents, and does not roll b
 
 ## Internal patches and dependencies
 
-`patch { }` without a name is internal: never listed, never selected, run whenever an enabled patch depends on it. Use it for shared setup.
+`patch { }` without a name is internal: never listed, never selected, run only when a patch that can run depends on it. Use it for shared setup.
 
 ```kotlin
 val adBlockerRuntime = patch {
@@ -62,7 +62,7 @@ val hideAds = patch("Hide ads") {
 }
 ```
 
-`dependsOn` takes references, never names. A dependency runs first; skipping it skips its dependents.
+`dependsOn` takes references, never names. A dependency runs first; skipping it skips its dependents. Dependencies are pulled in only through patches that can run on the APK. A patch skipped for its package or version, disabled explicitly, or missing a dependency does not pull in dependencies of its own.
 
 ## Depending on another bundle
 
