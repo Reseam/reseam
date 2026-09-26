@@ -14,26 +14,38 @@ use super::types::{ResourceRef, StyleItem};
 use crate::context::PatchContext;
 use reseam_apk::Compression;
 
-/// Runs `f` on the named component's resource table, logging when the
-/// component has none or its table cannot be read.
+/// Runs `f` on the named component's table, reporting load failures to the patch.
 fn with_resources<R>(
     component: Option<String>,
     f: impl FnOnce(&mut ResourceTable) -> R,
-) -> Option<R> {
-    with_component(component, |ctx, index| {
-        match ctx
-            .component_mut(index)
-            .and_then(|c| Ok(c.resources_mut()?))
-        {
-            Ok(Some(resources)) => Some(f(resources)),
-            Ok(None) => None,
-            Err(error) => {
-                ctx.log().warn(format!("resources: {error}"));
-                None
-            }
-        }
-    })
-    .flatten()
+) -> Result<R, String> {
+    with_resources_result(component, |resources| Ok(f(resources)))
+}
+
+/// Runs a fallible resource operation in the selected component.
+fn with_resources_result<R>(
+    component: Option<String>,
+    f: impl FnOnce(&mut ResourceTable) -> Result<R, String>,
+) -> Result<R, String> {
+    with_component(component, |ctx, index| resources_of(ctx, index, f))
+        .unwrap_or_else(|| Err("unknown component".to_string()))
+}
+
+/// Runs a read-only resource operation without marking the table dirty.
+fn with_resources_read<R>(
+    component: Option<String>,
+    f: impl FnOnce(&ResourceTable) -> R,
+) -> Result<R, String> {
+    with_resources_read_result(component, |resources| Ok(f(resources)))
+}
+
+/// Runs a fallible read-only operation without marking the table dirty.
+fn with_resources_read_result<R>(
+    component: Option<String>,
+    f: impl FnOnce(&ResourceTable) -> Result<R, String>,
+) -> Result<R, String> {
+    with_component(component, |ctx, index| resources_of_read(ctx, index, f))
+        .unwrap_or_else(|| Err("unknown component".to_string()))
 }
 
 #[export]
@@ -50,69 +62,92 @@ pub fn res_component_names() -> Vec<String> {
 
 /// The component defining `res_type/res_name`, searching all of them.
 #[export]
-pub fn res_component_for(res_type: String, res_name: String) -> Option<String> {
+pub fn res_component_for(res_type: String, res_name: String) -> Result<Option<String>, String> {
     with_ctx(|ctx| {
-        let (index, _) = ctx
+        let found = ctx
             .apk_mut()
             .find_resource(&res_type, &res_name)
-            .ok()
-            .flatten()?;
-        Some(ctx.apk().component(index)?.name().to_string())
+            .map_err(|error| error.to_string())?;
+        Ok(found.and_then(|(index, _)| ctx.apk().component(index).map(|c| c.name().to_string())))
     })
 }
 
 #[export]
-pub fn res_component_for_id(res_id: u32) -> Option<String> {
+pub fn res_component_for_id(res_id: u32) -> Result<Option<String>, String> {
     with_ctx(|ctx| {
-        let index = ctx.apk_mut().find_resource_by_id(res_id).ok().flatten()?;
-        Some(ctx.apk().component(index)?.name().to_string())
+        let found = ctx
+            .apk_mut()
+            .find_resource_by_id(res_id)
+            .map_err(|error| error.to_string())?;
+        Ok(found.and_then(|index| ctx.apk().component(index).map(|c| c.name().to_string())))
     })
 }
 
 /// The id of `res_type/res_name`; without a component every one is searched.
 #[export]
-pub fn res_id(component: Option<String>, res_type: String, res_name: String) -> Option<u32> {
+pub fn res_id(
+    component: Option<String>,
+    res_type: String,
+    res_name: String,
+) -> Result<Option<u32>, String> {
     match component {
         None => with_ctx(|ctx| {
             ctx.apk_mut()
                 .find_resource(&res_type, &res_name)
-                .ok()
-                .flatten()
-                .map(|(_, id)| id)
+                .map_err(|error| error.to_string())
+                .map(|found| found.map(|(_, id)| id))
         }),
-        Some(_) => {
-            with_resources(component, |res| res.find_resource_id(&res_type, &res_name)).flatten()
-        }
+        Some(_) => with_resources_read_result(component, |resources| {
+            resources
+                .find_resource_id_checked(&res_type, &res_name)
+                .map_err(|error| error.to_string())
+        }),
     }
 }
 
 #[export]
-pub fn res_exists(component: Option<String>, res_type: String, res_name: String) -> bool {
-    res_id(component, res_type, res_name).is_some()
+pub fn res_exists(
+    component: Option<String>,
+    res_type: String,
+    res_name: String,
+) -> Result<bool, String> {
+    Ok(res_id(component, res_type, res_name)?.is_some())
 }
 
 #[export]
-pub fn res_get_string(component: Option<String>, name: String) -> Option<String> {
+pub fn res_get_string(component: Option<String>, name: String) -> Result<Option<String>, String> {
     match component {
-        None => with_ctx(|ctx| ctx.apk_mut().string_resource(&name).ok().flatten()),
-        Some(_) => with_resources(component, |res| {
-            res.string_value(&name).map(|s| s.into_owned())
-        })
-        .flatten(),
+        None => with_ctx(|ctx| {
+            ctx.apk_mut()
+                .string_resource(&name)
+                .map_err(|error| error.to_string())
+        }),
+        Some(_) => with_resources_read_result(component, |resources| {
+            resources
+                .string_value_checked(&name)
+                .map(|value| value.map(|text| text.into_owned()))
+                .map_err(|error| error.to_string())
+        }),
     }
 }
 
 #[export]
-pub fn res_set_string(component: Option<String>, name: String, value: String) -> bool {
+pub fn res_set_string(
+    component: Option<String>,
+    name: String,
+    value: String,
+) -> Result<bool, String> {
     match component {
         None => with_ctx(|ctx| {
             ctx.apk_mut()
                 .set_string_resource(&name, &value)
-                .unwrap_or(false)
+                .map_err(|error| error.to_string())
         }),
-        Some(_) => {
-            with_resources(component, |res| res.set_string_value(&name, &value)).unwrap_or(false)
-        }
+        Some(_) => with_resources_result(component, |resources| {
+            resources
+                .set_string_value_checked(&name, &value)
+                .map_err(|error| error.to_string())
+        }),
     }
 }
 
@@ -125,22 +160,29 @@ pub fn res_add(
     res_type: String,
     name: String,
     value: String,
-) -> Option<u32> {
-    with_resources(component, |res| {
+) -> Result<Option<u32>, String> {
+    with_resources_result(component, |res| {
         if res_type == "string" {
-            return res.add_string_resource(&name, &value);
+            return res
+                .add_string_resource_checked(&name, &value)
+                .map_err(|error| error.to_string());
         }
         match axml::parse_attribute_value(&value, None, Some(res)) {
-            Ok(AttributeValue::Value(parsed)) => res.add_resource(&res_type, &name, parsed),
-            _ => None,
+            Ok(AttributeValue::Value(parsed)) => res
+                .add_resource_checked(&res_type, &name, parsed)
+                .map_err(|error| error.to_string()),
+            Ok(AttributeValue::Text) => Ok(None),
+            Err(error) => Err(error.to_string()),
         }
     })
-    .flatten()
 }
 
 #[export]
-pub fn res_add_id(component: Option<String>, name: String) -> Option<u32> {
-    with_resources(component, |res| res.ensure_id(&name)).flatten()
+pub fn res_add_id(component: Option<String>, name: String) -> Result<Option<u32>, String> {
+    with_resources_result(component, |res| {
+        res.ensure_id_checked(&name)
+            .map_err(|error| error.to_string())
+    })
 }
 
 #[export]
@@ -150,21 +192,32 @@ pub fn res_add_raw(
     name: String,
     data_type: u8,
     data: u32,
-) -> Option<u32> {
-    with_resources(component, |res| {
-        res.add_resource(&res_type, &name, ResValue::new(data_type, data))
+) -> Result<Option<u32>, String> {
+    with_resources_result(component, |res| {
+        res.add_resource_checked(&res_type, &name, ResValue::new(data_type, data))
+            .map_err(|error| error.to_string())
     })
-    .flatten()
 }
 
 #[export]
-pub fn res_get_raw(component: Option<String>, res_type: String, res_name: String) -> Option<i64> {
-    let component = component.or_else(|| res_component_for(res_type.clone(), res_name.clone()))?;
-    with_resources(Some(component), |res| {
-        res.resource_value(&res_type, &res_name)
-            .map(|v| v.data as i64)
+pub fn res_get_raw(
+    component: Option<String>,
+    res_type: String,
+    res_name: String,
+) -> Result<Option<i64>, String> {
+    let component = match component {
+        Some(component) => component,
+        None => match res_component_for(res_type.clone(), res_name.clone())? {
+            Some(component) => component,
+            None => return Ok(None),
+        },
+    };
+    with_resources_read_result(Some(component), |resources| {
+        resources
+            .resource_value_checked(&res_type, &res_name)
+            .map(|value| value.map(|value| value.data as i64))
+            .map_err(|error| error.to_string())
     })
-    .flatten()
 }
 
 /// Runs `f` on the component's resource table, failing if it is missing or unreadable.
@@ -183,6 +236,19 @@ fn resources_of<R>(
     }
 }
 
+/// Reads a component's table without marking it for serialization.
+fn resources_of_read<R>(
+    ctx: &mut PatchContext<'_>,
+    index: usize,
+    f: impl FnOnce(&ResourceTable) -> Result<R, String>,
+) -> Result<R, String> {
+    match ctx.component_mut(index).and_then(|c| Ok(c.resources()?)) {
+        Ok(Some(resources)) => f(resources),
+        Ok(None) => Err("the component has no resource table".to_string()),
+        Err(error) => Err(format!("resources: {error}")),
+    }
+}
+
 /// APK paths for every configuration of a file resource, default first.
 #[export]
 pub fn res_file_paths(
@@ -190,9 +256,12 @@ pub fn res_file_paths(
     res_type: String,
     res_name: String,
 ) -> Result<Vec<String>, String> {
-    let component = component.or_else(|| res_component_for(res_type.clone(), res_name.clone()));
+    let component = match component {
+        Some(component) => Some(component),
+        None => res_component_for(res_type.clone(), res_name.clone())?,
+    };
     with_component(component, |ctx, index| {
-        let paths = resources_of(ctx, index, |resources| {
+        let paths = resources_of_read(ctx, index, |resources| {
             resources
                 .file_paths(&res_type, &res_name)
                 .map_err(|error| error.to_string())
@@ -342,7 +411,7 @@ pub fn res_style_set(
 #[export]
 pub fn res_array_get(component: Option<String>, name: String) -> Result<Vec<String>, String> {
     with_component(component, |ctx, index| {
-        resources_of(ctx, index, |resources| {
+        resources_of_read(ctx, index, |resources| {
             resources.array(&name).map_err(|error| error.to_string())
         })
     })
@@ -430,26 +499,28 @@ pub fn res_list(prefix: String) -> Vec<String> {
 }
 
 #[export]
-pub fn res_pool_get(component: Option<String>, index: u32) -> Option<String> {
-    with_resources(component, |res| {
+pub fn res_pool_get(component: Option<String>, index: u32) -> Result<Option<String>, String> {
+    with_resources_read(component, |res| {
         res.get_string(index).map(|s| s.into_owned())
     })
-    .flatten()
 }
 
 #[export]
-pub fn res_pool_set(component: Option<String>, index: u32, value: String) {
-    with_resources(component, |res| res.set_string(index, value));
+pub fn res_pool_set(component: Option<String>, index: u32, value: String) -> Result<(), String> {
+    with_resources(component, |res| res.set_string(index, value))
 }
 
 #[export]
-pub fn res_pool_add(component: Option<String>, value: String) -> Option<u32> {
+pub fn res_pool_add(component: Option<String>, value: String) -> Result<u32, String> {
     with_resources(component, |res| res.add_global_string(&value))
 }
 
 #[export]
-pub fn res_pool_find_refs(component: Option<String>, string_index: u32) -> Vec<ResourceRef> {
-    with_resources(component, |res| {
+pub fn res_pool_find_refs(
+    component: Option<String>,
+    string_index: u32,
+) -> Result<Vec<ResourceRef>, String> {
+    with_resources_read(component, |res| {
         res.find_entries_by_string(string_index)
             .into_iter()
             .map(|entry| ResourceRef {
@@ -458,17 +529,22 @@ pub fn res_pool_find_refs(component: Option<String>, string_index: u32) -> Vec<R
             })
             .collect()
     })
-    .unwrap_or_default()
 }
 
 /// Points a string entry at another pool string; without a component the
 /// entry's own component is used.
 #[export]
-pub fn res_replace_entry(component: Option<String>, res_id: u32, new_string_index: u32) {
-    let Some(component) = component.or_else(|| res_component_for_id(res_id)) else {
-        return;
+pub fn res_replace_entry(
+    component: Option<String>,
+    res_id: u32,
+    new_string_index: u32,
+) -> Result<(), String> {
+    let component = match component {
+        Some(component) => component,
+        None => res_component_for_id(res_id)?
+            .ok_or_else(|| format!("no component defines resource 0x{res_id:08x}"))?,
     };
     with_resources(Some(component), |res| {
         res.replace_entry_string(res_id, new_string_index)
-    });
+    })
 }

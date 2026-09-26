@@ -159,13 +159,20 @@ impl ResPackage {
     /// The index `key` is filed under in any configuration of the type. An
     /// entry defined only in `values-night` still owns its index, so writing it
     /// must reuse that index rather than append a second entry of the same name.
-    pub(crate) fn entry_index(&self, type_id: u8, key: u32) -> Option<usize> {
-        self.types
-            .iter()
-            .filter(|res_type| res_type.id == type_id)
-            .find_map(|res_type| {
-                (0..res_type.len()).find(|&i| res_type.entry_head(i).is_some_and(|(k, _)| k == key))
-            })
+    pub(crate) fn entry_index(&self, type_id: u8, key: u32) -> Result<Option<usize>> {
+        let mut first_error = None;
+        for res_type in self.types.iter().filter(|res_type| res_type.id == type_id) {
+            for i in 0..res_type.len() {
+                match res_type.entry_key_checked(i) {
+                    Ok(Some(entry_key)) if entry_key == key => return Ok(Some(i)),
+                    Err(error) => {
+                        first_error.get_or_insert(error);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        first_error.map_or(Ok(None), Err)
     }
 
     /// The type's chunk for `config`, created when it has none. A type such as

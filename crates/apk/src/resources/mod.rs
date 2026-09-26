@@ -193,13 +193,25 @@ impl ResourceTable {
             .filter_map(move |res_type| Some((res_type, res_type.entry_head(entry_index)?.1?)))
     }
 
-    pub(crate) fn contains_resource_id(&self, res_id: u32) -> bool {
+    pub(crate) fn contains_resource_id(&self, res_id: u32) -> Result<bool> {
         let (package_id, type_id, entry_index) = split_res_id(res_id);
-        self.packages
+        let mut first_error = None;
+        for res_type in self
+            .packages
             .iter()
             .filter(|package| package.id == package_id)
             .flat_map(|package| &package.types)
-            .any(|res_type| res_type.id == type_id && res_type.entry(entry_index).is_some())
+            .filter(|res_type| res_type.id == type_id)
+        {
+            match res_type.entry_checked(entry_index) {
+                Ok(Some(_)) => return Ok(true),
+                Ok(None) => {}
+                Err(error) => {
+                    first_error.get_or_insert(error);
+                }
+            }
+        }
+        first_error.map_or(Ok(false), Err)
     }
 
     /// Renames the first package. `Resources.getIdentifier(name, type, context.getPackageName())`
@@ -229,6 +241,19 @@ impl ResourceTable {
         value: ResValue,
     ) -> Option<u32> {
         self.set_entry(type_name, entry_name, EntryValue::Simple(value))
+    }
+
+    /// Add or replace a simple entry in the default configuration.
+    ///
+    /// Returns its resource ID, or `None` when the package cannot provide the
+    /// type. Fails if an existing entry that may have the same name is malformed.
+    pub fn add_resource_checked(
+        &mut self,
+        type_name: &str,
+        entry_name: &str,
+        value: ResValue,
+    ) -> Result<Option<u32>> {
+        self.set_entry_in(type_name, entry_name, EntryValue::Simple(value), "")
     }
 
     /// Writes `value` as the default-configuration entry `type_name/entry_name`
@@ -261,12 +286,17 @@ impl ResourceTable {
         let Some(type_id) = package.ensure_type(type_name) else {
             return Ok(None);
         };
-        let key = package.key_strings.intern(entry_name);
-        let entry_index = package
-            .entry_index(type_id, key)
+        let existing_key = package.key_strings.find(entry_name);
+        let entry_index = existing_key
+            .map(|key| package.entry_index(type_id, key))
+            .transpose()?
+            .flatten()
             .unwrap_or_else(|| package.entry_count(type_id));
+        let key = existing_key.unwrap_or_else(|| package.key_strings.intern(entry_name));
         let chunk = package.config_type(type_id, config);
-        let flags = chunk.entry(entry_index).map_or(0, |current| current.flags);
+        let flags = chunk
+            .entry_checked(entry_index)?
+            .map_or(0, |current| current.flags);
         chunk.set(entry_index, Some(ResEntry { flags, key, value }));
         package.grow_type(type_id, entry_index + 1);
         Ok(Some(res_id(package.id, type_id, entry_index)))
@@ -275,6 +305,15 @@ impl ResourceTable {
     pub fn add_string_resource(&mut self, name: &str, value: &str) -> Option<u32> {
         let index = self.add_global_string(value);
         self.add_resource("string", name, ResValue::string(index))
+    }
+
+    /// Add or replace a default-configuration string resource.
+    ///
+    /// Returns its ID, or `None` when the package cannot provide the type.
+    /// Fails if an existing entry that may have this name is malformed.
+    pub fn add_string_resource_checked(&mut self, name: &str, value: &str) -> Result<Option<u32>> {
+        let index = self.add_global_string(value);
+        self.add_resource_checked("string", name, ResValue::string(index))
     }
 
     /// Registers `apk_path` as the file behind `type_name/entry_name` in the
@@ -304,9 +343,34 @@ impl ResourceTable {
             .or_else(|| self.add_resource("id", name, ResValue::id_entry()))
     }
 
+    /// Find or create an `id/name` entry in the default configuration.
+    ///
+    /// Returns its ID, or `None` when it cannot be created. A malformed
+    /// possible match is reported as an error instead of creating a duplicate.
+    pub fn ensure_id_checked(&mut self, name: &str) -> Result<Option<u32>> {
+        match self.find_resource_id_checked("id", name)? {
+            Some(id) => Ok(Some(id)),
+            None => self.add_resource_checked("id", name, ResValue::id_entry()),
+        }
+    }
+
     pub fn find_resource_id(&self, type_name: &str, entry_name: &str) -> Option<u32> {
         self.find_entry(type_name, entry_name)
             .map(EntryLocation::res_id)
+    }
+
+    /// Find a resource ID by type and name.
+    ///
+    /// Returns `None` when the name is absent. A malformed possible match is
+    /// reported as an error; an entry with a different readable key is skipped.
+    pub fn find_resource_id_checked(
+        &self,
+        type_name: &str,
+        entry_name: &str,
+    ) -> Result<Option<u32>> {
+        Ok(self
+            .find_entry_checked(type_name, entry_name)?
+            .map(EntryLocation::res_id))
     }
 
     /// The value of a simple entry; `None` for a missing or complex entry.
@@ -314,21 +378,69 @@ impl ResourceTable {
         self.find_entry(type_name, entry_name)?.value
     }
 
+    /// Read a simple value by type and name.
+    ///
+    /// Returns `None` for an absent or complex entry. A malformed possible
+    /// match is reported as an error.
+    pub fn resource_value_checked(
+        &self,
+        type_name: &str,
+        entry_name: &str,
+    ) -> Result<Option<ResValue>> {
+        Ok(self
+            .find_entry_checked(type_name, entry_name)?
+            .and_then(|entry| entry.value))
+    }
+
     pub fn string_value(&self, name: &str) -> Option<Cow<'_, str>> {
         let value = self.resource_value("string", name)?;
         self.get_string(value.string_index()?)
     }
 
+    /// Read `string/name` from the global pool.
+    ///
+    /// Returns `None` for an absent or non-string value. Malformed entries
+    /// and invalid string pool indices are errors.
+    pub fn string_value_checked(&self, name: &str) -> Result<Option<Cow<'_, str>>> {
+        let Some(value) = self.resource_value_checked("string", name)? else {
+            return Ok(None);
+        };
+        let Some(index) = value.string_index() else {
+            return Ok(None);
+        };
+        self.get_string(index).map(Some).ok_or_else(|| {
+            invalid(
+                "res string",
+                format!("string/{name} has invalid pool index {index}"),
+            )
+        })
+    }
+
     pub fn set_string_value(&mut self, name: &str, value: &str) -> bool {
-        match self
-            .resource_value("string", name)
-            .and_then(ResValue::string_index)
-        {
+        self.set_string_value_checked(name, value).unwrap_or(false)
+    }
+
+    /// Rewrite the global pool value referenced by `string/name`.
+    ///
+    /// Returns `false` when the resource is absent or has no string value.
+    /// Malformed entries and invalid pool indices are errors. Other resources
+    /// sharing the same pool index also see the new text.
+    pub fn set_string_value_checked(&mut self, name: &str, value: &str) -> Result<bool> {
+        let index = self
+            .resource_value_checked("string", name)?
+            .and_then(ResValue::string_index);
+        match index {
             Some(index) => {
+                if self.get_string(index).is_none() {
+                    return Err(invalid(
+                        "res string",
+                        format!("string/{name} has invalid pool index {index}"),
+                    ));
+                }
                 self.set_string(index, value.to_string());
-                true
+                Ok(true)
             }
-            None => false,
+            None => Ok(false),
         }
     }
 
@@ -492,25 +604,60 @@ impl ResourceTable {
     }
 
     fn find_entry(&self, type_name: &str, entry_name: &str) -> Option<EntryLocation> {
-        self.packages.iter().find_map(|package| {
-            let type_id = u8::try_from(package.type_strings.find(type_name)? + 1).ok()?;
-            let key = package.key_strings.find(entry_name)?;
-            package
+        self.find_entry_checked(type_name, entry_name)
+            .ok()
+            .flatten()
+    }
+
+    fn find_entry_checked(
+        &self,
+        type_name: &str,
+        entry_name: &str,
+    ) -> Result<Option<EntryLocation>> {
+        let mut first_error = None;
+        for package in &self.packages {
+            let Some(type_id) = package
+                .type_strings
+                .find(type_name)
+                .and_then(|index| u8::try_from(index + 1).ok())
+            else {
+                continue;
+            };
+            let Some(key) = package.key_strings.find(entry_name) else {
+                continue;
+            };
+            for res_type in package
                 .types
                 .iter()
                 .filter(|res_type| res_type.id == type_id)
-                .find_map(|res_type| {
-                    (0..res_type.len()).find_map(|i| match res_type.entry_head(i) {
-                        Some((k, value)) if k == key => Some(EntryLocation {
-                            package_id: package.id,
-                            type_id,
-                            entry_index: i,
-                            value,
-                        }),
-                        _ => None,
-                    })
-                })
-        })
+            {
+                for i in 0..res_type.len() {
+                    match res_type.entry_key_checked(i) {
+                        Ok(Some(entry_key)) if entry_key == key => {
+                            match res_type.entry_head_checked(i) {
+                                Ok(Some((_, value))) => {
+                                    return Ok(Some(EntryLocation {
+                                        package_id: package.id,
+                                        type_id,
+                                        entry_index: i,
+                                        value,
+                                    }));
+                                }
+                                Ok(None) => {}
+                                Err(error) => {
+                                    first_error.get_or_insert(error);
+                                }
+                            }
+                        }
+                        Err(error) => {
+                            first_error.get_or_insert(error);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        first_error.map_or(Ok(None), Err)
     }
 
     pub fn serialize(&self) -> Result<Vec<u8>> {

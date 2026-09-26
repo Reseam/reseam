@@ -126,39 +126,63 @@ impl ApkFile {
         type_name: &str,
         entry_name: &str,
     ) -> Result<Option<(usize, u32)>> {
+        let mut first_error = None;
         for (index, component) in self.components.iter_mut().enumerate() {
-            let found = component
-                .resources()?
-                .and_then(|resources| resources.find_resource_id(type_name, entry_name));
-            if let Some(res_id) = found {
-                return Ok(Some((index, res_id)));
+            let found = component.resources().and_then(|resources| {
+                resources
+                    .map(|resources| resources.find_resource_id_checked(type_name, entry_name))
+                    .transpose()
+                    .map(Option::flatten)
+            });
+            match found {
+                Ok(Some(res_id)) => return Ok(Some((index, res_id))),
+                Ok(None) => {}
+                Err(error) => {
+                    first_error.get_or_insert(error);
+                }
             }
         }
-        Ok(None)
+        first_error.map_or(Ok(None), Err)
     }
 
     pub fn find_resource_by_id(&mut self, res_id: u32) -> Result<Option<usize>> {
+        let mut first_error = None;
         for (index, component) in self.components.iter_mut().enumerate() {
-            if component
-                .resources()?
-                .is_some_and(|resources| resources.contains_resource_id(res_id))
-            {
-                return Ok(Some(index));
+            let found = component.resources().and_then(|resources| {
+                resources
+                    .map(|resources| resources.contains_resource_id(res_id))
+                    .transpose()
+                    .map(|found| found.unwrap_or(false))
+            });
+            match found {
+                Ok(true) => return Ok(Some(index)),
+                Ok(false) => {}
+                Err(error) => {
+                    first_error.get_or_insert(error);
+                }
             }
         }
-        Ok(None)
+        first_error.map_or(Ok(None), Err)
     }
 
     pub fn string_resource(&mut self, name: &str) -> Result<Option<String>> {
+        let mut first_error = None;
         for component in &mut self.components {
-            let value = component
-                .resources()?
-                .and_then(|resources| resources.string_value(name).map(Cow::into_owned));
-            if value.is_some() {
-                return Ok(value);
+            let value = component.resources().and_then(|resources| {
+                resources
+                    .map(|resources| resources.string_value_checked(name))
+                    .transpose()
+                    .map(|value| value.flatten().map(Cow::into_owned))
+            });
+            match value {
+                Ok(Some(value)) => return Ok(Some(value)),
+                Ok(None) => {}
+                Err(error) => {
+                    first_error.get_or_insert(error);
+                }
             }
         }
-        Ok(None)
+        first_error.map_or(Ok(None), Err)
     }
 
     /// Sets the string resource where it is defined, or in the base when it
@@ -167,8 +191,10 @@ impl ApkFile {
         let index = self
             .find_resource("string", name)?
             .map_or(0, |(index, _)| index);
-        Ok(self.components[index]
+        self.components[index]
             .resources_mut()?
-            .is_some_and(|resources| resources.set_string_value(name, value)))
+            .map(|resources| resources.set_string_value_checked(name, value))
+            .transpose()
+            .map(|changed| changed.unwrap_or(false))
     }
 }

@@ -177,6 +177,12 @@ class FileScope internal constructor(private val componentName: String? = null) 
     fun <T> editXml(path: String, block: XmlDocument.() -> T): T = xml(path).use(block)
 }
 
+/**
+ * Reads and edits compiled resources in the selected APK component.
+ * Missing names return `null` or `false` from the corresponding lookup methods.
+ * An unreadable table or a malformed matching entry throws with the parse error;
+ * a malformed unrelated entry does not prevent access to a valid resource.
+ */
 class ResourceScope internal constructor(private val componentName: String? = null) {
     fun components(): List<String> = resComponentNames()
     fun component(name: String): ResourceScope = ResourceScope(name)
