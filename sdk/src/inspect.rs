@@ -18,7 +18,9 @@ pub fn inspect_apk(apk_path: &Path, split_paths: &[PathBuf]) -> Result<ApkMetada
     // signatures) is still an APK, and inspection exists to read it, not to
     // certify it.
     let mut opened = open_apk(apk_path, split_paths, &ApkFile::patch_options())?;
-    apk_metadata(&mut opened)
+    // Resources are parsed when the label is read, so a table the engine
+    // cannot read surfaces here rather than in `open_apk`.
+    apk_metadata(&mut opened).map_err(|error| unreadable_apk(apk_path, error))
 }
 
 pub(crate) fn apk_metadata(opened: &mut OpenedApk) -> Result<ApkMetadata> {

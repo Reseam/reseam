@@ -6,6 +6,7 @@ use std::path::Path;
 
 use reseam_apk::{scratch::ScratchDir, ApkFile, ContainerFormat};
 
+use crate::error::Problem;
 use crate::inspect::open_apk;
 use crate::metrics::PatchProfiler;
 use crate::output::write_signed;
@@ -27,6 +28,34 @@ fn apk(split: &str) -> Vec<u8> {
         r#"<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.test" android:versionCode="1" {split}><application android:label="Example" /></manifest>"#
     ), None).unwrap();
     zip(&[("AndroidManifest.xml", &manifest)])
+}
+
+#[test]
+fn an_unreadable_resource_table_is_an_unreadable_apk() {
+    let tmp = ScratchDir::new("sdk-unreadable-resources").unwrap();
+    let manifest = reseam_apk::axml::compile_xml(
+        r#"<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.test" android:versionCode="1"><application android:label="@0x7f010000" /></manifest>"#,
+        None,
+    )
+    .unwrap();
+    let input = tmp.path().join("broken.apk");
+    std::fs::write(
+        &input,
+        zip(&[
+            ("AndroidManifest.xml", &manifest),
+            (
+                "resources.arsc",
+                &[0x02, 0x00, 0x0c, 0x00, 0xff, 0xff, 0x00, 0x00],
+            ),
+        ]),
+    )
+    .unwrap();
+    let error = inspect_apk(&input, &[]).unwrap_err();
+    assert_eq!(
+        crate::error::classify(&error),
+        Problem::unreadable_apk(&input),
+        "{error:#}"
+    );
 }
 
 #[test]
