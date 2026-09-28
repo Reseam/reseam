@@ -633,18 +633,27 @@ private val writerHost = klass("com.example.WriterHost")
 private fun takeCall(method: String) = writerHost.method(method).point { invokeStatic { name("take") } }
 
 val registerWriters = patch("register-writers") {
-    description("writer(argument) walks back to the one instruction that wrote an invoke's argument, or says why there is none")
+    description("writer(argument) walks back through register moves to the one instruction that wrote an invoke's argument, or says why there is none")
     compatibleWith("com.example.test")
     enabledByDefault(false)
 
     execute {
         val single = takeCall("single").writer(0)
         single.after { mark(99) }
+        val copied = takeCall("copied").writer(0)
+        copied.after { mark(98) }
         val merged = runCatching { takeCall("merged").writer(0).index }
         val passed = runCatching { takeCall("passed").writer(0).index }
+        val copiedParameter = runCatching { takeCall("copiedParameter").writer(0).index }
         files.write(
             "assets/register-writers.txt",
-            listOf("${single.index}:${single.instruction.opcode}", merged.exceptionOrNull()?.message, passed.exceptionOrNull()?.message)
+            listOf(
+                "${single.index}:${single.instruction.opcode}",
+                merged.exceptionOrNull()?.message,
+                passed.exceptionOrNull()?.message,
+                "${copied.index}:${copied.instruction.opcode}",
+                copiedParameter.exceptionOrNull()?.message,
+            )
                 .joinToString("\n")
                 .encodeToByteArray(),
         )

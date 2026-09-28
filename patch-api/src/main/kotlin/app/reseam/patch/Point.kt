@@ -16,6 +16,7 @@ import app.reseam.patch.dex.opcode
 import app.reseam.patch.dex.parameterTypes
 import app.reseam.patch.dex.referencedRegisters
 import app.reseam.patch.dex.regA
+import app.reseam.patch.dex.regB
 import app.reseam.patch.dex.returnType
 import app.reseam.patch.dex.stringValue
 import app.reseam.patch.dex.typeRef
@@ -81,6 +82,7 @@ class PointTarget internal constructor(
 
     /**
      * Finds the unique instruction defining argument [argument], including exception paths.
+     * Register-to-register moves are followed to the instruction that produced the value.
      * Fails for multiple reaching definitions or an incoming parameter.
      * Arguments are counted as in [captureArgumentAs].
      */
@@ -89,12 +91,18 @@ class PointTarget internal constructor(
         val label = debugName ?: "${base.label}.writer($argument)"
         return PointTarget(label, method) { runtime ->
             val point = runtime.resolve(base).value
-            val (register, _) = point.argument(base.label, argument)
-            val writers = registerWriters(point.method.handle, point.index.toUInt(), register.toUShort())
-                ?: error("$label: ${point.method.descriptor} has control flow the engine cannot follow back from instruction ${point.index}")
-            val single = writers.indices.singleOrNull()?.toInt()?.takeUnless { writers.fromEntry }
-                ?: error(writerMessage(label, point, register, writers))
-            Resolution(point.at(runtime, label, single), wrapped(label, "${point.method.descriptor}[$single]"))
+            val insns = point.method.instructions
+            var register = point.argument(base.label, argument).first
+            var index = point.index
+            do {
+                val writers = registerWriters(point.method.handle, index.toUInt(), register.toUShort())
+                    ?: error("$label: ${point.method.descriptor} has control flow the engine cannot follow back from instruction $index")
+                index = writers.indices.singleOrNull()?.toInt()?.takeUnless { writers.fromEntry }
+                    ?: error(writerMessage(label, point.method, index, register, writers))
+                val move = insns[index].takeIf { it.opcode in REGISTER_MOVES }
+                if (move != null) register = move.regB!!
+            } while (move != null)
+            Resolution(point.at(runtime, label, index), wrapped(label, "${point.method.descriptor}[$index]"))
         }
     }
 
@@ -175,9 +183,9 @@ private fun ResolvedPoint.argument(label: String, argument: Int): Pair<Int, Stri
     return arguments[argument].let { it.register to it.type }
 }
 
-private fun writerMessage(label: String, point: ResolvedPoint, register: Int, writers: RegisterWriters): String {
-    val where = "v$register at ${point.method.descriptor}[${point.index}]"
-    val sites = writers.indices.joinToString { "[$it] ${point.method.instructions[it.toInt()].opcode}" }
+private fun writerMessage(label: String, method: Method, index: Int, register: Int, writers: RegisterWriters): String {
+    val where = "v$register at ${method.descriptor}[$index]"
+    val sites = writers.indices.joinToString { "[$it] ${method.instructions[it.toInt()].opcode}" }
     return when {
         writers.indices.isEmpty() && writers.fromEntry -> "$label: $where is a value the method was passed, not one an instruction of it wrote"
         writers.indices.isEmpty() -> "$label: nothing reaches $where; the instruction is unreachable"
@@ -391,3 +399,9 @@ private fun inferType(method: Method, index: Int): String? {
         else -> null
     }
 }
+
+private val REGISTER_MOVES = setOf(
+    Opcode.MOVE, Opcode.MOVE_FROM16, Opcode.MOVE_16,
+    Opcode.MOVE_WIDE, Opcode.MOVE_WIDE_FROM16, Opcode.MOVE_WIDE_16,
+    Opcode.MOVE_OBJECT, Opcode.MOVE_OBJECT_FROM16, Opcode.MOVE_OBJECT_16,
+)

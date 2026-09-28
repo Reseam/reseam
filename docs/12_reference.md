@@ -102,7 +102,7 @@ Both queries search the app's own code. A class an [extension](9_extensions.md) 
 | `PointTarget.captureAs(name, type = null)` | Records the register written here for `capture(name)`. |
 | `PointTarget.skipWhen { condition }` | Runs the call at the point only when the condition is false; the call's result must be unused. |
 | `PointTarget.captureArgumentAs(name, argument, type = null)` | Records the register of argument `argument` of the invoke here. The receiver is argument 0 of an instance invoke; a wide argument counts once. |
-| `PointTarget.writer(argument, debugName = null)` | The instruction that wrote the argument, as a `PointTarget`. Fails for an incoming parameter or multiple writers, reporting the paths. |
+| `PointTarget.writer(argument, debugName = null)` | The instruction that wrote the argument, as a `PointTarget`, following register moves back to the value's producer. Fails for an incoming parameter or multiple writers, reporting the paths. |
 | `PointTarget.callee(debugName = null)` | The invoked method as a `MethodTarget`, resolved to the nearest declaration up the owner's superclass chain. |
 | `PointTarget.field(debugName = null)` | The accessed field as a `FieldTarget`. |
 | `PointTarget.index`, `.instruction`, `.method` | Current index, instruction, and method target. Points follow edits; using one after body replacement fails. |
@@ -113,7 +113,7 @@ Both queries search the app's own code. A class an [extension](9_extensions.md) 
 
 `PointMatch.opcode(vararg)` accepts any listed opcode. Invoke helpers match both ordinary and range forms, and their blocks are optional. `then(within = 1)` requires the next instruction; a larger value allows that many following instructions. A sequence selects its final instruction.
 
-`argument(index) { }` matches every source of an invoke argument, following copies across branches and exception handlers. The receiver is argument 0 of an instance invoke; a wide argument counts once. Incoming parameters, conflicting sources, cyclic copies, and unsupported control flow do not match; `explain().reasons` reports why. `writer(argument)` requires a single writing instruction and does not follow copies.
+`argument(index) { }` matches every source of an invoke argument, following copies across branches and exception handlers. The receiver is argument 0 of an instance invoke; a wide argument counts once. Incoming parameters, conflicting sources, cyclic copies, and unsupported control flow do not match; `explain().reasons` reports why. `writer(argument)` follows register moves but requires a single writing instruction at each step.
 
 `ownerAssignableTo(type)` follows app classes, interfaces, and their external superclass names. Known `java.*` relationships use host platform classes; unknown Android relationships do not match.
 

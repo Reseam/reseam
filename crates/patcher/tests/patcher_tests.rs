@@ -2674,6 +2674,31 @@ fn a_writer_is_the_one_instruction_that_defined_an_argument() {
         (1, 1),
         vec![call(0), ReturnVoid],
     );
+    // A high register reaches the call through move/from16 and move.
+    add_static_method(
+        &mut dex,
+        class,
+        OWNER,
+        "copied",
+        "(I)V",
+        (22, 1),
+        vec![
+            Const16 { dest: 20, value: 7 },
+            MoveFrom16 { dest: 1, src: 20 },
+            Move { dest: 0, src: 1 },
+            call(0),
+            ReturnVoid,
+        ],
+    );
+    add_static_method(
+        &mut dex,
+        class,
+        OWNER,
+        "copiedParameter",
+        "(I)V",
+        (21, 1),
+        vec![MoveFrom16 { dest: 0, src: 20 }, call(0), ReturnVoid],
+    );
 
     let (_apk_dir, mut apk) = open_split_test_apk_with(manifest_bytes("1.0-base", None), &[dex]);
     let bundle = loaded_test_bundle();
@@ -2709,11 +2734,24 @@ fn a_writer_is_the_one_instruction_that_defined_an_argument() {
         "{}",
         lines[2]
     );
+    assert_eq!(lines[3], "0:CONST_16");
+    assert!(
+        lines[4].contains("copiedParameter")
+            && lines[4].contains(
+                "v20 at Lcom/example/WriterHost;->copiedParameter(I)V[0] is a value the method was passed"
+            ),
+        "{}",
+        lines[4]
+    );
     // The writer is a point of its own: code after it runs between the write
     // and the call that reads it.
     assert_eq!(
         hook_calls(&patched_code(&apk, OWNER, "single"), &[6]),
         (vec![vec![99], vec![4]], None)
+    );
+    assert_eq!(
+        hook_calls(&patched_code(&apk, OWNER, "copied"), &[6]),
+        (vec![vec![98], vec![7]], None)
     );
 }
 
