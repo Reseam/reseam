@@ -50,7 +50,7 @@ val adBlockerRuntime = patch {
     compatibleWith(EXAMPLE_APP)
 
     execute {
-        appEntry.before { call(AdBlocker.init, thisObject) }
+        appEntry { call(AdBlocker.init, application) }
     }
 }
 
@@ -135,7 +135,7 @@ val appSettings = settingsHost("example") {
     compatibleWith(EXAMPLE_APP)
 
     install {
-        appEntry.before { call(SettingsEntry.init, thisObject) }
+        appEntry { call(SettingsEntry.init, application) }
         manifest.addActivity("app.example.ext.settings.ReseamSettingsActivity") {
             this["android:label"] = "Reseam Settings"
         }

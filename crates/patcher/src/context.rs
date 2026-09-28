@@ -4,6 +4,7 @@
 //! What a patch sees while it runs: the APK session plus the run's log,
 //! options, and decode caches.
 
+mod app_entry;
 mod dex;
 mod extensions;
 mod files;

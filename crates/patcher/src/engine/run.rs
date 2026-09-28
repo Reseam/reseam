@@ -13,8 +13,9 @@ use crate::log::LogEntry;
 use crate::patch::Patch;
 
 /// Runs the selected patches in dependency order, then every applied patch's
-/// `after_dependents` hook. A patch that fails or panics does not stop the
-/// run; patches depending on it are skipped.
+/// `after_dependents` hook, then binds the app entry hook to the final
+/// manifest. A patch that fails or panics does not stop the run; patches
+/// depending on it are skipped.
 pub fn apply_patches(
     ctx: &mut PatchContext,
     patches: &[&dyn Patch],
@@ -73,6 +74,7 @@ pub fn apply_patches(
         }
     }
 
+    ctx.bind_app_entry()?;
     info!("patch application finished");
     Ok(run.into_results())
 }

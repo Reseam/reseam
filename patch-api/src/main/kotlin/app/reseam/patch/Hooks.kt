@@ -12,6 +12,7 @@ import app.reseam.patch.dex.descriptor
 import app.reseam.patch.dex.methodRef
 import app.reseam.patch.dex.opcode
 import app.reseam.patch.dex.rangeVariant
+import app.reseam.patch.native.appEntryHook
 
 /** Runs `block` when the method is entered. */
 fun MethodTarget.before(block: CodeScope.() -> Unit) = method.insertCode(method.edits?.entry(method) ?: 0, emptyList(), block)
@@ -41,6 +42,27 @@ fun MethodTarget.after(block: CodeScope.() -> Unit) {
             }
         })
     }
+}
+
+/** Code [appEntry] adds: a [CodeScope] with the app's `Application` as [application]. */
+interface AppEntryScope : CodeScope {
+    val application: ValueRef
+}
+
+/**
+ * Runs `block` once at process start, first in `onCreate()` of the app's `Application`.
+ * The engine binds it to the class the manifest names after every patch has run, so a
+ * patch that swaps that class does not strand it. Fails when the manifest names none.
+ */
+fun appEntry(block: AppEntryScope.() -> Unit) {
+    val hook = Method(appEntryHook())
+    hook.insertCode(hook.edits?.entry(hook) ?: 0, emptyList(), { AppEntryCode(this).block() })
+}
+
+private class AppEntryCode(code: CodeScope) : AppEntryScope, CodeScope by code {
+    override val application: ValueRef = code.param(0)
+    override val thisObject: ValueRef
+        get() = error("appEntry code runs in a static hook; use application")
 }
 
 /** Replaces the method body with `block`. */

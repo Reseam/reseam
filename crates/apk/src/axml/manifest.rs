@@ -35,6 +35,12 @@ impl AxmlDocument {
             .and_then(|attr| self.attribute_string(attr))
     }
 
+    /// `<application android:name>` as written, possibly relative to the package.
+    pub fn application_name(&self) -> Option<Cow<'_, str>> {
+        self.attribute(self.find_element("application")?, ATTR_NAME)
+            .and_then(|attr| self.attribute_string(attr))
+    }
+
     pub fn min_sdk_version(&self) -> Option<u32> {
         let uses_sdk = self.find_element("uses-sdk")?;
         self.attribute(uses_sdk, ATTR_MIN_SDK_VERSION)?

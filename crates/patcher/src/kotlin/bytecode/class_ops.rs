@@ -95,37 +95,16 @@ pub fn definal_class(c: u32) {
     });
 }
 
-/// Superclasses nearest first. A base class often sits in another DEX of a
-/// multi-dex app, so the walk resolves each superclass by descriptor across
-/// the whole app and stops where the app stops defining them.
+/// Superclasses nearest first; see `PatchContext::superclass_chain`.
 #[export]
 pub fn superclass_chain(c: u32) -> Vec<u32> {
     let Some(location) = class_location(c) else {
         return Vec::new();
     };
-    with_ctx(|ctx| {
-        let mut chain: Vec<ClassLocation> = Vec::new();
-        let mut current = location;
-        while let Some(superclass) = ctx.dex_file(current.dex_idx).and_then(|dex| {
-            let header = dex.class_header(current.class_idx);
-            header
-                .superclass
-                .map(|ty| dex.type_descriptor(ty).into_owned())
-        }) {
-            let Some(next) = ctx.find_class(&superclass) else {
-                break;
-            };
-            if next == location || chain.contains(&next) {
-                break;
-            }
-            chain.push(next);
-            current = next;
-        }
-        chain
-    })
-    .into_iter()
-    .map(alloc_class)
-    .collect()
+    with_ctx(|ctx| ctx.superclass_chain(location))
+        .into_iter()
+        .map(alloc_class)
+        .collect()
 }
 
 /// Adds a method; static, constructor and private methods are direct, the

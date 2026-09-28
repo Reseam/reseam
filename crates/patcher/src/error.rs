@@ -68,6 +68,9 @@ pub enum PatcherError {
     #[error("missing required option: {patch}.{key}")]
     MissingRequiredOption { patch: String, key: String },
 
+    #[error("app entry: {0}")]
+    AppEntry(String),
+
     #[error("DEX error: {0}")]
     Dex(#[from] reseam_apk::reseam_dex::DexError),
 

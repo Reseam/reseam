@@ -1597,11 +1597,88 @@ fn loaded_test_bundle() -> reseam_patcher::bundle::PatchBundle {
         .unwrap()
 }
 
+/// A public class `descriptor` extending `superclass`, declaring `onCreate()V` with `flags` when given.
+fn application_class(
+    dex: &mut DexFile,
+    descriptor: &str,
+    superclass: &str,
+    on_create: Option<reseam_apk::reseam_dex::AccessFlags>,
+) {
+    use reseam_apk::reseam_dex::{AccessFlags, CodeItem, EncodedMethod, Instruction, RegList};
+
+    let class = dex
+        .create_class(descriptor, AccessFlags::PUBLIC, Some(superclass))
+        .unwrap();
+    let Some(access_flags) = on_create else {
+        return;
+    };
+    let method = dex.intern_method(descriptor, "onCreate", "()V").unwrap();
+    let inherited = dex.intern_method(superclass, "onCreate", "()V").unwrap();
+    dex.class_mut(class)
+        .unwrap()
+        .add_virtual_method(EncodedMethod {
+            method,
+            access_flags,
+            code: Some(CodeItem {
+                registers_size: 3,
+                ins_size: 1,
+                outs_size: 1,
+                debug_info: None,
+                instructions: vec![
+                    Instruction::InvokeSuper {
+                        method: inherited,
+                        args: RegList::from(&[2][..]),
+                    },
+                    Instruction::ReturnVoid,
+                ],
+                tries: vec![],
+                catch_handlers: vec![],
+            }),
+        });
+}
+
+/// `Lowner;->name` for every method `owner.name` invokes, in order.
+fn invoked_by(dex: &DexFile, owner: &str, name: &str) -> Vec<String> {
+    let mut dex = dex.clone();
+    dex.resolve_all_class_data().unwrap();
+    let class = dex
+        .resident_class(dex.find_class_index(owner).expect(owner))
+        .unwrap();
+    let data = class.class_data.as_ref().unwrap();
+    let method = data
+        .direct_methods
+        .iter()
+        .chain(data.virtual_methods.iter())
+        .find(|method| dex.string(dex.method_id(method.method).name) == name)
+        .unwrap_or_else(|| panic!("{owner} declares no {name}"));
+    method
+        .code
+        .as_ref()
+        .unwrap()
+        .instructions
+        .iter()
+        .filter_map(|insn| insn.method_ref())
+        .map(|idx| {
+            let id = dex.method_id(idx);
+            format!("{}->{}", dex.type_descriptor(id.class), dex.string(id.name))
+        })
+        .collect()
+}
+
+fn written_dex(apk: &ApkFile, index: usize) -> DexFile {
+    use reseam_apk::reseam_dex as dex;
+    dex::parse(
+        &dex::write(apk.dex().dex(index).unwrap()).unwrap(),
+        ParseOptions::default(),
+    )
+    .unwrap()
+}
+
+const APP_ENTRY_HOOK: &str = "Lapp/reseam/AppEntry;->onCreate";
+
 #[test]
 fn app_entry_unseals_the_final_on_create_it_overrides() {
-    use reseam_apk::reseam_dex::{
-        self as dex, AccessFlags, CodeItem, DexFile, EncodedMethod, Instruction::ReturnVoid,
-    };
+    use reseam_apk::reseam_dex::AccessFlags;
 
     const BASE: &str = "Lcom/example/AppBase;";
     const APP: &str = "Lcom/example/App;";
@@ -1609,31 +1686,14 @@ fn app_entry_unseals_the_final_on_create_it_overrides() {
     // The base class sits in its own DEX. A superclass walk that stopped at the file boundary
     // would miss the final onCreate and emit an app ART refuses to load.
     let mut base_dex = DexFile::new(empty_dex_header(DexVersion::V035));
-    let base_class = base_dex
-        .create_class(BASE, AccessFlags::PUBLIC, Some("Landroid/app/Application;"))
-        .unwrap();
-    let on_create = base_dex.intern_method(BASE, "onCreate", "()V").unwrap();
-    base_dex
-        .class_mut(base_class)
-        .unwrap()
-        .add_virtual_method(EncodedMethod {
-            method: on_create,
-            access_flags: AccessFlags::PUBLIC | AccessFlags::FINAL,
-            code: Some(CodeItem {
-                registers_size: 1,
-                ins_size: 1,
-                outs_size: 0,
-                debug_info: None,
-                instructions: vec![ReturnVoid],
-                tries: vec![],
-                catch_handlers: vec![],
-            }),
-        });
-
+    application_class(
+        &mut base_dex,
+        BASE,
+        "Landroid/app/Application;",
+        Some(AccessFlags::PUBLIC | AccessFlags::FINAL),
+    );
     let mut app_dex = DexFile::new(empty_dex_header(DexVersion::V035));
-    app_dex
-        .create_class(APP, AccessFlags::PUBLIC, Some(BASE))
-        .unwrap();
+    application_class(&mut app_dex, APP, BASE, None);
 
     let (_apk_dir, mut apk) = open_split_test_apk_with(
         manifest_with_application("com.example.App"),
@@ -1649,37 +1709,91 @@ fn app_entry_unseals_the_final_on_create_it_overrides() {
     );
 
     assert_eq!(
-        apk.component_mut(0)
-            .unwrap()
-            .read_entry("assets/app-entry.txt")
-            .unwrap(),
-        Some(APP.as_bytes().to_vec()),
-        "the entry point must stay on the class the manifest names"
+        invoked_by(&written_dex(&apk, 1), APP, "onCreate"),
+        [APP_ENTRY_HOOK, "Lcom/example/AppBase;->onCreate"],
+        "the added onCreate must call the hook, then the inherited onCreate"
     );
-
-    let written = dex::parse(
-        &dex::write(apk.dex().dex(1).unwrap()).unwrap(),
-        ParseOptions::default(),
-    )
-    .unwrap();
-    assert!(
-        method_flags(&written, APP, "onCreate").is_some(),
-        "appEntry added no onCreate to {APP}"
+    assert_eq!(
+        invoked_by(&written_dex(&apk, 0), "Lapp/reseam/AppEntry;", "onCreate"),
+        ["Lcom/example/Observer;->started"]
     );
-    let base = dex::parse(
-        &dex::write(apk.dex().dex(0).unwrap()).unwrap(),
-        ParseOptions::default(),
-    )
-    .unwrap();
     assert!(
-        !method_flags(&base, BASE, "onCreate")
+        !method_flags(&written_dex(&apk, 0), BASE, "onCreate")
             .expect("base onCreate")
             .contains(AccessFlags::FINAL),
         "the inherited onCreate is still final, so the override is a LinkageError"
     );
 }
 
-/// The access flags of the named method, whichever list it is declared in.
+#[test]
+fn app_entry_follows_an_application_swapped_after_the_hook_was_added() {
+    use reseam_apk::reseam_dex::AccessFlags;
+
+    const REAL: &str = "Lcom/example/RealApp;";
+    const WRAPPER: &str = "Lcom/example/WrapperApp;";
+
+    let mut dex = DexFile::new(empty_dex_header(DexVersion::V035));
+    application_class(
+        &mut dex,
+        REAL,
+        "Landroid/app/Application;",
+        Some(AccessFlags::PUBLIC),
+    );
+    application_class(&mut dex, WRAPPER, REAL, None);
+    let (_apk_dir, mut apk) = open_split_test_apk_with(
+        manifest_with_application("com.example.WrapperApp"),
+        &[dex],
+    );
+    let bundle = loaded_test_bundle();
+    let patches: Vec<&dyn Patch> = bundle.patches.iter().map(Box::as_ref).collect();
+    run_one_patch(
+        &mut PatchContext::new(&mut apk),
+        &patches,
+        "unwrap-application",
+        "unwrapApplication",
+    );
+
+    let written = written_dex(&apk, 0);
+    assert_eq!(
+        invoked_by(&written, REAL, "onCreate"),
+        [APP_ENTRY_HOOK, "Landroid/app/Application;->onCreate"],
+        "the hook must run from the Application the final manifest names"
+    );
+    assert!(
+        method_flags(&written, WRAPPER, "onCreate").is_none(),
+        "the wrapper the app no longer starts must not receive the hook"
+    );
+}
+
+#[test]
+fn app_entry_fails_the_patch_when_the_manifest_names_no_application() {
+    let (_apk_dir, mut apk) = open_split_test_apk_with(
+        manifest_bytes("1.0-base", None),
+        &[DexFile::new(empty_dex_header(DexVersion::V035))],
+    );
+    let bundle = loaded_test_bundle();
+    let patches: Vec<&dyn Patch> = bundle.patches.iter().map(Box::as_ref).collect();
+    let results = engine::apply_patches(
+        &mut PatchContext::new(&mut apk),
+        &patches,
+        &PatchSelection {
+            enable: ["app-entry-hook".to_string()].into(),
+            ..Default::default()
+        },
+        |_| {},
+    )
+    .unwrap();
+    let status = &results
+        .iter()
+        .find(|result| result.patch.ends_with(".appEntryHook"))
+        .unwrap()
+        .status;
+    assert!(
+        matches!(status, PatchStatus::Failed { reason } if reason.contains("names no <application android:name>")),
+        "{status:?}"
+    );
+}
+
 fn method_flags(
     dex: &reseam_apk::reseam_dex::DexFile,
     owner: &str,

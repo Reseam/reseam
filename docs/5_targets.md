@@ -115,7 +115,7 @@ Incoming parameters, unreachable values, cyclic copies, and unsupported control 
 
 ## Custom targets
 
-`appEntry` is `onCreate()` of the manifest's `Application` class, added if missing. An added override clears `final` on the inherited declaration; a static inherited method fails the patch. `methodTarget`, `classTarget`, and `fieldTarget` take a block with the runtime as receiver for lookups no query expresses:
+`methodTarget`, `classTarget`, and `fieldTarget` take a block with the runtime as receiver for lookups no query expresses:
 
 ```kotlin
 val adStateClass = classTarget("adStateClass") {

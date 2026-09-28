@@ -65,7 +65,6 @@ Each result carries `patch` (the reference), `hidden`, and `required_by`, so a c
 | `methodTarget(debugName) { PatchRuntime.() -> Method }` | A method resolved by hand. |
 | `classTarget(debugName) { PatchRuntime.() -> DexClass }` | A class resolved by hand. |
 | `fieldTarget(debugName) { PatchRuntime.() -> FieldRef }` | A field resolved by hand. |
-| `appEntry` | `onCreate()` of the manifest's `Application` class, added if missing. Clears `final` on the inherited `onCreate` an added override would collide with; fails when that method is static. |
 | `Target.explain()` | The `MatchReport`: `name`, `winner`, `considered`, `reasons`, `nearMisses`. |
 
 `debugName` is a diagnostic label, not a matching constraint. Targets resolve on first use in an active runtime and cache their result for that runtime.
@@ -125,6 +124,7 @@ Both queries search the app's own code. A class an [extension](9_extensions.md) 
 | `MethodTarget.before { CodeScope }` | Emit at entry. |
 | `MethodTarget.after { CodeScope }` | Emit before every return; `capture("result")` is the return value. Referenced parameters and receiver are saved at entry in dedicated locals. |
 | `MethodTarget.replace { CodeScope }` | Replace the body. |
+| `appEntry { AppEntryScope }` | Emit into code that runs once at process start, first in `onCreate()` of the `Application` the final manifest names. `AppEntryScope` is a `CodeScope` whose `application` is the `Application`; it has no `thisObject`. Fails when the manifest names no `Application`. |
 | `PointTarget.before { }`, `.after { }` | Emit around the instruction. Repeated emissions at one point stack in emission order. `after` fails on a return, `throw` or `goto`, since nothing after it runs. |
 | `MethodTarget.reserveLocal(name, type)` | A `MethodLocal`, zeroed at entry and read in blocks of the same method as `local(slot)`. Reserves both words for a wide type; body replacement invalidates it. |
 | `MethodTarget.alwaysReturn()`, `(Boolean)`, `(Int)`, `(Long)`, `(String)`, `alwaysReturnNull()` | Replace the body with a constant return. |

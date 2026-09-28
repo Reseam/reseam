@@ -202,11 +202,26 @@ val universalMarker = patch("universal-marker") {
 }
 
 val appEntryHook = patch("app-entry-hook") {
-    description("Resolves appEntry on an Application inheriting a final onCreate from another DEX")
+    description("Hands the Application to com.example.Observer at app start")
     compatibleWith("com.example.test")
     enabledByDefault(false)
 
-    execute { files.write("assets/app-entry.txt", appEntry.owner.encodeToByteArray()) }
+    execute { appEntry { callStatic("com.example.Observer", "started", "(Landroid/app/Application;)V", application) } }
+}
+
+val unwrapApplication = patch("unwrap-application") {
+    description("Names the wrapper Application's superclass in the manifest after appEntry code was added")
+    compatibleWith("com.example.test")
+    enabledByDefault(false)
+    dependsOn(appEntryHook)
+
+    execute {
+        manifest.edit {
+            val application = findByTag("application").single()
+            application["android:name"] = bytecode.findClass(application["android:name"]!!)!!.superclass!!
+                .removePrefix("L").removeSuffix(";").replace('/', '.')
+        }
+    }
 }
 
 private val appVideoState = klass("appVideoState") { strings("NEW", "PLAYING") }

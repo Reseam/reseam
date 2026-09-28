@@ -60,8 +60,8 @@
 		<text class="caption" x="20" y="26">Patch code</text>
 		<rect class="inner" x="16" y="40" width="328" height="64" rx="8" />
 		<text class="mono" x="28" y="62">object AdBlocker : ExtClass(...) { }</text>
-		<text class="mono" x="28" y="80">appEntry.before {</text>
-		<text class="mono" x="44" y="96">call(AdBlocker.init, thisObject)</text>
+		<text class="mono" x="28" y="80">appEntry {</text>
+		<text class="mono" x="44" y="96">call(AdBlocker.init, application)</text>
 	</g>
 	<line class="link-accent" x1="402" y1="324" x2="456" y2="324" marker-end="url(#arrow-accent)" />
 	<g transform="translate(460,264)">

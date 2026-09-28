@@ -9,9 +9,9 @@ use std::collections::HashMap;
 use std::hash::Hash;
 
 use reseam_apk::reseam_dex::{
-    DexFile, EncodedField, EncodedMethod, FieldIdx, Fingerprint, FingerprintHit,
-    InstructionPattern, InstructionSite, MemberCounts, MethodHit, MethodIdx, MethodSummary,
-    MultiDexContainer, RefKey, RefQuery, StringIdx, TypeIdx, summarize_resident,
+    summarize_resident, DexFile, EncodedField, EncodedMethod, FieldIdx, Fingerprint,
+    FingerprintHit, InstructionPattern, InstructionSite, MemberCounts, MethodHit, MethodIdx,
+    MethodSummary, MultiDexContainer, RefKey, RefQuery, StringIdx, TypeIdx,
 };
 use tracing::{debug, warn};
 
@@ -133,6 +133,30 @@ impl<'a> PatchContext<'a> {
                 .find_class_index(descriptor)
                 .map(|class_idx| ClassLocation { dex_idx, class_idx }))
         })
+    }
+
+    /// Superclasses nearest first. A base class often sits in another DEX of a
+    /// multi-dex app, so the walk resolves each superclass by descriptor across
+    /// the whole app and stops where the app stops defining them.
+    pub fn superclass_chain(&self, class: ClassLocation) -> Vec<ClassLocation> {
+        let mut chain: Vec<ClassLocation> = Vec::new();
+        let mut current = class;
+        while let Some(superclass) = self.dex_file(current.dex_idx).and_then(|dex| {
+            let header = dex.class_header(current.class_idx);
+            header
+                .superclass
+                .map(|ty| dex.type_descriptor(ty).into_owned())
+        }) {
+            let Some(next) = self.find_class(&superclass) else {
+                break;
+            };
+            if next == class || chain.contains(&next) {
+                break;
+            }
+            chain.push(next);
+            current = next;
+        }
+        chain
     }
 
     /// Locates a method by class and name without materializing the class:

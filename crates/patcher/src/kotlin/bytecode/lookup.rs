@@ -23,6 +23,14 @@ pub fn find_method(class_descriptor: String, method_name: String) -> Option<u32>
     .map(alloc_method)
 }
 
+/// The static hook that runs at app start; see `PatchContext::app_entry_hook`.
+#[export]
+pub fn app_entry_hook() -> Result<u32, String> {
+    with_ctx(|ctx| ctx.app_entry_hook())
+        .map(alloc_method)
+        .map_err(|e| e.to_string())
+}
+
 #[export]
 pub fn find_method_by_name(name: String) -> Option<u32> {
     with_ctx(|ctx| ctx.find_method_by_name(&name)).map(alloc_method)

@@ -60,10 +60,20 @@ isPremiumUser.before(AppSettings.unlockFeatures) {
 
 ## Calling your own code
 
-`call(AdBlocker.init, thisObject)` calls a method of an [extension](9_extensions.md); the first reference links its DEX into the app. Static methods are `call(ext, args)`, instance methods `receiver.call(ext, args)`. `ext.implement { }` replaces the extension method's body with emitted code, usually from a [binding](8_bindings.md). A missing extension method or an argument count that disagrees with its proto fails the patch.
+`call(AdBlocker.init, application)` calls a method of an [extension](9_extensions.md); the first reference links its DEX into the app. Static methods are `call(ext, args)`, instance methods `receiver.call(ext, args)`. `ext.implement { }` replaces the extension method's body with emitted code, usually from a [binding](8_bindings.md). A missing extension method or an argument count that disagrees with its proto fails the patch.
 
 > [!WARNING]
 > An `ExtClass` declaration must match the Java method, including its parameter and return types. Calls are checked against the linked extension DEX; a mismatched declaration fails the patch.
+
+## Code at app start
+
+`appEntry { }` adds code that runs once when the process starts, before any activity. `application` is the app's `Application`:
+
+```kotlin
+appEntry { call(AdBlocker.init, application) }
+```
+
+The engine collects every patch's `appEntry` code in one static method and calls it first in `onCreate()` of the `Application` the manifest names once all patches have run. A patch that changes `<application android:name>` therefore needs no ordering against the patches that use `appEntry`. When that class does not override `onCreate()`, the engine adds an override that calls the inherited one, and clears `final` on the inherited method. A patch using `appEntry` fails when the manifest names no `Application`. The run fails when a later patch leaves the manifest without one, or when the inherited `onCreate()` is static.
 
 ## Points
 
