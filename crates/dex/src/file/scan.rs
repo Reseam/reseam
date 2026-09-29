@@ -15,7 +15,7 @@ use std::ops::ControlFlow;
 use rayon::prelude::*;
 
 use super::pattern::{find_pattern_span, InstructionPattern};
-use super::ref_filter::RefFilter;
+use super::ref_filter::{ClassFilter, RefFilter};
 use super::{DexFile, RefKey, RefQuery};
 use crate::encoding::leb128::read_uleb128_with_opts;
 use crate::error::Result;
@@ -297,8 +297,8 @@ impl DexFile {
         }
         match self.raw_class_data_offset(class_idx) {
             Some(offset) => {
-                let masks = filter.map(|f| f.class(class_idx));
-                self.scan_raw_class(class_idx, class_type, offset, masks, query, visit)
+                let filter = filter.map(|f| f.class(class_idx));
+                self.scan_raw_class(class_idx, class_type, offset, filter, query, visit)
             }
             None => Ok(ControlFlow::Continue(())),
         }
@@ -309,11 +309,11 @@ impl DexFile {
         class_idx: usize,
         class_type: TypeIdx,
         offset: u32,
-        masks: Option<&[u64]>,
+        filter: Option<ClassFilter<'_>>,
         query: &RefQuery,
         visit: &mut impl FnMut(&MethodView<'_>) -> Result<ControlFlow<T>>,
     ) -> Result<ControlFlow<T>> {
-        if masks.is_some_and(|masks| !masks.iter().any(|&m| query.admits(m))) {
+        if filter.as_ref().is_some_and(|f| !f.admits_any(query)) {
             return Ok(ControlFlow::Continue(()));
         }
         let buf = self.raw_bytes(offset)?;
@@ -354,7 +354,10 @@ impl DexFile {
                 let (code_off, n) = read_uleb128_with_opts(buf, pos, opts)?;
                 pos += n;
 
-                if masks.is_some_and(|masks| !query.admits(masks[slot_base + method_pos])) {
+                if filter
+                    .as_ref()
+                    .is_some_and(|f| !query.admits(f.method(slot_base + method_pos)))
+                {
                     continue;
                 }
                 let code = if code_off != 0 {
