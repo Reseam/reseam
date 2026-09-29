@@ -18,7 +18,7 @@ use crate::signing_block::{self, ApkSections, BLOCK_ID_V2};
 #[instrument(level = "info", skip_all, fields(apk_size = apk.len()))]
 pub fn sign(apk: &[u8], key: &SigningKey) -> Result<Vec<u8>> {
     let sections = signing_block::split_apk(apk)?;
-    let tail = signed_tail(&sections, key)?;
+    let tail = signed_tail(&sections, digest::chunk_digests(sections.contents), key)?;
     let mut output = Vec::with_capacity(sections.contents.len() + tail.len());
     output.extend_from_slice(sections.contents);
     output.extend_from_slice(&tail);
@@ -26,7 +26,8 @@ pub fn sign(apk: &[u8], key: &SigningKey) -> Result<Vec<u8>> {
 }
 
 /// Signs an unsigned APK where it is: the contents stay untouched and only the
-/// bytes after them are rewritten, so a large APK is never copied.
+/// bytes after them are rewritten, so a large APK is never copied or held
+/// resident.
 #[instrument(level = "info", skip_all)]
 pub fn sign_file_in_place(file: &File, key: &SigningKey) -> Result<()> {
     // SAFETY: callers pass an unlinked temp file only this process holds, so
@@ -34,7 +35,8 @@ pub fn sign_file_in_place(file: &File, key: &SigningKey) -> Result<()> {
     let mapped = unsafe { memmap2::Mmap::map(file) }?;
     let sections = signing_block::split_apk(&mapped)?;
     let contents_len = sections.contents.len() as u64;
-    let tail = signed_tail(&sections, key)?;
+    let chunks = digest::file_chunk_digests(file, contents_len)?;
+    let tail = signed_tail(&sections, chunks, key)?;
     drop(mapped);
     let mut file = file;
     file.seek(SeekFrom::Start(contents_len))?;
@@ -44,11 +46,15 @@ pub fn sign_file_in_place(file: &File, key: &SigningKey) -> Result<()> {
 }
 
 /// Signing block, central directory, and an EOCD pointing past the block.
-fn signed_tail(sections: &ApkSections<'_>, key: &SigningKey) -> Result<Vec<u8>> {
+fn signed_tail(
+    sections: &ApkSections<'_>,
+    contents: Vec<digest::Digest>,
+    key: &SigningKey,
+) -> Result<Vec<u8>> {
     let block_len = signing_block::signing_block_len([signer::max_block_len(key), 0]);
     let cd_offset = u32::try_from(sections.contents.len() + block_len)
         .map_err(|_| invalid("apk", "central directory offset exceeds ZIP32 limits"))?;
-    let v2_block = signer::block(&digest::content_digest(sections), key)?;
+    let v2_block = signer::block(&digest::content_digest(sections, contents), key)?;
     let signing_block = signing_block::build_signing_block(&[(BLOCK_ID_V2, v2_block)], block_len)?;
     let eocd = signing_block::patch_cd_offset(sections.eocd, cd_offset);
     let mut tail =
