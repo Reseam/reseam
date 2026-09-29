@@ -111,14 +111,21 @@ pub fn load_patches(
     })
 }
 
-/// Top-level class names in the jars, in `a.b.C` form.
+/// Top-level class names in the jars that can declare patches, in `a.b.C`
+/// form, each once: one loader resolves a name to one class however many jars
+/// carry it. The `kotlin` package is skipped since only the standard library
+/// may declare anything there.
 fn class_names(jars: &[PathBuf]) -> Vec<String> {
-    jars.iter()
+    let names: std::collections::BTreeSet<String> = jars
+        .iter()
         .filter_map(|jar| zip::ZipArchive::new(std::fs::File::open(jar).ok()?).ok())
         .flat_map(|archive| archive.file_names().map(str::to_string).collect::<Vec<_>>())
-        .filter(|name| !name.contains('$') && !name.starts_with("META-INF/"))
+        .filter(|name| {
+            !name.contains('$') && !name.starts_with("META-INF/") && !name.starts_with("kotlin/")
+        })
         .filter_map(|name| Some(name.strip_suffix(".class")?.replace('/', ".")))
-        .collect()
+        .collect();
+    names.into_iter().collect()
 }
 
 #[cfg(not(target_os = "android"))]
