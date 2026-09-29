@@ -23,8 +23,9 @@ The output APK is written into a `tempfile::tempdir()` per iteration and discard
 | `--split <APK>` | Repeatable split APK input. |
 | `--key <PK8>` | PKCS#8 signing key. Requires `--cert`. |
 | `--cert <DER>` | DER X.509 certificate. Requires `--key`. |
-| `--enable <PATCH>` | Repeatable. Force a patch on. |
-| `--disable <PATCH>` | Repeatable. Force a patch off. |
+| `--preset <PRESET>` | `recommended` (default), `all` or `none`. Same as `reseam patch`. |
+| `--enable <PATCH>` | Repeatable. Add a patch to the preset. |
+| `--disable <PATCH>` | Repeatable. Remove a patch from the preset. |
 | `--option PATCH.KEY=VALUE` | Repeatable patch option. |
 | `--dry-run` | Run validation only; skip apply, write, and sign. |
 | `--iterations <N>` | Measured runs. Default `1`. Must be greater than `0`. |

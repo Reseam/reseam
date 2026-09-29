@@ -4,6 +4,7 @@
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
+use reseam_patcher::PatchPreset;
 
 #[derive(Parser)]
 #[command(name = "reseam", version, about = "APK patching engine")]
@@ -47,6 +48,9 @@ pub struct PatchRequestArgs {
     pub key: Option<PathBuf>,
     #[arg(long, requires = "key")]
     pub cert: Option<PathBuf>,
+    /// Patches to start from: recommended, all or none. `--enable` and `--disable` adjust it.
+    #[arg(long, default_value = "recommended")]
+    pub preset: PatchPreset,
     #[arg(long = "enable")]
     pub enable: Vec<String>,
     #[arg(long = "disable")]

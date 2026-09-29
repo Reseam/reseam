@@ -17,7 +17,7 @@ description: Terms used by the CLI, bundles, and the patch engine.
 
 **Signing key (APK)**: the PKCS#8 keypair used to sign the patched APK with Signature Scheme v2. Separate from the bundle signing key. Supplied via `--key` and `--cert`, or generated automatically next to the output.
 
-**Patch selection**: the set of enabled patches and their option values for one patch run. Built from the bundle's defaults and the `--enable`, `--disable`, and `--option` flags.
+**Patch selection**: the set of enabled patches and their option values for one patch run. Built from a preset (`--preset`, recommended by default), adjusted by the `--enable`, `--disable`, and `--option` flags.
 
 **Split APK**: Android's way of distributing a single app as several APKs (base plus config splits for architecture, density, or language). The CLI treats the set as one unit: patches apply across DEX files from every split.
 

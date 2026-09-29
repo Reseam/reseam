@@ -233,7 +233,7 @@ fn guarded(hook: impl FnOnce() -> Result<()>) -> std::result::Result<(), String>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::patch::{Compatibility, CompatiblePackage, PatchSpec};
+    use crate::patch::{Compatibility, CompatiblePackage, PatchPreset, PatchSpec};
 
     struct Declared(PatchSpec);
 
@@ -335,6 +335,7 @@ mod tests {
         );
         let patches: Vec<&dyn Patch> = vec![&official, &fork, &uses];
         let selection = PatchSelection {
+            preset: PatchPreset::None,
             enable: ["uses-pairip".to_owned()].into(),
             ..Default::default()
         };
@@ -424,12 +425,8 @@ mod tests {
         assert_eq!(
             statuses(&PatchSelection::default()),
             vec![
-                PatchStatus::Skipped {
-                    reason: "expected one of [1.0], got 2.0".to_owned()
-                },
-                PatchStatus::Skipped {
-                    reason: "incompatible package: com.example".to_owned()
-                },
+                skipped("expected one of [1.0], got 2.0"),
+                skipped("not selected")
             ]
         );
         assert_eq!(
@@ -437,23 +434,92 @@ mod tests {
                 ignore_versions: true,
                 ..Default::default()
             }),
+            vec![PatchStatus::Applied, skipped("not selected")]
+        );
+    }
+
+    #[test]
+    fn default_selection_is_the_recommended_preset_for_the_package() {
+        let own = declared("own", "com.example", &[]);
+        let other = declared("other", "com.other", &[]);
+        let mut universal = declared("universal", "unused", &[]);
+        universal.0.compatibility = Compatibility::Universal;
+        let mut optional = declared("optional", "com.example", &[]);
+        optional.0.enabled_by_default = false;
+        let patches: Vec<&dyn Patch> = vec![&own, &other, &universal, &optional];
+        let statuses: Vec<PatchStatus> = validate_patches(
+            &patches,
+            &PatchSelection::default(),
+            Some("com.example"),
+            Some("1.0"),
+        )
+        .unwrap()
+        .into_iter()
+        .map(|result| result.status)
+        .collect();
+        assert_eq!(
+            statuses,
             vec![
                 PatchStatus::Applied,
-                PatchStatus::Skipped {
-                    reason: "incompatible package: com.example".to_owned()
-                },
+                skipped("not selected"),
+                skipped("not selected"),
+                skipped("not selected"),
             ]
+        );
+    }
+
+    #[test]
+    fn enable_and_disable_adjust_the_preset() {
+        let own = declared("own", "com.example", &[]);
+        let mut optional = declared("optional", "com.example", &[]);
+        optional.0.enabled_by_default = false;
+        let mut universal = declared("universal", "unused", &[]);
+        universal.0.compatibility = Compatibility::Universal;
+        let patches: Vec<&dyn Patch> = vec![&own, &optional, &universal];
+        let statuses = |selection: PatchSelection| -> Vec<PatchStatus> {
+            validate_patches(&patches, &selection, Some("com.example"), Some("1.0"))
+                .unwrap()
+                .into_iter()
+                .map(|result| result.status)
+                .collect()
+        };
+
+        assert_eq!(
+            statuses(PatchSelection {
+                enable: vec!["universal".to_owned()],
+                ..Default::default()
+            }),
+            vec![
+                PatchStatus::Applied,
+                skipped("not selected"),
+                PatchStatus::Applied
+            ]
+        );
+        assert_eq!(
+            statuses(PatchSelection {
+                preset: PatchPreset::All,
+                disable: vec!["own".to_owned()],
+                ..Default::default()
+            }),
+            vec![
+                skipped("disabled explicitly"),
+                PatchStatus::Applied,
+                skipped("not selected")
+            ]
+        );
+        assert_eq!(
+            statuses(PatchSelection {
+                preset: PatchPreset::None,
+                ..Default::default()
+            }),
+            vec![skipped("not selected"); 3]
         );
     }
 
     #[test]
     fn dependencies_of_incompatible_default_patches_are_not_applied() {
         for (package, version, consumer_reason) in [
-            (
-                "com.example.b",
-                "1.0",
-                "incompatible package: com.example.b",
-            ),
+            ("com.example.b", "1.0", "not selected"),
             ("com.example.a", "2.0", "expected one of [1.0], got 2.0"),
         ] {
             assert_eq!(

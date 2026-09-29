@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::{
-    ContainerFormat, LogEntry, PatchMetrics, PatchResult, PatchSelection, PatchSpec, PatchStatus,
-    Problem, ProgressEvent, Trust,
+    ContainerFormat, LogEntry, PatchMetrics, PatchPreset, PatchResult, PatchSelection, PatchSpec,
+    PatchStatus, Problem, ProgressEvent, Trust,
 };
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -51,6 +51,9 @@ pub struct PatchMetadata {
     pub spec: PatchSpec,
     #[boltffi::default(None)]
     pub incompatibility: Option<String>,
+    /// The presets that select this patch for the inspected APK.
+    #[serde(default)]
+    pub presets: Vec<PatchPreset>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

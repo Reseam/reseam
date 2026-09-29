@@ -24,7 +24,7 @@ pub use metrics::{
     PatchPhase, PatchPhaseMetrics,
 };
 pub use options::{OptionDeclaration, OptionType, OptionValue};
-pub use patch::{is_slug, Compatibility, CompatiblePackage, PatchSpec};
+pub use patch::{is_slug, Compatibility, CompatiblePackage, PatchPreset, PatchSpec};
 pub use request::{PatchSelection, Trust};
 pub use sdk::{
     ApkMetadata, BundleMetadata, InspectRequest, InspectResponse, PatchArtifact, PatchMetadata,

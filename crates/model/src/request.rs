@@ -1,15 +1,17 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::OptionValue;
+use crate::{OptionValue, PatchPreset};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-/// What the caller asked for: an empty `enable` set means every patch that
-/// is enabled by default.
+/// What the caller asked for: the patches `preset` selects for the APK's
+/// package, plus `enable`, minus `disable`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 #[boltffi::data]
 pub struct PatchSelection {
+    #[boltffi::default(PatchPreset::Recommended)]
+    pub preset: PatchPreset,
     pub enable: Vec<String>,
     pub disable: Vec<String>,
     pub options: HashMap<String, HashMap<String, OptionValue>>,

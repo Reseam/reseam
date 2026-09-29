@@ -7,7 +7,7 @@ use anyhow::{ensure, Context, Result};
 use reseam_apk::reseam_dex::ParseOptions;
 use reseam_apk::{ApkFile, ContainerBundle};
 use reseam_patcher::bundle::{BundleArchive, PatchBundle};
-use reseam_patcher::PatchSpec;
+use reseam_patcher::{PatchPreset, PatchSpec};
 
 use crate::error::Problem;
 use crate::trust::TrustStore;
@@ -195,12 +195,15 @@ fn bundle_metadata(path: &Path, archive: &BundleArchive, trust: &TrustStore) -> 
 }
 
 fn patch_metadata(spec: &PatchSpec, apk: Option<&ApkMetadata>) -> PatchMetadata {
+    let package = apk.and_then(|apk| apk.package_name.as_deref());
     PatchMetadata {
         spec: spec.clone(),
-        incompatibility: spec.incompatibility(
-            apk.and_then(|apk| apk.package_name.as_deref()),
-            apk.and_then(|apk| apk.version_name.as_deref()),
-        ),
+        incompatibility: spec
+            .incompatibility(package, apk.and_then(|apk| apk.version_name.as_deref())),
+        presets: [PatchPreset::Recommended, PatchPreset::All]
+            .into_iter()
+            .filter(|&preset| spec.in_preset(preset, package))
+            .collect(),
     }
 }
 

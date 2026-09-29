@@ -11,7 +11,7 @@ pub mod log;
 pub mod options;
 pub mod patch;
 
-pub use crate::patch::{is_slug, Compatibility, CompatiblePackage, Patch, PatchSpec};
+pub use crate::patch::{is_slug, Compatibility, CompatiblePackage, Patch, PatchPreset, PatchSpec};
 pub use reseam_apk;
 pub use reseam_apk::reseam_dex;
 

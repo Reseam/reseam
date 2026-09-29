@@ -51,13 +51,11 @@ impl ResolvedPlan {
             .iter()
             .map(|missing| missing.as_ref().map(MissingDependency::skip_reason))
             .collect();
-        let roots: Vec<usize> = if selection.enable.is_empty() {
-            (0..patches.len())
-                .filter(|&i| patches[i].spec().enabled_by_default)
-                .collect()
-        } else {
-            enabled.iter().copied().collect()
-        };
+        let roots: Vec<usize> = (0..patches.len())
+            .filter(|&i| {
+                enabled.contains(&i) || patches[i].spec().in_preset(selection.preset, package)
+            })
+            .collect();
         let mut selected = vec![false; patches.len()];
         for &idx in &roots {
             selected[idx] = true;

@@ -18,7 +18,7 @@ reseam patch target.apk \
   --output patched.apk
 ```
 
-For split APKs, pass each extra split with `--split`, or pass an APKM or XAPK file. Toggle patches with `--enable <name>` and `--disable <name>`; pass options with `--option <patch>.<key>=<value>`. `--dry-run` resolves the bundle without writing an APK.
+For split APKs, pass each extra split with `--split`, or pass an APKM or XAPK file. The recommended patches for the app are selected by default; `--preset all` or `--preset none` changes the starting point, and `--enable <name>` and `--disable <name>` adjust it; pass options with `--option <patch>.<key>=<value>`. `--dry-run` resolves the bundle without writing an APK.
 
 `bundle list` shows user-facing patches. Internal patches are counted, not listed.
 

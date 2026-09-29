@@ -19,7 +19,7 @@ pub use reseam_model::{
     ApkMetadata, BundleMetadata, InspectRequest, InspectResponse, PatchArtifact, PatchMetadata,
     PatchOutcome, PatchOutput, PatchRequest, RunEvent, SigningKeyFiles,
 };
-pub use reseam_model::{OptionValue, PatchSelection, Trust};
+pub use reseam_model::{OptionValue, PatchPreset, PatchSelection, Trust};
 
 pub use metrics::{
     trace_heap_growth, ApplyDiagnostics, CountingAllocator, PatchMetrics, PatchPhase,

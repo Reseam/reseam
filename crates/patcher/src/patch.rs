@@ -20,4 +20,4 @@ pub trait Patch: Send + Sync {
     }
 }
 
-pub use reseam_model::{is_slug, Compatibility, CompatiblePackage, PatchSpec};
+pub use reseam_model::{is_slug, Compatibility, CompatiblePackage, PatchPreset, PatchSpec};
