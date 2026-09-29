@@ -11,6 +11,7 @@ use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use rayon::prelude::*;
 use serde::Deserialize;
 use tracing::instrument;
 
@@ -87,7 +88,7 @@ impl ContainerBundle {
         }
         let scratch = ScratchDir::new("apk-container")?;
         let (base_entry, split_entries, package) =
-            classify(&mut archive, metadata.as_ref(), &apk_entries, &scratch)?;
+            classify(&archive, metadata.as_ref(), &apk_entries, &scratch)?;
         let base_path = scratch.path().join(&base_entry);
         let split_paths = split_entries
             .iter()
@@ -168,7 +169,7 @@ fn read_metadata(archive: &mut Archive, name: &str) -> Result<Option<ContainerMe
 /// Every APK is classified by its own manifest. Container metadata can
 /// confirm that classification, but cannot override it.
 fn classify(
-    archive: &mut Archive,
+    archive: &Archive,
     metadata: Option<&ContainerMetadata>,
     entries: &[String],
     scratch: &ScratchDir,
@@ -177,8 +178,13 @@ fn classify(
     let mut base = None;
     let mut splits = Vec::new();
     let mut split_names = HashSet::new();
-    for entry in entries {
-        let path = extract_entry(archive, entry, scratch.path())?;
+    let paths: Vec<PathBuf> = entries
+        .par_iter()
+        .map_with(archive.clone(), |archive, entry| {
+            extract_entry(archive, entry, scratch.path())
+        })
+        .collect::<Result<_>>()?;
+    for (entry, path) in entries.iter().zip(paths) {
         let manifest = manifest_of(path, entry)?;
         if let Some(name) = manifest.split_name() {
             if name.is_empty() || !split_names.insert(name.into_owned()) {
