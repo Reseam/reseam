@@ -9,6 +9,7 @@ mod dex;
 mod extensions;
 mod files;
 
+pub use dex::MethodRefQuery;
 pub use extensions::ExtensionSet;
 
 use reseam_apk::reseam_dex::{ClassSkeleton, CodeItem, DexFile, EncodedMethod};

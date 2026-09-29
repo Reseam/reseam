@@ -519,7 +519,7 @@ internal class SearchIndex(private val runtime: PatchRuntime) {
         matchingCalls[spec]?.contains(method.handle) ?: methodRefsOf(method).any(spec::matches)
 
     fun methodsCalling(spec: MethodRefMatchSpec): Set<UInt> = matchingCalls.getOrPut(spec) {
-        findCallsMatching(spec.owner, spec.name, spec.returnType, spec.parameters)
+        findCallsMatching(spec.owner, spec.name, spec.returnType, spec.parameters, spec.requiredParameters, spec.parameterCount?.toUInt())
             .filter { hit -> !spec.needsPostFilter || Method(hit.method).methodRef(hit.index.toInt())?.let(spec::matches) == true }
             .mapTo(linkedSetOf()) { it.method }
     }
@@ -650,7 +650,7 @@ internal class SearchIndex(private val runtime: PatchRuntime) {
     private fun invokeSitesFor(signature: MethodSignature): List<Pair<UInt, Int>> =
         invokeSites.getOrPut(signature) {
             val ref = MethodRef(signature.owner, signature.name, signature.proto)
-            findCallsMatching(ref.definingClass, ref.name, ref.returnType, ref.parameterTypes)
+            findCallsMatching(ref.definingClass, ref.name, ref.returnType, ref.parameterTypes, emptyList(), null)
                 .map { it.method to it.index.toInt() }
         }
 

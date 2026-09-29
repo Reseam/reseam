@@ -382,13 +382,15 @@ impl<'a> PatchContext<'a> {
 
     /// Match referenced method IDs before scanning their indexed call sites. Platform
     /// references are included even when their declaring class is not in the APK.
-    pub fn find_calls_matching(
-        &self,
-        owner: Option<&str>,
-        name: Option<&str>,
-        return_type: Option<&str>,
-        parameters: Option<&[&str]>,
-    ) -> Vec<InstructionLocation> {
+    pub fn find_calls_matching(&self, query: &MethodRefQuery<'_>) -> Vec<InstructionLocation> {
+        let MethodRefQuery {
+            owner,
+            name,
+            return_type,
+            parameters,
+            required_parameters,
+            parameter_count,
+        } = *query;
         self.scan_all("calls matching reference", |dex_idx, dex| {
             let owner = match owner {
                 Some(v) => match dex.find_type_idx(v) {
@@ -406,20 +408,22 @@ impl<'a> PatchContext<'a> {
             };
             let matches_proto = |proto: reseam_apk::reseam_dex::ProtoIdx| {
                 let proto = dex.proto(proto);
+                let parameter = |t: &reseam_apk::reseam_dex::TypeIdx| dex.type_descriptor(*t);
                 return_type.is_none_or(|v| dex.type_descriptor(proto.return_type) == v)
                     && parameters.is_none_or(|v| {
                         v.len() == proto.parameters.len()
                             && v.iter()
                                 .zip(&proto.parameters)
-                                .all(|(v, t)| *v == dex.type_descriptor(*t))
+                                .all(|(v, t)| *v == parameter(t))
                     })
+                    && parameter_count.is_none_or(|count| count == proto.parameters.len())
+                    && required_parameters
+                        .iter()
+                        .all(|v| proto.parameters.iter().any(|t| *v == parameter(t)))
             };
             // Owner/name typically select one or two IDs. Only precompute all
             // matching prototypes for a signature-only query.
-            let matching_protos = if owner.is_none()
-                && name.is_none()
-                && (return_type.is_some() || parameters.is_some())
-            {
+            let matching_protos = if owner.is_none() && name.is_none() && query.constrains_proto() {
                 Some(
                     (0..dex.prototypes.len())
                         .filter_map(|i| {
@@ -525,6 +529,27 @@ impl<'a> PatchContext<'a> {
             .iter()
             .enumerate()
             .find_map(|(dex_idx, dex)| ok_or_warn(dex_idx, what, scan(dex_idx, dex)))
+    }
+}
+
+/// A method reference to find calls to. Unset parts match anything;
+/// `required_parameters` must each appear somewhere in the parameter list.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MethodRefQuery<'a> {
+    pub owner: Option<&'a str>,
+    pub name: Option<&'a str>,
+    pub return_type: Option<&'a str>,
+    pub parameters: Option<&'a [&'a str]>,
+    pub required_parameters: &'a [&'a str],
+    pub parameter_count: Option<usize>,
+}
+
+impl MethodRefQuery<'_> {
+    fn constrains_proto(&self) -> bool {
+        self.return_type.is_some()
+            || self.parameters.is_some()
+            || !self.required_parameters.is_empty()
+            || self.parameter_count.is_some()
     }
 }
 

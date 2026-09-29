@@ -350,9 +350,10 @@ internal class MethodRefMatchSpec : MethodRefMatch {
     var returnType: String? = null
     var parameters: List<String>? = null
     private val assignableOwners = mutableListOf<String>()
-    private val requiredParameters = mutableListOf<String>()
-    private var parameterCount: Int? = null
-    val needsPostFilter get() = assignableOwners.isNotEmpty() || requiredParameters.isNotEmpty() || parameterCount != null
+    val requiredParameters = mutableListOf<String>()
+    var parameterCount: Int? = null
+        private set
+    val needsPostFilter get() = assignableOwners.isNotEmpty()
 
     override fun owner(type: String) { owner = descriptor(type) }
     override fun ownerAssignableTo(type: String) { assignableOwners += descriptor(type) }

@@ -8,7 +8,7 @@ use boltffi::export;
 use reseam_apk::reseam_dex::{DexFile, Instruction as DexInsn};
 
 use super::lookup::opcode_patterns;
-use crate::context::{InstructionLocation, SiteHit};
+use crate::context::{InstructionLocation, MethodRefQuery, SiteHit};
 use crate::kotlin::convert::dex_to_kotlin;
 use crate::kotlin::handles::{alloc_method, alloc_methods, with_code, with_ctx};
 use crate::kotlin::types::{
@@ -303,22 +303,28 @@ fn site_results(sites: Vec<SiteHit>) -> Vec<MethodCallSiteResult> {
 }
 
 /// Indexed calls of references matching all supplied signature constraints.
+/// Each of `required_parameters` must appear somewhere in the parameter list.
 #[export]
 pub fn find_calls_matching(
     owner: Option<String>,
     name: Option<String>,
     return_type: Option<String>,
     parameters: Option<Vec<String>>,
+    required_parameters: Vec<String>,
+    parameter_count: Option<u32>,
 ) -> Vec<InstructionHit> {
     let parameters: Option<Vec<&str>> = parameters
         .as_ref()
         .map(|v| v.iter().map(String::as_str).collect());
+    let required_parameters: Vec<&str> = required_parameters.iter().map(String::as_str).collect();
     hits(with_ctx(|ctx| {
-        ctx.find_calls_matching(
-            owner.as_deref(),
-            name.as_deref(),
-            return_type.as_deref(),
-            parameters.as_deref(),
-        )
+        ctx.find_calls_matching(&MethodRefQuery {
+            owner: owner.as_deref(),
+            name: name.as_deref(),
+            return_type: return_type.as_deref(),
+            parameters: parameters.as_deref(),
+            required_parameters: &required_parameters,
+            parameter_count: parameter_count.map(|count| count as usize),
+        })
     }))
 }
