@@ -88,9 +88,13 @@ impl CodeItem {
 
     pub fn remove_instruction(&mut self, index: usize) -> Result<()> {
         self.ensure_existing_instruction(index)?;
-        let delta = -(self.instructions[index].code_units() as i32);
+        let mut delta = -(self.instructions[index].code_units() as i32);
         let remove_addr = self.code_unit_offset(index);
         self.instructions.remove(index);
+        if delta % 2 != 0 && self.has_payload_after(remove_addr) {
+            self.instructions.insert(index, Instruction::Nop);
+            delta += 1;
+        }
         self.fixup_offsets(remove_addr, delta, Layout::AfterEdit)
     }
 
@@ -186,7 +190,7 @@ impl CodeItem {
         }
         let mut cur: u32 = 0;
         for insn in &self.instructions {
-            if cur > addr
+            if cur >= addr
                 && matches!(
                     insn,
                     Instruction::PackedSwitchPayload { .. }
@@ -522,12 +526,22 @@ mod tests {
     }
 
     #[test]
-    fn packed_switch_targets_relocate_on_remove() {
+    fn an_odd_removal_before_a_payload_leaves_a_nop_so_it_stays_aligned() {
         let mut code = packed_switch_method();
-        // Remove the ReturnVoid at addr 4: both later case targets shift down by 1.
+        // Removing the one-unit ReturnVoid at addr 4 would put the payload at odd addr 7.
         code.remove_instruction(2).expect("remove");
-        assert_eq!(payload_offset(&code), 7);
-        assert_eq!(packed_targets(&code), &vec![3, 4]);
+        assert!(matches!(code.instructions[2], Instruction::Nop));
+        assert_eq!(payload_offset(&code), 8);
+        assert_eq!(packed_targets(&code), &vec![3, 5]);
+    }
+
+    #[test]
+    fn removing_the_instruction_just_before_a_payload_keeps_it_aligned() {
+        let mut code = packed_switch_method();
+        // The Nop at addr 7 sits right before the payload at addr 8.
+        code.remove_instruction(5).expect("remove");
+        assert_eq!(payload_offset(&code), 8);
+        assert_eq!(packed_targets(&code), &vec![3, 5]);
     }
 
     #[test]
