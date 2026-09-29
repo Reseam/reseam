@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::borrow::Cow;
+use std::cmp::Ordering;
 
 use super::DexFile;
 use crate::types::{
@@ -59,6 +60,36 @@ impl DexFile {
         self.methods
             .find(&MethodId { class, proto, name })
             .map(|i| MethodIdx(i as u32))
+    }
+
+    /// Methods declared on `class`, optionally only those named `name`.
+    pub fn methods_of(
+        &self,
+        class: TypeIdx,
+        name: Option<StringIdx>,
+    ) -> impl Iterator<Item = MethodIdx> + '_ {
+        self.methods
+            .matching(move |m| {
+                m.class
+                    .cmp(&class)
+                    .then_with(|| name.map_or(Ordering::Equal, |n| m.name.cmp(&n)))
+            })
+            .map(|i| MethodIdx(i as u32))
+    }
+
+    /// Fields declared on `class`, optionally only those named `name`.
+    pub fn fields_of(
+        &self,
+        class: TypeIdx,
+        name: Option<StringIdx>,
+    ) -> impl Iterator<Item = FieldIdx> + '_ {
+        self.fields
+            .matching(move |f| {
+                f.class
+                    .cmp(&class)
+                    .then_with(|| name.map_or(Ordering::Equal, |n| f.name.cmp(&n)))
+            })
+            .map(|i| FieldIdx(i as u32))
     }
 
     pub(crate) fn find_field_idx(

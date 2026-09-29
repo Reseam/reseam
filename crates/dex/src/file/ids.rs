@@ -145,6 +145,21 @@ impl<T: IdRecord> IdTable<T> {
             .find(|&i| self.get(i).key_cmp(probe) == Ordering::Equal)
     }
 
+    /// Indices of the entries in one contiguous run of the sort order, as
+    /// `locate` places them: `Less` before the run, `Equal` inside it,
+    /// `Greater` after. The sorted prefix is binary-searched; entries interned
+    /// since parse are checked one by one.
+    pub fn matching<'a>(
+        &'a self,
+        locate: impl Fn(&T) -> Ordering + 'a,
+    ) -> impl Iterator<Item = usize> + 'a {
+        let start = self.partition_point(|entry| locate(entry) == Ordering::Less);
+        let end = self.partition_point(|entry| locate(entry) != Ordering::Greater);
+        (start..end).chain(
+            (self.sorted_len..self.len()).filter(move |&i| locate(&self.get(i)) == Ordering::Equal),
+        )
+    }
+
     /// Whether every entry is already in DEX sort order.
     pub fn is_sorted(&self) -> bool {
         self.sorted_len == self.len()
@@ -152,6 +167,22 @@ impl<T: IdRecord> IdTable<T> {
 
     pub fn heap_bytes(&self) -> u64 {
         (self.tail.len() * size_of::<T>() + self.index.len() * 24) as u64
+    }
+
+    /// The first sorted-prefix index for which `before` is false; `before`
+    /// must hold for a leading run of the prefix and nowhere after it.
+    fn partition_point(&self, before: impl Fn(&T) -> bool) -> usize {
+        let mut lo = 0usize;
+        let mut hi = self.sorted_len;
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            if before(&self.get(mid)) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        lo
     }
 
     fn binary_search(&self, probe: &T) -> std::result::Result<usize, usize> {
@@ -389,5 +420,25 @@ mod tests {
         assert_eq!(table.sorted_len, 2);
         assert_eq!(table.find(&method(0, 0, 5)), Some(2));
         assert_eq!(table.find(&method(0, 1, 0)), Some(1));
+    }
+
+    #[test]
+    fn matching_covers_sorted_run_and_unsorted_tail() {
+        let mut table = raw_methods(&[(0, 0, 1), (1, 0, 1), (1, 0, 2), (1, 1, 2), (2, 0, 0)]);
+        table.push(method(1, 5, 0));
+        table.push(method(3, 0, 0));
+        let class = |c: u32| move |m: &MethodId| m.class.cmp(&TypeIdx(c));
+        assert_eq!(
+            table.matching(class(1)).collect::<Vec<_>>(),
+            vec![1, 2, 3, 5]
+        );
+        assert_eq!(
+            table
+                .matching(|m| m.class.cmp(&TypeIdx(1)).then(m.name.cmp(&StringIdx(2))))
+                .collect::<Vec<_>>(),
+            vec![2, 3]
+        );
+        assert_eq!(table.matching(class(3)).collect::<Vec<_>>(), vec![6]);
+        assert_eq!(table.matching(class(9)).count(), 0);
     }
 }

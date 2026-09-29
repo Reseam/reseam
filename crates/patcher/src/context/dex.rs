@@ -9,9 +9,9 @@ use std::collections::HashMap;
 use std::hash::Hash;
 
 use reseam_apk::reseam_dex::{
-    summarize_resident, DexFile, EncodedField, EncodedMethod, FieldIdx, Fingerprint,
-    FingerprintHit, InstructionPattern, InstructionSite, MemberCounts, MethodHit, MethodIdx,
-    MethodSummary, MultiDexContainer, RefKey, RefQuery, StringIdx, TypeIdx,
+    summarize_resident, DexFile, EncodedField, EncodedMethod, Fingerprint, FingerprintHit,
+    InstructionPattern, InstructionSite, MemberCounts, MethodHit, MethodIdx, MethodSummary,
+    MultiDexContainer, RefKey, RefQuery, StringIdx, TypeIdx,
 };
 use tracing::{debug, warn};
 
@@ -363,12 +363,9 @@ impl<'a> PatchContext<'a> {
     /// Call sites of `(class, method)` targets; hits carry the target's index.
     pub fn find_method_call_sites(&self, targets: &[(String, String)]) -> Vec<SiteHit> {
         self.scan_all("method call sites", |dex_idx, dex| {
-            let members = dex
-                .methods
-                .iter()
-                .enumerate()
-                .map(|(i, id)| (MethodIdx(i as u32), id.class, id.name));
-            let map = member_targets(dex, targets, members);
+            let map = member_targets(dex, targets, |class, name| {
+                dex.methods_of(class, Some(name))
+            });
             if map.is_empty() {
                 return Ok(Vec::new());
             }
@@ -434,20 +431,26 @@ impl<'a> PatchContext<'a> {
             } else {
                 None
             };
-            let members: std::collections::HashSet<_> = dex
-                .methods
-                .iter()
-                .enumerate()
-                .filter_map(|(i, id)| {
-                    (owner.is_none_or(|v| id.class == v)
-                        && name.is_none_or(|v| id.name == v)
-                        && matching_protos.as_ref().map_or_else(
-                            || matches_proto(id.proto),
-                            |protos| protos.contains(&id.proto.0),
-                        ))
-                    .then_some(MethodIdx(i as u32))
-                })
-                .collect();
+            let accepts_proto = |proto: reseam_apk::reseam_dex::ProtoIdx| {
+                matching_protos
+                    .as_ref()
+                    .map_or_else(|| matches_proto(proto), |protos| protos.contains(&proto.0))
+            };
+            let members: std::collections::HashSet<_> = match owner {
+                Some(owner) => dex
+                    .methods_of(owner, name)
+                    .filter(|m| accepts_proto(dex.methods.get(m.0 as usize).proto))
+                    .collect(),
+                None => dex
+                    .methods
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, id)| {
+                        (name.is_none_or(|v| id.name == v) && accepts_proto(id.proto))
+                            .then_some(MethodIdx(i as u32))
+                    })
+                    .collect(),
+            };
             if members.is_empty() {
                 return Ok(Vec::new());
             }
@@ -484,12 +487,7 @@ impl<'a> PatchContext<'a> {
     /// Accesses of `(class, field)` targets; hits carry the target's index.
     pub fn find_field_access_sites(&self, targets: &[(String, String)]) -> Vec<SiteHit> {
         self.scan_all("field access sites", |dex_idx, dex| {
-            let members = dex
-                .fields
-                .iter()
-                .enumerate()
-                .map(|(i, id)| (FieldIdx(i as u32), id.class, id.name));
-            let map = member_targets(dex, targets, members);
+            let map = member_targets(dex, targets, |class, name| dex.fields_of(class, Some(name)));
             if map.is_empty() {
                 return Ok(Vec::new());
             }
@@ -543,29 +541,24 @@ fn find_slot(
 
 /// Maps each member id whose class and name match one of `targets` to that
 /// target's index in `targets`.
-fn member_targets<K: Hash + Eq>(
+/// Maps each member a target names to that target's index. `members` lists
+/// the members declared on a class under a name.
+fn member_targets<K: Hash + Eq, I: Iterator<Item = K>>(
     dex: &DexFile,
     targets: &[(String, String)],
-    members: impl Iterator<Item = (K, TypeIdx, StringIdx)>,
+    members: impl Fn(TypeIdx, StringIdx) -> I,
 ) -> HashMap<K, usize> {
-    let resolved: Vec<(usize, TypeIdx, StringIdx)> = targets
+    targets
         .iter()
         .enumerate()
         .filter_map(|(index, (class, name))| {
             Some((index, dex.find_type_idx(class)?, dex.find_string_idx(name)?))
         })
-        .collect();
-    if resolved.is_empty() {
-        return HashMap::new();
-    }
-    members
-        .filter_map(|(id, class, name)| {
-            resolved
-                .iter()
-                .find(|(_, c, n)| *c == class && *n == name)
-                .map(|(index, ..)| (id, *index))
+        .flat_map(|(index, class, name)| members(class, name).map(move |id| (id, index)))
+        .fold(HashMap::new(), |mut map, (id, index)| {
+            map.entry(id).or_insert(index);
+            map
         })
-        .collect()
 }
 
 fn ok_or_warn<T: Default>(dex_idx: usize, what: &str, result: DexResult<T>) -> T {
