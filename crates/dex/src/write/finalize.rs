@@ -4,7 +4,7 @@
 use super::plan::WritePlan;
 use crate::error::Result;
 use crate::types::class::NO_INDEX;
-use sha1::{Digest, Sha1};
+use zlib_rs::adler32::{adler32, adler32_combine};
 
 use super::annotations::ClassAnnotations;
 use super::sink::DexSink;
@@ -184,19 +184,21 @@ pub(crate) fn finalize<S: DexSink>(
 
     let logical_end = w.pos() as usize;
 
-    let mut hasher = Sha1::new();
+    let mut signature = ring::digest::Context::new(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY);
+    let mut body_checksum = 1;
     w.sink.digest(header_base + 32, logical_end, &mut |chunk| {
-        hasher.update(chunk)
+        signature.update(chunk);
+        body_checksum = adler32(body_checksum, chunk);
     })?;
-    let sig: [u8; 20] = hasher.finalize().into();
-    w.patch(header_base + OFF_SIGNATURE, &sig);
-
-    let mut adler = adler::Adler32::new();
-    w.sink
-        .digest(header_base + OFF_CHECKSUM + 4, logical_end, &mut |chunk| {
-            adler.write_slice(chunk)
-        })?;
-    w.patch_u32(header_base + OFF_CHECKSUM, adler.checksum());
+    let signature = signature.finish();
+    w.patch(header_base + OFF_SIGNATURE, signature.as_ref());
+    // The checksum covers the signature too, which is only known now.
+    let checksum = adler32_combine(
+        adler32(1, signature.as_ref()),
+        body_checksum,
+        (logical_end - header_base - 32) as u64,
+    );
+    w.patch_u32(header_base + OFF_CHECKSUM, checksum);
 
     Ok(())
 }

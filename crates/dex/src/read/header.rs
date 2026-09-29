@@ -82,19 +82,18 @@ pub fn read_header_at(
     }
 
     if !opts.skip_checksum {
-        let computed = adler::adler32(&buf[header_off + 12..logical_end as usize])
-            .map_err(|err| invalid("dex header", format!("failed to compute checksum: {err}")))?;
+        let computed = zlib_rs::adler32::adler32(1, &buf[header_off + 12..logical_end as usize]);
         if computed != checksum {
             return Err(checksum_mismatch(checksum, computed));
         }
     }
 
     if !opts.skip_signature {
-        use sha1::{Digest, Sha1};
-        let mut hasher = Sha1::new();
-        hasher.update(&buf[header_off + 32..logical_end as usize]);
-        let computed: [u8; 20] = hasher.finalize().into();
-        if computed != signature {
+        let computed = ring::digest::digest(
+            &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
+            &buf[header_off + 32..logical_end as usize],
+        );
+        if computed.as_ref() != signature {
             return Err(signature_mismatch());
         }
     }
