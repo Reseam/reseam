@@ -208,11 +208,11 @@ Resource file and value helpers:
 | Symbol | Description |
 |---|---|
 | `toggle(title, summary = null, default, key = null)` | Property delegate for a `ToggleSetting`. |
-| `text(title, summary = null, default, key = null)`, `folder(...)` | Property delegates for `TextSetting` and `FolderSetting`; `default` is a string. |
+| `text(title, summary = null, default, multiline = false, key = null)`, `folder(title, summary = null, default, key = null)` | Property delegates for `TextSetting` and `FolderSetting`; `default` is a string. A `multiline` text setting holds one entry per line. |
 | `SettingDelegate<S>` | Derives an omitted key from the property name in snake case, prefixed by the declaring object or class name when present. |
 | `choice(title, summary = null, default, choices, key = null)` | `ChoiceSetting` with `Choice(value, title)`. |
 | `Setting<T>` | `key`, `title`, `summary`, `default`. |
-| `ToggleSetting(key, title, summary = null, default)` | Boolean setting with an explicit key. `TextSetting` and `FolderSetting` take the same arguments with a string default. |
+| `ToggleSetting(key, title, summary = null, default)` | Boolean setting with an explicit key. `TextSetting` and `FolderSetting` take the same arguments with a string default; `TextSetting` also takes `multiline = false`. |
 | `ChoiceSetting(key, title, summary = null, default, choices)` | String setting with a `List<Choice>`; each `Choice(value, title)` supplies the stored value and displayed title. |
 | `SettingsSection(title, settings, page = null)` | A `List<Setting<*>>` under a heading; null `page` places it at the root. |
 | `SettingsPage(id, title, parent = null, order = 0)` | A settings page; `parent` nests it, `order` sorts siblings. Only populated pages and their parents appear. |

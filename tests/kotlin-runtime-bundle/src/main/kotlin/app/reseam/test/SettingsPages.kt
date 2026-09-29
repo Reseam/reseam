@@ -5,6 +5,7 @@ package app.reseam.test
 
 import app.reseam.patch.patch
 import app.reseam.patch.settings.SettingsPage
+import app.reseam.patch.settings.TextSetting
 import app.reseam.patch.settings.ToggleSetting
 import app.reseam.patch.settings.section
 import app.reseam.patch.settings.settingsHost
@@ -18,7 +19,7 @@ private val navigationSecond = ToggleSetting("quality.second", "Second", default
 
 val navigationSettings = settingsHost("navigation") {
     compatibleWith("com.example.test")
-    settings(section("Root", ToggleSetting("root.enabled", "Root", default = false)))
+    settings(section("Root", ToggleSetting("root.enabled", "Root", default = false), TextSetting("root.lines", "Lines", default = "", multiline = true)))
 }
 
 val navigationFirstPatch = patch("Settings navigation first") {

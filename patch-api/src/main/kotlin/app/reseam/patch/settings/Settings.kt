@@ -29,7 +29,8 @@ sealed class Setting<T>(val key: String, val title: String, val summary: String?
 }
 
 class ToggleSetting(key: String, title: String, summary: String? = null, default: Boolean) : Setting<Boolean>(key, title, summary, default)
-class TextSetting(key: String, title: String, summary: String? = null, default: String) : Setting<String>(key, title, summary, default)
+/** [multiline] lets the value hold one entry per line. */
+class TextSetting(key: String, title: String, summary: String? = null, default: String, val multiline: Boolean = false) : Setting<String>(key, title, summary, default)
 class FolderSetting(key: String, title: String, summary: String? = null, default: String) : Setting<String>(key, title, summary, default)
 class ChoiceSetting(key: String, title: String, summary: String? = null, default: String, val choices: List<Choice>) : Setting<String>(key, title, summary, default)
 
@@ -73,8 +74,8 @@ fun section(page: SettingsPage, title: String, vararg settings: Setting<*>) =
 fun toggle(title: String, summary: String? = null, default: Boolean, key: String? = null) =
     SettingDelegate(key) { ToggleSetting(it, title, summary, default) }
 
-fun text(title: String, summary: String? = null, default: String, key: String? = null) =
-    SettingDelegate(key) { TextSetting(it, title, summary, default) }
+fun text(title: String, summary: String? = null, default: String, multiline: Boolean = false, key: String? = null) =
+    SettingDelegate(key) { TextSetting(it, title, summary, default, multiline) }
 
 fun folder(title: String, summary: String? = null, default: String, key: String? = null) =
     SettingDelegate(key) { FolderSetting(it, title, summary, default) }
@@ -227,6 +228,7 @@ private fun StringBuilder.appendSetting(setting: Setting<*>) {
         is FolderSetting -> appendJson(setting.default)
         is ChoiceSetting -> appendJson(setting.default)
     }
+    if (setting is TextSetting && setting.multiline) append(",\"multiline\":true")
     if (setting is ChoiceSetting) {
         append(",\"choices\":[")
         setting.choices.forEachIndexed { index, choice ->
