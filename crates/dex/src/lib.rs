@@ -37,7 +37,7 @@ pub mod write;
 
 pub use error::{DexError, Result};
 pub use file::container::{
-    estimated_ir_bytes, MaterializationStats, MemoryBreakdown, MultiDexContainer,
+    estimated_ir_bytes, MaterializationStats, MemoryBreakdown, MultiDexContainer, Redistributed,
 };
 pub use file::{
     summarize_resident, DexFile, Fingerprint, FingerprintBuilder, FingerprintHit, InstructionHit,

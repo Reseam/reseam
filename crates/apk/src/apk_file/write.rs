@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
 use std::io;
 use std::num::NonZeroUsize;
@@ -47,8 +47,8 @@ pub(super) struct DexJob {
 
 struct WritePlan {
     jobs: Vec<DexJob>,
-    /// After redistribution the new DEX set replaces every original entry.
-    remove_originals: bool,
+    /// Components whose DEX set was rebuilt, so the new set replaces every original entry.
+    remove_originals: HashSet<usize>,
 }
 
 impl ApkFile {
@@ -149,26 +149,32 @@ impl ApkFile {
         let any_dirty = self
             .dex_origins
             .iter()
-            .any(|origin| matches!(origin, DexOrigin::Added))
+            .any(|origin| !matches!(origin, DexOrigin::Existing { .. }))
             || self.dex.iter().any(DexFile::is_dirty);
         if !any_dirty {
             return Ok(WritePlan {
                 jobs: Vec::new(),
-                remove_originals: false,
+                remove_originals: HashSet::new(),
             });
         }
-        if self.dex.redistribute_if_needed()? {
-            let jobs = (0..self.dex.len())
-                .map(|dex_index| DexJob {
-                    dex_index,
-                    component: 0,
-                    name: dex_entry_name(dex_index as u32 + 1),
+        let groups: Vec<usize> = self.dex_origins.iter().map(DexOrigin::component).collect();
+        if let Some(layout) = self.dex.redistribute_if_needed(&groups)? {
+            let old = std::mem::take(&mut self.dex_origins);
+            let mut counts: HashMap<usize, u32> = HashMap::new();
+            self.dex_origins = layout
+                .into_iter()
+                .map(|dex| match dex.previous {
+                    Some(index) => old[index].clone(),
+                    None => {
+                        let count = counts.entry(dex.group).or_default();
+                        *count += 1;
+                        DexOrigin::Rebuilt {
+                            component: dex.group,
+                            name: dex_entry_name(*count),
+                        }
+                    }
                 })
                 .collect();
-            return Ok(WritePlan {
-                jobs,
-                remove_originals: true,
-            });
         }
         let mut used: HashSet<String> = self.base().original_dex_names().iter().cloned().collect();
         let dex_files = &self.dex.dex_files;
@@ -184,6 +190,11 @@ impl ApkFile {
                         name: name.clone(),
                     })
                 }
+                DexOrigin::Rebuilt { component, name } => Some(DexJob {
+                    dex_index,
+                    component: *component,
+                    name: name.clone(),
+                }),
                 DexOrigin::Added => Some(DexJob {
                     dex_index,
                     component: 0,
@@ -191,9 +202,17 @@ impl ApkFile {
                 }),
             })
             .collect();
+        let remove_originals = self
+            .dex_origins
+            .iter()
+            .filter_map(|origin| match origin {
+                DexOrigin::Rebuilt { component, .. } => Some(*component),
+                _ => None,
+            })
+            .collect();
         Ok(WritePlan {
             jobs,
-            remove_originals: false,
+            remove_originals,
         })
     }
 }
@@ -220,7 +239,7 @@ fn write_component(
                 .map(String::from),
         );
     }
-    if plan.remove_originals {
+    if plan.remove_originals.contains(&index) {
         removals.extend(component.original_dex_names().iter().cloned());
     }
 

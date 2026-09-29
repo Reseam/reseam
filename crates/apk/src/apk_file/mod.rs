@@ -28,11 +28,30 @@ pub struct ApkFile {
     dex_origins: Vec<DexOrigin>,
 }
 
-/// Where a DEX in the container came from. Whether it needs rewriting is the
-/// DEX's own [`DexFile::is_dirty`].
+/// Where a DEX in the container came from. Whether an existing one needs
+/// rewriting is the DEX's own [`DexFile::is_dirty`].
+#[derive(Clone)]
 enum DexOrigin {
-    Existing { component: usize, name: String },
+    Existing {
+        component: usize,
+        name: String,
+    },
     Added,
+    /// Repacked from its component's overflowed DEX set, which it replaces.
+    Rebuilt {
+        component: usize,
+        name: String,
+    },
+}
+
+impl DexOrigin {
+    /// The component the DEX ships in; added DEX files go into the base.
+    fn component(&self) -> usize {
+        match self {
+            Self::Existing { component, .. } | Self::Rebuilt { component, .. } => *component,
+            Self::Added => 0,
+        }
+    }
 }
 
 impl ApkFile {
