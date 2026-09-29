@@ -416,6 +416,12 @@ fn resource_ref(text: &str, resources: Option<&mut ResourceTable>) -> Result<Opt
         (Some("android"), _) => Some(android_resource(type_name, entry)?),
         (Some(_), _) | (None, None) => None,
         (None, Some(res)) if create => res.ensure_id(entry),
-        (None, Some(res)) => res.find_resource_id(type_name, entry),
+        // aapt fails the build here; plain text would reach the inflater as a string and crash it.
+        (None, Some(res)) => Some(res.find_resource_id(type_name, entry).ok_or_else(|| {
+            invalid(
+                "axml compiler",
+                format!("@{type_name}/{entry} is not defined in the resource table"),
+            )
+        })?),
     })
 }

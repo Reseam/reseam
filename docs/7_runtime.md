@@ -46,7 +46,7 @@ XmlDocument.compile(fragment).use { source ->
 }
 ```
 
-`XmlDocument.compile(text)` compiles XML text against the app's resource table, resolving `@type/name` references, the enum and flag names an attribute defines (`android:scaleType="center"`, `android:gravity="top|start"`), and the ids of attributes in any namespace the text declares. `@android:type/name` and `?android:attr/name` resolve through Android 36's public resource table, and a name missing from it fails the compile. It is backed by no APK entry, so closing it discards it.
+`XmlDocument.compile(text)` compiles XML text against the app's resource table, resolving `@type/name` references, the enum and flag names an attribute defines (`android:scaleType="center"`, `android:gravity="top|start"`), and the ids of attributes in any namespace the text declares. `@android:type/name` and `?android:attr/name` resolve through Android 36's public resource table, and a name missing from it fails the compile. An unprefixed `@type/name` that the app's table does not define fails the compile too, so add a resource before the XML that references it. It is backed by no APK entry, so closing it discards it.
 
 `adopt` returns a detached deep copy of an element of another document: strings interned here, and every attribute rebound to the id this document resolves it by. Namespaces match by uri, not by prefix, so a fragment written with `custom:` can enter a document using `app:` for the same namespace. A namespace the target does not declare fails the adoption.
 

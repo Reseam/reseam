@@ -281,6 +281,19 @@ fn make_attr_arsc() -> ResourceTable {
 }
 
 #[test]
+fn test_xml_compiler_rejects_undefined_references() {
+    let mut table = make_test_arsc();
+    let xml = r#"
+        <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+            <item android:drawable="@drawable/missing" />
+        </layer-list>
+    "#;
+
+    let error = axml::build_document(xml, Some(&mut table)).expect_err("undefined reference");
+    assert!(error.to_string().contains("@drawable/missing"), "{error}");
+}
+
+#[test]
 fn test_xml_compiler_resolves_enum_and_flag_names() {
     let mut table = make_attr_arsc();
     let gravity = |name| {

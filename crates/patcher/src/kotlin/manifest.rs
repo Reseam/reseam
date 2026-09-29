@@ -512,7 +512,7 @@ mod tests {
         }
         assert_eq!(
             resolved("@string/missing", &mut table).err().unwrap(),
-            "@string/missing: no such resource"
+            "@string/missing: invalid axml compiler: @string/missing is not defined in the resource table"
         );
         for (text, expected) in [
             ("YouTube", "YouTube"),
