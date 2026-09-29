@@ -48,6 +48,9 @@ mod desktop {
             .option(format!("-Xmx{heap}"))
             .option("-Xms16m")
             .option("-XX:+UseSerialGC")
+            // Patch code runs once per session: C2's optimizing compiles cost
+            // about 20 MB of compiler memory and saved no time.
+            .option("-XX:TieredStopAtLevel=1")
             .option("-XX:MinHeapFreeRatio=10")
             .option("-XX:MaxHeapFreeRatio=30")
             .build()
