@@ -372,6 +372,30 @@ val skipWhenCall = patch("skip-when") {
     }
 }
 
+val beforeJoin = patch("before-join") {
+    description("Runs code before a call that a branch jumps to")
+    compatibleWith("com.example.test")
+    enabledByDefault(false)
+
+    execute {
+        skipHost.method("joinedBefore").point { literal(2) }.next { invokeStatic { name("mark") } }
+            .next { invokeStatic { name("mark") } }.before { mark(9) }
+    }
+}
+
+val whenInstanceOfBranch = patch("when-instance-of") {
+    description("Branches on the runtime type of a parameter")
+    compatibleWith("com.example.test")
+    enabledByDefault(false)
+
+    execute {
+        skipHost.method("typed").replace {
+            whenInstanceOf(param(0), "java.lang.String") { mark(1) } otherwise { mark(2) }
+            returnVoid()
+        }
+    }
+}
+
 private val anchorHost = klass("com.example.AnchorHost")
 
 val replaceBothReturn = patch("replace-both-return") {

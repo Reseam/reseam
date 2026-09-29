@@ -47,6 +47,8 @@ interface CodeScope {
     fun whenNotNull(value: ValueRef, block: CodeScope.() -> Unit): Otherwise
     fun whenEqual(left: ValueRef, right: ValueRef, block: CodeScope.() -> Unit): Otherwise
     fun whenNotEqual(left: ValueRef, right: ValueRef, block: CodeScope.() -> Unit): Otherwise
+    /** Runs `block` when `value` is an instance of `type`; null is not an instance of anything. */
+    fun whenInstanceOf(value: ValueRef, type: String, block: CodeScope.() -> Unit): Otherwise
 
     fun returnVoid()
     fun returnValue(value: ValueRef)

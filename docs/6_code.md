@@ -42,7 +42,7 @@ whenEnabled(AppSettings.fasterDownloads) {
 }
 ```
 
-`whenTrue`, `whenFalse`, `whenNull`, `whenNotNull`, `whenEqual`, `whenNotEqual`, each with an optional `otherwise { }`. Null and false are both a zero test; `whenEqual` is reference equality. `returnVoid`, `returnValue`, `returnTrue`, `returnFalse`, `returnNull` pick the return instruction from the type.
+`whenTrue`, `whenFalse`, `whenNull`, `whenNotNull`, `whenEqual`, `whenNotEqual`, `whenInstanceOf(value, type)`, each with an optional `otherwise { }`. Null and false are both a zero test; `whenEqual` is reference equality; null is not an instance of any type. `returnVoid`, `returnValue`, `returnTrue`, `returnFalse`, `returnNull` pick the return instruction from the type.
 
 ## Gates
 

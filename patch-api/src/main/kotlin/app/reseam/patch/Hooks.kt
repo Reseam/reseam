@@ -102,10 +102,13 @@ fun MethodTarget.alwaysReturnNull() = method.alwaysReturnNull()
 fun MethodTarget.replaceAllStrings(old: String, new: String): Int = method.replaceAllStrings(old, new)
 fun MethodTarget.replaceAllLiterals(old: Long, new: Long): Int = method.replaceAllLiterals(old, new)
 
-/** Runs `block` just before the instruction at the point, after anything an earlier block put there. */
+/**
+ * Runs `block` just before the instruction at the point, after anything an earlier block put there.
+ * Branches to the instruction run it too.
+ */
 fun PointTarget.before(block: CodeScope.() -> Unit) {
     val point = resolved
-    point.method.insertCode(point.anchor.head, point.captures, block)
+    point.method.insertCode(point.anchor.head, point.captures, block, everyPath = true)
 }
 
 /** Runs `block` just after the instruction at the point, after anything an earlier block put there. */

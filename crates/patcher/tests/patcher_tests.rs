@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 use reseam_apk::reseam_dex::{DexFile, DexHeader, DexVersion, ParseOptions};
 use reseam_apk::resources::{EntryValue, MapEntry, ResEntry, ResPackage, ResType, TypeSpec};
 use reseam_apk::{ApkFile, ResValue, ResourceTable, StringPool};
-use reseam_patcher::Patch;
+use reseam_patcher::{Patch, PatchPreset};
 use reseam_patcher::bundle::{BundleArchive, ENGINE_VERSION};
 use reseam_patcher::context::PatchContext;
 use reseam_patcher::engine::{self, PatchSelection, PatchStatus};
@@ -388,6 +388,7 @@ fn kotlin_bundle_executes_against_runtime_api() {
         OptionValue::Text("Split patched by runtime".to_string()),
     );
     let selection = PatchSelection {
+        preset: PatchPreset::None,
         enable: ["runtime-api", "dependent-runtime"]
             .map(String::from)
             .into(),
@@ -497,6 +498,7 @@ fn internal_patches_run_as_dependencies() {
     let mut ctx = PatchContext::new(&mut apk);
 
     let selection = PatchSelection {
+        preset: PatchPreset::None,
         enable: ["uses-internal".to_string()].into(),
         ..Default::default()
     };
@@ -651,6 +653,105 @@ fn kotlin_bundle_required_option_is_enforced() {
         "got: {message}"
     );
     assert!(message.contains("token"), "got: {message}");
+}
+
+/// `whenInstanceOf` runs its block for an instance and the `otherwise` block for null.
+#[test]
+fn when_instance_of_branches_on_the_runtime_type() {
+    use reseam_apk::reseam_dex::{AccessFlags, DexFile, Instruction::*};
+
+    const OWNER: &str = "Lcom/example/SkipHost;";
+    let mut dex = DexFile::new(empty_dex_header(DexVersion::V035));
+    let class = dex
+        .create_class(OWNER, AccessFlags::PUBLIC, Some("Ljava/lang/Object;"))
+        .unwrap();
+    add_static_method(
+        &mut dex,
+        class,
+        OWNER,
+        "typed",
+        "(Ljava/lang/Object;)V",
+        (1, 1),
+        vec![ReturnVoid],
+    );
+
+    let (_apk_dir, mut apk) = open_split_test_apk_with(manifest_bytes("1.0-base", None), &[dex]);
+    let bundle = loaded_test_bundle();
+    let patches: Vec<&dyn Patch> = bundle.patches.iter().map(Box::as_ref).collect();
+    run_one_patch(
+        &mut PatchContext::new(&mut apk),
+        &patches,
+        "when-instance-of",
+        "whenInstanceOfBranch",
+    );
+
+    let code = patched_code(&apk, OWNER, "typed");
+    assert!(code
+        .instructions
+        .iter()
+        .any(|insn| matches!(insn, InstanceOf { .. })));
+    assert_eq!(hook_calls(&code, &[1]), (vec![vec![1]], None));
+    assert_eq!(hook_calls(&code, &[0]), (vec![vec![2]], None));
+}
+
+/// A point's `before` code runs on every path into the instruction, a branch to it included.
+#[test]
+fn point_before_runs_on_branches_into_the_instruction() {
+    use reseam_apk::reseam_dex::{AccessFlags, DexFile, Instruction::*};
+
+    const OWNER: &str = "Lcom/example/SkipHost;";
+    let mut dex = DexFile::new(empty_dex_header(DexVersion::V035));
+    let class = dex
+        .create_class(OWNER, AccessFlags::PUBLIC, Some("Ljava/lang/Object;"))
+        .unwrap();
+    let mark = dex
+        .intern_method("Lcom/example/Observer;", "mark", "(I)V")
+        .unwrap();
+    let call = |reg: u8| InvokeStatic {
+        method: mark,
+        args: [reg].into_iter().collect(),
+    };
+    // A zero argument branches straight to the hooked call; the other path marks 4 first.
+    add_static_method(
+        &mut dex,
+        class,
+        OWNER,
+        "joinedBefore",
+        "(I)V",
+        (2, 1),
+        vec![
+            Const4 { dest: 0, value: 1 },
+            call(0),
+            Const4 { dest: 0, value: 2 },
+            IfEqz { a: 1, offset: 6 },
+            Const4 { dest: 0, value: 4 },
+            call(0),
+            call(0),
+            Const4 { dest: 0, value: 3 },
+            call(0),
+            ReturnVoid,
+        ],
+    );
+
+    let (_apk_dir, mut apk) = open_split_test_apk_with(manifest_bytes("1.0-base", None), &[dex]);
+    let bundle = loaded_test_bundle();
+    let patches: Vec<&dyn Patch> = bundle.patches.iter().map(Box::as_ref).collect();
+    run_one_patch(
+        &mut PatchContext::new(&mut apk),
+        &patches,
+        "before-join",
+        "beforeJoin",
+    );
+
+    let code = patched_code(&apk, OWNER, "joinedBefore");
+    assert_eq!(
+        hook_calls(&code, &[0]),
+        (vec![vec![1], vec![9], vec![2], vec![3]], None)
+    );
+    assert_eq!(
+        hook_calls(&code, &[1]),
+        (vec![vec![1], vec![4], vec![9], vec![4], vec![3]], None)
+    );
 }
 
 /// `skipWhen` guards the call on every path into it, and a false condition keeps it.
@@ -994,6 +1095,10 @@ fn hook_calls(
                 Const4 { dest, value } => registers[*dest as usize] = *value as i64,
                 Const16 { dest, value } => registers[*dest as usize] = *value as i64,
                 Const { dest, value } => registers[*dest as usize] = *value as i64,
+                // Models a non-zero reference as an instance of the tested type and 0 as null.
+                InstanceOf { dest, ref_, .. } => {
+                    registers[*dest as usize] = i64::from(registers[*ref_ as usize] != 0)
+                }
                 InvokeStatic { args, .. } => {
                     calls.push(args.iter().map(|r| registers[*r as usize]).collect())
                 }
@@ -3308,6 +3413,8 @@ fn settings_pages_merge_selected_contributions_and_keep_nested_ancestors() {
         let sections = schema["sections"].as_array().unwrap();
         assert!(sections[0]["page"].is_null());
         assert_eq!(sections[0]["settings"][0]["key"], "root.enabled");
+        assert!(sections[0]["settings"][0].get("multiline").is_none());
+        assert_eq!(sections[0]["settings"][1]["multiline"], true);
         let quality: Vec<_> = sections.iter().filter(|s| s["page"] == "quality").collect();
         assert_eq!(quality.len(), 1);
         assert_eq!(

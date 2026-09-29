@@ -246,6 +246,11 @@ internal class CodeEmitter private constructor(
         return branch(block) { elseLabel -> op(reads = listOf(a, c), target = elseLabel) { b, r -> b.ifEq(low(r(a), "if-eq A"), low(r(c), "if-eq B"), elseLabel) } }
     }
 
+    override fun whenInstanceOf(value: ValueRef, type: String, block: CodeScope.() -> Unit): Otherwise {
+        val isInstance = instanceOf(value.impl(), descriptorOf(type)).register
+        return branch(block) { elseLabel -> op(reads = listOf(isInstance), target = elseLabel) { b, r -> b.ifEqz(byte(r(isInstance), "if-eqz"), elseLabel) } }
+    }
+
     private fun branch(block: CodeScope.() -> Unit, condition: (elseLabel: String) -> Unit): Otherwise {
         val elseLabel = nextLabel("else")
         val endLabel = nextLabel("end")
