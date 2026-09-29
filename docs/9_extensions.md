@@ -30,7 +30,7 @@ object AdBlocker : ExtClass("app.example.ext.AdBlocker") {
 }
 ```
 
-The first reference to a class an extension defines merges that DEX into the app, plus every extension it refers to. Two extensions defining one class fail the bundle at load. A reference nothing defines is logged once: `... is not defined by the app or any extension in the bundle`.
+The first reference to a class an extension defines merges that DEX into the app, plus every extension it refers to. Two extensions defining one class fail the bundle at load. d8 writes its global synthetics, such as `java.lang.Record` for records below API 34, to the bundle's shared `d8-globals.dex` instead of into each extension, so every module that uses records links that one copy. A reference nothing defines is logged once: `... is not defined by the app or any extension in the bundle`.
 
 Queries skip extension classes so matches do not depend on which extensions earlier patches linked. `includeExtensions()` searches them too. `inClass` searches the class it names in any DEX; `ExtClass` and `ExtMethod` resolve by name and are unaffected.
 

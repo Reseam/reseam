@@ -34,6 +34,16 @@ class ReseamBundlePlugin : Plugin<Project> {
                 .map { it.tasks.named("dex", DexTask::class.java) }
         }
 
+        val globalsDex = project.tasks.register("dexGlobalSynthetics", GlobalSyntheticsDexTask::class.java) {
+            description = "Compiles the extensions' d8 global synthetics into one shared DEX."
+            extensionDex.get().forEach { dexTask ->
+                globals.from(dexTask.flatMap { it.globals }.map { it.file("classes.globals") })
+                dependsOn(dexTask)
+            }
+            libraries.from(project.provider { AndroidSdk.platformJar() })
+            output.set(project.layout.buildDirectory.dir("reseam/globals-dex"))
+        }
+
         val stage = project.tasks.register("stageBundle", Copy::class.java) {
             group = "build"
             description = "Collects manifest.toml, patch jars, and extension DEX files."
@@ -47,6 +57,10 @@ class ReseamBundlePlugin : Plugin<Project> {
                     include("classes*.dex")
                     rename { name -> name.replace("classes", dexTask.get().project.reseamArtifactName()) }
                 }
+            }
+            from(globalsDex.map { it.output }) {
+                include("classes*.dex")
+                rename { name -> name.replace("classes", "d8-globals") }
             }
             duplicatesStrategy = DuplicatesStrategy.FAIL
         }

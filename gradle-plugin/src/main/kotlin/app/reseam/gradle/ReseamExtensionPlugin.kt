@@ -16,7 +16,8 @@ import org.gradle.jvm.toolchain.JavaLanguageVersion
  * bundle ships. `implementation` dependencies are dexed into it; `compileOnly`
  * ones are expected from the app or another module of the bundle. Sources
  * under `src/stubs/java` are compile-time stand-ins for classes the app
- * already has; they are never dexed.
+ * already has; they are never dexed. d8's global synthetics go to the
+ * bundle's shared DEX, so modules that use them link it along with their own.
  */
 class ReseamExtensionPlugin : Plugin<Project> {
     override fun apply(project: Project) {
@@ -46,6 +47,7 @@ class ReseamExtensionPlugin : Plugin<Project> {
             sources.from(main.output.classesDirs, project.configurations.getByName("runtimeClasspath"))
             libraries.from(platform)
             output.set(project.layout.buildDirectory.dir("reseam/dex"))
+            globals.set(project.layout.buildDirectory.dir("reseam/globals"))
         }
         project.tasks.named("build") { dependsOn(dex) }
     }
