@@ -16,7 +16,7 @@ use crate::{PatchArtifact, SigningKeyFiles};
 /// Writes every component unsigned into the output directory, signs each in
 /// place, and only then links it under its final name.
 pub(crate) fn write_signed(
-    mut apk: ApkFile,
+    apk: ApkFile,
     output: &PatchArtifact,
     signing: Option<&SigningKeyFiles>,
     profiler: &mut PatchProfiler,

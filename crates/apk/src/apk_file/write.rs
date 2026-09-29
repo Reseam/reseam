@@ -1,20 +1,18 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::fs::File;
 use std::io;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
-use reseam_dex::DexFile;
+use reseam_dex::DexPart;
 use tracing::{debug, info, instrument};
 
 use super::dex_workers::{DexEntryStream, DexWorkPool};
 use super::{ApkComponent, ApkFile, DexOrigin};
-use crate::entry::{
-    dex_entry_name, is_signature_entry, next_free_dex_name, MANIFEST_ENTRY, RESOURCES_ENTRY,
-};
+use crate::entry::{is_signature_entry, next_free_dex_name, MANIFEST_ENTRY, RESOURCES_ENTRY};
 use crate::error::Result;
 use crate::zip::writer::{ApkWriter, Replacement, ReplacementData};
 
@@ -39,16 +37,13 @@ impl Default for ApkWriteOptions {
     }
 }
 
+/// One DEX entry to serialize: a whole DEX file, or one part of a DEX that
+/// outgrew the id limits.
 pub(super) struct DexJob {
     pub dex_index: usize,
+    pub part: Option<DexPart>,
     pub component: usize,
     pub name: String,
-}
-
-struct WritePlan {
-    jobs: Vec<DexJob>,
-    /// Components whose DEX set was rebuilt, so the new set replaces every original entry.
-    remove_originals: HashSet<usize>,
 }
 
 impl ApkFile {
@@ -57,7 +52,7 @@ impl ApkFile {
     /// kept, so a later write produces the same output again.
     #[instrument(level = "info", skip_all, fields(output_dir = %output_dir.as_ref().display()))]
     pub fn write_to(
-        &mut self,
+        &self,
         output_dir: impl AsRef<Path>,
         options: ApkWriteOptions,
     ) -> Result<Vec<PathBuf>> {
@@ -78,7 +73,7 @@ impl ApkFile {
     /// `dir` lets the caller link a finished file into place later.
     #[instrument(level = "info", skip_all)]
     pub fn write_unsigned_files(
-        &mut self,
+        &self,
         options: ApkWriteOptions,
         dir: &Path,
     ) -> Result<Vec<(String, File)>> {
@@ -113,29 +108,25 @@ impl ApkFile {
     /// DEX files are serialized and deflated in parallel workers and copied
     /// into the output as they complete, so no serialized DEX sits in memory.
     fn write_components(
-        &mut self,
+        &self,
         options: ApkWriteOptions,
         mut open: impl FnMut(usize) -> io::Result<File>,
     ) -> Result<()> {
-        let plan = self.write_plan()?;
+        let jobs = self.dex_jobs()?;
         info!(
             dex_entry_count = self.dex.len(),
-            dex_rewrite_count = plan.jobs.len(),
+            dex_rewrite_count = jobs.len(),
             strip_signatures = options.strip_signatures,
             "serializing APK output"
         );
-        let pool = DexWorkPool::new(
-            &self.dex.dex_files,
-            &plan.jobs,
-            options.dex_compression_level,
-        );
+        let pool = DexWorkPool::new(&self.dex.dex_files, &jobs, options.dex_compression_level);
         std::thread::scope(|scope| {
             let mut entries = DexEntryStream::start(scope, &pool, options.dex_workers.get());
             for (index, component) in self.components.iter().enumerate() {
                 write_component(
                     component,
                     index,
-                    &plan,
+                    &jobs,
                     &mut entries,
                     open(index)?,
                     options.strip_signatures,
@@ -145,82 +136,59 @@ impl ApkFile {
         })
     }
 
-    fn write_plan(&mut self) -> Result<WritePlan> {
-        let any_dirty = self
-            .dex_origins
+    /// The DEX entries to serialize: every dirty or added DEX, a DEX that
+    /// outgrew the id limits as several parts. The first part keeps the
+    /// entry's name; later parts take the next free names in its component.
+    fn dex_jobs(&self) -> Result<Vec<DexJob>> {
+        let mut used: Vec<HashSet<String>> = self
+            .components
             .iter()
-            .any(|origin| !matches!(origin, DexOrigin::Existing { .. }))
-            || self.dex.iter().any(DexFile::is_dirty);
-        if !any_dirty {
-            return Ok(WritePlan {
-                jobs: Vec::new(),
-                remove_originals: HashSet::new(),
-            });
-        }
-        let groups: Vec<usize> = self.dex_origins.iter().map(DexOrigin::component).collect();
-        if let Some(layout) = self.dex.redistribute_if_needed(&groups)? {
-            let old = std::mem::take(&mut self.dex_origins);
-            let mut counts: HashMap<usize, u32> = HashMap::new();
-            self.dex_origins = layout
-                .into_iter()
-                .map(|dex| match dex.previous {
-                    Some(index) => old[index].clone(),
-                    None => {
-                        let count = counts.entry(dex.group).or_default();
-                        *count += 1;
-                        DexOrigin::Rebuilt {
-                            component: dex.group,
-                            name: dex_entry_name(*count),
-                        }
-                    }
-                })
-                .collect();
-        }
-        let mut used: HashSet<String> = self.base().original_dex_names().iter().cloned().collect();
-        let dex_files = &self.dex.dex_files;
-        let jobs = self
-            .dex_origins
-            .iter()
-            .enumerate()
-            .filter_map(|(dex_index, origin)| match origin {
-                DexOrigin::Existing { component, name } => {
-                    dex_files[dex_index].is_dirty().then(|| DexJob {
-                        dex_index,
-                        component: *component,
-                        name: name.clone(),
-                    })
+            .map(|component| component.original_dex_names().iter().cloned().collect())
+            .collect();
+        let mut jobs = Vec::new();
+        for (dex_index, (dex, origin)) in self.dex.iter().zip(&self.dex_origins).enumerate() {
+            let (component, name) = match origin {
+                DexOrigin::Existing { component, name } if dex.is_dirty() => {
+                    (*component, name.clone())
                 }
-                DexOrigin::Rebuilt { component, name } => Some(DexJob {
+                DexOrigin::Existing { .. } => continue,
+                DexOrigin::Added => (0, next_free_dex_name(&mut used[0])),
+            };
+            let Some(parts) = reseam_dex::split_to_fit(dex)? else {
+                jobs.push(DexJob {
                     dex_index,
-                    component: *component,
-                    name: name.clone(),
-                }),
-                DexOrigin::Added => Some(DexJob {
+                    part: None,
+                    component,
+                    name,
+                });
+                continue;
+            };
+            info!(
+                entry = name,
+                parts = parts.len(),
+                "splitting overflowed DEX"
+            );
+            for (ordinal, part) in parts.into_iter().enumerate() {
+                let name = match ordinal {
+                    0 => name.clone(),
+                    _ => next_free_dex_name(&mut used[component]),
+                };
+                jobs.push(DexJob {
                     dex_index,
-                    component: 0,
-                    name: next_free_dex_name(&mut used),
-                }),
-            })
-            .collect();
-        let remove_originals = self
-            .dex_origins
-            .iter()
-            .filter_map(|origin| match origin {
-                DexOrigin::Rebuilt { component, .. } => Some(*component),
-                _ => None,
-            })
-            .collect();
-        Ok(WritePlan {
-            jobs,
-            remove_originals,
-        })
+                    part: Some(part),
+                    component,
+                    name,
+                });
+            }
+        }
+        Ok(jobs)
     }
 }
 
 fn write_component(
     component: &ApkComponent,
     index: usize,
-    plan: &WritePlan,
+    jobs: &[DexJob],
     entries: &mut DexEntryStream,
     output: File,
     strip_signatures: bool,
@@ -238,9 +206,6 @@ fn write_component(
                 .filter(|name| is_signature_entry(name))
                 .map(String::from),
         );
-    }
-    if plan.remove_originals.contains(&index) {
-        removals.extend(component.original_dex_names().iter().cloned());
     }
 
     let mut replacements = BTreeMap::new();
@@ -272,8 +237,7 @@ fn write_component(
         );
     }
 
-    let dex_names: Vec<String> = plan
-        .jobs
+    let dex_names: Vec<String> = jobs
         .iter()
         .filter(|job| job.component == index)
         .map(|job| job.name.clone())

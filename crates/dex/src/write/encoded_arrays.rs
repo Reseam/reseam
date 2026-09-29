@@ -21,7 +21,7 @@ pub(crate) fn write_type_lists<S: DexSink>(
     let mut lists = StreamInterner::default();
     let mut encoded = Vec::new();
 
-    let mut proto_param_offsets: Vec<u32> = Vec::with_capacity(plan.dex.prototypes.len());
+    let mut proto_param_offsets: Vec<u32> = Vec::with_capacity(plan.proto_count());
     for proto in plan.prototypes() {
         proto_param_offsets.push(intern_type_list(
             w,

@@ -5,6 +5,7 @@
 
 pub use decode::count_instructions;
 pub use orchestration::read_code_item;
+pub(crate) use refs::index_operands;
 pub use refs::{walk_instructions, RawInstruction};
 
 mod arithmetic;

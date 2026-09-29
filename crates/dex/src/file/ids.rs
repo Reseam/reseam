@@ -123,16 +123,6 @@ impl<T: IdRecord> IdTable<T> {
         i
     }
 
-    pub(crate) fn truncate(&mut self, len: usize) {
-        if len >= self.raw_len {
-            self.tail.truncate(len - self.raw_len);
-        } else {
-            self.raw_len = len;
-            self.tail.clear();
-        }
-        self.rebuild_index();
-    }
-
     /// Index of the entry whose sort key equals `probe`'s.
     pub fn find(&self, probe: &T) -> Option<usize> {
         if let Ok(i) = self.binary_search(probe) {
@@ -403,15 +393,11 @@ mod tests {
     }
 
     #[test]
-    fn pushed_records_are_found_and_truncated() {
+    fn pushed_records_are_found() {
         let mut table = raw_methods(&[(0, 0, 1)]);
         let i = table.push(method(2, 2, 2));
         assert_eq!(i, 1);
         assert_eq!(table.find(&method(2, 2, 2)), Some(1));
-        table.truncate(1);
-        assert_eq!(table.find(&method(2, 2, 2)), None);
-        table.truncate(0);
-        assert!(table.is_empty());
     }
 
     #[test]

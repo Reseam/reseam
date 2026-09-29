@@ -7,8 +7,10 @@ use crate::types::code::CodeItem;
 use crate::types::debug::{DebugBytecode, DebugInfo};
 use crate::types::encoded_value::EncodedValue;
 use crate::types::instruction::Instruction;
-use crate::types::method_handle::{CallSiteItem, MethodHandle, MethodHandleMember};
-use crate::types::{FieldIdx, MethodIdx, ProtoIdx, StringIdx, TypeIdx};
+use crate::types::method_handle::{
+    CallSiteIdx, CallSiteItem, MethodHandle, MethodHandleIdx, MethodHandleMember,
+};
+use crate::types::{FieldIdx, MethodIdx, Pool, ProtoIdx, StringIdx, TypeIdx};
 
 /// Owned index remap tables, retained after sorting so the writer can remap
 /// classes it decodes lazily (never-materialized classes) at emit time.
@@ -18,6 +20,8 @@ pub(crate) struct RemapTables {
     pub proto: Vec<u32>,
     pub field: Vec<u32>,
     pub method: Vec<u32>,
+    pub call_site: Vec<u32>,
+    pub method_handle: Vec<u32>,
 }
 
 impl RemapTables {
@@ -28,6 +32,8 @@ impl RemapTables {
             proto: &self.proto,
             field: &self.field,
             method: &self.method,
+            call_site: &self.call_site,
+            method_handle: &self.method_handle,
         }
     }
 }
@@ -38,9 +44,24 @@ pub(crate) struct Remap<'a> {
     pub(crate) proto: &'a [u32],
     pub(crate) field: &'a [u32],
     pub(crate) method: &'a [u32],
+    pub(crate) call_site: &'a [u32],
+    pub(crate) method_handle: &'a [u32],
 }
 
 impl<'a> Remap<'a> {
+    pub(crate) fn index(&self, pool: Pool, idx: u32) -> u32 {
+        let table = match pool {
+            Pool::String => self.string,
+            Pool::Type => self.type_,
+            Pool::Proto => self.proto,
+            Pool::Field => self.field,
+            Pool::Method => self.method,
+            Pool::CallSite => self.call_site,
+            Pool::MethodHandle => self.method_handle,
+        };
+        table[idx as usize]
+    }
+
     pub(crate) fn remap_string(&self, idx: StringIdx) -> StringIdx {
         StringIdx(self.string[idx.0 as usize])
     }
@@ -59,6 +80,14 @@ impl<'a> Remap<'a> {
 
     pub(crate) fn remap_method(&self, idx: MethodIdx) -> MethodIdx {
         MethodIdx(self.method[idx.0 as usize])
+    }
+
+    pub(crate) fn remap_call_site_idx(&self, idx: CallSiteIdx) -> CallSiteIdx {
+        CallSiteIdx(self.call_site[idx.0 as usize])
+    }
+
+    pub(crate) fn remap_method_handle_idx(&self, idx: MethodHandleIdx) -> MethodHandleIdx {
+        MethodHandleIdx(self.method_handle[idx.0 as usize])
     }
 
     pub(crate) fn remap_opt_string(&self, idx: Option<StringIdx>) -> Option<StringIdx> {
@@ -216,6 +245,7 @@ impl<'a> Remap<'a> {
             EncodedValue::Method(idx) => *idx = self.remap_method(*idx),
             EncodedValue::Enum(idx) => *idx = self.remap_field(*idx),
             EncodedValue::MethodType(idx) => *idx = self.remap_proto(*idx),
+            EncodedValue::MethodHandle(idx) => *idx = self.remap_method_handle_idx(*idx),
             EncodedValue::Array(items) => {
                 for item in items {
                     self.remap_encoded_value(item);
@@ -302,13 +332,19 @@ impl<'a> Remap<'a> {
             Instruction::ConstMethodType { proto, .. } => {
                 *proto = self.remap_proto(*proto);
             }
-            // InvokeCustom/InvokeCustomRange reference call_site indices, not remapped
-            // ConstMethodHandle references method_handle indices, not remapped
+            Instruction::InvokeCustom { call_site, .. }
+            | Instruction::InvokeCustomRange { call_site, .. } => {
+                *call_site = self.remap_call_site_idx(*call_site);
+            }
+            Instruction::ConstMethodHandle { method_handle, .. } => {
+                *method_handle = self.remap_method_handle_idx(*method_handle);
+            }
             _ => {}
         }
     }
 
     pub(crate) fn remap_call_site(&self, cs: &mut CallSiteItem) {
+        cs.bootstrap_method = self.remap_method_handle_idx(cs.bootstrap_method);
         cs.method_name = self.remap_string(cs.method_name);
         cs.method_type = self.remap_proto(cs.method_type);
         for arg in &mut cs.extra_arguments {

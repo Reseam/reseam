@@ -3,7 +3,6 @@
 
 use std::borrow::Cow;
 use std::cmp::Ordering;
-use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 
 use rustc_hash::{FxHashMap, FxHasher};
@@ -144,25 +143,6 @@ impl StringPool {
         } else {
             Cow::Owned(encode_mutf8(&self.owned[i - self.raw_len]))
         }
-    }
-
-    /// Keeps only the entries in `keep`, in index order, as owned strings.
-    pub(crate) fn retain(&mut self, keep: &HashSet<u32>) {
-        let owned: Vec<Box<str>> = (0..self.len() as u32)
-            .filter(|i| keep.contains(i))
-            .map(|i| self.get(StringIdx(i)).into())
-            .collect();
-        *self = Self::from_iter(owned);
-    }
-
-    pub(crate) fn truncate(&mut self, len: usize) {
-        if len >= self.raw_len {
-            self.owned.truncate(len - self.raw_len);
-        } else {
-            self.raw_len = len;
-            self.owned.clear();
-        }
-        self.rebuild_tail();
     }
 
     /// The string_data_item bytes for `idx`; raw entries are served verbatim.
@@ -338,21 +318,6 @@ mod tests {
         assert_eq!(idx, StringIdx(7));
         assert_eq!(pool.intern("zz"), idx);
         assert_eq!(pool.find("zz"), Some(idx));
-    }
-
-    #[test]
-    fn retain_and_truncate_keep_contents() {
-        let mut pool = raw_pool(&["b", "c"]);
-        pool.push("a");
-        assert_eq!(pool.find("a"), Some(StringIdx(2)));
-
-        pool.retain(&HashSet::from([1, 2]));
-        assert_eq!(pool.iter().collect::<Vec<_>>(), ["c", "a"]);
-        assert_eq!(pool.find("a"), Some(StringIdx(1)));
-
-        pool.truncate(1);
-        assert_eq!(pool.len(), 1);
-        assert_eq!(pool.find("a"), None);
     }
 
     #[test]

@@ -45,7 +45,7 @@ impl<S: DexSink> DexWriterWriteExt for DexWriter<S> {
         }
 
         let type_ids_off = self.pos();
-        let type_count = dex.types.len() as u32;
+        let type_count = plan.type_count() as u32;
         for desc_idx in plan.types() {
             self.write_u32(desc_idx.0);
         }
@@ -58,7 +58,7 @@ impl<S: DexSink> DexWriterWriteExt for DexWriter<S> {
         }
 
         let proto_ids_off = self.pos();
-        let proto_count = dex.prototypes.len() as u32;
+        let proto_count = plan.proto_count() as u32;
         for _ in 0..proto_count {
             self.write_u32(0);
             self.write_u32(0);
@@ -73,7 +73,7 @@ impl<S: DexSink> DexWriterWriteExt for DexWriter<S> {
         }
 
         let field_ids_off = self.pos();
-        let field_count = dex.fields.len() as u32;
+        let field_count = plan.field_count() as u32;
         for f in plan.fields() {
             self.write_u16(f.class.0 as u16);
             self.write_u16(f.type_.0 as u16);
@@ -88,7 +88,7 @@ impl<S: DexSink> DexWriterWriteExt for DexWriter<S> {
         }
 
         let method_ids_off = self.pos();
-        let method_count = dex.methods.len() as u32;
+        let method_count = plan.method_count() as u32;
         for m in plan.methods() {
             self.write_u16(m.class.0 as u16);
             self.write_u16(m.proto.0);

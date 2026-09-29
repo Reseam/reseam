@@ -104,49 +104,52 @@ pub(crate) fn finalize<S: DexSink>(
     w.patch_u32(header_base + OFF_LINK_SIZE, 0);
     w.patch_u32(header_base + OFF_LINK_OFF, 0);
     w.patch_u32(header_base + OFF_MAP_OFF, map_off);
-    w.patch_u32(header_base + OFF_STRING_IDS_SIZE, dex.strings.len() as u32);
+    w.patch_u32(
+        header_base + OFF_STRING_IDS_SIZE,
+        plan.string_count() as u32,
+    );
     w.patch_u32(
         header_base + OFF_STRING_IDS_OFF,
-        if !dex.strings.is_empty() {
+        if plan.string_count() > 0 {
             string_ids_off
         } else {
             0
         },
     );
-    w.patch_u32(header_base + OFF_TYPE_IDS_SIZE, dex.types.len() as u32);
+    w.patch_u32(header_base + OFF_TYPE_IDS_SIZE, plan.type_count() as u32);
     w.patch_u32(
         header_base + OFF_TYPE_IDS_OFF,
-        if !dex.types.is_empty() {
+        if plan.type_count() > 0 {
             type_ids_off
         } else {
             0
         },
     );
-    w.patch_u32(
-        header_base + OFF_PROTO_IDS_SIZE,
-        dex.prototypes.len() as u32,
-    );
+    w.patch_u32(header_base + OFF_PROTO_IDS_SIZE, plan.proto_count() as u32);
     w.patch_u32(
         header_base + OFF_PROTO_IDS_OFF,
-        if !dex.prototypes.is_empty() {
+        if plan.proto_count() > 0 {
             proto_ids_off
         } else {
             0
         },
     );
-    w.patch_u32(header_base + OFF_FIELD_IDS_SIZE, dex.fields.len() as u32);
+    w.patch_u32(header_base + OFF_FIELD_IDS_SIZE, plan.field_count() as u32);
     w.patch_u32(
         header_base + OFF_FIELD_IDS_OFF,
-        if !dex.fields.is_empty() {
+        if plan.field_count() > 0 {
             field_ids_off
         } else {
             0
         },
     );
-    w.patch_u32(header_base + OFF_METHOD_IDS_SIZE, dex.methods.len() as u32);
+    w.patch_u32(
+        header_base + OFF_METHOD_IDS_SIZE,
+        plan.method_count() as u32,
+    );
     w.patch_u32(
         header_base + OFF_METHOD_IDS_OFF,
-        if !dex.methods.is_empty() {
+        if plan.method_count() > 0 {
             method_ids_off
         } else {
             0

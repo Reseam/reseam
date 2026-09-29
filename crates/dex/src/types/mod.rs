@@ -60,3 +60,27 @@ pub struct Prototype {
     pub return_type: TypeIdx,
     pub parameters: TypeList,
 }
+
+/// The id pools a DEX index points into.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Pool {
+    String,
+    Type,
+    Proto,
+    Field,
+    Method,
+    CallSite,
+    MethodHandle,
+}
+
+impl Pool {
+    pub(crate) const ALL: [Pool; 7] = [
+        Pool::String,
+        Pool::Type,
+        Pool::Proto,
+        Pool::Field,
+        Pool::Method,
+        Pool::CallSite,
+        Pool::MethodHandle,
+    ];
+}

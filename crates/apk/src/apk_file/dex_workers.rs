@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::thread::Scope;
 
-use reseam_dex::DexFile;
+use reseam_dex::{DexFile, DexPart};
 use tracing::debug;
 
 use super::write::DexJob;
@@ -41,6 +41,7 @@ impl<'a> DexWorkPool<'a> {
             };
             let result = compress_dex(
                 &self.dex_files[job.dex_index],
+                job.part.as_ref(),
                 &job.name,
                 self.compression_level,
             );
@@ -110,12 +111,12 @@ impl<'a> DexEntryStream<'a> {
     }
 }
 
-/// Serializes a DEX to a spooled file and deflates it into a single-entry
+/// Serializes a DEX, or one part of it, to a spooled file and deflates it into a single-entry
 /// archive in another spooled file, whose compressed bytes the APK writer
 /// copies verbatim. Neither the DEX nor its deflated form touches the heap.
-fn compress_dex(dex: &DexFile, name: &str, level: i64) -> Result<File> {
+fn compress_dex(dex: &DexFile, part: Option<&DexPart>, name: &str, level: i64) -> Result<File> {
     let started = std::time::Instant::now();
-    let spooled = reseam_dex::write_spooled(dex)?;
+    let spooled = reseam_dex::write_spooled(dex, part)?;
     let serialized = started.elapsed();
     let mapped = spooled.map()?;
     let mut archive = zip::ZipWriter::new(BufWriter::new(tempfile::tempfile()?));

@@ -267,11 +267,6 @@ impl ClassTable {
         }
     }
 
-    pub(crate) fn truncate(&mut self, len: usize) {
-        self.slots.truncate(len);
-        self.by_type.take();
-    }
-
     pub fn into_defs(mut self, opts: &ParseOptions) -> Result<Vec<ClassDef>> {
         self.materialize_all(opts)?;
         Ok(self
@@ -294,10 +289,6 @@ impl ClassTable {
             .binary_search_by_key(&type_idx, |&i| self.header(i as usize).class_type)
             .ok()
             .map(|pos| by_type[pos] as usize)
-    }
-
-    pub(crate) fn invalidate_index(&mut self) {
-        self.by_type.take();
     }
 
     pub fn heap_bytes(&self) -> u64 {

@@ -12,6 +12,7 @@ use std::collections::BinaryHeap;
 
 use rustc_hash::FxHashMap;
 
+use super::part::{pool_len, DexPart};
 use super::sort::{fixup_code, Remap, RemapTables};
 use crate::error::{invalid, Result};
 use crate::file::{ClassHeader, DexFile, RawClassDef};
@@ -21,7 +22,7 @@ use crate::types::annotation::AnnotationsDirectory;
 use crate::types::class::ClassDef;
 use crate::types::encoded_value::EncodedValue;
 use crate::types::method_handle::{CallSiteItem, MethodHandle};
-use crate::types::{FieldId, MethodId, Prototype, StringIdx, TypeIdx, TypeList};
+use crate::types::{FieldId, MethodId, Pool, Prototype, StringIdx, TypeIdx, TypeList};
 
 /// Output order of each pool: `order[new] = old`.
 pub(crate) struct PoolOrder {
@@ -30,6 +31,8 @@ pub(crate) struct PoolOrder {
     pub proto: Vec<u32>,
     pub field: Vec<u32>,
     pub method: Vec<u32>,
+    pub call_site: Vec<u32>,
+    pub method_handle: Vec<u32>,
 }
 
 /// A class in output order: a patch-touched class from its (remapped) IR, or
@@ -41,7 +44,7 @@ pub(crate) enum WriteClass<'a> {
 
 pub(crate) struct WritePlan<'a> {
     pub dex: &'a DexFile,
-    /// `None` when every pool is already in DEX sort order.
+    /// `None` when every pool is written whole and already in DEX sort order.
     pub order: Option<PoolOrder>,
     pub remap: Option<RemapTables>,
     pub classes: Vec<WriteClass<'a>>,
@@ -53,25 +56,35 @@ impl<'a> WritePlan<'a> {
     /// Sorts every pool and resolves what each class needs. A pool already in
     /// sort order whose keys reference only identity-mapped pools costs
     /// nothing; resident classes are cloned and remapped only when a pool
-    /// actually moved.
-    pub(crate) fn new(dex: &'a DexFile) -> Result<Self> {
-        let string_remap = (!dex.strings.is_sorted()).then(|| {
-            let mut order: Vec<u32> = (0..dex.strings.len() as u32).collect();
+    /// actually moved. A plan for a [`DexPart`] writes only the part's classes
+    /// and drops every pool entry they do not reach.
+    pub(crate) fn new(dex: &'a DexFile, part: Option<&DexPart>) -> Result<Self> {
+        let compact = part.is_some();
+        let candidates = |pool: Pool| -> Vec<u32> {
+            match part {
+                Some(part) => part.pools.members(pool).collect(),
+                None => (0..pool_len(dex, pool) as u32).collect(),
+            }
+        };
+
+        let strings = (compact || !dex.strings.is_sorted()).then(|| {
+            let mut order = candidates(Pool::String);
             order.sort_by(|&a, &b| dex.strings.compare(a, b));
             order
         });
-        let string_remap = string_remap.map(|order| build_remap(&order));
+        let string_remap = strings.as_deref().map(|o| remap_of(o, dex.strings.len()));
         let map_string = |i: StringIdx| string_remap.as_ref().map_or(i.0, |r| r[i.0 as usize]);
 
-        let type_remap = (!dex.types.is_sorted() || string_remap.is_some()).then(|| {
-            let mut order: Vec<u32> = (0..dex.types.len() as u32).collect();
+        let types = (compact || !dex.types.is_sorted() || string_remap.is_some()).then(|| {
+            let mut order = candidates(Pool::Type);
             order.sort_by_key(|&i| map_string(dex.types.get(i as usize)));
-            build_remap(&order)
+            order
         });
+        let type_remap = types.as_deref().map(|o| remap_of(o, dex.types.len()));
         let map_type = |i: TypeIdx| type_remap.as_ref().map_or(i.0, |r| r[i.0 as usize]);
 
-        let proto_remap = (!dex.prototypes.is_sorted() || type_remap.is_some()).then(|| {
-            let mut order: Vec<u32> = (0..dex.prototypes.len() as u32).collect();
+        let protos = (compact || !dex.prototypes.is_sorted() || type_remap.is_some()).then(|| {
+            let mut order = candidates(Pool::Proto);
             order.sort_by(|&a, &b| {
                 let pa = dex.prototypes.get(a as usize);
                 let pb = dex.prototypes.get(b as usize);
@@ -84,69 +97,81 @@ impl<'a> WritePlan<'a> {
                             .cmp(pb.parameters.iter().map(|t| map_type(*t)))
                     })
             });
-            build_remap(&order)
+            order
         });
+        let proto_remap = protos.as_deref().map(|o| remap_of(o, dex.prototypes.len()));
         let map_proto = |i: crate::types::ProtoIdx| {
             proto_remap.as_ref().map_or(i.0 as u32, |r| r[i.0 as usize])
         };
 
-        let field_remap = (!dex.fields.is_sorted()
-            || type_remap.is_some()
-            || string_remap.is_some())
-        .then(|| {
-            let mut order: Vec<u32> = (0..dex.fields.len() as u32).collect();
-            order.sort_by_cached_key(|&i| {
-                let f = dex.fields.get(i as usize);
-                (map_type(f.class), map_string(f.name), map_type(f.type_))
-            });
-            build_remap(&order)
-        });
+        let fields =
+            (compact || !dex.fields.is_sorted() || type_remap.is_some() || string_remap.is_some())
+                .then(|| {
+                    let mut order = candidates(Pool::Field);
+                    order.sort_by_cached_key(|&i| {
+                        let f = dex.fields.get(i as usize);
+                        (map_type(f.class), map_string(f.name), map_type(f.type_))
+                    });
+                    order
+                });
+        let field_remap = fields.as_deref().map(|o| remap_of(o, dex.fields.len()));
 
-        let method_remap = (!dex.methods.is_sorted()
+        let methods = (compact
+            || !dex.methods.is_sorted()
             || type_remap.is_some()
             || string_remap.is_some()
             || proto_remap.is_some())
         .then(|| {
-            let mut order: Vec<u32> = (0..dex.methods.len() as u32).collect();
+            let mut order = candidates(Pool::Method);
             order.sort_by_cached_key(|&i| {
                 let m = dex.methods.get(i as usize);
                 (map_type(m.class), map_string(m.name), map_proto(m.proto))
             });
-            build_remap(&order)
+            order
         });
+        let method_remap = methods.as_deref().map(|o| remap_of(o, dex.methods.len()));
 
-        let remaps = [
-            string_remap.as_deref(),
-            type_remap.as_deref(),
-            proto_remap.as_deref(),
-            field_remap.as_deref(),
-            method_remap.as_deref(),
-        ];
-        let already_sorted = remaps.iter().all(|r| r.is_none_or(is_identity));
+        let already_sorted = !compact
+            && [
+                &string_remap,
+                &type_remap,
+                &proto_remap,
+                &field_remap,
+                &method_remap,
+            ]
+            .iter()
+            .all(|r| r.as_deref().is_none_or(is_identity));
 
         let (order, remap) = if already_sorted {
             (None, None)
         } else {
-            let identity = |len: usize| (0..len as u32).collect::<Vec<u32>>();
-            let remap = RemapTables {
-                string: string_remap.unwrap_or_else(|| identity(dex.strings.len())),
-                type_: type_remap.unwrap_or_else(|| identity(dex.types.len())),
-                proto: proto_remap.unwrap_or_else(|| identity(dex.prototypes.len())),
-                field: field_remap.unwrap_or_else(|| identity(dex.fields.len())),
-                method: method_remap.unwrap_or_else(|| identity(dex.methods.len())),
-            };
             let order = PoolOrder {
-                string: invert(&remap.string),
-                type_: invert(&remap.type_),
-                proto: invert(&remap.proto),
-                field: invert(&remap.field),
-                method: invert(&remap.method),
+                string: strings.unwrap_or_else(|| candidates(Pool::String)),
+                type_: types.unwrap_or_else(|| candidates(Pool::Type)),
+                proto: protos.unwrap_or_else(|| candidates(Pool::Proto)),
+                field: fields.unwrap_or_else(|| candidates(Pool::Field)),
+                method: methods.unwrap_or_else(|| candidates(Pool::Method)),
+                call_site: candidates(Pool::CallSite),
+                method_handle: candidates(Pool::MethodHandle),
+            };
+            let remap = RemapTables {
+                string: remap_of(&order.string, dex.strings.len()),
+                type_: remap_of(&order.type_, dex.types.len()),
+                proto: remap_of(&order.proto, dex.prototypes.len()),
+                field: remap_of(&order.field, dex.fields.len()),
+                method: remap_of(&order.method, dex.methods.len()),
+                call_site: remap_of(&order.call_site, dex.call_sites.len()),
+                method_handle: remap_of(&order.method_handle, dex.method_handles.len()),
             };
             (Some(order), Some(remap))
         };
 
-        let mut classes: Vec<WriteClass<'a>> = Vec::with_capacity(dex.classes.len());
-        for i in 0..dex.classes.len() {
+        let sources: Vec<usize> = match part {
+            Some(part) => part.classes.clone(),
+            None => (0..dex.classes.len()).collect(),
+        };
+        let mut classes: Vec<WriteClass<'a>> = Vec::with_capacity(sources.len());
+        for &i in &sources {
             classes.push(match (dex.classes.resident(i), dex.classes.raw_def(i)) {
                 (Some(class), _) => match &remap {
                     Some(remap) => {
@@ -168,12 +193,16 @@ impl<'a> WritePlan<'a> {
             classes,
             class_order: Vec::new(),
         };
-        plan.class_order = plan.order_classes()?;
+        let positions = plan.order_classes()?;
         let mut slots: Vec<_> = plan.classes.drain(..).map(Some).collect();
-        for &source in &plan.class_order {
-            plan.classes
-                .push(slots[source].take().expect("class order is a permutation"));
+        for &position in &positions {
+            plan.classes.push(
+                slots[position]
+                    .take()
+                    .expect("class order is a permutation"),
+            );
         }
+        plan.class_order = positions.into_iter().map(|p| sources[p]).collect();
         Ok(plan)
     }
 
@@ -243,7 +272,45 @@ impl<'a> WritePlan<'a> {
     }
 
     pub(crate) fn string_count(&self) -> usize {
-        self.dex.strings.len()
+        self.order
+            .as_ref()
+            .map_or(self.dex.strings.len(), |o| o.string.len())
+    }
+
+    pub(crate) fn type_count(&self) -> usize {
+        self.order
+            .as_ref()
+            .map_or(self.dex.types.len(), |o| o.type_.len())
+    }
+
+    pub(crate) fn proto_count(&self) -> usize {
+        self.order
+            .as_ref()
+            .map_or(self.dex.prototypes.len(), |o| o.proto.len())
+    }
+
+    pub(crate) fn field_count(&self) -> usize {
+        self.order
+            .as_ref()
+            .map_or(self.dex.fields.len(), |o| o.field.len())
+    }
+
+    pub(crate) fn method_count(&self) -> usize {
+        self.order
+            .as_ref()
+            .map_or(self.dex.methods.len(), |o| o.method.len())
+    }
+
+    pub(crate) fn call_site_count(&self) -> usize {
+        self.order
+            .as_ref()
+            .map_or(self.dex.call_sites.len(), |o| o.call_site.len())
+    }
+
+    pub(crate) fn method_handle_count(&self) -> usize {
+        self.order
+            .as_ref()
+            .map_or(self.dex.method_handles.len(), |o| o.method_handle.len())
     }
 
     pub(crate) fn string_item(&self, new: usize) -> Cow<'_, [u8]> {
@@ -252,14 +319,14 @@ impl<'a> WritePlan<'a> {
     }
 
     pub(crate) fn types(&self) -> impl Iterator<Item = StringIdx> + '_ {
-        (0..self.dex.types.len()).map(move |new| {
+        (0..self.type_count()).map(move |new| {
             let old = self.order.as_ref().map_or(new as u32, |o| o.type_[new]);
             self.map_string(self.dex.types.get(old as usize))
         })
     }
 
     pub(crate) fn prototypes(&self) -> impl Iterator<Item = Prototype> + '_ {
-        (0..self.dex.prototypes.len()).map(move |new| {
+        (0..self.proto_count()).map(move |new| {
             let old = self.order.as_ref().map_or(new as u32, |o| o.proto[new]);
             let p = self.dex.prototypes.get(old as usize);
             Prototype {
@@ -271,7 +338,7 @@ impl<'a> WritePlan<'a> {
     }
 
     pub(crate) fn fields(&self) -> impl Iterator<Item = FieldId> + '_ {
-        (0..self.dex.fields.len()).map(move |new| {
+        (0..self.field_count()).map(move |new| {
             let old = self.order.as_ref().map_or(new as u32, |o| o.field[new]);
             let f = self.dex.fields.get(old as usize);
             FieldId {
@@ -283,7 +350,7 @@ impl<'a> WritePlan<'a> {
     }
 
     pub(crate) fn methods(&self) -> impl Iterator<Item = MethodId> + '_ {
-        (0..self.dex.methods.len()).map(move |new| {
+        (0..self.method_count()).map(move |new| {
             let old = self.order.as_ref().map_or(new as u32, |o| o.method[new]);
             let m = self.dex.methods.get(old as usize);
             MethodId {
@@ -295,27 +362,37 @@ impl<'a> WritePlan<'a> {
     }
 
     pub(crate) fn call_sites(&self) -> Cow<'_, [CallSiteItem]> {
-        match self.remap() {
-            None => Cow::Borrowed(&self.dex.call_sites),
-            Some(remap) => {
-                let mut sites = self.dex.call_sites.clone();
-                sites.iter_mut().for_each(|cs| remap.remap_call_site(cs));
-                Cow::Owned(sites)
-            }
-        }
+        let (Some(order), Some(remap)) = (&self.order, self.remap()) else {
+            return Cow::Borrowed(&self.dex.call_sites);
+        };
+        Cow::Owned(
+            order
+                .call_site
+                .iter()
+                .map(|&old| {
+                    let mut site = self.dex.call_sites[old as usize].clone();
+                    remap.remap_call_site(&mut site);
+                    site
+                })
+                .collect(),
+        )
     }
 
     pub(crate) fn method_handles(&self) -> Cow<'_, [MethodHandle]> {
-        match self.remap() {
-            None => Cow::Borrowed(&self.dex.method_handles),
-            Some(remap) => {
-                let mut handles = self.dex.method_handles.clone();
-                handles
-                    .iter_mut()
-                    .for_each(|mh| remap.remap_method_handle(mh));
-                Cow::Owned(handles)
-            }
-        }
+        let (Some(order), Some(remap)) = (&self.order, self.remap()) else {
+            return Cow::Borrowed(&self.dex.method_handles);
+        };
+        Cow::Owned(
+            order
+                .method_handle
+                .iter()
+                .map(|&old| {
+                    let mut handle = self.dex.method_handles[old as usize];
+                    remap.remap_method_handle(&mut handle);
+                    handle
+                })
+                .collect(),
+        )
     }
 
     pub(crate) fn class_header(&self, k: usize) -> ClassHeader {
@@ -437,18 +514,14 @@ fn fixup_class(class: &mut ClassDef) -> Result<()> {
     Ok(())
 }
 
-/// Build old_idx → new_idx remap from a permutation array (new_idx → old_idx).
-fn build_remap(order: &[u32]) -> Vec<u32> {
-    invert(order)
-}
-
-/// Inverts a permutation: `out[perm[i]] = i`.
-fn invert(perm: &[u32]) -> Vec<u32> {
-    let mut out = vec![0u32; perm.len()];
-    for (i, &p) in perm.iter().enumerate() {
-        out[p as usize] = i as u32;
+/// Old-to-new index map for a pool of `len` entries written in `order`
+/// (`order[new] = old`). Entries left out are never referenced.
+fn remap_of(order: &[u32], len: usize) -> Vec<u32> {
+    let mut remap = vec![u32::MAX; len];
+    for (new, &old) in order.iter().enumerate() {
+        remap[old as usize] = new as u32;
     }
-    out
+    remap
 }
 
 fn is_identity(remap: &[u32]) -> bool {

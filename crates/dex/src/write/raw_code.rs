@@ -10,9 +10,9 @@ use crate::encoding::leb128::{
     write_uleb128, write_uleb128p1,
 };
 use crate::error::{require_len, Result};
-use crate::read::code::walk_instructions;
+use crate::read::code::{index_operands, walk_instructions};
 use crate::types::header::ParseOptions;
-use crate::types::{FieldIdx, MethodIdx, ProtoIdx, StringIdx, TypeIdx};
+use crate::types::{StringIdx, TypeIdx};
 
 /// Appends the code item at `code_off` to `out` with every pool index
 /// remapped and `debug_info_off` cleared for later patching. Returns `false`
@@ -64,7 +64,7 @@ pub(crate) fn copy_code_item(
     let list_off = pos + tries_size * 8;
     match remap {
         None => {
-            let end = handler_list_end(buf, list_off, opts)?;
+            let end = walk_handlers(buf, list_off, opts, |_| {})?;
             out.extend_from_slice(&buf[list_off..end]);
         }
         Some(remap) => {
@@ -81,59 +81,46 @@ pub(crate) fn copy_code_item(
     Ok(true)
 }
 
-/// Rewrites the pool index carried by the instruction at `insn[0..]`, the
+/// Rewrites the pool indices carried by the instruction at `insn[0..]`, the
 /// same operands [`Remap::remap_instruction`] touches. Returns `false` when
-/// a `const-string` index no longer fits.
+/// a 16-bit `const-string` index no longer fits.
 fn remap_operands(opcode: u8, remap: &Remap<'_>, insn: &mut [u8]) -> bool {
-    let get16 = |b: &[u8], at: usize| u16::from_le_bytes([b[at], b[at + 1]]) as u32;
-    let set16 =
-        |b: &mut [u8], at: usize, v: u32| b[at..at + 2].copy_from_slice(&(v as u16).to_le_bytes());
-    match opcode {
-        0x1a => {
-            let new = remap.remap_string(StringIdx(get16(insn, 2))).0;
-            if new > 0xFFFF {
-                return false;
-            }
-            set16(insn, 2, new);
+    for operand in index_operands(opcode) {
+        let at = operand.at;
+        if operand.wide {
+            let old = u32::from_le_bytes(insn[at..at + 4].try_into().unwrap());
+            insn[at..at + 4].copy_from_slice(&remap.index(operand.pool, old).to_le_bytes());
+            continue;
         }
-        0x1b => {
-            let old = u32::from_le_bytes(insn[2..6].try_into().unwrap());
-            let new = remap.remap_string(StringIdx(old)).0;
-            insn[2..6].copy_from_slice(&new.to_le_bytes());
-        }
-        0x1c | 0x1f | 0x20 | 0x22..=0x25 => {
-            set16(insn, 2, remap.remap_type(TypeIdx(get16(insn, 2))).0);
-        }
-        0x52..=0x6d => set16(insn, 2, remap.remap_field(FieldIdx(get16(insn, 2))).0),
-        0x6e..=0x72 | 0x74..=0x78 => {
-            set16(insn, 2, remap.remap_method(MethodIdx(get16(insn, 2))).0);
-        }
-        0xfa | 0xfb => {
-            set16(insn, 2, remap.remap_method(MethodIdx(get16(insn, 2))).0);
-            set16(
-                insn,
-                6,
-                remap.remap_proto(ProtoIdx(get16(insn, 6) as u16)).0 as u32,
-            );
-        }
-        0xff => set16(
-            insn,
-            2,
-            remap.remap_proto(ProtoIdx(get16(insn, 2) as u16)).0 as u32,
-        ),
-        _ => {}
+        let old = u16::from_le_bytes([insn[at], insn[at + 1]]) as u32;
+        let Ok(new) = u16::try_from(remap.index(operand.pool, old)) else {
+            return false;
+        };
+        insn[at..at + 2].copy_from_slice(&new.to_le_bytes());
     }
     true
 }
 
-/// Byte offset just past the `encoded_catch_handler_list` at `list_off`.
-fn handler_list_end(buf: &[u8], list_off: usize, opts: &ParseOptions) -> Result<usize> {
+/// Walks the `encoded_catch_handler_list` at `list_off`, reporting each
+/// caught type, and returns the byte offset just past it.
+pub(crate) fn walk_handlers(
+    buf: &[u8],
+    list_off: usize,
+    opts: &ParseOptions,
+    mut on_type: impl FnMut(u32),
+) -> Result<usize> {
     let (count, n) = read_uleb128_with_opts(buf, list_off, opts)?;
     let mut pos = list_off + n;
     for _ in 0..count {
         let (size, n) = read_sleb128_with_opts(buf, pos, opts)?;
         pos += n;
-        for _ in 0..size.unsigned_abs() * 2 + u32::from(size <= 0) {
+        for _ in 0..size.unsigned_abs() {
+            let (type_idx, n) = read_uleb128_with_opts(buf, pos, opts)?;
+            on_type(type_idx);
+            pos += n;
+            pos += read_uleb128_with_opts(buf, pos, opts)?.1;
+        }
+        if size <= 0 {
             pos += read_uleb128_with_opts(buf, pos, opts)?.1;
         }
     }
@@ -255,6 +242,7 @@ mod tests {
     use crate::types::code::{CatchHandler, CodeItem, TryItem, TypedCatch};
     use crate::types::debug::{DebugBytecode, DebugInfo};
     use crate::types::instruction::{Instruction, RegList};
+    use crate::types::{FieldIdx, MethodIdx};
     use crate::write::DexWriter;
 
     fn shifted(len: usize, by: u32) -> Vec<u32> {
@@ -315,6 +303,8 @@ mod tests {
             proto: &proto,
             field: &field,
             method: &method,
+            call_site: &[],
+            method_handle: &[],
         };
 
         let mut raw = Vec::new();
@@ -377,6 +367,8 @@ mod tests {
             proto: &[],
             field: &[],
             method: &[],
+            call_site: &[],
+            method_handle: &[],
         };
         let mut raw = Vec::new();
         copy_debug_info(&buf, 1, Some(&remap), &ParseOptions::default(), &mut raw).unwrap();

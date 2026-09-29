@@ -350,7 +350,7 @@ mod tests {
             },
         ]);
 
-        let plan = crate::write::plan::WritePlan::new(&dex)?;
+        let plan = crate::write::plan::WritePlan::new(&dex, None)?;
         let mut writer = DexWriter::new(Vec::new());
         let class_ann_datas = write_annotations(&mut writer, &plan)?;
 

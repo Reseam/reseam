@@ -4,6 +4,7 @@
 //! DEX serialization entrypoints and helpers.
 
 use self::orchestration::DexWriterWriteExt;
+pub use self::part::{split_to_fit, DexPart};
 pub use self::sink::{DexSink, SpoolSink, Spooled};
 use crate::error::Result;
 use crate::file::DexFile;
@@ -13,7 +14,6 @@ use crate::types::map::*;
 pub(crate) mod annotations;
 pub(crate) mod class_data;
 pub(crate) mod code;
-pub(crate) mod compact;
 pub(crate) mod debug;
 pub(crate) mod encoded_arrays;
 pub(crate) mod encoded_value;
@@ -21,8 +21,10 @@ pub(crate) mod finalize;
 pub(crate) mod instruction_writer;
 pub(crate) mod intern;
 pub(crate) mod orchestration;
+pub(crate) mod part;
 pub(crate) mod plan;
 pub(crate) mod raw_code;
+pub(crate) mod refs;
 pub(crate) mod sink;
 pub(crate) mod sort;
 
@@ -49,17 +51,23 @@ pub(crate) fn is_default_value(v: &EncodedValue) -> bool {
 /// in-flight class per worker rather than the whole DEX. The file itself is
 /// not modified.
 pub fn write(dex: &DexFile) -> Result<Vec<u8>> {
-    write_into(dex, Vec::new())
+    write_into(dex, None, Vec::new())
 }
 
-/// Serializes into an anonymous temp file instead of memory.
-pub fn write_spooled(dex: &DexFile) -> Result<Spooled> {
-    write_into(dex, SpoolSink::new().map_err(crate::error::DexError::Io)?)?.finish()
+/// Serializes into an anonymous temp file instead of memory, optionally only
+/// one [`DexPart`] of the file.
+pub fn write_spooled(dex: &DexFile, part: Option<&DexPart>) -> Result<Spooled> {
+    write_into(
+        dex,
+        part,
+        SpoolSink::new().map_err(crate::error::DexError::Io)?,
+    )?
+    .finish()
 }
 
-fn write_into<S: DexSink>(dex: &DexFile, sink: S) -> Result<S> {
-    validate_index_limits(dex)?;
-    let plan = plan::WritePlan::new(dex)?;
+fn write_into<S: DexSink>(dex: &DexFile, part: Option<&DexPart>, sink: S) -> Result<S> {
+    let plan = plan::WritePlan::new(dex, part)?;
+    validate_index_limits(&plan)?;
     let mut w = DexWriter::new(sink);
     w.write_dex(&plan)?;
     Ok(w.sink)
@@ -67,14 +75,14 @@ fn write_into<S: DexSink>(dex: &DexFile, sink: S) -> Result<S> {
 
 pub const MAX_POOL_SIZE: usize = 1 << 16;
 
-fn validate_index_limits(dex: &DexFile) -> Result<()> {
+fn validate_index_limits(plan: &plan::WritePlan<'_>) -> Result<()> {
     let checks: &[(&str, usize)] = &[
-        ("type_ids", dex.types.len()),
-        ("proto_ids", dex.prototypes.len()),
-        ("field_ids", dex.fields.len()),
-        ("method_ids", dex.methods.len()),
-        ("call_site_ids", dex.call_sites.len()),
-        ("method_handle_ids", dex.method_handles.len()),
+        ("type_ids", plan.type_count()),
+        ("proto_ids", plan.proto_count()),
+        ("field_ids", plan.field_count()),
+        ("method_ids", plan.method_count()),
+        ("call_site_ids", plan.call_site_count()),
+        ("method_handle_ids", plan.method_handle_count()),
     ];
     for &(name, count) in checks {
         if count > MAX_POOL_SIZE {
@@ -107,8 +115,8 @@ pub fn write_container(dex_files: &[DexFile]) -> Result<Vec<u8>> {
     let total_count = dex_files.len();
     let mut file_sizes = Vec::with_capacity(total_count);
     for (i, dex) in dex_files.iter().enumerate() {
-        validate_index_limits(dex)?;
-        let plan = plan::WritePlan::new(dex)?;
+        let plan = plan::WritePlan::new(dex, None)?;
+        validate_index_limits(&plan)?;
         w.header_base = w.pos();
         w.container_size = 0;
         w.write_dex(&plan)?;

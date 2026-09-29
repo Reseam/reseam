@@ -159,7 +159,7 @@ fn spooled_write_is_byte_identical_to_memory_write() {
                 spool.strings.push("!!lazy_write_marker");
             }
             let expected = reseam_dex::write(&memory).expect("memory write");
-            let spooled = reseam_dex::write_spooled(&spool).expect("spooled write");
+            let spooled = reseam_dex::write_spooled(&spool, None).expect("spooled write");
             assert_eq!(
                 spooled.len(),
                 expected.len() as u64,

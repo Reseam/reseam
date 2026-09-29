@@ -37,7 +37,7 @@ pub mod write;
 
 pub use error::{DexError, Result};
 pub use file::container::{
-    estimated_ir_bytes, MaterializationStats, MemoryBreakdown, MultiDexContainer, Redistributed,
+    estimated_ir_bytes, MaterializationStats, MemoryBreakdown, MultiDexContainer,
 };
 pub use file::{
     summarize_resident, DexFile, Fingerprint, FingerprintBuilder, FingerprintHit, InstructionHit,
@@ -72,4 +72,4 @@ pub use types::register_analysis::{
 pub use types::{FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx};
 pub use write::write;
 pub use write::write_container;
-pub use write::{write_spooled, Spooled};
+pub use write::{split_to_fit, write_spooled, DexPart, Spooled};

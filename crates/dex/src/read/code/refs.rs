@@ -6,8 +6,8 @@
 
 use super::decode::{opcode_units, payload_units};
 use super::format::{u16_at, u32_at};
-use crate::error::{Result, require_len};
-use crate::types::{FieldIdx, MethodIdx, StringIdx, TypeIdx};
+use crate::error::{require_len, Result};
+use crate::types::{FieldIdx, MethodIdx, Pool, StringIdx, TypeIdx};
 
 /// One instruction located in a code item's instruction stream.
 #[derive(Debug, Clone, Copy)]
@@ -78,6 +78,52 @@ impl RawInstruction {
 
     fn index_operand(&self, buf: &[u8]) -> u32 {
         u16_at(buf, self.unit_off + 2) as u32
+    }
+}
+
+/// A pool index an instruction carries: the pool, the operand's byte offset
+/// from the instruction start, and whether it is 32 bits wide.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct IndexOperand {
+    pub pool: Pool,
+    pub at: usize,
+    pub wide: bool,
+}
+
+const fn operand(pool: Pool, at: usize) -> IndexOperand {
+    IndexOperand {
+        pool,
+        at,
+        wide: false,
+    }
+}
+
+/// Every pool index an instruction with `opcode` carries.
+pub(crate) fn index_operands(opcode: u8) -> &'static [IndexOperand] {
+    const STRING: &[IndexOperand] = &[operand(Pool::String, 2)];
+    const STRING_JUMBO: &[IndexOperand] = &[IndexOperand {
+        pool: Pool::String,
+        at: 2,
+        wide: true,
+    }];
+    const TYPE: &[IndexOperand] = &[operand(Pool::Type, 2)];
+    const FIELD: &[IndexOperand] = &[operand(Pool::Field, 2)];
+    const METHOD: &[IndexOperand] = &[operand(Pool::Method, 2)];
+    const POLYMORPHIC: &[IndexOperand] = &[operand(Pool::Method, 2), operand(Pool::Proto, 6)];
+    const CALL_SITE: &[IndexOperand] = &[operand(Pool::CallSite, 2)];
+    const METHOD_HANDLE: &[IndexOperand] = &[operand(Pool::MethodHandle, 2)];
+    const PROTO: &[IndexOperand] = &[operand(Pool::Proto, 2)];
+    match opcode {
+        0x1a => STRING,
+        0x1b => STRING_JUMBO,
+        0x1c | 0x1f | 0x20 | 0x22..=0x25 => TYPE,
+        0x52..=0x6d => FIELD,
+        0x6e..=0x72 | 0x74..=0x78 => METHOD,
+        0xfa | 0xfb => POLYMORPHIC,
+        0xfc | 0xfd => CALL_SITE,
+        0xfe => METHOD_HANDLE,
+        0xff => PROTO,
+        _ => &[],
     }
 }
 
