@@ -103,6 +103,20 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: install -D target/release/reseam dist/reseam-linux-x64
 
+      # Before the Forgejo release, so every published tag has its CLI on the CDN.
+      - name: Upload to the CDN
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          for f in dist/*; do
+            curl -fsS --aws-sigv4 aws:amz:auto:s3 --user "$R2_ACCESS_KEY_ID:$R2_SECRET_ACCESS_KEY" \
+              -H "Cache-Control: public, max-age=86400" \
+              -T "$f" "$R2_ENDPOINT/reseam-releases/engine/${{ github.ref_name }}/${f##*/}"
+          done
+
       - name: Upload to the Forgejo release
         if: startsWith(github.ref, 'refs/tags/')
         uses: https://code.forgejo.org/actions/forgejo-release@v2.13.4
