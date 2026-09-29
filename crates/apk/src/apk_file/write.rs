@@ -20,7 +20,9 @@ use crate::zip::writer::{ApkWriter, Replacement, ReplacementData};
 pub struct ApkWriteOptions {
     pub strip_signatures: bool,
     /// Threads serializing and deflating dirty DEX files concurrently. Each
-    /// holds one DEX's writer state, so this bounds the write-phase memory.
+    /// holds one DEX's writer state and pages through its source, so this
+    /// bounds the write-phase memory. Past four, the write phase got no
+    /// faster on large multi-DEX apps while its peak kept growing.
     pub dex_workers: NonZeroUsize,
     /// Deflate level for rewritten DEX entries. Level 3 compresses within two
     /// percent of level 6 in a quarter less time.
@@ -31,7 +33,9 @@ impl Default for ApkWriteOptions {
     fn default() -> Self {
         Self {
             strip_signatures: true,
-            dex_workers: std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN),
+            dex_workers: std::thread::available_parallelism()
+                .unwrap_or(NonZeroUsize::MIN)
+                .min(NonZeroUsize::new(4).unwrap()),
             dex_compression_level: 3,
         }
     }
