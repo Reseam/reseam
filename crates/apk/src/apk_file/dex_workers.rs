@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::BufWriter;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::thread::Scope;
@@ -111,14 +111,15 @@ impl<'a> DexEntryStream<'a> {
     }
 }
 
-/// Serializes a DEX, or one part of it, to a spooled file and deflates it into a single-entry
-/// archive in another spooled file, whose compressed bytes the APK writer
-/// copies verbatim. Neither the DEX nor its deflated form touches the heap.
+/// Serializes a DEX, or one part of it, to a spooled file and deflates it
+/// into a single-entry archive in another spooled file, whose compressed
+/// bytes the APK writer copies verbatim. Neither the DEX nor its deflated
+/// form is ever held in memory.
 fn compress_dex(dex: &DexFile, part: Option<&DexPart>, name: &str, level: i64) -> Result<File> {
     let started = std::time::Instant::now();
     let spooled = reseam_dex::write_spooled(dex, part)?;
+    dex.release_pages();
     let serialized = started.elapsed();
-    let mapped = spooled.map()?;
     let mut archive = zip::ZipWriter::new(BufWriter::new(tempfile::tempfile()?));
     archive.start_file(
         name,
@@ -126,7 +127,7 @@ fn compress_dex(dex: &DexFile, part: Option<&DexPart>, name: &str, level: i64) -
             .compression_method(zip::CompressionMethod::Deflated)
             .compression_level(Some(level)),
     )?;
-    archive.write_all(&mapped)?;
+    std::io::copy(&mut spooled.reader()?, &mut archive)?;
     let file = archive.finish()?.into_inner().map_err(|e| e.into_error())?;
     debug!(
         entry = name,

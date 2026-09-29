@@ -58,7 +58,6 @@ pub struct SpoolSink {
     flushed: usize,
     patches: Vec<Patch>,
     patch_bytes: Vec<u8>,
-    map: Option<memmap2::MmapMut>,
     error: Option<io::Error>,
 }
 
@@ -84,10 +83,11 @@ impl Spooled {
         self.len == 0
     }
 
-    pub fn map(&self) -> io::Result<memmap2::Mmap> {
-        // SAFETY: the file is unlinked and only this handle reaches it, so its
-        // contents cannot change while mapped.
-        unsafe { memmap2::MmapOptions::new().map(&self.file) }
+    /// The spooled bytes, read from the start.
+    pub fn reader(&self) -> io::Result<impl io::Read + '_> {
+        let mut file = &self.file;
+        io::Seek::seek(&mut file, io::SeekFrom::Start(0))?;
+        Ok(io::Read::take(file, self.len))
     }
 }
 
@@ -99,16 +99,12 @@ impl SpoolSink {
             flushed: 0,
             patches: Vec::new(),
             patch_bytes: Vec::new(),
-            map: None,
             error: None,
         })
     }
 
     pub fn finish(mut self) -> Result<Spooled> {
         self.settle()?;
-        if let Some(map) = self.map.take() {
-            map.flush().map_err(DexError::Io)?;
-        }
         Ok(Spooled {
             len: self.flushed as u64,
             file: self.file,
@@ -127,24 +123,22 @@ impl SpoolSink {
     }
 
     /// Flushes the body, maps the file, and applies every queued patch.
-    fn settle(&mut self) -> Result<&mut memmap2::MmapMut> {
+    /// Flushes the window and writes every pending patch into the file.
+    fn settle(&mut self) -> Result<()> {
         self.flush();
         if let Some(error) = self.error.take() {
             return Err(DexError::Io(error));
         }
-        if self.map.is_none() {
-            // SAFETY: the file is unlinked and only this handle reaches it, so
-            // nothing else can change it while the mapping is alive.
-            let map = unsafe { memmap2::MmapOptions::new().map_mut(&self.file) };
-            self.map = Some(map.map_err(DexError::Io)?);
-        }
-        let map = self.map.as_mut().unwrap();
         for patch in self.patches.drain(..) {
-            map[patch.offset..patch.offset + patch.len]
-                .copy_from_slice(&self.patch_bytes[patch.start..patch.start + patch.len]);
+            self.file
+                .write_all_at(
+                    &self.patch_bytes[patch.start..patch.start + patch.len],
+                    patch.offset as u64,
+                )
+                .map_err(DexError::Io)?;
         }
         self.patch_bytes.clear();
-        Ok(map)
+        Ok(())
     }
 }
 
@@ -154,7 +148,6 @@ impl DexSink for SpoolSink {
     }
 
     fn write(&mut self, bytes: &[u8]) {
-        self.map = None;
         self.window.extend_from_slice(bytes);
         if self.window.len() >= WINDOW {
             self.flush();
@@ -165,10 +158,6 @@ impl DexSink for SpoolSink {
         if offset >= self.flushed {
             let local = offset - self.flushed;
             self.window[local..local + bytes.len()].copy_from_slice(bytes);
-            return;
-        }
-        if let Some(map) = self.map.as_mut() {
-            map[offset..offset + bytes.len()].copy_from_slice(bytes);
             return;
         }
         let start = self.patch_bytes.len();
@@ -202,8 +191,17 @@ impl DexSink for SpoolSink {
     }
 
     fn digest(&mut self, start: usize, end: usize, f: &mut dyn FnMut(&[u8])) -> Result<()> {
-        let map = self.settle()?;
-        f(&map[start..end]);
+        self.settle()?;
+        let mut chunk = std::mem::take(&mut self.window);
+        for offset in (start..end).step_by(WINDOW) {
+            chunk.resize(WINDOW.min(end - offset), 0);
+            self.file
+                .read_exact_at(&mut chunk, offset as u64)
+                .map_err(DexError::Io)?;
+            f(&chunk);
+        }
+        chunk.clear();
+        self.window = chunk;
         Ok(())
     }
 }
@@ -213,7 +211,9 @@ mod tests {
     use super::*;
 
     fn read_all(spooled: &Spooled) -> Vec<u8> {
-        spooled.map().unwrap().to_vec()
+        let mut bytes = Vec::new();
+        io::Read::read_to_end(&mut spooled.reader().unwrap(), &mut bytes).unwrap();
+        bytes
     }
 
     #[test]

@@ -165,8 +165,11 @@ fn spooled_write_is_byte_identical_to_memory_write() {
                 expected.len() as u64,
                 "dex {i} perturb={perturb}"
             );
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut spooled.reader().expect("reader"), &mut bytes)
+                .expect("read spooled");
             assert!(
-                spooled.map().expect("map")[..] == expected[..],
+                bytes == expected,
                 "dex {i} perturb={perturb}: spooled bytes differ"
             );
         }
