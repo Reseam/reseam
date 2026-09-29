@@ -241,6 +241,7 @@ impl DexFile {
                 Ok(hits)
             })
             .collect::<Result<_>>()?;
+        self.release_pages();
         Ok(per_class.into_iter().flatten().collect())
     }
 

@@ -35,6 +35,18 @@ impl DexBytes {
             Self::Mapped(m) => m.as_ref(),
         }
     }
+
+    /// Drops the resident pages of a mapped file after a pass over all of
+    /// it, so a large DEX stays resident only while it is being read. The
+    /// pages come back from the page cache on the next access.
+    pub fn release_pages(&self) {
+        #[cfg(unix)]
+        if let Self::Mapped(map) = self {
+            // SAFETY: the mapping is read-only, so a dropped page reads back
+            // unchanged from the file.
+            let _ = unsafe { map.unchecked_advise(memmap2::UncheckedAdvice::DontNeed) };
+        }
+    }
 }
 
 impl AsRef<[u8]> for DexBytes {

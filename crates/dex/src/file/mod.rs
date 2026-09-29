@@ -118,6 +118,13 @@ impl DexFile {
         self.raw.as_ref().map(DexBytes::as_bytes)
     }
 
+    /// See [`DexBytes::release_pages`].
+    pub fn release_pages(&self) {
+        if let Some(raw) = &self.raw {
+            raw.release_pages();
+        }
+    }
+
     pub fn parse_options(&self) -> &ParseOptions {
         &self.parse_options
     }
@@ -206,6 +213,7 @@ impl DexFile {
             return Ok(filter);
         }
         let filter = RefFilter::build(self)?;
+        self.release_pages();
         Ok(self.ref_filter.get_or_init(|| filter))
     }
 

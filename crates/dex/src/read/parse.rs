@@ -28,7 +28,9 @@ pub fn parse_owned(buf: Vec<u8>, opts: ParseOptions) -> Result<DexFile> {
 }
 
 pub fn parse_bytes(raw: DexBytes, opts: ParseOptions) -> Result<DexFile> {
-    parse_single_with_raw(raw.as_bytes(), raw.clone(), &opts, None)
+    let dex = parse_single_with_raw(raw.as_bytes(), raw.clone(), &opts, None)?;
+    raw.release_pages();
+    Ok(dex)
 }
 
 /// Parses a v41 container buffer into its constituent logical DEX files.
