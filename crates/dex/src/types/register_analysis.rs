@@ -242,7 +242,7 @@ impl ControlFlow {
             .iter()
             .scan(0u32, |offset, insn| {
                 let current = *offset;
-                *offset += insn.code_units() as u32;
+                *offset += insn.code_units();
                 Some(current)
             })
             .collect();
