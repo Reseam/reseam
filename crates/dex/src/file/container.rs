@@ -6,9 +6,7 @@ use std::collections::HashSet;
 use crate::error::Result;
 use crate::file::DexFile;
 use crate::types::header::{DexHeader, DexVersion, ParseOptions};
-use crate::write::compact::{
-    compact_tables, has_overflowed, is_near_full, transplant_class, TableSnapshot,
-};
+use crate::write::compact::{compact_tables, has_overflowed, ClassTransplant, TableSnapshot};
 
 /// Where a DEX sits after [`MultiDexContainer::redistribute_if_needed`]: its
 /// group, and its index before, or `None` when its group was rebuilt.
@@ -259,30 +257,18 @@ fn rebalance(mut old_dexes: Vec<DexFile>) -> Result<Vec<DexFile>> {
 
     for (src_idx, mut class) in all_classes {
         let source = &old_dexes[src_idx];
-
-        if is_near_full(&current) {
-            let snap = TableSnapshot::capture(&current);
-            let class_backup = class.clone();
-
-            transplant_class(&mut class, source, &mut current)?;
-            current.add_class(class);
-
-            if has_overflowed(&current) {
-                snap.restore(&mut current);
-
-                if !current.classes.is_empty() {
-                    output.push(current);
-                }
-                current = DexFile::new(empty_header(version));
-
-                class = class_backup;
-                transplant_class(&mut class, source, &mut current)?;
-                current.add_class(class);
-            }
-        } else {
-            transplant_class(&mut class, source, &mut current)?;
-            current.add_class(class);
+        let snap = TableSnapshot::capture(&current);
+        let mut transplant = ClassTransplant::intern(&class, source, &mut current)?;
+        if has_overflowed(&current) && !current.classes.is_empty() {
+            snap.restore(&mut current);
+            output.push(std::mem::replace(
+                &mut current,
+                DexFile::new(empty_header(version)),
+            ));
+            transplant = ClassTransplant::intern(&class, source, &mut current)?;
         }
+        transplant.apply(&mut class);
+        current.add_class(class);
     }
 
     if !current.classes.is_empty() {
@@ -413,6 +399,36 @@ mod tests {
         assert_eq!(container.dex_files[0].classes.len(), 1);
         assert!(!has_overflowed(&container.dex_files[0]));
         assert_eq!(container.dex_files[1].types.len(), 2);
+    }
+
+    #[test]
+    fn a_class_that_would_overflow_a_partly_filled_dex_starts_a_new_one() {
+        let mut dex = DexFile::new(empty_header(DexVersion::V035));
+        let object = dex.intern_type("Ljava/lang/Object;");
+        for (name, interface_count) in [("LFirst;", 40_000), ("LSecond;", 30_000)] {
+            let class_type = dex.intern_type(name);
+            let interfaces = (0..interface_count)
+                .map(|i| dex.intern_type(&format!("L{}/I{i};", &name[1..name.len() - 1])))
+                .collect();
+            dex.add_class(ClassDef {
+                class_type,
+                access_flags: AccessFlags::PUBLIC,
+                superclass: Some(object),
+                interfaces,
+                source_file: None,
+                annotations: None,
+                class_data: None,
+                static_values: Vec::new(),
+            });
+        }
+        let mut container = MultiDexContainer::new();
+        container.add_dex(dex);
+
+        container.redistribute_if_needed(&[0]).unwrap();
+
+        assert_eq!(container.dex_files.len(), 2);
+        assert!(container.dex_files.iter().all(|dex| !has_overflowed(dex)));
+        assert!(container.dex_files.iter().all(|dex| dex.classes.len() == 1));
     }
 
     #[test]

@@ -10,7 +10,7 @@ use crate::types::method_handle::{
     CallSiteItem, MethodHandle, MethodHandleIdx, MethodHandleMember,
 };
 
-use super::sort::Remap;
+use super::sort::{Remap, RemapTables};
 use super::MAX_POOL_SIZE;
 use crate::file::IdTable;
 use crate::types::{ProtoIdx, StringIdx, TypeIdx};
@@ -25,111 +25,122 @@ mod collect;
 mod exotic;
 mod remap;
 
-/// Transplant a single class from `source` DEX into `dest` DEX.
-///
-/// Interns all referenced strings/types/protos/methods/fields into dest,
-/// remaps the class's indices to dest's tables, and handles call_sites
-/// and method_handles.
-///
-/// The class is modified in-place with remapped indices. The caller must
-/// add it to `dest.classes` after this returns.
-pub(crate) fn transplant_class(
-    class: &mut ClassDef,
-    source: &DexFile,
-    dest: &mut DexFile,
-) -> crate::error::Result<()> {
-    let mut refs = ReferencedIndices::collect_from_classes(std::slice::from_ref(class));
-    refs.expand_transitive(source);
+/// Index remaps that move one class from a source DEX into a destination DEX,
+/// whose pools already hold everything the class references.
+pub(crate) struct ClassTransplant {
+    tables: RemapTables,
+    call_sites: HashMap<u32, u32>,
+    method_handles: HashMap<u32, u32>,
+}
 
-    let string_remap = build_string_remap(&refs.strings, source, dest);
-    let type_remap = build_type_remap(&refs.types, source, dest);
-    let proto_remap = build_proto_remap(&refs.protos, source, dest)?;
-    let method_remap = build_method_remap(&refs.methods, source, dest)?;
-    let field_remap = build_field_remap(&refs.fields, source, dest)?;
+impl ClassTransplant {
+    /// Interns everything `class` references, including call sites and method
+    /// handles, into `dest` and returns the remaps. `class` is left untouched,
+    /// so a caller can undo the interning with a [`TableSnapshot`] and retry
+    /// in another DEX.
+    pub(crate) fn intern(
+        class: &ClassDef,
+        source: &DexFile,
+        dest: &mut DexFile,
+    ) -> crate::error::Result<Self> {
+        let mut refs = ReferencedIndices::collect_from_classes(std::slice::from_ref(class));
+        refs.expand_transitive(source);
 
-    let mut mh_remap: HashMap<u32, u32> = HashMap::new();
-    for &mh_idx in &refs.method_handles {
-        if let Some(handle) = source.method_handles.get(mh_idx as usize) {
-            let new_member = match &handle.member {
-                MethodHandleMember::Field(idx) => {
-                    MethodHandleMember::Field(crate::types::FieldIdx(field_remap[idx.0 as usize]))
+        let string_remap = build_string_remap(&refs.strings, source, dest);
+        let type_remap = build_type_remap(&refs.types, source, dest);
+        let proto_remap = build_proto_remap(&refs.protos, source, dest)?;
+        let method_remap = build_method_remap(&refs.methods, source, dest)?;
+        let field_remap = build_field_remap(&refs.fields, source, dest)?;
+
+        let mut mh_remap: HashMap<u32, u32> = HashMap::new();
+        for &mh_idx in &refs.method_handles {
+            if let Some(handle) = source.method_handles.get(mh_idx as usize) {
+                let new_member = match &handle.member {
+                    MethodHandleMember::Field(idx) => MethodHandleMember::Field(
+                        crate::types::FieldIdx(field_remap[idx.0 as usize]),
+                    ),
+                    MethodHandleMember::Method(idx) => MethodHandleMember::Method(
+                        crate::types::MethodIdx(method_remap[idx.0 as usize]),
+                    ),
+                };
+                let remapped = MethodHandle {
+                    handle_type: handle.handle_type,
+                    member: new_member,
+                };
+                let new_idx =
+                    if let Some(pos) = dest.method_handles.iter().position(|mh| *mh == remapped) {
+                        pos as u32
+                    } else {
+                        let idx = dest.method_handles.len() as u32;
+                        dest.method_handles.push(remapped);
+                        idx
+                    };
+                mh_remap.insert(mh_idx, new_idx);
+            }
+        }
+
+        let mut cs_remap: HashMap<u32, u32> = HashMap::new();
+        for &cs_idx in &refs.call_sites {
+            if let Some(cs) = source.call_sites.get(cs_idx as usize) {
+                let bootstrap = mh_remap
+                    .get(&cs.bootstrap_method.0)
+                    .map(|&value| MethodHandleIdx(value))
+                    .unwrap_or(cs.bootstrap_method);
+
+                let remap = Remap {
+                    string: &string_remap,
+                    type_: &type_remap,
+                    proto: &proto_remap,
+                    field: &field_remap,
+                    method: &method_remap,
+                };
+
+                let mut new_cs = CallSiteItem {
+                    bootstrap_method: bootstrap,
+                    method_name: remap.remap_string(cs.method_name),
+                    method_type: remap.remap_proto(cs.method_type),
+                    extra_arguments: cs.extra_arguments.clone(),
+                };
+
+                for arg in &mut new_cs.extra_arguments {
+                    remap_encoded_value_full(arg, &remap, &mh_remap);
                 }
-                MethodHandleMember::Method(idx) => MethodHandleMember::Method(
-                    crate::types::MethodIdx(method_remap[idx.0 as usize]),
-                ),
-            };
-            let remapped = MethodHandle {
-                handle_type: handle.handle_type,
-                member: new_member,
-            };
-            let new_idx =
-                if let Some(pos) = dest.method_handles.iter().position(|mh| *mh == remapped) {
+
+                let new_idx = if let Some(pos) = dest
+                    .call_sites
+                    .iter()
+                    .position(|existing| *existing == new_cs)
+                {
                     pos as u32
                 } else {
-                    let idx = dest.method_handles.len() as u32;
-                    dest.method_handles.push(remapped);
+                    let idx = dest.call_sites.len() as u32;
+                    dest.call_sites.push(new_cs);
                     idx
                 };
-            mh_remap.insert(mh_idx, new_idx);
-        }
-    }
-
-    let mut cs_remap: HashMap<u32, u32> = HashMap::new();
-    for &cs_idx in &refs.call_sites {
-        if let Some(cs) = source.call_sites.get(cs_idx as usize) {
-            let bootstrap = mh_remap
-                .get(&cs.bootstrap_method.0)
-                .map(|&value| MethodHandleIdx(value))
-                .unwrap_or(cs.bootstrap_method);
-
-            let remap = Remap {
-                string: &string_remap,
-                type_: &type_remap,
-                proto: &proto_remap,
-                field: &field_remap,
-                method: &method_remap,
-            };
-
-            let mut new_cs = CallSiteItem {
-                bootstrap_method: bootstrap,
-                method_name: remap.remap_string(cs.method_name),
-                method_type: remap.remap_proto(cs.method_type),
-                extra_arguments: cs.extra_arguments.clone(),
-            };
-
-            for arg in &mut new_cs.extra_arguments {
-                remap_encoded_value_full(arg, &remap, &mh_remap);
+                cs_remap.insert(cs_idx, new_idx);
             }
+        }
 
-            let new_idx = if let Some(pos) = dest
-                .call_sites
-                .iter()
-                .position(|existing| *existing == new_cs)
-            {
-                pos as u32
-            } else {
-                let idx = dest.call_sites.len() as u32;
-                dest.call_sites.push(new_cs);
-                idx
-            };
-            cs_remap.insert(cs_idx, new_idx);
+        Ok(Self {
+            tables: RemapTables {
+                string: string_remap,
+                type_: type_remap,
+                proto: proto_remap,
+                field: field_remap,
+                method: method_remap,
+            },
+            call_sites: cs_remap,
+            method_handles: mh_remap,
+        })
+    }
+
+    /// Rewrites `class`'s indices to the destination DEX's pools.
+    pub(crate) fn apply(&self, class: &mut ClassDef) {
+        self.tables.as_remap().remap_class(class);
+        if !self.call_sites.is_empty() || !self.method_handles.is_empty() {
+            remap_exotic_refs(class, &self.call_sites, &self.method_handles);
         }
     }
-
-    let remap = Remap {
-        string: &string_remap,
-        type_: &type_remap,
-        proto: &proto_remap,
-        field: &field_remap,
-        method: &method_remap,
-    };
-    remap.remap_class(class);
-
-    if !cs_remap.is_empty() || !mh_remap.is_empty() {
-        remap_exotic_refs(class, &cs_remap, &mh_remap);
-    }
-
-    Ok(())
 }
 
 fn remap_encoded_value_full(v: &mut EncodedValue, remap: &Remap<'_>, mh_remap: &HashMap<u32, u32>) {
@@ -205,16 +216,6 @@ pub(crate) fn has_overflowed(dex: &DexFile) -> bool {
         || dex.methods.len() > MAX_POOL_SIZE
         || dex.call_sites.len() > MAX_POOL_SIZE
         || dex.method_handles.len() > MAX_POOL_SIZE
-}
-
-pub(crate) fn is_near_full(dex: &DexFile) -> bool {
-    const MARGIN: usize = 500;
-    dex.types.len() + MARGIN > MAX_POOL_SIZE
-        || dex.prototypes.len() + MARGIN > MAX_POOL_SIZE
-        || dex.fields.len() + MARGIN > MAX_POOL_SIZE
-        || dex.methods.len() + MARGIN > MAX_POOL_SIZE
-        || dex.call_sites.len() + MARGIN > MAX_POOL_SIZE
-        || dex.method_handles.len() + MARGIN > MAX_POOL_SIZE
 }
 
 /// Drops pool entries nothing references. Every class must be resident, which
