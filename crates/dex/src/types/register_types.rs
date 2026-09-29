@@ -86,10 +86,11 @@ impl RegisterTypes {
                 Ok(operand.register)
             })?;
             for (targets, state) in [
-                (&graph.successors[index], &output),
-                (&graph.handlers[index], &input),
+                (graph.successors(index), &output),
+                (graph.handlers(index), &input),
             ] {
                 for &next in targets {
+                    let next = next as usize;
                     let changed = if let Some(previous) = &mut before[next] {
                         let mut changed = false;
                         for (previous, &value) in previous.iter_mut().zip(state) {

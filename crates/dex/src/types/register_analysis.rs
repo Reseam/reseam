@@ -95,11 +95,7 @@ pub fn reaching_definitions(
     if index >= count {
         return None;
     }
-    let ControlFlow {
-        successors,
-        handlers,
-        ..
-    } = ControlFlow::new(code)?;
+    let graph = ControlFlow::new(code)?;
     // One bit per instruction that could have defined the register, plus one
     // for the value the method was called with.
     let entry = count;
@@ -120,16 +116,17 @@ pub fn reaching_definitions(
         } else {
             incoming.clone()
         };
-        let mut propagate = |edges: &[usize], set: &BitSet, before: &mut Vec<BitSet>| {
+        let mut propagate = |edges: &[u32], set: &BitSet, before: &mut Vec<BitSet>| {
             for &next in edges {
+                let next = next as usize;
                 if before[next].merge(set) && !queued[next] {
                     queued[next] = true;
                     pending.push_back(next);
                 }
             }
         };
-        propagate(&successors[index], &outgoing, &mut before);
-        propagate(&handlers[index], &incoming, &mut before);
+        propagate(graph.successors(index), &outgoing, &mut before);
+        propagate(graph.handlers(index), &incoming, &mut before);
     }
     let reaching = &before[index];
     Some((
@@ -141,55 +138,73 @@ pub fn reaching_definitions(
 /// Register-word liveness at instruction boundaries, including exception edges.
 /// Unknown instructions or malformed control flow conservatively keep every register live.
 pub struct RegisterLiveness {
-    before: Vec<BitSet>,
+    /// `words` words per instruction: the registers live on entry to it.
+    before: Vec<u64>,
+    words: usize,
     register_count: u16,
 }
 
 impl RegisterLiveness {
     pub fn new(code: &CodeItem) -> Self {
-        let count = code.instructions.len();
-        let before = Self::analyze(code)
-            .unwrap_or_else(|| vec![BitSet::full(usize::from(code.registers_size)); count]);
+        let words = usize::from(code.registers_size).div_ceil(64);
+        let before = Self::analyze(code, words)
+            .unwrap_or_else(|| vec![u64::MAX; code.instructions.len() * words]);
         Self {
             before,
+            words,
             register_count: code.registers_size,
         }
     }
 
     pub fn is_live(&self, index: usize, register: u16) -> bool {
-        self.before
-            .get(index)
-            .is_some_and(|live| live.contains(usize::from(register)))
+        register < self.register_count
+            && self
+                .at(index)
+                .is_some_and(|live| live[usize::from(register) / 64] & 1 << (register % 64) != 0)
     }
 
-    fn analyze(code: &CodeItem) -> Option<Vec<BitSet>> {
-        let ControlFlow {
-            successors,
-            handlers,
-            predecessors,
-        } = ControlFlow::new(code)?;
+    fn at(&self, index: usize) -> Option<&[u64]> {
+        self.before
+            .get(index * self.words..(index + 1) * self.words)
+    }
+
+    fn analyze(code: &CodeItem, words: usize) -> Option<Vec<u64>> {
+        let graph = ControlFlow::new(code)?;
         let count = code.instructions.len();
-        let mut before = vec![BitSet::new(usize::from(code.registers_size)); count];
+        let mut before = vec![0u64; count * words];
+        let mut live = vec![0u64; words];
         let mut pending: std::collections::VecDeque<usize> = (0..count).rev().collect();
         let mut queued = vec![true; count];
+        let set = |live: &mut [u64], reg: u16, on: bool| {
+            let (word, bit) = (usize::from(reg) / 64, 1u64 << (reg % 64));
+            if let Some(word) = live.get_mut(word) {
+                *word = if on { *word | bit } else { *word & !bit };
+            }
+        };
+        let union = |live: &mut [u64], before: &[u64], index: usize| {
+            for (word, other) in live.iter_mut().zip(&before[index * words..]) {
+                *word |= other;
+            }
+        };
         while let Some(index) = pending.pop_front() {
             queued[index] = false;
-            let mut live = BitSet::new(usize::from(code.registers_size));
-            for &next in &successors[index] {
-                live.union(&before[next]);
+            live.fill(0);
+            for &next in graph.successors(index) {
+                union(&mut live, &before, next as usize);
             }
-            code.instructions[index].visit_written_registers(|reg| live.remove(usize::from(reg)));
+            let insn = &code.instructions[index];
+            insn.visit_written_registers(|reg| set(&mut live, reg, false));
             // An instruction can throw before writing its result.
-            for &handler in &handlers[index] {
-                live.union(&before[handler]);
+            for &handler in graph.handlers(index) {
+                union(&mut live, &before, handler as usize);
             }
-            code.instructions[index].visit_read_registers(|reg| live.insert(usize::from(reg)));
-            if before[index] != live {
-                before[index] = live;
-                for &previous in &predecessors[index] {
-                    if !queued[previous] {
-                        pending.push_back(previous);
-                        queued[previous] = true;
+            insn.visit_read_registers(|reg| set(&mut live, reg, true));
+            let slot = &mut before[index * words..(index + 1) * words];
+            if slot != live.as_slice() {
+                slot.copy_from_slice(&live);
+                for &previous in graph.predecessors(index) {
+                    if !std::mem::replace(&mut queued[previous as usize], true) {
+                        pending.push_back(previous as usize);
                     }
                 }
             }
@@ -198,10 +213,24 @@ impl RegisterLiveness {
     }
 }
 
+/// Edge lists of every instruction, stored back to back.
+struct Edges {
+    start: Vec<u32>,
+    targets: Vec<u32>,
+}
+
+impl Edges {
+    fn of(&self, index: usize) -> &[u32] {
+        &self.targets[self.start[index] as usize..self.start[index + 1] as usize]
+    }
+}
+
 pub(crate) struct ControlFlow {
-    pub successors: Vec<Vec<usize>>,
-    pub handlers: Vec<Vec<usize>>,
-    pub predecessors: Vec<Vec<usize>>,
+    successors: Edges,
+    predecessors: Edges,
+    /// Per instruction, its entry in `handler_lists`, or `u32::MAX` outside every try.
+    handler_of: Vec<u32>,
+    handler_lists: Vec<Vec<u32>>,
 }
 
 impl ControlFlow {
@@ -217,15 +246,20 @@ impl ControlFlow {
                 Some(current)
             })
             .collect();
-        let target = |index: usize, delta: i32| -> Option<usize> {
+        let target = |index: usize, delta: i32| -> Option<u32> {
             let address = i64::from(offsets[index]) + i64::from(delta);
-            offsets.binary_search(&u32::try_from(address).ok()?).ok()
+            offsets
+                .binary_search(&u32::try_from(address).ok()?)
+                .ok()
+                .map(|i| i as u32)
         };
-        let mut successors = vec![Vec::new(); count];
-        let mut handlers = vec![Vec::new(); count];
-        let mut predecessors = vec![Vec::new(); count];
+        let mut successors = Edges {
+            start: Vec::with_capacity(count + 1),
+            targets: Vec::with_capacity(count + count / 4),
+        };
+        successors.start.push(0);
         for (index, insn) in code.instructions.iter().enumerate() {
-            let next = &mut successors[index];
+            let next = &mut successors.targets;
             match insn {
                 RawInstruction { .. } => return None,
                 ReturnVoid
@@ -241,7 +275,7 @@ impl ControlFlow {
                 Goto32 { offset } => next.push(target(index, *offset)?),
                 _ => {
                     if index + 1 < count {
-                        next.push(index + 1);
+                        next.push(index as u32 + 1);
                     }
                     match insn {
                         IfEq { offset, .. }
@@ -260,7 +294,7 @@ impl ControlFlow {
                         }
                         PackedSwitch { payload_offset, .. } => {
                             let PackedSwitchPayload(payload) =
-                                &code.instructions[target(index, *payload_offset)?]
+                                &code.instructions[target(index, *payload_offset)? as usize]
                             else {
                                 return None;
                             };
@@ -270,7 +304,7 @@ impl ControlFlow {
                         }
                         SparseSwitch { payload_offset, .. } => {
                             let SparseSwitchPayload(payload) =
-                                &code.instructions[target(index, *payload_offset)?]
+                                &code.instructions[target(index, *payload_offset)? as usize]
                             else {
                                 return None;
                             };
@@ -282,44 +316,81 @@ impl ControlFlow {
                     }
                 }
             }
+            successors.start.push(next.len() as u32);
         }
+
+        let mut handler_of = vec![u32::MAX; count];
+        let mut handler_lists = Vec::with_capacity(code.tries.len());
         for protected in &code.tries {
             let end = protected
                 .start_addr
                 .checked_add(u32::from(protected.insn_count))?;
             let handler = code.catch_handlers.get(protected.handler_idx)?;
-            let targets: Vec<usize> = handler
+            let targets: Vec<u32> = handler
                 .typed_catches
                 .iter()
                 .map(|catch| catch.addr)
                 .chain(handler.catch_all_addr)
-                .map(|addr| offsets.binary_search(&addr).ok())
+                .map(|addr| offsets.binary_search(&addr).ok().map(|i| i as u32))
                 .collect::<Option<_>>()?;
-            for (index, &offset) in offsets.iter().enumerate() {
-                if protected.start_addr <= offset && offset < end {
-                    handlers[index].extend_from_slice(&targets);
-                }
+            let first = offsets.partition_point(|&offset| offset < protected.start_addr);
+            let last = offsets.partition_point(|&offset| offset < end);
+            handler_of[first..last].fill(handler_lists.len() as u32);
+            handler_lists.push(targets);
+        }
+
+        let handlers = |index: usize| -> &[u32] {
+            handler_lists
+                .get(handler_of[index] as usize)
+                .map_or(&[], Vec::as_slice)
+        };
+        let mut start = vec![0u32; count + 1];
+        for index in 0..count {
+            for &next in successors.of(index).iter().chain(handlers(index)) {
+                start[next as usize + 1] += 1;
             }
         }
         for index in 0..count {
-            for &next in successors[index].iter().chain(&handlers[index]) {
-                predecessors[next].push(index);
+            start[index + 1] += start[index];
+        }
+        let mut fill = start.clone();
+        let mut targets = vec![0u32; start[count] as usize];
+        for index in 0..count {
+            for &next in successors.of(index).iter().chain(handlers(index)) {
+                targets[fill[next as usize] as usize] = index as u32;
+                fill[next as usize] += 1;
             }
         }
         Some(Self {
             successors,
-            handlers,
-            predecessors,
+            predecessors: Edges { start, targets },
+            handler_of,
+            handler_lists,
         })
+    }
+
+    pub fn successors(&self, index: usize) -> &[u32] {
+        self.successors.of(index)
+    }
+
+    /// Where control goes when the instruction throws.
+    pub fn handlers(&self, index: usize) -> &[u32] {
+        self.handler_lists
+            .get(self.handler_of[index] as usize)
+            .map_or(&[], Vec::as_slice)
+    }
+
+    pub fn predecessors(&self, index: usize) -> &[u32] {
+        self.predecessors.of(index)
     }
 }
 
 fn live_registers(code: &CodeItem, at_index: usize) -> BitSet {
-    let mut liveness = RegisterLiveness::new(code);
-    if at_index < liveness.before.len() {
-        liveness.before.swap_remove(at_index)
-    } else {
-        BitSet::new(usize::from(liveness.register_count))
+    let liveness = RegisterLiveness::new(code);
+    BitSet {
+        words: liveness
+            .at(at_index)
+            .map_or_else(|| vec![0; liveness.words], <[u64]>::to_vec),
     }
 }
 
@@ -336,12 +407,6 @@ impl BitSet {
         }
     }
 
-    fn full(capacity: usize) -> Self {
-        Self {
-            words: vec![u64::MAX; capacity.div_ceil(64)],
-        }
-    }
-
     fn from_slice(capacity: usize, members: &[u16]) -> Self {
         let mut set = Self::new(capacity);
         for &member in members {
@@ -353,18 +418,6 @@ impl BitSet {
     fn insert(&mut self, member: usize) {
         if let Some(word) = self.words.get_mut(member / 64) {
             *word |= 1 << (member % 64);
-        }
-    }
-
-    fn remove(&mut self, member: usize) {
-        if let Some(word) = self.words.get_mut(member / 64) {
-            *word &= !(1 << (member % 64));
-        }
-    }
-
-    fn union(&mut self, other: &Self) {
-        for (word, other) in self.words.iter_mut().zip(&other.words) {
-            *word |= other;
         }
     }
 
