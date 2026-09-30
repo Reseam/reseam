@@ -4,7 +4,7 @@
 //! Bag entries: `<style>` items and `<array>` elements. The framework merges a
 //! bag with its parent by walking both in name order, so items are kept sorted.
 
-use super::{EntryValue, MapEntry, ResourceTable};
+use super::{EntryValue, MapEntry, ResourceScope, ResourceTable};
 use crate::error::{invalid, Result};
 use crate::value::ResValue;
 
@@ -12,7 +12,7 @@ use crate::value::ResValue;
 /// counting up from there.
 const ARRAY_FIRST_NAME: u32 = 0x0100_0001;
 
-impl ResourceTable {
+impl ResourceScope<'_> {
     /// Adds or replaces `items` in every configuration of `style/name`. A style
     /// the table does not have is created in the default configuration, which
     /// needs `parent`; given for a style that exists, `parent` replaces its own.
@@ -77,6 +77,30 @@ impl ResourceTable {
         }
     }
 
+    /// Replaces the elements of `array/name` in every configuration that
+    /// defines it. The count may change: element names are the positions aapt
+    /// writes, so they are renumbered from the start.
+    pub fn set_array(&mut self, name: &str, values: &[String]) -> Result<u32> {
+        let values = values
+            .iter()
+            .map(|value| self.parse_value(value, None))
+            .collect::<Result<Vec<_>>>()?;
+        self.set_array_values(name, &values)
+    }
+
+    /// A `@type/name` reference, rejecting a value that is anything else.
+    fn reference(&mut self, text: &str) -> Result<u32> {
+        match self.parse_value(text, None)? {
+            value if value.kind == ResValue::REFERENCE => Ok(value.data),
+            _ => Err(invalid(
+                "resource reference",
+                format!("{text} does not name a resource"),
+            )),
+        }
+    }
+}
+
+impl ResourceTable {
     /// The elements of `array/name` in the default configuration as text.
     /// Use [`Self::set_string_array`] to write string-array elements without
     /// interpreting numeric text, booleans or references as typed literals.
@@ -101,17 +125,6 @@ impl ResourceTable {
                 })
             })
             .collect()
-    }
-
-    /// Replaces the elements of `array/name` in every configuration that
-    /// defines it. The count may change: element names are the positions aapt
-    /// writes, so they are renumbered from the start.
-    pub fn set_array(&mut self, name: &str, values: &[String]) -> Result<u32> {
-        let values = values
-            .iter()
-            .map(|value| self.parse_value(value, None))
-            .collect::<Result<Vec<_>>>()?;
-        self.set_array_values(name, &values)
     }
 
     /// Replaces an array with literal strings in every configuration.
@@ -141,17 +154,6 @@ impl ResourceTable {
                 format!("{name} is in the table but is not an array"),
             )),
             None => Err(invalid("array", format!("the table has no array/{name}"))),
-        }
-    }
-
-    /// A `@type/name` reference, rejecting a value that is anything else.
-    fn reference(&mut self, text: &str) -> Result<u32> {
-        match self.parse_value(text, None)? {
-            value if value.kind == ResValue::REFERENCE => Ok(value.data),
-            _ => Err(invalid(
-                "resource reference",
-                format!("{text} does not name a resource"),
-            )),
         }
     }
 }

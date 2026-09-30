@@ -13,7 +13,7 @@ use reseam_apk::axml::android_attrs::{
     ATTR_TARGET_ACTIVITY,
 };
 use reseam_apk::axml::{self, AttributeValue};
-use reseam_apk::{AxmlDocument, ResValue, ResourceTable};
+use reseam_apk::{AxmlDocument, ResValue, ResourceScope};
 
 use super::files::with_component;
 use super::handles::with_ctx;
@@ -178,15 +178,16 @@ fn text_value(text: &str, attr: Option<u32>) -> Result<TextValue, String> {
         return text_value_in(text, attr, None);
     }
     with_ctx(|ctx| {
-        let resources = ctx.apk_mut().base_mut().resources_mut().ok().flatten();
-        text_value_in(text, attr, resources)
+        ctx.apk_mut()
+            .with_resource_scope(0, |scope| text_value_in(text, attr, scope))
+            .unwrap_or_else(|_| text_value_in(text, attr, None))
     })
 }
 
 fn text_value_in(
     text: &str,
     attr: Option<u32>,
-    resources: Option<&mut ResourceTable>,
+    resources: Option<&mut ResourceScope<'_>>,
 ) -> Result<TextValue, String> {
     if let Some(escaped) = text
         .strip_prefix('\\')
@@ -427,6 +428,7 @@ fn parse_config_changes(text: &str) -> (i32, Vec<String>) {
 #[cfg(test)]
 mod tests {
     use reseam_apk::axml::build_document;
+    use reseam_apk::ResourceTable;
 
     use super::*;
 
@@ -502,8 +504,9 @@ mod tests {
         .unwrap();
         let id = table.find_resource_id("string", "app_name").unwrap();
 
-        let resolved =
-            |text: &str, table: &mut ResourceTable| text_value_in(text, None, Some(table));
+        let resolved = |text: &str, table: &mut ResourceTable| {
+            text_value_in(text, None, Some(&mut ResourceScope::from(table)))
+        };
         match resolved("@string/app_name", &mut table).unwrap() {
             TextValue::Resolved(value) => {
                 assert_eq!((value.kind, value.data), (ResValue::REFERENCE, id))

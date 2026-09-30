@@ -14,7 +14,7 @@ use super::{
     TOOLS_NS,
 };
 use crate::error::{invalid, Result};
-use crate::resources::ResourceTable;
+use crate::resources::{ResourceScope, ResourceTable};
 use crate::value::ResValue;
 
 pub fn is_compiled_axml(data: &[u8]) -> bool {
@@ -24,11 +24,14 @@ pub fn is_compiled_axml(data: &[u8]) -> bool {
 /// `resources` resolves `@type/name` references, creates `@+id/name` entries
 /// and supplies the ids of the app's own attributes; without it those
 /// attributes stay plain strings.
-pub fn compile_xml(text: &str, resources: Option<&mut ResourceTable>) -> Result<Vec<u8>> {
+pub fn compile_xml(text: &str, resources: Option<&mut ResourceScope<'_>>) -> Result<Vec<u8>> {
     build_document(text, resources)?.serialize()
 }
 
-pub fn build_document(text: &str, resources: Option<&mut ResourceTable>) -> Result<AxmlDocument> {
+pub fn build_document(
+    text: &str,
+    resources: Option<&mut ResourceScope<'_>>,
+) -> Result<AxmlDocument> {
     let mut compiler = Compiler {
         doc: AxmlDocument::new(true),
         resources,
@@ -104,9 +107,9 @@ fn android_resource(type_name: &str, name: &str) -> Result<u32> {
     })
 }
 
-struct Compiler<'r> {
+struct Compiler<'r, 's> {
     doc: AxmlDocument,
-    resources: Option<&'r mut ResourceTable>,
+    resources: Option<&'r mut ResourceScope<'s>>,
     namespaces: Vec<(String, String)>,
 }
 
@@ -115,7 +118,7 @@ fn qualified(key: &str) -> Option<(&str, &str)> {
     key.split_once(':').filter(|(prefix, _)| *prefix != "xmlns")
 }
 
-impl Compiler<'_> {
+impl Compiler<'_, '_> {
     /// Collects the document's `xmlns` declarations. An `android:` attribute in
     /// a fragment that declares nothing still means the framework namespace.
     fn declare(&mut self, node: Node<'_>) -> Result<()> {
@@ -185,7 +188,7 @@ impl Compiler<'_> {
             } else {
                 self.resources
                     .as_deref()
-                    .and_then(|table| table.find_resource_id("attr", local))
+                    .and_then(|scope| scope.find_resource_id("attr", local))
                     .ok_or_else(|| {
                         invalid(
                             "axml compiler",
@@ -309,9 +312,10 @@ pub enum AttributeValue {
 pub fn parse_attribute_value(
     text: &str,
     attr: Option<u32>,
-    resources: Option<&mut ResourceTable>,
+    resources: Option<&mut ResourceScope<'_>>,
 ) -> Result<AttributeValue> {
-    if let Some(value) = attr.and_then(|attr| attribute_symbols(attr, text, resources.as_deref())) {
+    let table = resources.as_deref().map(|scope| &**scope);
+    if let Some(value) = attr.and_then(|attr| attribute_symbols(attr, text, table)) {
         return Ok(AttributeValue::Value(value));
     }
     let literal = match text {
@@ -336,7 +340,7 @@ pub fn parse_attribute_value(
     }
     if let Some(id) = text
         .strip_prefix('?')
-        .map(|r| attribute_ref(r, resources.as_deref()))
+        .map(|r| attribute_ref(r, resources.as_deref().map(|scope| &**scope)))
         .transpose()?
         .flatten()
     {
@@ -396,7 +400,7 @@ fn attribute_ref(text: &str, resources: Option<&ResourceTable>) -> Result<Option
 }
 
 /// `[+][namespace:]type/name` or `0x...`; `+id/name` creates the id entry.
-fn resource_ref(text: &str, resources: Option<&mut ResourceTable>) -> Result<Option<u32>> {
+fn resource_ref(text: &str, resources: Option<&mut ResourceScope<'_>>) -> Result<Option<u32>> {
     if let Some(id) = hex_ref(text) {
         return Ok(Some(id));
     }
@@ -417,7 +421,7 @@ fn resource_ref(text: &str, resources: Option<&mut ResourceTable>) -> Result<Opt
         (Some(_), _) | (None, None) => None,
         (None, Some(res)) if create => res.ensure_id(entry),
         // aapt fails the build here; plain text would reach the inflater as a string and crash it.
-        (None, Some(res)) => Some(res.find_resource_id(type_name, entry).ok_or_else(|| {
+        (None, Some(res)) => Some(res.resource_id(type_name, entry)?.ok_or_else(|| {
             invalid(
                 "axml compiler",
                 format!("@{type_name}/{entry} is not defined in the resource table"),

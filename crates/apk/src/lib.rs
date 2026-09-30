@@ -22,7 +22,7 @@ pub use axml::AxmlDocument;
 pub use container::{ContainerBundle, ContainerFormat};
 pub use dex::extract_dex;
 pub use error::{ApkError, Result};
-pub use resources::ResourceTable;
+pub use resources::{ResourceScope, ResourceTable};
 pub use string_pool::StringPool;
 pub use value::ResValue;
 

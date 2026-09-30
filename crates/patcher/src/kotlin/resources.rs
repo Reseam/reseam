@@ -6,7 +6,7 @@
 
 use boltffi::export;
 use reseam_apk::axml::{self, AttributeValue};
-use reseam_apk::{ResValue, ResourceTable};
+use reseam_apk::{ResValue, ResourceScope, ResourceTable};
 
 use super::files::{inject, with_component};
 use super::handles::{bundle_path, with_ctx};
@@ -28,6 +28,16 @@ fn with_resources_result<R>(
     f: impl FnOnce(&mut ResourceTable) -> Result<R, String>,
 ) -> Result<R, String> {
     with_component(component, |ctx, index| resources_of(ctx, index, f))
+        .unwrap_or_else(|| Err("unknown component".to_string()))
+}
+
+/// Runs a resource edit that resolves `@type/name` in the selected component,
+/// finding names only the app's other components define.
+fn with_scope_result<R>(
+    component: Option<String>,
+    f: impl FnOnce(&mut ResourceScope<'_>) -> Result<R, String>,
+) -> Result<R, String> {
+    with_component(component, |ctx, index| scope_of(ctx, index, f))
         .unwrap_or_else(|| Err("unknown component".to_string()))
 }
 
@@ -161,7 +171,7 @@ pub fn res_add(
     name: String,
     value: String,
 ) -> Result<Option<u32>, String> {
-    with_resources_result(component, |res| {
+    with_scope_result(component, |res| {
         if res_type == "string" {
             return res
                 .add_string_resource_checked(&name, &value)
@@ -231,6 +241,21 @@ fn resources_of<R>(
         .and_then(|c| Ok(c.resources_mut()?))
     {
         Ok(Some(resources)) => f(resources),
+        Ok(None) => Err("the component has no resource table".to_string()),
+        Err(error) => Err(format!("resources: {error}")),
+    }
+}
+
+fn scope_of<R>(
+    ctx: &mut PatchContext<'_>,
+    index: usize,
+    f: impl FnOnce(&mut ResourceScope<'_>) -> Result<R, String>,
+) -> Result<R, String> {
+    match ctx
+        .apk_mut()
+        .with_resource_scope(index, |scope| scope.map(f))
+    {
+        Ok(Some(result)) => result,
         Ok(None) => Err("the component has no resource table".to_string()),
         Err(error) => Err(format!("resources: {error}")),
     }
@@ -398,14 +423,11 @@ pub fn res_style_set(
         .into_iter()
         .map(|item| (item.name, item.value))
         .collect();
-    with_component(component, |ctx, index| {
-        resources_of(ctx, index, |resources| {
-            resources
-                .set_style_items(&name, parent.as_deref(), &items)
-                .map_err(|error| error.to_string())
-        })
+    with_scope_result(component, |scope| {
+        scope
+            .set_style_items(&name, parent.as_deref(), &items)
+            .map_err(|error| error.to_string())
     })
-    .unwrap_or_else(|| Err("unknown component".to_string()))
 }
 
 #[export]
@@ -424,14 +446,11 @@ pub fn res_array_set(
     name: String,
     values: Vec<String>,
 ) -> Result<u32, String> {
-    with_component(component, |ctx, index| {
-        resources_of(ctx, index, |resources| {
-            resources
-                .set_array(&name, &values)
-                .map_err(|error| error.to_string())
-        })
+    with_scope_result(component, |scope| {
+        scope
+            .set_array(&name, &values)
+            .map_err(|error| error.to_string())
     })
-    .unwrap_or_else(|| Err("unknown component".to_string()))
 }
 
 #[export]

@@ -5,7 +5,7 @@ use std::path::Path;
 
 use reseam_apk::axml::{self, AxmlDocument};
 use reseam_apk::entry::MANIFEST_ENTRY;
-use reseam_apk::{ApkComponent, Compression};
+use reseam_apk::{ApkComponent, ApkFile, Compression};
 
 use super::PatchContext;
 use crate::error::{PatcherError, Result};
@@ -21,8 +21,8 @@ impl PatchContext<'_> {
         data: Vec<u8>,
         compression: Compression,
     ) -> Result<()> {
+        let data = compile_if_xml(self.apk_mut(), component, path, data)?;
         let component = self.component_mut(component)?;
-        let data = compile_if_xml(component, path, data)?;
         if path == MANIFEST_ENTRY {
             *component.manifest_mut() = AxmlDocument::parse(&data)?;
         } else {
@@ -69,7 +69,12 @@ impl PatchContext<'_> {
     }
 }
 
-fn compile_if_xml(component: &mut ApkComponent, path: &str, data: Vec<u8>) -> Result<Vec<u8>> {
+fn compile_if_xml(
+    apk: &mut ApkFile,
+    component: usize,
+    path: &str,
+    data: Vec<u8>,
+) -> Result<Vec<u8>> {
     if !path.ends_with(".xml") || axml::is_compiled_axml(&data) {
         return Ok(data);
     }
@@ -83,7 +88,7 @@ fn compile_if_xml(component: &mut ApkComponent, path: &str, data: Vec<u8>) -> Re
             Ok(data)
         };
     };
-    match axml::compile_xml(text, component.resources_mut()?) {
+    match apk.with_resource_scope(component, |scope| axml::compile_xml(text, scope))? {
         Ok(compiled) => Ok(compiled),
         Err(error) if must_compile => Err(PatcherError::InvalidFile(format!("{path}: {error}"))),
         Err(_) => Ok(data),

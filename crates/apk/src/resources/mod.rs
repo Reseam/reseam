@@ -10,6 +10,7 @@ mod config;
 mod entry;
 mod package;
 mod res_type;
+mod scope;
 mod type_spec;
 
 use std::borrow::Cow;
@@ -18,7 +19,6 @@ use std::io::{BufWriter, Write};
 
 use reseam_dex::file::DexBytes;
 
-use crate::axml;
 use crate::buf::{read_u16_le, require_len, write_u32};
 use crate::chunk::{self, write_header};
 use crate::error::{invalid, Result};
@@ -29,6 +29,7 @@ pub use config::config_for_qualifiers;
 pub use entry::{EntryValue, MapEntry, ResEntry};
 pub use package::ResPackage;
 pub use res_type::ResType;
+pub use scope::{ResourceScope, SplitLookup};
 pub use type_spec::TypeSpec;
 
 const RES_TABLE_TYPE: u16 = 0x0002;
@@ -591,15 +592,6 @@ impl ResourceTable {
                 format!("#{:08x}", value.data)
             }
             _ => return None,
-        })
-    }
-
-    /// Reads `text` the way a value of `attr` is read, interning plain text
-    /// into the global pool the way a resource entry holds it.
-    pub(crate) fn parse_value(&mut self, text: &str, attr: Option<u32>) -> Result<ResValue> {
-        Ok(match axml::parse_attribute_value(text, attr, Some(self))? {
-            axml::AttributeValue::Value(value) => value,
-            axml::AttributeValue::Text => ResValue::string(self.add_global_string(text)),
         })
     }
 

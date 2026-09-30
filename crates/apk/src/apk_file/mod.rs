@@ -16,7 +16,8 @@ use std::collections::HashSet;
 
 use reseam_dex::{DexFile, MultiDexContainer};
 
-use crate::error::Result;
+use crate::error::{invalid, Result};
+use crate::resources::ResourceScope;
 
 pub use component::{ApkComponent, Compression};
 pub use presentation::{ApplicationIcon, IconLayer};
@@ -127,23 +128,33 @@ impl ApkFile {
         type_name: &str,
         entry_name: &str,
     ) -> Result<Option<(usize, u32)>> {
-        let mut first_error = None;
-        for (index, component) in self.components.iter_mut().enumerate() {
-            let found = component.resources().and_then(|resources| {
-                resources
-                    .map(|resources| resources.find_resource_id_checked(type_name, entry_name))
-                    .transpose()
-                    .map(Option::flatten)
-            });
-            match found {
-                Ok(Some(res_id)) => return Ok(Some((index, res_id))),
-                Ok(None) => {}
-                Err(error) => {
-                    first_error.get_or_insert(error);
-                }
-            }
-        }
-        first_error.map_or(Ok(None), Err)
+        find_resource_in(self.components.iter_mut(), type_name, entry_name)
+    }
+
+    /// Runs `f` on component `index`'s table as a [`ResourceScope`] over the
+    /// other components, whose tables load only for a name it lacks. `f` gets
+    /// `None` when the component has no table.
+    pub fn with_resource_scope<R>(
+        &mut self,
+        index: usize,
+        f: impl FnOnce(Option<&mut ResourceScope<'_>>) -> R,
+    ) -> Result<R> {
+        let (before, rest) = self.components.split_at_mut(index);
+        let (own, after) = rest
+            .split_first_mut()
+            .ok_or_else(|| invalid("apk", format!("no component at index {index}")))?;
+        let mut splits = |type_name: &str, entry_name: &str| {
+            find_resource_in(
+                before.iter_mut().chain(after.iter_mut()),
+                type_name,
+                entry_name,
+            )
+            .map(|found| found.map(|(_, res_id)| res_id))
+        };
+        Ok(match own.resources_mut()? {
+            Some(table) => f(Some(&mut ResourceScope::new(table, &mut splits))),
+            None => f(None),
+        })
     }
 
     pub fn find_resource_by_id(&mut self, res_id: u32) -> Result<Option<usize>> {
@@ -198,4 +209,30 @@ impl ApkFile {
             .transpose()
             .map(|changed| changed.unwrap_or(false))
     }
+}
+
+/// The first of `components` whose table defines `type/name`, by position. An
+/// unreadable table fails the lookup only when no other one has the name.
+fn find_resource_in<'c>(
+    components: impl Iterator<Item = &'c mut ApkComponent>,
+    type_name: &str,
+    entry_name: &str,
+) -> Result<Option<(usize, u32)>> {
+    let mut first_error = None;
+    for (position, component) in components.enumerate() {
+        let found = component.resources().and_then(|resources| {
+            resources
+                .map(|resources| resources.find_resource_id_checked(type_name, entry_name))
+                .transpose()
+                .map(Option::flatten)
+        });
+        match found {
+            Ok(Some(res_id)) => return Ok(Some((position, res_id))),
+            Ok(None) => {}
+            Err(error) => {
+                first_error.get_or_insert(error);
+            }
+        }
+    }
+    first_error.map_or(Ok(None), Err)
 }

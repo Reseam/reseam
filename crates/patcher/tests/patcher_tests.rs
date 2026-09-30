@@ -11,11 +11,11 @@ use std::sync::OnceLock;
 use reseam_apk::reseam_dex::{DexFile, DexHeader, DexVersion, ParseOptions};
 use reseam_apk::resources::{EntryValue, MapEntry, ResEntry, ResPackage, ResType, TypeSpec};
 use reseam_apk::{ApkFile, ResValue, ResourceTable, StringPool};
-use reseam_patcher::{Patch, PatchPreset};
 use reseam_patcher::bundle::{BundleArchive, ENGINE_VERSION};
 use reseam_patcher::context::PatchContext;
 use reseam_patcher::engine::{self, PatchSelection, PatchStatus};
 use reseam_patcher::options::OptionValue;
+use reseam_patcher::{Patch, PatchPreset};
 
 static FIXTURE_JAR: OnceLock<PathBuf> = OnceLock::new();
 
@@ -310,7 +310,7 @@ fn open_split_test_apk_with(
     let mut base_table = base_resource_table();
     // Compiling against the table creates the `@+id` entries the layout and the
     // fixture patches refer to, so the table is serialized after it.
-    let layout = reseam_apk::axml::compile_xml(LAYOUT_XML, Some(&mut base_table))
+    let layout = reseam_apk::axml::compile_xml(LAYOUT_XML, Some(&mut (&mut base_table).into()))
         .expect("compile the base layout");
     let base_resources = base_table.serialize().expect("serialize resources");
     let split_resources = resource_table_bytes("split_label", "Split original");
@@ -1492,7 +1492,7 @@ fn replace_strings_containing_rewrites_only_what_transform_returns() {
 
 #[test]
 fn same_named_patches_keep_independent_identity_options_dependencies_and_settings() {
-    use reseam_patcher::engine::{PatchIndex, validate_patches};
+    use reseam_patcher::engine::{validate_patches, PatchIndex};
     let bundle_file = write_bundle_reseam();
     let bundle = BundleArchive::open(&bundle_file.path)
         .unwrap()
@@ -1508,13 +1508,11 @@ fn same_named_patches_keep_independent_identity_options_dependencies_and_setting
         assert_eq!(patch.reference(), id);
         assert_eq!(patch.spec().name, "Hide Ads");
     }
-    assert!(
-        patches[index.resolve(second, None).unwrap()]
-            .spec()
-            .dependencies
-            .iter()
-            .any(|id| id == first)
-    );
+    assert!(patches[index.resolve(second, None).unwrap()]
+        .spec()
+        .dependencies
+        .iter()
+        .any(|id| id == first));
     let error = index
         .resolve("Hide Ads", Some("com.example.test"))
         .unwrap_err()
@@ -1603,12 +1601,10 @@ fn same_named_patches_keep_independent_identity_options_dependencies_and_setting
         None,
     )
     .unwrap();
-    assert!(
-        results
-            .iter()
-            .filter(|r| r.patch == first || r.patch == second)
-            .all(|r| matches!(r.status, PatchStatus::Skipped { .. }))
-    );
+    assert!(results
+        .iter()
+        .filter(|r| r.patch == first || r.patch == second)
+        .all(|r| matches!(r.status, PatchStatus::Skipped { .. })));
 
     let conflict = PatchSelection {
         enable: ["runtime-test-bundle/app.reseam.test.runtimeApi".to_owned()].into(),
@@ -1845,10 +1841,8 @@ fn app_entry_follows_an_application_swapped_after_the_hook_was_added() {
         Some(AccessFlags::PUBLIC),
     );
     application_class(&mut dex, WRAPPER, REAL, None);
-    let (_apk_dir, mut apk) = open_split_test_apk_with(
-        manifest_with_application("com.example.WrapperApp"),
-        &[dex],
-    );
+    let (_apk_dir, mut apk) =
+        open_split_test_apk_with(manifest_with_application("com.example.WrapperApp"), &[dex]);
     let bundle = loaded_test_bundle();
     let patches: Vec<&dyn Patch> = bundle.patches.iter().map(Box::as_ref).collect();
     run_one_patch(
@@ -2164,13 +2158,11 @@ fn a_typed_file_resource_a_style_and_an_array_land_where_the_loader_reads_them()
         ],
         "the element count grew and every element kept a text form"
     );
-    assert!(
-        table
-            .complex_entries("array", "double_tap_lengths")
-            .unwrap()
-            .iter()
-            .all(|entry| entry.value.kind == ResValue::STRING)
-    );
+    assert!(table
+        .complex_entries("array", "double_tap_lengths")
+        .unwrap()
+        .iter()
+        .all(|entry| entry.value.kind == ResValue::STRING));
     let bytes = base.read_entry("res/split.xml").unwrap().unwrap();
     let doc = reseam_apk::AxmlDocument::parse(&bytes).unwrap();
     assert_eq!(
@@ -3388,11 +3380,9 @@ fn settings_pages_merge_selected_contributions_and_keep_nested_ancestors() {
             |_| {},
         )
         .unwrap();
-        assert!(
-            results
-                .iter()
-                .all(|r| !matches!(r.status, PatchStatus::Failed { .. }))
-        );
+        assert!(results
+            .iter()
+            .all(|r| !matches!(r.status, PatchStatus::Failed { .. })));
         let bytes = apk
             .component_mut(0)
             .unwrap()

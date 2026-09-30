@@ -7,7 +7,9 @@ use std::path::Path;
 
 use reseam_apk::reseam_dex::ParseOptions;
 use reseam_apk::resources::{EntryValue, ResEntry, ResPackage, ResType, TypeSpec};
-use reseam_apk::{axml, ApkFile, ApplicationIcon, IconLayer, ResValue, ResourceTable, StringPool};
+use reseam_apk::{
+    axml, ApkFile, ApplicationIcon, IconLayer, ResValue, ResourceScope, ResourceTable, StringPool,
+};
 
 const YOUTUBE_APK: &str = "../../test-apks/for_testing_com.google.android.youtube_21.10.494.apk";
 const INSTAGRAM_APK: &str = "../../test-apks/com.instagram.android_419.0.0.49.71-382508603_minAPI28(arm64-v8a)(360,400,420,480dpi)_apkmirror.com.apk";
@@ -107,7 +109,7 @@ fn write_apk(path: &Path, manifest: &[u8], entries: &[(&str, &[u8])]) {
 #[test]
 fn label_prefers_the_default_configuration_and_icon_the_densest_bitmap() {
     let mut table = resources();
-    let manifest = axml::compile_xml(MANIFEST, Some(&mut table)).unwrap();
+    let manifest = axml::compile_xml(MANIFEST, Some(&mut ResourceScope::from(&mut table))).unwrap();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("app.apk");
     write_apk(
@@ -132,8 +134,9 @@ fn label_prefers_the_default_configuration_and_icon_the_densest_bitmap() {
 #[test]
 fn adaptive_icon_layers_resolve_to_bitmaps_and_colors() {
     let mut table = resources();
-    let manifest = axml::compile_xml(MANIFEST, Some(&mut table)).unwrap();
-    let adaptive = axml::compile_xml(ADAPTIVE_ICON, Some(&mut table)).unwrap();
+    let manifest = axml::compile_xml(MANIFEST, Some(&mut ResourceScope::from(&mut table))).unwrap();
+    let adaptive =
+        axml::compile_xml(ADAPTIVE_ICON, Some(&mut ResourceScope::from(&mut table))).unwrap();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("app.apk");
     write_apk(

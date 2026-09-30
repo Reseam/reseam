@@ -6,7 +6,7 @@ use reseam_apk::resources::{
     config_for_qualifiers, EntryValue, MapEntry, ResEntry, ResPackage, ResType, ResourceTable,
     TypeSpec,
 };
-use reseam_apk::{ResValue, StringPool};
+use reseam_apk::{ResValue, ResourceScope, StringPool};
 use reseam_dex::file::DexBytes;
 
 fn make_test_axml(is_utf8: bool) -> AxmlDocument {
@@ -189,7 +189,8 @@ fn test_xml_compiler_resolves_typed_resource_values() {
             android:alpha="0.5" />
     "#;
 
-    let doc = axml::build_document(xml, Some(&mut table)).expect("build axml");
+    let doc =
+        axml::build_document(xml, Some(&mut ResourceScope::from(&mut table))).expect("build axml");
     let element = doc.root().expect("start element");
     let attr = |name: &str| {
         doc.attribute_named(element, name)
@@ -230,7 +231,8 @@ fn test_xml_compiler_rejects_unknown_framework_resources() {
     let mut table = make_test_arsc();
     let xml = r#"<View xmlns:android="http://schemas.android.com/apk/res/android" android:background="@android:color/notAColor" />"#;
 
-    let err = axml::build_document(xml, Some(&mut table)).expect_err("unknown framework color");
+    let err = axml::build_document(xml, Some(&mut ResourceScope::from(&mut table)))
+        .expect_err("unknown framework color");
 
     assert!(err.to_string().contains("android:color/notAColor"), "{err}");
 }
@@ -289,7 +291,8 @@ fn test_xml_compiler_rejects_undefined_references() {
         </layer-list>
     "#;
 
-    let error = axml::build_document(xml, Some(&mut table)).expect_err("undefined reference");
+    let error = axml::build_document(xml, Some(&mut ResourceScope::from(&mut table)))
+        .expect_err("undefined reference");
     assert!(error.to_string().contains("@drawable/missing"), "{error}");
 }
 
@@ -312,7 +315,8 @@ fn test_xml_compiler_resolves_enum_and_flag_names() {
             app:sides="top|bottom" />
     "#;
 
-    let doc = axml::build_document(xml, Some(&mut table)).expect("build axml");
+    let doc =
+        axml::build_document(xml, Some(&mut ResourceScope::from(&mut table))).expect("build axml");
     let element = doc.root().expect("start element");
     let attr = |name: &str| {
         doc.attribute_named(element, name)
@@ -837,7 +841,7 @@ fn style_items_land_in_every_configuration_that_defines_the_style() {
         &[],
     );
 
-    let id = table
+    let id = ResourceScope::from(&mut table)
         .set_style_items(
             "AppTheme",
             None,
@@ -860,12 +864,12 @@ fn style_items_land_in_every_configuration_that_defines_the_style() {
         );
     }
 
-    assert!(table
+    assert!(ResourceScope::from(&mut table)
         .set_style_items("New.Theme", None, &[])
         .unwrap_err()
         .to_string()
         .contains("pass a parent to create it"));
-    let created = table
+    let created = ResourceScope::from(&mut table)
         .set_style_items(
             "New.Theme",
             Some(&format!("@0x{id:08x}")),
@@ -883,7 +887,7 @@ fn style_items_land_in_every_configuration_that_defines_the_style() {
     assert_eq!(parent, id);
     assert_eq!(entries.len(), 1);
 
-    assert!(table
+    assert!(ResourceScope::from(&mut table)
         .set_style_items("AppTheme", None, &[("notAnAttribute".into(), "1".into())])
         .unwrap_err()
         .to_string()
@@ -913,7 +917,7 @@ fn an_array_is_rewritten_with_a_different_element_count() {
     );
 
     assert_eq!(table.array("lengths").unwrap(), ["5", "10"]);
-    table
+    ResourceScope::from(&mut table)
         .set_array(
             "lengths",
             &["3".into(), "5".into(), "10".into(), "true".into()],
@@ -930,7 +934,7 @@ fn an_array_is_rewritten_with_a_different_element_count() {
         names,
         (0..4).map(|i| ARRAY_FIRST_NAME + i).collect::<Vec<_>>()
     );
-    assert!(table
+    assert!(ResourceScope::from(&mut table)
         .set_array("missing", &[])
         .unwrap_err()
         .to_string()
@@ -982,7 +986,7 @@ fn attribute_names_with_different_resource_ids_use_different_strings() {
         .unwrap();
     let mut doc = axml::build_document(
         r#"<Preference xmlns:android="http://schemas.android.com/apk/res/android" android:title="Framework" />"#,
-        Some(&mut table),
+        Some(&mut ResourceScope::from(&mut table)),
     ).unwrap();
     doc.declare_namespace("app", RES_AUTO).unwrap();
     let (_, framework) = doc
@@ -1025,7 +1029,8 @@ fn an_attribute_binds_under_whatever_prefix_declares_its_namespace() {
             tools:ignore="ContentDescription"
             yt:layout_constraintRight_toLeftOf="@string/hello" />"#;
 
-    let doc = axml::build_document(xml, Some(&mut table)).expect("build axml");
+    let doc =
+        axml::build_document(xml, Some(&mut ResourceScope::from(&mut table))).expect("build axml");
     let element = doc.root().expect("start element");
     assert_eq!(
         doc.attribute(element, attr).map(|a| a.value),
@@ -1039,15 +1044,19 @@ fn an_attribute_binds_under_whatever_prefix_declares_its_namespace() {
     );
 
     let unknown = r#"<FrameLayout xmlns:yt="http://schemas.android.com/apk/res-auto" yt:notAnAttribute="1" />"#;
-    assert!(axml::build_document(unknown, Some(&mut table))
-        .unwrap_err()
-        .to_string()
-        .contains("has no attr/notAnAttribute"));
+    assert!(
+        axml::build_document(unknown, Some(&mut ResourceScope::from(&mut table)))
+            .unwrap_err()
+            .to_string()
+            .contains("has no attr/notAnAttribute")
+    );
     let undeclared = r#"<FrameLayout yt:notAnAttribute="1" />"#;
-    assert!(axml::build_document(undeclared, Some(&mut table))
-        .unwrap_err()
-        .to_string()
-        .contains("declares no xmlns:yt"));
+    assert!(
+        axml::build_document(undeclared, Some(&mut ResourceScope::from(&mut table)))
+            .unwrap_err()
+            .to_string()
+            .contains("declares no xmlns:yt")
+    );
 }
 
 #[test]
@@ -1071,12 +1080,12 @@ fn an_adopted_subtree_is_rebound_in_the_document_that_takes_it() {
             yt:layout_constraintRight_toLeftOf="@string/hello">
             <ImageView android:tag="inner" />
         </FrameLayout>"#,
-        Some(&mut table),
+        Some(&mut ResourceScope::from(&mut table)),
     )
     .expect("build the fragment");
     let mut target = axml::build_document(
         r#"<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:tag="root" />"#,
-        Some(&mut table),
+        Some(&mut ResourceScope::from(&mut table)),
     )
     .expect("build the target");
 

@@ -10,7 +10,7 @@ use std::cell::{Cell, RefCell};
 
 use boltffi::export;
 use reseam_apk::axml::{self, AttributeValue, AxmlAttribute, AxmlDocument, AxmlEvent};
-use reseam_apk::{Compression, ResValue, ResourceTable, StringPool};
+use reseam_apk::{Compression, ResValue, ResourceScope, StringPool};
 
 use super::files::with_component;
 use super::handles::with_ctx;
@@ -274,16 +274,16 @@ fn set_attribute_value(
     doc: u32,
     el: u32,
     name: &str,
-    resources: Option<&mut ResourceTable>,
+    resources: Option<&mut ResourceScope<'_>>,
     value: impl FnOnce(
         &mut StringPool,
         Option<u32>,
-        Option<&mut ResourceTable>,
+        Option<&mut ResourceScope<'_>>,
     ) -> Result<ResValue, String>,
 ) -> Result<(), String> {
     with_attributes_mut(doc, el, |document, attributes| {
         let (namespace, name) = document
-            .bind_attribute_name(name, resources.as_deref())
+            .bind_attribute_name(name, resources.as_deref().map(|scope| &**scope))
             .map_err(|error| error.to_string())?;
         let attr = namespace.and_then(|_| document.resource_id_for(name));
         let value = value(&mut document.string_pool, attr, resources)?;
@@ -489,8 +489,7 @@ pub fn xml_get_attribute(doc: u32, el: u32, name: String) -> Option<String> {
 /// resource id, since the inflater would ignore it.
 #[export]
 pub fn xml_set_attribute(doc: u32, el: u32, name: String, value: String) -> Result<(), String> {
-    with_ctx(|ctx| {
-        let resources = ctx.apk_mut().base_mut().resources_mut().ok().flatten();
+    with_base_scope(|resources| {
         set_attribute_value(doc, el, &name, resources, |pool, attr, resources| {
             text_attribute(pool, attr, resources, &value)
                 .map_err(|error| format!("attribute {name}: {error}"))
@@ -501,7 +500,7 @@ pub fn xml_set_attribute(doc: u32, el: u32, name: String, value: String) -> Resu
 fn text_attribute(
     pool: &mut StringPool,
     attr: Option<u32>,
-    resources: Option<&mut ResourceTable>,
+    resources: Option<&mut ResourceScope<'_>>,
     text: &str,
 ) -> reseam_apk::Result<ResValue> {
     Ok(match axml::parse_attribute_value(text, attr, resources)? {
@@ -512,8 +511,7 @@ fn text_attribute(
 
 #[export]
 pub fn xml_set_attribute_ref(doc: u32, el: u32, name: String, res_id: u32) -> Result<(), String> {
-    with_ctx(|ctx| {
-        let resources = ctx.apk_mut().base_mut().resources_mut().ok().flatten();
+    with_base_scope(|resources| {
         set_attribute_value(doc, el, &name, resources, |_, _, _| {
             Ok(ResValue::reference(res_id))
         })
@@ -628,6 +626,17 @@ fn end_of(document: &AxmlDocument, el: u32, doc: u32) -> Result<usize, String> {
         .ok_or_else(|| format!("element {el} is not an element of document {doc}"))
 }
 
+/// Runs `f` with the base APK's table, which resolves names across the app.
+fn with_base_scope<R>(
+    f: impl FnOnce(Option<&mut ResourceScope<'_>>) -> Result<R, String>,
+) -> Result<R, String> {
+    with_ctx(|ctx| {
+        ctx.apk_mut()
+            .with_resource_scope(0, f)
+            .map_err(|error| format!("resources: {error}"))?
+    })
+}
+
 fn used_up(el: u32) -> String {
     format!("element {el} was already attached; use the handle the attaching call returned")
 }
@@ -641,8 +650,7 @@ pub fn xml_remove_element(doc: u32, el: u32) {
 /// so closing it discards it; it is the source a patch grafts a subtree out of.
 #[export]
 pub fn xml_compile(text: String) -> Result<u32, String> {
-    with_ctx(|ctx| {
-        let resources = ctx.apk_mut().base_mut().resources_mut().ok().flatten();
+    with_base_scope(|resources| {
         let doc = axml::build_document(&text, resources).map_err(|error| error.to_string())?;
         let id = COMPILED.with(|count| {
             let id = count.get();
