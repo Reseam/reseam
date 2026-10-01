@@ -1,7 +1,8 @@
 [package]
 name = "reseam-sdk"
 version.workspace = true
-edition = "2021"
+edition.workspace = true
+rust-version.workspace = true
 description = "Application integration SDK for Reseam clients"
 
 [lib]
@@ -12,14 +13,20 @@ reseam-model = { workspace = true }
 reseam-apk     = { workspace = true }
 reseam-sign    = { workspace = true }
 reseam-patcher = { workspace = true }
-anyhow         = { workspace = true }
-serde          = { workspace = true }
+thiserror      = { workspace = true }
+tempfile       = { workspace = true }
 hex            = { workspace = true }
 tracing        = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = ["Win32_System_ProcessStatus"] }
+
 [dev-dependencies]
 serde_json = { workspace = true }
 zip = { workspace = true }
+
+[lints]
+workspace = true

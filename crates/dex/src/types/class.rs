@@ -7,7 +7,13 @@ use super::code::CodeItem;
 use super::encoded_value::EncodedValue;
 use super::{FieldIdx, MethodIdx, StringIdx, TypeIdx, TypeList};
 
-pub const NO_INDEX: u32 = 0xFFFFFFFF;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MethodKind {
+    Direct,
+    Virtual,
+}
+
+pub const NO_INDEX: u32 = u32::MAX;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClassDef {
@@ -16,9 +22,9 @@ pub struct ClassDef {
     pub superclass: Option<TypeIdx>,
     pub interfaces: TypeList,
     pub source_file: Option<StringIdx>,
-    pub annotations: Option<Box<AnnotationsDirectory>>,
+    pub annotations: Option<Box<super::metadata::Metadata<AnnotationsDirectory>>>,
     pub class_data: Option<Box<ClassData>>,
-    pub static_values: Vec<EncodedValue>,
+    pub static_values: std::collections::BTreeMap<FieldIdx, EncodedValue>,
 }
 
 impl ClassDef {

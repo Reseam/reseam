@@ -4,26 +4,48 @@
 use std::collections::HashMap;
 
 use crate::error::{PatcherError, Result};
-use crate::patch::Patch;
+use crate::patch::PatchSpec;
 
 /// Patch identities shared by planning and CLI options. A reference
 /// (`<bundle>/<id>`) resolves exactly; a bare ID or a display name must
 /// identify one patch across the loaded bundles for the target package.
 pub struct PatchIndex<'a> {
-    patches: &'a [&'a dyn Patch],
-    pub(super) references: HashMap<String, usize>,
+    patches: &'a [&'a PatchSpec],
+    references: HashMap<Reference<'a>, usize>,
     ids: HashMap<&'a str, Vec<usize>>,
     names: HashMap<&'a str, Vec<usize>>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct Reference<'a> {
+    bundle: &'a str,
+    id: &'a str,
+}
+
+impl<'a> Reference<'a> {
+    fn parse(value: &'a str) -> Option<Self> {
+        let (bundle, id) = value.split_once('/')?;
+        Some(Self { bundle, id })
+    }
+}
+
 impl<'a> PatchIndex<'a> {
-    pub fn new(patches: &'a [&'a dyn Patch]) -> Result<Self> {
+    pub fn new(patches: &'a [&'a PatchSpec]) -> Result<Self> {
         let mut references = HashMap::with_capacity(patches.len());
         let mut ids: HashMap<&str, Vec<usize>> = HashMap::new();
         let mut names: HashMap<&str, Vec<usize>> = HashMap::new();
         for (index, patch) in patches.iter().enumerate() {
-            let spec = patch.spec();
-            if references.insert(spec.reference(), index).is_some() {
+            let spec = patch;
+            if references
+                .insert(
+                    Reference {
+                        bundle: &spec.bundle,
+                        id: &spec.id,
+                    },
+                    index,
+                )
+                .is_some()
+            {
                 return Err(PatcherError::Bundle(format!(
                     "bundle '{}' declares patch '{}' more than once",
                     spec.bundle, spec.id
@@ -42,8 +64,12 @@ impl<'a> PatchIndex<'a> {
         })
     }
 
+    pub(super) fn reference(&self, selector: &str) -> Option<usize> {
+        self.references.get(&Reference::parse(selector)?).copied()
+    }
+
     pub fn resolve(&self, selector: &str, package: Option<&str>) -> Result<usize> {
-        if let Some(&index) = self.references.get(selector) {
+        if let Some(index) = self.reference(selector) {
             return Ok(index);
         }
         let named = self
@@ -56,7 +82,6 @@ impl<'a> PatchIndex<'a> {
             .copied()
             .filter(|&index| {
                 self.patches[index]
-                    .spec()
                     .package_incompatibility(package)
                     .is_none()
             })

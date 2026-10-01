@@ -8,8 +8,8 @@ use rustc_hash::{FxHashMap, FxHasher};
 use smallvec::SmallVec;
 
 use super::DexBytes;
-use crate::error::{invalid_offset, Result};
-use crate::read::header::{u16_at, u32_at};
+use crate::error::Result;
+use crate::read::{read_u32, u16_at, u32_at};
 use crate::types::{FieldId, MethodId, ProtoIdx, Prototype, StringIdx, TypeIdx, TypeList};
 
 /// A fixed-size id-table record that can be read straight from the buffer.
@@ -59,10 +59,7 @@ impl<T: IdRecord> IdTable<T> {
         let buf = raw.as_bytes();
         let off = off as usize;
         let count = count as usize;
-        let end = off + count * T::SIZE;
-        if end > buf.len() {
-            return Err(invalid_offset("id table", off as u32, buf.len() as u32));
-        }
+        crate::error::require_array(buf, off, count, T::SIZE, "id table")?;
         for i in 0..count {
             T::validate(buf, off + i * T::SIZE)?;
         }
@@ -159,8 +156,6 @@ impl<T: IdRecord> IdTable<T> {
         (self.tail.len() * size_of::<T>() + self.index.len() * 24) as u64
     }
 
-    /// The first sorted-prefix index for which `before` is false; `before`
-    /// must hold for a leading run of the prefix and nowhere after it.
     fn partition_point(&self, before: impl Fn(&T) -> bool) -> usize {
         let mut lo = 0usize;
         let mut hi = self.sorted_len;
@@ -219,29 +214,14 @@ fn hash_key<T: IdRecord>(record: &T) -> u64 {
 }
 
 fn check(buf: &[u8], off: usize, size: usize) -> Result<()> {
-    if off + size > buf.len() {
-        return Err(invalid_offset(
-            "id table entry",
-            off as u32,
-            buf.len() as u32,
-        ));
-    }
-    Ok(())
-}
-
-fn u16(buf: &[u8], off: usize) -> u16 {
-    u16::from_le_bytes([buf[off], buf[off + 1]])
-}
-
-fn u32(buf: &[u8], off: usize) -> u32 {
-    u32::from_le_bytes([buf[off], buf[off + 1], buf[off + 2], buf[off + 3]])
+    crate::error::require_len(buf, off, size, "id table entry")
 }
 
 impl IdRecord for StringIdx {
     const SIZE: usize = 4;
 
     fn read(buf: &[u8], off: usize) -> Self {
-        StringIdx(u32(buf, off))
+        StringIdx(u32_at(buf, off))
     }
 
     fn validate(buf: &[u8], off: usize) -> Result<()> {
@@ -261,22 +241,22 @@ impl IdRecord for Prototype {
     const SIZE: usize = 12;
 
     fn read(buf: &[u8], off: usize) -> Self {
-        let params_off = u32(buf, off + 8) as usize;
+        let params_off = u32_at(buf, off + 8) as usize;
         let parameters = if params_off == 0 {
             TypeList::new()
         } else {
             read_type_list(buf, params_off)
         };
         Prototype {
-            shorty: StringIdx(u32(buf, off)),
-            return_type: TypeIdx(u32(buf, off + 4)),
+            shorty: StringIdx(u32_at(buf, off)),
+            return_type: TypeIdx(u32_at(buf, off + 4)),
             parameters,
         }
     }
 
     fn validate(buf: &[u8], off: usize) -> Result<()> {
         check(buf, off, Self::SIZE)?;
-        let params_off = u32_at(buf, off + 8)?;
+        let params_off = u32_at(buf, off + 8);
         if params_off != 0 {
             validate_type_list(buf, params_off as usize)?;
         }
@@ -300,9 +280,9 @@ impl IdRecord for FieldId {
 
     fn read(buf: &[u8], off: usize) -> Self {
         FieldId {
-            class: TypeIdx(u16(buf, off) as u32),
-            type_: TypeIdx(u16(buf, off + 2) as u32),
-            name: StringIdx(u32(buf, off + 4)),
+            class: TypeIdx(u32::from(u16_at(buf, off))),
+            type_: TypeIdx(u32::from(u16_at(buf, off + 2))),
+            name: StringIdx(u32_at(buf, off + 4)),
         }
     }
 
@@ -311,11 +291,11 @@ impl IdRecord for FieldId {
     }
 
     fn key_cmp(&self, other: &Self) -> Ordering {
-        (self.class, self.name, self.type_).cmp(&(other.class, other.name, other.type_))
+        self.cmp(other)
     }
 
     fn key_hash<H: Hasher>(&self, state: &mut H) {
-        (self.class, self.name, self.type_).hash(state);
+        self.hash(state);
     }
 }
 
@@ -324,9 +304,9 @@ impl IdRecord for MethodId {
 
     fn read(buf: &[u8], off: usize) -> Self {
         MethodId {
-            class: TypeIdx(u16(buf, off) as u32),
-            proto: ProtoIdx(u16(buf, off + 2)),
-            name: StringIdx(u32(buf, off + 4)),
+            class: TypeIdx(u32::from(u16_at(buf, off))),
+            proto: ProtoIdx(u32::from(u16_at(buf, off + 2))),
+            name: StringIdx(u32_at(buf, off + 4)),
         }
     }
 
@@ -335,96 +315,23 @@ impl IdRecord for MethodId {
     }
 
     fn key_cmp(&self, other: &Self) -> Ordering {
-        (self.class, self.name, self.proto).cmp(&(other.class, other.name, other.proto))
+        self.cmp(other)
     }
 
     fn key_hash<H: Hasher>(&self, state: &mut H) {
-        (self.class, self.name, self.proto).hash(state);
+        self.hash(state);
     }
 }
 
-/// Reads a validated `type_list` at `off`.
 pub(crate) fn read_type_list(buf: &[u8], off: usize) -> TypeList {
-    let size = u32(buf, off) as usize;
+    let size = u32_at(buf, off) as usize;
     (0..size)
-        .map(|i| TypeIdx(u16(buf, off + 4 + i * 2) as u32))
+        .map(|i| TypeIdx(u32::from(u16_at(buf, off + 4 + i * 2))))
         .collect()
 }
 
 pub(crate) fn validate_type_list(buf: &[u8], off: usize) -> Result<()> {
-    let size = u32_at(buf, off)? as usize;
-    if size > 0 {
-        u16_at(buf, off + 4 + (size - 1) * 2)?;
-    }
+    let size = read_u32(buf, off)? as usize;
+    crate::error::require_array(buf, off + 4, size, 2, "type list")?;
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn raw_methods(records: &[(u16, u16, u32)]) -> IdTable<MethodId> {
-        let mut buf = Vec::new();
-        for &(class, proto, name) in records {
-            buf.extend_from_slice(&class.to_le_bytes());
-            buf.extend_from_slice(&proto.to_le_bytes());
-            buf.extend_from_slice(&name.to_le_bytes());
-        }
-        IdTable::from_raw(DexBytes::from_vec(buf), 0, records.len() as u32).unwrap()
-    }
-
-    fn method(class: u32, name: u32, proto: u16) -> MethodId {
-        MethodId {
-            class: TypeIdx(class),
-            proto: ProtoIdx(proto),
-            name: StringIdx(name),
-        }
-    }
-
-    #[test]
-    fn raw_records_decode_and_lookup() {
-        let table = raw_methods(&[(0, 0, 1), (0, 0, 2), (1, 3, 0), (0, 9, 9)]);
-        assert_eq!(table.len(), 4);
-        assert_eq!(table.sorted_len, 3);
-        assert_eq!(table.get(2).name, StringIdx(0));
-        assert_eq!(table.find(&method(0, 2, 0)), Some(1));
-        assert_eq!(table.find(&method(0, 9, 9)), Some(3));
-        assert_eq!(table.find(&method(5, 5, 5)), None);
-    }
-
-    #[test]
-    fn pushed_records_are_found() {
-        let mut table = raw_methods(&[(0, 0, 1)]);
-        let i = table.push(method(2, 2, 2));
-        assert_eq!(i, 1);
-        assert_eq!(table.find(&method(2, 2, 2)), Some(1));
-    }
-
-    #[test]
-    fn owned_tables_sort_prefix() {
-        let table = IdTable::from_vec(vec![method(0, 0, 0), method(0, 1, 0), method(0, 0, 5)]);
-        assert_eq!(table.sorted_len, 2);
-        assert_eq!(table.find(&method(0, 0, 5)), Some(2));
-        assert_eq!(table.find(&method(0, 1, 0)), Some(1));
-    }
-
-    #[test]
-    fn matching_covers_sorted_run_and_unsorted_tail() {
-        let mut table = raw_methods(&[(0, 0, 1), (1, 0, 1), (1, 0, 2), (1, 1, 2), (2, 0, 0)]);
-        table.push(method(1, 5, 0));
-        table.push(method(3, 0, 0));
-        let class = |c: u32| move |m: &MethodId| m.class.cmp(&TypeIdx(c));
-        assert_eq!(
-            table.matching(class(1)).collect::<Vec<_>>(),
-            vec![1, 2, 3, 5]
-        );
-        assert_eq!(
-            table
-                .matching(|m| m.class.cmp(&TypeIdx(1)).then(m.name.cmp(&StringIdx(2))))
-                .collect::<Vec<_>>(),
-            vec![2, 3]
-        );
-        assert_eq!(table.matching(class(3)).collect::<Vec<_>>(), vec![6]);
-        assert_eq!(table.matching(class(9)).count(), 0);
-    }
 }

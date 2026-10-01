@@ -5,91 +5,98 @@ use crate::encoding::leb128::write_uleb128;
 use crate::types::encoded_value::{EncodedAnnotation, EncodedValue};
 
 pub fn write_encoded_value(buf: &mut Vec<u8>, value: &EncodedValue) {
+    let tag = value.kind() as u8;
     match value {
         EncodedValue::Byte(v) => {
-            buf.push(0x00); // type=0x00, arg=0
+            buf.push(tag);
             buf.push(*v as u8);
         }
         EncodedValue::Short(v) => {
-            let bytes = write_signed_int_bytes(*v as i64);
-            buf.push(0x02 | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(&bytes);
+            let raw = i64::from(*v).to_le_bytes();
+            let bytes = signed_bytes(&raw);
+            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
+            buf.extend_from_slice(bytes);
         }
         EncodedValue::Char(v) => {
-            let bytes = write_unsigned_int_bytes(*v as u64);
-            buf.push(0x03 | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(&bytes);
+            let raw = u64::from(*v).to_le_bytes();
+            let bytes = unsigned_bytes(&raw);
+            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
+            buf.extend_from_slice(bytes);
         }
         EncodedValue::Int(v) => {
-            let bytes = write_signed_int_bytes(*v as i64);
-            buf.push(0x04 | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(&bytes);
+            let raw = i64::from(*v).to_le_bytes();
+            let bytes = signed_bytes(&raw);
+            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
+            buf.extend_from_slice(bytes);
         }
         EncodedValue::Long(v) => {
-            let bytes = write_signed_int_bytes(*v);
-            buf.push(0x06 | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(&bytes);
+            let raw = v.to_le_bytes();
+            let bytes = signed_bytes(&raw);
+            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
+            buf.extend_from_slice(bytes);
         }
         EncodedValue::Float(v) => {
             let raw = v.to_le_bytes();
             let bytes = strip_right_zeros_float(&raw);
-            buf.push(0x10 | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(&bytes);
+            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
+            buf.extend_from_slice(bytes);
         }
         EncodedValue::Double(v) => {
             let raw = v.to_le_bytes();
             let bytes = strip_right_zeros_float(&raw);
-            buf.push(0x11 | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(&bytes);
+            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
+            buf.extend_from_slice(bytes);
         }
         EncodedValue::MethodType(idx) => {
-            let bytes = write_unsigned_int_bytes(idx.0 as u64);
-            buf.push(0x15 | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(&bytes);
+            let raw = u64::from(idx.0).to_le_bytes();
+            let bytes = unsigned_bytes(&raw);
+            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
+            buf.extend_from_slice(bytes);
         }
         EncodedValue::MethodHandle(idx) => {
-            let bytes = write_unsigned_int_bytes(idx.0 as u64);
-            buf.push(0x16 | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(&bytes);
+            let raw = u64::from(idx.0).to_le_bytes();
+            let bytes = unsigned_bytes(&raw);
+            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
+            buf.extend_from_slice(bytes);
         }
         EncodedValue::String(idx) => {
-            let bytes = write_unsigned_int_bytes(idx.0 as u64);
-            buf.push(0x17 | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(&bytes);
+            let raw = u64::from(idx.0).to_le_bytes();
+            let bytes = unsigned_bytes(&raw);
+            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
+            buf.extend_from_slice(bytes);
         }
         EncodedValue::Type(idx) => {
-            let bytes = write_unsigned_int_bytes(idx.0 as u64);
-            buf.push(0x18 | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(&bytes);
+            let raw = u64::from(idx.0).to_le_bytes();
+            let bytes = unsigned_bytes(&raw);
+            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
+            buf.extend_from_slice(bytes);
         }
-        EncodedValue::Field(idx) => {
-            let bytes = write_unsigned_int_bytes(idx.0 as u64);
-            buf.push(0x19 | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(&bytes);
+        EncodedValue::Field(idx) | EncodedValue::Enum(idx) => {
+            let raw = u64::from(idx.0).to_le_bytes();
+            let bytes = unsigned_bytes(&raw);
+            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
+            buf.extend_from_slice(bytes);
         }
         EncodedValue::Method(idx) => {
-            let bytes = write_unsigned_int_bytes(idx.0 as u64);
-            buf.push(0x1a | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(&bytes);
+            let raw = u64::from(idx.0).to_le_bytes();
+            let bytes = unsigned_bytes(&raw);
+            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
+            buf.extend_from_slice(bytes);
         }
-        EncodedValue::Enum(idx) => {
-            let bytes = write_unsigned_int_bytes(idx.0 as u64);
-            buf.push(0x1b | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(&bytes);
-        }
+
         EncodedValue::Array(values) => {
-            buf.push(0x1c);
+            buf.push(tag);
             write_encoded_array(buf, values);
         }
         EncodedValue::Annotation(ann) => {
-            buf.push(0x1d);
+            buf.push(tag);
             write_encoded_annotation(buf, ann);
         }
         EncodedValue::Null => {
-            buf.push(0x1e);
+            buf.push(tag);
         }
         EncodedValue::Boolean(v) => {
-            buf.push(0x1f | ((*v as u8) << 5));
+            buf.push(tag | (u8::from(*v) << 5));
         }
     }
 }
@@ -110,12 +117,9 @@ pub fn write_encoded_annotation(buf: &mut Vec<u8>, ann: &EncodedAnnotation) {
     }
 }
 
-fn write_signed_int_bytes(value: i64) -> Vec<u8> {
-    let raw = value.to_le_bytes();
-    // Find minimal encoding (sign-extended)
+fn signed_bytes(raw: &[u8; 8]) -> &[u8] {
     let mut size = 8;
     while size > 1 {
-        // Check if we can drop the last byte
         let byte = raw[size - 1];
         let prev_sign = (raw[size - 2] & 0x80) != 0;
         if (byte == 0xFF && prev_sign) || (byte == 0x00 && !prev_sign) {
@@ -124,24 +128,21 @@ fn write_signed_int_bytes(value: i64) -> Vec<u8> {
             break;
         }
     }
-    raw[..size].to_vec()
+    &raw[..size]
 }
 
-fn write_unsigned_int_bytes(value: u64) -> Vec<u8> {
-    let raw = value.to_le_bytes();
+fn unsigned_bytes(raw: &[u8; 8]) -> &[u8] {
     let mut size = 8;
     while size > 1 && raw[size - 1] == 0 {
         size -= 1;
     }
-    raw[..size].to_vec()
+    &raw[..size]
 }
 
-/// For floats/doubles: strip trailing zero bytes from the LEFT (low-order in LE)
-/// because float encoding is right-zero-extended.
-fn strip_right_zeros_float(raw: &[u8]) -> Vec<u8> {
+fn strip_right_zeros_float(raw: &[u8]) -> &[u8] {
     let mut start = 0;
     while start < raw.len() - 1 && raw[start] == 0 {
         start += 1;
     }
-    raw[start..].to_vec()
+    &raw[start..]
 }

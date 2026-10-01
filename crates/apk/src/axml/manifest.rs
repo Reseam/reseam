@@ -1,14 +1,12 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! `AndroidManifest.xml` accessors on top of the generic document.
-
 use std::borrow::Cow;
 
+use super::AxmlDocument;
 use super::android_attrs::{
     ATTR_MIN_SDK_VERSION, ATTR_NAME, ATTR_SPLIT_NAME, ATTR_VERSION_CODE, ATTR_VERSION_NAME,
 };
-use super::AxmlDocument;
 use crate::value::ResValue;
 
 impl AxmlDocument {

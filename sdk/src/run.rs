@@ -1,27 +1,48 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use anyhow::{ensure, Context, Result};
+use crate::error::Result;
 use reseam_apk::ApkFile;
 use reseam_patcher::context::{ExtensionSet, PatchContext};
 use reseam_patcher::engine::{self, PatchResult, PatchStatus};
-use reseam_patcher::Patch;
+use reseam_patcher::{Patch, PatchSpec};
 
+use crate::TrustStore;
 use crate::error::Problem;
-use crate::inspect::{load_bundles, open_apk, OpenedApk};
+use crate::inspect::{load_bundles, open_apk};
 use crate::metrics::{ApplyDiagnostics, PatchPhase, PatchProfiler};
 use crate::output::write_signed;
-use crate::TrustStore;
 use crate::{PatchArtifact, PatchOutcome, PatchRequest, RunEvent};
 use std::path::{Path, PathBuf};
 
 /// Runs the request end to end: open, load, apply, write, sign. A dry run
-/// stops after validation and reports what would run.
-pub fn patch(request: &PatchRequest, mut emit: impl FnMut(RunEvent)) -> Result<PatchOutcome> {
-    // Reject malformed trust before opening or loading any bundle.
-    TrustStore::from_hex(&request.trust.keys).map_err(anyhow::Error::msg)?;
+/// stops after validation and reports what would run without publishing artifacts.
+///
+/// Progress runs synchronously on the calling thread; callbacks must not re-enter
+/// the engine. Output destinations must be distinct and must not overwrite the
+/// signing identity. Completed artifacts are staged beside their destinations.
+/// Signing and publication failures preserve previous outputs; if filesystem
+/// errors also prevent rollback, the error identifies the retained recovery directory.
+pub fn patch(request: &PatchRequest, emit: impl FnMut(RunEvent)) -> Result<PatchOutcome> {
+    patch_with_selection(request, |_, _| Ok(request.selection.clone()), emit)
+}
+
+/// Resolves host selection syntax against the specifications and package already
+/// loaded by this run, then validates or applies the returned selection.
+///
+/// The resolver runs once after trusted bundle loading. Its specifications are in
+/// execution-list order and valid only during the call. Errors stop the run before
+/// editing or publication. Shares [patch]'s output and callback contracts.
+pub fn patch_with_selection(
+    request: &PatchRequest,
+    resolve: impl FnOnce(&[&PatchSpec], Option<&str>) -> Result<reseam_model::PatchSelection>,
+    mut emit: impl FnMut(RunEvent),
+) -> Result<PatchOutcome> {
+    let trust = TrustStore::from_hex(&request.trust.keys)?;
     let mut profiler = PatchProfiler::new();
-    let (results, output) = run(request, &mut emit, &mut profiler)?;
+    let result = run(request, &trust, resolve, &mut emit, &mut profiler);
+    release_process_memory();
+    let (results, output) = result?;
     Ok(PatchOutcome {
         output,
         results,
@@ -31,6 +52,8 @@ pub fn patch(request: &PatchRequest, mut emit: impl FnMut(RunEvent)) -> Result<P
 
 fn run(
     request: &PatchRequest,
+    trust: &TrustStore,
+    resolve: impl FnOnce(&[&PatchSpec], Option<&str>) -> Result<reseam_model::PatchSelection>,
     emit: &mut impl FnMut(RunEvent),
     profiler: &mut PatchProfiler,
 ) -> Result<(Vec<PatchResult>, PatchArtifact)> {
@@ -43,16 +66,22 @@ fn run(
                 .iter()
                 .map(PathBuf::from)
                 .collect::<Vec<_>>(),
-            &ApkFile::patch_options(),
+            ApkFile::patch_options(),
         )
     })?;
     if let Some(bundle) = &opened.bundle {
-        let splits = bundle.split_entries().len();
+        let splits = opened.apk.components().len() - 1;
         emit(info(format!(
             "Opened {} bundle {}: {} base APK, {} split{}",
-            bundle.format().as_str(),
-            bundle.package(),
-            bundle.base_entry(),
+            bundle.as_str(),
+            opened.apk.package_name().as_deref().unwrap_or_default(),
+            opened
+                .apk
+                .base()
+                .path()
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy(),
             splits,
             if splits == 1 { "" } else { "s" },
         )));
@@ -67,19 +96,22 @@ fn run(
                 .iter()
                 .map(PathBuf::from)
                 .collect::<Vec<_>>(),
-            &TrustStore::from_hex(&request.trust.keys).map_err(anyhow::Error::msg)?,
+            trust,
         )
     })?;
-    let patches: Vec<&dyn Patch> = bundles
+    let patches: Vec<&Patch> = bundles
         .iter()
-        .flat_map(|bundle| bundle.patches.iter().map(Box::as_ref))
+        .flat_map(|bundle| bundle.patches().iter())
         .collect();
+
+    let specs: Vec<_> = patches.iter().map(|patch| patch.spec()).collect();
+    let selection = resolve(&specs, opened.apk.package_name().as_deref())?;
 
     if request.dry_run {
         let results = profiler.measure(PatchPhase::ValidatePatches, || {
             engine::validate_patches(
                 &patches,
-                &request.selection,
+                &selection,
                 opened.apk.package_name().as_deref(),
                 opened.apk.version_name().as_deref(),
             )
@@ -96,17 +128,13 @@ fn run(
 
     let extension_paths: Vec<_> = bundles
         .iter()
-        .flat_map(|bundle| bundle.extension_dex.iter().cloned())
+        .flat_map(|bundle| bundle.extension_dex().iter().cloned())
         .collect();
     let mut ctx = PatchContext::new(&mut opened.apk);
     ctx.set_extensions(ExtensionSet::load(&extension_paths)?);
-    let results = profiler
-        .measure(PatchPhase::ApplyPatches, || {
-            engine::apply_patches(&mut ctx, &patches, &request.selection, |event| {
-                emit(event.into())
-            })
-        })
-        .context("patch application failed")?;
+    let results = profiler.measure(PatchPhase::ApplyPatches, || {
+        engine::apply_patches(&mut ctx, &patches, &selection, |event| emit(event.into()))
+    })?;
     profiler.set_apply_diagnostics(apply_diagnostics(&ctx));
     drop(ctx);
 
@@ -116,11 +144,23 @@ fn run(
         "Writing signed output to {}",
         output.path().display()
     )));
-    let OpenedApk { apk, bundle } = opened;
-    write_signed(apk, &output, request.signing.as_ref(), profiler)?;
-    drop(bundle);
-    drop(bundles);
-    release_process_memory();
+    for index in 0..opened.apk.dex().len() {
+        if opened.apk.is_added_dex(index) {
+            continue;
+        }
+        let dex = opened
+            .apk
+            .dex_mut(index)
+            .expect("index is within the DEX container");
+        if dex.is_dirty() {
+            dex.set_write_options(reseam_apk::reseam_dex::write::WriteOptions {
+                debug_info: reseam_apk::reseam_dex::write::MetadataPolicy::OmitOriginal,
+                link_data: reseam_apk::reseam_dex::write::LinkPolicy::Omit,
+                ..Default::default()
+            });
+        }
+    }
+    write_signed(opened.apk, &output, request.signing.as_ref(), profiler)?;
     Ok((results, output))
 }
 
@@ -129,33 +169,40 @@ fn info(message: String) -> RunEvent {
 }
 
 fn ensure_none_failed(results: &[PatchResult]) -> Result<()> {
-    let failed: Vec<&str> = results
+    let patches: Vec<_> = results
         .iter()
         .filter(|result| matches!(result.status, PatchStatus::Failed { .. }))
-        .map(|result| result.patch.as_str())
+        .map(|result| result.patch.clone())
         .collect();
-    ensure!(
-        failed.is_empty(),
-        Problem::PatchesFailed {
-            patches: failed.iter().map(|patch| (*patch).to_owned()).collect(),
-        }
-    );
+    if !patches.is_empty() {
+        return Err(Problem::PatchesFailed { patches }.into());
+    }
     Ok(())
 }
 
-/// Sampled right after `apply_patches`, at the apply-phase memory peak, to
-/// attribute RSS to materialized DEX IR vs the in-process JVM vs everything else.
-fn apply_diagnostics(ctx: &PatchContext) -> ApplyDiagnostics {
+fn apply_diagnostics(ctx: &PatchContext<'_>) -> ApplyDiagnostics {
+    let dex = ctx.apk().dex().memory_breakdown();
     ApplyDiagnostics {
         rss_bytes: PatchProfiler::current_rss_bytes(),
-        dex: ctx.apk().dex().memory_breakdown(),
+        dex: reseam_model::MemoryBreakdown {
+            raw_buffer_bytes: dex.raw_buffer_bytes,
+            string_pool_bytes: dex.string_pool_bytes,
+            string_count: dex.string_count,
+            id_table_bytes: dex.id_table_bytes,
+            class_def_bytes: dex.class_def_bytes,
+            materialized: reseam_model::MaterializationStats {
+                total_classes: dex.materialized.total_classes,
+                resolved_classes: dex.materialized.resolved_classes,
+                methods: dex.materialized.methods,
+                instructions: dex.materialized.instructions,
+            },
+        },
         jvm: reseam_patcher::jvm_heap_stats(),
     }
 }
 
-/// Hands run-scoped memory back to the system so a long-lived host does not
-/// carry one run's peak into the next: the runtime's garbage first, then the
-/// native allocator's retained pages.
+// Current RSS can fall after collection and cache purging; process high-water
+// counters deliberately remain unchanged.
 fn release_process_memory() {
     reseam_patcher::release_runtime_memory();
     purge_native_heap();
@@ -172,7 +219,7 @@ fn purge_native_heap() {
 #[cfg(target_os = "android")]
 fn purge_native_heap() {
     const M_PURGE: libc::c_int = -101;
-    extern "C" {
+    unsafe extern "C" {
         fn mallopt(param: libc::c_int, value: libc::c_int) -> libc::c_int;
     }
     // SAFETY: M_PURGE asks scudo to release cached free pages; it touches no live allocation.

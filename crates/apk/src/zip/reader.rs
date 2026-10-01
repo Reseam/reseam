@@ -2,21 +2,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::fs::File;
-use std::io::{self, BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::{self, BufWriter, Read, Write};
 use std::path::Path;
-use std::sync::Arc;
 
-use reseam_dex::util::file::FileExt;
+use reseam_storage::file::FileReader;
 
 use crate::entry::dex_ordinal;
-use crate::error::Result;
+use crate::error::{Result, invalid};
 
-/// A parsed archive whose clones share one descriptor and one central
-/// directory, so entries can be read from several threads at once.
-pub(crate) type Archive = zip::ZipArchive<SharedFile>;
+pub(crate) type Archive = zip::ZipArchive<FileReader>;
 
 pub(crate) fn open_archive(path: &Path) -> Result<Archive> {
-    Ok(zip::ZipArchive::new(SharedFile::open(path)?)?)
+    (|| Ok(zip::ZipArchive::new(FileReader::new(File::open(path)?)?)?))()
+        .map_err(|error: crate::ApkError| error.in_file(path))
 }
 
 pub(crate) fn entry_names(archive: &Archive) -> Vec<String> {
@@ -38,33 +36,39 @@ pub(crate) fn contains(archive: &Archive, name: &str) -> bool {
 
 pub(crate) fn read_entry(archive: &mut Archive, name: &str) -> Result<Vec<u8>> {
     let mut entry = archive.by_name(name)?;
-    let mut buf = Vec::with_capacity(entry.size() as usize);
+    let mut buf = Vec::new();
     entry.read_to_end(&mut buf)?;
     Ok(buf)
 }
 
-/// The bytes of an entry as a file-backed mapping: a stored entry is mapped
-/// straight from the archive, a deflated one is inflated into an anonymous
-/// temp file first. Either way the pages are reclaimable, never heap.
 pub(crate) fn map_entry(archive: &mut Archive, name: &str) -> Result<memmap2::Mmap> {
     let file = archive.clone().into_inner();
     let mut entry = archive.by_name(name)?;
     if entry.compression() != zip::CompressionMethod::Stored {
         return spool(&mut entry);
     }
-    // SAFETY: the archive is opened read-only for the whole run and nothing
-    // in this process writes to it.
+    let offset = entry
+        .data_start()
+        .ok_or_else(|| invalid("zip entry", format!("{name}: missing data offset")))?;
+    let size = entry.size();
+    let archive_len = file.file().metadata()?.len();
+    if offset.checked_add(size).is_none_or(|end| end > archive_len) {
+        return Err(invalid(
+            "zip entry",
+            format!("{name}: stored data extends past the archive"),
+        ));
+    }
+    let length = usize::try_from(size)
+        .map_err(|_| invalid("zip entry", format!("{name}: entry is too large to map")))?;
+    // SAFETY: this read-only range is inside the immutable input archive.
     Ok(unsafe {
         memmap2::MmapOptions::new()
-            .offset(entry.data_start())
-            .len(entry.size() as usize)
+            .offset(offset)
+            .len(length)
             .map(file.file())?
     })
 }
 
-/// The whole archive file as a read-only mapping, sharing the open
-/// descriptor. Gives a patch the original, unmodified APK bytes, signing
-/// block included.
 pub(crate) fn map_file(archive: &Archive) -> Result<memmap2::Mmap> {
     let file = archive.clone().into_inner();
     // SAFETY: the archive is opened read-only for the whole run and nothing
@@ -73,59 +77,25 @@ pub(crate) fn map_file(archive: &Archive) -> Result<memmap2::Mmap> {
 }
 
 pub(crate) fn spool(reader: &mut impl Read) -> Result<memmap2::Mmap> {
+    map_spooled(&spool_file(reader)?)
+}
+
+pub(crate) fn spool_file(reader: &mut impl Read) -> Result<File> {
     let mut file = tempfile::tempfile()?;
     let mut out = BufWriter::with_capacity(1 << 20, &mut file);
     io::copy(reader, &mut out)?;
     out.flush()?;
     drop(out);
-    // SAFETY: the file is unlinked and reachable only through this handle, so
-    // nothing can change its contents while the mapping is alive.
-    Ok(unsafe { memmap2::MmapOptions::new().map(&file)? })
+    Ok(file)
 }
 
-/// A positional file reader: clones share the descriptor but keep their own
-/// offset.
-#[derive(Clone)]
-pub(crate) struct SharedFile {
-    file: Arc<File>,
-    pos: u64,
-    len: u64,
+pub(crate) fn map_spooled(file: &File) -> Result<memmap2::Mmap> {
+    // SAFETY: spooled files are immutable after creation and never exposed for writing.
+    Ok(unsafe { memmap2::MmapOptions::new().map(file)? })
 }
 
-impl SharedFile {
-    fn open(path: &Path) -> io::Result<Self> {
-        let file = File::open(path)?;
-        let len = file.metadata()?.len();
-        Ok(Self {
-            file: Arc::new(file),
-            pos: 0,
-            len,
-        })
-    }
-
-    fn file(&self) -> &File {
-        &self.file
-    }
-}
-
-impl Read for SharedFile {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let n = self.file.read_at(buf, self.pos)?;
-        self.pos += n as u64;
-        Ok(n)
-    }
-}
-
-impl Seek for SharedFile {
-    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-        let (base, delta) = match pos {
-            SeekFrom::Start(offset) => (offset, 0),
-            SeekFrom::End(delta) => (self.len, delta),
-            SeekFrom::Current(delta) => (self.pos, delta),
-        };
-        self.pos = base
-            .checked_add_signed(delta)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "seek before start"))?;
-        Ok(self.pos)
-    }
+pub(crate) fn copy_spooled(file: &File, output: &mut impl Write) -> Result<()> {
+    let mut file = io::BufReader::new(FileReader::new(file.try_clone()?)?);
+    io::copy(&mut file, output)?;
+    Ok(())
 }

@@ -61,8 +61,8 @@ XAPKs containing or declaring OBB expansion files are rejected: Reseam currently
 
 If you pass `--key` and `--cert`, the CLI uses that PKCS#8 key and DER-encoded X.509 cert to produce the APK v2 signature. If you don't:
 
-- Single-APK mode: Reseam looks for `<stem>.pk8` and `<stem>.der` next to the output, where `<stem>` is the output name without its extension (`patched.pk8` beside `patched.apk`). If both exist, it reuses them; otherwise it generates a fresh ECDSA P-256 keypair with a self-signed certificate and writes them to those paths.
-- Split-APK mode: Reseam looks for `reseam.pk8` and `reseam.der` inside `--output-dir`. Same reuse-or-generate behavior. All splits are signed with the same key.
+- Single-APK mode: Reseam looks for `<stem>.pk8` and `<stem>.der` next to the output, where `<stem>` is the output name without its extension (`patched.pk8` beside `patched.apk`). If both exist, it reuses them; if neither exists, it generates a fresh ECDSA P-256 keypair with a self-signed certificate and writes them to those paths. If only one exists, it reports an error and preserves that file.
+- Split-APK mode: Reseam looks for `reseam.pk8` and `reseam.der` inside `--output-dir`. The same pair checks apply. All splits are signed with the same key.
 
 Bundle signatures are verified on load against the bundle's embedded public key, then the CLI checks that signer against the keys passed with `--trust`. The CLI ships no keys of its own. An unsigned bundle, a bundle whose signer was not passed with `--trust`, or a tampered manifest stops the run before any patching happens.
 

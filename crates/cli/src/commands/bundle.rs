@@ -1,13 +1,14 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::io::Write;
+use std::collections::HashSet;
+use std::io::{Read, Write};
 
-use anyhow::{ensure, Context, Result};
-use ed25519_dalek::SigningKey;
-use rand::RngCore;
+use anyhow::{Context, Result, ensure};
+use ed25519_dalek::{SecretKey, SigningKey};
 use reseam_patcher::Compatibility;
-use reseam_sdk::{inspect, InspectRequest};
+use reseam_sdk::{InspectRequest, PatchMetadata, Problem, inspect};
+use ring::rand::{SecureRandom, SystemRandom};
 use tracing::info;
 
 use super::create_parent;
@@ -25,6 +26,10 @@ pub fn run_bundle_list(command: &BundleListCommand) -> Result<()> {
         return Ok(());
     }
     let bundle = &response.bundles[0];
+    match &bundle.problem {
+        None | Some(Problem::UntrustedBundle { .. }) => {}
+        Some(problem) => anyhow::bail!("{problem}"),
+    }
     println!("bundle: {}", bundle.name);
     if !bundle.author.is_empty() {
         println!("author: {}", bundle.author);
@@ -48,62 +53,19 @@ pub fn run_bundle_list(command: &BundleListCommand) -> Result<()> {
         return Ok(());
     }
     println!();
-    let visible = response.patches.iter().filter(|patch| !patch.spec.hidden);
-    for (index, patch) in visible.enumerate() {
-        let spec = &patch.spec;
-        println!(
-            "  {:>3}. [{}] {} - {}",
-            index + 1,
-            if spec.enabled_by_default { "on" } else { "off" },
-            spec.name,
-            spec.description
-        );
-        println!("       id: {}", spec.id);
-        match &spec.compatibility {
-            Compatibility::Universal => println!("       packages: any app"),
-            Compatibility::Packages { packages } => {
-                let packages: Vec<String> = packages
-                    .iter()
-                    .map(|entry| {
-                        if entry.versions.is_empty() {
-                            entry.package.clone()
-                        } else {
-                            format!("{} ({})", entry.package, entry.versions.join(", "))
-                        }
-                    })
-                    .collect();
-                println!("       packages: {}", packages.join(", "));
-            }
-        }
-        let dependencies: Vec<&str> = spec
-            .dependencies
-            .iter()
-            .filter(|reference| {
-                !response
-                    .patches
-                    .iter()
-                    .any(|patch| &patch.spec.reference() == *reference && patch.spec.hidden)
-            })
-            .map(String::as_str)
-            .collect();
-        if !dependencies.is_empty() {
-            println!("       depends: {}", dependencies.join(", "));
-        }
-        if !spec.options.is_empty() {
-            println!("       options:");
-            for option in &spec.options {
-                println!(
-                    "         - {} ({:?}, {})",
-                    option.key,
-                    option.option_type,
-                    if option.required {
-                        "required"
-                    } else {
-                        "optional"
-                    }
-                );
-            }
-        }
+    let hidden_references: HashSet<_> = response
+        .patches
+        .iter()
+        .filter(|patch| patch.spec.hidden)
+        .map(|patch| patch.spec.reference())
+        .collect();
+    for (index, patch) in response
+        .patches
+        .iter()
+        .filter(|patch| !patch.spec.hidden)
+        .enumerate()
+    {
+        print_patch(index, patch, &hidden_references);
     }
     let hidden = response
         .patches
@@ -117,6 +79,58 @@ pub fn run_bundle_list(command: &BundleListCommand) -> Result<()> {
     Ok(())
 }
 
+fn print_patch(index: usize, patch: &PatchMetadata, hidden: &HashSet<String>) {
+    let spec = &patch.spec;
+    println!(
+        "  {:>3}. [{}] {} - {}",
+        index + 1,
+        if spec.enabled_by_default { "on" } else { "off" },
+        spec.name,
+        spec.description
+    );
+    println!("       id: {}", spec.id);
+    match &spec.compatibility {
+        Compatibility::Universal => println!("       packages: any app"),
+        Compatibility::Packages { packages } => {
+            let packages: Vec<String> = packages
+                .iter()
+                .map(|entry| {
+                    if entry.versions.is_empty() {
+                        entry.package.clone()
+                    } else {
+                        format!("{} ({})", entry.package, entry.versions.join(", "))
+                    }
+                })
+                .collect();
+            println!("       packages: {}", packages.join(", "));
+        }
+    }
+    let dependencies: Vec<&str> = spec
+        .dependencies
+        .iter()
+        .filter(|reference| !hidden.contains(*reference))
+        .map(String::as_str)
+        .collect();
+    if !dependencies.is_empty() {
+        println!("       depends: {}", dependencies.join(", "));
+    }
+    if !spec.options.is_empty() {
+        println!("       options:");
+        for option in &spec.options {
+            println!(
+                "         - {} ({:?}, {})",
+                option.key,
+                option.option_type,
+                if option.required {
+                    "required"
+                } else {
+                    "optional"
+                }
+            );
+        }
+    }
+}
+
 pub fn run_bundle_keygen(command: &BundleKeygenCommand) -> Result<()> {
     ensure!(
         !command.out.exists(),
@@ -125,15 +139,20 @@ pub fn run_bundle_keygen(command: &BundleKeygenCommand) -> Result<()> {
     );
     create_parent(&command.out)?;
     let mut seed = [0u8; 32];
-    rand::rngs::OsRng.fill_bytes(&mut seed);
-    let mut options = std::fs::OpenOptions::new();
-    options.create_new(true).write(true);
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    options
-        .open(&command.out)
-        .with_context(|| format!("failed to create {}", command.out.display()))?
-        .write_all(&seed)?;
+    SystemRandom::new()
+        .fill(&mut seed)
+        .map_err(|error| anyhow::anyhow!("generate signing seed: {error}"))?;
+    let parent = command
+        .out
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(std::path::Path::new("."));
+    let mut staged = tempfile::NamedTempFile::new_in(parent)?;
+    staged.write_all(&seed)?;
+    staged
+        .persist_noclobber(&command.out)
+        .map_err(|error| error.error)
+        .with_context(|| format!("publish key {}", command.out.display()))?;
 
     println!("Ed25519 keypair generated");
     println!("  private seed: {}", command.out.display());
@@ -145,12 +164,15 @@ pub fn run_bundle_keygen(command: &BundleKeygenCommand) -> Result<()> {
 }
 
 pub fn run_bundle_pack(command: &BundlePackCommand) -> Result<()> {
-    let seed = std::fs::read(&command.key)
-        .with_context(|| format!("failed to read key {}", command.key.display()))?;
-    let seed: [u8; 32] = seed
-        .as_slice()
-        .try_into()
-        .map_err(|_| anyhow::anyhow!("signing key must be exactly 32 bytes"))?;
+    let mut file = std::fs::File::open(&command.key)
+        .with_context(|| format!("read key {}", command.key.display()))?;
+    let mut seed: SecretKey = [0; 32];
+    file.read_exact(&mut seed)
+        .context("signing key must be exactly 32 bytes")?;
+    ensure!(
+        file.read(&mut [0])? == 0,
+        "signing key must be exactly 32 bytes"
+    );
     create_parent(&command.out)?;
     reseam_patcher::bundle::pack(&command.dir, &SigningKey::from_bytes(&seed), &command.out)?;
     info!(out = %command.out.display(), "bundle packed and signed");

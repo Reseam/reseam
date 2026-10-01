@@ -3,13 +3,13 @@
 
 //! DEX serialization entrypoints and helpers.
 
-use self::orchestration::DexWriterWriteExt;
-pub use self::part::{split_to_fit, DexPart};
+pub use self::part::{DexPart, split_to_fit};
 pub use self::sink::{DexSink, SpoolSink, Spooled};
 use crate::error::Result;
 use crate::file::DexFile;
 use crate::types::encoded_value::EncodedValue;
-use crate::types::map::*;
+use crate::types::header::DexVersion;
+use crate::types::map::MapItem;
 
 pub(crate) mod annotations;
 pub(crate) mod class_data;
@@ -24,11 +24,48 @@ pub(crate) mod orchestration;
 pub(crate) mod part;
 pub(crate) mod plan;
 pub(crate) mod raw_code;
-pub(crate) mod refs;
 pub(crate) mod sink;
 pub(crate) mod sort;
 
-/// Returns whether an encoded static value can be elided from the tail array.
+/// Selection of metadata to emit, independent of how it was loaded.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum MetadataPolicy {
+    #[default]
+    Preserve,
+    Omit,
+    /// Omit metadata from this DEX's original mapping, retaining imported or authored metadata.
+    OmitOriginal,
+}
+
+impl MetadataPolicy {
+    pub(crate) fn keeps<T: crate::types::metadata::MetadataItem>(
+        self,
+        metadata: &crate::types::metadata::Metadata<T>,
+        original: Option<&crate::file::DexBytes>,
+    ) -> bool {
+        match self {
+            Self::Preserve => true,
+            Self::Omit => false,
+            Self::OmitOriginal => !metadata.belongs_to(original),
+        }
+    }
+}
+
+/// Opaque link bytes cannot be relocated after pool and section layout changes.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum LinkPolicy {
+    #[default]
+    Reject,
+    Omit,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct WriteOptions {
+    pub debug_info: MetadataPolicy,
+    pub annotations: MetadataPolicy,
+    pub link_data: LinkPolicy,
+}
+
 pub(crate) fn is_default_value(v: &EncodedValue) -> bool {
     matches!(
         v,
@@ -45,11 +82,9 @@ pub(crate) fn is_default_value(v: &EncodedValue) -> bool {
 
 /// Serializes a [`DexFile`] back into canonical DEX bytes.
 ///
-/// Classes a patch never touched are never materialized: they are decoded,
-/// remapped, and re-encoded one at a time straight from the original buffer,
-/// so the writer's peak memory is bounded by the mutated classes plus one
-/// in-flight class per worker rather than the whole DEX. The file itself is
-/// not modified.
+/// Unedited classes remain file-backed. Code is remapped and emitted one method
+/// at a time; the complete output is buffered by this convenience API. Use
+/// [`write_spooled`] to stream large output. The source file is not modified.
 pub fn write(dex: &DexFile) -> Result<Vec<u8>> {
     write_into(dex, None, Vec::new())
 }
@@ -66,11 +101,27 @@ pub fn write_spooled(dex: &DexFile, part: Option<&DexPart>) -> Result<Spooled> {
 }
 
 fn write_into<S: DexSink>(dex: &DexFile, part: Option<&DexPart>, sink: S) -> Result<S> {
-    let plan = plan::WritePlan::new(dex, part)?;
+    let plan = plan::WritePlan::new(dex, part, dex.write_options())?;
     validate_index_limits(&plan)?;
+    validate_link_policy(&plan)?;
     let mut w = DexWriter::new(sink);
-    w.write_dex(&plan)?;
+    w.write_dex(&plan, dex.required_version())?;
+    let span = MemberSpan {
+        header: 0,
+        end: w.pos(),
+    };
+    finalize::sign_member(&mut w, span)?;
     Ok(w.sink)
+}
+
+fn validate_link_policy(plan: &plan::WritePlan<'_>) -> Result<()> {
+    if plan.dex.header.link_size != 0 && plan.options.link_data == LinkPolicy::Reject {
+        return Err(crate::error::unsupported(
+            "link data",
+            "opaque link metadata cannot be relocated; select LinkPolicy::Omit to discard it explicitly",
+        ));
+    }
+    Ok(())
 }
 
 pub const MAX_POOL_SIZE: usize = 1 << 16;
@@ -103,53 +154,60 @@ fn validate_index_limits(plan: &plan::WritePlan<'_>) -> Result<()> {
 /// Each logical DEX file is written sequentially. All offsets are relative
 /// to the start of the physical container.
 pub fn write_container(dex_files: &[DexFile]) -> Result<Vec<u8>> {
-    if dex_files.is_empty() {
-        return Ok(Vec::new());
-    }
-    if dex_files.len() == 1 {
-        return write(&dex_files[0]);
-    }
+    write_container_into(dex_files.iter().map(|dex| (dex, None)), Vec::new())
+}
 
-    let mut w = DexWriter::new(Vec::new());
+/// Streams logical DEX members into one v041 container backed by an anonymous
+/// temporary file. Members are emitted in iterator order; an optional part
+/// selects a pool-sized subset. Sources remain unchanged and file-backed.
+/// Empty input produces an empty file. Invalid members fail the whole write.
+pub fn write_container_spooled<'a>(
+    members: impl IntoIterator<Item = (&'a DexFile, Option<&'a DexPart>)>,
+) -> Result<Spooled> {
+    write_container_into(members, SpoolSink::new()?)?.finish()
+}
 
-    let total_count = dex_files.len();
-    let mut file_sizes = Vec::with_capacity(total_count);
-    for (i, dex) in dex_files.iter().enumerate() {
-        let plan = plan::WritePlan::new(dex, None)?;
+fn write_container_into<'a, S: DexSink>(
+    members: impl IntoIterator<Item = (&'a DexFile, Option<&'a DexPart>)>,
+    sink: S,
+) -> Result<S> {
+    let mut w = DexWriter::new(sink);
+    let mut spans = Vec::new();
+    for (dex, part) in members {
+        let plan = plan::WritePlan::new(dex, part, dex.write_options())?;
         validate_index_limits(&plan)?;
-        w.header_base = w.pos();
-        w.container_size = 0;
-        w.write_dex(&plan)?;
-        file_sizes.push(w.pos() - w.header_base);
-
-        if i + 1 < total_count {
-            w.align(4);
-        }
+        validate_link_policy(&plan)?;
+        let header = w.pos();
+        w.write_dex(&plan, DexVersion::V041)?;
+        spans.push(MemberSpan {
+            header,
+            end: w.pos(),
+        });
     }
-
     let container_size = w.pos();
-    let mut offset = 0u32;
-    for (dex, &file_size) in dex_files.iter().zip(&file_sizes) {
-        let header_size = dex.required_version().header_size();
-        if header_size >= 0x78 {
-            w.patch_u32(offset as usize + 0x70, container_size);
-        }
-        offset += file_size;
-        offset += (4 - (offset % 4)) % 4;
+    for span in spans {
+        w.patch_u32(span.header as usize + 0x70, container_size);
+        finalize::sign_member(&mut w, span)?;
     }
 
     Ok(w.sink)
 }
 
-/// Shared mutable state threaded through writer submodules.
+#[derive(Clone, Copy)]
+pub(crate) struct MemberSpan {
+    pub(crate) header: u32,
+    pub(crate) end: u32,
+}
+
 pub(crate) struct DexWriter<S: DexSink> {
     pub(crate) sink: S,
     pub(crate) string_data_offsets: Vec<u32>,
-    pub(crate) code_item_offsets: Vec<u32>,
     pub(crate) class_data_offsets: Vec<u32>,
     pub(crate) map_entries: Vec<MapItem>,
     pub(crate) header_base: u32,
-    pub(crate) container_size: u32,
+    pub(crate) version: DexVersion,
+    pub(crate) options: WriteOptions,
+    pub(crate) original: Option<crate::file::DexBytes>,
 }
 
 impl<S: DexSink> DexWriter<S> {
@@ -157,11 +215,12 @@ impl<S: DexSink> DexWriter<S> {
         Self {
             sink,
             string_data_offsets: Vec::new(),
-            code_item_offsets: Vec::new(),
             class_data_offsets: Vec::new(),
             map_entries: Vec::new(),
             header_base: 0,
-            container_size: 0,
+            version: DexVersion::V035,
+            options: WriteOptions::default(),
+            original: None,
         }
     }
 
@@ -202,3 +261,7 @@ impl<S: DexSink> DexWriter<S> {
         self.sink.patch(offset, &v.to_le_bytes());
     }
 }
+
+/// Encodes a sequence of DEX instructions as code units. Operands that exceed
+/// their encoding fail. Pool indices must already belong to the owning DEX.
+pub use instruction_writer::encode_instructions;

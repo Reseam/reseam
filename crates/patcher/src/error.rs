@@ -8,7 +8,9 @@ pub enum PatcherError {
     #[error("bundle error: {0}")]
     Bundle(String),
 
-    #[error("bundle {bundle} was built for Reseam engine {built}, which this engine ({running}) no longer loads; ask its author for a rebuild")]
+    #[error(
+        "bundle {bundle} was built for Reseam engine {built}, which this engine ({running}) no longer loads; ask its author for a rebuild"
+    )]
     BundleTooOld {
         bundle: String,
         built: String,
@@ -33,7 +35,9 @@ pub enum PatcherError {
     #[error("dependency cycle: {}", .0.join(" -> "))]
     DependencyCycle(Vec<String>),
 
-    #[error("missing dependency: patch {patch} depends on {dependency}, which bundle '{bundle}' does not declare")]
+    #[error(
+        "missing dependency: patch {patch} depends on {dependency}, which bundle '{bundle}' does not declare"
+    )]
     MissingDependency {
         patch: String,
         dependency: String,
@@ -76,6 +80,9 @@ pub enum PatcherError {
 
     #[error("APK error: {0}")]
     Apk(#[from] reseam_apk::ApkError),
+
+    #[error("native patch callback failed: {0}")]
+    Bridge(String),
 
     #[error("JVM error: {0}")]
     Jvm(String),

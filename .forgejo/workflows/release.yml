@@ -14,13 +14,21 @@ jobs:
     container:
       image: cimg/android:2026.03-node
     env:
+      CARGO_BUILD_JOBS: 2
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+      GRADLE_OPTS: -Xmx1g
       RUST_VERSION: 1.98.1
-      RUST_TARGETS: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+      RUST_TARGETS: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android,x86_64-pc-windows-gnullvm
+      LLVM_MINGW_VERSION: '20260922'
+      TEMURIN_WINDOWS_VERSION: '21.0.8+9'
+      CC_x86_64_pc_windows_gnullvm: x86_64-w64-mingw32-clang
+      AR_x86_64_pc_windows_gnullvm: llvm-ar
+      CARGO_TARGET_X86_64_PC_WINDOWS_GNULLVM_LINKER: x86_64-w64-mingw32-clang
       NDK_VERSION: 29.0.14206865
     steps:
       # actions/cache compresses with zstd when it is on PATH; the image only has gzip.
       - name: Install zstd
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zstd
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zstd xz-utils
 
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -29,12 +37,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.rustup
-          key: rustup-${{ env.RUST_VERSION }}-android
+          key: rustup-${{ env.RUST_VERSION }}-android-windows
 
       - name: Install Rust toolchain
         uses: https://github.com/dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_VERSION }}
+          components: rustfmt,clippy
           targets: ${{ env.RUST_TARGETS }}
 
       - name: Cache the Android NDK
@@ -80,14 +89,72 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
           echo "$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
 
-      - name: Regenerate SDK bindings and Android/desktop JNI libraries
+      - name: Regenerate SDK bindings
         run: cargo xtask regen sdk
+
+      - name: Build the shared patch runtime
+        run: cargo xtask runtime
+
+      - name: Check Rust formatting
+        run: cargo fmt --all --check
+
+      - name: Check workspace lints
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Check Kotlin formatting, application bindings, and patch authoring ABI
+        run: ./gradlew --no-daemon -Dorg.gradle.jvmargs=-Xmx1536m spotlessCheck :reseam-sdk:compileKotlinJvm :reseam-patch-sdk:checkKotlinAbi
+
+      - name: Test the workspace
+        run: cargo test --workspace --no-fail-fast
+
+      - name: Cache llvm-mingw
+        id: llvm-mingw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/llvm-mingw
+          key: llvm-mingw-${{ env.LLVM_MINGW_VERSION }}
+
+      - name: Install llvm-mingw
+        if: steps.llvm-mingw-cache.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL "https://github.com/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW_VERSION/llvm-mingw-$LLVM_MINGW_VERSION-ucrt-ubuntu-22.04-x86_64.tar.xz" | tar -xJ -C ~
+          mv ~/llvm-mingw-$LLVM_MINGW_VERSION-ucrt-ubuntu-22.04-x86_64 ~/llvm-mingw
+
+      - name: Cache the Windows JDK
+        id: windows-jdk-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/jdk-windows
+          key: temurin-windows-x64-${{ env.TEMURIN_WINDOWS_VERSION }}
+
+      - name: Download the Windows JDK
+        if: steps.windows-jdk-cache.outputs.cache-hit != 'true'
+        run: |
+          version="$TEMURIN_WINDOWS_VERSION"
+          archive="OpenJDK21U-jdk_x64_windows_hotspot_${version/+/_}.zip"
+          url="https://github.com/adoptium/temurin21-binaries/releases/download/jdk-${version/+/%2B}"
+          curl -fsSL "$url/$archive" -o "$RUNNER_TEMP/$archive"
+          curl -fsSL "$url/$archive.sha256.txt" -o "$RUNNER_TEMP/$archive.sha256.txt"
+          (cd "$RUNNER_TEMP" && sha256sum -c "$archive.sha256.txt")
+          unzip -q "$RUNNER_TEMP/$archive" -d "$RUNNER_TEMP/jdk-windows"
+          mv "$RUNNER_TEMP/jdk-windows/jdk-$version" "$HOME/jdk-windows"
+
+      - name: Configure Windows cross-compilation
+        run: |
+          echo "$HOME/llvm-mingw/bin" >> "$GITHUB_PATH"
+          echo "JAVA_HOME_x86_64_pc_windows_gnullvm=$HOME/jdk-windows" >> "$GITHUB_ENV"
+
+      - name: Package SDK JNI libraries
+        run: cargo xtask pack-sdk
 
       - name: Build reseam-cli release binary
         run: cargo build --release -p reseam-cli
 
+      - name: Build reseam-cli for Windows
+        run: cargo build --release -p reseam-cli --target x86_64-pc-windows-gnullvm
+
       - name: Build the SDKs
-        run: ./gradlew assemble --no-daemon
+        run: ./gradlew assemble --no-daemon -Dorg.gradle.jvmargs=-Xmx1536m
 
       - name: Check the tag names the workspace version
         if: startsWith(github.ref, 'refs/tags/')
@@ -97,11 +164,13 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         env:
           FORGEJO_PACKAGES_TOKEN: ${{ secrets.FORGEJO_PACKAGES_TOKEN }}
-        run: ./gradlew publishAllPublicationsToForgejoRepository -PreseamSdkVersion=${{ github.ref_name }} --no-daemon
+        run: ./gradlew publishAllPublicationsToForgejoRepository -PreseamSdkVersion=${{ github.ref_name }} --no-daemon -Dorg.gradle.jvmargs=-Xmx1536m
 
       - name: Stage the CLI
         if: startsWith(github.ref, 'refs/tags/')
-        run: install -D target/release/reseam dist/reseam-linux-x64
+        run: |
+          install -D target/release/reseam dist/reseam-linux-x64
+          install -D target/x86_64-pc-windows-gnullvm/release/reseam.exe dist/reseam-windows-x64.exe
 
       # Before the Forgejo release, so every published tag has its CLI on the CDN.
       - name: Upload to the CDN

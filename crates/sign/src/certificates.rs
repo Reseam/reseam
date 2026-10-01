@@ -1,54 +1,52 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Reading signer certificates back out of a signed APK.
+use crate::error::{Result, invalid};
+use crate::signing_block::{self, BLOCK_ID_V2, BLOCK_ID_V3, Reader};
 
-use crate::error::{invalid, Result};
-use crate::signing_block::{self, BLOCK_ID_V2, BLOCK_ID_V3};
-
-/// The DER-encoded X.509 certificate of every signer, read from the APK
-/// Signing Block: the v3 signers when present, otherwise v2. Empty when the
-/// archive is unsigned or carries only a JAR (v1) signature. Each certificate
-/// matches what `PackageManager` reports as a signer's `Signature`.
+/// Reads each signer's leaf certificate, choosing v3 when present, otherwise v2.
+/// Unsigned and JAR-only signed archives return an empty list. Malformed block
+/// envelopes, pair framing and certificate framing are errors; signatures and
+/// certificate trust are not verified by this extraction operation.
 pub fn signer_certificates(apk: &[u8]) -> Result<Vec<Vec<u8>>> {
     let Some(block) = signing_block::block(apk)? else {
         return Ok(Vec::new());
     };
-    let Some(signers) = signing_block::find_pair(block, BLOCK_ID_V3)
-        .or_else(|| signing_block::find_pair(block, BLOCK_ID_V2))
-    else {
-        return Ok(Vec::new());
+    let v3 = signing_block::find_pair(block, BLOCK_ID_V3);
+    let signers = match v3 {
+        Ok(Some(signers)) => signers,
+        Ok(None) => match signing_block::find_pair(block, BLOCK_ID_V2)? {
+            Some(signers) => signers,
+            None => return Ok(Vec::new()),
+        },
+        Err(error) => {
+            // Android can use v2 when a later malformed pair prevents locating v3.
+            let Some(signers) = signing_block::find_pair(block, BLOCK_ID_V2)? else {
+                return Err(error);
+            };
+            signers
+        }
     };
-    leaf_certificates(signers)
-}
-
-/// Walks the length-prefixed signers sequence, collecting each signer's leaf
-/// certificate. The block value, its signers, and their signed data are all
-/// length-prefixed, and certificates are the second field of the signed data
-/// in both v2 and v3, so one walk serves both schemes.
-fn leaf_certificates(signers_block: &[u8]) -> Result<Vec<Vec<u8>>> {
-    let signers = lp(signers_block, 0)?;
+    let signers = Reader::new(signers, "signers").prefixed()?;
+    if signers.is_empty() {
+        return Err(invalid("signers", "no signers in scheme block"));
+    }
+    let mut signers = Reader::new(signers, "signers");
     let mut certificates = Vec::new();
-    let mut pos = 0;
-    while pos < signers.len() {
-        let signer = lp(signers, pos)?;
-        pos += 4 + signer.len();
-        let signed_data = lp(signer, 0)?;
-        let digests = lp(signed_data, 0)?;
-        let certs = lp(signed_data, 4 + digests.len())?;
-        certificates.push(lp(certs, 0)?.to_vec());
+    while !signers.is_empty() {
+        let signer = signers.prefixed()?;
+        let signed_data = Reader::new(signer, "signer").prefixed()?;
+        let mut signed_data = Reader::new(signed_data, "signed data");
+        signed_data.prefixed()?;
+        let mut chain = Reader::new(signed_data.prefixed()?, "certificates");
+        let leaf = chain.prefixed()?;
+        if leaf.is_empty() {
+            return Err(invalid("certificates", "empty leaf certificate"));
+        }
+        certificates.push(leaf.to_vec());
+        while !chain.is_empty() {
+            chain.prefixed()?;
+        }
     }
     Ok(certificates)
-}
-
-/// The length-prefixed slice at `offset`: a little-endian `u32` length and the
-/// bytes that follow it. An out-of-range range yields `None` from `get`, so a
-/// malformed or overflowing length is reported, never trusted.
-fn lp(data: &[u8], offset: usize) -> Result<&[u8]> {
-    let len = data
-        .get(offset..offset + 4)
-        .ok_or_else(|| invalid("signing block", "truncated length prefix"))?;
-    let len = u32::from_le_bytes(len.try_into().unwrap()) as usize;
-    data.get(offset + 4..offset + 4 + len)
-        .ok_or_else(|| invalid("signing block", "length prefix past end"))
 }

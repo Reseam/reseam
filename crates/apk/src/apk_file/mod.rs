@@ -1,13 +1,11 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! An opened APK, or a base APK with its splits, as a mutable session: DEX
-//! files, manifests, resource tables and loose entries can be changed, then
-//! the whole set is written out.
-
 mod component;
 mod dex_workers;
 mod open;
+pub(crate) use open::validate_components;
+mod entries;
 mod presentation;
 mod write;
 
@@ -16,25 +14,42 @@ use std::collections::HashSet;
 
 use reseam_dex::{DexFile, MultiDexContainer};
 
-use crate::error::{invalid, Result};
-use crate::resources::ResourceScope;
+use crate::entry::EntryName;
+use crate::error::{Result, invalid};
+use crate::resources::{ResourceScope, ResourceTable, first_found};
 
 pub use component::{ApkComponent, Compression};
 pub use presentation::{ApplicationIcon, IconLayer};
-pub use write::ApkWriteOptions;
+pub use write::{ApkWriteOptions, SignaturePolicy};
 
+/// Owns a base APK and its splits, parsed documents and staged entry changes.
+/// Input files must remain unchanged while this file-backed session lives.
+/// Component and DEX indices stay stable; deleted DEX entries leave empty slots.
 pub struct ApkFile {
+    options: reseam_dex::ParseOptions,
     components: Vec<ApkComponent>,
     dex: MultiDexContainer,
     dex_origins: Vec<DexOrigin>,
+    pub(crate) scratch: Option<reseam_storage::ScratchDir>,
 }
 
-/// Where a DEX in the container came from. Whether an existing one needs
-/// rewriting is the DEX's own [`DexFile::is_dirty`].
-#[derive(Clone)]
-enum DexOrigin {
-    Existing { component: usize, name: String },
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct ComponentIndex(usize);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct DexIndex(usize);
+
+struct DexOrigin {
+    component: ComponentIndex,
+    name: EntryName,
+    kind: DexSource,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DexSource {
+    Archive,
     Added,
+    Removed,
 }
 
 impl ApkFile {
@@ -86,16 +101,7 @@ impl ApkFile {
             .collect()
     }
 
-    /// The entry from the first component that has it.
-    pub fn read_entry(&mut self, name: &str) -> Result<Option<Vec<u8>>> {
-        for component in &mut self.components {
-            if let Some(data) = component.read_entry(name)? {
-                return Ok(Some(data));
-            }
-        }
-        Ok(None)
-    }
-
+    /// DEX slots in load order, including empty tombstones left by deletion.
     pub fn dex(&self) -> &MultiDexContainer {
         &self.dex
     }
@@ -103,16 +109,35 @@ impl ApkFile {
     /// One DEX without resolving deferred class data, for whole-DEX
     /// operations such as interning or adding classes.
     pub fn dex_mut(&mut self, index: usize) -> Option<&mut DexFile> {
+        if self.dex_origins.get(index)?.kind == DexSource::Removed {
+            return None;
+        }
         self.dex.dex_mut(index)
     }
 
+    /// Adds a DEX to the base component under the next unused classes name.
+    /// Names stay reserved after deletion, and DEX indices remain stable.
+    /// Serialization assigns additions after any overflow parts of earlier DEX
+    /// files, so their output names can differ from their session entry names.
     pub fn add_dex(&mut self, dex: DexFile) {
+        let mut used = self.components[0]
+            .reserved_names()
+            .map(EntryName::from)
+            .collect();
+        let name = crate::entry::next_free_dex_name(&mut used);
+        self.components[0].add_dex_entry(name.as_str());
         self.dex.add_dex(dex);
-        self.dex_origins.push(DexOrigin::Added);
+        self.dex_origins.push(DexOrigin {
+            component: ComponentIndex(0),
+            name,
+            kind: DexSource::Added,
+        });
     }
 
     pub fn is_added_dex(&self, index: usize) -> bool {
-        matches!(self.dex_origins.get(index), Some(DexOrigin::Added))
+        self.dex_origins
+            .get(index)
+            .is_some_and(|origin| origin.kind == DexSource::Added)
     }
 
     pub fn resolve_dex_class_mut(
@@ -120,6 +145,13 @@ impl ApkFile {
         index: usize,
         class_idx: usize,
     ) -> Result<Option<&mut DexFile>> {
+        if self
+            .dex_origins
+            .get(index)
+            .is_none_or(|origin| origin.kind == DexSource::Removed)
+        {
+            return Ok(None);
+        }
         Ok(self.dex.dex_class_resolved_mut(index, class_idx)?)
     }
 
@@ -128,7 +160,7 @@ impl ApkFile {
         type_name: &str,
         entry_name: &str,
     ) -> Result<Option<(usize, u32)>> {
-        find_resource_in(self.components.iter_mut(), type_name, entry_name)
+        self.find_in_resources(|table| table.find_resource_id(type_name, entry_name))
     }
 
     /// Runs `f` on component `index`'s table as a [`ResourceScope`] over the
@@ -139,16 +171,17 @@ impl ApkFile {
         index: usize,
         f: impl FnOnce(Option<&mut ResourceScope<'_>>) -> R,
     ) -> Result<R> {
+        if index >= self.components.len() {
+            return Err(invalid("apk", format!("no component at index {index}")));
+        }
         let (before, rest) = self.components.split_at_mut(index);
         let (own, after) = rest
             .split_first_mut()
             .ok_or_else(|| invalid("apk", format!("no component at index {index}")))?;
         let mut splits = |type_name: &str, entry_name: &str| {
-            find_resource_in(
-                before.iter_mut().chain(after.iter_mut()),
-                type_name,
-                entry_name,
-            )
+            find_in(before.iter_mut().chain(after.iter_mut()), |table| {
+                table.find_resource_id(type_name, entry_name)
+            })
             .map(|found| found.map(|(_, res_id)| res_id))
         };
         Ok(match own.resources_mut()? {
@@ -158,43 +191,28 @@ impl ApkFile {
     }
 
     pub fn find_resource_by_id(&mut self, res_id: u32) -> Result<Option<usize>> {
-        let mut first_error = None;
-        for (index, component) in self.components.iter_mut().enumerate() {
-            let found = component.resources().and_then(|resources| {
-                resources
-                    .map(|resources| resources.contains_resource_id(res_id))
-                    .transpose()
-                    .map(|found| found.unwrap_or(false))
-            });
-            match found {
-                Ok(true) => return Ok(Some(index)),
-                Ok(false) => {}
-                Err(error) => {
-                    first_error.get_or_insert(error);
-                }
-            }
-        }
-        first_error.map_or(Ok(None), Err)
+        self.find_in_resources(|table| {
+            table
+                .contains_resource_id(res_id)
+                .map(|found| found.then_some(()))
+        })
+        .map(|found| found.map(|(index, ())| index))
     }
 
     pub fn string_resource(&mut self, name: &str) -> Result<Option<String>> {
-        let mut first_error = None;
-        for component in &mut self.components {
-            let value = component.resources().and_then(|resources| {
-                resources
-                    .map(|resources| resources.string_value_checked(name))
-                    .transpose()
-                    .map(|value| value.flatten().map(Cow::into_owned))
-            });
-            match value {
-                Ok(Some(value)) => return Ok(Some(value)),
-                Ok(None) => {}
-                Err(error) => {
-                    first_error.get_or_insert(error);
-                }
-            }
-        }
-        first_error.map_or(Ok(None), Err)
+        self.find_in_resources(|table| {
+            table
+                .string_value(name)
+                .map(|value| value.map(Cow::into_owned))
+        })
+        .map(|found| found.map(|(_, value)| value))
+    }
+
+    fn find_in_resources<T>(
+        &mut self,
+        find: impl FnMut(&ResourceTable) -> Result<Option<T>>,
+    ) -> Result<Option<(usize, T)>> {
+        find_in(self.components.iter_mut(), find)
     }
 
     /// Sets the string resource where it is defined, or in the base when it
@@ -205,34 +223,20 @@ impl ApkFile {
             .map_or(0, |(index, _)| index);
         self.components[index]
             .resources_mut()?
-            .map(|resources| resources.set_string_value_checked(name, value))
+            .map(|resources| resources.set_string_value(name, value))
             .transpose()
             .map(|changed| changed.unwrap_or(false))
     }
 }
 
-/// The first of `components` whose table defines `type/name`, by position. An
-/// unreadable table fails the lookup only when no other one has the name.
-fn find_resource_in<'c>(
+fn find_in<'c, T>(
     components: impl Iterator<Item = &'c mut ApkComponent>,
-    type_name: &str,
-    entry_name: &str,
-) -> Result<Option<(usize, u32)>> {
-    let mut first_error = None;
-    for (position, component) in components.enumerate() {
-        let found = component.resources().and_then(|resources| {
-            resources
-                .map(|resources| resources.find_resource_id_checked(type_name, entry_name))
-                .transpose()
-                .map(Option::flatten)
-        });
-        match found {
-            Ok(Some(res_id)) => return Ok(Some((position, res_id))),
-            Ok(None) => {}
-            Err(error) => {
-                first_error.get_or_insert(error);
-            }
-        }
-    }
-    first_error.map_or(Ok(None), Err)
+    mut find: impl FnMut(&ResourceTable) -> Result<Option<T>>,
+) -> Result<Option<(usize, T)>> {
+    first_found(components.enumerate().map(|(position, component)| {
+        component
+            .resources()
+            .and_then(|resources| resources.map_or(Ok(None), &mut find))
+            .map(|found| found.map(|value| (position, value)))
+    }))
 }

@@ -10,18 +10,20 @@ use super::{PatchResult, PatchSelection, PatchStatus, ProgressEvent, ResolvedPla
 use crate::context::PatchContext;
 use crate::error::Result;
 use crate::log::LogEntry;
-use crate::patch::Patch;
+use crate::patch::{Patch, PatchPhase};
 
 /// Runs the selected patches in dependency order, then every applied patch's
 /// `after_dependents` hook, then binds the app entry hook to the final
 /// manifest. A patch that fails or panics does not stop the run; patches
 /// depending on it are skipped.
 pub fn apply_patches(
-    ctx: &mut PatchContext,
-    patches: &[&dyn Patch],
+    ctx: &mut PatchContext<'_>,
+    patches: &[&Patch],
     selection: &PatchSelection,
     mut observer: impl FnMut(ProgressEvent),
 ) -> Result<Vec<PatchResult>> {
+    #[cfg(feature = "kotlin")]
+    let _bridge = crate::kotlin::handles::RunGuard::enter()?;
     info!(patch_count = patches.len(), "starting patch application");
     let package = ctx.apk().package_name().map(Cow::into_owned);
     let version = ctx.apk().version_name().map(Cow::into_owned);
@@ -41,14 +43,14 @@ pub fn apply_patches(
             continue;
         }
 
-        ctx.begin_patch(&patch.reference(), plan.options(idx).clone());
-        observer(ProgressEvent::PatchStarted {
-            patch: patch.reference(),
+        ctx.begin_patch(patch.reference(), plan.options(idx).clone());
+        observer(ProgressEvent::Started {
+            patch: patch.reference().to_owned(),
         });
-        let outcome = guarded(|| patch.execute(ctx));
+        let outcome = guarded(|| patch.invoke(PatchPhase::Execute, ctx));
         let logs = ctx.take_log_entries();
         for log in &logs {
-            observer(ProgressEvent::PatchLog(log.clone()));
+            observer(ProgressEvent::Log(log.clone()));
         }
         let status = match outcome {
             Ok(()) => PatchStatus::Applied,
@@ -57,21 +59,23 @@ pub fn apply_patches(
         run.finish(idx, status, logs, &mut observer);
     }
 
-    for (idx, patch) in patches.iter().enumerate() {
-        if plan.dependents(idx).is_empty() || !run.applied(idx) {
+    for &idx in plan.finalizers() {
+        let patch = patches[idx];
+        if !run.applied(idx) {
             continue;
         }
         let _span = info_span!("after_dependents", patch = patch.reference()).entered();
-        ctx.begin_patch(&patch.reference(), plan.options(idx).clone());
-        let outcome = guarded(|| patch.after_dependents(ctx));
+        ctx.begin_patch(patch.reference(), plan.options(idx).clone());
+        let outcome = guarded(|| patch.invoke(PatchPhase::Finalize, ctx));
         let logs = ctx.take_log_entries();
         for log in &logs {
-            observer(ProgressEvent::PatchLog(log.clone()));
+            observer(ProgressEvent::Log(log.clone()));
         }
         run.append_logs(idx, logs);
         if let Err(reason) = outcome {
-            run.fail(idx, format!("after_dependents: {reason}"), &mut observer);
+            run.fail(idx, format!("after_dependents: {reason}"));
         }
+        run.terminal(idx, &mut observer);
     }
 
     ctx.bind_app_entry()?;
@@ -83,7 +87,7 @@ pub fn apply_patches(
 /// would run and which would be skipped, given the selection and the app's
 /// package and version.
 pub fn validate_patches(
-    patches: &[&dyn Patch],
+    patches: &[&Patch],
     selection: &PatchSelection,
     package: Option<&str>,
     version: Option<&str>,
@@ -101,13 +105,13 @@ pub fn validate_patches(
 }
 
 struct Run<'a> {
-    patches: &'a [&'a dyn Patch],
+    patches: &'a [&'a Patch],
     plan: &'a ResolvedPlan,
     results: Vec<Option<PatchResult>>,
 }
 
 impl<'a> Run<'a> {
-    fn new(patches: &'a [&'a dyn Patch], plan: &'a ResolvedPlan) -> Self {
+    fn new(patches: &'a [&'a Patch], plan: &'a ResolvedPlan) -> Self {
         Self {
             patches,
             plan,
@@ -170,51 +174,58 @@ impl<'a> Run<'a> {
         logs: Vec<LogEntry>,
         observer: &mut impl FnMut(ProgressEvent),
     ) {
-        let patch = self.patches[idx].reference();
-        observer(ProgressEvent::PatchFinished {
-            patch: patch.clone(),
-            status: status.clone(),
-        });
+        let patch = self.patches[idx].reference().to_owned();
         self.results[idx] = Some(PatchResult {
             patch,
             hidden: self.patches[idx].spec().hidden,
             required_by: self
                 .plan
                 .required_by(idx)
-                .map(|dependent| self.patches[dependent].reference())
+                .map(|dependent| self.patches[dependent].reference().to_owned())
                 .collect(),
             status,
             logs,
         });
-    }
-
-    fn append_logs(&mut self, idx: usize, logs: Vec<LogEntry>) {
-        if let Some(result) = &mut self.results[idx] {
-            result.logs.extend(logs);
+        if !self.applied(idx) {
+            self.terminal(idx, observer);
         }
     }
 
-    fn fail(&mut self, idx: usize, reason: String, observer: &mut impl FnMut(ProgressEvent)) {
-        let Some(result) = &mut self.results[idx] else {
-            return;
-        };
-        result.status = PatchStatus::Failed { reason };
-        observer(ProgressEvent::PatchFinished {
+    fn result_mut(&mut self, idx: usize) -> &mut PatchResult {
+        self.results[idx]
+            .as_mut()
+            .expect("execution creates a result before finalization")
+    }
+
+    fn append_logs(&mut self, idx: usize, logs: Vec<LogEntry>) {
+        self.result_mut(idx).logs.extend(logs);
+    }
+
+    fn fail(&mut self, idx: usize, reason: String) {
+        self.result_mut(idx).status = PatchStatus::Failed { reason };
+    }
+
+    fn terminal(&mut self, idx: usize, observer: &mut impl FnMut(ProgressEvent)) {
+        let result = self.result_mut(idx);
+        observer(ProgressEvent::Finished {
             patch: result.patch.clone(),
             status: result.status.clone(),
         });
     }
 
-    fn into_results(self) -> Vec<PatchResult> {
+    fn into_results(mut self) -> Vec<PatchResult> {
         self.plan
             .order()
             .iter()
-            .filter_map(|&idx| self.results[idx].clone())
+            .map(|&idx| {
+                self.results[idx]
+                    .take()
+                    .expect("plan visits every patch exactly once after execution")
+            })
             .collect()
     }
 }
 
-/// Runs a patch hook, turning an error or a panic into a reason string.
 fn guarded(hook: impl FnOnce() -> Result<()>) -> std::result::Result<(), String> {
     match panic::catch_unwind(AssertUnwindSafe(hook)) {
         Ok(Ok(())) => Ok(()),
@@ -224,408 +235,12 @@ fn guarded(hook: impl FnOnce() -> Result<()>) -> std::result::Result<(), String>
             panic
                 .downcast_ref::<String>()
                 .cloned()
-                .or_else(|| panic.downcast_ref::<&str>().map(|s| s.to_string()))
+                .or_else(|| panic.downcast_ref::<&str>().map(ToString::to_string))
                 .unwrap_or_else(|| "unknown panic".to_owned())
         )),
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::patch::{Compatibility, CompatiblePackage, PatchPreset, PatchSpec};
-
-    struct Declared(PatchSpec);
-
-    impl Patch for Declared {
-        fn spec(&self) -> &PatchSpec {
-            &self.0
-        }
-
-        fn execute(&self, _ctx: &mut PatchContext) -> Result<()> {
-            Ok(())
-        }
-    }
-
-    fn declared(id: &str, package: &str, versions: &[&str]) -> Declared {
-        declared_in("bundle", id, package, versions, &[])
-    }
-
-    fn declared_in(
-        bundle: &str,
-        id: &str,
-        package: &str,
-        versions: &[&str],
-        dependencies: &[&str],
-    ) -> Declared {
-        Declared(PatchSpec {
-            bundle: bundle.to_owned(),
-            id: id.to_owned(),
-            name: id.to_owned(),
-            hidden: false,
-            description: String::new(),
-            enabled_by_default: true,
-            dependencies: dependencies.iter().map(|d| (*d).to_owned()).collect(),
-            compatibility: [CompatiblePackage {
-                package: package.to_owned(),
-                versions: versions.iter().map(|v| (*v).to_owned()).collect(),
-            }]
-            .into_iter()
-            .collect(),
-            options: Vec::new(),
-        })
-    }
-
-    fn statuses(selection: &PatchSelection) -> Vec<PatchStatus> {
-        let pinned = declared("pinned", "com.example", &["1.0"]);
-        let other = declared("other", "com.other", &[]);
-        let patches: Vec<&dyn Patch> = vec![&pinned, &other];
-        validate_patches(&patches, selection, Some("com.example"), Some("2.0"))
-            .unwrap()
-            .into_iter()
-            .map(|result| result.status)
-            .collect()
-    }
-
-    fn dependency_pair() -> (Declared, Declared) {
-        let mut helper = declared_in("bundle", "helper", "unused", &[], &[]);
-        helper.0.hidden = true;
-        helper.0.enabled_by_default = false;
-        helper.0.compatibility = Compatibility::Universal;
-        let consumer = declared_in(
-            "bundle",
-            "consumer",
-            "com.example.a",
-            &["1.0"],
-            &["bundle/helper"],
-        );
-        (helper, consumer)
-    }
-
-    fn dependency_pair_statuses(
-        selection: PatchSelection,
-        package: &str,
-        version: Option<&str>,
-    ) -> Vec<PatchStatus> {
-        let (helper, consumer) = dependency_pair();
-        let patches: Vec<&dyn Patch> = vec![&helper, &consumer];
-        validate_patches(&patches, &selection, Some(package), version)
-            .unwrap()
-            .into_iter()
-            .map(|result| result.status)
-            .collect()
-    }
-
-    fn skipped(reason: &str) -> PatchStatus {
-        PatchStatus::Skipped {
-            reason: reason.to_owned(),
-        }
-    }
-
-    #[test]
-    fn patches_resolve_across_bundles_by_reference_or_unique_id() {
-        let official = declared_in("official", "pairip", "com.example", &[], &[]);
-        let fork = declared_in("fork", "pairip", "com.example", &[], &[]);
-        let uses = declared_in(
-            "fork",
-            "uses-pairip",
-            "com.example",
-            &[],
-            &["official/pairip"],
-        );
-        let patches: Vec<&dyn Patch> = vec![&official, &fork, &uses];
-        let selection = PatchSelection {
-            preset: PatchPreset::None,
-            enable: ["uses-pairip".to_owned()].into(),
-            ..Default::default()
-        };
-        let results = validate_patches(&patches, &selection, Some("com.example"), None).unwrap();
-        let applied: Vec<&str> = results
-            .iter()
-            .filter(|result| result.status == PatchStatus::Applied)
-            .map(|result| result.patch.as_str())
-            .collect();
-        assert_eq!(applied, ["official/pairip", "fork/uses-pairip"]);
-
-        let ambiguous = PatchSelection {
-            enable: ["pairip".to_owned()].into(),
-            ..Default::default()
-        };
-        let error = validate_patches(&patches, &ambiguous, Some("com.example"), None)
-            .unwrap_err()
-            .to_string();
-        assert!(
-            error.contains("fork/pairip") && error.contains("official/pairip"),
-            "{error}"
-        );
-    }
-
-    #[test]
-    fn missing_dependencies_skip_unless_selected() {
-        let uses = declared_in(
-            "fork",
-            "uses-pairip",
-            "com.example",
-            &[],
-            &["official/pairip"],
-        );
-        let patches: Vec<&dyn Patch> = vec![&uses];
-        let results = validate_patches(
-            &patches,
-            &PatchSelection::default(),
-            Some("com.example"),
-            None,
-        )
-        .unwrap();
-        assert_eq!(
-            results[0].status,
-            PatchStatus::Skipped {
-                reason: "depends on official/pairip; load bundle 'official' alongside".to_owned()
-            }
-        );
-        let selection = PatchSelection {
-            enable: ["uses-pairip".to_owned()].into(),
-            ..Default::default()
-        };
-        let error = validate_patches(&patches, &selection, Some("com.example"), None)
-            .unwrap_err()
-            .to_string();
-        assert_eq!(
-            error,
-            "missing bundle: patch fork/uses-pairip depends on official/pairip; load bundle 'official' alongside"
-        );
-
-        let official = declared_in("official", "other", "com.example", &[], &[]);
-        let patches: Vec<&dyn Patch> = vec![&official, &uses];
-        let results = validate_patches(
-            &patches,
-            &PatchSelection::default(),
-            Some("com.example"),
-            None,
-        )
-        .unwrap();
-        assert_eq!(
-            results[1].status,
-            PatchStatus::Skipped {
-                reason: "depends on official/pairip, which bundle 'official' does not declare"
-                    .to_owned()
-            }
-        );
-        let error = validate_patches(&patches, &selection, Some("com.example"), None)
-            .unwrap_err()
-            .to_string();
-        assert_eq!(
-            error,
-            "missing dependency: patch fork/uses-pairip depends on official/pairip, which bundle 'official' does not declare"
-        );
-    }
-
-    #[test]
-    fn version_mismatch_skips_unless_versions_are_ignored() {
-        assert_eq!(
-            statuses(&PatchSelection::default()),
-            vec![
-                skipped("expected one of [1.0], got 2.0"),
-                skipped("not selected")
-            ]
-        );
-        assert_eq!(
-            statuses(&PatchSelection {
-                ignore_versions: true,
-                ..Default::default()
-            }),
-            vec![PatchStatus::Applied, skipped("not selected")]
-        );
-    }
-
-    #[test]
-    fn default_selection_is_the_recommended_preset_for_the_package() {
-        let own = declared("own", "com.example", &[]);
-        let other = declared("other", "com.other", &[]);
-        let mut universal = declared("universal", "unused", &[]);
-        universal.0.compatibility = Compatibility::Universal;
-        let mut optional = declared("optional", "com.example", &[]);
-        optional.0.enabled_by_default = false;
-        let patches: Vec<&dyn Patch> = vec![&own, &other, &universal, &optional];
-        let statuses: Vec<PatchStatus> = validate_patches(
-            &patches,
-            &PatchSelection::default(),
-            Some("com.example"),
-            Some("1.0"),
-        )
-        .unwrap()
-        .into_iter()
-        .map(|result| result.status)
-        .collect();
-        assert_eq!(
-            statuses,
-            vec![
-                PatchStatus::Applied,
-                skipped("not selected"),
-                skipped("not selected"),
-                skipped("not selected"),
-            ]
-        );
-    }
-
-    #[test]
-    fn enable_and_disable_adjust_the_preset() {
-        let own = declared("own", "com.example", &[]);
-        let mut optional = declared("optional", "com.example", &[]);
-        optional.0.enabled_by_default = false;
-        let mut universal = declared("universal", "unused", &[]);
-        universal.0.compatibility = Compatibility::Universal;
-        let patches: Vec<&dyn Patch> = vec![&own, &optional, &universal];
-        let statuses = |selection: PatchSelection| -> Vec<PatchStatus> {
-            validate_patches(&patches, &selection, Some("com.example"), Some("1.0"))
-                .unwrap()
-                .into_iter()
-                .map(|result| result.status)
-                .collect()
-        };
-
-        assert_eq!(
-            statuses(PatchSelection {
-                enable: vec!["universal".to_owned()],
-                ..Default::default()
-            }),
-            vec![
-                PatchStatus::Applied,
-                skipped("not selected"),
-                PatchStatus::Applied
-            ]
-        );
-        assert_eq!(
-            statuses(PatchSelection {
-                preset: PatchPreset::All,
-                disable: vec!["own".to_owned()],
-                ..Default::default()
-            }),
-            vec![
-                skipped("disabled explicitly"),
-                PatchStatus::Applied,
-                skipped("not selected")
-            ]
-        );
-        assert_eq!(
-            statuses(PatchSelection {
-                preset: PatchPreset::None,
-                ..Default::default()
-            }),
-            vec![skipped("not selected"); 3]
-        );
-    }
-
-    #[test]
-    fn dependencies_of_incompatible_default_patches_are_not_applied() {
-        for (package, version, consumer_reason) in [
-            ("com.example.b", "1.0", "not selected"),
-            ("com.example.a", "2.0", "expected one of [1.0], got 2.0"),
-        ] {
-            assert_eq!(
-                dependency_pair_statuses(PatchSelection::default(), package, Some(version)),
-                vec![skipped("not selected"), skipped(consumer_reason)]
-            );
-        }
-
-        assert_eq!(
-            dependency_pair_statuses(
-                PatchSelection {
-                    ignore_versions: true,
-                    ..Default::default()
-                },
-                "com.example.a",
-                Some("2.0"),
-            ),
-            vec![PatchStatus::Applied, PatchStatus::Applied]
-        );
-    }
-
-    #[test]
-    fn explicitly_selected_incompatible_patch_keeps_its_reason() {
-        assert_eq!(
-            dependency_pair_statuses(
-                PatchSelection {
-                    enable: vec!["bundle/consumer".to_owned()],
-                    ..Default::default()
-                },
-                "com.example.b",
-                Some("1.0"),
-            ),
-            vec![
-                skipped("not selected"),
-                skipped("incompatible package: com.example.b"),
-            ]
-        );
-    }
-
-    #[test]
-    fn incompatibility_and_disabling_stop_transitive_dependencies() {
-        let mut leaf = declared_in("bundle", "leaf", "unused", &[], &[]);
-        leaf.0.hidden = true;
-        leaf.0.enabled_by_default = false;
-        leaf.0.compatibility = Compatibility::Universal;
-        let mut middle = declared_in("bundle", "middle", "com.example.a", &[], &["bundle/leaf"]);
-        middle.0.enabled_by_default = false;
-        let root = declared_in("bundle", "root", "com.example.b", &[], &["bundle/middle"]);
-        let patches: Vec<&dyn Patch> = vec![&leaf, &middle, &root];
-        let statuses: Vec<_> = validate_patches(
-            &patches,
-            &PatchSelection::default(),
-            Some("com.example.b"),
-            None,
-        )
-        .unwrap()
-        .into_iter()
-        .map(|result| result.status)
-        .collect();
-        assert_eq!(
-            statuses,
-            vec![
-                skipped("not selected"),
-                skipped("incompatible package: com.example.b"),
-                skipped("dependency 'bundle/middle' skipped: incompatible package: com.example.b"),
-            ]
-        );
-
-        let mut middle = declared_in(
-            "bundle",
-            "middle",
-            "com.example.b",
-            &[],
-            &["bundle/leaf", "other/missing"],
-        );
-        middle.0.enabled_by_default = false;
-        let root = declared_in("bundle", "root", "com.example.b", &[], &["bundle/middle"]);
-        let patches: Vec<&dyn Patch> = vec![&leaf, &middle, &root];
-        let statuses: Vec<_> = validate_patches(
-            &patches,
-            &PatchSelection::default(),
-            Some("com.example.b"),
-            None,
-        )
-        .unwrap()
-        .into_iter()
-        .map(|result| result.status)
-        .collect();
-        assert_eq!(
-            statuses[0..2],
-            [
-                skipped("not selected"),
-                skipped("depends on other/missing; load bundle 'other' alongside"),
-            ]
-        );
-
-        assert_eq!(
-            dependency_pair_statuses(
-                PatchSelection {
-                    disable: vec!["bundle/consumer".to_owned()],
-                    ..Default::default()
-                },
-                "com.example.a",
-                Some("1.0"),
-            ),
-            vec![skipped("not selected"), skipped("disabled explicitly")]
-        );
-    }
-}
+#[path = "run_tests.rs"]
+mod tests;

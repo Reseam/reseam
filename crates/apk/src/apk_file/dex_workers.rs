@@ -1,125 +1,118 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::collections::HashMap;
 use std::fs::File;
-use std::io::BufWriter;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+use std::io::{self, BufWriter};
+use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
+use std::sync::{Arc, Mutex};
 use std::thread::Scope;
 
-use reseam_dex::{DexFile, DexPart};
+use reseam_dex::DexFile;
 use tracing::debug;
 
-use super::write::DexJob;
-use crate::error::{invalid, Result};
+use super::write::{DexJob, DexMember};
+use crate::error::{Result, invalid};
 
-/// The DEX files to serialize, handed out to workers one job at a time in
-/// job order.
-pub(super) struct DexWorkPool<'a> {
-    dex_files: &'a [DexFile],
-    jobs: &'a [DexJob],
-    next: AtomicUsize,
-    compression_level: i64,
+pub(super) struct DexEntryStream {
+    pending: SyncSender<usize>,
+    receivers: Vec<Receiver<Result<File>>>,
+    next: usize,
+    scheduled: usize,
+    job_count: usize,
 }
 
-impl<'a> DexWorkPool<'a> {
-    pub fn new(dex_files: &'a [DexFile], jobs: &'a [DexJob], compression_level: i64) -> Self {
-        Self {
-            dex_files,
-            jobs,
-            next: AtomicUsize::new(0),
-            compression_level,
-        }
-    }
-
-    fn run(&self, sender: SyncSender<(usize, Result<File>)>) {
-        loop {
-            let index = self.next.fetch_add(1, Ordering::Relaxed);
-            let Some(job) = self.jobs.get(index) else {
-                return;
-            };
-            let result = compress_dex(
-                &self.dex_files[job.dex_index],
-                job.part.as_ref(),
-                &job.name,
-                self.compression_level,
-            );
-            let failed = result.is_err();
-            if sender.send((index, result)).is_err() || failed {
-                return;
-            }
-        }
-    }
-}
-
-/// Serialized, deflated DEX entries arriving from the worker pool. Workers
-/// take jobs in order and each holds at most one finished entry, so the
-/// writer waits on the entry it needs next while a bounded number of later
-/// ones queue up.
-pub(super) struct DexEntryStream<'a> {
-    jobs: &'a [DexJob],
-    receiver: Option<Receiver<(usize, Result<File>)>>,
-    ready: HashMap<usize, File>,
-}
-
-impl<'a> DexEntryStream<'a> {
-    pub fn start<'scope>(
-        scope: &'scope Scope<'scope, 'a>,
-        pool: &'a DexWorkPool<'a>,
+impl DexEntryStream {
+    pub fn start<'scope, 'env>(
+        scope: &'scope Scope<'scope, 'env>,
+        dex_files: &'env [DexFile],
+        jobs: &'env [DexJob],
         workers: usize,
+        level: i64,
     ) -> Self {
-        let receiver = (!pool.jobs.is_empty()).then(|| {
-            let workers = workers.min(pool.jobs.len());
-            let (sender, receiver) = sync_channel(workers);
-            for _ in 0..workers {
-                let sender = sender.clone();
-                scope.spawn(move || pool.run(sender));
-            }
-            receiver
-        });
+        let workers = workers.min(jobs.len());
+        let window = workers.saturating_mul(2).min(jobs.len());
+        let (pending, queue) = sync_channel::<usize>(window);
+        let queue = Arc::new(Mutex::new(queue));
+        let (outputs, receivers): (Vec<_>, Vec<_>) =
+            (0..window).map(|_| sync_channel::<Result<File>>(1)).unzip();
+        let outputs = Arc::new(outputs);
+        for _ in 0..workers {
+            let queue = Arc::clone(&queue);
+            let outputs = Arc::clone(&outputs);
+            scope.spawn(move || {
+                loop {
+                    let Ok(index) = queue
+                        .lock()
+                        .expect("queue lock is never held while executing a job")
+                        .recv()
+                    else {
+                        break;
+                    };
+                    let job = &jobs[index];
+                    let result = compress_dex(dex_files, &job.members, job.name.as_str(), level)
+                        .map_err(|error| error.in_entry(job.name.as_str()));
+                    let failed = result.is_err();
+                    if outputs[index % outputs.len()].send(result).is_err() || failed {
+                        break;
+                    }
+                }
+            });
+        }
+        for index in 0..window {
+            pending
+                .send(index)
+                .expect("initial jobs fit in the queue while its receiver is retained");
+        }
         Self {
-            jobs: pool.jobs,
-            receiver,
-            ready: HashMap::new(),
+            pending,
+            receivers,
+            next: 0,
+            scheduled: window,
+            job_count: jobs.len(),
         }
     }
 
-    /// The finished entry for `name` in `component`, waiting for workers as
-    /// needed; `None` when no job produces it.
-    pub fn take(&mut self, component: usize, name: &str) -> Result<Option<File>> {
-        let Some(job) = self
-            .jobs
-            .iter()
-            .position(|job| job.component == component && job.name.as_str() == name)
-        else {
-            return Ok(None);
-        };
-        loop {
-            if let Some(file) = self.ready.remove(&job) {
-                return Ok(Some(file));
-            }
-            let receiver = self
-                .receiver
-                .as_ref()
-                .ok_or_else(|| invalid("dex write", "no DEX workers are running"))?;
-            let (finished, result) = receiver
-                .recv()
-                .map_err(|_| invalid("dex write", "DEX worker stopped early"))?;
-            self.ready.insert(finished, result?);
+    pub fn next(&mut self) -> Result<File> {
+        let receiver = self
+            .receivers
+            .get(self.next % self.receivers.len().max(1))
+            .ok_or_else(|| invalid("dex write", "no DEX workers are running"))?;
+        let file = receiver
+            .recv()
+            .map_err(|_| invalid("dex write", "DEX worker stopped early"))??;
+        self.next += 1;
+        if self.scheduled < self.job_count {
+            self.pending
+                .send(self.scheduled)
+                .map_err(|_| invalid("dex write", "DEX workers stopped early"))?;
+            self.scheduled += 1;
         }
+        Ok(file)
     }
 }
 
-/// Serializes a DEX, or one part of it, to a spooled file and deflates it
-/// into a single-entry archive in another spooled file, whose compressed
-/// bytes the APK writer copies verbatim. Neither the DEX nor its deflated
-/// form is ever held in memory.
-fn compress_dex(dex: &DexFile, part: Option<&DexPart>, name: &str, level: i64) -> Result<File> {
+fn compress_dex(
+    dex_files: &[DexFile],
+    members: &[DexMember],
+    name: &str,
+    level: i64,
+) -> Result<File> {
     let started = std::time::Instant::now();
-    let spooled = reseam_dex::write_spooled(dex, part)?;
-    dex.release_pages();
+    let spooled = match members {
+        [member] => {
+            reseam_dex::write_spooled(&dex_files[member.dex_index.0], member.part.as_ref())?
+        }
+        _ => reseam_dex::write_container_spooled(
+            members
+                .iter()
+                .map(|member| (&dex_files[member.dex_index.0], member.part.as_ref())),
+        )?,
+    };
+    if let Some(member) = members.first() {
+        dex_files[member.dex_index.0].release_pages();
+    }
     let serialized = started.elapsed();
+    let deflating = std::time::Instant::now();
     let mut archive = zip::ZipWriter::new(BufWriter::new(tempfile::tempfile()?));
     archive.start_file(
         name,
@@ -127,13 +120,16 @@ fn compress_dex(dex: &DexFile, part: Option<&DexPart>, name: &str, level: i64) -
             .compression_method(zip::CompressionMethod::Deflated)
             .compression_level(Some(level)),
     )?;
-    std::io::copy(&mut spooled.reader()?, &mut archive)?;
-    let file = archive.finish()?.into_inner().map_err(|e| e.into_error())?;
+    io::copy(&mut spooled.reader(), &mut archive)?;
+    let file = archive
+        .finish()?
+        .into_inner()
+        .map_err(io::IntoInnerError::into_error)?;
     debug!(
         entry = name,
         bytes = spooled.len(),
         serialize_ms = serialized.as_millis() as u64,
-        deflate_ms = (started.elapsed() - serialized).as_millis() as u64,
+        deflate_ms = deflating.elapsed().as_millis() as u64,
         "dex entry written"
     );
     Ok(file)

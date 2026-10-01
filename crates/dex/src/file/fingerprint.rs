@@ -1,90 +1,23 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use super::pattern::{find_pattern_span, InstructionPattern};
+use super::pattern::{InstructionPattern, find_pattern_span};
 use super::scan::{MethodHit, MethodView};
 use super::{DexFile, RefKey, RefQuery};
 use crate::error::Result;
 use crate::types::access_flags::AccessFlags;
 use crate::types::{StringIdx, TypeIdx};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Fingerprint {
     pub access_flags: Option<AccessFlags>,
-    pub return_type: Option<String>,
-    pub parameters: Option<Vec<String>>,
+    pub return_type: Option<TypePattern>,
+    pub parameters: Option<Vec<TypePattern>>,
     pub strings: Option<Vec<String>>,
     pub literals: Option<Vec<i64>>,
     pub defining_class: Option<String>,
     pub name: Option<String>,
     pub opcodes: Option<Vec<InstructionPattern>>,
-}
-
-impl Fingerprint {
-    pub fn builder() -> FingerprintBuilder {
-        FingerprintBuilder {
-            inner: Fingerprint {
-                access_flags: None,
-                return_type: None,
-                parameters: None,
-                strings: None,
-                literals: None,
-                defining_class: None,
-                name: None,
-                opcodes: None,
-            },
-        }
-    }
-}
-
-pub struct FingerprintBuilder {
-    inner: Fingerprint,
-}
-
-impl FingerprintBuilder {
-    pub fn access_flags(mut self, flags: AccessFlags) -> Self {
-        self.inner.access_flags = Some(flags);
-        self
-    }
-
-    pub fn return_type(mut self, ret: impl Into<String>) -> Self {
-        self.inner.return_type = Some(ret.into());
-        self
-    }
-
-    pub fn parameters(mut self, params: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.inner.parameters = Some(params.into_iter().map(Into::into).collect());
-        self
-    }
-
-    pub fn strings(mut self, strings: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.inner.strings = Some(strings.into_iter().map(Into::into).collect());
-        self
-    }
-
-    pub fn defining_class(mut self, class: impl Into<String>) -> Self {
-        self.inner.defining_class = Some(class.into());
-        self
-    }
-
-    pub fn name(mut self, name: impl Into<String>) -> Self {
-        self.inner.name = Some(name.into());
-        self
-    }
-
-    pub fn literals(mut self, literals: impl IntoIterator<Item = i64>) -> Self {
-        self.inner.literals = Some(literals.into_iter().collect());
-        self
-    }
-
-    pub fn opcodes(mut self, opcodes: impl IntoIterator<Item = InstructionPattern>) -> Self {
-        self.inner.opcodes = Some(opcodes.into_iter().collect());
-        self
-    }
-
-    pub fn build(self) -> Fingerprint {
-        self.inner
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -93,16 +26,15 @@ pub struct FingerprintHit {
     pub matched_indices: Vec<u32>,
 }
 
-/// A fingerprint with its required strings resolved to DEX indices once. `None`
-/// from [`DexFile::prepare_fingerprint`] means a required string is absent from
-/// the DEX, so no method can match and scanning is skipped entirely.
-struct PreparedFingerprint {
+struct PreparedFingerprint<'a> {
     defining_class: Option<TypeIdx>,
     name: Option<StringIdx>,
     strings: Option<Vec<StringIdx>>,
+    return_type: Option<&'a TypePattern>,
+    parameters: Option<&'a [TypePattern]>,
 }
 
-impl PreparedFingerprint {
+impl PreparedFingerprint<'_> {
     fn query(&self, fp: &Fingerprint) -> RefQuery {
         let strings = self.strings.iter().flatten().map(|&s| RefKey::string(s));
         let literals = fp.literals.iter().flatten().map(|&l| RefKey::literal(l));
@@ -129,9 +61,7 @@ impl DexFile {
         })
     }
 
-    /// Resolves the fingerprint's names to this DEX's indices once; a DEX that
-    /// lacks any of them cannot contain a match and is skipped entirely.
-    fn prepare_fingerprint(&self, fp: &Fingerprint) -> Option<PreparedFingerprint> {
+    fn prepare_fingerprint<'a>(&self, fp: &'a Fingerprint) -> Option<PreparedFingerprint<'a>> {
         let defining_class = match &fp.defining_class {
             None => None,
             Some(descriptor) => Some(self.find_type_idx(descriptor)?),
@@ -152,16 +82,15 @@ impl DexFile {
             defining_class,
             name,
             strings,
+            return_type: fp.return_type.as_ref(),
+            parameters: fp.parameters.as_deref(),
         })
     }
 
-    /// Checks a fingerprint against one method. Metadata criteria (defining
-    /// class, name, flags, prototype) are all id-table reads and run first;
-    /// instructions decode only if those pass and the fingerprint needs them.
     fn match_fingerprint(
         &self,
         fp: &Fingerprint,
-        prepared: &PreparedFingerprint,
+        prepared: &PreparedFingerprint<'_>,
         view: &MethodView<'_>,
     ) -> Result<Option<FingerprintHit>> {
         let method_id = self.method_id(view.method);
@@ -177,32 +106,30 @@ impl DexFile {
             return Ok(None);
         }
 
-        if let Some(ref flags) = fp.access_flags {
-            if !view.access_flags.contains(*flags) {
-                return Ok(None);
-            }
+        if let Some(ref flags) = fp.access_flags
+            && !view.access_flags.contains(*flags)
+        {
+            return Ok(None);
         }
 
         let proto = self.proto(method_id.proto);
 
-        if let Some(ref return_type) = fp.return_type {
-            if !self
-                .type_descriptor(proto.return_type)
-                .starts_with(return_type.as_str())
-            {
-                return Ok(None);
-            }
+        if prepared
+            .return_type
+            .as_ref()
+            .is_some_and(|criterion| !criterion.matches(&self.type_descriptor(proto.return_type)))
+        {
+            return Ok(None);
         }
-
-        if let Some(ref parameters) = fp.parameters {
-            if proto.parameters.len() != parameters.len() {
-                return Ok(None);
-            }
-            for (param_idx, expected) in proto.parameters.iter().zip(parameters) {
-                if !param_matches(&self.type_descriptor(*param_idx), expected) {
-                    return Ok(None);
-                }
-            }
+        if let Some(parameters) = prepared.parameters
+            && (proto.parameters.len() != parameters.len()
+                || !proto
+                    .parameters
+                    .iter()
+                    .zip(parameters)
+                    .all(|(actual, criterion)| criterion.matches(&self.type_descriptor(*actual))))
+        {
+            return Ok(None);
         }
 
         let needs_instructions =
@@ -247,16 +174,23 @@ impl DexFile {
     }
 }
 
-fn param_matches(actual: &str, expected: &str) -> bool {
-    if actual == expected {
-        return true;
+/// A descriptor match policy. Exact and prefix matching operate on DEX descriptor text;
+/// Object matches class references and Array matches all array dimensions and element types.
+#[derive(Debug, Clone)]
+pub enum TypePattern {
+    Exact(String),
+    Prefix(String),
+    Object,
+    Array,
+}
+
+impl TypePattern {
+    fn matches(&self, descriptor: &str) -> bool {
+        match self {
+            Self::Exact(value) => descriptor == value,
+            Self::Prefix(value) => descriptor.starts_with(value),
+            Self::Object => descriptor.starts_with('L'),
+            Self::Array => descriptor.starts_with('['),
+        }
     }
-    // "L" matches any object type (Lcom/foo/Bar;), "[" matches any array type.
-    if expected == "L" {
-        return actual.starts_with('L');
-    }
-    if expected == "[" {
-        return actual.starts_with('[');
-    }
-    false
 }

@@ -11,12 +11,13 @@ pub mod encoded_value;
 pub mod header;
 pub mod hidden_api;
 pub mod instruction;
-mod instruction_encoding;
+pub(crate) mod instruction_catalogue;
+pub(crate) mod instruction_encoding;
 mod instruction_operands;
 mod instruction_query;
 mod instruction_registers;
-pub mod label;
 pub mod map;
+pub mod metadata;
 pub mod method_handle;
 pub mod register_allocation;
 pub mod register_analysis;
@@ -32,25 +33,25 @@ pub struct TypeIdx(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FieldIdx(pub u32);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FieldId {
     pub class: TypeIdx,
-    pub type_: TypeIdx,
     pub name: StringIdx,
+    pub type_: TypeIdx,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MethodIdx(pub u32);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MethodId {
     pub class: TypeIdx,
-    pub proto: ProtoIdx,
     pub name: StringIdx,
+    pub proto: ProtoIdx,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ProtoIdx(pub u16);
+pub struct ProtoIdx(pub u32);
 
 pub type TypeList = smallvec::SmallVec<[TypeIdx; 4]>;
 
@@ -61,7 +62,6 @@ pub struct Prototype {
     pub parameters: TypeList,
 }
 
-/// The id pools a DEX index points into.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Pool {
     String,

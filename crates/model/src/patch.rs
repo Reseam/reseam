@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::OptionDeclaration;
+use crate::{OptionDeclaration, Problem};
 use serde::{Deserialize, Serialize};
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[boltffi::data]
 pub struct CompatiblePackage {
@@ -11,7 +12,6 @@ pub struct CompatiblePackage {
     pub versions: Vec<String>,
 }
 
-/// Which apps a patch declares itself for.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[boltffi::data]
@@ -53,21 +53,21 @@ pub enum PatchPreset {
 }
 
 impl std::str::FromStr for PatchPreset {
-    type Err = String;
+    type Err = Problem;
 
-    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "recommended" => Ok(Self::Recommended),
             "all" => Ok(Self::All),
             "none" => Ok(Self::None),
-            _ => Err(format!(
-                "unknown preset '{value}'; expected recommended, all or none"
-            )),
+            _ => Err(Problem::UnknownPreset {
+                value: value.to_owned(),
+            }),
         }
     }
 }
 
-/// Bundle names and patch IDs: lowercase letters and digits, single hyphens between them.
+/// A nonempty slug: lowercase letters or digits separated by single hyphens.
 pub fn is_slug(value: &str) -> bool {
     !value.is_empty()
         && !value.starts_with('-')
@@ -102,18 +102,22 @@ impl PatchSpec {
         format!("{}/{}", self.bundle, self.id)
     }
 
-    /// Why the patch does not apply to `package`/`version`, if it does not.
     pub fn incompatibility(&self, package: Option<&str>, version: Option<&str>) -> Option<String> {
         let entries = match self.package_compatibility(package) {
             Ok(Some(entries)) => entries,
             Ok(None) => return None,
-            Err(reason) => return Some(reason),
+            Err(reason) => return Some(reason.to_string()),
         };
-        if entries.iter().any(|entry| entry.versions.is_empty()) {
+        if entries
+            .iter()
+            .filter(|entry| Some(entry.package.as_str()) == package)
+            .any(|entry| entry.versions.is_empty())
+        {
             return None;
         }
         let allowed: Vec<&str> = entries
             .iter()
+            .filter(|entry| Some(entry.package.as_str()) == package)
             .flat_map(|entry| entry.versions.iter().map(String::as_str))
             .collect();
         match version {
@@ -140,31 +144,28 @@ impl PatchSpec {
             }
     }
 
-    /// Why the patch does not apply to `package` at any version, if it does not.
     pub fn package_incompatibility(&self, package: Option<&str>) -> Option<String> {
-        self.package_compatibility(package).err()
+        self.package_compatibility(package)
+            .err()
+            .map(|error| error.to_string())
     }
 
-    /// The declared entries for `package`; `Ok(None)` when the patch applies
-    /// to every app.
     fn package_compatibility(
         &self,
         package: Option<&str>,
-    ) -> std::result::Result<Option<Vec<&CompatiblePackage>>, String> {
+    ) -> crate::Result<Option<&[CompatiblePackage]>> {
         let Compatibility::Packages { packages } = &self.compatibility else {
             return Ok(None);
         };
         let Some(package) = package else {
-            return Err("APK has no package name".to_owned());
+            return Err(Problem::MissingPackage);
         };
-        let entries: Vec<&CompatiblePackage> = packages
-            .iter()
-            .filter(|entry| entry.package == package)
-            .collect();
-        if entries.is_empty() {
-            return Err(format!("incompatible package: {package}"));
+        if !packages.iter().any(|entry| entry.package == package) {
+            return Err(Problem::IncompatiblePackage {
+                package: package.to_owned(),
+            });
         }
-        Ok(Some(entries))
+        Ok(Some(packages))
     }
 }
 
@@ -199,6 +200,7 @@ mod tests {
 
     #[test]
     fn presets_take_only_visible_patches_that_declare_the_package() {
+        use PatchPreset::{All, Recommended};
         let declared = |versions: &[&str]| {
             [CompatiblePackage {
                 package: "com.example".to_owned(),
@@ -208,7 +210,6 @@ mod tests {
             .collect()
         };
         let app = Some("com.example");
-        use PatchPreset::{All, Recommended};
 
         assert_eq!(
             presets(&spec(declared(&[]), true, false), app),

@@ -9,7 +9,6 @@ use crate::error::{PatcherError, Result};
 
 pub use reseam_model::{OptionDeclaration, OptionType, OptionValue};
 
-/// The option values one patch runs with.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(transparent)]
 pub struct PatchOptions {
@@ -39,10 +38,9 @@ impl PatchOptions {
         declarations: &[OptionDeclaration],
         provided: Option<&Self>,
     ) -> Result<Self> {
-        let provided = provided.cloned().unwrap_or_default();
         if let Some(key) = provided
-            .values
-            .keys()
+            .iter()
+            .flat_map(|options| options.values.keys())
             .find(|key| !declarations.iter().any(|decl| decl.key == **key))
         {
             return Err(PatcherError::UnknownOption {
@@ -52,13 +50,16 @@ impl PatchOptions {
         }
         let mut resolved = Self::default();
         for decl in declarations {
-            let value = match provided.get(&decl.key).or(decl.default_value.as_ref()) {
+            let value = match provided
+                .and_then(|options| options.get(&decl.key))
+                .or(decl.default_value.as_ref())
+            {
                 Some(value) => value,
                 None if decl.required => {
                     return Err(PatcherError::MissingRequiredOption {
                         patch: patch.to_string(),
                         key: decl.key.clone(),
-                    })
+                    });
                 }
                 None => continue,
             };
@@ -66,8 +67,15 @@ impl PatchOptions {
                 .map_err(|reason| PatcherError::InvalidOptionValue {
                     patch: patch.to_string(),
                     key: decl.key.clone(),
-                    reason,
+                    reason: reason.to_string(),
                 })?;
+            if let OptionValue::Path(path) = value {
+                std::fs::metadata(path).map_err(|error| PatcherError::InvalidOptionValue {
+                    patch: patch.to_owned(),
+                    key: decl.key.clone(),
+                    reason: format!("cannot access path {path}: {error}"),
+                })?;
+            }
             resolved.set(decl.key.clone(), value.clone());
         }
         Ok(resolved)
@@ -84,9 +92,13 @@ impl PatchOptions {
                 path.display()
             )));
         }
-        let mut entries: Vec<String> = std::fs::read_dir(path)?
-            .filter_map(|entry| entry.ok()?.file_name().to_str().map(str::to_string))
-            .collect();
+        let mut entries = Vec::new();
+        for entry in std::fs::read_dir(path)? {
+            let name = entry?.file_name();
+            if let Some(name) = name.to_str() {
+                entries.push(name.to_owned());
+            }
+        }
         entries.sort();
         Ok(Some(entries))
     }

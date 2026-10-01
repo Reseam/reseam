@@ -1,18 +1,20 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Register-frame growth and legalization of instructions whose operands move
-//! beyond their encoding. Narrow operands use dead registers; range invokes can
-//! also use a shared argument area outside the caller's requested locals.
+mod invoke;
+mod widen;
+
+use invoke::lower_invoke;
+use widen::widen;
 
 use super::code::CodeItem;
-use super::code_rewrite::InstructionExpansion;
+use super::code_rewrite::{InstructionExpansion, InstructionMap};
 use super::instruction::Instruction;
 use super::register_analysis::RegisterLiveness;
-use super::register_operands::{map_operands, Access, RegisterKind};
+use super::register_operands::{Access, RegisterKind, map_operands};
 use super::register_types::RegisterTypes;
-use crate::error::{invalid, Result};
 use crate::DexFile;
+use crate::error::{Result, invalid};
 
 /// `protected` names registers the caller holds across edits, which no operand
 /// may stage through even where liveness says they are dead: a value one patch
@@ -20,40 +22,27 @@ use crate::DexFile;
 pub fn grow_registers(
     code: &mut CodeItem,
     additional: u16,
-    incoming: &[String],
+    incoming: &[crate::TypeIdx],
     protected: &[u16],
     dex: &DexFile,
-) -> Result<Vec<usize>> {
+) -> Result<InstructionMap> {
     if additional == 0 {
-        return Ok((0..=code.instructions.len()).collect());
+        return Ok(InstructionMap::identity(code.instructions.len()));
     }
-    let size = code
-        .registers_size
-        .checked_add(additional)
-        .ok_or_else(|| invalid("register growth", "frame exceeds 65535 registers"))?;
-    let base = code
-        .registers_size
-        .checked_sub(code.ins_size)
-        .ok_or_else(|| invalid("register growth", "parameters exceed frame"))?;
+    let (size, base) = grown_frame(code, additional)?;
     let liveness = RegisterLiveness::new(code);
-    let incoming = incoming.iter().map(|ty| kind(ty)).collect::<Vec<_>>();
-    if incoming
-        .iter()
-        .map(|kind| u32::from(kind.words()))
-        .sum::<u32>()
-        != u32::from(code.ins_size)
-    {
-        return Err(invalid(
-            "register growth",
-            "parameter width does not match ins_size",
-        ));
-    }
+    let incoming = incoming_kinds(incoming, code.ins_size, dex)?;
     let mut arguments = ArgumentArea {
         start: size,
         words: 0,
         incoming_words: code.ins_size,
     };
-    let mut types = None;
+    let queries = displaced_queries(code, base, additional)?;
+    let types = if queries.is_empty() {
+        None
+    } else {
+        Some(RegisterTypes::new(code, &incoming, &queries)?)
+    };
     let mut expansions = Vec::with_capacity(code.instructions.len());
     for (index, instruction) in code.instructions.iter().enumerate() {
         let mut allocation = Allocation {
@@ -82,7 +71,7 @@ pub fn grow_registers(
         {
             lower_invoke(&mut expansion, &mut allocation, dex)?;
         } else {
-            if matches!(instruction, Instruction::RawInstruction { .. }) {
+            if matches!(instruction, Instruction::Raw { .. }) {
                 return Err(invalid(
                     "register growth",
                     "cannot relocate an unknown instruction",
@@ -102,10 +91,10 @@ pub fn grow_registers(
                     return Ok(register);
                 }
                 let kind = if operand.kind == RegisterKind::Unknown {
-                    if types.is_none() {
-                        types = Some(RegisterTypes::new(code, &incoming)?);
-                    }
-                    types.as_ref().unwrap().kind(index, operand.register)?
+                    types
+                        .as_ref()
+                        .expect("displaced untyped operands were collected")
+                        .kind(index, operand.register)?
                 } else {
                     operand.kind
                 };
@@ -131,8 +120,69 @@ pub fn grow_registers(
         };
         expansions.push(expansion);
     }
+    apply_expansions(code, additional, &incoming, &arguments, expansions)
+}
+
+fn grown_frame(code: &CodeItem, additional: u16) -> Result<(u16, u16)> {
+    let size = code
+        .registers_size
+        .checked_add(additional)
+        .ok_or_else(|| invalid("register growth", "frame exceeds 65535 registers"))?;
+    let base = code
+        .registers_size
+        .checked_sub(code.ins_size)
+        .ok_or_else(|| invalid("register growth", "parameters exceed frame"))?;
+    Ok((size, base))
+}
+
+fn incoming_kinds(
+    incoming: &[crate::TypeIdx],
+    ins_size: u16,
+    dex: &DexFile,
+) -> Result<Vec<RegisterKind>> {
+    let incoming = incoming
+        .iter()
+        .map(|&ty| {
+            let descriptor = dex
+                .types
+                .try_get(ty.0 as usize)
+                .ok_or_else(|| invalid("register growth", "incoming type outside pool"))?;
+            if descriptor.0 as usize >= dex.strings.len() {
+                return Err(invalid(
+                    "register growth",
+                    "incoming descriptor outside pool",
+                ));
+            }
+            Ok(kind(&dex.string(descriptor)))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    if incoming
+        .iter()
+        .map(|kind| u32::from(kind.words()))
+        .sum::<u32>()
+        != u32::from(ins_size)
+    {
+        return Err(invalid(
+            "register growth",
+            "parameter width does not match ins_size",
+        ));
+    }
+    Ok(incoming)
+}
+
+fn apply_expansions(
+    code: &mut CodeItem,
+    additional: u16,
+    incoming: &[RegisterKind],
+    arguments: &ArgumentArea,
+    expansions: Vec<InstructionExpansion>,
+) -> Result<InstructionMap> {
+    let size = arguments.start;
+    let base = code.registers_size - code.ins_size;
     let mut rewritten = code.clone();
-    let mut indices = rewritten.rewrite_instructions(expansions)?;
+    rewritten.debug_info = None;
+    let mut indices =
+        rewritten.rewrite_instructions(expansions, &std::collections::BTreeMap::new())?;
     rewritten.registers_size = if arguments.words == 0 {
         size
     } else {
@@ -145,7 +195,7 @@ pub fn grow_registers(
         // area, so a later growth never splits a staged wide value at its boundary.
         let mut entry = Vec::new();
         let mut destination = base + additional;
-        for kind in incoming {
+        for &kind in incoming {
             entry.push(move_register(
                 destination,
                 destination + arguments.words + code.ins_size,
@@ -153,16 +203,51 @@ pub fn grow_registers(
             ));
             destination += kind.words();
         }
-        let count = rewritten.instructions.len();
-        rewritten.insert_instructions(0, &entry)?;
-        let inserted = rewritten.instructions.len() - count;
-        for index in &mut indices {
-            *index += inserted;
+        let insertion = rewritten.insert_instructions(0, &entry)?;
+        for index in indices
+            .starts
+            .iter_mut()
+            .chain(&mut indices.instructions)
+            .chain(&mut indices.ends)
+        {
+            *index = insertion.instructions[*index];
         }
     }
     rewritten.outs_size = rewritten.compute_outs_size();
     *code = rewritten;
     Ok(indices)
+}
+
+fn displaced_queries(code: &CodeItem, base: u16, additional: u16) -> Result<Vec<(usize, u16)>> {
+    let mut queries = Vec::new();
+    for (index, instruction) in code.instructions.iter().enumerate() {
+        let mut result = Ok(());
+        instruction.visit_operands(|operand| {
+            if operand
+                .register
+                .checked_add(operand.kind.words())
+                .is_none_or(|end| end > code.registers_size)
+            {
+                result = Err(invalid("register growth", "operand outside frame"));
+                return;
+            }
+            let register = if operand.register >= base {
+                if let Some(register) = operand.register.checked_add(additional) {
+                    register
+                } else {
+                    result = Err(invalid("register growth", "operand exceeds frame"));
+                    return;
+                }
+            } else {
+                operand.register
+            };
+            if operand.kind == RegisterKind::Unknown && register > operand.max {
+                queries.push((index, operand.register));
+            }
+        });
+        result?;
+    }
+    Ok(queries)
 }
 
 struct Allocation<'a> {
@@ -175,8 +260,6 @@ struct Allocation<'a> {
     arguments: &'a mut ArgumentArea,
 }
 
-/// Reused between invokes. This area never overlaps the method's relocated body
-/// registers or the locals requested by the caller.
 struct ArgumentArea {
     start: u16,
     words: u16,
@@ -250,7 +333,10 @@ fn kind(descriptor: &str) -> RegisterKind {
 }
 
 fn move_register(dest: u16, src: u16, kind: RegisterKind) -> Instruction {
-    use Instruction::*;
+    use Instruction::{
+        Move, Move16, MoveFrom16, MoveObject, MoveObject16, MoveObjectFrom16, MoveWide, MoveWide16,
+        MoveWideFrom16,
+    };
     match kind {
         RegisterKind::Wide if dest <= 15 && src <= 15 => MoveWide {
             dest: dest as u8,
@@ -282,818 +368,5 @@ fn move_register(dest: u16, src: u16, kind: RegisterKind) -> Instruction {
     }
 }
 
-// Select wider forms before asking the allocator for scratch registers.
-fn widen(insn: &Instruction, allocation: &Allocation<'_>) -> Instruction {
-    use Instruction::*;
-    match *insn {
-        Move { dest, src } => Move16 {
-            dest: u16::from(dest),
-            src: u16::from(src),
-        },
-        MoveFrom16 { dest, src } => Move16 {
-            dest: u16::from(dest),
-            src,
-        },
-        MoveWide { dest, src } => MoveWide16 {
-            dest: u16::from(dest),
-            src: u16::from(src),
-        },
-        MoveWideFrom16 { dest, src } => MoveWide16 {
-            dest: u16::from(dest),
-            src,
-        },
-        MoveObject { dest, src } => MoveObject16 {
-            dest: u16::from(dest),
-            src: u16::from(src),
-        },
-        MoveObjectFrom16 { dest, src } => MoveObject16 {
-            dest: u16::from(dest),
-            src,
-        },
-        Const4 { dest, value } if allocation.shift(u16::from(dest)) > 15 => Const16 {
-            dest,
-            value: i16::from(value),
-        },
-        AddInt2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            AddInt {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        SubInt2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            SubInt {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        MulInt2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            MulInt {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        DivInt2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            DivInt {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        RemInt2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            RemInt {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        AndInt2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            AndInt {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        OrInt2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            OrInt {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        XorInt2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            XorInt {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        ShlInt2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            ShlInt {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        ShrInt2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            ShrInt {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        UshrInt2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            UshrInt {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        AddLong2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            AddLong {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        SubLong2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            SubLong {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        MulLong2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            MulLong {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        DivLong2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            DivLong {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        RemLong2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            RemLong {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        AndLong2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            AndLong {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        OrLong2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            OrLong {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        XorLong2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            XorLong {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        ShlLong2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            ShlLong {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        ShrLong2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            ShrLong {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        UshrLong2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            UshrLong {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        AddFloat2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            AddFloat {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        SubFloat2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            SubFloat {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        MulFloat2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            MulFloat {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        DivFloat2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            DivFloat {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        RemFloat2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            RemFloat {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        AddDouble2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            AddDouble {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        SubDouble2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            SubDouble {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        MulDouble2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            MulDouble {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        DivDouble2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            DivDouble {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        RemDouble2Addr { dest_a, b }
-            if allocation.shift(u16::from(dest_a)) > 15 || allocation.shift(u16::from(b)) > 15 =>
-        {
-            RemDouble {
-                dest: dest_a,
-                a: dest_a,
-                b,
-            }
-        }
-        _ => insn.clone(),
-    }
-}
-
-fn lower_invoke(
-    expansion: &mut InstructionExpansion,
-    allocation: &mut Allocation<'_>,
-    dex: &DexFile,
-) -> Result<()> {
-    use Instruction::*;
-    let insn = &expansion.instruction;
-    let registers: Vec<u16> = match insn {
-        FilledNewArray { args, .. }
-        | InvokeVirtual { args, .. }
-        | InvokeSuper { args, .. }
-        | InvokeDirect { args, .. }
-        | InvokeStatic { args, .. }
-        | InvokeInterface { args, .. }
-        | InvokePolymorphic { args, .. }
-        | InvokeCustom { args, .. } => args.iter().map(|reg| u16::from(*reg)).collect(),
-        FilledNewArrayRange {
-            first_reg, count, ..
-        }
-        | InvokeVirtualRange {
-            first_reg, count, ..
-        }
-        | InvokeSuperRange {
-            first_reg, count, ..
-        }
-        | InvokeDirectRange {
-            first_reg, count, ..
-        }
-        | InvokeStaticRange {
-            first_reg, count, ..
-        }
-        | InvokeInterfaceRange {
-            first_reg, count, ..
-        }
-        | InvokePolymorphicRange {
-            first_reg, count, ..
-        }
-        | InvokeCustomRange {
-            first_reg, count, ..
-        } => (*first_reg..*first_reg + u16::from(*count)).collect(),
-        _ => unreachable!(),
-    };
-    let shifted: Vec<u16> = registers.iter().map(|reg| allocation.shift(*reg)).collect();
-    let (arguments, prototype, receiver) = match insn {
-        FilledNewArray { type_, .. } | FilledNewArrayRange { type_, .. } => {
-            let descriptor = dex.type_descriptor(*type_);
-            let element = descriptor.strip_prefix('[').ok_or_else(|| {
-                invalid("register growth", "filled-new-array type is not an array")
-            })?;
-            (Some(vec![kind(element); registers.len()]), None, false)
-        }
-        InvokePolymorphic { proto, .. } | InvokePolymorphicRange { proto, .. } => {
-            (None, Some(dex.proto(*proto)), true)
-        }
-        InvokeCustom { call_site, .. } | InvokeCustomRange { call_site, .. } => {
-            let call_site = dex
-                .call_sites
-                .get(call_site.0 as usize)
-                .ok_or_else(|| invalid("register growth", "invalid invoke-custom call site"))?;
-            (None, Some(dex.proto(call_site.method_type)), false)
-        }
-        InvokeVirtual { method, .. }
-        | InvokeVirtualRange { method, .. }
-        | InvokeSuper { method, .. }
-        | InvokeSuperRange { method, .. }
-        | InvokeDirect { method, .. }
-        | InvokeDirectRange { method, .. }
-        | InvokeInterface { method, .. }
-        | InvokeInterfaceRange { method, .. } => {
-            (None, Some(dex.proto(dex.method_id(*method).proto)), true)
-        }
-        InvokeStatic { method, .. } | InvokeStaticRange { method, .. } => {
-            (None, Some(dex.proto(dex.method_id(*method).proto)), false)
-        }
-        _ => unreachable!(),
-    };
-    let arguments = arguments.unwrap_or_else(|| {
-        let mut arguments = Vec::new();
-        if receiver {
-            arguments.push(RegisterKind::Object);
-        }
-        for param in prototype.unwrap().parameters {
-            arguments.push(kind(&dex.type_descriptor(param)));
-        }
-        arguments
-    });
-    if arguments
-        .iter()
-        .map(|kind| kind.words() as usize)
-        .sum::<usize>()
-        != registers.len()
-    {
-        return Err(invalid(
-            "register growth",
-            "invoke argument count does not match prototype",
-        ));
-    }
-    let mut word = 0;
-    for kind in &arguments {
-        if *kind == RegisterKind::Wide && shifted[word + 1] != shifted[word] + 1 {
-            return Err(invalid(
-                "register growth",
-                "wide invoke argument crosses the local/parameter boundary",
-            ));
-        }
-        word += kind.words() as usize;
-    }
-    let compact = shifted.len() <= 5 && shifted.iter().all(|reg| *reg <= 15);
-    let consecutive = shifted.windows(2).all(|pair| pair[1] == pair[0] + 1);
-    let first = if compact || consecutive {
-        shifted.first().copied().unwrap_or(0)
-    } else {
-        let words = shifted.len() as u16;
-        let scratch = match allocation.dead_scratch(words, u16::MAX) {
-            Some(register) => register,
-            None => allocation.arguments.reserve(words)?,
-        };
-        let mut word = 0;
-        for kind in arguments {
-            expansion
-                .before
-                .push(move_register(scratch + word as u16, shifted[word], kind));
-            word += kind.words() as usize;
-        }
-        scratch
-    };
-    let args = || shifted.iter().map(|reg| *reg as u8).collect();
-    let count = u8::try_from(shifted.len())
-        .map_err(|_| invalid("register growth", "invoke exceeds 255 words"))?;
-    expansion.instruction = match *insn {
-        FilledNewArray { type_, .. } | FilledNewArrayRange { type_, .. } => {
-            if compact {
-                FilledNewArray {
-                    type_,
-                    args: args(),
-                }
-            } else {
-                FilledNewArrayRange {
-                    type_,
-                    first_reg: first,
-                    count,
-                }
-            }
-        }
-        InvokeVirtual { method, .. } | InvokeVirtualRange { method, .. } => {
-            if compact {
-                InvokeVirtual {
-                    method,
-                    args: args(),
-                }
-            } else {
-                InvokeVirtualRange {
-                    method,
-                    first_reg: first,
-                    count,
-                }
-            }
-        }
-        InvokeSuper { method, .. } | InvokeSuperRange { method, .. } => {
-            if compact {
-                InvokeSuper {
-                    method,
-                    args: args(),
-                }
-            } else {
-                InvokeSuperRange {
-                    method,
-                    first_reg: first,
-                    count,
-                }
-            }
-        }
-        InvokeDirect { method, .. } | InvokeDirectRange { method, .. } => {
-            if compact {
-                InvokeDirect {
-                    method,
-                    args: args(),
-                }
-            } else {
-                InvokeDirectRange {
-                    method,
-                    first_reg: first,
-                    count,
-                }
-            }
-        }
-        InvokeStatic { method, .. } | InvokeStaticRange { method, .. } => {
-            if compact {
-                InvokeStatic {
-                    method,
-                    args: args(),
-                }
-            } else {
-                InvokeStaticRange {
-                    method,
-                    first_reg: first,
-                    count,
-                }
-            }
-        }
-        InvokeInterface { method, .. } | InvokeInterfaceRange { method, .. } => {
-            if compact {
-                InvokeInterface {
-                    method,
-                    args: args(),
-                }
-            } else {
-                InvokeInterfaceRange {
-                    method,
-                    first_reg: first,
-                    count,
-                }
-            }
-        }
-        InvokePolymorphic { method, proto, .. } | InvokePolymorphicRange { method, proto, .. } => {
-            if compact {
-                InvokePolymorphic {
-                    method,
-                    proto,
-                    args: args(),
-                }
-            } else {
-                InvokePolymorphicRange {
-                    method,
-                    proto,
-                    first_reg: first,
-                    count,
-                }
-            }
-        }
-        InvokeCustom { call_site, .. } | InvokeCustomRange { call_site, .. } => {
-            if compact {
-                InvokeCustom {
-                    call_site,
-                    args: args(),
-                }
-            } else {
-                InvokeCustomRange {
-                    call_site,
-                    first_reg: first,
-                    count,
-                }
-            }
-        }
-        _ => unreachable!(),
-    };
-    Ok(())
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{CatchHandler, DexHeader, DexVersion, TryItem};
-
-    fn dex() -> DexFile {
-        fn header(version: DexVersion) -> DexHeader {
-            DexHeader {
-                version,
-                checksum: 0,
-                signature: [0; 20],
-                file_size: 0,
-                link_size: 0,
-                link_off: 0,
-                map_off: 0,
-                string_ids_size: 0,
-                string_ids_off: 0,
-                type_ids_size: 0,
-                type_ids_off: 0,
-                proto_ids_size: 0,
-                proto_ids_off: 0,
-                field_ids_size: 0,
-                field_ids_off: 0,
-                method_ids_size: 0,
-                method_ids_off: 0,
-                class_defs_size: 0,
-                class_defs_off: 0,
-                data_size: 0,
-                data_off: 0,
-                container_size: 0,
-                header_offset: 0,
-            }
-        }
-
-        DexFile::new(header(DexVersion::V035))
-    }
-
-    fn code(ins_size: u16, instructions: Vec<Instruction>) -> CodeItem {
-        CodeItem {
-            registers_size: 16,
-            ins_size,
-            outs_size: 0,
-            debug_info: None,
-            instructions,
-            tries: vec![],
-            catch_handlers: vec![],
-        }
-    }
-
-    #[test]
-    fn lowers_wide_field_access_and_relocates_branches_and_handlers() {
-        use Instruction::*;
-        let mut dex = dex();
-        let field = dex.intern_field("LExample;", "value", "J").unwrap();
-        let mut code = code(
-            1,
-            vec![
-                ConstWide16 { dest: 12, value: 7 },
-                IfEqz { a: 15, offset: 3 },
-                Nop,
-                IgetWide {
-                    dest: 12,
-                    obj: 15,
-                    field,
-                },
-                ReturnWide { src: 12 },
-                MoveException { dest: 0 },
-                ReturnWide { src: 12 },
-            ],
-        );
-        code.tries.push(TryItem {
-            start_addr: 5,
-            insn_count: 2,
-            handler_idx: 0,
-        });
-        code.catch_handlers.push(CatchHandler {
-            typed_catches: vec![],
-            catch_all_addr: Some(8),
-        });
-        let indices = grow_registers(&mut code, 3, &["LExample;".into()], &[], &dex).unwrap();
-        assert_eq!(code.registers_size, 19);
-        assert_eq!(indices, [0, 1, 2, 3, 5, 6, 7, 8]);
-        assert_eq!(code.instructions[3], MoveObjectFrom16 { dest: 0, src: 18 });
-        assert_eq!(
-            code.instructions[4],
-            IgetWide {
-                dest: 12,
-                obj: 0,
-                field
-            }
-        );
-        assert_eq!(code.instructions[1], IfEqz { a: 18, offset: 3 });
-        assert_eq!(code.tries[0].start_addr, 5);
-        assert_eq!(code.tries[0].insn_count, 4);
-        assert_eq!(code.catch_handlers[0].catch_all_addr, Some(10));
-    }
-
-    /// A register the caller holds is dead by liveness once its writer is in
-    /// and its reader is not yet emitted; staging must still leave it alone.
-    #[test]
-    fn a_protected_register_is_never_staged_through() {
-        use Instruction::*;
-        let mut dex = dex();
-        let field = dex.intern_field("LExample;", "value", "J").unwrap();
-        let body = vec![
-            Const4 { dest: 0, value: 0 },
-            IgetWide {
-                dest: 12,
-                obj: 15,
-                field,
-            },
-            ReturnWide { src: 12 },
-        ];
-        let mut unprotected = code(1, body.clone());
-        grow_registers(&mut unprotected, 3, &["LExample;".into()], &[], &dex).unwrap();
-        assert_eq!(
-            unprotected.instructions[1],
-            MoveObjectFrom16 { dest: 0, src: 18 },
-            "v0 is the dead register staging picks first"
-        );
-        let mut protected = code(1, body);
-        grow_registers(&mut protected, 3, &["LExample;".into()], &[0], &dex).unwrap();
-        assert_eq!(
-            protected.instructions[1],
-            MoveObjectFrom16 { dest: 1, src: 18 }
-        );
-        assert_eq!(
-            protected.instructions[2],
-            IgetWide {
-                dest: 12,
-                obj: 1,
-                field
-            }
-        );
-    }
-
-    #[test]
-    fn stages_reference_comparisons_with_object_moves() {
-        use Instruction::*;
-        let dex = dex();
-        let mut code = code(
-            2,
-            vec![
-                IfEq {
-                    a: 14,
-                    b: 15,
-                    offset: 3,
-                },
-                ReturnVoid,
-                ReturnVoid,
-            ],
-        );
-        grow_registers(
-            &mut code,
-            3,
-            &["Ljava/lang/Object;".into(), "Ljava/lang/Object;".into()],
-            &[],
-            &dex,
-        )
-        .unwrap();
-        assert_eq!(
-            code.instructions,
-            [
-                MoveObjectFrom16 { dest: 0, src: 17 },
-                MoveObjectFrom16 { dest: 1, src: 18 },
-                IfEq {
-                    a: 0,
-                    b: 1,
-                    offset: 3
-                },
-                ReturnVoid,
-                ReturnVoid
-            ]
-        );
-    }
-
-    #[test]
-    fn failure_preserves_code_instead_of_clobbering_a_live_register() {
-        use Instruction::*;
-        let mut dex = dex();
-        let field = dex.intern_field("LExample;", "value", "I").unwrap();
-        let method = dex
-            .intern_method("LExample;", "consume", "(IIIIIIIIIIIIIIILExample;)V")
-            .unwrap();
-        let mut code = code(
-            16,
-            vec![
-                Iput {
-                    src: 14,
-                    obj: 15,
-                    field,
-                },
-                InvokeStaticRange {
-                    method,
-                    first_reg: 0,
-                    count: 16,
-                },
-                ReturnVoid,
-            ],
-        );
-        let original = code.clone();
-        let mut incoming = vec!["I".to_string(); 15];
-        incoming.push("LExample;".into());
-        assert!(grow_registers(&mut code, 3, &incoming, &[], &dex).is_err());
-        assert_eq!(code, original);
-    }
-    #[test]
-    fn grows_a_two_register_getter_by_thirty_two_locals() {
-        use Instruction::*;
-        let mut dex = dex();
-        let field = dex
-            .intern_field("LExample;", "items", "Ljava/util/List;")
-            .unwrap();
-        let mut code = code(
-            1,
-            vec![
-                IgetObject {
-                    dest: 0,
-                    obj: 1,
-                    field,
-                },
-                ReturnObject { src: 0 },
-            ],
-        );
-        code.registers_size = 2;
-        let indices = grow_registers(&mut code, 32, &["LExample;".into()], &[], &dex).unwrap();
-        assert_eq!(indices, [0, 2, 3]);
-        assert_eq!(code.registers_size, 34);
-        assert_eq!(
-            code.instructions,
-            [
-                MoveObjectFrom16 { dest: 0, src: 33 },
-                IgetObject {
-                    dest: 0,
-                    obj: 0,
-                    field
-                },
-                ReturnObject { src: 0 }
-            ]
-        );
-    }
-}
+mod tests;

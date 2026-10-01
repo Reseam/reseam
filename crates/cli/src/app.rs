@@ -17,6 +17,8 @@ pub struct Cli {
 pub enum Commands {
     Patch(PatchCommand),
     Perf(PerfCommand),
+    #[command(hide = true)]
+    PerfWorker,
     Info(InfoCommand),
     Bundle {
         #[command(subcommand)]
@@ -97,6 +99,10 @@ pub struct InfoCommand {
 pub enum BundleCommands {
     Keygen(BundleKeygenCommand),
     Pack(BundlePackCommand),
+    /// Validate a staging manifest and print its bundle metadata as JSON.
+    Manifest {
+        path: PathBuf,
+    },
     List(BundleListCommand),
 }
 
@@ -177,32 +183,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn output_flags_are_mutually_exclusive_for_every_input_format() {
-        for input in ["app.apk", "app.apkm", "app.xapk"] {
-            let error = Cli::try_parse_from([
-                "reseam",
-                "patch",
-                input,
-                "--bundle",
-                "patches.reseam",
-                "--output",
-                "out.apk",
-                "--output-dir",
-                "out",
-            ])
-            .err()
-            .expect("conflicting output flags");
-            assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
-            assert!(Cli::try_parse_from([
-                "reseam",
-                "patch",
-                input,
-                "--bundle",
-                "patches.reseam",
-                "--output-dir",
-                "out"
-            ])
-            .is_ok());
+    fn patch_arguments_enforce_output_and_signing_constraints() {
+        let prefix = ["reseam", "patch", "app.apk", "--bundle", "patches.reseam"];
+        for flags in [
+            vec!["--output", "out.apk", "--output-dir", "out"],
+            vec!["--output", "out.apk", "--split", "config.en.apk"],
+            vec!["--key", "identity.pk8"],
+            vec!["--cert", "identity.der"],
+        ] {
+            assert!(Cli::try_parse_from(prefix.into_iter().chain(flags)).is_err());
+        }
+        for flags in [
+            vec!["--output", "out.apk"],
+            vec!["--output-dir", "out", "--split", "config.en.apk"],
+            vec!["--key", "identity.pk8", "--cert", "identity.der"],
+        ] {
+            assert!(Cli::try_parse_from(prefix.into_iter().chain(flags)).is_ok());
         }
     }
 }

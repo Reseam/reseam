@@ -1,14 +1,18 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use reseam_apk::reseam_dex::MethodKind;
+
+use crate::error::{PatcherError, Result as PatcherResult};
+use crate::kotlin::handles::checked;
 use boltffi::export;
 use reseam_apk::reseam_dex::{
-    AccessFlags, DexFile, EncodedField, EncodedValue, Fingerprint, InstructionPattern, TypeIdx,
+    AccessFlags, DexFile, EncodedField, Fingerprint, InstructionPattern, TypeIdx,
 };
 
 use crate::context::{ClassLocation, FingerprintLocation, MethodLocation};
 use crate::kotlin::handles::{
-    alloc_class, alloc_method, alloc_methods, class_location, method_location, with_ctx,
+    alloc_class, alloc_method, alloc_methods, changed, class_location, method_location, with_ctx,
 };
 use crate::kotlin::types::{
     ClassInfo, EncodedVal, FieldInfo, FingerprintDef, FingerprintResult, MethodInfo,
@@ -17,38 +21,46 @@ use crate::kotlin::types::{
 #[export]
 pub fn find_method(class_descriptor: String, method_name: String) -> Option<u32> {
     with_ctx(|ctx| {
+        let before = ctx.dex().len();
         ctx.find_or_link_class(&class_descriptor)?;
-        ctx.find_method(&class_descriptor, &method_name)
+        if ctx.dex().len() != before {
+            changed();
+        }
+        checked(ctx.find_method(&class_descriptor, &method_name))
     })
     .map(alloc_method)
 }
 
-/// The static hook that runs at app start; see `PatchContext::app_entry_hook`.
 #[export]
 pub fn app_entry_hook() -> Result<u32, String> {
-    with_ctx(|ctx| ctx.app_entry_hook())
+    #[expect(
+        clippy::redundant_closure_for_method_calls,
+        reason = "the closure accepts every context lifetime"
+    )]
+    crate::kotlin::handles::try_with_ctx(|ctx| ctx.app_entry_hook())
+        .flatten()
         .map(alloc_method)
         .map_err(|e| e.to_string())
 }
 
 #[export]
 pub fn find_method_by_name(name: String) -> Option<u32> {
-    with_ctx(|ctx| ctx.find_method_by_name(&name)).map(alloc_method)
+    with_ctx(|ctx| checked(ctx.find_method_by_name(&name))).map(alloc_method)
 }
 
 #[export]
 pub fn find_methods_by_name(name: String) -> Vec<u32> {
-    alloc_methods(with_ctx(|ctx| ctx.find_methods_by_name(&name)))
+    alloc_methods(with_ctx(|ctx| checked(ctx.find_methods_by_name(&name))))
 }
 
 #[export]
 pub fn find_methods_by_strings(strings: Vec<String>) -> Vec<u32> {
     let strings: Vec<&str> = strings.iter().map(String::as_str).collect();
-    alloc_methods(with_ctx(|ctx| ctx.find_methods_by_strings(&strings)))
+    alloc_methods(with_ctx(|ctx| {
+        checked(ctx.find_methods_by_strings(&strings))
+    }))
 }
 
-/// Methods whose prototype satisfies every given filter: exact return type,
-/// exact parameter list, and a parameter of `parameter` type anywhere.
 #[export]
 pub fn find_methods_by_proto(
     return_type: Option<String>,
@@ -59,39 +71,58 @@ pub fn find_methods_by_proto(
         .as_ref()
         .map(|types| types.iter().map(String::as_str).collect());
     alloc_methods(with_ctx(|ctx| {
-        ctx.find_methods_by_proto(
+        checked(ctx.find_methods_by_proto(
             return_type.as_deref(),
             parameter_types.as_deref(),
             parameter.as_deref(),
+        ))
+    }))
+}
+
+#[export]
+pub fn find_methods_by_opcodes(pattern: Vec<i32>) -> Vec<u32> {
+    alloc_methods(with_ctx(|ctx| {
+        checked(
+            opcode_patterns(&pattern).and_then(|pattern| ctx.find_methods_with_opcodes(&pattern)),
         )
     }))
 }
 
-/// Negative opcodes match any instruction.
-#[export]
-pub fn find_methods_by_opcodes(pattern: Vec<i32>) -> Vec<u32> {
-    let pattern = opcode_patterns(&pattern);
-    alloc_methods(with_ctx(|ctx| ctx.find_methods_with_opcodes(&pattern)))
-}
-
 #[export]
 pub fn find_method_by_fingerprint(fp: FingerprintDef) -> Option<FingerprintResult> {
-    let fingerprint = convert_fingerprint(&fp);
-    with_ctx(|ctx| ctx.find_method_by_fingerprint(&fingerprint)).map(fingerprint_result)
+    with_ctx(|ctx| {
+        checked(
+            convert_fingerprint(&fp)
+                .and_then(|fingerprint| ctx.find_method_by_fingerprint(&fingerprint)),
+        )
+    })
+    .map(fingerprint_result)
 }
 
 #[export]
 pub fn find_methods_by_fingerprint(fp: FingerprintDef) -> Vec<FingerprintResult> {
-    let fingerprint = convert_fingerprint(&fp);
-    with_ctx(|ctx| ctx.find_methods_by_fingerprint(&fingerprint))
-        .into_iter()
-        .map(fingerprint_result)
-        .collect()
+    with_ctx(|ctx| {
+        checked(
+            convert_fingerprint(&fp)
+                .and_then(|fingerprint| ctx.find_methods_by_fingerprint(&fingerprint)),
+        )
+    })
+    .into_iter()
+    .map(fingerprint_result)
+    .collect()
 }
 
 #[export]
 pub fn find_class(descriptor: String) -> Option<u32> {
-    with_ctx(|ctx| ctx.find_or_link_class(&descriptor)).map(alloc_class)
+    with_ctx(|ctx| {
+        let before = ctx.dex().len();
+        let class = ctx.find_or_link_class(&descriptor);
+        if ctx.dex().len() != before {
+            changed();
+        }
+        class
+    })
+    .map(alloc_class)
 }
 
 #[export]
@@ -99,7 +130,7 @@ pub fn get_all_classes() -> Vec<u32> {
     with_ctx(|ctx| {
         (0..ctx.dex().len())
             .flat_map(|dex_idx| {
-                let classes = ctx.dex_file(dex_idx).map_or(0, |dex| dex.classes.len());
+                let classes = ctx.dex_file(dex_idx).map_or(0, |dex| dex.classes().len());
                 (0..classes).map(move |class_idx| alloc_class(ClassLocation { dex_idx, class_idx }))
             })
             .collect()
@@ -110,15 +141,15 @@ pub fn get_all_classes() -> Vec<u32> {
 pub fn get_method_info(m: u32) -> Option<MethodInfo> {
     let location = method_location(m)?;
     with_ctx(|ctx| {
-        let summary = ctx.read_method_summary(location)?;
+        let summary = checked(ctx.read_method_summary(location))?;
         let dex = ctx.dex_file(location.dex_idx)?;
-        let method_id = dex.methods.try_get(summary.method.0 as usize)?;
+        let method_id = dex.methods().try_get(summary.method.0 as usize)?;
         Some(MethodInfo {
             class_descriptor: dex
                 .type_descriptor(dex.class_header(location.class_idx).class_type)
                 .into_owned(),
             method_name: dex.string(method_id.name).into_owned(),
-            proto: dex.proto_descriptor(&dex.prototypes.try_get(method_id.proto.0 as usize)?),
+            proto: dex.proto_descriptor(&dex.prototypes().try_get(method_id.proto.0 as usize)?),
             access_flags: summary.access_flags.bits(),
             dex_index: location.dex_idx as u32,
             register_count: summary.registers_size,
@@ -133,7 +164,7 @@ pub fn get_method_info(m: u32) -> Option<MethodInfo> {
 pub fn get_class_info(c: u32) -> Option<ClassInfo> {
     let location = class_location(c)?;
     with_ctx(|ctx| {
-        let counts = ctx.read_class_counts(location)?;
+        let counts = checked(ctx.read_class_counts(location))?;
         let dex = ctx.dex_file(location.dex_idx)?;
         let class = dex.class_header(location.class_idx);
         Some(ClassInfo {
@@ -143,7 +174,7 @@ pub fn get_class_info(c: u32) -> Option<ClassInfo> {
                 .superclass
                 .map(|s| dex.type_descriptor(s).into_owned()),
             interfaces: dex
-                .classes
+                .classes()
                 .interfaces(location.class_idx)
                 .iter()
                 .map(|i| dex.type_descriptor(*i).into_owned())
@@ -160,20 +191,20 @@ pub fn get_class_info(c: u32) -> Option<ClassInfo> {
 
 #[export]
 pub fn class_direct_methods(c: u32) -> Vec<u32> {
-    method_handles(c, false)
+    method_handles(c, MethodKind::Direct)
 }
 
 #[export]
 pub fn class_virtual_methods(c: u32) -> Vec<u32> {
-    method_handles(c, true)
+    method_handles(c, MethodKind::Virtual)
 }
 
-fn method_handles(c: u32, is_virtual: bool) -> Vec<u32> {
+fn method_handles(c: u32, kind: MethodKind) -> Vec<u32> {
     let Some(class) = class_location(c) else {
         return Vec::new();
     };
-    let count = with_ctx(|ctx| ctx.read_class_counts(class)).map_or(0, |counts| {
-        if is_virtual {
+    let count = with_ctx(|ctx| checked(ctx.read_class_counts(class))).map_or(0, |counts| {
+        if kind == MethodKind::Virtual {
             counts.virtual_methods
         } else {
             counts.direct_methods
@@ -183,33 +214,39 @@ fn method_handles(c: u32, is_virtual: bool) -> Vec<u32> {
         dex_idx: class.dex_idx,
         class_idx: class.class_idx,
         method_idx,
-        is_virtual,
+        kind,
     }))
 }
 
-/// Static fields first, then instance fields.
 #[export]
 pub fn class_fields(c: u32) -> Vec<FieldInfo> {
     let Some(location) = class_location(c) else {
         return Vec::new();
     };
     with_ctx(|ctx| {
-        let Some((dex, statics, instances)) = ctx.read_class_fields(location) else {
+        let Some((dex, fields)) = checked(ctx.read_class_fields(location)) else {
             return Vec::new();
         };
-        let Ok(static_values) = dex.class_static_values(location.class_idx) else {
+        let Some(static_values) = checked(dex.class_static_values(location.class_idx).map(Some))
+        else {
             return Vec::new();
         };
         let class_type = dex.class_header(location.class_idx).class_type;
-        statics
+        fields
+            .statics
             .iter()
-            .enumerate()
-            .map(|(i, field)| {
-                let initial_value = static_values.get(i).and_then(|v| encoded_val(v, dex));
+            .map(|field| {
+                let initial_value = static_values.get(&field.field).and_then(|v| {
+                    checked(
+                        crate::kotlin::convert::export_value(dex, Some(location.dex_idx), v)
+                            .map(Some),
+                    )
+                });
                 field_info(dex, class_type, field, initial_value)
             })
             .chain(
-                instances
+                fields
+                    .instances
                     .iter()
                     .map(|field| field_info(dex, class_type, field, None)),
             )
@@ -233,26 +270,49 @@ fn field_info(
     }
 }
 
-pub(super) fn opcode_patterns(opcodes: &[i32]) -> Vec<InstructionPattern> {
+pub(super) fn query_opcode(opcode: i32) -> PatcherResult<Option<u16>> {
+    if opcode < 0 {
+        return Ok(None);
+    }
+    u16::try_from(opcode)
+        .map(Some)
+        .map_err(|_| PatcherError::Bridge(format!("opcode filter {opcode} exceeds 16 bits")))
+}
+
+pub(super) fn opcode_patterns(opcodes: &[i32]) -> PatcherResult<Vec<InstructionPattern>> {
     opcodes
         .iter()
         .map(|&op| {
-            u16::try_from(op).map_or(InstructionPattern::Any, InstructionPattern::OpcodeValue)
+            query_opcode(op).map(|opcode| {
+                opcode.map_or(InstructionPattern::Any, InstructionPattern::OpcodeValue)
+            })
         })
         .collect()
 }
 
-fn convert_fingerprint(fp: &FingerprintDef) -> Fingerprint {
-    Fingerprint {
+fn convert_fingerprint(fp: &FingerprintDef) -> PatcherResult<Fingerprint> {
+    Ok(Fingerprint {
         name: fp.name.clone(),
         defining_class: fp.defining_class.clone(),
-        access_flags: fp.access_flags.map(AccessFlags::from_bits_truncate),
-        return_type: fp.return_type.clone(),
-        parameters: fp.parameters.clone(),
-        opcodes: fp.opcodes.as_deref().map(opcode_patterns),
+        access_flags: fp.access_flags.map(AccessFlags::from_bits_retain),
+        return_type: fp
+            .return_type
+            .clone()
+            .map(reseam_apk::reseam_dex::TypePattern::Prefix),
+        parameters: fp.parameters.as_ref().map(|parameters| {
+            parameters
+                .iter()
+                .map(|parameter| match parameter.as_str() {
+                    "L" => reseam_apk::reseam_dex::TypePattern::Object,
+                    "[" => reseam_apk::reseam_dex::TypePattern::Array,
+                    _ => reseam_apk::reseam_dex::TypePattern::Exact(parameter.clone()),
+                })
+                .collect()
+        }),
+        opcodes: fp.opcodes.as_deref().map(opcode_patterns).transpose()?,
         strings: fp.strings.clone(),
         literals: fp.literals.clone(),
-    }
+    })
 }
 
 fn fingerprint_result(hit: FingerprintLocation) -> FingerprintResult {
@@ -262,26 +322,9 @@ fn fingerprint_result(hit: FingerprintLocation) -> FingerprintResult {
     }
 }
 
-fn encoded_val(value: &EncodedValue, dex: &DexFile) -> Option<EncodedVal> {
-    Some(match value {
-        EncodedValue::Null => EncodedVal::Null,
-        EncodedValue::Boolean(b) => EncodedVal::BoolVal(*b),
-        EncodedValue::Byte(v) => EncodedVal::ByteVal(*v),
-        EncodedValue::Short(v) => EncodedVal::ShortVal(*v),
-        EncodedValue::Char(v) => EncodedVal::CharVal(*v),
-        EncodedValue::Int(v) => EncodedVal::IntVal(*v),
-        EncodedValue::Long(v) => EncodedVal::LongVal(*v),
-        EncodedValue::Float(v) => EncodedVal::FloatVal(*v),
-        EncodedValue::Double(v) => EncodedVal::DoubleVal(*v),
-        EncodedValue::String(idx) => EncodedVal::StringVal(dex.string(*idx).into_owned()),
-        EncodedValue::Type(idx) => EncodedVal::TypeVal(dex.type_descriptor(*idx).into_owned()),
-        _ => return None,
-    })
-}
-
 #[export]
 pub fn find_classes_with_instance_field(field_type: String) -> Vec<u32> {
-    with_ctx(|ctx| ctx.find_classes_with_instance_field(&field_type))
+    with_ctx(|ctx| checked(ctx.find_classes_with_instance_field(&field_type)))
         .into_iter()
         .map(alloc_class)
         .collect()

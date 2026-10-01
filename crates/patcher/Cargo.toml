@@ -1,7 +1,8 @@
 [package]
 name = "reseam-patcher"
 version.workspace = true
-edition = "2021"
+edition.workspace = true
+rust-version.workspace = true
 description = "Patch execution engine for Reseam with Kotlin JVM bridge support"
 readme = "README.md"
 
@@ -9,11 +10,13 @@ readme = "README.md"
 crate-type = ["rlib"]
 
 [dependencies]
+reseam-storage = { workspace = true }
 reseam-model = { workspace = true }
 reseam-apk          = { workspace = true }
 reseam-sign         = { workspace = true, optional = true }
 thiserror   = { workspace = true }
 serde       = { workspace = true }
+serde_json  = { workspace = true }
 toml        = { workspace = true }
 smallvec    = { workspace = true }
 rustc-hash  = { workspace = true }
@@ -30,12 +33,12 @@ hex         = { workspace = true }
 [target.'cfg(not(target_os = "android"))'.dependencies]
 libloading  = { workspace = true }
 
-[dev-dependencies]
-serde_json = { workspace = true }
-
 [features]
 default = ["kotlin"]
 kotlin = ["dep:boltffi", "dep:jni", "dep:reseam-sign"]
 
 [build-dependencies]
 cc = "1"
+
+[lints]
+workspace = true

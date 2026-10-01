@@ -6,10 +6,10 @@ use super::{FieldIdx, MethodIdx, StringIdx, TypeIdx};
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct AnnotationsDirectory {
-    pub class_annotations: Vec<AnnotationItem>,
-    pub field_annotations: Vec<(FieldIdx, Vec<AnnotationItem>)>,
-    pub method_annotations: Vec<(MethodIdx, Vec<AnnotationItem>)>,
-    pub parameter_annotations: Vec<(MethodIdx, Vec<Vec<AnnotationItem>>)>,
+    pub class: Vec<AnnotationItem>,
+    pub fields: Vec<(FieldIdx, Vec<AnnotationItem>)>,
+    pub methods: Vec<(MethodIdx, Vec<AnnotationItem>)>,
+    pub parameters: Vec<(MethodIdx, Vec<Vec<AnnotationItem>>)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

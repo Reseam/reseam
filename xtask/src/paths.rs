@@ -9,15 +9,3 @@ pub fn workspace_root() -> PathBuf {
         .expect("xtask crate lives one level below the workspace root")
         .to_path_buf()
 }
-
-pub fn patcher_crate() -> PathBuf {
-    workspace_root().join("crates/patcher")
-}
-
-pub fn patch_api() -> PathBuf {
-    workspace_root().join("patch-api")
-}
-
-pub fn sdk() -> PathBuf {
-    workspace_root().join("sdk")
-}

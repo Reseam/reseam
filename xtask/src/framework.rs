@@ -1,0 +1,173 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+use std::collections::{BTreeMap, btree_map::Entry};
+use std::fmt::Write as _;
+use std::fs::{self, File};
+use std::path::Path;
+use std::sync::Arc;
+
+use anyhow::{Context, Result, bail, ensure};
+use reseam_apk::ResourceTable;
+use reseam_apk::reseam_dex::file::DexBytes;
+use reseam_apk::resources::{EntryValue, MapEntry};
+use sha2::{Digest, Sha256};
+
+// Android SDK platforms;android-36, revision 2. Hash the decompressed resource
+// table so repacking android.jar cannot silently substitute framework metadata.
+const TABLE_SHA256: &str = "760f96db566cca5237fb126a2559cebe7455b07e47c15eeed050c4a73fea2d54";
+
+struct Resource {
+    finalized_id: u32,
+    type_name: String,
+    name: String,
+    public: bool,
+}
+
+pub fn generate(android_jar: &Path) -> Result<()> {
+    let mut archive = zip::ZipArchive::new(File::open(android_jar)?)?;
+    let mut input = tempfile::tempfile()?;
+    std::io::copy(&mut archive.by_name("resources.arsc")?, &mut input)?;
+    // SAFETY: the private temporary file is never modified while mapped.
+    let mapped = unsafe { memmap2::Mmap::map(&input) }?;
+    ensure!(
+        hex::encode(Sha256::digest(&mapped)) == TABLE_SHA256,
+        "expected Android SDK platform 36, revision 2 resources.arsc ({TABLE_SHA256})"
+    );
+    let table = ResourceTable::parse(DexBytes::from_mmap(Arc::new(mapped)))?;
+    let mut resources = BTreeMap::<u32, Resource>::new();
+    let mut attributes = BTreeMap::<u32, Vec<MapEntry>>::new();
+    for package in table.packages() {
+        ensure!(package.id() == 1, "expected the android framework package");
+        for res_type in package.types() {
+            let type_name = package
+                .type_strings()
+                .get(u32::from(res_type.id()) - 1)?
+                .context("framework type name")?;
+            for index in 0..res_type.len() {
+                let Some(entry) = res_type.entry(index)? else {
+                    continue;
+                };
+                let id = package.resource_id(res_type.id(), index)?;
+                let resource = match resources.entry(id) {
+                    Entry::Occupied(entry) => entry.into_mut(),
+                    Entry::Vacant(slot) => slot.insert(Resource {
+                        finalized_id: table.finalized_resource_id(id)?,
+                        type_name: type_name.to_string(),
+                        name: package
+                            .key_strings()
+                            .get(entry.key)?
+                            .context("framework resource name")?
+                            .into_owned(),
+                        public: false,
+                    }),
+                };
+                resource.public |= entry.flags & 2 != 0;
+                if type_name == "attr"
+                    && let EntryValue::Complex { entries, .. } = entry.value
+                {
+                    attributes.entry(id).or_insert(entries);
+                }
+            }
+        }
+    }
+    let output = format_catalogue(&table, &resources, &attributes)?;
+    let destination =
+        crate::paths::workspace_root().join("crates/apk/src/axml/android_attrs/data.rs");
+    fs::create_dir_all(destination.parent().context("framework output directory")?)?;
+    fs::write(destination, output)?;
+    Ok(())
+}
+
+fn format_catalogue(
+    table: &ResourceTable,
+    resources: &BTreeMap<u32, Resource>,
+    attributes: &BTreeMap<u32, Vec<MapEntry>>,
+) -> Result<String> {
+    let mut public = BTreeMap::new();
+    let mut attrs = BTreeMap::new();
+    let mut symbols = BTreeMap::new();
+    for (&id, resource) in resources.iter().filter(|(_, resource)| resource.public) {
+        if resource.type_name != "attr" {
+            public.insert((&resource.type_name, &resource.name), resource.finalized_id);
+            continue;
+        }
+        let items = attributes
+            .get(&id)
+            .context("public framework attribute bag")?;
+        let formats = table
+            .attr_formats(id)?
+            .context("framework attribute formats")?;
+        attrs.insert(
+            resource.name.as_str(),
+            (resource.finalized_id, formats.bits()),
+        );
+        for item in items.iter().filter(|item| item.name & 0x00ff_0000 != 0) {
+            let name = &resources
+                .get(&item.name)
+                .with_context(|| {
+                    format!(
+                        "framework symbol 0x{:08x} of attribute {}",
+                        item.name, resource.name
+                    )
+                })?
+                .name;
+            symbols.insert((resource.finalized_id, name), item.value.data);
+        }
+    }
+    ensure!(
+        !attrs.is_empty(),
+        "framework table contains no public attributes"
+    );
+    let mut output = String::from(
+        "// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>\n\
+         // SPDX-License-Identifier: GPL-3.0-or-later\n\n\
+         // Generated by cargo run -p xtask -- framework-attributes --android-jar <SDK>/platforms/android-36/android.jar.\n\
+         // Android SDK API 36, revision 2; resources.arsc SHA-256:\n",
+    );
+    writeln!(output, "// {TABLE_SHA256}\n\nuse super::AttributeInfo;\n")?;
+    for (constant, name) in [
+        ("LABEL", "label"),
+        ("ICON", "icon"),
+        ("DRAWABLE", "drawable"),
+        ("NAME", "name"),
+        ("ENABLED", "enabled"),
+        ("CONFIG_CHANGES", "configChanges"),
+        ("MIME_TYPE", "mimeType"),
+        ("TARGET_ACTIVITY", "targetActivity"),
+        ("MIN_SDK_VERSION", "minSdkVersion"),
+        ("VERSION_CODE", "versionCode"),
+        ("VERSION_NAME", "versionName"),
+        ("SPLIT_NAME", "splitName"),
+    ] {
+        let Some(&(id, _)) = attrs.get(name) else {
+            bail!("framework attribute {name} is not public");
+        };
+        writeln!(output, "pub const ATTR_{constant}: u32 = {};", hex(id))?;
+    }
+    output.push_str(
+        "\n#[rustfmt::skip]\npub(super) static ANDROID_ATTRS: &[(&str, AttributeInfo)] = &[\n",
+    );
+    for (name, (id, formats)) in &attrs {
+        writeln!(
+            output,
+            "    ({name:?}, AttributeInfo {{ id: {}, formats: {} }}),",
+            hex(*id),
+            hex(*formats)
+        )?;
+    }
+    output.push_str("];\n\n#[rustfmt::skip]\npub(super) static ANDROID_RESOURCES: &[((&str, &str), u32)] = &[\n");
+    for ((kind, name), id) in public {
+        writeln!(output, "    (({kind:?}, {name:?}), {}),", hex(id))?;
+    }
+    output.push_str("];\n\n#[rustfmt::skip]\npub(super) static ANDROID_ATTR_SYMBOLS: &[((u32, &str), u32)] = &[\n");
+    for ((id, name), value) in symbols {
+        writeln!(output, "    (({}, {name:?}), {}),", hex(id), hex(value))?;
+    }
+    output.push_str("];\n");
+    Ok(output)
+}
+
+fn hex(value: u32) -> String {
+    format!("0x{:04x}_{:04x}", value >> 16, value & 0xffff)
+}

@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Resolving which patches run and running them in dependency order.
-
 mod index;
 mod plan;
 mod run;

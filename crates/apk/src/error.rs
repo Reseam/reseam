@@ -26,6 +26,20 @@ pub enum ApkError {
         reason: String,
     },
 
+    #[error("file {}: {source}", .path.display())]
+    File {
+        path: std::path::PathBuf,
+        #[source]
+        source: Box<Self>,
+    },
+
+    #[error("entry {name}: {source}")]
+    Entry {
+        name: String,
+        #[source]
+        source: Box<Self>,
+    },
+
     #[error("ZIP error: {0}")]
     Zip(#[from] ::zip::result::ZipError),
 
@@ -68,5 +82,21 @@ pub(crate) fn invalid(section: &'static str, reason: impl Into<String>) -> ApkEr
     ApkError::Invalid {
         section,
         reason: reason.into(),
+    }
+}
+
+impl ApkError {
+    pub(crate) fn in_file(self, path: &std::path::Path) -> Self {
+        Self::File {
+            path: path.into(),
+            source: Box::new(self),
+        }
+    }
+
+    pub(crate) fn in_entry(self, name: &str) -> Self {
+        Self::Entry {
+            name: name.into(),
+            source: Box::new(self),
+        }
     }
 }

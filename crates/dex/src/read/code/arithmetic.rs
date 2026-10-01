@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use super::format::u16_at;
+use crate::read::u16_at;
 
-pub fn decode_23x(buf: &[u8], off: usize) -> (u8, u8, u8) {
+pub fn decode_23x(buf: &[u8], off: usize) -> [u8; 3] {
     let aa = (u16_at(buf, off) >> 8) as u8;
     let unit1 = u16_at(buf, off + 2);
     let bb = unit1 as u8;
     let cc = (unit1 >> 8) as u8;
-    (aa, bb, cc)
+    [aa, bb, cc]
 }

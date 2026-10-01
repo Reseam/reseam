@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use serde::{Deserialize, Serialize};
+
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[boltffi::data]
 pub struct MaterializationStats {
@@ -25,14 +26,14 @@ pub struct MemoryBreakdown {
     pub materialized: MaterializationStats,
 }
 
-/// Java-heap usage of the in-process patch JVM. Part of this process's RSS, so
+/// Java-heap usage in bytes of the in-process patch JVM. Part of this process's RSS, so
 /// it must be subtracted to attribute memory to the native side.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[boltffi::data]
 pub struct JvmHeapStats {
-    pub used_bytes: u64,
-    pub committed_bytes: u64,
-    pub max_bytes: u64,
+    pub used: u64,
+    pub committed: u64,
+    pub max: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -75,8 +76,8 @@ pub struct PatchPhaseMetrics {
     pub heap_peak_bytes: Option<u64>,
 }
 
-/// Sampled right after `apply_patches`, at the apply-phase memory peak, to
-/// attribute RSS to materialized DEX IR vs the in-process JVM vs everything else.
+/// Memory sampled immediately after patch application, attributing process RSS
+/// to materialized DEX IR, the in-process JVM, and other allocations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[boltffi::data]
 pub struct ApplyDiagnostics {

@@ -11,12 +11,11 @@ import app.reseam.patch.dex.methodRef
 import app.reseam.patch.dex.opcode
 import app.reseam.patch.dex.parameterTypes
 import app.reseam.patch.dex.returnType
-import app.reseam.patch.native.Instruction
+import app.reseam.patch.types.Instruction
 
 /** Redirect this invoke to a static extension, passing the receiver first for instance calls. */
 fun PointTarget.redirectTo(target: ExtMethod) = prepareRedirect(target).apply()
 
-/** Validate all selected calls before mutating any. Shared by scoped and global redirection. */
 internal fun List<PointTarget>.redirectTo(target: ExtMethod): Int {
     val edits = map { it.prepareRedirect(target) }
     edits.forEach { it.apply() }
@@ -32,16 +31,18 @@ private fun PointTarget.prepareRedirect(target: ExtMethod): CallRedirect {
     val insns = point.method.instructions
     val call = insns[point.index]
     val location = "$label: ${point.method.descriptor}[${point.index}]"
-    require(call.opcode in redirectableInvokes) { "$location: redirectTo does not support ${call.opcode}" }
+    require(call.opcode in redirectableInvokes) {
+        "$location: redirectTo does not support ${call.opcode}"
+    }
     val from = requireNotNull(call.methodRef) { "$location: invoke has no method reference" }
     require(from.name != "<init>") { "$location: constructors cannot be redirected" }
-    require(target.isStatic && target.target.method.isStatic) { "$location: redirect target $target must be static" }
-    Access(point.method.owner).requireMethod(target.ref)
-    val actual = call.arguments(location).map { it.type }
-    val expected = target.ref.parameterTypes
-    require(actual.size == expected.size && actual.zip(expected).all { (a, e) -> isAssignableType(a, e) }) {
-        "$location: ${from.descriptor} passes $actual, incompatible with $target taking $expected"
+    require(target.isStatic && target.target.method.isStatic) {
+        "$location: redirect target $target must be static"
     }
+    Access(point.method.owner).requireMethod(target.ref)
+    val actual = call.arguments(location).map { ValueType.Known(it.type) }
+    val expected = target.ref.parameterTypes
+    requireArgumentTypes(actual, expected, "$location redirect ${from.descriptor} to $target")
     val registers = call.invokeRegisters.orEmpty()
     if (insns.getOrNull(point.index + 1)?.opcode?.isMoveResult == true) {
         require(isAssignableType(target.ref.returnType, from.returnType)) {
@@ -50,9 +51,19 @@ private fun PointTarget.prepareRedirect(target: ExtMethod): CallRedirect {
     }
     // The registers and word count are unchanged. The existing invoke lowering
     // chooses 35c/range; replacement retains incoming branches and tracked anchors.
-    val replacement = buildInstructions { invokeStatic(target.owner, target.name, target.proto, *registers.toIntArray()) }.single()
+    val replacement = buildInstructions {
+        invokeStatic(target.owner, target.name, target.proto, *registers.toIntArray())
+    }
+        .single()
     return CallRedirect(point, replacement)
 }
 
-internal val redirectableInvokes = setOf(Opcode.INVOKE_STATIC, Opcode.INVOKE_STATIC_RANGE,
-    Opcode.INVOKE_VIRTUAL, Opcode.INVOKE_VIRTUAL_RANGE, Opcode.INVOKE_INTERFACE, Opcode.INVOKE_INTERFACE_RANGE)
+internal val redirectableInvokes =
+    setOf(
+        Opcode.INVOKE_STATIC,
+        Opcode.INVOKE_STATIC_RANGE,
+        Opcode.INVOKE_VIRTUAL,
+        Opcode.INVOKE_VIRTUAL_RANGE,
+        Opcode.INVOKE_INTERFACE,
+        Opcode.INVOKE_INTERFACE_RANGE,
+    )

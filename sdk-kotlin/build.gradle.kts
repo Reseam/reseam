@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import java.util.Locale
-
 plugins {
     kotlin("multiplatform")
     id("com.android.kotlin.multiplatform.library")
@@ -13,33 +11,33 @@ val rustSdk = rootProject.layout.projectDirectory.dir("sdk")
 val desktopNatives = rustSdk.dir("dist/android/desktopJniLibs")
 
 val androidNatives = layout.buildDirectory.dir("staged/jniLibs")
-val stageJniLibs by tasks.registering(Sync::class) {
-    from(rustSdk.dir("jniLibs")) { include("*/libreseam-sdk-native.so") }
-    into(androidNatives)
-}
-
-val desktopHost: String = run {
-    val os = System.getProperty("os.name").lowercase(Locale.ROOT)
-    val arch = System.getProperty("os.arch").lowercase(Locale.ROOT)
-    val family = when {
-        os.contains("linux") -> "linux"
-        os.contains("mac") || os.contains("darwin") -> "darwin"
-        os.contains("windows") -> "windows"
-        else -> throw GradleException("unsupported desktop host: $os")
+val stageJniLibs =
+    tasks.register<Sync>("stageJniLibs") {
+        from(rustSdk.dir("jniLibs")) { include("*/libreseam-sdk-native.so") }
+        into(androidNatives)
     }
-    val cpu = when (arch) {
-        "amd64", "x86_64" -> "x86_64"
-        "aarch64", "arm64" -> if (family == "darwin") "arm64" else "aarch64"
-        else -> throw GradleException("unsupported desktop arch: $arch")
-    }
-    "$family-$cpu"
-}
-val desktopShim = System.mapLibraryName("reseam_sdk_native_jni")
 
-val stageDesktopShim by tasks.registering(Sync::class) {
-    from(desktopNatives.file("$desktopHost/$desktopShim"))
-    into(layout.buildDirectory.dir("staged/desktop/native/$desktopHost"))
-}
+val desktopLibraries =
+    listOf(
+        "linux-x86_64/libreseam_sdk_native_jni.so",
+        "windows-x86_64/reseam_sdk_native_jni.dll",
+    )
+
+val stageDesktopLibraries =
+    tasks.register<Sync>("stageDesktopLibraries") {
+        from(desktopNatives) { include(desktopLibraries) }
+        into(layout.buildDirectory.dir("staged/desktop/native"))
+        val required = desktopLibraries.map { desktopNatives.file(it).asFile }
+        doFirst {
+            required.forEach { library ->
+                if (!library.isFile) {
+                    throw GradleException(
+                        "missing desktop SDK library: $library; run cargo xtask pack-sdk"
+                    )
+                }
+            }
+        }
+    }
 
 kotlin {
     jvmToolchain(17)
@@ -47,19 +45,25 @@ kotlin {
         namespace = "app.reseam.sdk"
         compileSdk = 36
         minSdk = 24
+        optimization {
+            consumerKeepRules.apply {
+                publish = true
+                file("consumer-rules.pro")
+            }
+        }
         compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
     }
     jvm()
 
     sourceSets {
-        val commonMain by getting
-        val jvmCommonMain by creating {
-            dependsOn(commonMain)
-            kotlin.srcDir(rustSdk.dir("generated/app"))
-            dependencies { api(project(":reseam-patch-sdk")) }
-        }
-        val androidMain by getting { dependsOn(jvmCommonMain) }
-        val jvmMain by getting {
+        val jvmCommonMain =
+            create("jvmCommonMain") {
+                dependsOn(commonMain.get())
+                kotlin.srcDir(rustSdk.dir("generated/app"))
+                dependencies { api(project(":reseam-patch-sdk")) }
+            }
+        androidMain { dependsOn(jvmCommonMain) }
+        jvmMain {
             dependsOn(jvmCommonMain)
             resources.srcDir(layout.buildDirectory.dir("staged/desktop"))
         }
@@ -72,6 +76,31 @@ androidComponents {
     }
 }
 
-tasks.matching { it.name == "jvmProcessResources" }.configureEach { dependsOn(stageDesktopShim) }
+tasks
+    .matching { it.name == "jvmProcessResources" }
+    .configureEach { dependsOn(stageDesktopLibraries) }
 
 tasks.matching { it.name.endsWith("JniLibFolders") }.configureEach { dependsOn(stageJniLibs) }
+
+val patchApi = project(":reseam-patch-sdk")
+
+evaluationDependsOn(patchApi.path)
+
+val patchApiJar = patchApi.tasks.named<Jar>("jar")
+val patchRuntime = patchApi.configurations.named("runtimeClasspath")
+
+tasks.register<Jar>("patchRuntimeJar") {
+    description = "Builds the patch API and Kotlin runtime embedded in native desktop hosts."
+    archiveFileName.set("reseam-runtime.jar")
+    destinationDirectory.set(rootProject.layout.buildDirectory.dir("runtime"))
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from(patchApiJar.map { zipTree(it.archiveFile) })
+    from(patchRuntime.map { files -> files.filter { it.extension == "jar" }.map(::zipTree) })
+    exclude(
+        "META-INF/*.SF",
+        "META-INF/*.RSA",
+        "META-INF/*.DSA",
+        "META-INF/versions/**",
+        "module-info.class",
+    )
+}

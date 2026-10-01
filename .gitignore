@@ -4,6 +4,8 @@
 *.md
 !README.md
 !RELEASING.md
+!STYLE.md
+!AGENTS.md
 !crates/cli/docs/*.md
 !docs/*
 temp

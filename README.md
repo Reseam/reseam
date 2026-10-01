@@ -36,19 +36,24 @@ Reseam is a Rust APK patching engine. Patches are written in Kotlin against the 
 
 Commands below use POSIX shell syntax for environment variables. In PowerShell, set them first (`$env:JAVA_HOME = "C:\\jdk-17"`) and run the command on its own line.
 
-Windows builds the CLI and the engine with the MSVC toolchain. The SDK's desktop JNI library is built for the current host only.
+Windows can build the CLI natively with MSVC or GNU LLVM. Releases cross-compile
+Windows x86-64 on Linux with llvm-mingw; the desktop SDK packages both Linux
+x86-64 and Windows x86-64. See [SDK build configuration](sdk/README.md#build) for
+the target JDK and cross-toolchain environment.
 
 ## Build
 
 ```bash
 cargo xtask regen patch-api
+cargo xtask runtime
 cargo build --release
 ```
 
-This builds the `reseam` CLI plus the embedded patcher. `cargo xtask regen all` also generates the SDK's Kotlin and packages its Android and desktop JNI libraries; run it whenever you change a `#[export]` Rust function or a type in `reseam-model`:
+This builds the `reseam` CLI plus the embedded patcher. `cargo xtask regen all` also generates the SDK's Kotlin; `cargo xtask pack-sdk` packages its Android and desktop JNI libraries; run it whenever you change a `#[export]` Rust function or a type in `reseam-model`:
 
 ```bash
 cargo xtask regen all
+cargo xtask runtime
 cargo build --release
 ```
 
@@ -58,6 +63,8 @@ The Kotlin side is one Gradle build at the workspace root: `patch-api` publishes
 
 ```bash
 cargo xtask regen all
+cargo xtask runtime
+cargo xtask pack-sdk
 ./gradlew assemble
 ```
 

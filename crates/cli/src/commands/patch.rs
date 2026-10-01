@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use anyhow::{anyhow, ensure, Context, Result};
+use anyhow::{Context, Result, anyhow, ensure};
 use reseam_patcher::engine::{PatchIndex, PatchResult, PatchSelection, PatchStatus};
 use reseam_patcher::error::PatcherError;
 use reseam_patcher::log::LogLevel;
+use reseam_patcher::options::{OptionDeclaration, OptionType, OptionValue};
 use reseam_sdk::{
-    inspect_apk, load_bundles, patch, PatchOutput, PatchRequest, RunEvent, SigningKeyFiles,
-    TrustStore,
+    HostError, PatchOutput, PatchRequest, RunEvent, SigningKeyFiles, patch_with_selection,
 };
 use tracing::{debug, error, info, warn};
 
@@ -37,7 +37,18 @@ pub fn run_patch(command: &PatchCommand) -> Result<()> {
     };
 
     let request = request(&command.request, output)?;
-    let outcome = patch(&request, log_event)?;
+    let outcome = run(&request, &command.request.option, log_event).map_err(|error| {
+        if error.downcast_ref::<HostError>().is_some_and(|error| {
+            matches!(
+                error,
+                HostError::Problem(reseam_model::Problem::SingleFileComponents { .. })
+            )
+        }) {
+            error.context("use --output-dir for split input")
+        } else {
+            error
+        }
+    })?;
     let count =
         |wanted: fn(&PatchResult) -> bool| outcome.results.iter().filter(|r| wanted(r)).count();
     info!(
@@ -78,7 +89,13 @@ fn log_event(event: RunEvent) {
 
 pub(crate) fn request(args: &PatchRequestArgs, output: PatchOutput) -> Result<PatchRequest> {
     let trust = args.trust.store()?;
-    let selection = selection(args, &trust)?;
+    let selection = PatchSelection {
+        preset: args.preset,
+        enable: args.enable.clone(),
+        disable: args.disable.clone(),
+        ignore_versions: args.ignore_versions,
+        ..Default::default()
+    };
     Ok(PatchRequest {
         apk_path: args.apk.display().to_string(),
         split_paths: args
@@ -96,8 +113,8 @@ pub(crate) fn request(args: &PatchRequestArgs, output: PatchOutput) -> Result<Pa
         output,
         signing: args
             .key
-            .clone()
-            .zip(args.cert.clone())
+            .as_ref()
+            .zip(args.cert.as_ref())
             .map(|(key, cert)| SigningKeyFiles {
                 key: key.display().to_string(),
                 cert: cert.display().to_string(),
@@ -106,40 +123,44 @@ pub(crate) fn request(args: &PatchRequestArgs, output: PatchOutput) -> Result<Pa
     })
 }
 
-/// `--option PATCH.KEY=VALUE` values are typed by the patch's declaration,
-/// which means loading the bundle once up front.
-fn selection(args: &PatchRequestArgs, trust: &TrustStore) -> Result<PatchSelection> {
-    let mut selection = PatchSelection {
-        preset: args.preset,
-        enable: args.enable.clone(),
-        disable: args.disable.clone(),
-        ignore_versions: args.ignore_versions,
-        ..Default::default()
-    };
-    if args.option.is_empty() {
+pub(crate) fn run(
+    request: &PatchRequest,
+    options: &[String],
+    emit: impl FnMut(RunEvent),
+) -> Result<reseam_sdk::PatchOutcome> {
+    Ok(patch_with_selection(
+        request,
+        |specs, package| {
+            selection(options, request.selection.clone(), specs, package)
+                .map_err(|error| HostError::Selection(error.into()))
+        },
+        emit,
+    )?)
+}
+
+fn selection(
+    options: &[String],
+    mut selection: PatchSelection,
+    specs: &[&reseam_patcher::PatchSpec],
+    package: Option<&str>,
+) -> Result<PatchSelection> {
+    if options.is_empty() {
         return Ok(selection);
     }
-    let bundles = load_bundles(&args.bundle, trust)?;
-    let patches: Vec<_> = bundles
-        .iter()
-        .flat_map(|bundle| bundle.patches.iter().map(Box::as_ref))
-        .collect();
-    let index = PatchIndex::new(&patches)?;
-    let apk = inspect_apk(&args.apk, &args.split)?;
-    for raw in &args.option {
+    let index = PatchIndex::new(specs)?;
+    for raw in options {
         let invalid = || anyhow!("invalid option '{raw}': expected PATCH.KEY=VALUE");
         let (lhs, value) = raw.split_once('=').ok_or_else(invalid)?;
-        let (patch_index, key) = option_target(&index, lhs, apk.package_name.as_deref())?;
-        let patch = patches[patch_index].reference();
-        let declaration = patches[patch_index]
-            .spec()
+        let (patch_index, key) = option_target(&index, lhs, package)?;
+        let spec = specs[patch_index];
+        let patch = spec.reference();
+        let declaration = spec
             .options
             .iter()
             .find(|declaration| declaration.key == key)
             .with_context(|| format!("unknown option '{key}' for patch '{patch}'"))?;
-        let value = declaration
-            .parse(value)
-            .map_err(|reason| anyhow!("invalid --option {raw}: {reason}"))?;
+        let value =
+            parse_option(declaration, value).with_context(|| format!("invalid --option {raw}"))?;
         selection
             .options
             .entry(patch)
@@ -149,9 +170,6 @@ fn selection(args: &PatchRequestArgs, trust: &TrustStore) -> Result<PatchSelecti
     Ok(selection)
 }
 
-/// Display names and option keys may contain dots. Resolve the longest
-/// recognized patch prefix instead of assuming the first dot separates the
-/// patch from its option.
 fn option_target<'a>(
     index: &PatchIndex<'_>,
     lhs: &'a str,
@@ -165,11 +183,30 @@ fn option_target<'a>(
         );
         match index.resolve(selector, package) {
             Ok(patch) => return Ok((patch, key)),
-            Err(PatcherError::UnknownPatch(_)) => continue,
+            Err(PatcherError::UnknownPatch(_)) => {}
             Err(error) => return Err(error.into()),
         }
     }
     Err(anyhow!(
         "unknown patch in option '{lhs}'; expected PATCH.KEY (use <bundle>/<id>, an ID, or an unambiguous name)"
     ))
+}
+
+fn parse_option(declaration: &OptionDeclaration, raw: &str) -> Result<OptionValue> {
+    let value = match declaration.option_type {
+        OptionType::String => OptionValue::Text(raw.to_owned()),
+        OptionType::Bool => OptionValue::Bool(raw.parse().context("expected bool")?),
+        OptionType::Int => OptionValue::Int(raw.parse().context("expected int")?),
+        OptionType::Float => OptionValue::Float(raw.parse().context("expected float")?),
+        OptionType::StringList => OptionValue::TextList(
+            raw.split(',')
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+                .collect(),
+        ),
+        OptionType::Path => OptionValue::Path(raw.to_owned()),
+    };
+    declaration.validate(&value)?;
+    Ok(value)
 }

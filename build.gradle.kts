@@ -5,13 +5,29 @@ import org.gradle.api.credentials.HttpHeaderCredentials
 import org.gradle.authentication.http.HttpHeaderAuthentication
 
 plugins {
-    kotlin("plugin.sam.with.receiver") version "2.4.10" apply false
-    kotlin("jvm") version "2.4.10" apply false
-    kotlin("multiplatform") version "2.4.10" apply false
-    id("com.android.kotlin.multiplatform.library") version "9.1.1" apply false
+    alias(libs.plugins.kotlin.sam.with.receiver) apply false
+    alias(libs.plugins.kotlin.serialization) apply false
+    alias(libs.plugins.kotlin.jvm) apply false
+    alias(libs.plugins.kotlin.multiplatform) apply false
+    alias(libs.plugins.android.kmp.library) apply false
+    alias(libs.plugins.spotless)
 }
 
-val sdkVersion = providers.gradleProperty("reseamSdkVersion").orElse("0.0.0-local").get().removePrefix("v")
+spotless {
+    kotlin {
+        target("**/*.kt")
+        targetExclude("**/build/**", "**/generated/**")
+        ktfmt(libs.versions.ktfmt.get()).kotlinlangStyle()
+    }
+    kotlinGradle {
+        target("**/*.gradle.kts")
+        targetExclude("**/build/**")
+        ktfmt(libs.versions.ktfmt.get()).kotlinlangStyle()
+    }
+}
+
+val sdkVersion =
+    providers.gradleProperty("reseamSdkVersion").orElse("0.0.0-local").get().removePrefix("v")
 
 subprojects {
     group = "app.reseam"
@@ -25,7 +41,12 @@ subprojects {
                     url = uri("https://git.reseam.app/api/packages/reseam/maven")
                     credentials(HttpHeaderCredentials::class) {
                         name = "Authorization"
-                        value = providers.environmentVariable("FORGEJO_PACKAGES_TOKEN").map { "token $it" }.orElse("").get()
+                        value =
+                            providers
+                                .environmentVariable("FORGEJO_PACKAGES_TOKEN")
+                                .map { "token $it" }
+                                .orElse("")
+                                .get()
                     }
                     authentication { create<HttpHeaderAuthentication>("header") }
                 }

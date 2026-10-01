@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Shared application data. Rust and generated client bindings use these declarations.
 //! Paths crossing the application boundary are UTF-8 strings; the engine validates
 //! paths, signer keys, selections, and option values before executing patches.
 
@@ -17,14 +16,14 @@ mod sdk;
 
 pub use container::ContainerFormat;
 pub use engine::{PatchResult, PatchStatus, ProgressEvent};
-pub use error::{Problem, SdkError};
+pub use error::{Problem, Result, SdkError};
 pub use log::{LogEntry, LogLevel};
 pub use metrics::{
     ApplyDiagnostics, JvmHeapStats, MaterializationStats, MemoryBreakdown, PatchMetrics,
     PatchPhase, PatchPhaseMetrics,
 };
 pub use options::{OptionDeclaration, OptionType, OptionValue};
-pub use patch::{is_slug, Compatibility, CompatiblePackage, PatchPreset, PatchSpec};
+pub use patch::{Compatibility, CompatiblePackage, PatchPreset, PatchSpec, is_slug};
 pub use request::{PatchSelection, Trust};
 pub use sdk::{
     ApkMetadata, BundleMetadata, InspectRequest, InspectResponse, PatchArtifact, PatchMetadata,

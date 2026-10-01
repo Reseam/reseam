@@ -3,39 +3,58 @@
 
 package app.reseam.gradle
 
+import java.io.File
 import org.gradle.api.Plugin
 import org.gradle.api.initialization.Settings
-import java.io.File
 
-/**
- * Applied in `settings.gradle.kts`. Lays out a bundle from its directories:
- * `apps/<app>/patch` holds patches, `apps/<app>/extensions/<name>` and
- * `shared/<name>` hold extensions, the root packs the bundle. No module needs
- * a build script unless it adds dependencies.
- */
-class ReseamWorkspacePlugin : Plugin<Settings> {
+internal class ReseamWorkspacePlugin : Plugin<Settings> {
     override fun apply(settings: Settings) {
         val root = settings.rootDir
         settings.dependencyResolutionManagement.repositories.apply {
             mavenCentral()
-            google { mavenContent { includeGroupAndSubgroups("androidx"); includeGroupAndSubgroups("com.android"); includeGroupAndSubgroups("com.google") } }
-            maven { url = settings.providers.provider { java.net.URI(RESEAM_MAVEN) }.get(); mavenContent { includeGroup("app.reseam") } }
+            google {
+                mavenContent {
+                    includeGroupAndSubgroups("androidx")
+                    includeGroupAndSubgroups("com.android")
+                    includeGroupAndSubgroups("com.google")
+                }
+            }
+            maven {
+                url = settings.providers.provider { java.net.URI(RESEAM_MAVEN) }.get()
+                mavenContent { includeGroup("app.reseam") }
+            }
         }
         workspace(settings)?.let { settings.includeBuild(it) }
 
-        val patches = mutableListOf<String>()
-        val extensions = mutableListOf<String>()
+        val patches = mutableMapOf<String, String>()
+        val extensions = mutableMapOf<String, String>()
         for (app in directories(File(root, "apps"))) {
-            File(app, "patch").takeIf { it.isDirectory }?.let { patches += include(settings, ":apps:${app.name}:patch", it) }
+            File(app, "patch")
+                .takeIf { it.isDirectory }
+                ?.let { patches[include(settings, ":apps:${app.name}:patch", it)] = app.name }
             for (extension in directories(File(app, "extensions"))) {
-                extensions += include(settings, ":apps:${app.name}:extensions:${extension.name}", extension)
+                extensions[
+                    include(
+                        settings,
+                        ":apps:${app.name}:extensions:${extension.name}",
+                        extension,
+                    )] = "${app.name}-${extension.name}"
             }
         }
         for (shared in directories(File(root, "shared"))) {
-            extensions += include(settings, ":shared:${shared.name}", shared)
+            extensions[include(settings, ":shared:${shared.name}", shared)] = shared.name
         }
 
+        require(
+            (patches.values.map { "$it-patches.jar" } +
+                    extensions.values.map { "$it.dex" } +
+                    "d8-globals.dex")
+                .let { it.size == it.toSet().size }
+        ) {
+            "workspace artifact names must be unique"
+        }
         settings.gradle.beforeProject {
+            (patches[path] ?: extensions[path])?.let { reseamArtifact().name.set(it) }
             when (path) {
                 ":" -> pluginManager.apply(ReseamBundlePlugin::class.java)
                 in patches -> pluginManager.apply(ReseamPatchesPlugin::class.java)
@@ -51,14 +70,25 @@ class ReseamWorkspacePlugin : Plugin<Settings> {
     }
 
     private fun directories(parent: File): List<File> =
-        parent.listFiles().orEmpty().filter { it.isDirectory && !it.name.startsWith(".") && it.name != "build" }.sortedBy { it.name }
+        (if (!parent.exists()) emptyArray()
+            else
+                parent.listFiles()
+                    ?: throw org.gradle.api.GradleException(
+                        "cannot read workspace directory $parent"
+                    ))
+            .filter { it.isDirectory && !it.name.startsWith(".") && it.name != "build" }
+            .sortedBy { it.name }
 
-    /** A checkout of the engine repository whose SDK replaces the published one. */
     private fun workspace(settings: Settings): File? {
-        val path = System.getenv("RESEAM_WORKSPACE")?.takeIf { it.isNotBlank() }
-            ?: settings.providers.gradleProperty("reseam.workspace").orNull?.takeIf { it.isNotBlank() }
-            ?: return null
-        return File(path).also { require(it.isDirectory) { "reseam.workspace points to a missing directory: $it" } }
+        val path =
+            System.getenv("RESEAM_WORKSPACE")?.takeIf { it.isNotBlank() }
+                ?: settings.providers.gradleProperty("reseam.workspace").orNull?.takeIf {
+                    it.isNotBlank()
+                }
+                ?: return null
+        return File(path).also {
+            require(it.isDirectory) { "reseam.workspace points to a missing directory: $it" }
+        }
     }
 
     private companion object {

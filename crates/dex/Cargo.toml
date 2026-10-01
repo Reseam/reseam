@@ -1,31 +1,27 @@
 [package]
 name = "reseam-dex"
 version.workspace = true
-edition = "2021"
+edition.workspace = true
+rust-version.workspace = true
 description = "A high-performance DEX file parser, writer, and mutator"
 license = "GPL-3.0"
 readme = "README.md"
 
 [dependencies]
-reseam-model = { workspace = true }
+reseam-storage = { workspace = true }
 thiserror = { workspace = true }
 bitflags  = { workspace = true }
-smallvec  = { workspace = true }
+smallvec  = { workspace = true, features = ["union"] }
 rustc-hash = { workspace = true }
 ring      = { workspace = true }
 zlib-rs   = { workspace = true }
 memmap2   = { workspace = true }
 tempfile  = { workspace = true }
 rayon     = { workspace = true }
-serde     = { workspace = true }
 tracing   = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
-criterion         = { workspace = true }
-zip               = { workspace = true }
-smallvec          = { workspace = true }
 
-[[bench]]
-name = "dex_bench"
-harness = false
+[lints]
+workspace = true

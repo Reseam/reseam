@@ -17,7 +17,7 @@ Generate an Ed25519 signing seed for bundle packing.
 reseam bundle keygen --out reseam.key
 ```
 
-Writes a raw 32-byte seed with mode `0600`. The public key is printed as hex so clients can identify and trust the signer:
+Writes a raw 32-byte seed, with mode `0600` on Unix. The public key is printed as hex so clients can identify and trust the signer:
 
 ```
 Ed25519 keypair generated

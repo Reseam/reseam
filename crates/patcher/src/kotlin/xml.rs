@@ -1,904 +1,471 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! XML documents a patch holds open by handle. Elements are addressed by
-//! the index of their start event; elements created but not yet attached
-//! live in a pending table and use handles at or above `PENDING_OFFSET`.
-//! Closing a document writes it back to the APK.
-
-use std::cell::{Cell, RefCell};
-
+use super::handles::checked;
 use boltffi::export;
-use reseam_apk::axml::{self, AttributeValue, AxmlAttribute, AxmlDocument, AxmlEvent};
-use reseam_apk::{Compression, ResValue, ResourceScope, StringPool};
+use reseam_apk::ResourceScope;
+use reseam_apk::axml::{self, AxmlDocument, AxmlEvent, NodeMetadata};
 
-use super::files::with_component;
-use super::handles::with_ctx;
-
-const PENDING_OFFSET: u32 = 0x8000_0000;
-
-#[derive(Clone, PartialEq, Eq)]
-pub(super) enum DocSource {
-    File {
-        component: usize,
-        path: String,
-    },
-    Manifest {
-        component: usize,
-    },
-    /// A document compiled from text, written back nowhere.
-    Memory {
-        id: u32,
-    },
-}
-
-struct OpenDoc {
-    doc: AxmlDocument,
-    source: DocSource,
-}
-
-struct PendingElement {
-    doc: u32,
-    events: Vec<AxmlEvent>,
-}
-
-thread_local! {
-    static DOCS: RefCell<Vec<Option<OpenDoc>>> = const { RefCell::new(Vec::new()) };
-    static PENDING: RefCell<Vec<PendingElement>> = const { RefCell::new(Vec::new()) };
-    static COMPILED: Cell<u32> = const { Cell::new(0) };
-}
-
-pub(super) fn reset() {
-    DOCS.with(|docs| docs.borrow_mut().clear());
-    PENDING.with(|pending| pending.borrow_mut().clear());
-    COMPILED.with(|count| count.set(0));
-}
-
-/// The handle of the open document for `source`, opening it with `load`
-/// when no document is open yet.
-pub(super) fn open_source(
-    source: &DocSource,
-    load: impl FnOnce() -> Option<AxmlDocument>,
-) -> Option<u32> {
-    let existing = DOCS.with(|docs| {
-        docs.borrow()
-            .iter()
-            .position(|slot| slot.as_ref().is_some_and(|open| open.source == *source))
-    });
-    if let Some(handle) = existing {
-        return Some(handle as u32);
-    }
-    let doc = load()?;
-    DOCS.with(|docs| {
-        let mut docs = docs.borrow_mut();
-        docs.push(Some(OpenDoc {
-            doc,
-            source: source.clone(),
-        }));
-        Some(docs.len() as u32 - 1)
-    })
-}
-
-pub(super) fn is_open(source: &DocSource) -> bool {
-    DOCS.with(|docs| {
-        docs.borrow()
-            .iter()
-            .flatten()
-            .any(|open| open.source == *source)
-    })
-}
-
-pub(super) fn with_source_doc<R>(
-    source: &DocSource,
-    f: impl FnOnce(&AxmlDocument) -> R,
-) -> Option<R> {
-    DOCS.with(|docs| {
-        let docs = docs.borrow();
-        let open = docs.iter().flatten().find(|open| open.source == *source)?;
-        Some(f(&open.doc))
-    })
-}
-
-pub(super) fn with_source_doc_mut<R>(
-    source: &DocSource,
-    f: impl FnOnce(&mut AxmlDocument) -> R,
-) -> Option<R> {
-    DOCS.with(|docs| {
-        let mut docs = docs.borrow_mut();
-        let open = docs
-            .iter_mut()
-            .flatten()
-            .find(|open| open.source == *source)?;
-        Some(f(&mut open.doc))
-    })
-}
-
-fn with_doc<R>(handle: u32, f: impl FnOnce(&AxmlDocument) -> R) -> Option<R> {
-    DOCS.with(|docs| Some(f(&docs.borrow().get(handle as usize)?.as_ref()?.doc)))
-}
-
-fn with_doc_mut<R>(handle: u32, f: impl FnOnce(&mut AxmlDocument) -> R) -> Option<R> {
-    DOCS.with(|docs| {
-        Some(f(&mut docs
-            .borrow_mut()
-            .get_mut(handle as usize)?
-            .as_mut()?
-            .doc))
-    })
-}
-
-/// Runs `f` with `target` open for writing and `source` readable beside it,
-/// which one `RefCell` over every document cannot hand out at once. The source
-/// is lifted out of the table for the call and put back after.
-fn with_two_docs<R>(
-    target: u32,
-    source: u32,
-    f: impl FnOnce(&mut AxmlDocument, &AxmlDocument) -> R,
-) -> Option<R> {
-    if target == source {
-        return None;
-    }
-    let taken = DOCS.with(|docs| docs.borrow_mut().get_mut(source as usize)?.take())?;
-    let result = with_doc_mut(target, |doc| f(doc, &taken.doc));
-    DOCS.with(|docs| {
-        if let Some(slot) = docs.borrow_mut().get_mut(source as usize) {
-            *slot = Some(taken);
-        }
-    });
-    result
-}
-
-fn pending_index(handle: u32) -> Option<usize> {
-    handle.checked_sub(PENDING_OFFSET).map(|i| i as usize)
-}
-
-fn push_pending(doc: u32, events: Vec<AxmlEvent>) -> u32 {
-    PENDING.with(|pending| {
-        let mut pending = pending.borrow_mut();
-        pending.push(PendingElement { doc, events });
-        PENDING_OFFSET + pending.len() as u32 - 1
-    })
-}
-
-/// Removes a pending element from the table, leaving its handle dangling.
-fn take_pending(handle: u32) -> Option<PendingElement> {
-    let index = pending_index(handle)?;
-    PENDING.with(|pending| {
-        let mut pending = pending.borrow_mut();
-        let slot = pending.get_mut(index)?;
-        let events = std::mem::take(&mut slot.events);
-        (!events.is_empty()).then_some(PendingElement {
-            doc: slot.doc,
-            events,
-        })
-    })
-}
-
-/// Read access to the start element `el` names, in the document or pending.
-fn with_element<R>(
-    doc: u32,
-    el: u32,
-    f: impl FnOnce(&AxmlDocument, &[AxmlAttribute]) -> R,
-) -> Option<R> {
-    match pending_index(el) {
-        Some(index) => PENDING.with(|pending| {
-            let pending = pending.borrow();
-            let element = pending.get(index)?;
-            let AxmlEvent::StartElement { attributes, .. } = element.events.first()? else {
-                return None;
-            };
-            with_doc(element.doc, |doc| f(doc, attributes))
-        }),
-        None => with_doc(doc, |doc| Some(f(doc, doc.attributes(el as usize)))).flatten(),
-    }
-}
-
-/// Mutable access to the attributes of the start element `el` names, together
-/// with the document they belong to. The attributes are lifted out for the
-/// call so the document itself stays reachable: binding an attribute name
-/// writes to the string pool and the resource id map.
-fn with_attributes_mut<R>(
-    doc: u32,
-    el: u32,
-    f: impl FnOnce(&mut AxmlDocument, &mut Vec<AxmlAttribute>) -> R,
-) -> Option<R> {
-    match pending_index(el) {
-        Some(index) => {
-            let (owner, mut attributes) = PENDING.with(|pending| {
-                let mut pending = pending.borrow_mut();
-                let element = pending.get_mut(index)?;
-                let AxmlEvent::StartElement { attributes, .. } = element.events.first_mut()? else {
-                    return None;
-                };
-                Some((element.doc, std::mem::take(attributes)))
-            })?;
-            let result = with_doc_mut(owner, |document| f(document, &mut attributes));
-            PENDING.with(|pending| {
-                if let Some(AxmlEvent::StartElement {
-                    attributes: slot, ..
-                }) = pending
-                    .borrow_mut()
-                    .get_mut(index)
-                    .and_then(|element| element.events.first_mut())
-                {
-                    *slot = attributes;
-                }
-            });
-            result
-        }
-        None => {
-            let mut attributes = with_doc_mut(doc, |document| {
-                match document.elements.get_mut(el as usize)? {
-                    AxmlEvent::StartElement { attributes, .. } => Some(std::mem::take(attributes)),
-                    _ => None,
-                }
-            })
-            .flatten()?;
-            let result = with_doc_mut(doc, |document| f(document, &mut attributes));
-            with_doc_mut(doc, |document| {
-                if let Some(AxmlEvent::StartElement {
-                    attributes: slot, ..
-                }) = document.elements.get_mut(el as usize)
-                {
-                    *slot = attributes;
-                }
-            });
-            result
-        }
-    }
-}
-
-/// Replaces the value of the matching attribute, or adds one in resource id
-/// order. aapt writes attributes in that order and the framework's lookup
-/// walks them expecting it.
-fn set_or_add(
-    doc: &AxmlDocument,
-    attributes: &mut Vec<AxmlAttribute>,
-    namespace: Option<u32>,
-    name: u32,
-    value: ResValue,
-) {
-    if let Some(attr) = attributes
-        .iter_mut()
-        .find(|attr| attr.name == name && attr.namespace == namespace)
-    {
-        attr.set_value(value);
-        return;
-    }
-    doc.insert_attribute(attributes, AxmlAttribute::new(namespace, name, value));
-}
-
-/// `resources` resolves the ids of attributes the app declares itself, which
-/// is every namespace other than `android:`.
-fn set_attribute_value(
-    doc: u32,
-    el: u32,
-    name: &str,
-    resources: Option<&mut ResourceScope<'_>>,
-    value: impl FnOnce(
-        &mut StringPool,
-        Option<u32>,
-        Option<&mut ResourceScope<'_>>,
-    ) -> Result<ResValue, String>,
-) -> Result<(), String> {
-    with_attributes_mut(doc, el, |document, attributes| {
-        let (namespace, name) = document
-            .bind_attribute_name(name, resources.as_deref().map(|scope| &**scope))
-            .map_err(|error| error.to_string())?;
-        let attr = namespace.and_then(|_| document.resource_id_for(name));
-        let value = value(&mut document.string_pool, attr, resources)?;
-        set_or_add(document, attributes, namespace, name, value);
-        Ok(())
-    })
-    .unwrap_or_else(|| Err(format!("element {el} is not an element of document {doc}")))
-}
-
-/// `prefix:local` -> (the namespace the document declares for the prefix,
-/// `local`); an unprefixed name is unqualified. An undeclared prefix matches
-/// no attribute, which is what reading and removing it should report.
-fn split_name<'a>(doc: &AxmlDocument, name: &'a str) -> (Option<u32>, &'a str) {
-    match name.split_once(':') {
-        Some((prefix, local)) => (doc.declared_namespace(prefix), local),
-        None => (None, name),
-    }
-}
-
-fn attribute_text(doc: &AxmlDocument, attributes: &[AxmlAttribute], name: &str) -> Option<String> {
-    let (namespace, local) = split_name(doc, name);
-    let attr = attributes.iter().find(|attr| {
-        attr.namespace == namespace && doc.string(attr.name).as_deref() == Some(local)
-    })?;
-    Some(match attr.value.kind {
-        ResValue::STRING => doc.attribute_string(attr)?.into_owned(),
-        ResValue::INT_DEC => (attr.value.data as i32).to_string(),
-        ResValue::INT_BOOLEAN => (attr.value.data != 0).to_string(),
-        ResValue::REFERENCE => format!("@0x{:08x}", attr.value.data),
-        ResValue::INT_HEX => format!("0x{:08x}", attr.value.data),
-        _ => attr.value.data.to_string(),
-    })
-}
-
-fn subtree(doc: &AxmlDocument, start: usize) -> Vec<AxmlEvent> {
-    let end = doc.find_end_element(start).unwrap_or(start);
-    doc.elements[start..=end].to_vec()
-}
-
-/// Detaches the element at `start` and returns its events.
-fn detach(doc: &mut AxmlDocument, start: usize) -> Vec<AxmlEvent> {
-    let end = doc.find_end_element(start).unwrap_or(start);
-    doc.elements.drain(start..=end).collect()
-}
-
-/// Opens `apk_path` from the component (base when `None`) as a document.
-#[export]
-pub fn xml_open(component: Option<String>, apk_path: String) -> Option<u32> {
-    with_component(component, |ctx, index| {
-        let source = DocSource::File {
-            component: index,
-            path: apk_path.clone(),
-        };
-        open_source(&source, || {
-            let data = ctx.read_file(index, &apk_path).ok().flatten()?;
-            AxmlDocument::parse(&data).ok()
-        })
-    })
-    .flatten()
-}
-
-/// Writes the document back to the APK and releases its handle.
-#[export]
-pub fn xml_close(doc: u32) {
-    let Some(open) = DOCS.with(|docs| {
-        docs.borrow_mut()
-            .get_mut(doc as usize)
-            .and_then(Option::take)
-    }) else {
-        return;
-    };
-    with_ctx(|ctx| {
-        let outcome = match open.source {
-            DocSource::File { component, path } => open
-                .doc
-                .serialize()
-                .map_err(|e| e.to_string())
-                .and_then(|data| {
-                    ctx.inject_file(component, &path, data, Compression::Deflated)
-                        .map_err(|e| e.to_string())
-                }),
-            DocSource::Manifest { component } => ctx
-                .component_mut(component)
-                .map_err(|e| e.to_string())
-                .map(|c| {
-                    *c.manifest_mut() = open.doc;
-                }),
-            DocSource::Memory { .. } => Ok(()),
-        };
-        if let Err(error) = outcome {
-            ctx.log().warn(format!("xml close: {error}"));
-        }
-    });
-}
+use super::xml_attributes::attribute_text;
+use super::xml_documents::{Source, open, with_edit, with_read};
+pub(super) use super::xml_documents::{edit_manifest, finish, open_manifest, reset};
+pub(super) use super::xml_nodes::Nodes;
+use super::xml_nodes::{ElementId, Position, Tree};
 
 #[export]
 pub fn xml_root(doc: u32) -> u32 {
-    with_doc(doc, |doc| doc.root().unwrap_or(0) as u32).unwrap_or(0)
+    checked(with_read(doc, |nodes, document| {
+        nodes
+            .id(Position {
+                tree: Tree::Document,
+                index: document.root().ok_or("XML document has no root")?,
+            })
+            .map(|id| id.0)
+    }))
 }
 
 #[export]
 pub fn xml_find_by_tag(doc: u32, tag: String) -> Vec<u32> {
-    with_doc(doc, |doc| {
-        (0..doc.elements.len())
-            .filter(|&i| doc.element_name(i).as_deref() == Some(tag.as_str()))
-            .map(|i| i as u32)
+    checked(with_read(doc, |nodes, document| {
+        (0..document.events().len())
+            .filter(|&index| document.element_name(index).as_deref() == Some(tag.as_str()))
+            .map(|index| {
+                nodes
+                    .id(Position {
+                        tree: Tree::Document,
+                        index,
+                    })
+                    .map(|id| id.0)
+            })
             .collect()
-    })
-    .unwrap_or_default()
+    }))
 }
 
 #[export]
-pub fn xml_find_by_attribute(doc: u32, attr_name: String, attr_value: String) -> Vec<u32> {
-    with_doc(doc, |doc| {
-        doc.elements
+pub fn xml_find_by_attribute(doc: u32, name: String, value: String) -> Vec<u32> {
+    checked(with_read(doc, |nodes, document| {
+        document.events().iter().enumerate().filter(|(_, event)| matches!(event, AxmlEvent::StartElement { attributes, .. } if attribute_text(document, attributes, &name).as_deref() == Some(value.as_str()))).map(|(index, _)| nodes.id(Position { tree: Tree::Document, index }).map(|id| id.0)).collect()
+    }))
+}
+
+#[export]
+pub fn xml_children(doc: u32, element: u32) -> Vec<u32> {
+    let element = ElementId(element);
+    checked(with_read(doc, |nodes, document| {
+        let position = nodes.position(element)?;
+        let end = nodes.end(document, position)?;
+        let mut depth = 0usize;
+        let children: Vec<_> = nodes
+            .events(document, position.tree)?
             .iter()
             .enumerate()
-            .filter(|(_, event)| match event {
-                AxmlEvent::StartElement { attributes, .. } => {
-                    attribute_text(doc, attributes, &attr_name).as_deref()
-                        == Some(attr_value.as_str())
+            .take(end)
+            .skip(position.index + 1)
+            .filter_map(|(index, event)| match event {
+                AxmlEvent::StartElement { .. } => {
+                    let direct = depth == 0;
+                    depth += 1;
+                    direct.then_some(index)
+                }
+                AxmlEvent::EndElement { .. } => {
+                    depth -= 1;
+                    None
+                }
+                _ => None,
+            })
+            .collect();
+        children
+            .into_iter()
+            .map(|index| {
+                nodes
+                    .id(Position {
+                        tree: position.tree,
+                        index,
+                    })
+                    .map(|id| id.0)
+            })
+            .collect()
+    }))
+}
+
+#[export]
+pub fn xml_parent(doc: u32, element: u32) -> Option<u32> {
+    let element = ElementId(element);
+    checked(with_read(doc, |nodes, document| {
+        let position = nodes.position(element)?;
+        let events = nodes.events(document, position.tree)?;
+        let mut depth = 0usize;
+        let parent = (0..position.index)
+            .rev()
+            .find(|&index| match events[index] {
+                AxmlEvent::EndElement { .. } => {
+                    depth += 1;
+                    false
+                }
+                AxmlEvent::StartElement { .. } if depth == 0 => true,
+                AxmlEvent::StartElement { .. } => {
+                    depth -= 1;
+                    false
                 }
                 _ => false,
+            });
+        parent
+            .map(|index| {
+                nodes
+                    .id(Position {
+                        tree: position.tree,
+                        index,
+                    })
+                    .map(|id| id.0)
             })
-            .map(|(i, _)| i as u32)
-            .collect()
-    })
-    .unwrap_or_default()
+            .transpose()
+    }))
 }
 
 #[export]
-pub fn xml_children(doc: u32, el: u32) -> Vec<u32> {
-    with_doc(doc, |doc| {
-        let start = el as usize;
-        let Some(end) = doc.find_end_element(start) else {
-            return Vec::new();
+pub fn xml_tag_name(doc: u32, element: u32) -> String {
+    let element = ElementId(element);
+    checked(with_read(doc, |nodes, document| {
+        let position = nodes.position(element)?;
+        let Some(AxmlEvent::StartElement { name, .. }) =
+            nodes.events(document, position.tree)?.get(position.index)
+        else {
+            return Err(format!("element {element} is absent"));
         };
-        let mut depth = 0usize;
-        let mut children = Vec::new();
-        for (i, event) in doc.elements.iter().enumerate().take(end).skip(start + 1) {
-            match event {
-                AxmlEvent::StartElement { .. } => {
-                    if depth == 0 {
-                        children.push(i as u32);
-                    }
-                    depth += 1;
-                }
-                AxmlEvent::EndElement { .. } => depth -= 1,
-                _ => {}
-            }
-        }
-        children
-    })
-    .unwrap_or_default()
+        document
+            .string(*name)
+            .map(std::borrow::Cow::into_owned)
+            .ok_or_else(|| "invalid XML element name".into())
+    }))
 }
 
-#[export]
-pub fn xml_parent(doc: u32, el: u32) -> Option<u32> {
-    with_doc(doc, |doc| {
-        let mut depth = 0i32;
-        for i in (0..el as usize).rev() {
-            match doc.elements.get(i)? {
-                AxmlEvent::EndElement { .. } => depth += 1,
-                AxmlEvent::StartElement { .. } if depth == 0 => return Some(i as u32),
-                AxmlEvent::StartElement { .. } => depth -= 1,
-                _ => {}
-            }
-        }
-        None
-    })
-    .flatten()
-}
-
-#[export]
-pub fn xml_tag_name(doc: u32, el: u32) -> String {
-    match pending_index(el) {
-        Some(index) => PENDING.with(|pending| {
-            let pending = pending.borrow();
-            let element = pending.get(index)?;
-            let AxmlEvent::StartElement { name, .. } = element.events.first()? else {
-                return None;
-            };
-            with_doc(element.doc, |doc| doc.string(*name).map(|s| s.into_owned())).flatten()
-        }),
-        None => with_doc(doc, |doc| {
-            doc.element_name(el as usize).map(|s| s.into_owned())
-        })
-        .flatten(),
-    }
-    .unwrap_or_default()
-}
-
-#[export]
-pub fn xml_get_attribute(doc: u32, el: u32, name: String) -> Option<String> {
-    with_element(doc, el, |doc, attributes| {
-        attribute_text(doc, attributes, &name)
-    })
-    .flatten()
-}
-
-/// Sets an attribute from text, parsing literals and resource references the
-/// way the XML compiler does. Fails when the attribute cannot be bound to a
-/// resource id, since the inflater would ignore it.
-#[export]
-pub fn xml_set_attribute(doc: u32, el: u32, name: String, value: String) -> Result<(), String> {
-    with_base_scope(|resources| {
-        set_attribute_value(doc, el, &name, resources, |pool, attr, resources| {
-            text_attribute(pool, attr, resources, &value)
-                .map_err(|error| format!("attribute {name}: {error}"))
-        })
-    })
-}
-
-fn text_attribute(
-    pool: &mut StringPool,
-    attr: Option<u32>,
-    resources: Option<&mut ResourceScope<'_>>,
-    text: &str,
-) -> reseam_apk::Result<ResValue> {
-    Ok(match axml::parse_attribute_value(text, attr, resources)? {
-        AttributeValue::Value(value) => value,
-        AttributeValue::Text => ResValue::string(pool.intern(text)),
-    })
-}
-
-#[export]
-pub fn xml_set_attribute_ref(doc: u32, el: u32, name: String, res_id: u32) -> Result<(), String> {
-    with_base_scope(|resources| {
-        set_attribute_value(doc, el, &name, resources, |_, _, _| {
-            Ok(ResValue::reference(res_id))
-        })
-    })
-}
-
-#[export]
-pub fn xml_remove_attribute(doc: u32, el: u32, name: String) {
-    with_attributes_mut(doc, el, |document, attributes| {
-        let (namespace, local) = split_name(document, &name);
-        if let Some(name) = document.string_pool.find(local) {
-            attributes.retain(|attr| !(attr.name == name && attr.namespace == namespace));
-        }
-    });
-}
-
-/// A detached element; attach it with `xml_append_child` or `xml_insert_before`.
 #[export]
 pub fn xml_create_element(doc: u32, tag: String) -> u32 {
-    with_doc_mut(doc, |document| {
-        let name = document.intern_string(&tag);
-        push_pending(
-            doc,
-            vec![
+    checked(
+        with_edit(doc, |nodes, document, _| {
+            let name = document.intern_string(&tag);
+            nodes.pending(vec![
                 AxmlEvent::StartElement {
+                    metadata: NodeMetadata::default(),
                     namespace: None,
                     name,
                     attributes: Vec::new(),
                 },
                 AxmlEvent::EndElement {
+                    metadata: NodeMetadata::default(),
                     namespace: None,
                     name,
                 },
-            ],
-        )
-    })
-    .unwrap_or(0)
+            ])
+        })
+        .map(|id| id.0),
+    )
 }
 
-/// Moves `child` to the end of `parent`'s children. `child` is a detached
-/// element (which is then used up) or one of the document; `parent` is either.
 #[export]
 pub fn xml_append_child(doc: u32, parent: u32, child: u32) -> Result<(), String> {
-    if pending_index(child).is_some() {
-        let pending = take_pending(child).ok_or_else(|| used_up(child))?;
-        if let Some(parent_index) = pending_index(parent) {
-            return PENDING.with(|table| {
-                let mut table = table.borrow_mut();
-                let parent = table
-                    .get_mut(parent_index)
-                    .filter(|parent| !parent.events.is_empty())
-                    .ok_or_else(|| used_up(parent))?;
-                let end = parent.events.len() - 1;
-                parent.events.splice(end..end, pending.events);
-                Ok(())
-            });
+    let parent = ElementId(parent);
+    let child = ElementId(child);
+    with_edit(doc, |nodes, document, _| {
+        let parent_position = nodes.position(parent)?;
+        let child_position = nodes.position(child)?;
+        let child_end = nodes.end(document, child_position)?;
+        nodes.end(document, parent_position)?;
+        if parent_position.tree == child_position.tree
+            && (child_position.index..=child_end).contains(&parent_position.index)
+        {
+            return Err("an XML element cannot contain itself".into());
         }
-        return with_doc_mut(pending.doc, |document| {
-            let end = end_of(document, parent, pending.doc)?;
-            document.elements.splice(end..end, pending.events);
-            Ok(())
-        })
-        .unwrap_or_else(|| Err(format!("document {} is closed", pending.doc)));
-    }
-    with_doc_mut(doc, |document| {
-        end_of(document, child, doc)?;
-        end_of(document, parent, doc)?;
-        let events = detach(document, child as usize);
-        let parent = parent as usize - if parent > child { events.len() } else { 0 };
-        let end = end_of(document, parent as u32, doc)?;
-        document.elements.splice(end..end, events);
-        Ok(())
+        nodes.detach(document, child)?;
+        let parent_position = nodes.position(parent)?;
+        let index = nodes.end(document, parent_position)?;
+        nodes.attach(
+            document,
+            child,
+            Position {
+                tree: parent_position.tree,
+                index,
+            },
+        )
     })
-    .unwrap_or_else(|| Err(format!("document {doc} is closed")))
 }
 
-/// Moves `child` in front of `before`, an element of the document, and returns
-/// the handle `child` has there. Handles resolved earlier may have moved.
 #[export]
 pub fn xml_insert_before(doc: u32, child: u32, before: u32) -> Result<u32, String> {
-    if pending_index(before).is_some() {
-        return Err(format!(
-            "element {before} is not in the document; insert it before inserting next to it"
-        ));
-    }
-    let pending = match pending_index(child) {
-        Some(_) => Some(take_pending(child).ok_or_else(|| used_up(child))?),
-        None => None,
-    };
-    let owner = pending.as_ref().map_or(doc, |pending| pending.doc);
-    with_doc_mut(owner, |document| {
-        end_of(document, before, owner)?;
-        let (events, before) = match pending {
-            Some(pending) => (pending.events, before as usize),
-            None => {
-                end_of(document, child, owner)?;
-                let events = detach(document, child as usize);
-                let shift = if before > child { events.len() } else { 0 };
-                (events, before as usize - shift)
-            }
-        };
-        document.elements.splice(before..before, events);
-        Ok(before as u32)
+    let child = ElementId(child);
+    let before = ElementId(before);
+    with_edit(doc, |nodes, document, _| {
+        let target = nodes.position(before)?;
+        if target.tree != Tree::Document {
+            return Err("insertBefore requires an attached anchor".into());
+        }
+        let child_position = nodes.position(child)?;
+        let end = nodes.end(document, child_position)?;
+        if child_position.tree == target.tree
+            && (child_position.index..=end).contains(&target.index)
+        {
+            return Err("an XML element cannot be inserted into itself".into());
+        }
+        nodes.detach(document, child)?;
+        nodes.attach(document, child, nodes.position(before)?)?;
+        Ok(child.0)
     })
-    .unwrap_or_else(|| Err(format!("document {owner} is closed")))
-}
-
-/// Where the start element `el` of `document` ends, or why `el` names none.
-fn end_of(document: &AxmlDocument, el: u32, doc: u32) -> Result<usize, String> {
-    document
-        .find_end_element(el as usize)
-        .ok_or_else(|| format!("element {el} is not an element of document {doc}"))
-}
-
-/// Runs `f` with the base APK's table, which resolves names across the app.
-fn with_base_scope<R>(
-    f: impl FnOnce(Option<&mut ResourceScope<'_>>) -> Result<R, String>,
-) -> Result<R, String> {
-    with_ctx(|ctx| {
-        ctx.apk_mut()
-            .with_resource_scope(0, f)
-            .map_err(|error| format!("resources: {error}"))?
-    })
-}
-
-fn used_up(el: u32) -> String {
-    format!("element {el} was already attached; use the handle the attaching call returned")
 }
 
 #[export]
-pub fn xml_remove_element(doc: u32, el: u32) {
-    with_doc_mut(doc, |document| document.remove_element(el as usize));
+pub fn xml_remove_element(doc: u32, element: u32) {
+    let element = ElementId(element);
+    checked(with_edit(doc, |nodes, document, _| {
+        nodes.detach(document, element)?;
+        nodes.detached.remove(&element);
+        for position in &mut nodes.positions {
+            if position.is_some_and(|position| position.tree == Tree::Detached(element)) {
+                *position = None;
+            }
+        }
+        nodes.reindex();
+        Ok(())
+    }));
 }
 
-/// Compiles XML text into a document of its own. It is backed by no APK entry,
-/// so closing it discards it; it is the source a patch grafts a subtree out of.
 #[export]
 pub fn xml_compile(text: String) -> Result<u32, String> {
-    with_base_scope(|resources| {
-        let doc = axml::build_document(&text, resources).map_err(|error| error.to_string())?;
-        let id = COMPILED.with(|count| {
-            let id = count.get();
-            count.set(id + 1);
-            id
-        });
-        open_source(&DocSource::Memory { id }, || Some(doc))
-            .ok_or_else(|| "could not open the compiled document".to_string())
+    let document = super::handles::try_with_ctx(|ctx| {
+        ctx.apk_mut()
+            .with_resource_scope(0, |scope| axml::build_document(&text, scope))
     })
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    open(Source::Memory, Some(document))
 }
 
-/// Declares `prefix` for `uri` on a document that lacks it, which an adopted
-/// attribute in that namespace needs. Namespaces wrap the event stream, so this
-/// moves the index of every element resolved before the call.
 #[export]
 pub fn xml_declare_namespace(doc: u32, prefix: String, uri: String) -> Result<(), String> {
-    with_doc_mut(doc, |document| {
+    with_edit(doc, |nodes, document, _| {
+        let before = document.events().len();
         document
             .declare_namespace(&prefix, &uri)
-            .map_err(|error| error.to_string())
+            .map_err(|e| e.to_string())?;
+        if document.events().len() != before {
+            nodes.inserted_document(0, 1);
+        }
+        Ok(())
     })
-    .unwrap_or_else(|| Err(format!("no document {doc} is open")))
 }
 
-/// A detached deep copy of an element of another document, in this document's
-/// strings and namespaces, with every attribute rebound to the id this document
-/// resolves it by.
 #[export]
-pub fn xml_adopt(doc: u32, source_doc: u32, source_el: u32) -> Result<u32, String> {
-    let events = with_ctx(|ctx| {
-        let resources = ctx.apk_mut().base_mut().resources_mut().ok().flatten();
-        with_two_docs(doc, source_doc, |target, source| {
-            let events = match pending_index(source_el) {
-                Some(index) => PENDING
-                    .with(|pending| pending.borrow().get(index).map(|el| el.events.clone()))
-                    .ok_or_else(|| format!("no element {source_el} is pending"))?,
-                None => {
-                    let start = source_el as usize;
-                    if start >= source.elements.len() {
-                        return Err(format!(
-                            "element {source_el} is not an element of document {source_doc}"
-                        ));
-                    }
-                    subtree(source, start)
-                }
-            };
-            target
-                .adopt(source, &events, resources.map(|table| &*table))
-                .map_err(|error| error.to_string())
-        })
-        .unwrap_or_else(|| {
-            Err(format!(
-                "cannot adopt into document {doc} from {source_doc}: use clone within one document"
-            ))
-        })
+pub fn xml_adopt(doc: u32, source: u32, element: u32) -> Result<u32, String> {
+    let element = ElementId(element);
+    if source == doc {
+        return Err("use clone within one XML document".into());
+    }
+    let snapshot = with_read(source, |nodes, document| {
+        let position = nodes.position(element)?;
+        let end = nodes.end(document, position)?;
+        // StringPool clones share the input backing; only the requested subtree is copied.
+        AxmlDocument::from_parts(
+            document.string_pool().clone(),
+            Vec::new(),
+            nodes.events(document, position.tree)?[position.index..=end].to_vec(),
+        )
+        .map_err(|e| e.to_string())
     })?;
-    Ok(push_pending(doc, events))
+    with_edit(doc, |nodes, document, ctx| {
+        let events = ctx
+            .apk_mut()
+            .with_resource_scope(0, |scope| {
+                document.adopt(
+                    &snapshot,
+                    snapshot.events(),
+                    scope.as_deref().map(ResourceScope::table),
+                )
+            })
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+        nodes.pending(events)
+    })
+    .map(|id| id.0)
 }
 
-/// A detached copy of an element, with or without its children.
 #[export]
-pub fn xml_clone_element(doc: u32, el: u32, deep: bool) -> u32 {
-    with_doc(doc, |document| {
-        let start = el as usize;
-        let AxmlEvent::StartElement {
-            namespace,
-            name,
-            attributes,
-        } = document.elements.get(start)?
-        else {
-            return None;
-        };
-        let events = if deep {
-            subtree(document, start)
-        } else {
-            vec![
-                AxmlEvent::StartElement {
-                    namespace: *namespace,
-                    name: *name,
-                    attributes: attributes.clone(),
-                },
-                AxmlEvent::EndElement {
-                    namespace: *namespace,
-                    name: *name,
-                },
-            ]
-        };
-        Some(push_pending(doc, events))
-    })
-    .flatten()
-    .unwrap_or(0)
+pub fn xml_clone_element(doc: u32, element: u32, deep: bool) -> u32 {
+    let element = ElementId(element);
+    checked(
+        with_read(doc, |nodes, document| {
+            let position = nodes.position(element)?;
+            let events = nodes.events(document, position.tree)?;
+            let end = nodes.end(document, position)?;
+            let events = if deep {
+                events[position.index..=end].to_vec()
+            } else {
+                vec![events[position.index].clone(), events[end].clone()]
+            };
+            nodes.pending(events)
+        })
+        .map(|id| id.0),
+    )
 }
 
 #[cfg(test)]
 mod tests {
-    use reseam_apk::axml::{android_attr_res_id, android_attrs, ANDROID_NS};
-
     use super::*;
-
-    fn with_test_doc(f: impl FnOnce(u32)) -> AxmlDocument {
-        let strings = [ANDROID_NS, "android", "LinearLayout"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        let doc = AxmlDocument {
-            string_pool: StringPool::new(strings, true),
-            resource_ids: Vec::new(),
-            elements: vec![
-                AxmlEvent::StartNamespace {
-                    prefix: Some(1),
-                    uri: 0,
-                },
-                AxmlEvent::StartElement {
-                    namespace: None,
-                    name: 2,
-                    attributes: Vec::new(),
-                },
-                AxmlEvent::EndElement {
-                    namespace: None,
-                    name: 2,
-                },
-                AxmlEvent::EndNamespace {
-                    prefix: Some(1),
-                    uri: 0,
-                },
-            ],
-        };
-        reset();
-        let source = DocSource::File {
-            component: 0,
-            path: "res/layout/test.xml".into(),
-        };
-        let handle = open_source(&source, || Some(doc)).unwrap();
-        f(handle);
-        let document = with_doc(handle, Clone::clone).unwrap();
-        reset();
-        document
-    }
+    use crate::context::PatchContext;
+    use crate::kotlin::handles::{ContextGuard, RunGuard, check_invocation};
+    use crate::kotlin::manifest;
+    use crate::kotlin::xml_attributes::{xml_get_attribute, xml_set_attribute};
+    use crate::kotlin::xml_documents::{xml_close, xml_open};
+    use reseam_apk::Compression;
 
     #[test]
-    fn inserting_before_a_just_inserted_element_uses_the_returned_handle() {
-        let document = with_test_doc(|doc| {
-            let first = xml_create_element(doc, "first".into());
-            let second = xml_create_element(doc, "second".into());
-            let anchor = xml_create_element(doc, "anchor".into());
-            xml_append_child(doc, 1, anchor).unwrap();
-            let anchor = xml_children(doc, 1)[0];
-            let first = xml_insert_before(doc, first, anchor).unwrap();
-            xml_insert_before(doc, second, first).unwrap();
-
-            assert!(xml_insert_before(doc, second, first)
-                .unwrap_err()
-                .contains("already attached"));
-            assert!(xml_append_child(doc, 99, 1)
-                .unwrap_err()
-                .contains("not an element of document"));
-        });
-        let names: Vec<_> = (0..document.elements.len())
-            .filter_map(|i| document.element_name(i).map(|s| s.into_owned()))
-            .collect();
-        assert!(
-            names.ends_with(&[
-                "second".to_string(),
-                "first".to_string(),
-                "anchor".to_string()
-            ]),
-            "{names:?}"
+    fn manifest_views_share_borrows_and_keep_element_identities() {
+        let (dir, mut apk) = crate::test_support::apk();
+        let mut ctx = PatchContext::new(&mut apk);
+        let _run = RunGuard::enter().unwrap();
+        let guard = ContextGuard::enter(&mut ctx, dir.path().to_owned()).unwrap();
+        let outer = manifest::manifest_get_document(None).unwrap();
+        let application = xml_find_by_tag(outer, "application".into())[0];
+        let main = xml_find_by_attribute(outer, "android:name".into(), ".Main".into())[0];
+        let nested = xml_open(None, "AndroidManifest.xml".into()).unwrap();
+        let root = xml_root(nested);
+        xml_set_attribute(nested, root, "android:versionName".into(), "3.0".into()).unwrap();
+        assert_eq!(
+            manifest::manifest_version_name(None).as_deref(),
+            Some("3.0")
         );
-    }
-
-    #[test]
-    fn text_attributes_take_the_enum_and_flag_names_of_their_attribute() {
-        let document = with_test_doc(|doc| {
-            for (name, text) in [
-                ("android:scaleType", "center"),
-                ("android:gravity", "top|start"),
-                ("android:text", "center"),
-            ] {
-                set_attribute_value(doc, 1, name, None, |pool, attr, resources| {
-                    text_attribute(pool, attr, resources, text).map_err(|error| error.to_string())
-                })
-                .unwrap();
-            }
-        });
-        let value = |local: &str| {
-            let id = android_attr_res_id(local).unwrap();
-            document
-                .attributes(1)
+        xml_close(nested);
+        manifest::manifest_set_version_name(None, "4.0".into());
+        assert_eq!(
+            xml_get_attribute(outer, root, "android:versionName".into()).as_deref(),
+            Some("4.0")
+        );
+        manifest::manifest_add_permission(None, "android.permission.INTERNET".into());
+        manifest::manifest_set_activity_config_changes(
+            None,
+            ".Main".into(),
+            "orientation|screenSize|unknown".into(),
+        );
+        assert_eq!(
+            xml_get_attribute(outer, main, "android:configChanges".into()).as_deref(),
+            Some("1152")
+        );
+        manifest::manifest_add_intent_filter(
+            None,
+            ".Main".into(),
+            Some("android.intent.action.VIEW".into()),
+            None,
+            None,
+        );
+        manifest::manifest_add_activity_alias(
+            None,
+            ".Main".into(),
+            ".Alias".into(),
+            false,
+            Some("alias".into()),
+        );
+        manifest::manifest_copy_intent_filters(None, ".Main".into(), ".Alias".into());
+        xml_declare_namespace(outer, "test".into(), "urn:test".into()).unwrap();
+        assert_eq!(xml_tag_name(outer, application), "application");
+        assert_eq!(
+            xml_get_attribute(outer, main, "android:name".into()).as_deref(),
+            Some(".Main")
+        );
+        assert_eq!(xml_parent(outer, main), Some(application));
+        let alias = xml_find_by_attribute(outer, "android:name".into(), ".Alias".into())[0];
+        assert_eq!(
+            xml_children(outer, alias)
                 .iter()
-                .find(|attr| document.resource_id_for(attr.name) == Some(id))
-                .unwrap()
-                .value
-        };
-        assert_eq!(value("scaleType"), ResValue::int(5));
-        assert_eq!(value("gravity"), ResValue::hex(0x30 | 0x0080_0003));
-        assert_eq!(value("text").kind, ResValue::STRING);
+                .map(|child| xml_tag_name(outer, *child))
+                .collect::<Vec<_>>(),
+            ["intent-filter"]
+        );
+        xml_close(outer);
+        guard.finish().unwrap();
+        assert_eq!(apk.base().manifest().version_name().as_deref(), Some("4.0"));
     }
 
     #[test]
-    fn typed_attributes_and_nested_pending_elements() {
-        let document = with_test_doc(|doc| {
-            set_attribute_value(doc, 1, "android:padding", None, |_, _, _| {
-                Ok(ResValue::int(16))
-            })
-            .unwrap();
-            set_attribute_value(doc, 1, "android:enabled", None, |_, _, _| {
-                Ok(ResValue::boolean(true))
-            })
-            .unwrap();
-            let parent = xml_create_element(doc, "activity".into());
-            let filter = xml_create_element(doc, "intent-filter".into());
-            let action = xml_create_element(doc, "action".into());
-            set_attribute_value(doc, action, "android:name", None, |_, _, _| {
-                Ok(ResValue::reference(0x7f00_0001))
-            })
-            .unwrap();
-            xml_append_child(doc, filter, action).unwrap();
-            xml_append_child(doc, parent, filter).unwrap();
-            xml_append_child(doc, 1, parent).unwrap();
-            assert_eq!(xml_children(doc, 1).len(), 1);
-        });
-        let names: Vec<_> = (0..document.elements.len())
-            .filter_map(|i| document.element_name(i).map(|s| s.into_owned()))
-            .collect();
+    fn subtree_handles_follow_moves_and_removal_without_consuming_children() {
+        let (dir, mut apk) = crate::test_support::apk();
+        let mut ctx = PatchContext::new(&mut apk);
+        let _run = RunGuard::enter().unwrap();
+        let guard = ContextGuard::enter(&mut ctx, dir.path().to_owned()).unwrap();
+        let document = manifest::manifest_get_document(None).unwrap();
+        let application = xml_find_by_tag(document, "application".into())[0];
+        let parent = xml_create_element(document, "activity".into());
+        let filter = xml_create_element(document, "intent-filter".into());
+        let action = xml_create_element(document, "action".into());
+        xml_set_attribute(
+            document,
+            action,
+            "android:name".into(),
+            "test.action".into(),
+        )
+        .unwrap();
+        xml_append_child(document, filter, action).unwrap();
+        xml_append_child(document, parent, filter).unwrap();
+        xml_append_child(document, application, parent).unwrap();
+        assert_eq!(xml_parent(document, action), Some(filter));
+        assert_eq!(xml_parent(document, filter), Some(parent));
+        let first = xml_children(document, application)[0];
+        assert_eq!(xml_insert_before(document, parent, first).unwrap(), parent);
+        assert_eq!(xml_children(document, application)[0], parent);
         assert_eq!(
-            names,
-            ["LinearLayout", "activity", "intent-filter", "action"]
+            xml_get_attribute(document, action, "android:name".into()).as_deref(),
+            Some("test.action")
         );
-        // Written padding first, but attributes are kept in resource id order,
-        // and every one of them carries the framework id the inflater reads.
-        let root_attrs = document.attributes(1);
-        assert_eq!(root_attrs.len(), 2);
-        assert_eq!(root_attrs[0].value, ResValue::boolean(true));
-        assert_eq!(root_attrs[0].namespace, Some(0));
-        assert_eq!(
-            document.resource_id_for(root_attrs[0].name),
-            Some(android_attrs::ATTR_ENABLED)
-        );
-        assert_eq!(root_attrs[1].value, ResValue::int(16));
-        assert_eq!(
-            document.resource_id_for(root_attrs[1].name),
-            android_attr_res_id("padding")
-        );
-        let action_attr = &document.attributes(4)[0];
-        assert_eq!(action_attr.value, ResValue::reference(0x7f00_0001));
-        assert_eq!(
-            document.resource_id_for(action_attr.name),
-            Some(android_attrs::ATTR_NAME)
-        );
+        let cloned = xml_clone_element(document, parent, false);
+        assert!(xml_children(document, cloned).is_empty());
+        xml_append_child(document, application, cloned).unwrap();
+        xml_remove_element(document, parent);
+        assert_eq!(xml_tag_name(document, first), "activity");
+        assert_eq!(xml_tag_name(document, cloned), "activity");
+        assert!(!xml_children(document, application).contains(&parent));
+        xml_close(document);
+        check_invocation().unwrap();
+        guard.finish().unwrap();
+    }
+
+    #[test]
+    fn file_edits_commit_on_last_close_and_unfinished_edits_fail() {
+        for close in [true, false] {
+            let (dir, mut apk) = crate::test_support::apk();
+            let mut ctx = PatchContext::new(&mut apk);
+            ctx.inject_file(0, "res/layout/main.xml", br#"<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"><TextView android:text="original"/></LinearLayout>"#.to_vec(), Compression::Deflated).unwrap();
+            let _run = RunGuard::enter().unwrap();
+            let guard = ContextGuard::enter(&mut ctx, dir.path().to_owned()).unwrap();
+            let outer = xml_open(None, "res/layout/main.xml".into()).unwrap();
+            let nested = xml_open(None, "res/layout/main.xml".into()).unwrap();
+            let label = xml_find_by_tag(outer, "TextView".into())[0];
+            let source = xml_compile(r#"<TextView xmlns:android="http://schemas.android.com/apk/res/android" android:text="adopted"/>"#.into()).unwrap();
+            let adopted = xml_adopt(outer, source, xml_root(source)).unwrap();
+            xml_append_child(outer, xml_root(outer), adopted).unwrap();
+            xml_close(source);
+            assert_eq!(
+                xml_get_attribute(outer, adopted, "android:text".into()).as_deref(),
+                Some("adopted")
+            );
+            xml_set_attribute(outer, label, "android:text".into(), "updated".into()).unwrap();
+            xml_close(nested);
+            assert_eq!(
+                xml_get_attribute(outer, label, "android:text".into()).as_deref(),
+                Some("updated")
+            );
+            if close {
+                xml_close(outer);
+            }
+            assert_eq!(check_invocation().is_ok(), close);
+            assert_eq!(guard.finish().is_ok(), close);
+            let bytes = ctx.read_file(0, "res/layout/main.xml").unwrap().unwrap();
+            let written = AxmlDocument::parse(&bytes).unwrap();
+            let label = written.find_element("TextView").unwrap();
+            assert_eq!(
+                written
+                    .attribute_named(label, "text")
+                    .and_then(|value| written.attribute_string(value))
+                    .as_deref(),
+                Some(if close { "updated" } else { "original" })
+            );
+        }
     }
 }

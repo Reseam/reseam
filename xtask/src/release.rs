@@ -1,40 +1,52 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Cutting a release: the workspace version is the only version there is,
-//! and the tag must name it.
-
 use std::fs;
 use std::process::Command;
 
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{Context, Result, bail, ensure};
+
+use semver::Version;
+use toml_edit::DocumentMut;
 
 use crate::paths;
 use crate::run::run;
 
 /// Sets the workspace version, commits, and tags `v<version>`. A manifest
-/// already at that version is only tagged.
+/// already at that version is only tagged. Requires a clean worktree.
+#[expect(
+    clippy::print_stdout,
+    reason = "The release command reports the created tag"
+)]
 pub fn release(version: &str) -> Result<()> {
-    ensure!(
-        is_semver(version),
-        "version must be MAJOR.MINOR.PATCH, got `{version}`"
-    );
+    let version = Version::parse(version)
+        .context("version must be valid SemVer")?
+        .to_string();
     let root = paths::workspace_root();
+    let status = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(&root)
+        .output()?;
+    ensure!(status.status.success(), "git status failed");
+    ensure!(
+        status.stdout.is_empty(),
+        "commit existing changes before cutting a release"
+    );
     let manifest = root.join("Cargo.toml");
-    let text = fs::read_to_string(&manifest)?;
-    let current = workspace_version(&text)?;
+    let mut document = fs::read_to_string(&manifest)?.parse::<DocumentMut>()?;
+    let current = workspace_version(&document)?;
     if current != version {
-        let updated = text.replacen(
-            &format!("version = \"{current}\""),
-            &format!("version = \"{version}\""),
-            1,
-        );
+        document["workspace"]["package"]["version"] = toml_edit::value(&version);
+        let updated = document.to_string();
         fs::write(&manifest, updated)?;
         run(Command::new("cargo")
             .args(["update", "--workspace"])
             .current_dir(&root))?;
         run(Command::new("git")
-            .args(["commit", "-am", &format!("chore: release v{version}")])
+            .args(["add", "Cargo.toml", "Cargo.lock"])
+            .current_dir(&root))?;
+        run(Command::new("git")
+            .args(["commit", "-m", &format!("chore: release v{version}")])
             .current_dir(&root))?;
     }
     run(Command::new("git")
@@ -53,30 +65,19 @@ pub fn release(version: &str) -> Result<()> {
 /// Fails unless `tag` is `v<workspace version>`.
 pub fn check_tag(tag: &str) -> Result<()> {
     let text = fs::read_to_string(paths::workspace_root().join("Cargo.toml"))?;
-    let version = workspace_version(&text)?;
+    let document = text.parse::<DocumentMut>()?;
+    let version = workspace_version(&document)?;
     match tag.strip_prefix('v') {
         Some(tagged) if tagged == version => Ok(()),
         _ => bail!("tag {tag} does not match workspace version {version}"),
     }
 }
 
-fn workspace_version(manifest: &str) -> Result<String> {
+fn workspace_version(manifest: &DocumentMut) -> Result<&str> {
     manifest
-        .split("[workspace.package]")
-        .nth(1)
-        .and_then(|section| {
-            section
-                .lines()
-                .find_map(|line| line.trim().strip_prefix("version = "))
-        })
-        .map(|value| value.trim_matches('"').to_string())
+        .get("workspace")
+        .and_then(|item| item.get("package"))
+        .and_then(|item| item.get("version"))
+        .and_then(toml_edit::Item::as_str)
         .context("no version under [workspace.package] in Cargo.toml")
-}
-
-fn is_semver(version: &str) -> bool {
-    let parts: Vec<_> = version.split('.').collect();
-    parts.len() == 3
-        && parts
-            .iter()
-            .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
 }

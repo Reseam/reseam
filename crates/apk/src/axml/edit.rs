@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Element and attribute queries and mutations. Elements are addressed by
-//! the index of their `StartElement` event.
+mod adopt;
 
-use super::{android_attr_res_id, AxmlAttribute, AxmlDocument, AxmlEvent, ANDROID_NS};
-use crate::error::{invalid, Result};
+use super::NodeMetadata;
+
+use super::{ANDROID_NS, AxmlAttribute, AxmlDocument, AxmlEvent};
+use crate::error::{Result, invalid};
 use crate::resources::ResourceTable;
 use crate::value::ResValue;
 
@@ -54,6 +55,7 @@ impl AxmlDocument {
                 AxmlEvent::EndElement {
                     namespace: ns,
                     name: n,
+                    ..
                 } if ns == namespace && n == name => {
                     depth -= 1;
                     if depth == 0 {
@@ -106,13 +108,21 @@ impl AxmlDocument {
         }
     }
 
+    /// Removes a bound attribute, retaining the roles of all remaining attributes.
+    pub fn remove_attribute(&mut self, index: usize, res_id: u32) -> bool {
+        self.edit_attributes(index, |document, attributes| {
+            let count = attributes.len();
+            attributes.retain(|attr| document.resource_id_for(attr.name) != Some(res_id));
+            attributes.len() != count
+        })
+        .unwrap_or(false)
+    }
+
     pub fn add_attribute(&mut self, index: usize, attr: AxmlAttribute) -> bool {
-        let Some(mut attributes) = self.attributes_mut(index).map(std::mem::take) else {
-            return false;
-        };
-        self.insert_attribute(&mut attributes, attr);
-        *self.attributes_mut(index).expect("checked above") = attributes;
-        true
+        self.edit_attributes(index, |document, attributes| {
+            document.insert_attribute(attributes, attr);
+        })
+        .is_some()
     }
 
     /// Inserts `attr` where aapt would write it. Attributes with a resource id
@@ -120,12 +130,16 @@ impl AxmlDocument {
     /// walks an element's attributes in that order, so one out of place is
     /// never found and silently takes its default.
     pub fn insert_attribute(&self, attributes: &mut Vec<AxmlAttribute>, attr: AxmlAttribute) {
-        let rank = self.attribute_rank(&attr);
-        let position = attributes
+        let position = self.attribute_position(attributes, &attr);
+        attributes.insert(position, attr);
+    }
+
+    fn attribute_position(&self, attributes: &[AxmlAttribute], attr: &AxmlAttribute) -> usize {
+        let rank = self.attribute_rank(attr);
+        attributes
             .iter()
             .position(|existing| self.attribute_rank(existing) > rank)
-            .unwrap_or(attributes.len());
-        attributes.insert(position, attr);
+            .unwrap_or(attributes.len())
     }
 
     fn sort_attributes(&self, attributes: &mut [AxmlAttribute]) {
@@ -143,6 +157,7 @@ impl AxmlDocument {
             AxmlEvent::StartNamespace {
                 prefix: Some(name),
                 uri,
+                ..
             } if self.string(*name).as_deref() == Some(prefix) => Some(*uri),
             AxmlEvent::StartNamespace { uri, .. }
                 if prefix == "android" && self.string(*uri).as_deref() == Some(ANDROID_NS) =>
@@ -151,6 +166,38 @@ impl AxmlDocument {
             }
             _ => None,
         })
+    }
+
+    /// The namespace URI active at an event boundary. Inner declarations
+    /// override outer declarations until their matching end event.
+    pub fn declared_namespace_at(&self, index: usize, prefix: &str) -> Option<u32> {
+        let mut scope = Vec::new();
+        for event in self.elements.iter().take(index + 1) {
+            match event {
+                AxmlEvent::StartNamespace { prefix, uri, .. } => scope.push((*prefix, *uri)),
+                AxmlEvent::EndNamespace { prefix, uri, .. } => {
+                    if let Some(i) = scope.iter().rposition(|entry| *entry == (*prefix, *uri)) {
+                        scope.remove(i);
+                    }
+                }
+                _ => {}
+            }
+        }
+        scope
+            .iter()
+            .rev()
+            .find_map(|&(name, uri)| {
+                (name.and_then(|name| self.string(name)).as_deref() == Some(prefix)).then_some(uri)
+            })
+            .or_else(|| {
+                (prefix == "android")
+                    .then(|| {
+                        scope.iter().rev().find_map(|&(_, uri)| {
+                            (self.string(uri).as_deref() == Some(ANDROID_NS)).then_some(uri)
+                        })
+                    })
+                    .flatten()
+            })
     }
 
     /// The index of the uri the document declares a namespace for.
@@ -172,19 +219,30 @@ impl AxmlDocument {
     pub fn declare_namespace(&mut self, prefix: &str, uri: &str) -> Result<()> {
         if let Some(declared) = self.declared_namespace(prefix) {
             let declared = self.string(declared).unwrap_or_default();
-            return match declared == uri {
-                true => Ok(()),
-                false => Err(invalid(
+            return if declared == uri {
+                Ok(())
+            } else {
+                Err(invalid(
                     "axml namespace",
                     format!("the document already declares xmlns:{prefix} as {declared}"),
-                )),
+                ))
             };
         }
         let prefix = Some(self.intern_string(prefix));
         let uri = self.intern_string(uri);
-        self.elements
-            .insert(0, AxmlEvent::StartNamespace { prefix, uri });
-        self.elements.push(AxmlEvent::EndNamespace { prefix, uri });
+        self.elements.insert(
+            0,
+            AxmlEvent::StartNamespace {
+                metadata: NodeMetadata::default(),
+                prefix,
+                uri,
+            },
+        );
+        self.elements.push(AxmlEvent::EndNamespace {
+            metadata: NodeMetadata::default(),
+            prefix,
+            uri,
+        });
         Ok(())
     }
 
@@ -196,11 +254,21 @@ impl AxmlDocument {
         name: &str,
         resources: Option<&ResourceTable>,
     ) -> Result<(Option<u32>, u32)> {
+        self.bind_attribute_name_at(self.root().unwrap_or(0), name, resources)
+    }
+
+    /// Binds an attribute against namespaces active at the target element.
+    pub fn bind_attribute_name_at(
+        &mut self,
+        index: usize,
+        name: &str,
+        resources: Option<&ResourceTable>,
+    ) -> Result<(Option<u32>, u32)> {
         let Some((prefix, local)) = name.split_once(':') else {
             return Ok((None, self.intern_string(name)));
         };
         let namespace = self
-            .declared_namespace(prefix)
+            .declared_namespace_at(index, prefix)
             .or_else(|| (prefix == "android").then(|| self.intern_string(ANDROID_NS)))
             .ok_or_else(|| {
                 invalid(
@@ -241,129 +309,36 @@ impl AxmlDocument {
         local: &str,
         resources: Option<&ResourceTable>,
     ) -> Result<(Option<u32>, u32)> {
-        let framework = self.string(namespace).as_deref() == Some(ANDROID_NS);
-        let res_id = if framework {
-            android_attr_res_id(local)
-        } else {
-            resources.and_then(|table| table.find_resource_id("attr", local))
-        }
-        .ok_or_else(|| {
-            let source = if framework {
-                "the framework attribute table"
-            } else {
-                "the app's resource table"
-            };
-            invalid(
-                "axml attribute",
-                format!(
-                    "attribute {name}: {source} has no id for it, and an attribute without one is ignored by the inflater"
-                ),
-            )
-        })?;
-        let name_index = self
-            .string_pool
+        let uri = self
+            .string(namespace)
+            .ok_or_else(|| invalid("XML namespace", "invalid URI index"))?;
+        let res_id = super::compiler::attribute_resource_id(Some(&uri), local, resources)?
+            .ok_or_else(|| {
+                invalid(
+                    "XML attribute",
+                    format!("attribute {name} has no resource ID"),
+                )
+            })?;
+        Ok((Some(namespace), self.intern_attribute_name(local, res_id)))
+    }
+
+    pub(super) fn intern_attribute_name(&mut self, name: &str, res_id: u32) -> u32 {
+        let existing = self
+            .resource_ids
             .iter()
             .enumerate()
-            .find_map(|(index, value)| {
-                (value == local && self.resource_id_for(index as u32) == Some(res_id))
+            .find_map(|(index, &id)| {
+                (id == res_id && self.string(index as u32).as_deref() == Some(name))
                     .then_some(index as u32)
             });
-        let name_index = name_index.unwrap_or_else(|| self.string_pool.push(local));
-        self.bind_resource_id(name_index, res_id);
-        Ok((Some(namespace), name_index))
-    }
-
-    /// A deep copy of `events`, a subtree of `source`, in this document's own
-    /// strings and namespaces. Every attribute is re-bound to the id this
-    /// document resolves it by, so an adopted attribute carries what the
-    /// inflater reads or the adoption fails.
-    pub fn adopt(
-        &mut self,
-        source: &AxmlDocument,
-        events: &[AxmlEvent],
-        resources: Option<&ResourceTable>,
-    ) -> Result<Vec<AxmlEvent>> {
-        events
-            .iter()
-            .map(|event| match event {
-                AxmlEvent::StartElement {
-                    namespace,
-                    name,
-                    attributes,
-                } => {
-                    let namespace = self.adopt_namespace(source, *namespace)?;
-                    let name = self.adopt_string(source, *name);
-                    let mut adopted = attributes
-                        .iter()
-                        .map(|attr| self.adopt_attribute(source, attr, resources))
-                        .collect::<Result<Vec<_>>>()?;
-                    self.sort_attributes(&mut adopted);
-                    Ok(AxmlEvent::StartElement {
-                        namespace,
-                        name,
-                        attributes: adopted,
-                    })
-                }
-                AxmlEvent::EndElement { namespace, name } => Ok(AxmlEvent::EndElement {
-                    namespace: self.adopt_namespace(source, *namespace)?,
-                    name: self.adopt_string(source, *name),
-                }),
-                AxmlEvent::StartNamespace { .. } | AxmlEvent::EndNamespace { .. } => Err(invalid(
-                    "axml adopt",
-                    "a namespace declaration is not part of an element subtree",
-                )),
-            })
-            .collect()
-    }
-
-    fn adopt_string(&mut self, source: &AxmlDocument, index: u32) -> u32 {
-        let value = source.string(index).unwrap_or_default().into_owned();
-        self.intern_string(&value)
-    }
-
-    fn adopt_namespace(
-        &mut self,
-        source: &AxmlDocument,
-        namespace: Option<u32>,
-    ) -> Result<Option<u32>> {
-        let Some(uri) = namespace.and_then(|index| source.string(index)) else {
-            return Ok(None);
-        };
-        self.namespace_index(&uri).map(Some).ok_or_else(|| {
-            invalid(
-                "axml adopt",
-                format!(
-                    "the document declares no namespace {uri}; declare it with declareNamespace(prefix, \"{uri}\")"
-                ),
-            )
-        })
-    }
-
-    fn adopt_attribute(
-        &mut self,
-        source: &AxmlDocument,
-        attr: &AxmlAttribute,
-        resources: Option<&ResourceTable>,
-    ) -> Result<AxmlAttribute> {
-        let uri = attr
-            .namespace
-            .and_then(|index| source.string(index))
-            .map(std::borrow::Cow::into_owned);
-        let local = source.string(attr.name).unwrap_or_default().into_owned();
-        let (namespace, name) = self.bind_attribute(uri.as_deref(), &local, resources)?;
-        let value = match attr.value.string_index() {
-            Some(index) => ResValue::string(self.adopt_string(source, index)),
-            None => attr.value,
-        };
-        let mut adopted = AxmlAttribute::new(namespace, name, value);
-        adopted.raw_value = attr.raw_value.map(|index| self.adopt_string(source, index));
-        Ok(adopted)
+        let index = existing.unwrap_or_else(|| self.string_pool.push(name));
+        self.bind_resource_id(index, res_id);
+        index
     }
 
     /// An `android:` attribute named `name` with framework id `res_id`.
     pub fn make_attribute(&mut self, name: &str, res_id: u32, value: ResValue) -> AxmlAttribute {
-        let name_index = self.intern_string(name);
-        self.bind_resource_id(name_index, res_id);
+        let name_index = self.intern_attribute_name(name, res_id);
         AxmlAttribute::new(self.android_ns(), name_index, value)
     }
 
@@ -384,11 +359,13 @@ impl AxmlDocument {
             position..position,
             [
                 AxmlEvent::StartElement {
+                    metadata: NodeMetadata::default(),
                     namespace: None,
                     name,
                     attributes,
                 },
                 AxmlEvent::EndElement {
+                    metadata: NodeMetadata::default(),
                     namespace: None,
                     name,
                 },
@@ -396,13 +373,18 @@ impl AxmlDocument {
         );
     }
 
+    /// Inserts an element as the first child of `parent`.
+    /// An absent or unterminated parent is an error and leaves the document unchanged.
     pub fn insert_child_element(
         &mut self,
         parent: usize,
         name: &str,
         attributes: Vec<AxmlAttribute>,
-    ) {
+    ) -> Result<()> {
+        self.find_end_element(parent)
+            .ok_or_else(|| invalid("axml edit", "parent is absent or unterminated"))?;
         self.insert_element(parent + 1, name, attributes);
+        Ok(())
     }
 
     /// Inserts `name` as the last child of `parent`; false when `parent` is unterminated.

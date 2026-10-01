@@ -17,26 +17,41 @@ private val navigationEmpty = SettingsPage("empty", "Empty")
 private val navigationFirst = ToggleSetting("quality.first", "First", default = true)
 private val navigationSecond = ToggleSetting("quality.second", "Second", default = false)
 
-val navigationSettings = settingsHost("navigation") {
-    compatibleWith("com.example.test")
-    settings(section("Root", ToggleSetting("root.enabled", "Root", default = false), TextSetting("root.lines", "Lines", default = "", multiline = true)))
-}
+val navigationSettings =
+    settingsHost("navigation") {
+        compatibleWith("com.example.test")
+        settings(
+            section(
+                "Root",
+                ToggleSetting("root.enabled", "Root", default = false),
+                TextSetting("root.lines", "Lines", default = "", multiline = true),
+            )
+        )
+    }
 
-val navigationFirstPatch = patch("Settings navigation first") {
-    compatibleWith("com.example.test")
-    enabledByDefault(false)
-    settings(navigationSettings,
-        section(navigationChild, "Quality", navigationFirst),
-        section(navigationEmpty, "Empty"),
-    )
-}
+val navigationFirstPatch =
+    patch("Settings navigation first") {
+        compatibleWith("com.example.test")
+        enabledByDefault(false)
+        settings(
+            navigationSettings,
+            section(navigationChild, "Quality", navigationFirst),
+            section(navigationEmpty, "Empty"),
+        )
+    }
 
-val navigationSecondPatch = patch("Settings navigation second") {
-    compatibleWith("com.example.test")
-    enabledByDefault(false)
-    dependsOn(navigationFirstPatch)
-    settings(navigationSettings,
-        section(navigationChild, "Quality", navigationFirst, navigationSecond),
-        section(navigationOther, "General", ToggleSetting("general.enabled", "General", default = true)),
-    )
-}
+val navigationSecondPatch =
+    patch("Settings navigation second") {
+        compatibleWith("com.example.test")
+        enabledByDefault(false)
+        dependsOn(navigationFirstPatch)
+        settings(
+            navigationSettings,
+            section(navigationChild, "Quality", navigationFirst, navigationSecond),
+            section(
+                navigationOther,
+                "General",
+                ToggleSetting("general.enabled", "General", default = true),
+            ),
+        )
+    }

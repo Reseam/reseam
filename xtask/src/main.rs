@@ -3,8 +3,11 @@
 
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
+use std::path::PathBuf;
 
 mod boltffi;
+mod framework;
+mod opcodes;
 mod patch_api;
 mod paths;
 mod release;
@@ -20,15 +23,24 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Regenerates the BoltFFI Kotlin bindings, and packages SDK Android and desktop JNI libraries.
+    /// Regenerates Kotlin bindings and JNI sources using the host toolchain.
     Regen {
         #[arg(value_enum)]
         target: RegenTarget,
     },
+    /// Builds the patch API and Kotlin runtime jar embedded in desktop engine builds.
+    Runtime,
+    /// Packages SDK Android and desktop JNI libraries after building the runtime jar.
+    PackSdk,
     /// Sets the workspace version, commits, and tags the release.
     Release { version: String },
     /// Fails unless the tag names the workspace version.
     CheckTag { tag: String },
+    /// Generates framework resource metadata from Android SDK platform 36, revision 2.
+    FrameworkAttributes {
+        #[arg(long)]
+        android_jar: PathBuf,
+    },
 }
 
 #[derive(Copy, Clone, ValueEnum)]
@@ -49,8 +61,14 @@ fn main() -> Result<()> {
                 sdk::regen()?;
             }
         }
+        Cmd::Runtime => run::gradle(&[":reseam-sdk:patchRuntimeJar"])?,
+        Cmd::PackSdk => {
+            boltffi::check_version()?;
+            sdk::pack()?;
+        }
         Cmd::Release { version } => release::release(&version)?,
         Cmd::CheckTag { tag } => release::check_tag(&tag)?,
+        Cmd::FrameworkAttributes { android_jar } => framework::generate(&android_jar)?,
     }
     Ok(())
 }

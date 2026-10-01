@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 #[boltffi::data]

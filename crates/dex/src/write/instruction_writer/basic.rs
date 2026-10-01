@@ -1,245 +1,173 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::error::Result;
+use crate::error::{Result, invalid};
 use crate::types::instruction::Instruction;
 
 use super::{pack_12x, pack_aa_op, validate_u4_register};
 
-pub(super) fn encode_instruction(code: &mut Vec<u16>, instruction: &Instruction) -> Result<()> {
+#[expect(
+    clippy::too_many_lines,
+    reason = "the exhaustive format dispatch keeps each encoding visible in one match"
+)]
+pub(super) fn encode_instruction(
+    code: &mut Vec<u16>,
+    instruction: &Instruction,
+    op: u16,
+) -> Result<()> {
     match instruction {
-        Instruction::Nop => code.push(0x0000),
-
-        Instruction::Move { dest, src } => code.push(pack_12x(0x01, *dest, *src)?),
-        Instruction::MoveWide { dest, src } => code.push(pack_12x(0x04, *dest, *src)?),
-        Instruction::MoveObject { dest, src } => code.push(pack_12x(0x07, *dest, *src)?),
-        Instruction::ArrayLength { dest, array } => code.push(pack_12x(0x21, *dest, *array)?),
-
-        Instruction::MoveFrom16 { dest, src } => {
-            code.push(pack_aa_op(0x02, *dest));
+        Instruction::Nop | Instruction::ReturnVoid => code.push(op),
+        Instruction::Move { dest, src }
+        | Instruction::MoveWide { dest, src }
+        | Instruction::MoveObject { dest, src } => code.push(pack_12x(op, *dest, *src)?),
+        Instruction::ArrayLength { dest, array } => code.push(pack_12x(op, *dest, *array)?),
+        Instruction::MoveFrom16 { dest, src }
+        | Instruction::MoveWideFrom16 { dest, src }
+        | Instruction::MoveObjectFrom16 { dest, src } => {
+            code.push(pack_aa_op(op, *dest));
             code.push(*src);
         }
-        Instruction::MoveWideFrom16 { dest, src } => {
-            code.push(pack_aa_op(0x05, *dest));
-            code.push(*src);
-        }
-        Instruction::MoveObjectFrom16 { dest, src } => {
-            code.push(pack_aa_op(0x08, *dest));
-            code.push(*src);
-        }
-
-        Instruction::Move16 { dest, src } => {
-            code.push(0x03);
+        Instruction::Move16 { dest, src }
+        | Instruction::MoveWide16 { dest, src }
+        | Instruction::MoveObject16 { dest, src } => {
+            code.push(op);
             code.push(*dest);
             code.push(*src);
         }
-        Instruction::MoveWide16 { dest, src } => {
-            code.push(0x06);
-            code.push(*dest);
-            code.push(*src);
-        }
-        Instruction::MoveObject16 { dest, src } => {
-            code.push(0x09);
-            code.push(*dest);
-            code.push(*src);
-        }
-
-        Instruction::MoveResult { dest } => code.push(pack_aa_op(0x0a, *dest)),
-        Instruction::MoveResultWide { dest } => code.push(pack_aa_op(0x0b, *dest)),
-        Instruction::MoveResultObject { dest } => code.push(pack_aa_op(0x0c, *dest)),
-        Instruction::MoveException { dest } => code.push(pack_aa_op(0x0d, *dest)),
-
-        Instruction::ReturnVoid => code.push(0x0e),
-        Instruction::Return { src } => code.push(pack_aa_op(0x0f, *src)),
-        Instruction::ReturnWide { src } => code.push(pack_aa_op(0x10, *src)),
-        Instruction::ReturnObject { src } => code.push(pack_aa_op(0x11, *src)),
-
+        Instruction::MoveResult { dest }
+        | Instruction::MoveResultWide { dest }
+        | Instruction::MoveResultObject { dest }
+        | Instruction::MoveException { dest } => code.push(pack_aa_op(op, *dest)),
+        Instruction::Return { src }
+        | Instruction::ReturnWide { src }
+        | Instruction::ReturnObject { src } => code.push(pack_aa_op(op, *src)),
         Instruction::Const4 { dest, value } => {
             validate_u4_register(*dest, "A")?;
             if !(-8..=7).contains(value) {
-                return Err(crate::error::invalid(
+                return Err(invalid(
                     "instruction",
                     format!("literal {value} does not fit const/4 signed nibble range (-8..7)"),
                 ));
             }
             let value = (*value as u8) & 0xF;
-            code.push(0x12 | ((*dest as u16) << 8) | ((value as u16) << 12));
+            code.push(op | (u16::from(*dest) << 8) | (u16::from(value) << 12));
         }
-
-        Instruction::Const16 { dest, value } => {
-            code.push(pack_aa_op(0x13, *dest));
+        Instruction::Const16 { dest, value }
+        | Instruction::ConstWide16 { dest, value }
+        | Instruction::ConstHigh16 { dest, value }
+        | Instruction::ConstWideHigh16 { dest, value } => {
+            code.push(pack_aa_op(op, *dest));
             code.push(*value as u16);
         }
-        Instruction::ConstWide16 { dest, value } => {
-            code.push(pack_aa_op(0x16, *dest));
-            code.push(*value as u16);
-        }
-
-        Instruction::Const { dest, value } => {
-            code.push(pack_aa_op(0x14, *dest));
+        Instruction::Const { dest, value } | Instruction::ConstWide32 { dest, value } => {
+            code.push(pack_aa_op(op, *dest));
             code.push(*value as u16);
             code.push((*value >> 16) as u16);
         }
-        Instruction::ConstWide32 { dest, value } => {
-            code.push(pack_aa_op(0x17, *dest));
-            code.push(*value as u16);
-            code.push((*value >> 16) as u16);
-        }
-
-        Instruction::ConstHigh16 { dest, value } => {
-            code.push(pack_aa_op(0x15, *dest));
-            code.push(*value as u16);
-        }
-        Instruction::ConstWideHigh16 { dest, value } => {
-            code.push(pack_aa_op(0x19, *dest));
-            code.push(*value as u16);
-        }
-
         Instruction::ConstWide { dest, value } => {
-            code.push(pack_aa_op(0x18, *dest));
+            code.push(pack_aa_op(op, *dest));
             code.push(*value as u16);
             code.push((*value >> 16) as u16);
             code.push((*value >> 32) as u16);
             code.push((*value >> 48) as u16);
         }
-
         Instruction::ConstString { dest, string } => {
-            code.push(pack_aa_op(0x1a, *dest));
+            code.push(pack_aa_op(op, *dest));
             code.push(string.0 as u16);
         }
-        Instruction::ConstClass { dest, type_ } => {
-            code.push(pack_aa_op(0x1c, *dest));
+        Instruction::ConstClass { dest, type_ } | Instruction::NewInstance { dest, type_ } => {
+            code.push(pack_aa_op(op, *dest));
             code.push(type_.0 as u16);
         }
         Instruction::ConstMethodHandle {
             dest,
             method_handle,
         } => {
-            code.push(pack_aa_op(0xfe, *dest));
+            code.push(pack_aa_op(op, *dest));
             code.push(method_handle.0 as u16);
         }
         Instruction::ConstMethodType { dest, proto } => {
-            code.push(pack_aa_op(0xff, *dest));
-            code.push(proto.0);
+            code.push(pack_aa_op(op, *dest));
+            code.push(
+                u16::try_from(proto.0)
+                    .map_err(|_| invalid("instruction", "prototype index exceeds encoded width"))?,
+            );
         }
-
         Instruction::ConstStringJumbo { dest, string } => {
-            code.push(pack_aa_op(0x1b, *dest));
+            code.push(pack_aa_op(op, *dest));
             code.push(string.0 as u16);
             code.push((string.0 >> 16) as u16);
         }
-
-        Instruction::MonitorEnter { ref_ } => code.push(pack_aa_op(0x1d, *ref_)),
-        Instruction::MonitorExit { ref_ } => code.push(pack_aa_op(0x1e, *ref_)),
-
+        Instruction::MonitorEnter { ref_ } | Instruction::MonitorExit { ref_ } => {
+            code.push(pack_aa_op(op, *ref_));
+        }
         Instruction::CheckCast { ref_, type_ } => {
-            code.push(pack_aa_op(0x1f, *ref_));
+            code.push(pack_aa_op(op, *ref_));
             code.push(type_.0 as u16);
         }
-
         Instruction::InstanceOf { dest, ref_, type_ } => {
-            code.push(pack_12x(0x20, *dest, *ref_)?);
-            code.push(type_.0 as u16);
-        }
-        Instruction::NewInstance { dest, type_ } => {
-            code.push(pack_aa_op(0x22, *dest));
+            code.push(pack_12x(op, *dest, *ref_)?);
             code.push(type_.0 as u16);
         }
         Instruction::NewArray { dest, size, type_ } => {
-            code.push(pack_12x(0x23, *dest, *size)?);
+            code.push(pack_12x(op, *dest, *size)?);
             code.push(type_.0 as u16);
         }
-
         Instruction::FillArrayData {
             array,
             payload_offset,
         } => {
-            code.push(pack_aa_op(0x26, *array));
+            code.push(pack_aa_op(op, *array));
             code.push(*payload_offset as u16);
             code.push((*payload_offset >> 16) as u16);
         }
-
-        Instruction::Throw { exception } => code.push(pack_aa_op(0x27, *exception)),
-
-        Instruction::Goto { offset } => code.push(pack_aa_op(0x28, *offset as u8)),
+        Instruction::Throw { exception } => code.push(pack_aa_op(op, *exception)),
+        Instruction::Goto { offset } => code.push(pack_aa_op(op, *offset as u8)),
         Instruction::Goto16 { offset } => {
-            code.push(0x29);
+            code.push(op);
             code.push(*offset as u16);
         }
         Instruction::Goto32 { offset } => {
-            code.push(0x2a);
+            code.push(op);
             code.push(*offset as u16);
             code.push((*offset >> 16) as u16);
         }
-
         Instruction::PackedSwitch {
             test,
             payload_offset,
-        } => {
-            code.push(pack_aa_op(0x2b, *test));
-            code.push(*payload_offset as u16);
-            code.push((*payload_offset >> 16) as u16);
         }
-        Instruction::SparseSwitch {
+        | Instruction::SparseSwitch {
             test,
             payload_offset,
         } => {
-            code.push(pack_aa_op(0x2c, *test));
+            code.push(pack_aa_op(op, *test));
             code.push(*payload_offset as u16);
             code.push((*payload_offset >> 16) as u16);
         }
-
-        Instruction::IfEq { a, b, offset } => {
-            code.push(pack_12x(0x32, *a, *b)?);
+        Instruction::IfEq { a, b, offset }
+        | Instruction::IfNe { a, b, offset }
+        | Instruction::IfLt { a, b, offset }
+        | Instruction::IfGe { a, b, offset }
+        | Instruction::IfGt { a, b, offset }
+        | Instruction::IfLe { a, b, offset } => {
+            code.push(pack_12x(op, *a, *b)?);
             code.push(*offset as u16);
         }
-        Instruction::IfNe { a, b, offset } => {
-            code.push(pack_12x(0x33, *a, *b)?);
+        Instruction::IfEqz { a, offset }
+        | Instruction::IfNez { a, offset }
+        | Instruction::IfLtz { a, offset }
+        | Instruction::IfGez { a, offset }
+        | Instruction::IfGtz { a, offset }
+        | Instruction::IfLez { a, offset } => {
+            code.push(pack_aa_op(op, *a));
             code.push(*offset as u16);
         }
-        Instruction::IfLt { a, b, offset } => {
-            code.push(pack_12x(0x34, *a, *b)?);
-            code.push(*offset as u16);
+        _ => {
+            return Err(invalid(
+                "instruction encoding",
+                "instruction is outside the encoded family",
+            ));
         }
-        Instruction::IfGe { a, b, offset } => {
-            code.push(pack_12x(0x35, *a, *b)?);
-            code.push(*offset as u16);
-        }
-        Instruction::IfGt { a, b, offset } => {
-            code.push(pack_12x(0x36, *a, *b)?);
-            code.push(*offset as u16);
-        }
-        Instruction::IfLe { a, b, offset } => {
-            code.push(pack_12x(0x37, *a, *b)?);
-            code.push(*offset as u16);
-        }
-
-        Instruction::IfEqz { a, offset } => {
-            code.push(pack_aa_op(0x38, *a));
-            code.push(*offset as u16);
-        }
-        Instruction::IfNez { a, offset } => {
-            code.push(pack_aa_op(0x39, *a));
-            code.push(*offset as u16);
-        }
-        Instruction::IfLtz { a, offset } => {
-            code.push(pack_aa_op(0x3a, *a));
-            code.push(*offset as u16);
-        }
-        Instruction::IfGez { a, offset } => {
-            code.push(pack_aa_op(0x3b, *a));
-            code.push(*offset as u16);
-        }
-        Instruction::IfGtz { a, offset } => {
-            code.push(pack_aa_op(0x3c, *a));
-            code.push(*offset as u16);
-        }
-        Instruction::IfLez { a, offset } => {
-            code.push(pack_aa_op(0x3d, *a));
-            code.push(*offset as u16);
-        }
-
-        _ => unreachable!(),
     }
     Ok(())
 }

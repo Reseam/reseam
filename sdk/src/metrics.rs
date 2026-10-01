@@ -1,122 +1,16 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Instant;
-
-static HEAP_LIVE: AtomicUsize = AtomicUsize::new(0);
-static HEAP_PEAK: AtomicUsize = AtomicUsize::new(0);
-static TRACE_STEP: AtomicUsize = AtomicUsize::new(0);
-static TRACE_NEXT: AtomicUsize = AtomicUsize::new(usize::MAX);
-
-thread_local! {
-    static IN_TRACE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-/// Prints a backtrace every time the live heap grows by another `step`
-/// bytes past its previous high-water mark, which attributes a peak to the
-/// allocations that built it. Driven by `RESEAM_HEAP_TRACE=<MiB>`.
-pub fn trace_heap_growth(step: usize) {
-    TRACE_STEP.store(step, Ordering::Relaxed);
-    TRACE_NEXT.store(HEAP_LIVE.load(Ordering::Relaxed) + step, Ordering::Relaxed);
-}
-
-fn maybe_trace(live: usize) {
-    if live < TRACE_NEXT.load(Ordering::Relaxed) {
-        return;
-    }
-    IN_TRACE.with(|flag| {
-        if flag.replace(true) {
-            return;
-        }
-        let step = TRACE_STEP.load(Ordering::Relaxed);
-        TRACE_NEXT.store(live + step, Ordering::Relaxed);
-        eprintln!(
-            "heap trace: live {} MiB\n{}",
-            live >> 20,
-            std::backtrace::Backtrace::force_capture()
-        );
-        flag.set(false);
-    });
-}
-
-/// Counts bytes allocated through the global allocator so live and peak heap
-/// can be read without asking the allocator, which glibc, scudo and jemalloc
-/// each answer differently. Install with `#[global_allocator]`.
-pub struct CountingAllocator;
-
-impl CountingAllocator {
-    fn add(bytes: usize) {
-        let live = HEAP_LIVE.fetch_add(bytes, Ordering::Relaxed) + bytes;
-        HEAP_PEAK.fetch_max(live, Ordering::Relaxed);
-        maybe_trace(live);
-    }
-
-    fn remove(bytes: usize) {
-        HEAP_LIVE.fetch_sub(bytes, Ordering::Relaxed);
-    }
-}
-
-// SAFETY: every method forwards to `System` unchanged; only the counters are
-// added, and they never influence the returned pointers.
-unsafe impl GlobalAlloc for CountingAllocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let ptr = System.alloc(layout);
-        if !ptr.is_null() {
-            Self::add(layout.size());
-        }
-        ptr
-    }
-
-    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        let ptr = System.alloc_zeroed(layout);
-        if !ptr.is_null() {
-            Self::add(layout.size());
-        }
-        ptr
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        System.dealloc(ptr, layout);
-        Self::remove(layout.size());
-    }
-
-    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        let new_ptr = System.realloc(ptr, layout, new_size);
-        if !new_ptr.is_null() {
-            Self::remove(layout.size());
-            Self::add(new_size);
-        }
-        new_ptr
-    }
-}
-
-fn heap_live_bytes() -> Option<u64> {
-    let live = HEAP_LIVE.load(Ordering::Relaxed);
-    (live > 0).then_some(live as u64)
-}
-
-/// Highest live heap since the last [`reset_heap_peak`]; `None` when no
-/// [`CountingAllocator`] is installed.
-fn heap_peak_bytes() -> Option<u64> {
-    let peak = HEAP_PEAK.load(Ordering::Relaxed);
-    (peak > 0).then_some(peak as u64)
-}
-
-fn reset_heap_peak() {
-    HEAP_PEAK.store(HEAP_LIVE.load(Ordering::Relaxed), Ordering::Relaxed);
-}
+use std::time::{Duration, Instant};
 
 pub use reseam_model::{ApplyDiagnostics, PatchMetrics, PatchPhase, PatchPhaseMetrics};
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Default)]
 struct MemorySample {
-    rss_bytes: Option<u64>,
-    peak_rss_bytes: Option<u64>,
-    heap_live_bytes: Option<u64>,
-    rss_anon_bytes: Option<u64>,
-    rss_file_bytes: Option<u64>,
+    rss: Option<u64>,
+    process_peak: Option<u64>,
+    anonymous: Option<u64>,
+    file_backed: Option<u64>,
 }
 
 pub(crate) struct PatchProfiler {
@@ -139,7 +33,7 @@ impl PatchProfiler {
     }
 
     pub(crate) fn current_rss_bytes() -> Option<u64> {
-        sample_memory().rss_bytes
+        sample_memory().rss
     }
 
     pub(crate) fn measure<T, E>(
@@ -147,17 +41,19 @@ impl PatchProfiler {
         phase: PatchPhase,
         run: impl FnOnce() -> Result<T, E>,
     ) -> Result<T, E> {
-        let phase_started_at = Instant::now();
-        reset_heap_peak();
+        let started_at = Instant::now();
         let result = run();
+        let elapsed = started_at.elapsed();
         let memory = sample_memory();
         self.phases.push(PatchPhaseMetrics {
             phase,
-            duration_ms: duration_ms(phase_started_at.elapsed()),
-            rss_bytes: memory.rss_bytes,
-            peak_rss_bytes: memory.peak_rss_bytes,
-            heap_live_bytes: memory.heap_live_bytes,
-            heap_peak_bytes: heap_peak_bytes(),
+            duration_ms: duration_ms(elapsed),
+            rss_bytes: memory.rss,
+            // The wire field is retained for hosts; this is the process high-water
+            // mark observed at phase end, not an interval peak.
+            peak_rss_bytes: memory.process_peak,
+            heap_live_bytes: None,
+            heap_peak_bytes: None,
         });
         result
     }
@@ -166,95 +62,96 @@ impl PatchProfiler {
         let memory = sample_memory();
         PatchMetrics {
             total_duration_ms: duration_ms(self.started_at.elapsed()),
-            final_rss_bytes: memory.rss_bytes,
-            peak_rss_bytes: memory.peak_rss_bytes,
-            final_heap_live_bytes: memory.heap_live_bytes,
-            final_rss_anon_bytes: memory.rss_anon_bytes,
-            final_rss_file_bytes: memory.rss_file_bytes,
+            final_rss_bytes: memory.rss,
+            peak_rss_bytes: memory.process_peak,
+            final_heap_live_bytes: None,
+            final_rss_anon_bytes: memory.anonymous,
+            final_rss_file_bytes: memory.file_backed,
             phases: self.phases,
             apply_diagnostics: self.apply_diagnostics,
         }
     }
 }
 
-fn duration_ms(duration: std::time::Duration) -> u64 {
+fn duration_ms(duration: Duration) -> u64 {
     duration.as_millis().try_into().unwrap_or(u64::MAX)
 }
 
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn sample_memory() -> MemorySample {
-    #[cfg(target_os = "linux")]
-    {
-        sample_linux_memory().unwrap_or_else(sample_unix_peak_memory)
-    }
-
-    #[cfg(all(unix, not(target_os = "linux")))]
-    {
-        sample_unix_peak_memory()
-    }
-
-    #[cfg(not(unix))]
-    {
-        MemorySample {
-            heap_live_bytes: heap_live_bytes(),
-            ..MemorySample::default()
-        }
-    }
-}
-
-#[cfg(target_os = "linux")]
-fn sample_linux_memory() -> Option<MemorySample> {
-    let status = std::fs::read_to_string("/proc/self/status").ok()?;
-    let mut sample = MemorySample {
-        heap_live_bytes: heap_live_bytes(),
-        ..MemorySample::default()
+    let Ok(status) = std::fs::read_to_string("/proc/self/status") else {
+        return sample_unix_peak_memory();
     };
-
-    for line in status.lines() {
-        if let Some(rest) = line.strip_prefix("VmRSS:") {
-            sample.rss_bytes = parse_kib_line(rest);
-        } else if let Some(rest) = line.strip_prefix("VmHWM:") {
-            sample.peak_rss_bytes = parse_kib_line(rest);
-        } else if let Some(rest) = line.strip_prefix("RssAnon:") {
-            sample.rss_anon_bytes = parse_kib_line(rest);
-        } else if let Some(rest) = line.strip_prefix("RssFile:") {
-            sample.rss_file_bytes = parse_kib_line(rest);
-        }
-    }
-
-    if sample.rss_bytes.is_none() && sample.peak_rss_bytes.is_none() {
-        None
-    } else {
-        Some(sample)
+    let field = |name| {
+        status.lines().find_map(|line| {
+            line.strip_prefix(name)?
+                .split_whitespace()
+                .next()?
+                .parse::<u64>()
+                .ok()?
+                .checked_mul(1024)
+        })
+    };
+    MemorySample {
+        rss: field("VmRSS:"),
+        process_peak: field("VmHWM:"),
+        anonymous: field("RssAnon:"),
+        file_backed: field("RssFile:"),
     }
 }
 
-#[cfg(target_os = "linux")]
-fn parse_kib_line(value: &str) -> Option<u64> {
-    let kib = value.split_whitespace().next()?.parse::<u64>().ok()?;
-    kib.checked_mul(1024)
+#[cfg(all(unix, not(any(target_os = "linux", target_os = "android"))))]
+fn sample_memory() -> MemorySample {
+    sample_unix_peak_memory()
 }
 
 #[cfg(unix)]
 fn sample_unix_peak_memory() -> MemorySample {
     let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
-    let rc = unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) };
-    if rc != 0 {
+    // SAFETY: usage is writable storage for getrusage; it is read only on success.
+    if unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) } != 0 {
         return MemorySample::default();
     }
-
+    // SAFETY: successful getrusage initialized the structure.
     let usage = unsafe { usage.assume_init() };
-    #[cfg(target_os = "macos")]
-    let peak_rss_bytes = u64::try_from(usage.ru_maxrss).ok();
+    let process_peak = u64::try_from(usage.ru_maxrss).ok();
     #[cfg(not(target_os = "macos"))]
-    let peak_rss_bytes = u64::try_from(usage.ru_maxrss)
-        .ok()
-        .and_then(|kib| kib.checked_mul(1024));
-
+    let process_peak = process_peak.and_then(|kib| kib.checked_mul(1024));
     MemorySample {
-        heap_live_bytes: heap_live_bytes(),
-        rss_bytes: None,
-        peak_rss_bytes,
-        rss_anon_bytes: None,
-        rss_file_bytes: None,
+        process_peak,
+        ..MemorySample::default()
     }
+}
+
+#[cfg(windows)]
+fn sample_memory() -> MemorySample {
+    use windows_sys::Win32::System::ProcessStatus::{
+        GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS,
+    };
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+    let mut counters = std::mem::MaybeUninit::<PROCESS_MEMORY_COUNTERS>::uninit();
+    // SAFETY: the current-process pseudo-handle is valid; counters is writable
+    // storage of the declared size and is read only after a successful call.
+    if unsafe {
+        GetProcessMemoryInfo(
+            GetCurrentProcess(),
+            counters.as_mut_ptr(),
+            size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
+        )
+    } == 0
+    {
+        return MemorySample::default();
+    }
+    // SAFETY: successful GetProcessMemoryInfo initialized the structure.
+    let counters = unsafe { counters.assume_init() };
+    MemorySample {
+        rss: Some(counters.WorkingSetSize as u64),
+        process_peak: Some(counters.PeakWorkingSetSize as u64),
+        ..MemorySample::default()
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn sample_memory() -> MemorySample {
+    MemorySample::default()
 }

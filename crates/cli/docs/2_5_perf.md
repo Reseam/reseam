@@ -1,133 +1,29 @@
 ---
 title: Perf
-description: Benchmark a bundle against an APK and report per-phase timings.
+description: Benchmark a bundle against an APK and report phase timings and process memory.
 ---
 
 # `reseam perf`
 
-Runs the real patch pipeline N times into a temporary location and prints how long each phase took. Use it to compare bundle revisions or to spot regressions during development.
+Each iteration runs the patch pipeline in a fresh child process and discards its output in a temporary directory. RSS peaks belong to that child, so earlier phases, warmups, and measured iterations cannot contaminate another iteration. SDK timings exclude child-process startup; opening inputs and starting the patch JVM remain part of the measured pipeline.
 
 ```bash
-reseam perf app.apk --bundle patches.reseam --warmup 1 --iterations 5
+reseam perf app.apk --bundle patches.reseam --trust <PUBLIC_KEY_HEX> --warmup 1 --iterations 5 --json
 ```
 
-The output APK is written into a `tempfile::tempdir()` per iteration and discarded; nothing lands on the working tree. The patch arguments are the same as `reseam patch`.
+The patch arguments match `reseam patch`, including splits, selection options, signing files, and `--dry-run`. `--iterations` defaults to 1 and must be positive; `--warmup` defaults to 0. Warmups can prime filesystem caches, but do not warm a shared JVM. A failed warmup aborts measurement. Failed measured iterations are reported and make the command exit unsuccessfully.
 
-## Arguments
+The phases are `open_apk`, `load_bundles`, `apply_patches`, `write_unsigned_artifacts`, `load_signing_key`, and `sign_artifacts`. Dry runs replace application and writing with `validate_patches`. Selection text is resolved against the already loaded specifications and package, without reopening inputs.
 
-| Argument | Purpose |
-|----------|---------|
-| `<apk>` | Base APK path. |
-| `--bundle <PATH>` | Signed `.reseam` bundle. Verified on open. |
-| `--trust <PUBLIC_KEY_HEX>` | Repeatable. Bundle signer to accept. Same as `reseam patch`. |
-| `--split <APK>` | Repeatable split APK input. |
-| `--key <PK8>` | PKCS#8 signing key. Requires `--cert`. |
-| `--cert <DER>` | DER X.509 certificate. Requires `--key`. |
-| `--preset <PRESET>` | `recommended` (default), `all` or `none`. Same as `reseam patch`. |
-| `--enable <PATCH>` | Repeatable. Add a patch to the preset. |
-| `--disable <PATCH>` | Repeatable. Remove a patch from the preset. |
-| `--option PATCH.KEY=VALUE` | Repeatable patch option. |
-| `--dry-run` | Run validation only; skip apply, write, and sign. |
-| `--iterations <N>` | Measured runs. Default `1`. Must be greater than `0`. |
-| `--warmup <N>` | Unmeasured runs before measurement. Default `0`. |
-| `--json` | Print machine-readable JSON. Without it the report is plain text. |
+Phase `rss_bytes` values are endpoint samples. The legacy `peak_rss_bytes` field is the process high-water mark observed at that endpoint, which can have been established in an earlier phase. It is never an interval peak. The run's `peak_rss_bytes` is the child-process peak; apply diagnostics are sampled immediately after application. JVM used, committed, and maximum heap are reported separately: committed heap is not resident memory and cannot be subtracted from RSS. Allocator heap counters are unavailable and remain null in SDK metrics.
 
-A failed warmup aborts the run before any measured iteration starts. A measured iteration that fails is included in the summary, and the command exits non-zero at the end.
-
-## Phases
-
-Each iteration is broken down by phase, in order:
-
-| Phase | What it covers |
-|-------|----------------|
-| `OpenApk` | Open the base APK and any splits for patching. |
-| `LoadBundles` | Read each `.reseam`, verify signatures, instantiate patches. |
-| `ValidatePatches` | (dry-run only) Resolve the selection and check compatibility per patch. |
-| `ApplyPatches` | Run each patch. |
-| `WriteUnsignedArtifacts` | Serialize the patched APK or split set to a temp file. |
-| `LoadSigningKey` | Load or generate the APK signing key. |
-| `SignArtifacts` | Produce APK Signature Scheme v2 signatures. |
-
-Per phase the report records duration in milliseconds and, where available, RSS, peak RSS, and peak native heap in bytes.
-
-## Plain-text report
-
-```
-APK: app.apk
-Bundle: patches.reseam
-Splits: 0
-Dry run: false
-Warmups: 1
-Measured runs: 5
-
-iteration  1:      ok  total=4.12s  peak_rss=375.30MiB  final_rss=268.10MiB (anon=180.20MiB file=87.90MiB)  final_heap=22.40MiB  jvm_committed=96.00MiB
-iteration  2:      ok  total=4.05s  peak_rss=372.80MiB  final_rss=266.90MiB (anon=179.60MiB file=87.30MiB)  final_heap=22.10MiB  jvm_committed=96.00MiB
-...
-
-summary: 5 ok, 0 failed
-  total: min=4.01s median=4.05s max=4.12s mean=4056.0 ms
-  peak rss: min=372.80MiB median=375.30MiB max=376.10MiB
-
-phase breakdown:
-  open_apk                 median=135ms max_peak_rss=120.40MiB max_peak_heap=15.20MiB
-  load_bundles             median=630ms max_peak_rss=145.20MiB max_peak_heap=15.20MiB
-  apply_patches            median=2.10s max_peak_rss=375.30MiB max_peak_heap=22.40MiB
-  write_unsigned_artifacts median=680ms max_peak_rss=375.30MiB max_peak_heap=22.40MiB
-  load_signing_key         median=12ms  max_peak_rss=375.30MiB max_peak_heap=22.40MiB
-  sign_artifacts           median=240ms max_peak_rss=376.10MiB max_peak_heap=22.40MiB
-
-apply_patches memory attribution (sampled at apply-phase peak):
-  ...
-```
-
-A failed iteration prints `iteration  n:  failed  <error>` instead. Skipped phases (for example `validate_patches` outside `--dry-run`) are omitted. The attribution block at the end breaks the apply-phase peak down into materialized DEX structures, the JVM heap, and the rest of the native heap, from the last successful iteration.
-
-## JSON report
-
-```bash
-reseam perf app.apk --bundle patches.reseam --iterations 5 --json > perf.json
-```
+JSON reports contain `bundle_paths` as an array and one tagged result per iteration:
 
 ```json
-{
-  "apk_path": "app.apk",
-  "bundle_path": "patches.reseam",
-  "split_count": 0,
-  "dry_run": false,
-  "warmup_iterations": 1,
-  "measured_iterations": 5,
-  "iterations": [
-    {
-      "iteration": 1,
-      "success": true,
-      "error": null,
-      "metrics": { "total_duration_ms": 4120, "phases": [ ... ], "final_rss_bytes": ..., "peak_rss_bytes": ..., "apply_diagnostics": { ... } }
-    }
-  ],
-  "summary": {
-    "successful_iterations": 5,
-    "failed_iterations": 0,
-    "total_duration_ms": { "min": 4010, "median": 4050, "max": 4120, "mean": 4056.0 },
-    "final_rss_bytes": { "min": ..., "median": ..., "max": ..., "mean": ... },
-    "peak_rss_bytes": { "min": ..., "median": ..., "max": ..., "mean": ... },
-    "phases": [
-      {
-        "phase": "apply_patches",
-        "duration_ms": { "min": 2050, "median": 2100, "max": 2180, "mean": 2104.0 },
-        "rss_bytes": { ... },
-        "peak_rss_bytes": { ... },
-        "heap_peak_bytes": { ... }
-      }
-    ]
-  }
-}
+{"iteration": 1, "status": "success", "metrics": {"total_duration_ms": 4120, "phases": []}}
+{"iteration": 2, "status": "failure", "error": "..."}
 ```
 
-`metrics` is the engine's `PatchMetrics` record for that iteration, the same one Reseam Manager receives. `mean` is a float; `min`, `median`, and `max` are integers. Memory fields are omitted where the engine cannot read them.
+`summary` aggregates successful iterations with minimum, median (the upper middle sample), maximum, and mean values. Missing memory observations are null. `metrics` uses the same schema as the application SDK.
 
-## Tips
-
-- Run with the release CLI for meaningful numbers: `cargo build --release -p reseam-cli`.
-- Pin the APK and bundle. Substituting either between runs invalidates the comparison.
-- For CI gates, parse the JSON. Failed iterations show up as `success: false` with `error` populated and the run exits non-zero.
-- A single warmup is usually enough on cold caches. More warmups stabilize the median at the cost of wall time.
+Pin the APK, bundle, signing identity, and machine when comparing runs. Use an optimized CLI for timing comparisons; debug builds verify behavior but do not establish release performance.

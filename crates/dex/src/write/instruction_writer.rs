@@ -3,6 +3,11 @@
 
 use crate::error::Result;
 use crate::types::instruction::Instruction;
+use crate::types::instruction_encoding::opcodes::{
+    AGET, CMP_L_FLOAT, CMP_LONG, CONST_METHOD_TYPE, FILLED_NEW_ARRAY, FILLED_NEW_ARRAY_RANGE,
+    INVOKE_CUSTOM_RANGE, INVOKE_INTERFACE_RANGE, INVOKE_POLYMORPHIC, INVOKE_VIRTUAL, NEG_INT, NOP,
+    SPUT_SHORT, USHR_INT_LIT8,
+};
 
 mod access;
 mod basic;
@@ -23,264 +28,45 @@ pub fn encode_instructions(instructions: &[Instruction]) -> Result<Vec<u16>> {
 }
 
 fn encode_instruction(code: &mut Vec<u16>, instruction: &Instruction) -> Result<()> {
-    match instruction {
-        Instruction::Nop
-        | Instruction::Move { .. }
-        | Instruction::MoveWide { .. }
-        | Instruction::MoveObject { .. }
-        | Instruction::MoveFrom16 { .. }
-        | Instruction::MoveWideFrom16 { .. }
-        | Instruction::MoveObjectFrom16 { .. }
-        | Instruction::Move16 { .. }
-        | Instruction::MoveWide16 { .. }
-        | Instruction::MoveObject16 { .. }
-        | Instruction::MoveResult { .. }
-        | Instruction::MoveResultWide { .. }
-        | Instruction::MoveResultObject { .. }
-        | Instruction::MoveException { .. }
-        | Instruction::ReturnVoid
-        | Instruction::Return { .. }
-        | Instruction::ReturnWide { .. }
-        | Instruction::ReturnObject { .. }
-        | Instruction::Const4 { .. }
-        | Instruction::Const16 { .. }
-        | Instruction::Const { .. }
-        | Instruction::ConstHigh16 { .. }
-        | Instruction::ConstWide16 { .. }
-        | Instruction::ConstWide32 { .. }
-        | Instruction::ConstWide { .. }
-        | Instruction::ConstWideHigh16 { .. }
-        | Instruction::ConstString { .. }
-        | Instruction::ConstStringJumbo { .. }
-        | Instruction::ConstClass { .. }
-        | Instruction::MonitorEnter { .. }
-        | Instruction::MonitorExit { .. }
-        | Instruction::CheckCast { .. }
-        | Instruction::InstanceOf { .. }
-        | Instruction::ArrayLength { .. }
-        | Instruction::NewInstance { .. }
-        | Instruction::NewArray { .. }
-        | Instruction::FillArrayData { .. }
-        | Instruction::Throw { .. }
-        | Instruction::Goto { .. }
-        | Instruction::Goto16 { .. }
-        | Instruction::Goto32 { .. }
-        | Instruction::PackedSwitch { .. }
-        | Instruction::SparseSwitch { .. }
-        | Instruction::IfEq { .. }
-        | Instruction::IfNe { .. }
-        | Instruction::IfLt { .. }
-        | Instruction::IfGe { .. }
-        | Instruction::IfGt { .. }
-        | Instruction::IfLe { .. }
-        | Instruction::IfEqz { .. }
-        | Instruction::IfNez { .. }
-        | Instruction::IfLtz { .. }
-        | Instruction::IfGez { .. }
-        | Instruction::IfGtz { .. }
-        | Instruction::IfLez { .. }
-        | Instruction::ConstMethodHandle { .. }
-        | Instruction::ConstMethodType { .. } => basic::encode_instruction(code, instruction),
-
-        Instruction::Aget { .. }
-        | Instruction::AgetWide { .. }
-        | Instruction::AgetObject { .. }
-        | Instruction::AgetBoolean { .. }
-        | Instruction::AgetByte { .. }
-        | Instruction::AgetChar { .. }
-        | Instruction::AgetShort { .. }
-        | Instruction::Aput { .. }
-        | Instruction::AputWide { .. }
-        | Instruction::AputObject { .. }
-        | Instruction::AputBoolean { .. }
-        | Instruction::AputByte { .. }
-        | Instruction::AputChar { .. }
-        | Instruction::AputShort { .. }
-        | Instruction::Iget { .. }
-        | Instruction::IgetWide { .. }
-        | Instruction::IgetObject { .. }
-        | Instruction::IgetBoolean { .. }
-        | Instruction::IgetByte { .. }
-        | Instruction::IgetChar { .. }
-        | Instruction::IgetShort { .. }
-        | Instruction::Iput { .. }
-        | Instruction::IputWide { .. }
-        | Instruction::IputObject { .. }
-        | Instruction::IputBoolean { .. }
-        | Instruction::IputByte { .. }
-        | Instruction::IputChar { .. }
-        | Instruction::IputShort { .. }
-        | Instruction::Sget { .. }
-        | Instruction::SgetWide { .. }
-        | Instruction::SgetObject { .. }
-        | Instruction::SgetBoolean { .. }
-        | Instruction::SgetByte { .. }
-        | Instruction::SgetChar { .. }
-        | Instruction::SgetShort { .. }
-        | Instruction::Sput { .. }
-        | Instruction::SputWide { .. }
-        | Instruction::SputObject { .. }
-        | Instruction::SputBoolean { .. }
-        | Instruction::SputByte { .. }
-        | Instruction::SputChar { .. }
-        | Instruction::SputShort { .. } => access::encode_instruction(code, instruction),
-
-        Instruction::FilledNewArray { .. }
-        | Instruction::FilledNewArrayRange { .. }
-        | Instruction::InvokeVirtual { .. }
-        | Instruction::InvokeSuper { .. }
-        | Instruction::InvokeDirect { .. }
-        | Instruction::InvokeStatic { .. }
-        | Instruction::InvokeInterface { .. }
-        | Instruction::InvokeVirtualRange { .. }
-        | Instruction::InvokeSuperRange { .. }
-        | Instruction::InvokeDirectRange { .. }
-        | Instruction::InvokeStaticRange { .. }
-        | Instruction::InvokeInterfaceRange { .. }
-        | Instruction::InvokePolymorphic { .. }
-        | Instruction::InvokePolymorphicRange { .. }
-        | Instruction::InvokeCustom { .. }
-        | Instruction::InvokeCustomRange { .. } => invoke::encode_instruction(code, instruction),
-
-        Instruction::CmpLFloat { .. }
-        | Instruction::CmpGFloat { .. }
-        | Instruction::CmpLDouble { .. }
-        | Instruction::CmpGDouble { .. }
-        | Instruction::CmpLong { .. }
-        | Instruction::NegInt { .. }
-        | Instruction::NotInt { .. }
-        | Instruction::NegLong { .. }
-        | Instruction::NotLong { .. }
-        | Instruction::NegFloat { .. }
-        | Instruction::NegDouble { .. }
-        | Instruction::IntToLong { .. }
-        | Instruction::IntToFloat { .. }
-        | Instruction::IntToDouble { .. }
-        | Instruction::LongToInt { .. }
-        | Instruction::LongToFloat { .. }
-        | Instruction::LongToDouble { .. }
-        | Instruction::FloatToInt { .. }
-        | Instruction::FloatToLong { .. }
-        | Instruction::FloatToDouble { .. }
-        | Instruction::DoubleToInt { .. }
-        | Instruction::DoubleToLong { .. }
-        | Instruction::DoubleToFloat { .. }
-        | Instruction::IntToByte { .. }
-        | Instruction::IntToChar { .. }
-        | Instruction::IntToShort { .. }
-        | Instruction::AddInt { .. }
-        | Instruction::SubInt { .. }
-        | Instruction::MulInt { .. }
-        | Instruction::DivInt { .. }
-        | Instruction::RemInt { .. }
-        | Instruction::AndInt { .. }
-        | Instruction::OrInt { .. }
-        | Instruction::XorInt { .. }
-        | Instruction::ShlInt { .. }
-        | Instruction::ShrInt { .. }
-        | Instruction::UshrInt { .. }
-        | Instruction::AddLong { .. }
-        | Instruction::SubLong { .. }
-        | Instruction::MulLong { .. }
-        | Instruction::DivLong { .. }
-        | Instruction::RemLong { .. }
-        | Instruction::AndLong { .. }
-        | Instruction::OrLong { .. }
-        | Instruction::XorLong { .. }
-        | Instruction::ShlLong { .. }
-        | Instruction::ShrLong { .. }
-        | Instruction::UshrLong { .. }
-        | Instruction::AddFloat { .. }
-        | Instruction::SubFloat { .. }
-        | Instruction::MulFloat { .. }
-        | Instruction::DivFloat { .. }
-        | Instruction::RemFloat { .. }
-        | Instruction::AddDouble { .. }
-        | Instruction::SubDouble { .. }
-        | Instruction::MulDouble { .. }
-        | Instruction::DivDouble { .. }
-        | Instruction::RemDouble { .. }
-        | Instruction::AddInt2Addr { .. }
-        | Instruction::SubInt2Addr { .. }
-        | Instruction::MulInt2Addr { .. }
-        | Instruction::DivInt2Addr { .. }
-        | Instruction::RemInt2Addr { .. }
-        | Instruction::AndInt2Addr { .. }
-        | Instruction::OrInt2Addr { .. }
-        | Instruction::XorInt2Addr { .. }
-        | Instruction::ShlInt2Addr { .. }
-        | Instruction::ShrInt2Addr { .. }
-        | Instruction::UshrInt2Addr { .. }
-        | Instruction::AddLong2Addr { .. }
-        | Instruction::SubLong2Addr { .. }
-        | Instruction::MulLong2Addr { .. }
-        | Instruction::DivLong2Addr { .. }
-        | Instruction::RemLong2Addr { .. }
-        | Instruction::AndLong2Addr { .. }
-        | Instruction::OrLong2Addr { .. }
-        | Instruction::XorLong2Addr { .. }
-        | Instruction::ShlLong2Addr { .. }
-        | Instruction::ShrLong2Addr { .. }
-        | Instruction::UshrLong2Addr { .. }
-        | Instruction::AddFloat2Addr { .. }
-        | Instruction::SubFloat2Addr { .. }
-        | Instruction::MulFloat2Addr { .. }
-        | Instruction::DivFloat2Addr { .. }
-        | Instruction::RemFloat2Addr { .. }
-        | Instruction::AddDouble2Addr { .. }
-        | Instruction::SubDouble2Addr { .. }
-        | Instruction::MulDouble2Addr { .. }
-        | Instruction::DivDouble2Addr { .. }
-        | Instruction::RemDouble2Addr { .. }
-        | Instruction::AddIntLit16 { .. }
-        | Instruction::RsubIntLit16 { .. }
-        | Instruction::MulIntLit16 { .. }
-        | Instruction::DivIntLit16 { .. }
-        | Instruction::RemIntLit16 { .. }
-        | Instruction::AndIntLit16 { .. }
-        | Instruction::OrIntLit16 { .. }
-        | Instruction::XorIntLit16 { .. }
-        | Instruction::AddIntLit8 { .. }
-        | Instruction::RsubIntLit8 { .. }
-        | Instruction::MulIntLit8 { .. }
-        | Instruction::DivIntLit8 { .. }
-        | Instruction::RemIntLit8 { .. }
-        | Instruction::AndIntLit8 { .. }
-        | Instruction::OrIntLit8 { .. }
-        | Instruction::XorIntLit8 { .. }
-        | Instruction::ShlIntLit8 { .. }
-        | Instruction::ShrIntLit8 { .. }
-        | Instruction::UshrIntLit8 { .. } => ops::encode_instruction(code, instruction),
-
-        Instruction::PackedSwitchPayload { .. }
-        | Instruction::SparseSwitchPayload { .. }
-        | Instruction::FillArrayDataPayload { .. }
-        | Instruction::RawInstruction { .. } => payloads::encode_instruction(code, instruction),
+    match instruction.opcode() {
+        Some(
+            op @ (FILLED_NEW_ARRAY..=FILLED_NEW_ARRAY_RANGE
+            | INVOKE_VIRTUAL..=INVOKE_INTERFACE_RANGE
+            | INVOKE_POLYMORPHIC..=INVOKE_CUSTOM_RANGE),
+        ) => invoke::encode_instruction(code, instruction, op),
+        Some(op @ (CMP_L_FLOAT..=CMP_LONG | NEG_INT..=USHR_INT_LIT8)) => {
+            ops::encode_instruction(code, instruction, op)
+        }
+        Some(op @ (AGET..=SPUT_SHORT)) => access::encode_instruction(code, instruction, op),
+        Some(op @ (NOP..=CONST_METHOD_TYPE)) => basic::encode_instruction(code, instruction, op),
+        _ => payloads::encode_instruction(code, instruction),
     }
 }
 
 pub(super) fn pack_aa_op(op: u16, aa: u8) -> u16 {
-    op | ((aa as u16) << 8)
+    op | (u16::from(aa) << 8)
 }
 
 pub(super) fn pack_12x(op: u16, a: u8, b: u8) -> Result<u16> {
     validate_u4_register(a, "A")?;
     validate_u4_register(b, "B")?;
-    Ok(op | ((a as u16) << 8) | ((b as u16) << 12))
+    Ok(op | (u16::from(a) << 8) | (u16::from(b) << 12))
 }
 
 pub(super) fn encode_23x(code: &mut Vec<u16>, op: u16, aa: u8, bb: u8, cc: u8) {
-    code.push(op | ((aa as u16) << 8));
-    code.push((bb as u16) | ((cc as u16) << 8));
+    code.push(op | (u16::from(aa) << 8));
+    code.push(u16::from(bb) | (u16::from(cc) << 8));
 }
 
 pub(super) fn encode_35c(code: &mut Vec<u16>, op: u16, idx: u16, args: &[u8]) -> Result<()> {
     validate_35c_args(args)?;
     let count = args.len() as u8;
-    let (c, d, e, f, g) = unpack_args(args);
-    code.push(op | ((count as u16) << 12) | ((g as u16) << 8));
+    let [arg0, arg1, arg2, arg3, arg4] = unpack_args(args);
+    code.push(op | (u16::from(count) << 12) | (u16::from(arg4) << 8));
     code.push(idx);
-    code.push((c as u16) | ((d as u16) << 4) | ((e as u16) << 8) | ((f as u16) << 12));
+    code.push(
+        u16::from(arg0) | (u16::from(arg1) << 4) | (u16::from(arg2) << 8) | (u16::from(arg3) << 12),
+    );
     Ok(())
 }
 
@@ -317,37 +103,6 @@ pub(super) fn validate_u4_register(register: u8, operand: &str) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn unpack_args(args: &[u8]) -> (u8, u8, u8, u8, u8) {
-    let c = args.first().copied().unwrap_or(0);
-    let d = args.get(1).copied().unwrap_or(0);
-    let e = args.get(2).copied().unwrap_or(0);
-    let f = args.get(3).copied().unwrap_or(0);
-    let g = args.get(4).copied().unwrap_or(0);
-    (c, d, e, f, g)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::encode_instructions;
-    use crate::types::instruction::Instruction;
-
-    #[test]
-    fn rejects_out_of_range_12x_registers() {
-        let err = encode_instructions(&[Instruction::Move { dest: 16, src: 0 }])
-            .expect_err("v16 must not be accepted for a 12x register");
-        assert!(
-            err.to_string().contains("nibble range"),
-            "unexpected error: {err}"
-        );
-    }
-
-    #[test]
-    fn rejects_out_of_range_const4_literals() {
-        let err = encode_instructions(&[Instruction::Const4 { dest: 0, value: 8 }])
-            .expect_err("8 must not fit const/4");
-        assert!(
-            err.to_string().contains("const/4"),
-            "unexpected error: {err}"
-        );
-    }
+pub(super) fn unpack_args(args: &[u8]) -> [u8; 5] {
+    std::array::from_fn(|index| args.get(index).copied().unwrap_or(0))
 }

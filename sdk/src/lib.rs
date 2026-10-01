@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Host-facing API over the engine: inspect an APK and bundles, run a patch
-//! request, and the JSON exports the Kotlin SDK binds to.
+//! Host-facing API for inspecting APKs and bundles and running typed patch requests.
 
 mod error;
 mod inspect;
@@ -11,9 +10,8 @@ mod output;
 mod run;
 mod trust;
 
-pub use error::{sdk_error, Problem, SdkError};
-pub use inspect::{inspect, inspect_apk, load_bundles, ApkInspection};
-pub use reseam_apk::reseam_dex::estimated_ir_bytes;
+pub use error::{HostError, Problem, SdkError, sdk_error};
+pub use inspect::{ApkInspection, inspect, inspect_apk, load_bundles};
 pub use reseam_apk::{ApplicationIcon, IconLayer};
 pub use reseam_model::{
     ApkMetadata, BundleMetadata, InspectRequest, InspectResponse, PatchArtifact, PatchMetadata,
@@ -21,13 +19,10 @@ pub use reseam_model::{
 };
 pub use reseam_model::{OptionValue, PatchPreset, PatchSelection, Trust};
 
-pub use metrics::{
-    trace_heap_growth, ApplyDiagnostics, CountingAllocator, PatchMetrics, PatchPhase,
-    PatchPhaseMetrics,
-};
+pub use metrics::{ApplyDiagnostics, PatchMetrics, PatchPhase, PatchPhaseMetrics};
 #[cfg(target_os = "android")]
 pub use reseam_patcher::kotlin::android_host::install_class_loader;
-pub use run::patch;
+pub use run::{patch, patch_with_selection};
 pub use trust::TrustStore;
 
 #[cfg(test)]

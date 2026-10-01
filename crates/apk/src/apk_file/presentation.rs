@@ -1,25 +1,21 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The application's label and icon as a launcher shows them, resolved
-//! through the resource tables without a platform resource loader.
-
 use std::borrow::Cow;
 use std::cmp::Reverse;
 use std::collections::HashSet;
 
 use super::ApkFile;
-use crate::axml::android_attrs::{ATTR_DRAWABLE, ATTR_ICON, ATTR_LABEL};
-use crate::axml::AxmlDocument;
-use crate::error::Result;
 use crate::ResValue;
+use crate::axml::AxmlDocument;
+use crate::axml::android_attrs::{ATTR_DRAWABLE, ATTR_ICON, ATTR_LABEL};
+use crate::error::Result;
 
 const BITMAP_EXTENSIONS: [&str; 4] = [".png", ".webp", ".jpg", ".jpeg"];
 
 /// A launcher icon as the manifest declares it.
 pub use reseam_model::{ApplicationIcon, IconLayer};
 
-/// What a resource attribute finally resolves to in one configuration.
 struct Resolved {
     value: Leaf,
     default_config: bool,
@@ -57,7 +53,7 @@ impl ApkFile {
         let Some(bytes) = icons
             .iter()
             .find_map(|icon| match &icon.value {
-                Leaf::Text(path) if path.ends_with(".xml") => Some(path.clone()),
+                Leaf::Text(path) if path.as_bytes().ends_with(b".xml") => Some(path.clone()),
                 _ => None,
             })
             .map(|path| self.read_entry(&path))
@@ -115,8 +111,6 @@ impl ApkFile {
         self.resolve(attribute.value, literal)
     }
 
-    /// Everything an attribute value stands for: the literal itself, or
-    /// each configuration's value of the referenced resource.
     fn resolve(&mut self, value: ResValue, literal: Option<String>) -> Result<Vec<Resolved>> {
         let mut resolved = Vec::new();
         if value.kind == ResValue::REFERENCE {
@@ -137,34 +131,36 @@ impl ApkFile {
         visited: &mut HashSet<u32>,
         resolved: &mut Vec<Resolved>,
     ) -> Result<()> {
-        if !visited.insert(res_id) {
-            return Ok(());
-        }
-        let mut references = Vec::new();
-        for component in &mut self.components {
-            let Some(table) = component.resources()? else {
+        let mut pending = vec![res_id];
+        while let Some(res_id) = pending.pop() {
+            if !visited.insert(res_id) {
                 continue;
-            };
-            for (config, value) in table.values(res_id) {
-                let leaf = if value.kind == ResValue::REFERENCE {
-                    references.push(value.data);
-                    continue;
-                } else if value.kind == ResValue::STRING {
-                    table
-                        .get_string(value.data)
-                        .map(|text| Leaf::Text(text.into_owned()))
-                } else {
-                    value.color().map(Leaf::Color)
-                };
-                resolved.extend(leaf.map(|value| Resolved {
-                    value,
-                    default_config: config.is_default_config(),
-                    density: config.density(),
-                }));
             }
-        }
-        for reference in references {
-            self.resolve_reference(reference, visited, resolved)?;
+            let mut references = Vec::new();
+            for component in &mut self.components {
+                let Some(table) = component.resources()? else {
+                    continue;
+                };
+                for item in table.values(res_id) {
+                    let (config, value) = item?;
+                    let leaf = if value.kind == ResValue::REFERENCE {
+                        references.push(value.data);
+                        continue;
+                    } else if value.kind == ResValue::STRING {
+                        table
+                            .get_string(value.data)?
+                            .map(|text| Leaf::Text(text.into_owned()))
+                    } else {
+                        value.color().map(Leaf::Color)
+                    };
+                    resolved.extend(leaf.map(|value| Resolved {
+                        value,
+                        default_config: config.is_default_config(),
+                        density: config.density(),
+                    }));
+                }
+            }
+            pending.extend(references.into_iter().rev());
         }
         Ok(())
     }

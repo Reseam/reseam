@@ -1,344 +1,272 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::error::{malformed, require_len, Result};
+use crate::error::{Result, malformed, require_len};
+use crate::read::{i32_at, u16_at, u32_at};
 use crate::types::instruction::Instruction;
+use crate::types::instruction_encoding::opcodes::{
+    ARRAY_LENGTH, CHECK_CAST, CMP_G_DOUBLE, CMP_G_FLOAT, CMP_L_DOUBLE, CMP_L_FLOAT, CMP_LONG,
+    CONST, CONST_CLASS, CONST_HIGH16, CONST_METHOD_HANDLE, CONST_METHOD_TYPE, CONST_STRING,
+    CONST_STRING_JUMBO, CONST_WIDE, CONST_WIDE_HIGH16, CONST_WIDE16, CONST_WIDE32, CONST4, CONST16,
+    FILL_ARRAY_DATA, FILL_ARRAY_DATA_PAYLOAD, FILLED_NEW_ARRAY, FILLED_NEW_ARRAY_RANGE, GOTO,
+    GOTO16, GOTO32, IF_EQ, IF_EQZ, IF_GE, IF_GEZ, IF_GT, IF_GTZ, IF_LE, IF_LEZ, IF_LT, IF_LTZ,
+    IF_NE, IF_NEZ, INSTANCE_OF, MONITOR_ENTER, MONITOR_EXIT, MOVE, MOVE_EXCEPTION, MOVE_FROM16,
+    MOVE_OBJECT, MOVE_OBJECT_FROM16, MOVE_OBJECT16, MOVE_RESULT, MOVE_RESULT_OBJECT,
+    MOVE_RESULT_WIDE, MOVE_WIDE, MOVE_WIDE_FROM16, MOVE_WIDE16, MOVE16, NEW_ARRAY, NEW_INSTANCE,
+    NOP, PACKED_SWITCH, PACKED_SWITCH_PAYLOAD, RETURN, RETURN_OBJECT, RETURN_VOID, RETURN_WIDE,
+    SPARSE_SWITCH, SPARSE_SWITCH_PAYLOAD, THROW,
+};
 
 use super::super::arithmetic::decode_23x;
-use super::super::format::{i32_at, u16_at, u32_at};
 use super::super::memory::decode_35c_type;
-use super::{hi8, nibbles, DecodedInstruction};
+use super::{hi8, nibbles};
 
-pub(super) fn decode_opcode(buf: &[u8], unit_off: usize, opcode: u8) -> Result<DecodedInstruction> {
+#[expect(
+    clippy::too_many_lines,
+    reason = "the exhaustive format dispatch keeps each encoding visible in one match"
+)]
+pub(super) fn decode_opcode(buf: &[u8], unit_off: usize, opcode: u8) -> Result<Instruction> {
     let unit0 = u16_at(buf, unit_off);
 
-    let decoded = match opcode {
-        0x00 => decode_nop_or_payload(buf, unit_off, unit0)?,
+    let decoded = match u16::from(opcode) {
+        NOP => decode_nop_or_payload(buf, unit_off, unit0)?,
 
-        0x01 => {
+        MOVE => {
             let (a, b) = nibbles(unit0);
-            DecodedInstruction::new(Instruction::Move { dest: a, src: b }, 1)
+            Instruction::Move { dest: a, src: b }
         }
-        0x04 => {
+        MOVE_WIDE => {
             let (a, b) = nibbles(unit0);
-            DecodedInstruction::new(Instruction::MoveWide { dest: a, src: b }, 1)
+            Instruction::MoveWide { dest: a, src: b }
         }
-        0x07 => {
+        MOVE_OBJECT => {
             let (a, b) = nibbles(unit0);
-            DecodedInstruction::new(Instruction::MoveObject { dest: a, src: b }, 1)
+            Instruction::MoveObject { dest: a, src: b }
         }
-        0x21 => {
+        ARRAY_LENGTH => {
             let (a, b) = nibbles(unit0);
-            DecodedInstruction::new(Instruction::ArrayLength { dest: a, array: b }, 1)
+            Instruction::ArrayLength { dest: a, array: b }
         }
 
-        0x02 => DecodedInstruction::new(
-            Instruction::MoveFrom16 {
-                dest: hi8(unit0),
-                src: u16_at(buf, unit_off + 2),
-            },
-            2,
-        ),
-        0x05 => DecodedInstruction::new(
-            Instruction::MoveWideFrom16 {
-                dest: hi8(unit0),
-                src: u16_at(buf, unit_off + 2),
-            },
-            2,
-        ),
-        0x08 => DecodedInstruction::new(
-            Instruction::MoveObjectFrom16 {
-                dest: hi8(unit0),
-                src: u16_at(buf, unit_off + 2),
-            },
-            2,
-        ),
+        MOVE_FROM16 => Instruction::MoveFrom16 {
+            dest: hi8(unit0),
+            src: u16_at(buf, unit_off + 2),
+        },
+        MOVE_WIDE_FROM16 => Instruction::MoveWideFrom16 {
+            dest: hi8(unit0),
+            src: u16_at(buf, unit_off + 2),
+        },
+        MOVE_OBJECT_FROM16 => Instruction::MoveObjectFrom16 {
+            dest: hi8(unit0),
+            src: u16_at(buf, unit_off + 2),
+        },
 
-        0x03 => DecodedInstruction::new(
-            Instruction::Move16 {
-                dest: u16_at(buf, unit_off + 2),
-                src: u16_at(buf, unit_off + 4),
-            },
-            3,
-        ),
-        0x06 => DecodedInstruction::new(
-            Instruction::MoveWide16 {
-                dest: u16_at(buf, unit_off + 2),
-                src: u16_at(buf, unit_off + 4),
-            },
-            3,
-        ),
-        0x09 => DecodedInstruction::new(
-            Instruction::MoveObject16 {
-                dest: u16_at(buf, unit_off + 2),
-                src: u16_at(buf, unit_off + 4),
-            },
-            3,
-        ),
+        MOVE16 => Instruction::Move16 {
+            dest: u16_at(buf, unit_off + 2),
+            src: u16_at(buf, unit_off + 4),
+        },
+        MOVE_WIDE16 => Instruction::MoveWide16 {
+            dest: u16_at(buf, unit_off + 2),
+            src: u16_at(buf, unit_off + 4),
+        },
+        MOVE_OBJECT16 => Instruction::MoveObject16 {
+            dest: u16_at(buf, unit_off + 2),
+            src: u16_at(buf, unit_off + 4),
+        },
 
-        0x0a => DecodedInstruction::new(Instruction::MoveResult { dest: hi8(unit0) }, 1),
-        0x0b => DecodedInstruction::new(Instruction::MoveResultWide { dest: hi8(unit0) }, 1),
-        0x0c => DecodedInstruction::new(Instruction::MoveResultObject { dest: hi8(unit0) }, 1),
-        0x0d => DecodedInstruction::new(Instruction::MoveException { dest: hi8(unit0) }, 1),
+        MOVE_RESULT => Instruction::MoveResult { dest: hi8(unit0) },
+        MOVE_RESULT_WIDE => Instruction::MoveResultWide { dest: hi8(unit0) },
+        MOVE_RESULT_OBJECT => Instruction::MoveResultObject { dest: hi8(unit0) },
+        MOVE_EXCEPTION => Instruction::MoveException { dest: hi8(unit0) },
 
-        0x0e => DecodedInstruction::new(Instruction::ReturnVoid, 1),
-        0x0f => DecodedInstruction::new(Instruction::Return { src: hi8(unit0) }, 1),
-        0x10 => DecodedInstruction::new(Instruction::ReturnWide { src: hi8(unit0) }, 1),
-        0x11 => DecodedInstruction::new(Instruction::ReturnObject { src: hi8(unit0) }, 1),
+        RETURN_VOID => Instruction::ReturnVoid,
+        RETURN => Instruction::Return { src: hi8(unit0) },
+        RETURN_WIDE => Instruction::ReturnWide { src: hi8(unit0) },
+        RETURN_OBJECT => Instruction::ReturnObject { src: hi8(unit0) },
 
-        0x12 => {
+        CONST4 => {
             let (a, b) = nibbles(unit0);
             let value = ((b as i8) << 4) >> 4;
-            DecodedInstruction::new(Instruction::Const4 { dest: a, value }, 1)
+            Instruction::Const4 { dest: a, value }
         }
 
-        0x13 => DecodedInstruction::new(
-            Instruction::Const16 {
-                dest: hi8(unit0),
-                value: u16_at(buf, unit_off + 2) as i16,
-            },
-            2,
-        ),
-        0x16 => DecodedInstruction::new(
-            Instruction::ConstWide16 {
-                dest: hi8(unit0),
-                value: u16_at(buf, unit_off + 2) as i16,
-            },
-            2,
-        ),
+        CONST16 => Instruction::Const16 {
+            dest: hi8(unit0),
+            value: u16_at(buf, unit_off + 2) as i16,
+        },
+        CONST_WIDE16 => Instruction::ConstWide16 {
+            dest: hi8(unit0),
+            value: u16_at(buf, unit_off + 2) as i16,
+        },
 
-        0x14 => {
-            let lo = u16_at(buf, unit_off + 2) as u32;
-            let hi = u16_at(buf, unit_off + 4) as u32;
-            DecodedInstruction::new(
-                Instruction::Const {
-                    dest: hi8(unit0),
-                    value: (hi << 16 | lo) as i32,
-                },
-                3,
-            )
+        CONST => {
+            let lo = u32::from(u16_at(buf, unit_off + 2));
+            let hi = u32::from(u16_at(buf, unit_off + 4));
+            Instruction::Const {
+                dest: hi8(unit0),
+                value: (hi << 16 | lo) as i32,
+            }
         }
-        0x17 => {
-            let lo = u16_at(buf, unit_off + 2) as u32;
-            let hi = u16_at(buf, unit_off + 4) as u32;
-            DecodedInstruction::new(
-                Instruction::ConstWide32 {
-                    dest: hi8(unit0),
-                    value: (hi << 16 | lo) as i32,
-                },
-                3,
-            )
+        CONST_WIDE32 => {
+            let lo = u32::from(u16_at(buf, unit_off + 2));
+            let hi = u32::from(u16_at(buf, unit_off + 4));
+            Instruction::ConstWide32 {
+                dest: hi8(unit0),
+                value: (hi << 16 | lo) as i32,
+            }
         }
 
-        0x15 => DecodedInstruction::new(
-            Instruction::ConstHigh16 {
-                dest: hi8(unit0),
-                value: u16_at(buf, unit_off + 2) as i16,
-            },
-            2,
-        ),
-        0x19 => DecodedInstruction::new(
-            Instruction::ConstWideHigh16 {
-                dest: hi8(unit0),
-                value: u16_at(buf, unit_off + 2) as i16,
-            },
-            2,
-        ),
+        CONST_HIGH16 => Instruction::ConstHigh16 {
+            dest: hi8(unit0),
+            value: u16_at(buf, unit_off + 2) as i16,
+        },
+        CONST_WIDE_HIGH16 => Instruction::ConstWideHigh16 {
+            dest: hi8(unit0),
+            value: u16_at(buf, unit_off + 2) as i16,
+        },
 
-        0x18 => {
+        CONST_WIDE => {
             let mut value: i64 = 0;
             for i in 0..4u64 {
-                value |= (u16_at(buf, unit_off + 2 + i as usize * 2) as i64) << (i * 16);
+                value |= i64::from(u16_at(buf, unit_off + 2 + i as usize * 2)) << (i * 16);
             }
-            DecodedInstruction::new(
-                Instruction::ConstWide {
-                    dest: hi8(unit0),
-                    value,
-                },
-                5,
-            )
+            Instruction::ConstWide {
+                dest: hi8(unit0),
+                value,
+            }
         }
 
-        0x1a => DecodedInstruction::new(
-            Instruction::ConstString {
-                dest: hi8(unit0),
-                string: crate::types::StringIdx(u16_at(buf, unit_off + 2) as u32),
-            },
-            2,
-        ),
-        0x1c => DecodedInstruction::new(
-            Instruction::ConstClass {
-                dest: hi8(unit0),
-                type_: crate::types::TypeIdx(u16_at(buf, unit_off + 2) as u32),
-            },
-            2,
-        ),
-        0xfe => DecodedInstruction::new(
-            Instruction::ConstMethodHandle {
-                dest: hi8(unit0),
-                method_handle: crate::types::method_handle::MethodHandleIdx(u16_at(
-                    buf,
-                    unit_off + 2,
-                )
-                    as u32),
-            },
-            2,
-        ),
-        0xff => DecodedInstruction::new(
-            Instruction::ConstMethodType {
-                dest: hi8(unit0),
-                proto: crate::types::ProtoIdx(u16_at(buf, unit_off + 2)),
-            },
-            2,
-        ),
+        CONST_STRING => Instruction::ConstString {
+            dest: hi8(unit0),
+            string: crate::types::StringIdx(u32::from(u16_at(buf, unit_off + 2))),
+        },
+        CONST_CLASS => Instruction::ConstClass {
+            dest: hi8(unit0),
+            type_: crate::types::TypeIdx(u32::from(u16_at(buf, unit_off + 2))),
+        },
+        CONST_METHOD_HANDLE => Instruction::ConstMethodHandle {
+            dest: hi8(unit0),
+            method_handle: crate::types::method_handle::MethodHandleIdx(u32::from(u16_at(
+                buf,
+                unit_off + 2,
+            ))),
+        },
+        CONST_METHOD_TYPE => Instruction::ConstMethodType {
+            dest: hi8(unit0),
+            proto: crate::types::ProtoIdx(u32::from(u16_at(buf, unit_off + 2))),
+        },
 
-        0x1b => {
-            let lo = u16_at(buf, unit_off + 2) as u32;
-            let hi = u16_at(buf, unit_off + 4) as u32;
-            DecodedInstruction::new(
-                Instruction::ConstStringJumbo {
-                    dest: hi8(unit0),
-                    string: crate::types::StringIdx(hi << 16 | lo),
-                },
-                3,
-            )
+        CONST_STRING_JUMBO => {
+            let lo = u32::from(u16_at(buf, unit_off + 2));
+            let hi = u32::from(u16_at(buf, unit_off + 4));
+            Instruction::ConstStringJumbo {
+                dest: hi8(unit0),
+                string: crate::types::StringIdx(hi << 16 | lo),
+            }
         }
 
-        0x1d => DecodedInstruction::new(Instruction::MonitorEnter { ref_: hi8(unit0) }, 1),
-        0x1e => DecodedInstruction::new(Instruction::MonitorExit { ref_: hi8(unit0) }, 1),
+        MONITOR_ENTER => Instruction::MonitorEnter { ref_: hi8(unit0) },
+        MONITOR_EXIT => Instruction::MonitorExit { ref_: hi8(unit0) },
 
-        0x1f => DecodedInstruction::new(
-            Instruction::CheckCast {
-                ref_: hi8(unit0),
-                type_: crate::types::TypeIdx(u16_at(buf, unit_off + 2) as u32),
-            },
-            2,
-        ),
+        CHECK_CAST => Instruction::CheckCast {
+            ref_: hi8(unit0),
+            type_: crate::types::TypeIdx(u32::from(u16_at(buf, unit_off + 2))),
+        },
 
-        0x20 => {
+        INSTANCE_OF => {
             let (a, b) = nibbles(unit0);
-            DecodedInstruction::new(
-                Instruction::InstanceOf {
-                    dest: a,
-                    ref_: b,
-                    type_: crate::types::TypeIdx(u16_at(buf, unit_off + 2) as u32),
-                },
-                2,
-            )
+            Instruction::InstanceOf {
+                dest: a,
+                ref_: b,
+                type_: crate::types::TypeIdx(u32::from(u16_at(buf, unit_off + 2))),
+            }
         }
 
-        0x22 => DecodedInstruction::new(
-            Instruction::NewInstance {
-                dest: hi8(unit0),
-                type_: crate::types::TypeIdx(u16_at(buf, unit_off + 2) as u32),
-            },
-            2,
-        ),
+        NEW_INSTANCE => Instruction::NewInstance {
+            dest: hi8(unit0),
+            type_: crate::types::TypeIdx(u32::from(u16_at(buf, unit_off + 2))),
+        },
 
-        0x23 => {
+        NEW_ARRAY => {
             let (a, b) = nibbles(unit0);
-            DecodedInstruction::new(
-                Instruction::NewArray {
-                    dest: a,
-                    size: b,
-                    type_: crate::types::TypeIdx(u16_at(buf, unit_off + 2) as u32),
-                },
-                2,
-            )
+            Instruction::NewArray {
+                dest: a,
+                size: b,
+                type_: crate::types::TypeIdx(u32::from(u16_at(buf, unit_off + 2))),
+            }
         }
 
-        0x24 => DecodedInstruction::new(decode_35c_type(buf, unit_off), 3),
-        0x25 => DecodedInstruction::new(
-            Instruction::FilledNewArrayRange {
-                type_: crate::types::TypeIdx(u16_at(buf, unit_off + 2) as u32),
-                first_reg: u16_at(buf, unit_off + 4),
-                count: hi8(unit0),
-            },
-            3,
-        ),
-        0x26 => {
-            let lo = u16_at(buf, unit_off + 2) as u32;
-            let hi = u16_at(buf, unit_off + 4) as u32;
-            DecodedInstruction::new(
-                Instruction::FillArrayData {
-                    array: hi8(unit0),
-                    payload_offset: (hi << 16 | lo) as i32,
-                },
-                3,
-            )
+        FILLED_NEW_ARRAY => decode_35c_type(buf, unit_off)?,
+        FILLED_NEW_ARRAY_RANGE => Instruction::FilledNewArrayRange {
+            type_: crate::types::TypeIdx(u32::from(u16_at(buf, unit_off + 2))),
+            first_reg: u16_at(buf, unit_off + 4),
+            count: hi8(unit0),
+        },
+        FILL_ARRAY_DATA => {
+            let lo = u32::from(u16_at(buf, unit_off + 2));
+            let hi = u32::from(u16_at(buf, unit_off + 4));
+            Instruction::FillArrayData {
+                array: hi8(unit0),
+                payload_offset: (hi << 16 | lo) as i32,
+            }
         }
 
-        0x27 => DecodedInstruction::new(
-            Instruction::Throw {
-                exception: hi8(unit0),
-            },
-            1,
-        ),
-        0x28 => DecodedInstruction::new(
-            Instruction::Goto {
-                offset: hi8(unit0) as i8,
-            },
-            1,
-        ),
-        0x29 => DecodedInstruction::new(
-            Instruction::Goto16 {
-                offset: u16_at(buf, unit_off + 2) as i16,
-            },
-            2,
-        ),
-        0x2a => {
-            let lo = u16_at(buf, unit_off + 2) as u32;
-            let hi = u16_at(buf, unit_off + 4) as u32;
-            DecodedInstruction::new(
-                Instruction::Goto32 {
-                    offset: (hi << 16 | lo) as i32,
-                },
-                3,
-            )
+        THROW => Instruction::Throw {
+            exception: hi8(unit0),
+        },
+        GOTO => Instruction::Goto {
+            offset: hi8(unit0) as i8,
+        },
+        GOTO16 => Instruction::Goto16 {
+            offset: u16_at(buf, unit_off + 2) as i16,
+        },
+        GOTO32 => {
+            let lo = u32::from(u16_at(buf, unit_off + 2));
+            let hi = u32::from(u16_at(buf, unit_off + 4));
+            Instruction::Goto32 {
+                offset: (hi << 16 | lo) as i32,
+            }
         }
 
-        0x2b => {
-            let lo = u16_at(buf, unit_off + 2) as u32;
-            let hi = u16_at(buf, unit_off + 4) as u32;
-            DecodedInstruction::new(
-                Instruction::PackedSwitch {
-                    test: hi8(unit0),
-                    payload_offset: (hi << 16 | lo) as i32,
-                },
-                3,
-            )
+        PACKED_SWITCH => {
+            let lo = u32::from(u16_at(buf, unit_off + 2));
+            let hi = u32::from(u16_at(buf, unit_off + 4));
+            Instruction::PackedSwitch {
+                test: hi8(unit0),
+                payload_offset: (hi << 16 | lo) as i32,
+            }
         }
-        0x2c => {
-            let lo = u16_at(buf, unit_off + 2) as u32;
-            let hi = u16_at(buf, unit_off + 4) as u32;
-            DecodedInstruction::new(
-                Instruction::SparseSwitch {
-                    test: hi8(unit0),
-                    payload_offset: (hi << 16 | lo) as i32,
-                },
-                3,
-            )
+        SPARSE_SWITCH => {
+            let lo = u32::from(u16_at(buf, unit_off + 2));
+            let hi = u32::from(u16_at(buf, unit_off + 4));
+            Instruction::SparseSwitch {
+                test: hi8(unit0),
+                payload_offset: (hi << 16 | lo) as i32,
+            }
         }
 
-        0x2d => decode_cmp(buf, unit_off, opcode),
-        0x2e => decode_cmp(buf, unit_off, opcode),
-        0x2f => decode_cmp(buf, unit_off, opcode),
-        0x30 => decode_cmp(buf, unit_off, opcode),
-        0x31 => decode_cmp(buf, unit_off, opcode),
+        CMP_L_FLOAT | CMP_G_FLOAT | CMP_L_DOUBLE | CMP_G_DOUBLE | CMP_LONG => {
+            decode_cmp(buf, unit_off, opcode)?
+        }
 
-        0x32..=0x37 => decode_if_test(unit0, buf, unit_off, opcode),
-        0x38..=0x3d => decode_if_testz(unit0, buf, unit_off, opcode),
-        0x3e..=0x43 => DecodedInstruction::new(Instruction::Nop, 1),
+        IF_EQ..=IF_LE => decode_if_test(unit0, buf, unit_off, opcode)?,
+        IF_EQZ..=IF_LEZ => decode_if_testz(unit0, buf, unit_off, opcode)?,
 
-        _ => unreachable!(),
+        _ => {
+            return Err(malformed(
+                "instruction opcode",
+                unit_off,
+                "opcode is outside the decoded family",
+            ));
+        }
     };
 
     Ok(decoded)
 }
 
-fn decode_nop_or_payload(buf: &[u8], unit_off: usize, unit0: u16) -> Result<DecodedInstruction> {
+fn decode_nop_or_payload(buf: &[u8], unit_off: usize, unit0: u16) -> Result<Instruction> {
     let decoded = match unit0 {
-        0x0100 => {
+        PACKED_SWITCH_PAYLOAD => {
             let size = u16_at(buf, unit_off + 2) as usize;
             require_len(
                 buf,
@@ -351,14 +279,11 @@ fn decode_nop_or_payload(buf: &[u8], unit_off: usize, unit0: u16) -> Result<Deco
             for i in 0..size {
                 targets.push(i32_at(buf, unit_off + 8 + i * 4));
             }
-            DecodedInstruction::new(
-                Instruction::PackedSwitchPayload(Box::new(
-                    crate::types::instruction::PackedSwitchData { first_key, targets },
-                )),
-                1 + 1 + 2 + size * 2,
-            )
+            Instruction::PackedSwitchPayload(Box::new(
+                crate::types::instruction::PackedSwitchData { first_key, targets },
+            ))
         }
-        0x0200 => {
+        SPARSE_SWITCH_PAYLOAD => {
             let size = u16_at(buf, unit_off + 2) as usize;
             require_len(
                 buf,
@@ -372,14 +297,11 @@ fn decode_nop_or_payload(buf: &[u8], unit_off: usize, unit0: u16) -> Result<Deco
                 let target = i32_at(buf, unit_off + 4 + size * 4 + i * 4);
                 keys_and_targets.push((key, target));
             }
-            DecodedInstruction::new(
-                Instruction::SparseSwitchPayload(Box::new(
-                    crate::types::instruction::SparseSwitchData { keys_and_targets },
-                )),
-                1 + 1 + size * 2 + size * 2,
-            )
+            Instruction::SparseSwitchPayload(Box::new(
+                crate::types::instruction::SparseSwitchData { keys_and_targets },
+            ))
         }
-        0x0300 => {
+        FILL_ARRAY_DATA_PAYLOAD => {
             let element_width = u16_at(buf, unit_off + 2);
             let size = u32_at(buf, unit_off + 4) as usize;
             let data_bytes = size.checked_mul(element_width as usize).ok_or_else(|| {
@@ -391,61 +313,76 @@ fn decode_nop_or_payload(buf: &[u8], unit_off: usize, unit0: u16) -> Result<Deco
             })?;
             require_len(buf, unit_off, 8 + data_bytes, "fill-array-data payload")?;
             let data = buf[unit_off + 8..unit_off + 8 + data_bytes].to_vec();
-            DecodedInstruction::new(
-                Instruction::FillArrayDataPayload(Box::new(
-                    crate::types::instruction::FillArrayPayloadData {
-                        element_width,
-                        data,
-                    },
-                )),
-                (8 + data_bytes).div_ceil(2),
-            )
+            Instruction::FillArrayDataPayload(Box::new(
+                crate::types::instruction::FillArrayPayloadData {
+                    element_width,
+                    data,
+                },
+            ))
         }
-        _ => DecodedInstruction::new(Instruction::Nop, 1),
+        _ => Instruction::Nop,
     };
 
     Ok(decoded)
 }
 
-fn decode_cmp(buf: &[u8], unit_off: usize, opcode: u8) -> DecodedInstruction {
-    let (dest, a, b) = decode_23x(buf, unit_off);
-    let instruction = match opcode {
-        0x2d => Instruction::CmpLFloat { dest, a, b },
-        0x2e => Instruction::CmpGFloat { dest, a, b },
-        0x2f => Instruction::CmpLDouble { dest, a, b },
-        0x30 => Instruction::CmpGDouble { dest, a, b },
-        0x31 => Instruction::CmpLong { dest, a, b },
-        _ => unreachable!(),
-    };
-    DecodedInstruction::new(instruction, 2)
+fn decode_cmp(buf: &[u8], unit_off: usize, opcode: u8) -> Result<Instruction> {
+    let [dest, a, b] = decode_23x(buf, unit_off);
+
+    Ok(match u16::from(opcode) {
+        CMP_L_FLOAT => Instruction::CmpLFloat { dest, a, b },
+        CMP_G_FLOAT => Instruction::CmpGFloat { dest, a, b },
+        CMP_L_DOUBLE => Instruction::CmpLDouble { dest, a, b },
+        CMP_G_DOUBLE => Instruction::CmpGDouble { dest, a, b },
+        CMP_LONG => Instruction::CmpLong { dest, a, b },
+        _ => {
+            return Err(malformed(
+                "instruction opcode",
+                unit_off,
+                "opcode is outside the decoded family",
+            ));
+        }
+    })
 }
 
-fn decode_if_test(unit0: u16, buf: &[u8], unit_off: usize, opcode: u8) -> DecodedInstruction {
+fn decode_if_test(unit0: u16, buf: &[u8], unit_off: usize, opcode: u8) -> Result<Instruction> {
     let (a, b) = nibbles(unit0);
     let offset = u16_at(buf, unit_off + 2) as i16;
-    let instruction = match opcode {
-        0x32 => Instruction::IfEq { a, b, offset },
-        0x33 => Instruction::IfNe { a, b, offset },
-        0x34 => Instruction::IfLt { a, b, offset },
-        0x35 => Instruction::IfGe { a, b, offset },
-        0x36 => Instruction::IfGt { a, b, offset },
-        0x37 => Instruction::IfLe { a, b, offset },
-        _ => unreachable!(),
-    };
-    DecodedInstruction::new(instruction, 2)
+
+    Ok(match u16::from(opcode) {
+        IF_EQ => Instruction::IfEq { a, b, offset },
+        IF_NE => Instruction::IfNe { a, b, offset },
+        IF_LT => Instruction::IfLt { a, b, offset },
+        IF_GE => Instruction::IfGe { a, b, offset },
+        IF_GT => Instruction::IfGt { a, b, offset },
+        IF_LE => Instruction::IfLe { a, b, offset },
+        _ => {
+            return Err(malformed(
+                "instruction opcode",
+                unit_off,
+                "opcode is outside the decoded family",
+            ));
+        }
+    })
 }
 
-fn decode_if_testz(unit0: u16, buf: &[u8], unit_off: usize, opcode: u8) -> DecodedInstruction {
+fn decode_if_testz(unit0: u16, buf: &[u8], unit_off: usize, opcode: u8) -> Result<Instruction> {
     let a = hi8(unit0);
     let offset = u16_at(buf, unit_off + 2) as i16;
-    let instruction = match opcode {
-        0x38 => Instruction::IfEqz { a, offset },
-        0x39 => Instruction::IfNez { a, offset },
-        0x3a => Instruction::IfLtz { a, offset },
-        0x3b => Instruction::IfGez { a, offset },
-        0x3c => Instruction::IfGtz { a, offset },
-        0x3d => Instruction::IfLez { a, offset },
-        _ => unreachable!(),
-    };
-    DecodedInstruction::new(instruction, 2)
+
+    Ok(match u16::from(opcode) {
+        IF_EQZ => Instruction::IfEqz { a, offset },
+        IF_NEZ => Instruction::IfNez { a, offset },
+        IF_LTZ => Instruction::IfLtz { a, offset },
+        IF_GEZ => Instruction::IfGez { a, offset },
+        IF_GTZ => Instruction::IfGtz { a, offset },
+        IF_LEZ => Instruction::IfLez { a, offset },
+        _ => {
+            return Err(malformed(
+                "instruction opcode",
+                unit_off,
+                "opcode is outside the decoded family",
+            ));
+        }
+    })
 }

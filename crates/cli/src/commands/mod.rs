@@ -9,7 +9,7 @@ mod publish;
 
 use std::path::Path;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use reseam_sdk::TrustStore;
 
 use crate::app::TrustArgs;
@@ -17,7 +17,7 @@ use crate::app::TrustArgs;
 pub use bundle::{run_bundle_keygen, run_bundle_list, run_bundle_pack};
 pub use info::run_info;
 pub use patch::run_patch;
-pub use perf::run_perf;
+pub use perf::{run_perf, run_perf_worker};
 pub use publish::{run_publish_manager, run_publish_patches};
 
 fn create_parent(path: &Path) -> Result<()> {
@@ -33,6 +33,6 @@ fn create_parent(path: &Path) -> Result<()> {
 
 impl TrustArgs {
     fn store(&self) -> Result<TrustStore> {
-        TrustStore::from_hex(&self.trust).map_err(|reason| anyhow!("invalid --trust: {reason}"))
+        TrustStore::from_hex(&self.trust).context("invalid --trust")
     }
 }

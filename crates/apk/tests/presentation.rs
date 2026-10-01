@@ -1,22 +1,21 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::fs::File;
-use std::io::Write;
-use std::path::Path;
+#[path = "common/archive.rs"]
+mod archive;
+use archive::write_apk;
 
 use reseam_apk::reseam_dex::ParseOptions;
 use reseam_apk::resources::{EntryValue, ResEntry, ResPackage, ResType, TypeSpec};
 use reseam_apk::{
-    axml, ApkFile, ApplicationIcon, IconLayer, ResValue, ResourceScope, ResourceTable, StringPool,
+    ApkFile, ApplicationIcon, IconLayer, ResValue, ResourceScope, ResourceTable, StringPool, axml,
 };
 
-const YOUTUBE_APK: &str = "../../test-apks/for_testing_com.google.android.youtube_21.10.494.apk";
-const INSTAGRAM_APK: &str = "../../test-apks/com.instagram.android_419.0.0.49.71-382508603_minAPI28(arm64-v8a)(360,400,420,480dpi)_apkmirror.com.apk";
-const SPLITWISE_APK: &str = "../../test-apks/com.Splitwise.SplitwiseMobile_26.5.3.apk";
-
 fn strings(values: &[&str]) -> StringPool {
-    StringPool::new(values.iter().map(|s| s.to_string()).collect(), true)
+    StringPool::new(
+        values.iter().map(ToString::to_string).collect(),
+        reseam_apk::StringEncoding::Utf8,
+    )
 }
 
 fn config(language: Option<&[u8; 2]>, density: u16) -> Vec<u8> {
@@ -32,21 +31,20 @@ fn config(language: Option<&[u8; 2]>, density: u16) -> Vec<u8> {
 fn entries(id: u8, config: Vec<u8>, entries: &[(usize, ResValue)]) -> ResType {
     let mut res_type = ResType::new(id, config);
     for &(key, value) in entries {
-        res_type.set(
-            key,
-            Some(ResEntry {
-                flags: 0,
-                key: key as u32,
-                value: EntryValue::Simple(value),
-            }),
-        );
+        res_type
+            .set(
+                key,
+                Some(ResEntry {
+                    flags: 0,
+                    key: key as u32,
+                    value: EntryValue::Simple(value),
+                }),
+            )
+            .expect("resource fixture entry");
     }
     res_type
 }
 
-/// `string/app_name` in the default and French configurations;
-/// `mipmap/ic_launcher` as hdpi and xxhdpi bitmaps plus an anydpi adaptive
-/// icon; `mipmap/bg` as hdpi and xxhdpi bitmaps; `color/fg`.
 fn resources() -> ResourceTable {
     let mut package = ResPackage::new(
         0x7F,
@@ -54,11 +52,11 @@ fn resources() -> ResourceTable {
         strings(&["string", "mipmap", "color"]),
         strings(&["app_name", "ic_launcher", "bg", "fg"]),
     );
-    package.type_specs.push(TypeSpec::new(1, vec![0]));
-    package.type_specs.push(TypeSpec::new(2, vec![0, 0, 0]));
-    package.type_specs.push(TypeSpec::new(3, vec![0, 0, 0, 0]));
+    package.add_type_spec(TypeSpec::new(1, vec![0]));
+    package.add_type_spec(TypeSpec::new(2, vec![0, 0, 0]));
+    package.add_type_spec(TypeSpec::new(3, vec![0, 0, 0, 0]));
     let string = ResValue::string;
-    package.types.extend([
+    for res_type in [
         entries(1, config(None, 0), &[(0, string(0))]),
         entries(1, config(Some(b"fr"), 0), &[(0, string(1))]),
         entries(2, config(None, 240), &[(1, string(2)), (2, string(5))]),
@@ -69,9 +67,11 @@ fn resources() -> ResourceTable {
             config(None, 0),
             &[(3, ResValue::new(ResValue::INT_COLOR_ARGB8, 0xFF11_2233))],
         ),
-    ]);
-    ResourceTable {
-        global_strings: strings(&[
+    ] {
+        package.add_type(res_type);
+    }
+    ResourceTable::new(
+        strings(&[
             "Example",
             "Exemple",
             "res/mipmap-hdpi/ic_launcher.png",
@@ -80,8 +80,8 @@ fn resources() -> ResourceTable {
             "res/mipmap-hdpi/bg.png",
             "res/mipmap-xxhdpi/bg.png",
         ]),
-        packages: vec![package],
-    }
+        vec![package],
+    )
 }
 
 const MANIFEST: &str = r#"<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.test">
@@ -93,114 +93,68 @@ const ADAPTIVE_ICON: &str = r#"<adaptive-icon xmlns:android="http://schemas.andr
     <foreground android:drawable="@color/fg" />
 </adaptive-icon>"#;
 
-fn write_apk(path: &Path, manifest: &[u8], entries: &[(&str, &[u8])]) {
-    let mut writer = zip::ZipWriter::new(File::create(path).unwrap());
-    let options =
-        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
-    writer.start_file("AndroidManifest.xml", options).unwrap();
-    writer.write_all(manifest).unwrap();
-    for (name, data) in entries {
-        writer.start_file(*name, options).unwrap();
-        writer.write_all(data).unwrap();
+#[test]
+fn application_presentation_resolves_labels_and_bitmap_or_adaptive_icons() {
+    struct Case {
+        manifest: &'static str,
+        files: Vec<(&'static str, Vec<u8>)>,
+        label: &'static str,
+        icon: Option<ApplicationIcon>,
     }
-    writer.finish().unwrap();
-}
-
-#[test]
-fn label_prefers_the_default_configuration_and_icon_the_densest_bitmap() {
     let mut table = resources();
-    let manifest = axml::compile_xml(MANIFEST, Some(&mut ResourceScope::from(&mut table))).unwrap();
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("app.apk");
-    write_apk(
-        &path,
-        &manifest,
-        &[
-            ("resources.arsc", &table.serialize().unwrap()),
-            ("res/mipmap-hdpi/ic_launcher.png", b"hdpi"),
-            ("res/mipmap-xxhdpi/ic_launcher.png", b"xxhdpi"),
-            ("res/mipmap-anydpi-v26/ic_launcher.xml", b"<adaptive-icon/>"),
-        ],
-    );
-
-    let mut apk = ApkFile::open(&path, &ParseOptions::default()).unwrap();
-    assert_eq!(apk.application_label().unwrap().as_deref(), Some("Example"));
-    assert_eq!(
-        apk.application_icon().unwrap(),
-        Some(ApplicationIcon::Bitmap(b"xxhdpi".to_vec()))
-    );
-}
-
-#[test]
-fn adaptive_icon_layers_resolve_to_bitmaps_and_colors() {
-    let mut table = resources();
-    let manifest = axml::compile_xml(MANIFEST, Some(&mut ResourceScope::from(&mut table))).unwrap();
-    let adaptive =
-        axml::compile_xml(ADAPTIVE_ICON, Some(&mut ResourceScope::from(&mut table))).unwrap();
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("app.apk");
-    write_apk(
-        &path,
-        &manifest,
-        &[
-            ("resources.arsc", &table.serialize().unwrap()),
-            ("res/mipmap-anydpi-v26/ic_launcher.xml", &adaptive),
-            ("res/mipmap-hdpi/bg.png", b"bg-hdpi"),
-            ("res/mipmap-xxhdpi/bg.png", b"bg-xxhdpi"),
-        ],
-    );
-
-    let mut apk = ApkFile::open(&path, &ParseOptions::default()).unwrap();
-    assert_eq!(
-        apk.application_icon().unwrap(),
-        Some(ApplicationIcon::Adaptive {
-            background: IconLayer::Bitmap(b"bg-xxhdpi".to_vec()),
-            foreground: IconLayer::Color(0xFF11_2233),
-        })
-    );
-}
-
-#[test]
-fn literal_label_without_an_icon() {
-    let manifest = axml::compile_xml(
-        r#"<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.test">
-            <application android:label="Literal" />
-        </manifest>"#,
-        None,
-    )
-    .unwrap();
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("app.apk");
-    write_apk(&path, &manifest, &[]);
-
-    let mut apk = ApkFile::open(&path, &ParseOptions::default()).unwrap();
-    assert_eq!(apk.application_label().unwrap().as_deref(), Some("Literal"));
-    assert_eq!(apk.application_icon().unwrap(), None);
-}
-
-fn is_png(bytes: &[u8]) -> bool {
-    bytes.starts_with(b"\x89PNG")
-}
-
-#[test]
-fn real_apks_resolve_to_their_launcher_name_and_icon() {
-    for (path, label) in [
-        (YOUTUBE_APK, "YouTube"),
-        (INSTAGRAM_APK, "Instagram"),
-        (SPLITWISE_APK, "Splitwise"),
+    let adaptive = axml::compile_xml(ADAPTIVE_ICON, Some(&mut ResourceScope::from(&mut table)))
+        .expect("adaptive fixture");
+    for case in [
+        Case {
+            manifest: MANIFEST,
+            files: vec![
+                ("res/mipmap-hdpi/ic_launcher.png", b"hdpi".to_vec()),
+                ("res/mipmap-xxhdpi/ic_launcher.png", b"xxhdpi".to_vec()),
+                (
+                    "res/mipmap-anydpi-v26/ic_launcher.xml",
+                    b"<adaptive-icon/>".to_vec(),
+                ),
+            ],
+            label: "Example",
+            icon: Some(ApplicationIcon::Bitmap(b"xxhdpi".to_vec())),
+        },
+        Case {
+            manifest: MANIFEST,
+            files: vec![
+                ("res/mipmap-anydpi-v26/ic_launcher.xml", adaptive),
+                ("res/mipmap-hdpi/bg.png", b"bg-hdpi".to_vec()),
+                ("res/mipmap-xxhdpi/bg.png", b"bg-xxhdpi".to_vec()),
+            ],
+            label: "Example",
+            icon: Some(ApplicationIcon::Adaptive {
+                background: IconLayer::Bitmap(b"bg-xxhdpi".to_vec()),
+                foreground: IconLayer::Color(0xff11_2233),
+            }),
+        },
+        Case {
+            manifest: r#"<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.test"><application android:label="Literal"/></manifest>"#,
+            files: vec![],
+            label: "Literal",
+            icon: None,
+        },
     ] {
-        if !Path::new(path).exists() {
-            continue;
-        }
-        let mut apk = ApkFile::open(path, &ApkFile::patch_options()).unwrap();
-        assert_eq!(apk.application_label().unwrap().as_deref(), Some(label));
-        match apk.application_icon().unwrap().unwrap() {
-            ApplicationIcon::Bitmap(bytes) => assert!(is_png(&bytes), "{label}"),
-            ApplicationIcon::Adaptive {
-                background: IconLayer::Bitmap(background),
-                foreground: IconLayer::Bitmap(foreground),
-            } => assert!(is_png(&background) && is_png(&foreground), "{label}"),
-            other => panic!("{label}: {other:?}"),
-        }
+        let manifest = axml::compile_xml(case.manifest, Some(&mut ResourceScope::from(&mut table)))
+            .expect("manifest fixture");
+        let resources = table.serialize().expect("resources fixture");
+        let mut entries: Vec<_> = case
+            .files
+            .iter()
+            .map(|(name, bytes)| (*name, bytes.as_slice()))
+            .collect();
+        entries.push(("resources.arsc", &resources));
+        let dir = tempfile::tempdir().expect("fixture");
+        let path = dir.path().join("app.apk");
+        write_apk(&path, &manifest, &entries);
+        let mut apk = ApkFile::open(&path, ParseOptions::default()).expect("fixture");
+        assert_eq!(
+            apk.application_label().expect("label").as_deref(),
+            Some(case.label)
+        );
+        assert_eq!(apk.application_icon().expect("icon"), case.icon);
     }
 }

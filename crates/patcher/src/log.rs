@@ -3,7 +3,6 @@
 
 pub use reseam_model::{LogEntry, LogLevel};
 
-/// Messages a patch emits while it runs, tagged with the patch's name.
 #[derive(Debug, Clone, Default)]
 pub struct PatchLog {
     patch: String,

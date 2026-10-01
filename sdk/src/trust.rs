@@ -1,13 +1,11 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use serde::Deserialize;
+use crate::error::{HostError, Result};
 
 /// The Ed25519 signing keys a host accepts bundles from. The engine ships no
-/// keys of its own: the trust decision belongs to the host. Deserializes from
-/// `{"keys": ["<hex>", ...]}`.
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(try_from = "TrustSpec")]
+/// keys of its own: the trust decision belongs to the host.
+#[derive(Debug, Clone, Default)]
 pub struct TrustStore {
     keys: Vec<[u8; 32]>,
 }
@@ -20,39 +18,24 @@ impl TrustStore {
         Self { keys }
     }
 
-    pub fn from_hex<S: AsRef<str>>(keys: impl IntoIterator<Item = S>) -> Result<Self, String> {
+    /// Decodes exactly 32 bytes per key; malformed hex and lengths are errors.
+    pub fn from_hex(keys: impl IntoIterator<Item = impl AsRef<str>>) -> Result<Self> {
         keys.into_iter()
-            .map(|hex_key| {
-                let hex_key = hex_key.as_ref();
-                let bytes = hex::decode(hex_key)
-                    .map_err(|error| format!("invalid trusted key `{hex_key}`: {error}"))?;
-                bytes.as_slice().try_into().map_err(|_| {
-                    format!(
-                        "trusted key `{hex_key}` has {} bytes; expected 32",
-                        bytes.len()
-                    )
-                })
+            .map(|key| {
+                let key = key.as_ref();
+                let mut bytes = [0; 32];
+                hex::decode_to_slice(key, &mut bytes).map_err(|source| HostError::Trust {
+                    key: key.to_owned(),
+                    source,
+                })?;
+                Ok(bytes)
             })
-            .collect::<Result<Vec<_>, _>>()
+            .collect::<Result<Vec<_>>>()
             .map(Self::new)
     }
 
     pub fn contains(&self, key: &[u8; 32]) -> bool {
         self.keys.binary_search(key).is_ok()
-    }
-}
-
-#[derive(Deserialize)]
-struct TrustSpec {
-    #[serde(default)]
-    keys: Vec<String>,
-}
-
-impl TryFrom<TrustSpec> for TrustStore {
-    type Error = String;
-
-    fn try_from(spec: TrustSpec) -> Result<Self, String> {
-        Self::from_hex(&spec.keys)
     }
 }
 

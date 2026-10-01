@@ -1,303 +1,236 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use reseam_sign::signing_block;
-use reseam_sign::v2;
-use reseam_sign::{GeneratedKey, SigningKey};
+use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 
-/// Create a minimal valid ZIP/APK in memory for testing.
-fn create_test_apk() -> Vec<u8> {
-    let mut buf = std::io::Cursor::new(Vec::new());
-    {
-        let mut writer = zip::ZipWriter::new(&mut buf);
-        let options = zip::write::SimpleFileOptions::default()
-            .compression_method(zip::CompressionMethod::Stored);
-        writer.start_file("AndroidManifest.xml", options).unwrap();
-        writer.write_all(b"<manifest/>").unwrap();
-        writer.start_file("classes.dex", options).unwrap();
-        writer.write_all(&[0u8; 112]).unwrap(); // minimal DEX-sized placeholder
-        writer.finish().unwrap();
-    }
-    buf.into_inner()
-}
-
+use reseam_sign::{SignError, SigningKey, signer_certificates, signing_block, v2};
 use ring::digest::{self, SHA256};
-use std::io::Write;
+use ring::signature::{ECDSA_P256_SHA256_ASN1, UnparsedPublicKey};
 
-const SIG_ECDSA_SHA256: u32 = 0x0201;
 const CHUNK_SIZE: usize = 1 << 20;
 
-fn read_lp(data: &[u8], offset: usize) -> &[u8] {
-    let len = u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
+#[expect(clippy::unwrap_used, reason = "fixture construction must succeed")]
+fn apk(extra_entries: usize) -> Vec<u8> {
+    let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    let stored =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    writer.start_file("AndroidManifest.xml", stored).unwrap();
+    writer
+        .write_all(b"<manifest package=\"com.example\"/>")
+        .unwrap();
+    writer.start_file("assets/content.bin", stored).unwrap();
+    let chunk = vec![0xab; CHUNK_SIZE];
+    writer.write_all(&chunk).unwrap();
+    writer.write_all(&chunk).unwrap();
+    writer.write_all(b"last chunk").unwrap();
+    for index in 0..extra_entries {
+        writer.start_file(format!("assets/data/{index:08}/a-long-localized-resource-name-for-central-directory-relocation.bin"), stored).unwrap();
+    }
+    writer
+        .set_raw_comment(b"ZIP comment with PK\x05\x06 inside".as_slice().into())
+        .expect("ZIP comment");
+    writer.finish().unwrap().into_inner()
+}
+
+fn lp(data: &[u8], offset: usize) -> &[u8] {
+    let len = u32::from_le_bytes(
+        data[offset..offset + 4]
+            .try_into()
+            .expect("length prefix contains four bytes"),
+    ) as usize;
     &data[offset + 4..offset + 4 + len]
 }
 
-fn find_signing_pair_value(signing_block_bytes: &[u8], id: u32) -> Option<&[u8]> {
-    if signing_block_bytes.len() < 32 {
-        return None;
-    }
-
-    let mut pos = 8;
-    let end = signing_block_bytes.len() - 24;
-    while pos < end {
-        let pair_len =
-            u64::from_le_bytes(signing_block_bytes[pos..pos + 8].try_into().ok()?) as usize;
-        let pair_end = pos.checked_add(8 + pair_len)?;
-        if pair_end > end {
-            return None;
-        }
-
-        let pair_id = u32::from_le_bytes(signing_block_bytes[pos + 8..pos + 12].try_into().ok()?);
-        if pair_id == id {
-            return Some(&signing_block_bytes[pos + 12..pair_end]);
-        }
-
-        pos = pair_end;
-    }
-
-    None
-}
-
-fn extract_v2_digest(signed_apk: &[u8]) -> Vec<u8> {
-    let sections = signing_block::split_apk(signed_apk).unwrap();
-    let cd_offset = signing_block::find_eocd(signed_apk).unwrap().cd_offset as usize;
-    let signing_block_bytes = &signed_apk[sections.contents.len()..cd_offset];
-    let v2_block =
-        find_signing_pair_value(signing_block_bytes, signing_block::BLOCK_ID_V2).unwrap();
-    let signers_seq = read_lp(v2_block, 0);
-    let signer = read_lp(signers_seq, 0);
-    let signed_data = read_lp(signer, 0);
-    let digests_seq = read_lp(signed_data, 0);
-    let digest_entry = read_lp(digests_seq, 0);
-    let algorithm_id = u32::from_le_bytes(digest_entry[0..4].try_into().unwrap());
-    assert_eq!(algorithm_id, SIG_ECDSA_SHA256);
-    read_lp(digest_entry, 4).to_vec()
-}
-
-fn compute_content_digest(
-    contents: &[u8],
-    central_dir: &[u8],
-    eocd: &[u8],
-    new_cd_offset: u32,
-) -> Vec<u8> {
-    let mut patched_eocd = eocd.to_vec();
-    patched_eocd[16..20].copy_from_slice(&new_cd_offset.to_le_bytes());
-
-    let mut chunk_digests = Vec::new();
-    digest_section_chunks(contents, &mut chunk_digests);
-    digest_section_chunks(central_dir, &mut chunk_digests);
-    digest_section_chunks(&patched_eocd, &mut chunk_digests);
-
-    let mut top_input = vec![0x5a];
-    top_input.extend_from_slice(&(chunk_digests.len() as u32).to_le_bytes());
-    for digest in &chunk_digests {
-        top_input.extend_from_slice(digest);
-    }
-
-    digest::digest(&SHA256, &top_input).as_ref().to_vec()
-}
-
-fn digest_section_chunks(data: &[u8], chunk_digests: &mut Vec<Vec<u8>>) {
-    let mut offset = 0;
-    while offset < data.len() {
-        let end = (offset + CHUNK_SIZE).min(data.len());
-        let chunk = &data[offset..end];
-
-        let mut ctx = digest::Context::new(&SHA256);
-        ctx.update(&[0xa5]);
-        ctx.update(&(chunk.len() as u32).to_le_bytes());
-        ctx.update(chunk);
-        chunk_digests.push(ctx.finish().as_ref().to_vec());
-
-        offset = end;
-    }
-}
-
-#[test]
-fn test_key_generation() {
-    let key = SigningKey::generate().unwrap();
-    assert!(!key.certificate_der().is_empty());
-    assert!(!key.public_key_bytes().is_empty());
-}
-
-#[test]
-fn test_generated_key_save_load() {
-    let gen = GeneratedKey::generate().unwrap();
-    assert!(!gen.pkcs8_der.is_empty());
-
-    // Round-trip: load from saved PKCS#8 bytes
-    let loaded =
-        SigningKey::from_pkcs8(&gen.pkcs8_der, gen.signing_key.certificate_der().to_vec()).unwrap();
+#[expect(
+    clippy::unwrap_used,
+    reason = "the independent verifier must fail on any invalid signature"
+)]
+fn verify(apk: &[u8], key: &SigningKey) {
+    let block = signing_block::block(apk).unwrap().unwrap();
+    let value = signing_block::find_pair(block, signing_block::BLOCK_ID_V2)
+        .unwrap()
+        .unwrap();
+    let signer = lp(lp(value, 0), 0);
+    let signed_data = lp(signer, 0);
+    let signatures = lp(signer, 4 + signed_data.len());
+    assert_eq!(&lp(signatures, 0)[..4], &0x0201_u32.to_le_bytes());
+    assert_eq!(&lp(lp(signed_data, 0), 0)[..4], &0x0201_u32.to_le_bytes());
+    let signature = lp(lp(signatures, 0), 4);
+    UnparsedPublicKey::new(&ECDSA_P256_SHA256_ASN1, key.public_key_bytes())
+        .verify(signed_data, signature)
+        .unwrap();
+    let public_key = lp(signer, 8 + signed_data.len() + signatures.len());
+    assert_eq!(public_key, key.public_key_der());
     assert_eq!(
-        loaded.public_key_bytes(),
-        gen.signing_key.public_key_bytes()
+        signer_certificates(apk).unwrap(),
+        vec![key.certificate_der().to_vec()]
     );
+
+    let sections = signing_block::split_apk(apk).unwrap();
+    let mut eocd = sections.eocd().to_vec();
+    eocd[16..20].copy_from_slice(&(sections.contents().len() as u32).to_le_bytes());
+    let digests: Vec<_> = [sections.contents(), sections.central_directory(), &eocd]
+        .into_iter()
+        .flat_map(|section| section.chunks(CHUNK_SIZE))
+        .map(|chunk| {
+            let mut digest = digest::Context::new(&SHA256);
+            digest.update(&[0xa5]);
+            digest.update(&(chunk.len() as u32).to_le_bytes());
+            digest.update(chunk);
+            digest.finish()
+        })
+        .collect();
+    let mut digest = digest::Context::new(&SHA256);
+    digest.update(&[0x5a]);
+    digest.update(&(digests.len() as u32).to_le_bytes());
+    for chunk in &digests {
+        digest.update(chunk.as_ref());
+    }
+    assert_eq!(lp(lp(lp(signed_data, 0), 0), 4), digest.finish().as_ref());
+}
+
+#[expect(
+    clippy::unwrap_used,
+    reason = "certificate fixture construction must succeed"
+)]
+fn large_certificate(key: &SigningKey) -> Vec<u8> {
+    let pair = rcgen::KeyPair::from_pkcs8_der_and_sign_algo(
+        &key.pkcs8_der().into(),
+        &rcgen::PKCS_ECDSA_P256_SHA256,
+    )
+    .unwrap();
+    let mut params = rcgen::CertificateParams::new(Vec::<String>::new()).unwrap();
+    let mut extension = vec![0x04, 0x82, 0x10, 0x00];
+    extension.resize(4100, 0xa5);
+    params
+        .custom_extensions
+        .push(rcgen::CustomExtension::from_oid_content(
+            &[1, 3, 6, 1, 4, 1, 55555, 1],
+            extension,
+        ));
+    params.self_signed(&pair).unwrap().der().to_vec()
 }
 
 #[test]
-fn test_sign_and_verify_structure() {
+fn signing_and_resigning_preserve_zip_data_and_verify_cryptographically() {
     let key = SigningKey::generate().unwrap();
-    let apk = create_test_apk();
+    let large = SigningKey::from_pkcs8(key.pkcs8_der(), large_certificate(&key)).unwrap();
+    for extra_entries in [0, 9000] {
+        let source = apk(extra_entries);
+        assert!(signer_certificates(&source).unwrap().is_empty());
+        let signed = v2::sign(&source, &key).unwrap();
+        verify(&signed, &key);
+        let original = signing_block::split_apk(&source).unwrap();
+        let file = tempfile::tempfile().unwrap();
+        let mut file_ref = &file;
+        file_ref.write_all(&source).unwrap();
+        for signer in [&key, &large, &key] {
+            v2::sign_file_in_place(&file, signer).unwrap();
+            let mut actual = Vec::new();
+            file_ref.seek(SeekFrom::Start(0)).unwrap();
+            file_ref.read_to_end(&mut actual).unwrap();
+            verify(&actual, signer);
+            let rewritten = signing_block::split_apk(&actual).unwrap();
+            assert_eq!(rewritten.contents(), original.contents());
+            assert_eq!(rewritten.central_directory(), original.central_directory());
+            let mut archive = zip::ZipArchive::new(Cursor::new(&actual)).unwrap();
+            let mut entry = archive.by_name("assets/content.bin").unwrap();
+            let mut data = Vec::new();
+            entry.read_to_end(&mut data).unwrap();
+            assert_eq!(&data[..2 * CHUNK_SIZE], vec![0xab; 2 * CHUNK_SIZE]);
+            assert_eq!(&data[2 * CHUNK_SIZE..], b"last chunk");
+        }
+    }
+}
 
-    let signed = v2::sign(&apk, &key).unwrap();
+#[test]
+fn keys_reject_malformed_and_mismatched_certificates() {
+    let key = SigningKey::generate().unwrap();
+    let other = SigningKey::generate().unwrap();
+    for certificate in [vec![0xa5; 4096], other.certificate_der().to_vec()] {
+        assert!(SigningKey::from_pkcs8(key.pkcs8_der(), certificate).is_err());
+    }
+    let mut trailing = key.certificate_der().to_vec();
+    trailing.push(0);
+    assert!(SigningKey::from_pkcs8(key.pkcs8_der(), trailing).is_err());
+    let loaded = SigningKey::from_pkcs8(key.pkcs8_der(), key.certificate_der().to_vec()).unwrap();
+    assert_eq!(loaded.public_key_bytes(), key.public_key_bytes());
+    assert_eq!(loaded.certificate_der(), key.certificate_der());
+    verify(&v2::sign(&apk(0), &loaded).unwrap(), &loaded);
+}
 
-    // Signed APK should be larger (signing block added)
-    assert!(signed.len() > apk.len());
+#[test]
+fn credentials_generate_reuse_and_refuse_to_replace_existing_files() {
+    let directory = tempfile::tempdir().unwrap();
+    let key_path = directory.path().join("identity.pk8");
+    let cert_path = directory.path().join("identity.der");
+    let key = SigningKey::load_or_generate(&key_path, &cert_path).unwrap();
+    let loaded = SigningKey::load_or_generate(&key_path, &cert_path).unwrap();
+    assert_eq!(loaded.public_key_bytes(), key.public_key_bytes());
+    assert!(
+        SigningKey::generate()
+            .unwrap()
+            .save(&key_path, &cert_path)
+            .is_err()
+    );
+    assert_eq!(std::fs::read(&key_path).unwrap(), key.pkcs8_der());
+    assert_eq!(std::fs::read(&cert_path).unwrap(), key.certificate_der());
+    for path in [&key_path, &cert_path] {
+        let removed = std::fs::read(path).unwrap();
+        std::fs::remove_file(path).unwrap();
+        let Err(SignError::PartialPair { missing, existing }) =
+            SigningKey::load_or_generate(&key_path, &cert_path)
+        else {
+            panic!("a partial pair must report the missing credential");
+        };
+        assert_eq!(missing, *path);
+        assert_eq!(
+            std::fs::read(&existing).unwrap(),
+            if path == &key_path {
+                key.certificate_der()
+            } else {
+                key.pkcs8_der()
+            }
+        );
+        assert!(!path.exists());
+        std::fs::write(path, removed).unwrap();
+    }
+}
 
-    // Should still be a valid ZIP (EOCD present)
+#[test]
+fn certificate_discovery_rejects_malformed_blocks_and_uses_android_scheme_selection() {
+    let key = SigningKey::generate().unwrap();
+    let signed = v2::sign(&apk(0), &key).unwrap();
     let eocd = signing_block::find_eocd(&signed).unwrap();
-    assert!(eocd.offset > 0);
-    assert!(eocd.cd_offset > 0);
-
-    // The signing block magic should be present before the central directory
-    let cd_off = eocd.cd_offset as usize;
-    assert!(cd_off >= 24);
-    let magic = &signed[cd_off - 16..cd_off];
-    assert_eq!(magic, b"APK Sig Block 42");
-}
-
-#[test]
-fn test_split_apk_finds_eocd() {
-    let apk = create_test_apk();
-    let eocd = signing_block::find_eocd(&apk).unwrap();
-    assert!(eocd.offset > 0);
-    assert!(eocd.cd_offset > 0);
-    assert!(eocd.cd_size > 0);
-}
-
-#[test]
-fn test_split_apk_sections() {
-    let apk = create_test_apk();
-    let sections = signing_block::split_apk(&apk).unwrap();
-    assert!(!sections.contents.is_empty());
-    assert!(!sections.central_dir.is_empty());
-    assert!(!sections.eocd.is_empty());
-}
-
-#[test]
-fn test_find_eocd_rejects_trailing_bytes() {
-    let mut apk = create_test_apk();
-    apk.extend_from_slice(b"junk");
-    assert!(signing_block::find_eocd(&apk).is_err());
-}
-
-#[test]
-fn test_signed_apk_still_valid_zip() {
-    let key = SigningKey::generate().unwrap();
-    let apk = create_test_apk();
-
-    let signed = v2::sign(&apk, &key).unwrap();
-
-    // Should be parseable as a ZIP
-    let cursor = std::io::Cursor::new(&signed);
-    let mut archive = zip::ZipArchive::new(cursor).unwrap();
-    assert!(archive.len() >= 2); // AndroidManifest.xml + classes.dex
-
-    // Verify entries are still readable
-    let mut manifest = archive.by_name("AndroidManifest.xml").unwrap();
-    let mut content = Vec::new();
-    std::io::Read::read_to_end(&mut manifest, &mut content).unwrap();
-    assert_eq!(content, b"<manifest/>");
-}
-
-#[test]
-fn test_sign_large_certificate_uses_final_cd_offset_in_digest() {
-    let generated = GeneratedKey::generate().unwrap();
-    let oversized_cert = vec![0xA5; 4096];
-    let key = SigningKey::from_pkcs8(&generated.pkcs8_der, oversized_cert).unwrap();
-    let apk = create_test_apk();
-
-    let signed = v2::sign(&apk, &key).unwrap();
-    let stored_digest = extract_v2_digest(&signed);
-
-    let sections = signing_block::split_apk(&signed).unwrap();
-    let recomputed = compute_content_digest(
-        sections.contents,
-        sections.central_dir,
-        sections.eocd,
-        sections.contents.len() as u32,
-    );
-
-    assert_eq!(stored_digest, recomputed);
-}
-
-#[test]
-fn test_sign_real_apk() {
-    let apk_path = "../../test-apks/for_testing_com.google.android.youtube_21.10.494.apk";
-    if !std::path::Path::new(apk_path).exists() {
-        eprintln!("Skipping: APK not found");
-        return;
+    let start = signing_block::split_apk(&signed).unwrap().contents().len();
+    let footer = eocd.central_directory_offset() as usize - 24;
+    let block = signing_block::block(&signed).unwrap().unwrap();
+    let v2 = signing_block::find_pair(block, signing_block::BLOCK_ID_V2)
+        .unwrap()
+        .unwrap();
+    let padding = start + 20 + v2.len();
+    for (offset, value) in [
+        (start, 0_u64),
+        (footer, 16),
+        (footer, u64::MAX),
+        (start + 8, 3),
+        (start + 8, u64::MAX),
+    ] {
+        let mut broken = signed.clone();
+        broken[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
+        assert!(signer_certificates(&broken).is_err());
     }
-
-    let apk = std::fs::read(apk_path).unwrap();
-    let key = SigningKey::generate().unwrap();
-
-    let signed = v2::sign(&apk, &key).unwrap();
-
-    // Verify ZIP still valid
-    let cursor = std::io::Cursor::new(&signed);
-    let archive = zip::ZipArchive::new(cursor).unwrap();
-    assert!(!archive.is_empty());
-
-    // Verify signing block present
-    let cd_off = signing_block::find_eocd(&signed).unwrap().cd_offset as usize;
-    let magic = &signed[cd_off - 16..cd_off];
-    assert_eq!(magic, b"APK Sig Block 42");
-
-    let diff = signed.len() as i64 - apk.len() as i64;
-    eprintln!(
-        "Signed APK: {} -> {} bytes ({:+})",
-        apk.len(),
-        signed.len(),
-        diff
-    );
-}
-
-#[test]
-fn test_sign_in_place_matches_sign() {
-    let apk = create_test_apk();
-    let key = SigningKey::generate().unwrap();
-    let expected = v2::sign(&apk, &key).unwrap();
-
-    let file = tempfile::tempfile().unwrap();
-    {
-        use std::io::Write;
-        let mut writer = &file;
-        writer.write_all(&apk).unwrap();
-    }
-    v2::sign_file_in_place(&file, &key).unwrap();
-    let mut signed = Vec::new();
-    {
-        use std::io::{Read, Seek, SeekFrom};
-        let mut reader = &file;
-        reader.seek(SeekFrom::Start(0)).unwrap();
-        reader.read_to_end(&mut signed).unwrap();
-    }
-    // ECDSA signatures differ in length per signing and the block padding
-    // absorbs that, so compare everything around the signing block.
-    let contents_len = signing_block::split_apk(&apk).unwrap().contents.len();
-    let tail_len = apk.len() - contents_len;
-    assert_eq!(signed.len(), expected.len());
-    assert_eq!(extract_v2_digest(&signed), extract_v2_digest(&expected));
-    assert_eq!(signed[..contents_len], expected[..contents_len]);
+    let mut bad_offset = signed.clone();
+    bad_offset[eocd.offset() + 16..eocd.offset() + 20].copy_from_slice(&u32::MAX.to_le_bytes());
+    assert!(signer_certificates(&bad_offset).is_err());
+    assert!(v2::sign(&bad_offset, &key).is_err());
+    let mut bad_signer = signed.clone();
+    bad_signer[start + 20..start + 24].copy_from_slice(&u32::MAX.to_le_bytes());
+    assert!(signer_certificates(&bad_signer).is_err());
+    let mut later_scheme = signed.clone();
+    later_scheme[padding..padding + 8].copy_from_slice(&u64::MAX.to_le_bytes());
     assert_eq!(
-        signed[signed.len() - tail_len..],
-        expected[expected.len() - tail_len..]
+        signer_certificates(&later_scheme).unwrap(),
+        vec![key.certificate_der().to_vec()]
     );
-    assert!(signing_block::split_apk(&signed).is_ok());
-}
-
-#[test]
-fn signer_certificates_round_trip() {
-    let apk = create_test_apk();
-    let key = SigningKey::generate().unwrap();
-    let signed = v2::sign(&apk, &key).unwrap();
-    let certificates = reseam_sign::signer_certificates(&signed).unwrap();
-    assert_eq!(certificates, vec![key.certificate_der().to_vec()]);
-}
-
-#[test]
-fn signer_certificates_empty_when_unsigned() {
-    let apk = create_test_apk();
-    assert!(reseam_sign::signer_certificates(&apk).unwrap().is_empty());
 }

@@ -1,23 +1,28 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The BoltFFI surface of the application SDK. It lives one crate away from
-//! the service because BoltFFI folds the exports of every direct dependency
+//! The `BoltFFI` surface of the application SDK. It lives one crate away from
+//! the service because `BoltFFI` folds the exports of every direct dependency
 //! into a binding root, and the patcher's exports belong to bundles, not apps.
 
-use std::sync::{Mutex, MutexGuard, PoisonError};
+#![expect(
+    clippy::needless_pass_by_value,
+    reason = "BoltFFI exports require owned values across the host boundary"
+)]
+
+use std::sync::{Mutex, MutexGuard};
 
 use boltffi::export;
 use reseam_model::{
     ApkMetadata, ApplicationIcon, InspectRequest, InspectResponse, PatchMetadata, PatchOutcome,
     PatchRequest, PatchSelection, RunEvent, SdkError,
 };
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 /// Inspects APK and bundle metadata without running patches.
 #[export]
 pub fn inspect(request: InspectRequest) -> Result<InspectResponse, SdkError> {
-    reseam_sdk::inspect(&request).map_err(failure)
+    reseam_sdk::inspect(&request).map_err(SdkError::from)
 }
 
 /// Runs a patch request end to end. Progress is delivered on the calling
@@ -27,7 +32,7 @@ pub fn patch(
     request: PatchRequest,
     on_event: impl Fn(RunEvent) + Send + Sync + 'static,
 ) -> Result<PatchOutcome, SdkError> {
-    reseam_sdk::patch(&request, on_event).map_err(failure)
+    reseam_sdk::patch(&request, on_event).map_err(SdkError::from)
 }
 
 /// An opened APK or container. Extracted component files stay valid until
@@ -48,36 +53,37 @@ impl ApkInspection {
             .map(|opened| Self {
                 opened: Mutex::new(opened),
             })
-            .map_err(failure)
+            .map_err(SdkError::from)
     }
 
-    /// Reads application and bytecode metadata.
     pub fn metadata(&self) -> Result<ApkMetadata, SdkError> {
-        self.opened().metadata().map_err(failure)
+        self.opened()?.metadata().map_err(SdkError::from)
     }
 
-    /// The base component path.
-    pub fn base_path(&self) -> String {
-        self.opened().base_path().display().to_string()
+    pub fn base_path(&self) -> Result<String, SdkError> {
+        Ok(self.opened()?.base_path().display().to_string())
     }
 
-    /// Additional component paths in their original order.
-    pub fn split_paths(&self) -> Vec<String> {
-        self.opened()
+    pub fn split_paths(&self) -> Result<Vec<String>, SdkError> {
+        Ok(self
+            .opened()?
             .split_paths()
             .map(|path| path.display().to_string())
-            .collect()
+            .collect())
     }
 
     /// A bitmap or adaptive icon, or none when the APK declares no usable icon.
     pub fn application_icon(&self) -> Result<Option<ApplicationIcon>, SdkError> {
-        self.opened().application_icon().map_err(failure)
+        self.opened()?.application_icon().map_err(SdkError::from)
     }
 }
 
 impl ApkInspection {
-    fn opened(&self) -> MutexGuard<'_, reseam_sdk::ApkInspection> {
-        self.opened.lock().unwrap_or_else(PoisonError::into_inner)
+    fn opened(&self) -> Result<MutexGuard<'_, reseam_sdk::ApkInspection>, SdkError> {
+        self.opened.lock().map_err(|_| SdkError {
+            problem: reseam_model::Problem::Other,
+            message: "APK inspection was interrupted by a panic; close and reopen it".into(),
+        })
     }
 }
 
@@ -105,30 +111,33 @@ pub fn decode_patch_metadata(json: String) -> Result<Vec<PatchMetadata>, SdkErro
     from_json(&json)
 }
 
-fn failure(error: anyhow::Error) -> SdkError {
-    reseam_sdk::sdk_error(&error)
-}
-
 fn to_json<T: Serialize>(value: &T) -> Result<String, SdkError> {
-    serde_json::to_string(value).map_err(|error| failure(error.into()))
+    serde_json::to_string(value).map_err(|error| reseam_sdk::sdk_error(&error))
 }
 
 fn from_json<T: DeserializeOwned>(json: &str) -> Result<T, SdkError> {
-    serde_json::from_str(json).map_err(|error| failure(error.into()))
+    serde_json::from_str(json).map_err(|error| reseam_sdk::sdk_error(&error))
 }
 
 /// Android apps install their class loader before loading bundles; it becomes
 /// the parent of every bundle loader and supplies the shared patch runtime.
 #[cfg(target_os = "android")]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_app_reseam_sdk_ReseamAndroidHost_setClassLoader(
-    mut env: jni::JNIEnv<'_>,
+    mut env: jni::EnvUnowned<'_>,
     _class: jni::objects::JClass<'_>,
     loader: jni::objects::JObject<'_>,
 ) {
-    if let Err(error) = reseam_sdk::install_class_loader(&mut env, loader) {
-        let _ = env.throw_new("java/lang/IllegalStateException", error);
-    }
+    env.with_env(|env| -> jni::errors::Result<()> {
+        if let Err(error) = reseam_sdk::install_class_loader(env, loader) {
+            env.throw_new(
+                jni::jni_str!("java/lang/IllegalStateException"),
+                jni::strings::JNIString::new(error.to_string()),
+            )?;
+        }
+        Ok(())
+    })
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
 }
 
 #[cfg(test)]
@@ -137,17 +146,26 @@ mod tests {
     use reseam_model::Problem;
 
     #[test]
-    fn a_failed_open_reports_the_typed_problem() {
-        let path = std::env::temp_dir().join("reseam-not-an-apk.jpg");
-        std::fs::write(&path, b"not a zip").unwrap();
-        let error = ApkInspection::new(path.display().to_string(), Vec::new())
-            .err()
-            .unwrap();
-        assert_eq!(
-            error.problem,
-            Problem::UnreadableApk {
-                path: path.display().to_string()
+    fn unreadable_inputs_report_typed_failures() {
+        let tmp = tempfile::tempdir().unwrap();
+        for (name, bytes) in [
+            ("absent.apk", None),
+            ("plain.apk", Some(b"not a zip".as_slice())),
+            ("truncated.apk", Some(b"PK\x03\x04".as_slice())),
+        ] {
+            let path = tmp.path().join(name);
+            if let Some(bytes) = bytes {
+                std::fs::write(&path, bytes).unwrap();
             }
-        );
+            let error = ApkInspection::new(path.display().to_string(), Vec::new())
+                .err()
+                .unwrap();
+            assert_eq!(
+                error.problem,
+                Problem::UnreadableApk {
+                    path: path.display().to_string()
+                }
+            );
+        }
     }
 }

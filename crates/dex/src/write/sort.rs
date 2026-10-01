@@ -2,18 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::types::annotation::{AnnotationItem, AnnotationsDirectory};
-use crate::types::class::{ClassData, ClassDef, EncodedMethod};
 use crate::types::code::CodeItem;
 use crate::types::debug::{DebugBytecode, DebugInfo};
 use crate::types::encoded_value::EncodedValue;
 use crate::types::instruction::Instruction;
 use crate::types::method_handle::{
-    CallSiteIdx, CallSiteItem, MethodHandle, MethodHandleIdx, MethodHandleMember,
+    CallSiteItem, MethodHandle, MethodHandleIdx, MethodHandleMember,
 };
 use crate::types::{FieldIdx, MethodIdx, Pool, ProtoIdx, StringIdx, TypeIdx};
 
-/// Owned index remap tables, retained after sorting so the writer can remap
-/// classes it decodes lazily (never-materialized classes) at emit time.
 pub(crate) struct RemapTables {
     pub string: Vec<u32>,
     pub type_: Vec<u32>,
@@ -48,8 +45,8 @@ pub(crate) struct Remap<'a> {
     pub(crate) method_handle: &'a [u32],
 }
 
-impl<'a> Remap<'a> {
-    pub(crate) fn index(&self, pool: Pool, idx: u32) -> u32 {
+impl Remap<'_> {
+    pub(crate) fn index(&self, pool: Pool, idx: u32) -> crate::Result<u32> {
         let table = match pool {
             Pool::String => self.string,
             Pool::Type => self.type_,
@@ -59,7 +56,16 @@ impl<'a> Remap<'a> {
             Pool::CallSite => self.call_site,
             Pool::MethodHandle => self.method_handle,
         };
-        table[idx as usize]
+        table
+            .get(idx as usize)
+            .copied()
+            .filter(|&mapped| mapped != u32::MAX)
+            .ok_or_else(|| {
+                crate::error::invalid(
+                    "pool remap",
+                    format!("{pool:?} index {idx} is absent from the output pool"),
+                )
+            })
     }
 
     pub(crate) fn remap_string(&self, idx: StringIdx) -> StringIdx {
@@ -71,7 +77,7 @@ impl<'a> Remap<'a> {
     }
 
     pub(crate) fn remap_proto(&self, idx: ProtoIdx) -> ProtoIdx {
-        ProtoIdx(self.proto[idx.0 as usize] as u16)
+        ProtoIdx(self.proto[idx.0 as usize])
     }
 
     pub(crate) fn remap_field(&self, idx: FieldIdx) -> FieldIdx {
@@ -80,10 +86,6 @@ impl<'a> Remap<'a> {
 
     pub(crate) fn remap_method(&self, idx: MethodIdx) -> MethodIdx {
         MethodIdx(self.method[idx.0 as usize])
-    }
-
-    pub(crate) fn remap_call_site_idx(&self, idx: CallSiteIdx) -> CallSiteIdx {
-        CallSiteIdx(self.call_site[idx.0 as usize])
     }
 
     pub(crate) fn remap_method_handle_idx(&self, idx: MethodHandleIdx) -> MethodHandleIdx {
@@ -98,59 +100,23 @@ impl<'a> Remap<'a> {
         idx.map(|i| self.remap_type(i))
     }
 
-    pub(crate) fn remap_class(&self, class: &mut ClassDef) {
-        class.class_type = self.remap_type(class.class_type);
-        class.superclass = self.remap_opt_type(class.superclass);
-        class.interfaces = class
-            .interfaces
-            .iter()
-            .map(|t| self.remap_type(*t))
-            .collect();
-        class.source_file = self.remap_opt_string(class.source_file);
+    pub(crate) fn remap_code(&self, code: &mut CodeItem) -> crate::error::Result<()> {
+        let mut validator = crate::references::ReferenceValidator::new(|pool, index| {
+            self.index(pool, index).map(|_| ())
+        });
+        for instruction in &code.instructions {
+            crate::references::instruction(&mut validator, instruction);
+        }
+        for handler in &code.catch_handlers {
+            for catch in &handler.typed_catches {
+                crate::references::RefSink::add(&mut validator, Pool::Type, catch.exception_type.0);
+            }
+        }
+        if let Some(debug) = &code.debug_info {
+            crate::references::debug_info(&mut validator, debug.read()?.as_ref());
+        }
+        validator.finish()?;
 
-        if let Some(ref mut ann) = class.annotations {
-            self.remap_annotations_dir(ann);
-        }
-
-        if let Some(ref mut data) = class.class_data {
-            self.remap_class_data(data);
-        }
-
-        for sv in &mut class.static_values {
-            self.remap_encoded_value(sv);
-        }
-    }
-
-    pub(crate) fn remap_class_data(&self, data: &mut ClassData) {
-        for f in &mut data.static_fields {
-            f.field = self.remap_field(f.field);
-        }
-        for f in &mut data.instance_fields {
-            f.field = self.remap_field(f.field);
-        }
-        // Re-sort fields by new index (delta encoding requires sorted order)
-        data.static_fields.sort_by_key(|f| f.field.0);
-        data.instance_fields.sort_by_key(|f| f.field.0);
-
-        for m in &mut data.direct_methods {
-            self.remap_encoded_method(m);
-        }
-        for m in &mut data.virtual_methods {
-            self.remap_encoded_method(m);
-        }
-        // Re-sort methods by new index
-        data.direct_methods.sort_by_key(|m| m.method.0);
-        data.virtual_methods.sort_by_key(|m| m.method.0);
-    }
-
-    fn remap_encoded_method(&self, m: &mut EncodedMethod) {
-        m.method = self.remap_method(m.method);
-        if let Some(ref mut code) = m.code {
-            self.remap_code(code);
-        }
-    }
-
-    pub(crate) fn remap_code(&self, code: &mut CodeItem) {
         for insn in &mut code.instructions {
             self.remap_instruction(insn);
         }
@@ -160,11 +126,17 @@ impl<'a> Remap<'a> {
             }
         }
         if let Some(ref mut debug) = code.debug_info {
-            self.remap_debug(debug);
+            self.remap_debug(debug.resolve_mut()?)?;
         }
+        Ok(())
     }
 
-    pub(crate) fn remap_debug(&self, debug: &mut DebugInfo) {
+    pub(crate) fn remap_debug(&self, debug: &mut DebugInfo) -> crate::Result<()> {
+        let mut validator = crate::references::ReferenceValidator::new(|pool, index| {
+            self.index(pool, index).map(|_| ())
+        });
+        crate::references::debug_info(&mut validator, debug);
+        validator.finish()?;
         for name in &mut debug.parameter_names {
             *name = self.remap_opt_string(*name);
         }
@@ -190,33 +162,42 @@ impl<'a> Remap<'a> {
                 _ => {}
             }
         }
+        Ok(())
     }
 
-    pub(crate) fn remap_annotations_dir(&self, dir: &mut AnnotationsDirectory) {
-        for item in &mut dir.class_annotations {
+    pub(crate) fn remap_annotations_dir(
+        &self,
+        dir: &mut AnnotationsDirectory,
+    ) -> crate::Result<()> {
+        let mut validator = crate::references::ReferenceValidator::new(|pool, index| {
+            self.index(pool, index).map(|_| ())
+        });
+        crate::references::annotations_dir(&mut validator, dir);
+        validator.finish()?;
+        for item in &mut dir.class {
             self.remap_annotation_item(item);
         }
-        dir.class_annotations.sort_by_key(|item| item.type_.0);
+        dir.class.sort_by_key(|item| item.type_.0);
 
-        for (field_idx, items) in &mut dir.field_annotations {
+        for (field_idx, items) in &mut dir.fields {
             *field_idx = self.remap_field(*field_idx);
             for item in items.iter_mut() {
                 self.remap_annotation_item(item);
             }
             items.sort_by_key(|item| item.type_.0);
         }
-        dir.field_annotations.sort_by_key(|(idx, _)| idx.0);
+        dir.fields.sort_by_key(|(idx, _)| idx.0);
 
-        for (method_idx, items) in &mut dir.method_annotations {
+        for (method_idx, items) in &mut dir.methods {
             *method_idx = self.remap_method(*method_idx);
             for item in items.iter_mut() {
                 self.remap_annotation_item(item);
             }
             items.sort_by_key(|item| item.type_.0);
         }
-        dir.method_annotations.sort_by_key(|(idx, _)| idx.0);
+        dir.methods.sort_by_key(|(idx, _)| idx.0);
 
-        for (method_idx, param_items) in &mut dir.parameter_annotations {
+        for (method_idx, param_items) in &mut dir.parameters {
             *method_idx = self.remap_method(*method_idx);
             for items in param_items.iter_mut() {
                 for item in items.iter_mut() {
@@ -225,37 +206,47 @@ impl<'a> Remap<'a> {
                 items.sort_by_key(|item| item.type_.0);
             }
         }
-        dir.parameter_annotations.sort_by_key(|(idx, _)| idx.0);
+        dir.parameters.sort_by_key(|(idx, _)| idx.0);
+        Ok(())
     }
 
     fn remap_annotation_item(&self, item: &mut AnnotationItem) {
         item.type_ = self.remap_type(item.type_);
         for elem in &mut item.elements {
             elem.name = self.remap_string(elem.name);
-            self.remap_encoded_value(&mut elem.value);
+            self.map_value(&mut elem.value);
         }
         item.elements.sort_by_key(|e| e.name.0);
     }
 
-    pub(crate) fn remap_encoded_value(&self, v: &mut EncodedValue) {
+    pub(crate) fn remap_encoded_value(&self, value: &mut EncodedValue) -> crate::Result<()> {
+        let mut validator = crate::references::ReferenceValidator::new(|pool, index| {
+            self.index(pool, index).map(|_| ())
+        });
+        crate::references::encoded_value(&mut validator, value);
+        validator.finish()?;
+        self.map_value(value);
+        Ok(())
+    }
+
+    fn map_value(&self, v: &mut EncodedValue) {
         match v {
             EncodedValue::String(idx) => *idx = self.remap_string(*idx),
             EncodedValue::Type(idx) => *idx = self.remap_type(*idx),
-            EncodedValue::Field(idx) => *idx = self.remap_field(*idx),
+            EncodedValue::Field(idx) | EncodedValue::Enum(idx) => *idx = self.remap_field(*idx),
             EncodedValue::Method(idx) => *idx = self.remap_method(*idx),
-            EncodedValue::Enum(idx) => *idx = self.remap_field(*idx),
             EncodedValue::MethodType(idx) => *idx = self.remap_proto(*idx),
             EncodedValue::MethodHandle(idx) => *idx = self.remap_method_handle_idx(*idx),
             EncodedValue::Array(items) => {
                 for item in items {
-                    self.remap_encoded_value(item);
+                    self.map_value(item);
                 }
             }
             EncodedValue::Annotation(ann) => {
                 ann.type_ = self.remap_type(ann.type_);
                 for elem in &mut ann.elements {
                     elem.name = self.remap_string(elem.name);
-                    self.remap_encoded_value(&mut elem.value);
+                    self.map_value(&mut elem.value);
                 }
                 ann.elements.sort_by_key(|e| e.name.0);
             }
@@ -263,118 +254,61 @@ impl<'a> Remap<'a> {
         }
     }
 
-    fn remap_instruction(&self, insn: &mut crate::types::instruction::Instruction) {
-        use crate::types::instruction::Instruction;
-        match insn {
-            Instruction::ConstString { string, .. }
-            | Instruction::ConstStringJumbo { string, .. } => {
-                *string = self.remap_string(*string);
-            }
-            Instruction::ConstClass { type_, .. }
-            | Instruction::CheckCast { type_, .. }
-            | Instruction::NewInstance { type_, .. } => {
-                *type_ = self.remap_type(*type_);
-            }
-            Instruction::InstanceOf { type_, .. } | Instruction::NewArray { type_, .. } => {
-                *type_ = self.remap_type(*type_);
-            }
-            Instruction::FilledNewArray { type_, .. }
-            | Instruction::FilledNewArrayRange { type_, .. } => {
-                *type_ = self.remap_type(*type_);
-            }
-            Instruction::Iget { field, .. }
-            | Instruction::IgetWide { field, .. }
-            | Instruction::IgetObject { field, .. }
-            | Instruction::IgetBoolean { field, .. }
-            | Instruction::IgetByte { field, .. }
-            | Instruction::IgetChar { field, .. }
-            | Instruction::IgetShort { field, .. }
-            | Instruction::Iput { field, .. }
-            | Instruction::IputWide { field, .. }
-            | Instruction::IputObject { field, .. }
-            | Instruction::IputBoolean { field, .. }
-            | Instruction::IputByte { field, .. }
-            | Instruction::IputChar { field, .. }
-            | Instruction::IputShort { field, .. }
-            | Instruction::Sget { field, .. }
-            | Instruction::SgetWide { field, .. }
-            | Instruction::SgetObject { field, .. }
-            | Instruction::SgetBoolean { field, .. }
-            | Instruction::SgetByte { field, .. }
-            | Instruction::SgetChar { field, .. }
-            | Instruction::SgetShort { field, .. }
-            | Instruction::Sput { field, .. }
-            | Instruction::SputWide { field, .. }
-            | Instruction::SputObject { field, .. }
-            | Instruction::SputBoolean { field, .. }
-            | Instruction::SputByte { field, .. }
-            | Instruction::SputChar { field, .. }
-            | Instruction::SputShort { field, .. } => {
-                *field = self.remap_field(*field);
-            }
-            Instruction::InvokeVirtual { method, .. }
-            | Instruction::InvokeSuper { method, .. }
-            | Instruction::InvokeDirect { method, .. }
-            | Instruction::InvokeStatic { method, .. }
-            | Instruction::InvokeInterface { method, .. }
-            | Instruction::InvokeVirtualRange { method, .. }
-            | Instruction::InvokeSuperRange { method, .. }
-            | Instruction::InvokeDirectRange { method, .. }
-            | Instruction::InvokeStaticRange { method, .. }
-            | Instruction::InvokeInterfaceRange { method, .. } => {
-                *method = self.remap_method(*method);
-            }
-            Instruction::InvokePolymorphic { method, proto, .. }
-            | Instruction::InvokePolymorphicRange { method, proto, .. } => {
-                *method = self.remap_method(*method);
-                *proto = self.remap_proto(*proto);
-            }
-            Instruction::ConstMethodType { proto, .. } => {
-                *proto = self.remap_proto(*proto);
-            }
-            Instruction::InvokeCustom { call_site, .. }
-            | Instruction::InvokeCustomRange { call_site, .. } => {
-                *call_site = self.remap_call_site_idx(*call_site);
-            }
-            Instruction::ConstMethodHandle { method_handle, .. } => {
-                *method_handle = self.remap_method_handle_idx(*method_handle);
-            }
-            _ => {}
-        }
+    fn remap_instruction(&self, insn: &mut Instruction) {
+        insn.map_indices(|pool, index| match pool {
+            Pool::String => self.string[index as usize],
+            Pool::Type => self.type_[index as usize],
+            Pool::Field => self.field[index as usize],
+            Pool::Method => self.method[index as usize],
+            Pool::Proto => self.proto[index as usize],
+            Pool::CallSite => self.call_site[index as usize],
+            Pool::MethodHandle => self.method_handle[index as usize],
+        });
     }
 
-    pub(crate) fn remap_call_site(&self, cs: &mut CallSiteItem) {
+    pub(crate) fn remap_call_site(&self, cs: &mut CallSiteItem) -> crate::Result<()> {
+        let mut validator = crate::references::ReferenceValidator::new(|pool, index| {
+            self.index(pool, index).map(|_| ())
+        });
+        crate::references::call_site(&mut validator, cs);
+        validator.finish()?;
         cs.bootstrap_method = self.remap_method_handle_idx(cs.bootstrap_method);
         cs.method_name = self.remap_string(cs.method_name);
         cs.method_type = self.remap_proto(cs.method_type);
         for arg in &mut cs.extra_arguments {
-            self.remap_encoded_value(arg);
+            self.map_value(arg);
         }
+        Ok(())
     }
 
-    pub(crate) fn remap_method_handle(&self, mh: &mut MethodHandle) {
+    pub(crate) fn remap_method_handle(&self, mh: &mut MethodHandle) -> crate::Result<()> {
+        match mh.member {
+            MethodHandleMember::Field(index) => {
+                self.index(Pool::Field, index.0)?;
+            }
+            MethodHandleMember::Method(index) => {
+                self.index(Pool::Method, index.0)?;
+            }
+        }
         match &mut mh.member {
             MethodHandleMember::Field(idx) => *idx = self.remap_field(*idx),
             MethodHandleMember::Method(idx) => *idx = self.remap_method(*idx),
         }
+        Ok(())
     }
 }
 
-/// Promotes instructions whose remapped operand outgrew its encoded width
-/// (currently `const-string` → `const-string/jumbo` when the string index
-/// exceeds 16 bits). Shared by the resident-class fixup and the writer's lazy
-/// class emitter so both paths widen identically.
 pub(crate) fn fixup_code(code: &mut CodeItem) -> crate::error::Result<()> {
     let mut i = 0;
     while i < code.instructions.len() {
-        if let Instruction::ConstString { dest, string } = &code.instructions[i] {
-            if string.0 > 0xFFFF {
-                let promoted = Instruction::ConstStringJumbo {
-                    dest: *dest,
-                    string: *string,
-                };
-                code.replace_instruction(i, promoted)?;
-            }
+        if let Instruction::ConstString { dest, string } = &code.instructions[i]
+            && string.0 > 0xFFFF
+        {
+            let promoted = Instruction::ConstStringJumbo {
+                dest: *dest,
+                string: *string,
+            };
+            code.replace_instruction(i, promoted)?;
         }
         i += 1;
     }

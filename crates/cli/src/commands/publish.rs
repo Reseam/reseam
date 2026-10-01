@@ -1,22 +1,20 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::io::Write;
 use std::path::Path;
 
-use anyhow::{ensure, Context, Result};
-use reseam_patcher::bundle::BundleArchive;
+use anyhow::{Context, Result, ensure};
 use reseam_patcher::PatchSpec;
+use reseam_patcher::bundle::BundleArchive;
 use serde::{Deserialize, Serialize};
-use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 use tracing::info;
 
 use super::create_parent;
 use crate::app::{PublishManagerCommand, PublishPatchesCommand, ReleaseArgs};
 
-/// `patches.json` and `manager.json` share one shape: who publishes, then
-/// releases newest first. The `bundle` key is the API's name for the
-/// publisher in both files.
 #[derive(Debug, Serialize, Deserialize)]
 struct Index {
     bundle: Publisher,
@@ -57,13 +55,13 @@ pub fn run_publish_patches(command: &PublishPatchesCommand) -> Result<()> {
             author: info.author.clone(),
             description: info.description.clone(),
             homepage: None,
-            public_key: Some(hex::encode(archive.public_key)),
+            public_key: Some(hex::encode(archive.public_key())),
         }
     };
     let patches = archive
         .load()
         .with_context(|| format!("failed to inspect bundle {}", command.bundle.display()))?
-        .patches
+        .patches()
         .iter()
         .map(|patch| patch.spec().clone())
         .collect();
@@ -83,8 +81,6 @@ pub fn run_publish_manager(command: &PublishManagerCommand) -> Result<()> {
     publish(&command.out, publisher, &command.release, None)
 }
 
-/// Rewrites `out` with `release` on top, replacing any release of the same
-/// version. An existing index must belong to the same signer.
 fn publish(
     out: &Path,
     mut publisher: Publisher,
@@ -112,15 +108,14 @@ fn publish(
         None => OffsetDateTime::now_utc().format(&Rfc3339)?,
     };
 
-    let existing: Option<Index> = out
-        .exists()
-        .then(|| {
-            let json = std::fs::read_to_string(out)
-                .with_context(|| format!("failed to read {}", out.display()))?;
-            serde_json::from_str(&json)
-                .with_context(|| format!("failed to parse {}", out.display()))
-        })
-        .transpose()?;
+    let existing: Option<Index> = match std::fs::File::open(out) {
+        Ok(file) => Some(
+            serde_json::from_reader(std::io::BufReader::new(file))
+                .with_context(|| format!("parse {}", out.display()))?,
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error).with_context(|| format!("read {}", out.display())),
+    };
     if let Some(existing) = &existing {
         ensure!(
             existing.bundle.public_key == publisher.public_key,
@@ -149,7 +144,7 @@ fn publish(
         },
     );
 
-    write_json_atomically(
+    write_index_atomically(
         out,
         &Index {
             bundle: publisher,
@@ -160,22 +155,68 @@ fn publish(
     Ok(())
 }
 
-fn write_json_atomically<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+fn write_index_atomically(path: &Path, value: &Index) -> Result<()> {
     create_parent(path)?;
-    let file_name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .with_context(|| format!("invalid output path {}", path.display()))?;
-    let tmp_path = path.with_file_name(format!(".{file_name}.{}.tmp", std::process::id()));
-    let mut json = serde_json::to_vec_pretty(value)?;
-    json.push(b'\n');
-    std::fs::write(&tmp_path, json)
-        .with_context(|| format!("failed to write {}", tmp_path.display()))?;
-    std::fs::rename(&tmp_path, path).with_context(|| {
-        format!(
-            "failed to move {} to {}",
-            tmp_path.display(),
-            path.display()
-        )
-    })
+    let parent = path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let mut builder = tempfile::Builder::new();
+    builder.prefix(".reseam-index-");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        builder.permissions(std::fs::Permissions::from_mode(0o666));
+    }
+    let mut staged = builder.tempfile_in(parent)?;
+    {
+        let mut writer = std::io::BufWriter::new(staged.as_file_mut());
+        serde_json::to_writer_pretty(&mut writer, value)?;
+        writer.write_all(b"\n")?;
+        writer.flush()?;
+    }
+    staged
+        .persist(path)
+        .map_err(|error| error.error)
+        .with_context(|| format!("publish {}", path.display()))?;
+    Ok(())
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::os::unix::fs::PermissionsExt;
+
+    use super::run_publish_manager;
+    use crate::app::{PublishManagerCommand, ReleaseArgs};
+
+    #[test]
+    fn release_indices_use_regular_file_permissions() {
+        let dir = tempfile::tempdir().unwrap();
+        let reference = dir.path().join("regular-file");
+        std::fs::write(&reference, b"").unwrap();
+        let command = PublishManagerCommand {
+            name: "Reseam Manager".into(),
+            author: "Reseam".into(),
+            summary: String::new(),
+            out: dir.path().join("manager.json"),
+            release: ReleaseArgs {
+                version: "1.0.0".into(),
+                url: "https://example.com/manager.apk".into(),
+                description: None,
+                description_file: None,
+                homepage: None,
+                created_at: Some("2026-10-01T00:00:00Z".into()),
+                prerelease: false,
+            },
+        };
+        run_publish_manager(&command).unwrap();
+        assert_eq!(
+            std::fs::metadata(&command.out)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            std::fs::metadata(reference).unwrap().permissions().mode() & 0o777
+        );
+    }
 }

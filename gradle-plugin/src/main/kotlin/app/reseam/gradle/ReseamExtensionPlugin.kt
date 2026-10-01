@@ -11,28 +11,26 @@ import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.tasks.SourceSetContainer
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 
-/**
- * A module of Java compiled against `android.jar` into one DEX file the
- * bundle ships. `implementation` dependencies are dexed into it; `compileOnly`
- * ones are expected from the app or another module of the bundle. Sources
- * under `src/stubs/java` are compile-time stand-ins for classes the app
- * already has; they are never dexed. d8's global synthetics go to the
- * bundle's shared DEX, so modules that use them link it along with their own.
- */
-class ReseamExtensionPlugin : Plugin<Project> {
+internal class ReseamExtensionPlugin : Plugin<Project> {
     override fun apply(project: Project) {
+        project.reseamArtifact()
         project.pluginManager.apply("java-library")
         project.extensions.configure(JavaPluginExtension::class.java) {
             toolchain.languageVersion.set(JavaLanguageVersion.of(17))
             sourceCompatibility = JavaVersion.VERSION_17
             targetCompatibility = JavaVersion.VERSION_17
         }
-        project.dependencies.attributesSchema.attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE).compatibilityRules.add(AarElementsCompatibility::class.java)
+        project.dependencies.attributesSchema
+            .attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE)
+            .compatibilityRules
+            .add(AarElementsCompatibility::class.java)
         project.dependencies.registerTransform(AarClassesTransform::class.java) {
             from.attribute(ARTIFACT_TYPE, "aar")
             to.attribute(ARTIFACT_TYPE, "jar")
         }
-        listOf("compileClasspath", "runtimeClasspath").forEach { project.configurations.getByName(it).attributes.attribute(ARTIFACT_TYPE, "jar") }
+        listOf("compileClasspath", "runtimeClasspath").forEach {
+            project.configurations.getByName(it).attributes.attribute(ARTIFACT_TYPE, "jar")
+        }
         val sourceSets = project.extensions.getByType(SourceSetContainer::class.java)
         val stubs = sourceSets.create("stubs")
         val main = sourceSets.getByName("main")
@@ -41,14 +39,18 @@ class ReseamExtensionPlugin : Plugin<Project> {
         project.dependencies.add("compileOnly", platform)
         project.dependencies.add("stubsCompileOnly", platform)
 
-        val dex = project.tasks.register("dex", DexTask::class.java) {
-            group = "build"
-            description = "Compiles the extension and its dependencies to DEX."
-            sources.from(main.output.classesDirs, project.configurations.getByName("runtimeClasspath"))
-            libraries.from(platform)
-            output.set(project.layout.buildDirectory.dir("reseam/dex"))
-            globals.set(project.layout.buildDirectory.dir("reseam/globals"))
-        }
+        val dex =
+            project.tasks.register("dex", DexTask::class.java) {
+                group = "build"
+                description = "Compiles the extension and its dependencies to DEX."
+                sources.from(
+                    main.output.classesDirs,
+                    project.configurations.getByName("runtimeClasspath"),
+                )
+                libraries.from(platform)
+                output.set(project.layout.buildDirectory.dir("reseam/dex"))
+                globals.set(project.layout.buildDirectory.dir("reseam/globals"))
+            }
         project.tasks.named("build") { dependsOn(dex) }
     }
 }

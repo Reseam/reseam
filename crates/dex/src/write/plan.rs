@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Everything the writer reads goes through a [`WritePlan`]: the output order
-//! of every pool, the old-to-new remap that order implies, and the classes in
-//! output order. The [`DexFile`] itself is never mutated by a write, so it
-//! stays consistent afterwards and can be written again.
+mod class;
 
 use std::borrow::Cow;
 use std::cmp::Reverse;
@@ -12,19 +9,18 @@ use std::collections::BinaryHeap;
 
 use rustc_hash::FxHashMap;
 
-use super::part::{pool_len, DexPart};
-use super::sort::{fixup_code, Remap, RemapTables};
-use crate::error::{invalid, Result};
+use super::part::DexPart;
+use super::sort::{Remap, RemapTables};
+use crate::error::{Result, invalid};
 use crate::file::{ClassHeader, DexFile, RawClassDef};
 use crate::read::annotation::read_annotations_directory;
-use crate::read::encoded_value::read_encoded_array_with_opts;
+use crate::references::pool_len;
 use crate::types::annotation::AnnotationsDirectory;
 use crate::types::class::ClassDef;
 use crate::types::encoded_value::EncodedValue;
 use crate::types::method_handle::{CallSiteItem, MethodHandle};
 use crate::types::{FieldId, MethodId, Pool, Prototype, StringIdx, TypeIdx, TypeList};
 
-/// Output order of each pool: `order[new] = old`.
 pub(crate) struct PoolOrder {
     pub string: Vec<u32>,
     pub type_: Vec<u32>,
@@ -35,15 +31,14 @@ pub(crate) struct PoolOrder {
     pub method_handle: Vec<u32>,
 }
 
-/// A class in output order: a patch-touched class from its (remapped) IR, or
-/// a class still in the file, remapped as it is read.
 pub(crate) enum WriteClass<'a> {
-    Resident(Cow<'a, ClassDef>),
+    Resident(&'a ClassDef),
     Raw(RawClassDef),
 }
 
 pub(crate) struct WritePlan<'a> {
     pub dex: &'a DexFile,
+    pub options: super::WriteOptions,
     /// `None` when every pool is written whole and already in DEX sort order.
     pub order: Option<PoolOrder>,
     pub remap: Option<RemapTables>,
@@ -53,25 +48,19 @@ pub(crate) struct WritePlan<'a> {
 }
 
 impl<'a> WritePlan<'a> {
-    /// Sorts every pool and resolves what each class needs. A pool already in
-    /// sort order whose keys reference only identity-mapped pools costs
-    /// nothing; resident classes are cloned and remapped only when a pool
-    /// actually moved. A plan for a [`DexPart`] writes only the part's classes
-    /// and drops every pool entry they do not reach.
-    pub(crate) fn new(dex: &'a DexFile, part: Option<&DexPart>) -> Result<Self> {
+    pub(crate) fn new(
+        dex: &'a DexFile,
+        part: Option<&DexPart>,
+        options: super::WriteOptions,
+    ) -> Result<Self> {
+        crate::references::validate_pools(dex)?;
+        if let Some(part) = part {
+            crate::references::validate_part(dex, part)?;
+        }
         let compact = part.is_some();
-        let candidates = |pool: Pool| -> Vec<u32> {
-            match part {
-                Some(part) => part.pools.members(pool).collect(),
-                None => (0..pool_len(dex, pool) as u32).collect(),
-            }
-        };
+        let candidates = |pool| pool_candidates(dex, part, pool);
 
-        let strings = (compact || !dex.strings.is_sorted()).then(|| {
-            let mut order = candidates(Pool::String);
-            order.sort_by(|&a, &b| dex.strings.compare(a, b));
-            order
-        });
+        let strings = ordered_strings(dex, part);
         let string_remap = strings.as_deref().map(|o| remap_of(o, dex.strings.len()));
         let map_string = |i: StringIdx| string_remap.as_ref().map_or(i.0, |r| r[i.0 as usize]);
 
@@ -100,19 +89,20 @@ impl<'a> WritePlan<'a> {
             order
         });
         let proto_remap = protos.as_deref().map(|o| remap_of(o, dex.prototypes.len()));
-        let map_proto = |i: crate::types::ProtoIdx| {
-            proto_remap.as_ref().map_or(i.0 as u32, |r| r[i.0 as usize])
-        };
+        let map_proto =
+            |i: crate::types::ProtoIdx| proto_remap.as_ref().map_or(i.0, |r| r[i.0 as usize]);
 
         let fields =
             (compact || !dex.fields.is_sorted() || type_remap.is_some() || string_remap.is_some())
                 .then(|| {
-                    let mut order = candidates(Pool::Field);
-                    order.sort_by_cached_key(|&i| {
+                    ordered_pool(dex, part, Pool::Field, |i| {
                         let f = dex.fields.get(i as usize);
-                        (map_type(f.class), map_string(f.name), map_type(f.type_))
-                    });
-                    order
+                        FieldId {
+                            class: TypeIdx(map_type(f.class)),
+                            name: StringIdx(map_string(f.name)),
+                            type_: TypeIdx(map_type(f.type_)),
+                        }
+                    })
                 });
         let field_remap = fields.as_deref().map(|o| remap_of(o, dex.fields.len()));
 
@@ -122,25 +112,25 @@ impl<'a> WritePlan<'a> {
             || string_remap.is_some()
             || proto_remap.is_some())
         .then(|| {
-            let mut order = candidates(Pool::Method);
-            order.sort_by_cached_key(|&i| {
+            ordered_pool(dex, part, Pool::Method, |i| {
                 let m = dex.methods.get(i as usize);
-                (map_type(m.class), map_string(m.name), map_proto(m.proto))
-            });
-            order
+                MethodId {
+                    class: TypeIdx(map_type(m.class)),
+                    name: StringIdx(map_string(m.name)),
+                    proto: crate::ProtoIdx(map_proto(m.proto)),
+                }
+            })
         });
         let method_remap = methods.as_deref().map(|o| remap_of(o, dex.methods.len()));
 
         let already_sorted = !compact
-            && [
+            && unchanged_pools([
                 &string_remap,
                 &type_remap,
                 &proto_remap,
                 &field_remap,
                 &method_remap,
-            ]
-            .iter()
-            .all(|r| r.as_deref().is_none_or(is_identity));
+            ]);
 
         let (order, remap) = if already_sorted {
             (None, None)
@@ -154,63 +144,64 @@ impl<'a> WritePlan<'a> {
                 call_site: candidates(Pool::CallSite),
                 method_handle: candidates(Pool::MethodHandle),
             };
-            let remap = RemapTables {
-                string: remap_of(&order.string, dex.strings.len()),
-                type_: remap_of(&order.type_, dex.types.len()),
-                proto: remap_of(&order.proto, dex.prototypes.len()),
-                field: remap_of(&order.field, dex.fields.len()),
-                method: remap_of(&order.method, dex.methods.len()),
-                call_site: remap_of(&order.call_site, dex.call_sites.len()),
-                method_handle: remap_of(&order.method_handle, dex.method_handles.len()),
-            };
+            let remap = pool_remap(dex, &order);
             (Some(order), Some(remap))
         };
 
+        let mut plan = Self {
+            dex,
+            options,
+            order,
+            remap,
+            classes: Vec::new(),
+            class_order: Vec::new(),
+        };
+        plan.select_classes(part)?;
+        Ok(plan)
+    }
+
+    fn select_classes(&mut self, part: Option<&DexPart>) -> Result<()> {
+        let dex = self.dex;
         let sources: Vec<usize> = match part {
             Some(part) => part.classes.clone(),
             None => (0..dex.classes.len()).collect(),
         };
-        let mut classes: Vec<WriteClass<'a>> = Vec::with_capacity(sources.len());
+        let mut classes: Vec<WriteClass<'_>> = Vec::with_capacity(sources.len());
         for &i in &sources {
+            if i >= dex.classes.len() {
+                return Err(invalid(
+                    "DEX part",
+                    "class index exceeds the source class table",
+                ));
+            }
+            if let Some(class) = dex.classes.resident(i) {
+                crate::references::validate_class(dex, class)?;
+            }
             classes.push(match (dex.classes.resident(i), dex.classes.raw_def(i)) {
-                (Some(class), _) => match &remap {
-                    Some(remap) => {
-                        let mut class = class.clone();
-                        remap.as_remap().remap_class(&mut class);
-                        fixup_class(&mut class)?;
-                        WriteClass::Resident(Cow::Owned(class))
-                    }
-                    None => WriteClass::Resident(Cow::Borrowed(class)),
-                },
+                (Some(class), _) => WriteClass::Resident(class),
                 (None, Some(raw)) => WriteClass::Raw(raw),
-                (None, None) => unreachable!("every slot is resident or raw"),
+                (None, None) => {
+                    return Err(invalid(
+                        "DEX class",
+                        format!("class index {i} has no source"),
+                    ));
+                }
             });
         }
-        let mut plan = Self {
-            dex,
-            order,
-            remap,
-            classes,
-            class_order: Vec::new(),
-        };
-        let positions = plan.order_classes()?;
-        let mut slots: Vec<_> = plan.classes.drain(..).map(Some).collect();
+        self.classes = classes;
+        let positions = self.order_classes()?;
+        let mut slots: Vec<_> = self.classes.drain(..).map(Some).collect();
         for &position in &positions {
-            plan.classes.push(
+            self.classes.push(
                 slots[position]
                     .take()
                     .expect("class order is a permutation"),
             );
         }
-        plan.class_order = positions.into_iter().map(|p| sources[p]).collect();
-        Ok(plan)
+        self.class_order = positions.into_iter().map(|p| sources[p]).collect();
+        Ok(())
     }
 
-    /// DEX class definitions must follow their locally defined superclass and
-    /// interfaces. Kahn's algorithm with an input-index priority queue preserves
-    /// an already valid order and deterministically prefers the earliest ready
-    /// class otherwise. It takes O(E + V log V) time and O(E + V) space, without
-    /// recursion or materializing file-backed class bodies.
     fn order_classes(&self) -> Result<Vec<usize>> {
         let count = self.classes.len();
         let mut index_of = FxHashMap::default();
@@ -361,111 +352,31 @@ impl<'a> WritePlan<'a> {
         })
     }
 
-    pub(crate) fn call_sites(&self) -> Cow<'_, [CallSiteItem]> {
-        let (Some(order), Some(remap)) = (&self.order, self.remap()) else {
-            return Cow::Borrowed(&self.dex.call_sites);
-        };
-        Cow::Owned(
-            order
-                .call_site
-                .iter()
-                .map(|&old| {
-                    let mut site = self.dex.call_sites[old as usize].clone();
-                    remap.remap_call_site(&mut site);
-                    site
-                })
-                .collect(),
-        )
-    }
-
-    pub(crate) fn method_handles(&self) -> Cow<'_, [MethodHandle]> {
-        let (Some(order), Some(remap)) = (&self.order, self.remap()) else {
-            return Cow::Borrowed(&self.dex.method_handles);
-        };
-        Cow::Owned(
-            order
-                .method_handle
-                .iter()
-                .map(|&old| {
-                    let mut handle = self.dex.method_handles[old as usize];
-                    remap.remap_method_handle(&mut handle);
-                    handle
-                })
-                .collect(),
-        )
-    }
-
-    pub(crate) fn class_header(&self, k: usize) -> ClassHeader {
-        match &self.classes[k] {
-            WriteClass::Resident(c) => ClassHeader::of(c),
-            WriteClass::Raw(raw) => {
-                let h = raw.header();
-                ClassHeader {
-                    class_type: self.map_type(h.class_type),
-                    access_flags: h.access_flags,
-                    superclass: h.superclass.map(|t| self.map_type(t)),
-                    source_file: h.source_file.map(|s| self.map_string(s)),
-                }
+    pub(crate) fn call_sites(&self) -> impl Iterator<Item = Result<Cow<'_, CallSiteItem>>> {
+        (0..self.call_site_count()).map(|new| {
+            let old = self
+                .order
+                .as_ref()
+                .map_or(new as u32, |order| order.call_site[new]);
+            let mut site = self.dex.call_sites.get(old as usize)?;
+            if let Some(remap) = self.remap() {
+                remap.remap_call_site(site.to_mut())?;
             }
-        }
+            Ok(site)
+        })
     }
-
-    pub(crate) fn class_interfaces(&self, k: usize) -> TypeList {
-        match &self.classes[k] {
-            WriteClass::Resident(c) => c.interfaces.clone(),
-            WriteClass::Raw(raw) => {
-                if raw.interfaces_off == 0 {
-                    return TypeList::new();
-                }
-                crate::file::read_type_list(self.raw_bytes(), raw.interfaces_off as usize)
-                    .iter()
-                    .map(|t| self.map_type(*t))
-                    .collect()
+    pub(crate) fn method_handles(&self) -> impl Iterator<Item = Result<MethodHandle>> + '_ {
+        (0..self.method_handle_count()).map(|new| {
+            let old = self
+                .order
+                .as_ref()
+                .map_or(new as u32, |order| order.method_handle[new]);
+            let mut handle = *self.dex.method_handles.get(old as usize)?;
+            if let Some(remap) = self.remap() {
+                remap.remap_method_handle(&mut handle)?;
             }
-        }
-    }
-
-    pub(crate) fn class_annotations(
-        &self,
-        k: usize,
-    ) -> Result<Option<Cow<'_, AnnotationsDirectory>>> {
-        match &self.classes[k] {
-            WriteClass::Resident(c) => Ok(c.annotations.as_deref().map(Cow::Borrowed)),
-            WriteClass::Raw(raw) => {
-                if raw.annotations_off == 0 || !self.dex.parse_options.include_annotations {
-                    return Ok(None);
-                }
-                let mut dir = read_annotations_directory(
-                    self.raw_bytes(),
-                    raw.annotations_off,
-                    &self.dex.parse_options,
-                )?;
-                if let Some(remap) = self.remap() {
-                    remap.remap_annotations_dir(&mut dir);
-                }
-                Ok(Some(Cow::Owned(dir)))
-            }
-        }
-    }
-
-    pub(crate) fn class_static_values(&self, k: usize) -> Result<Cow<'_, [EncodedValue]>> {
-        match &self.classes[k] {
-            WriteClass::Resident(c) => Ok(Cow::Borrowed(&c.static_values)),
-            WriteClass::Raw(raw) => {
-                if raw.static_values_off == 0 {
-                    return Ok(Cow::Borrowed(&[]));
-                }
-                let (mut values, _) = read_encoded_array_with_opts(
-                    self.raw_bytes(),
-                    raw.static_values_off as usize,
-                    &self.dex.parse_options,
-                )?;
-                if let Some(remap) = self.remap() {
-                    values.iter_mut().for_each(|v| remap.remap_encoded_value(v));
-                }
-                Ok(Cow::Owned(values))
-            }
-        }
+            Ok(handle)
+        })
     }
 
     pub(crate) fn raw_bytes(&self) -> &'a [u8] {
@@ -492,30 +403,12 @@ impl<'a> WritePlan<'a> {
 
     fn map_proto(&self, idx: crate::types::ProtoIdx) -> crate::types::ProtoIdx {
         match &self.remap {
-            Some(r) => crate::types::ProtoIdx(r.proto[idx.0 as usize] as u16),
+            Some(r) => crate::types::ProtoIdx(r.proto[idx.0 as usize]),
             None => idx,
         }
     }
 }
 
-fn fixup_class(class: &mut ClassDef) -> Result<()> {
-    let Some(data) = class.class_data.as_mut() else {
-        return Ok(());
-    };
-    for method in data
-        .direct_methods
-        .iter_mut()
-        .chain(data.virtual_methods.iter_mut())
-    {
-        if let Some(code) = method.code.as_mut() {
-            fixup_code(code)?;
-        }
-    }
-    Ok(())
-}
-
-/// Old-to-new index map for a pool of `len` entries written in `order`
-/// (`order[new] = old`). Entries left out are never referenced.
 fn remap_of(order: &[u32], len: usize) -> Vec<u32> {
     let mut remap = vec![u32::MAX; len];
     for (new, &old) in order.iter().enumerate() {
@@ -526,4 +419,47 @@ fn remap_of(order: &[u32], len: usize) -> Vec<u32> {
 
 fn is_identity(remap: &[u32]) -> bool {
     remap.iter().enumerate().all(|(i, &v)| v == i as u32)
+}
+
+fn pool_candidates(dex: &DexFile, part: Option<&DexPart>, pool: Pool) -> Vec<u32> {
+    match part {
+        Some(part) => part.pools.members(pool).collect(),
+        None => (0..pool_len(dex, pool) as u32).collect(),
+    }
+}
+
+fn pool_remap(dex: &DexFile, order: &PoolOrder) -> RemapTables {
+    RemapTables {
+        string: remap_of(&order.string, dex.strings.len()),
+        type_: remap_of(&order.type_, dex.types.len()),
+        proto: remap_of(&order.proto, dex.prototypes.len()),
+        field: remap_of(&order.field, dex.fields.len()),
+        method: remap_of(&order.method, dex.methods.len()),
+        call_site: remap_of(&order.call_site, dex.call_sites.len()),
+        method_handle: remap_of(&order.method_handle, dex.method_handles.len()),
+    }
+}
+
+fn unchanged_pools(maps: [&Option<Vec<u32>>; 5]) -> bool {
+    maps.into_iter()
+        .all(|map| map.as_deref().is_none_or(is_identity))
+}
+
+fn ordered_strings(dex: &DexFile, part: Option<&DexPart>) -> Option<Vec<u32>> {
+    (part.is_some() || !dex.strings.is_sorted()).then(|| {
+        let mut order = pool_candidates(dex, part, Pool::String);
+        order.sort_by(|&a, &b| dex.strings.compare(a, b));
+        order
+    })
+}
+
+fn ordered_pool<K: Ord>(
+    dex: &DexFile,
+    part: Option<&DexPart>,
+    pool: Pool,
+    mut key: impl FnMut(u32) -> K,
+) -> Vec<u32> {
+    let mut order = pool_candidates(dex, part, pool);
+    order.sort_by_cached_key(|&index| key(index));
+    order
 }

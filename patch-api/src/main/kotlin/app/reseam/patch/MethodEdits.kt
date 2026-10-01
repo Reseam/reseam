@@ -5,79 +5,90 @@ package app.reseam.patch
 
 import app.reseam.patch.dex.Method
 import app.reseam.patch.dex.registerWordCount
+import app.reseam.patch.types.MethodEdit
 
-/**
- * Tracks an instruction through method edits. [head] and [tail] are insertion
- * boundaries that keep repeated before/after emissions in patch order.
- */
 internal class InstructionAnchor(private val label: String, index: Int) {
     private var headIndex = index
+    private var instructionIndex = index
     private var tailIndex = index + 1
     private var lost: String? = null
 
-    val head: Int get() = live().headIndex
-    val tail: Int get() = live().tailIndex
+    val head: Int
+        get() = live().headIndex
+
+    val instruction: Int
+        get() = live().instructionIndex
+
+    val tail: Int
+        get() = live().tailIndex
 
     private fun live(): InstructionAnchor {
         lost?.let { error("$label: $it") }
         return this
     }
 
-    fun shift(insertedAt: Int, count: Int) {
-        if (count == 0) return
-        if (headIndex >= insertedAt) headIndex += count
-        if (tailIndex >= insertedAt) tailIndex += count
-    }
-
-    fun shiftAfter(index: Int, count: Int) {
-        if (count == 0) return
-        if (headIndex > index) headIndex += count
-        if (tailIndex > index) tailIndex += count
-    }
-
-    fun drop(removedAt: Int, count: Int) {
-        if (count == 0) return
-        if (headIndex in removedAt until removedAt + count) {
+    fun relocate(mapping: MethodEdit, kind: EditKind, removed: IntRange) {
+        if (lost != null) return
+        if (instructionIndex in removed) {
             lose("the instruction it names was removed from the method")
             return
         }
-        headIndex = afterRemoval(headIndex, removedAt, count)
-        tailIndex = maxOf(headIndex + 1, afterRemoval(tailIndex, removedAt, count))
-    }
-
-    /** Relocates against a mapping of every original instruction boundary to its new index. */
-    fun relocate(boundaries: List<Int>, expandedAt: Int, expandedBy: Int) {
-        if (lost != null) return
-        val at = { index: Int -> boundaries[index] + if (index == expandedAt) expandedBy else 0 }
-        headIndex = at(headIndex)
-        tailIndex = maxOf(headIndex + 1, at(tailIndex))
+        headIndex =
+            when (kind) {
+                EditKind.INSERT -> mapping.instructions[headIndex].toInt()
+                EditKind.GROW,
+                EditKind.REPLACE,
+                EditKind.REMOVE -> mapping.starts[headIndex].toInt()
+            }
+        instructionIndex = mapping.instructions[instructionIndex].toInt()
+        tailIndex =
+            when (kind) {
+                EditKind.INSERT -> mapping.instructions[tailIndex].toInt()
+                EditKind.GROW,
+                EditKind.REPLACE,
+                EditKind.REMOVE -> mapping.ends[tailIndex - 1].toInt()
+            }
     }
 
     fun lose(reason: String) {
         if (lost == null) lost = reason
     }
-
-    private fun afterRemoval(index: Int, removedAt: Int, count: Int): Int = when {
-        index >= removedAt + count -> index - count
-        index > removedAt -> removedAt
-        else -> index
-    }
 }
 
-/**
- * A method-wide register reserved by [MethodTarget.reserveLocal], accessed as `local(slot)`.
- */
-class MethodLocal internal constructor(val name: String, val type: String, internal val method: Method) {
-    internal var register: Int = -1
+internal enum class EditKind {
+    INSERT,
+    REPLACE,
+    REMOVE,
+    GROW,
+}
+
+/** A method-wide register reserved by [MethodTarget.reserveLocal], accessed as `local(slot)`. */
+class MethodLocal
+internal constructor(
+    val name: String,
+    val type: String,
+    internal val method: Method,
+    register: Int,
+) {
+    internal var register: Int = register
+        private set
+
     internal var lost: Boolean = false
+        private set
+
+    internal fun relocate(base: Int, additional: Int) {
+        if (register >= base) register += additional
+    }
+
+    internal fun invalidate() {
+        lost = true
+    }
+
     internal val wordCount: Int = registerWordCount(type)
 
     override fun toString(): String = "$name: $type in ${method.descriptor}"
 }
 
-/**
- * Relocates anchors, captures and reserved locals after edits reported by [Method].
- */
 internal class MethodEdits {
     private val tracked = HashMap<UInt, Tracked>()
 
@@ -109,35 +120,22 @@ internal class MethodEdits {
         of(method.handle).prologueEnd += count
     }
 
-    fun inserted(handle: UInt, index: Int, count: Int) {
+    fun relocated(
+        handle: UInt,
+        mapping: MethodEdit,
+        kind: EditKind,
+        removed: IntRange = IntRange.EMPTY,
+    ) {
         val entry = tracked[handle] ?: return
-        if (index < entry.prologueEnd) entry.prologueEnd += count
-        entry.anchors.forEach { it.shift(index, count) }
-    }
-
-    fun removed(handle: UInt, index: Int, count: Int) {
-        val entry = tracked[handle] ?: return
-        entry.prologueEnd -= minOf(count, maxOf(0, entry.prologueEnd - index))
-        entry.anchors.forEach { it.drop(index, count) }
-    }
-
-    fun replaced(handle: UInt, index: Int, growth: Int) {
-        val entry = tracked[handle] ?: return
-        if (index < entry.prologueEnd) entry.prologueEnd += growth
-        entry.anchors.forEach { it.shiftAfter(index, growth) }
-    }
-
-    fun relocated(handle: UInt, boundaries: List<Int>, expandedAt: Int = -1, expandedBy: Int = 0) {
-        val entry = tracked[handle] ?: return
-        entry.prologueEnd = boundaries[entry.prologueEnd]
-        entry.anchors.forEach { it.relocate(boundaries, expandedAt, expandedBy) }
+        entry.prologueEnd = mapping.starts[entry.prologueEnd].toInt()
+        entry.anchors.forEach { it.relocate(mapping, kind, removed) }
     }
 
     /** Locals added below the incoming window shift every register at or above [base]. */
     fun grewRegisters(handle: UInt, base: Int, additional: Int) {
         val entry = tracked[handle] ?: return
-        for (capture in entry.captures) if (capture.register >= base) capture.register += additional
-        for (local in entry.locals) if (local.register >= base) local.register += additional
+        entry.captures.forEach { it.relocate(base, additional) }
+        entry.locals.forEach { it.relocate(base, additional) }
     }
 
     fun bodyReplaced(handle: UInt) {
@@ -145,9 +143,11 @@ internal class MethodEdits {
         entry.anchors.forEach { it.lose("the method body was replaced under it") }
         entry.anchors.clear()
         entry.prologueEnd = 0
-        entry.locals.forEach { it.lost = true }
+        entry.captures.clear()
+        entry.locals.forEach { it.invalidate() }
         entry.locals.clear()
     }
 }
 
-internal val Method.edits: MethodEdits? get() = ActiveRuntime.currentOrNull?.edits
+internal val Method.edits: MethodEdits?
+    get() = ActiveRuntime.currentOrNull?.edits

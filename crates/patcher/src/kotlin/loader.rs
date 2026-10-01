@@ -1,38 +1,157 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Finds `ReseamPatch` objects in a bundle's jars and reads their metadata
-//! through JNI reflection.
-
+use std::collections::{BTreeMap, HashSet};
+use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use jni::objects::{GlobalRef, JObject, JObjectArray, JValue};
-use jni::JNIEnv;
-use tracing::warn;
+use reseam_storage::ScratchDir;
 
-use super::jvm::{self, jvm_err, string_of};
-use super::patch::{load_class, KotlinPatch};
+use jni::objects::{Global, JClass, JObject, JObjectArray, JValue, JValueOwned};
+use jni::refs::IntoAuto;
+use jni::{Env, jni_sig, jni_str};
+
+use super::jvm::{self, jvm_err};
+use super::metadata::{object, read_patch, string};
+use super::patch::load_class;
+use crate::bundle::PATCH_INDEX;
+use crate::bundle::index::{Declaration, MemberKind};
 use crate::error::Result;
-use crate::options::{OptionDeclaration, OptionType, OptionValue};
-use crate::patch::{is_slug, CompatiblePackage, Patch, PatchSpec};
+use crate::patch::Patch;
 
 const PATCH_INTERFACE: &str = "app.reseam.patch.ReseamPatch";
 const EXTERNAL_PATCH: &str = "app.reseam.patch.ExternalPatch";
-const NATIVE_CLASS: &str = "app.reseam.patch.native.Native";
 
-extern "C" {
-    fn reseam_register_patch_natives(
-        env: *mut jni::sys::JNIEnv,
-        class: jni::sys::jclass,
-    ) -> jni::sys::jint;
+pub(super) struct PatchLoader {
+    reference: Global<JObject<'static>>,
+    directory: Arc<ScratchDir>,
 }
 
-/// Registers the generated JNI bridge on the `Native` class this bundle's
-/// loader resolved: the host's copy when it ships the patch runtime, otherwise
-/// the bundle's own.
-fn register_natives(env: &mut JNIEnv<'_>, native: &JObject<'_>) -> Result<()> {
-    // SAFETY: both JNI references belong to this thread and frame. The C
-    // function registers static generated entry points and retains no locals.
+impl PatchLoader {
+    pub(super) fn reference(&self) -> &JObject<'static> {
+        self.reference.as_ref()
+    }
+
+    pub(super) fn directory(&self) -> &Path {
+        self.directory.path()
+    }
+}
+
+impl Drop for PatchLoader {
+    fn drop(&mut self) {
+        #[cfg(not(target_os = "android"))]
+        {
+            let closed = (|| {
+                jvm::get_or_init()?.attach_current_thread(|env| {
+                    // A loader can drop while a failed JNI lookup is unwinding.
+                    // Close with a clear environment, then restore the original exception.
+                    let pending = env.exception_occurred().map(IntoAuto::auto);
+                    env.exception_clear();
+                    let result = jvm::with_frame(env, |env| {
+                        env.call_method(
+                            self.reference.as_ref(),
+                            jni_str!("close"),
+                            jni_sig!("()V"),
+                            &[],
+                        )?;
+                        Ok(())
+                    });
+                    if let Some(pending) = pending {
+                        match env.throw(&*pending) {
+                            Err(jni::errors::Error::JavaException) | Ok(()) => {}
+                            Err(error) => return Err(error.into()),
+                        }
+                    }
+                    result
+                })
+            })();
+            if let Err(error) = closed {
+                tracing::warn!(%error, "failed to close patch class loader");
+            }
+        }
+    }
+}
+
+pub(super) struct Found {
+    pub(super) object: Global<JObject<'static>>,
+    pub(super) declaration: String,
+}
+
+pub fn load_patches(
+    jars: &[PathBuf],
+    directory: Arc<ScratchDir>,
+    bundle: &str,
+) -> Result<Vec<Patch>> {
+    let declarations = declarations(jars)?;
+    if declarations.is_empty() {
+        return Ok(Vec::new());
+    }
+    let vm = jvm::get_or_init()?;
+    vm.attach_current_thread(|env| {
+        jvm::with_frame(env, |env| {
+            let loader = create_class_loader(env, jars)?;
+            let retained_loader = Arc::new(PatchLoader {
+                reference: env.new_global_ref(&loader)?,
+                directory,
+            });
+            let loader = retained_loader.reference.as_ref();
+            register_natives(env, loader)?;
+            let patch_class = {
+                let class = load_class(env, loader, PATCH_INTERFACE)?;
+                JClass::cast_local(env, class)?
+            };
+            let external_class = {
+                let class = load_class(env, loader, EXTERNAL_PATCH)?;
+                JClass::cast_local(env, class)?
+            };
+            let mut found = Vec::new();
+            for (class_name, declarations) in &declarations {
+                jvm::with_frame(env, |env| {
+                    let class = {
+                        let class = load_class(env, loader, class_name)?;
+                        JClass::cast_local(env, class)?
+                    };
+                    read_declarations(
+                        env,
+                        &class,
+                        declarations,
+                        &patch_class,
+                        &external_class,
+                        &mut found,
+                    )
+                })?;
+            }
+            found
+                .iter()
+                .map(|patch| {
+                    jvm::with_frame(env, |env| {
+                        read_patch(
+                            env,
+                            patch,
+                            &found,
+                            &external_class,
+                            &retained_loader,
+                            bundle,
+                        )
+                    })
+                })
+                .collect()
+        })
+    })
+}
+
+#[cfg(reseam_jni_bridge)]
+fn register_natives(env: &mut Env<'_>, loader: &JObject<'_>) -> Result<()> {
+    unsafe extern "C" {
+        fn reseam_register_patch_natives(
+            env: *mut jni::sys::JNIEnv,
+            class: jni::sys::jclass,
+        ) -> jni::sys::jint;
+    }
+    let native = load_class(env, loader, "app.reseam.patch.native.Native")?;
+    // SAFETY: the references belong to this thread and frame. Registration
+    // installs static generated entry points and retains no local references.
     let status = unsafe { reseam_register_patch_natives(env.get_raw(), native.as_raw()) };
     if status != jni::sys::JNI_OK {
         return Err(jvm_err(format!("register natives failed: {status}")));
@@ -40,176 +159,239 @@ fn register_natives(env: &mut JNIEnv<'_>, native: &JObject<'_>) -> Result<()> {
     Ok(())
 }
 
-/// A patch object and where it was declared, before its metadata is read.
-struct Found {
-    object: GlobalRef,
-    /// `<package>.<property>` identity, independent of the display name.
-    declaration: String,
+#[cfg(not(reseam_jni_bridge))]
+fn register_natives(_env: &mut Env<'_>, _loader: &JObject<'_>) -> Result<()> {
+    Err(jvm_err(
+        "patch loading is unavailable in a binding metadata build",
+    ))
 }
 
-pub fn load_patches(
-    jars: &[PathBuf],
-    bundle_dir: &Path,
-    bundle: &str,
-) -> Result<Vec<Box<dyn Patch>>> {
-    let class_names = class_names(jars);
-    if class_names.is_empty() {
-        return Ok(Vec::new());
+fn retain_patch(
+    env: &Env<'_>,
+    found: &mut Vec<Found>,
+    object: &JObject<'_>,
+    id: &str,
+) -> Result<()> {
+    for seen in found.iter_mut() {
+        if env
+            .is_same_object(seen.object.as_ref(), object)
+            .map_err(|error| jvm_err(format!("compare patch {id}: {error}")))?
+        {
+            if id < seen.declaration.as_str() {
+                id.clone_into(&mut seen.declaration);
+            }
+            return Ok(());
+        }
     }
-    let mut env = jvm::get_or_init()?
-        .attach_current_thread_permanently()
-        .map_err(|e| jvm_err(format!("attach thread: {e}")))?;
-    jvm::with_frame(&mut env, |env| {
-        let loader = create_class_loader(env, jars)?;
-        let native = load_class(env, &loader, NATIVE_CLASS)?;
-        register_natives(env, &native)?;
-        let patch_class = load_class(env, &loader, PATCH_INTERFACE)?;
-        let external_class = load_class(env, &loader, EXTERNAL_PATCH)?;
-        let mut found: Vec<Found> = Vec::new();
-        for name in &class_names {
-            let Ok(class) = load_class(env, &loader, name) else {
-                jvm::clear_pending_exception(env);
-                continue;
-            };
-            let package = name.rsplit_once('.').map_or("", |(package, _)| package);
-            for (object, member) in patch_objects(env, &class, &patch_class) {
-                // A generated reference to another bundle's patch, not a declaration.
-                if is_instance(env, &object, &external_class) {
-                    continue;
-                }
-                let declaration = if package.is_empty() {
-                    member
-                } else {
-                    format!("{package}.{member}")
-                };
-                if let Some(seen) = found.iter_mut().find(|seen| {
-                    env.is_same_object(seen.object.as_obj(), &object)
-                        .unwrap_or(false)
-                }) {
-                    // Export aliases refer to one patch. Pick the same identity
-                    // regardless of reflection or jar-entry enumeration order.
-                    if declaration < seen.declaration {
-                        seen.declaration = declaration;
-                    }
-                    continue;
-                }
-                found.push(Found {
-                    object: env
-                        .new_global_ref(&object)
-                        .map_err(|e| jvm_err(format!("global ref: {e}")))?,
-                    declaration,
-                });
+    found.push(Found {
+        object: env
+            .new_global_ref(object)
+            .map_err(|error| jvm_err(format!("retain patch {id}: {error}")))?,
+        declaration: id.to_owned(),
+    });
+    Ok(())
+}
+
+fn declarations(jars: &[PathBuf]) -> Result<BTreeMap<String, Vec<Declaration>>> {
+    let mut classes = HashSet::new();
+    let mut found: BTreeMap<String, Vec<Declaration>> = BTreeMap::new();
+    for jar in jars {
+        let mut archive = zip::ZipArchive::new(std::fs::File::open(jar)?)?;
+        classes.extend(
+            archive
+                .file_names()
+                .filter_map(|name| name.strip_suffix(".class"))
+                .map(|name| name.replace('/', ".")),
+        );
+        let mut entry = archive.by_name(PATCH_INDEX).map_err(|error| jvm_err(format!(
+            "patch jar {} has no declaration index: {error}; rebuild it with the Reseam Gradle plugin", jar.display()
+        )))?;
+        let mut bytes = Vec::new();
+        entry
+            .by_ref()
+            .take(16 * 1024 * 1024 + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() > 16 * 1024 * 1024 {
+            return Err(jvm_err(format!(
+                "declaration index in {} is too large",
+                jar.display()
+            )));
+        }
+        let index: Vec<Declaration> = serde_json::from_slice(&bytes)
+            .map_err(|error| jvm_err(format!("declaration index in {}: {error}", jar.display())))?;
+        for declaration in index {
+            let members = found.entry(declaration.class_name.clone()).or_default();
+            if !members.contains(&declaration) {
+                members.push(declaration);
             }
         }
-        found
-            .iter()
-            .map(|patch| {
-                read_patch(env, patch, &found, &external_class, bundle_dir, bundle)
-                    .map(|patch| Box::new(patch) as Box<dyn Patch>)
-            })
-            .collect()
-    })
+    }
+    for class in found.keys() {
+        if !classes.contains(class)
+            || found[class]
+                .iter()
+                .any(|declaration| !classes.contains(&declaration.owner))
+        {
+            return Err(jvm_err(format!(
+                "indexed declaration class {class} is absent from the bundle jars"
+            )));
+        }
+    }
+    Ok(found)
 }
 
-/// Top-level class names in the jars that can declare patches, in `a.b.C`
-/// form, each once: one loader resolves a name to one class however many jars
-/// carry it. The `kotlin` package is skipped since only the standard library
-/// may declare anything there.
-fn class_names(jars: &[PathBuf]) -> Vec<String> {
-    let names: std::collections::BTreeSet<String> = jars
-        .iter()
-        .filter_map(|jar| zip::ZipArchive::new(std::fs::File::open(jar).ok()?).ok())
-        .flat_map(|archive| archive.file_names().map(str::to_string).collect::<Vec<_>>())
-        .filter(|name| {
-            !name.contains('$') && !name.starts_with("META-INF/") && !name.starts_with("kotlin/")
-        })
-        .filter_map(|name| Some(name.strip_suffix(".class")?.replace('/', ".")))
-        .collect();
-    names.into_iter().collect()
+// Reflection order determines the input order of independent patches. Only indexed
+// members are invoked; reflection also checks accessibility and invocation arguments.
+fn read_declarations(
+    env: &mut Env<'_>,
+    class: &JClass<'_>,
+    declarations: &[Declaration],
+    patch_class: &JClass<'_>,
+    external_class: &JClass<'_>,
+    found: &mut Vec<Found>,
+) -> Result<()> {
+    let mut seen = HashSet::new();
+    for kind in [MemberKind::Field, MemberKind::Method] {
+        let (getter, signature) = match kind {
+            MemberKind::Field => ("getFields", "()[Ljava/lang/reflect/Field;"),
+            MemberKind::Method => ("getMethods", "()[Ljava/lang/reflect/Method;"),
+        };
+        let members = {
+            let members = object(env, class, getter, signature)?;
+            JObjectArray::<JObject<'_>>::cast_local(env, members)?
+        };
+        let count = members.len(env)?;
+        for index in 0..count {
+            jvm::with_frame(env, |env| {
+                let member = members.get_element(env, index)?;
+                if kind == MemberKind::Method
+                    && env
+                        .call_method(&member, jni_str!("getParameterCount"), jni_sig!("()I"), &[])
+                        .and_then(JValueOwned::i)?
+                        != 0
+                {
+                    return Ok(());
+                }
+                let owner = object(env, &member, "getDeclaringClass", "()Ljava/lang/Class;")?;
+                let name = string(env, &member, "getName")?;
+                let owner = string(env, &owner, "getName")?;
+                let Some((index, declaration)) =
+                    declarations.iter().enumerate().find(|(_, declaration)| {
+                        declaration.kind == kind
+                            && declaration.member == name
+                            && declaration.owner == owner
+                    })
+                else {
+                    return Ok(());
+                };
+                if !seen.insert(index) {
+                    return Ok(());
+                }
+                let value = match kind {
+                    MemberKind::Field => env.call_method(
+                        &member,
+                        jni_str!("get"),
+                        jni_sig!("(Ljava/lang/Object;)Ljava/lang/Object;"),
+                        &[JValue::Object(&JObject::null())],
+                    ),
+                    MemberKind::Method => env.call_method(
+                        &member,
+                        jni_str!("invoke"),
+                        jni_sig!("(Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;"),
+                        &[
+                            JValue::Object(&JObject::null()),
+                            JValue::Object(&JObject::null()),
+                        ],
+                    ),
+                }
+                .and_then(JValueOwned::l)
+                .map_err(|error| {
+                    jvm_err(format!(
+                        "patch declaration {} ({}.{}): {error}",
+                        declaration.id, declaration.class_name, declaration.member
+                    ))
+                })?;
+                if value.is_null() || !env.is_instance_of(&value, patch_class)? {
+                    return Err(jvm_err(format!(
+                        "patch declaration {} did not return a ReseamPatch",
+                        declaration.id
+                    )));
+                }
+                if !env.is_instance_of(&value, external_class)? {
+                    retain_patch(env, found, &value, &declaration.id)?;
+                }
+                Ok(())
+            })?;
+        }
+    }
+    if seen.len() != declarations.len() {
+        return Err(jvm_err(
+            "indexed patch member is absent from its declaration class",
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(not(target_os = "android"))]
-fn create_class_loader<'a>(env: &mut JNIEnv<'a>, jars: &[PathBuf]) -> Result<JObject<'a>> {
-    let url_class = env
-        .find_class("java/net/URL")
-        .map_err(|e| jvm_err(format!("find URL class: {e}")))?;
-    let urls = env
-        .new_object_array(jars.len() as i32, &url_class, JObject::null())
-        .map_err(|e| jvm_err(format!("URL array: {e}")))?;
+fn create_class_loader<'a>(env: &mut Env<'a>, jars: &[PathBuf]) -> Result<JObject<'a>> {
+    let url_class = env.find_class(jni_str!("java/net/URL"))?;
+    let urls = env.new_object_array(
+        i32::try_from(jars.len()).map_err(jvm_err)?,
+        &url_class,
+        JObject::null(),
+    )?;
     for (i, jar) in jars.iter().enumerate() {
-        let path = env
-            .new_string(jar.to_string_lossy().as_ref())
-            .map_err(|e| jvm_err(format!("new_string: {e}")))?;
-        let url = (|| -> jni::errors::Result<JObject<'_>> {
-            let file = env.new_object(
-                "java/io/File",
-                "(Ljava/lang/String;)V",
-                &[JValue::Object(&path)],
-            )?;
-            let uri = env
-                .call_method(&file, "toURI", "()Ljava/net/URI;", &[])?
-                .l()?;
-            env.call_method(&uri, "toURL", "()Ljava/net/URL;", &[])?.l()
-        })()
-        .map_err(|e| jvm_err(format!("jar URL for {}: {e}", jar.display())))?;
-        env.set_object_array_element(&urls, i as i32, &url)
-            .map_err(|e| jvm_err(format!("set URL[{i}]: {e}")))?;
+        let path = jar
+            .to_str()
+            .ok_or_else(|| jvm_err(format!("jar path is not Unicode: {}", jar.display())))?;
+        let url: JObject<'_> = env
+            .with_local_frame_returning_local::<_, JObject<'_>, jni::errors::Error>(8, |env| {
+                let path = env.new_string(path)?;
+                let file = env.new_object(
+                    jni_str!("java/io/File"),
+                    jni_sig!("(Ljava/lang/String;)V"),
+                    &[JValue::Object(&path)],
+                )?;
+                let uri = env
+                    .call_method(&file, jni_str!("toURI"), jni_sig!("()Ljava/net/URI;"), &[])?
+                    .l()?;
+                env.call_method(&uri, jni_str!("toURL"), jni_sig!("()Ljava/net/URL;"), &[])?
+                    .l()
+            })
+            .map_err(|error: jni::errors::Error| {
+                jvm_err(format!("jar URL for {}: {error}", jar.display()))
+            })?;
+        let url = url.auto();
+        urls.set_element(env, i, &url)
+            .map_err(|error| jvm_err(format!("set jar URL[{i}]: {error}")))?;
     }
     env.new_object(
-        "java/net/URLClassLoader",
-        "([Ljava/net/URL;)V",
+        jni_str!("java/net/URLClassLoader"),
+        jni_sig!("([Ljava/net/URL;)V"),
         &[JValue::Object(&urls)],
     )
     .map_err(|e| jvm_err(format!("URLClassLoader: {e}")))
 }
 
 #[cfg(target_os = "android")]
-fn create_class_loader<'a>(env: &mut JNIEnv<'a>, jars: &[PathBuf]) -> Result<JObject<'a>> {
-    use reseam_apk::entry::dex_ordinal;
-
+fn create_class_loader<'a>(env: &mut Env<'a>, jars: &[PathBuf]) -> Result<JObject<'a>> {
     for jar in jars {
-        let has_dex = std::fs::File::open(jar)
-            .ok()
-            .and_then(|file| zip::ZipArchive::new(file).ok())
-            .is_some_and(|archive| archive.file_names().any(|name| dex_ordinal(name).is_some()));
-        if !has_dex {
-            return Err(jvm_err(format!(
-                "Android patch jar {} does not contain classes.dex; rebuild patch jars as universal JVM/Android jars",
+        let mut archive = zip::ZipArchive::new(std::fs::File::open(jar)?)?;
+        archive.by_name("classes.dex").map_err(|error| {
+            jvm_err(format!(
+                "Android patch jar {} has no classes.dex: {error}",
                 jar.display()
-            )));
-        }
+            ))
+        })?;
     }
-    let parent = match super::android_host::configured_class_loader(env).map_err(jvm_err)? {
-        Some(loader) => loader,
-        None => {
-            let thread = env
-                .call_static_method(
-                    "java/lang/Thread",
-                    "currentThread",
-                    "()Ljava/lang/Thread;",
-                    &[],
-                )
-                .and_then(|v| v.l())
-                .map_err(|e| jvm_err(format!("Thread.currentThread(): {e}")))?;
-            let loader = env
-                .call_method(
-                    &thread,
-                    "getContextClassLoader",
-                    "()Ljava/lang/ClassLoader;",
-                    &[],
-                )
-                .and_then(|v| v.l())
-                .map_err(|e| jvm_err(format!("Thread.contextClassLoader: {e}")))?;
-            if loader.is_null() {
-                return Err(jvm_err("Android context ClassLoader is null; install a DexClassLoader before loading patches"));
-            }
-            loader
-        }
-    };
+    let parent = super::android_host::configured_class_loader(env)?;
     let dex_paths = jars
         .iter()
-        .map(|p| p.to_string_lossy().into_owned())
-        .collect::<Vec<_>>()
+        .map(|jar| {
+            jar.to_str()
+                .ok_or_else(|| jvm_err(format!("jar path is not Unicode: {}", jar.display())))
+        })
+        .collect::<Result<Vec<_>>>()?
         .join(":");
     let optimized_dir = jars
         .first()
@@ -226,11 +408,17 @@ fn create_class_loader<'a>(env: &mut JNIEnv<'a>, jars: &[PathBuf]) -> Result<JOb
         .new_string(dex_paths)
         .map_err(|e| jvm_err(format!("DexClassLoader dexPath: {e}")))?;
     let optimized_path = env
-        .new_string(optimized_dir.to_string_lossy().as_ref())
+        .new_string(
+            optimized_dir
+                .to_str()
+                .ok_or_else(|| jvm_err("DexClassLoader optimized directory is not Unicode"))?,
+        )
         .map_err(|e| jvm_err(format!("DexClassLoader optimizedDirectory: {e}")))?;
     env.new_object(
-        "dalvik/system/DexClassLoader",
-        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/ClassLoader;)V",
+        jni_str!("dalvik/system/DexClassLoader"),
+        jni_sig!(
+            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/ClassLoader;)V"
+        ),
         &[
             JValue::Object(&dex_path),
             JValue::Object(&optimized_path),
@@ -239,379 +427,4 @@ fn create_class_loader<'a>(env: &mut JNIEnv<'a>, jars: &[PathBuf]) -> Result<JOb
         ],
     )
     .map_err(|e| jvm_err(format!("DexClassLoader: {e}")))
-}
-
-/// `ReseamPatch` instances exposed by `class` as public static fields or
-/// public static no-argument methods, each with the property name it was
-/// declared under. Members are selected by their declared type first, so
-/// only classes that actually publish a patch get initialized.
-fn patch_objects<'a>(
-    env: &mut JNIEnv<'a>,
-    class: &JObject<'_>,
-    patch_class: &JObject<'_>,
-) -> Vec<(JObject<'a>, String)> {
-    let mut found = Vec::new();
-    let members = |env: &mut JNIEnv<'a>, getter: &str, sig: &str| -> Vec<JObject<'a>> {
-        let Ok(array) = env.call_method(class, getter, sig, &[]).and_then(|v| v.l()) else {
-            jvm::clear_pending_exception(env);
-            return Vec::new();
-        };
-        let array = JObjectArray::from(array);
-        let len = env.get_array_length(&array).unwrap_or(0);
-        let mut members = Vec::new();
-        for i in 0..len {
-            if let Ok(member) = env.get_object_array_element(&array, i) {
-                if is_public_static(env, &member) {
-                    members.push(member);
-                }
-            }
-        }
-        members
-    };
-    for field in members(env, "getFields", "()[Ljava/lang/reflect/Field;") {
-        let holds_patch = env
-            .call_method(&field, "getType", "()Ljava/lang/Class;", &[])
-            .and_then(|v| v.l())
-            .is_ok_and(|field_type| is_assignable(env, patch_class, &field_type));
-        if !holds_patch {
-            jvm::clear_pending_exception(env);
-            continue;
-        }
-        let value = env
-            .call_method(
-                &field,
-                "get",
-                "(Ljava/lang/Object;)Ljava/lang/Object;",
-                &[JValue::Object(&JObject::null())],
-            )
-            .and_then(|v| v.l());
-        match value {
-            Ok(value) if !value.is_null() && is_instance(env, &value, patch_class) => {
-                if let Ok(name) = string(env, &field, "getName") {
-                    found.push((value, name));
-                }
-            }
-            _ => report_member_failure(env, &field),
-        }
-    }
-    for method in members(env, "getMethods", "()[Ljava/lang/reflect/Method;") {
-        let params = env
-            .call_method(&method, "getParameterCount", "()I", &[])
-            .and_then(|v| v.i())
-            .unwrap_or(-1);
-        let returns_patch = env
-            .call_method(&method, "getReturnType", "()Ljava/lang/Class;", &[])
-            .and_then(|v| v.l())
-            .is_ok_and(|ret| is_assignable(env, patch_class, &ret));
-        if params != 0 || !returns_patch {
-            continue;
-        }
-        let value = env
-            .call_method(
-                &method,
-                "invoke",
-                "(Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;",
-                &[
-                    JValue::Object(&JObject::null()),
-                    JValue::Object(&JObject::null()),
-                ],
-            )
-            .and_then(|v| v.l());
-        match value {
-            Ok(value) if !value.is_null() => {
-                if let Ok(name) = string(env, &method, "getName") {
-                    found.push((value, property_name(&name)));
-                }
-            }
-            _ => report_member_failure(env, &method),
-        }
-    }
-    found
-}
-
-/// A patch declaration that threw while initializing is skipped, but never
-/// silently: the class initializer's failure is what the author needs to see.
-fn report_member_failure(env: &mut JNIEnv<'_>, member: &JObject<'_>) {
-    if let Some(exception) = jvm::take_pending_exception(env) {
-        let name = string(env, member, "getName").unwrap_or_default();
-        warn!(member = name, %exception, "patch declaration failed to initialize");
-    }
-}
-
-/// `getFooBar` as the Kotlin property `fooBar`.
-fn property_name(getter: &str) -> String {
-    match getter.strip_prefix("get") {
-        Some(rest) if rest.chars().next().is_some_and(char::is_uppercase) => {
-            let mut chars = rest.chars();
-            let first = chars.next().unwrap_or_default().to_lowercase();
-            format!("{first}{}", chars.as_str())
-        }
-        _ => getter.to_string(),
-    }
-}
-
-fn is_public_static(env: &mut JNIEnv<'_>, member: &JObject<'_>) -> bool {
-    let Ok(modifiers) = env
-        .call_method(member, "getModifiers", "()I", &[])
-        .and_then(|v| v.i())
-    else {
-        return false;
-    };
-    let test = |env: &mut JNIEnv<'_>, name: &str| {
-        env.call_static_method(
-            "java/lang/reflect/Modifier",
-            name,
-            "(I)Z",
-            &[JValue::Int(modifiers)],
-        )
-        .and_then(|v| v.z())
-        .unwrap_or(false)
-    };
-    test(env, "isPublic") && test(env, "isStatic")
-}
-
-fn is_instance(env: &mut JNIEnv<'_>, object: &JObject<'_>, class: &JObject<'_>) -> bool {
-    env.get_object_class(object)
-        .is_ok_and(|object_class| is_assignable(env, class, &object_class))
-}
-
-fn is_assignable(env: &mut JNIEnv<'_>, class: &JObject<'_>, from: &JObject<'_>) -> bool {
-    env.call_method(
-        class,
-        "isAssignableFrom",
-        "(Ljava/lang/Class;)Z",
-        &[JValue::Object(from)],
-    )
-    .and_then(|v| v.z())
-    .unwrap_or(false)
-}
-
-fn read_patch(
-    env: &mut JNIEnv<'_>,
-    found: &Found,
-    all: &[Found],
-    external_class: &JObject<'_>,
-    bundle_dir: &Path,
-    bundle: &str,
-) -> Result<KotlinPatch> {
-    let patch = found.object.as_obj();
-    let name = optional_string(env, patch, "getName")?;
-    let hidden = name.is_none() || boolean(env, patch, "getHidden")?;
-    let id = found.declaration.clone();
-    let dependencies = objects(env, patch, "getDependencies")?
-        .into_iter()
-        .map(|dependency| {
-            if is_instance(env, &dependency, external_class) {
-                let other = string(env, &dependency, "getBundle")?;
-                if !is_slug(&other) {
-                    return Err(jvm_err(format!(
-                        "patch {id} depends on a bundle named '{other}'; bundle names are lowercase letters, digits, and hyphens"
-                    )));
-                }
-                return Ok(format!("{other}/{}", string(env, &dependency, "getId")?));
-            }
-            all.iter()
-                .find(|candidate| {
-                    env.is_same_object(candidate.object.as_obj(), &dependency)
-                        .unwrap_or(false)
-                })
-                .map(|candidate| format!("{bundle}/{}", candidate.declaration))
-                .ok_or_else(|| {
-                    jvm_err(format!(
-                        "patch {id} depends on a patch that is not declared as a public top-level value"
-                    ))
-                })
-        })
-        .collect::<Result<_>>()?;
-    let compatibility = objects(env, patch, "getCompatibleWith")?
-        .into_iter()
-        .map(|entry| {
-            Ok(CompatiblePackage {
-                package: string(env, &entry, "getName")?,
-                versions: strings(env, &entry, "getVersions")?,
-            })
-        })
-        .collect::<Result<_>>()?;
-    let options = objects(env, patch, "getOptions")?
-        .into_iter()
-        .map(|option| read_option(env, &option))
-        .collect::<Result<_>>()?;
-    let spec = PatchSpec {
-        bundle: bundle.to_owned(),
-        name: name.unwrap_or_else(|| id.clone()),
-        id,
-        hidden,
-        description: string(env, patch, "getDescription")?,
-        enabled_by_default: !hidden && boolean(env, patch, "getEnabled")?,
-        dependencies,
-        compatibility,
-        options,
-    };
-    Ok(KotlinPatch {
-        spec,
-        object: found.object.clone(),
-        bundle_dir: bundle_dir.to_path_buf(),
-    })
-}
-
-fn read_option(env: &mut JNIEnv<'_>, option: &JObject<'_>) -> Result<OptionDeclaration> {
-    let kind = object(env, option, "getKind", "()Lapp/reseam/patch/OptionKind;")?;
-    let option_type = match string(env, &kind, "name")?.as_str() {
-        "STRING" => OptionType::String,
-        "BOOL" => OptionType::Bool,
-        "INT" => OptionType::Int,
-        "FLOAT" => OptionType::Float,
-        "STRING_LIST" => OptionType::StringList,
-        "PATH" => OptionType::Path,
-        other => return Err(jvm_err(format!("unknown OptionKind {other}"))),
-    };
-    let default = object(env, option, "getDefault", "()Ljava/lang/Object;")?;
-    let default_value = if default.is_null() {
-        None
-    } else {
-        Some(match option_type {
-            OptionType::String => OptionValue::Text(
-                string_of(env, default).map_err(|e| jvm_err(format!("default: {e}")))?,
-            ),
-            OptionType::Path => OptionValue::Path(
-                string_of(env, default).map_err(|e| jvm_err(format!("default: {e}")))?,
-            ),
-            OptionType::Bool => OptionValue::Bool(
-                env.call_method(&default, "booleanValue", "()Z", &[])
-                    .and_then(|v| v.z())
-                    .map_err(|e| jvm_err(format!("default: {e}")))?,
-            ),
-            OptionType::Int => OptionValue::Int(
-                env.call_method(&default, "longValue", "()J", &[])
-                    .and_then(|v| v.j())
-                    .map_err(|e| jvm_err(format!("default: {e}")))?,
-            ),
-            OptionType::Float => OptionValue::Float(
-                env.call_method(&default, "doubleValue", "()D", &[])
-                    .and_then(|v| v.d())
-                    .map_err(|e| jvm_err(format!("default: {e}")))?,
-            ),
-            OptionType::StringList => OptionValue::TextList(list_strings(env, default, "default")?),
-        })
-    };
-    Ok(OptionDeclaration {
-        key: string(env, option, "getKey")?,
-        title: string(env, option, "getTitle")?,
-        description: string(env, option, "getDescription")?,
-        option_type,
-        default_value,
-        valid_values: optional_strings(env, option, "getValidValues")?,
-        required: boolean(env, option, "getRequired")?,
-    })
-}
-
-fn object<'a>(
-    env: &mut JNIEnv<'a>,
-    target: &JObject<'_>,
-    getter: &str,
-    sig: &str,
-) -> Result<JObject<'a>> {
-    env.call_method(target, getter, sig, &[])
-        .and_then(|v| v.l())
-        .map_err(|e| jvm_err(format!("{getter}(): {e}")))
-}
-
-fn optional_string(
-    env: &mut JNIEnv<'_>,
-    target: &JObject<'_>,
-    getter: &str,
-) -> Result<Option<String>> {
-    let value = object(env, target, getter, "()Ljava/lang/String;")?;
-    if value.is_null() {
-        return Ok(None);
-    }
-    string_of(env, value)
-        .map(Some)
-        .map_err(|e| jvm_err(format!("{getter}: {e}")))
-}
-
-fn string(env: &mut JNIEnv<'_>, target: &JObject<'_>, getter: &str) -> Result<String> {
-    optional_string(env, target, getter)?
-        .ok_or_else(|| jvm_err(format!("{getter}() returned null")))
-}
-
-fn boolean(env: &mut JNIEnv<'_>, target: &JObject<'_>, getter: &str) -> Result<bool> {
-    env.call_method(target, getter, "()Z", &[])
-        .and_then(|v| v.z())
-        .map_err(|e| jvm_err(format!("{getter}(): {e}")))
-}
-
-fn objects<'a>(
-    env: &mut JNIEnv<'a>,
-    target: &JObject<'_>,
-    getter: &str,
-) -> Result<Vec<JObject<'a>>> {
-    optional_objects(env, target, getter).map(Option::unwrap_or_default)
-}
-
-/// The elements of a `java.util.List` getter, or `None` for a null list.
-fn optional_objects<'a>(
-    env: &mut JNIEnv<'a>,
-    target: &JObject<'_>,
-    getter: &str,
-) -> Result<Option<Vec<JObject<'a>>>> {
-    let list = object(env, target, getter, "()Ljava/util/List;")?;
-    if list.is_null() {
-        return Ok(None);
-    }
-    list_objects(env, list, getter).map(Some)
-}
-
-fn list_objects<'a>(
-    env: &mut JNIEnv<'a>,
-    list: JObject<'a>,
-    what: &str,
-) -> Result<Vec<JObject<'a>>> {
-    let size = env
-        .call_method(&list, "size", "()I", &[])
-        .and_then(|v| v.i())
-        .map_err(|e| jvm_err(format!("{what}.size(): {e}")))?;
-    (0..size)
-        .map(|i| {
-            env.call_method(&list, "get", "(I)Ljava/lang/Object;", &[JValue::Int(i)])
-                .and_then(|v| v.l())
-                .map_err(|e| jvm_err(format!("{what}.get({i}): {e}")))
-        })
-        .collect()
-}
-
-fn list_strings<'a>(env: &mut JNIEnv<'a>, list: JObject<'a>, what: &str) -> Result<Vec<String>> {
-    list_objects(env, list, what)?
-        .into_iter()
-        .map(|item| string_of(env, item).map_err(|e| jvm_err(format!("{what} element: {e}"))))
-        .collect()
-}
-
-fn optional_strings(
-    env: &mut JNIEnv<'_>,
-    target: &JObject<'_>,
-    getter: &str,
-) -> Result<Option<Vec<String>>> {
-    let list = object(env, target, getter, "()Ljava/util/List;")?;
-    if list.is_null() {
-        return Ok(None);
-    }
-    list_strings(env, list, getter).map(Some)
-}
-
-fn strings(env: &mut JNIEnv<'_>, target: &JObject<'_>, getter: &str) -> Result<Vec<String>> {
-    optional_strings(env, target, getter).map(Option::unwrap_or_default)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::property_name;
-
-    #[test]
-    fn getters_map_to_properties() {
-        assert_eq!(property_name("getTelegramSettings"), "telegramSettings");
-        assert_eq!(property_name("getURLPatch"), "uRLPatch");
-        assert_eq!(property_name("settings"), "settings");
-        assert_eq!(property_name("getter"), "getter");
-    }
 }

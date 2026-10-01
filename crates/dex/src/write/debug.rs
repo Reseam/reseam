@@ -63,9 +63,20 @@ pub fn write_debug_info(buf: &mut Vec<u8>, info: &DebugInfo) {
                 line_advance,
                 pc_advance,
             } => {
-                let adjusted = (*line_advance + 4) + (*pc_advance as i32) * 15;
-                let opcode = (adjusted + 0x0A) as u8;
-                buf.push(opcode);
+                let mut pc = *pc_advance;
+                let mut line = *line_advance;
+                if !(-4..=10).contains(&line) {
+                    buf.push(0x02);
+                    write_sleb128(buf, line);
+                    line = 0;
+                }
+                let adjusted = i64::from(line + 4) + i64::from(pc) * 15 + 0x0a;
+                if adjusted > 0xff {
+                    buf.push(0x01);
+                    write_uleb128(buf, pc);
+                    pc = 0;
+                }
+                buf.push((line + 4 + pc as i32 * 15 + 0x0a) as u8);
             }
         }
     }

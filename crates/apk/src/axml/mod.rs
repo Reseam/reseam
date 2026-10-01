@@ -10,15 +10,16 @@ mod edit;
 mod inline;
 mod manifest;
 mod reader;
+mod text;
 mod writer;
 
 pub use android_attrs::{android_attr_res_id, android_attr_symbol, android_res_id};
 pub use compiler::{
-    attribute_symbols, build_document, compile_xml, is_compiled_axml, parse_attribute_value,
-    AttributeValue,
+    AttributeValue, attribute_symbols, build_document, compile_xml, infer_value, is_compiled_axml,
+    parse_attribute_value,
 };
-pub use document::{AxmlAttribute, AxmlDocument, AxmlEvent};
-pub use inline::{extract_inline_resources, InlineResource, AAPT_NS};
+pub use document::{AxmlAttribute, AxmlDocument, AxmlEvent, NodeMetadata};
+pub use inline::{AAPT_NS, CompiledXmlResource, compile_resource_file};
 
 pub const ANDROID_NS: &str = "http://schemas.android.com/apk/res/android";
 pub const APP_NS: &str = "http://schemas.android.com/apk/res-auto";
@@ -31,4 +32,5 @@ const CHUNK_START_NAMESPACE: u16 = 0x0100;
 const CHUNK_END_NAMESPACE: u16 = 0x0101;
 const CHUNK_START_ELEMENT: u16 = 0x0102;
 const CHUNK_END_ELEMENT: u16 = 0x0103;
+const CHUNK_TEXT: u16 = 0x0104;
 const NONE: u32 = 0xFFFF_FFFF;

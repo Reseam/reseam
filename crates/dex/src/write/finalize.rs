@@ -6,183 +6,110 @@ use crate::error::Result;
 use crate::types::class::NO_INDEX;
 use zlib_rs::adler32::{adler32, adler32_combine};
 
-use super::annotations::ClassAnnotations;
 use super::sink::DexSink;
-use super::DexWriter;
+use super::{DexWriter, MemberSpan};
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn finalize<S: DexSink>(
+#[derive(Clone, Copy)]
+pub(super) struct IdOffsets {
+    pub strings: u32,
+    pub types: u32,
+    pub prototypes: u32,
+    pub fields: u32,
+    pub methods: u32,
+    pub classes: u32,
+    pub call_sites: Option<u32>,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct DataOffsets<'a> {
+    pub start: u32,
+    pub map: u32,
+    pub annotations: &'a [u32],
+    pub prototype_parameters: &'a [u32],
+    pub interfaces: &'a [u32],
+    pub static_values: &'a [u32],
+    pub call_sites: &'a [u32],
+}
+
+pub(super) fn finalize<S: DexSink>(
     w: &mut DexWriter<S>,
     plan: &WritePlan<'_>,
-    data_off: u32,
-    data_size: u32,
-    string_ids_off: u32,
-    type_ids_off: u32,
-    proto_ids_off: u32,
-    field_ids_off: u32,
-    method_ids_off: u32,
-    class_defs_off: u32,
-    map_off: u32,
-    class_ann_datas: &ClassAnnotations,
-    proto_param_offsets: &[u32],
-    class_interface_offsets: &[u32],
-    static_values_offsets: &[u32],
-    call_site_data_offsets: &[u32],
-    call_sites_off: Option<u32>,
-) -> Result<()> {
+    ids: IdOffsets,
+    data: DataOffsets<'_>,
+) {
     for i in 0..w.string_data_offsets.len() {
-        w.patch_u32(string_ids_off as usize + i * 4, w.string_data_offsets[i]);
+        w.patch_u32(ids.strings as usize + i * 4, w.string_data_offsets[i]);
     }
-
-    let dex = plan.dex;
     for (i, proto) in plan.prototypes().enumerate() {
-        let base = proto_ids_off as usize + i * 12;
+        let base = ids.prototypes as usize + i * 12;
         w.patch_u32(base, proto.shorty.0);
         w.patch_u32(base + 4, proto.return_type.0);
-        w.patch_u32(base + 8, proto_param_offsets[i]);
+        w.patch_u32(base + 8, data.prototype_parameters[i]);
     }
-
     for i in 0..plan.classes.len() {
         let class = plan.class_header(i);
-        let base = class_defs_off as usize + i * 32;
+        let base = ids.classes as usize + i * 32;
         w.patch_u32(base, class.class_type.0);
         w.patch_u32(base + 4, class.access_flags.bits());
-        w.patch_u32(base + 8, class.superclass.map(|t| t.0).unwrap_or(NO_INDEX));
-        w.patch_u32(base + 12, class_interface_offsets[i]);
-        w.patch_u32(
-            base + 16,
-            class.source_file.map(|s| s.0).unwrap_or(NO_INDEX),
-        );
-        let ann_off = class_ann_datas[i]
-            .as_ref()
-            .map(|(off, _)| *off)
-            .unwrap_or(0);
-        w.patch_u32(base + 20, ann_off);
+        w.patch_u32(base + 8, class.superclass.map_or(NO_INDEX, |t| t.0));
+        w.patch_u32(base + 12, data.interfaces[i]);
+        w.patch_u32(base + 16, class.source_file.map_or(NO_INDEX, |s| s.0));
+        w.patch_u32(base + 20, data.annotations[i]);
         w.patch_u32(base + 24, w.class_data_offsets[i]);
-        w.patch_u32(base + 28, static_values_offsets[i]);
+        w.patch_u32(base + 28, data.static_values[i]);
     }
-
-    if let Some(cs_off) = call_sites_off {
-        for (i, off) in call_site_data_offsets.iter().enumerate() {
-            w.patch_u32(cs_off as usize + i * 4, *off);
+    if let Some(off) = ids.call_sites {
+        for (index, &data_off) in data.call_sites.iter().enumerate() {
+            w.patch_u32(off as usize + index * 4, data_off);
         }
     }
+    write_header(w, plan, &ids, &data);
+}
 
-    let version = dex.required_version();
-    let is_container = version.is_container_format();
-    let header_size = version.header_size();
-
-    const OFF_CHECKSUM: usize = 0x08;
-    const OFF_SIGNATURE: usize = 0x0C;
-    const OFF_FILE_SIZE: usize = 0x20;
-    const OFF_HEADER_SIZE: usize = 0x24;
-    const OFF_ENDIAN_TAG: usize = 0x28;
-    const OFF_LINK_SIZE: usize = 0x2C;
-    const OFF_LINK_OFF: usize = 0x30;
-    const OFF_MAP_OFF: usize = 0x34;
-    const OFF_STRING_IDS_SIZE: usize = 0x38;
-    const OFF_STRING_IDS_OFF: usize = 0x3C;
-    const OFF_TYPE_IDS_SIZE: usize = 0x40;
-    const OFF_TYPE_IDS_OFF: usize = 0x44;
-    const OFF_PROTO_IDS_SIZE: usize = 0x48;
-    const OFF_PROTO_IDS_OFF: usize = 0x4C;
-    const OFF_FIELD_IDS_SIZE: usize = 0x50;
-    const OFF_FIELD_IDS_OFF: usize = 0x54;
-    const OFF_METHOD_IDS_SIZE: usize = 0x58;
-    const OFF_METHOD_IDS_OFF: usize = 0x5C;
-    const OFF_CLASS_DEFS_SIZE: usize = 0x60;
-    const OFF_CLASS_DEFS_OFF: usize = 0x64;
-    const OFF_DATA_SIZE: usize = 0x68;
-    const OFF_DATA_OFF: usize = 0x6C;
-    const ENDIAN_TAG: u32 = 0x12345678;
-
-    let header_base = w.header_base as usize;
-
-    w.patch(header_base, version.magic_bytes());
-    w.patch_u32(header_base + OFF_HEADER_SIZE, header_size);
-    w.patch_u32(header_base + OFF_ENDIAN_TAG, ENDIAN_TAG);
-    w.patch_u32(header_base + OFF_LINK_SIZE, 0);
-    w.patch_u32(header_base + OFF_LINK_OFF, 0);
-    w.patch_u32(header_base + OFF_MAP_OFF, map_off);
-    w.patch_u32(
-        header_base + OFF_STRING_IDS_SIZE,
-        plan.string_count() as u32,
-    );
-    w.patch_u32(
-        header_base + OFF_STRING_IDS_OFF,
-        if plan.string_count() > 0 {
-            string_ids_off
-        } else {
-            0
-        },
-    );
-    w.patch_u32(header_base + OFF_TYPE_IDS_SIZE, plan.type_count() as u32);
-    w.patch_u32(
-        header_base + OFF_TYPE_IDS_OFF,
-        if plan.type_count() > 0 {
-            type_ids_off
-        } else {
-            0
-        },
-    );
-    w.patch_u32(header_base + OFF_PROTO_IDS_SIZE, plan.proto_count() as u32);
-    w.patch_u32(
-        header_base + OFF_PROTO_IDS_OFF,
-        if plan.proto_count() > 0 {
-            proto_ids_off
-        } else {
-            0
-        },
-    );
-    w.patch_u32(header_base + OFF_FIELD_IDS_SIZE, plan.field_count() as u32);
-    w.patch_u32(
-        header_base + OFF_FIELD_IDS_OFF,
-        if plan.field_count() > 0 {
-            field_ids_off
-        } else {
-            0
-        },
-    );
-    w.patch_u32(
-        header_base + OFF_METHOD_IDS_SIZE,
-        plan.method_count() as u32,
-    );
-    w.patch_u32(
-        header_base + OFF_METHOD_IDS_OFF,
-        if plan.method_count() > 0 {
-            method_ids_off
-        } else {
-            0
-        },
-    );
-    w.patch_u32(header_base + OFF_CLASS_DEFS_SIZE, plan.classes.len() as u32);
-    w.patch_u32(
-        header_base + OFF_CLASS_DEFS_OFF,
-        if !plan.classes.is_empty() {
-            class_defs_off
-        } else {
-            0
-        },
-    );
-
-    if is_container {
-        w.patch_u32(header_base + OFF_DATA_SIZE, 0);
-        w.patch_u32(header_base + OFF_DATA_OFF, 0);
+fn write_header<S: DexSink>(
+    w: &mut DexWriter<S>,
+    plan: &WritePlan<'_>,
+    ids: &IdOffsets,
+    data: &DataOffsets<'_>,
+) {
+    let base = w.header_base as usize;
+    let version = w.version;
+    w.patch(base, version.magic_bytes());
+    w.patch_u32(base + 0x20, w.pos() - w.header_base);
+    w.patch_u32(base + 0x24, version.header_size());
+    w.patch_u32(base + 0x28, 0x1234_5678);
+    w.patch_u32(base + 0x2c, 0);
+    w.patch_u32(base + 0x30, 0);
+    w.patch_u32(base + 0x34, data.map);
+    for (index, (count, offset)) in [
+        (plan.string_count(), ids.strings),
+        (plan.type_count(), ids.types),
+        (plan.proto_count(), ids.prototypes),
+        (plan.field_count(), ids.fields),
+        (plan.method_count(), ids.methods),
+        (plan.classes.len(), ids.classes),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        w.patch_u32(base + 0x38 + index * 8, count as u32);
+        w.patch_u32(base + 0x3c + index * 8, if count == 0 { 0 } else { offset });
+    }
+    if version.is_container_format() {
+        w.patch_u32(base + 0x68, 0);
+        w.patch_u32(base + 0x6c, 0);
+        w.patch_u32(base + 0x70, w.pos());
+        w.patch_u32(base + 0x74, w.header_base);
     } else {
-        let aligned_data_size = (data_size + 3) & !3;
-        w.patch_u32(header_base + OFF_DATA_SIZE, aligned_data_size);
-        w.patch_u32(header_base + OFF_DATA_OFF, data_off);
+        let size = (w.pos() - data.start + 3) & !3;
+        w.patch_u32(base + 0x68, size);
+        w.patch_u32(base + 0x6c, data.start);
     }
+}
 
-    let file_size = w.pos() - w.header_base;
-    w.patch_u32(header_base + OFF_FILE_SIZE, file_size);
-
-    if is_container {
-        w.patch_u32(header_base + 0x70, w.container_size);
-        w.patch_u32(header_base + 0x74, w.header_base);
-    }
-
-    let logical_end = w.pos() as usize;
+pub(crate) fn sign_member<S: DexSink>(w: &mut DexWriter<S>, span: MemberSpan) -> Result<()> {
+    let header_base = span.header as usize;
+    let logical_end = span.end as usize;
 
     let mut signature = ring::digest::Context::new(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY);
     let mut body_checksum = 1;
@@ -191,14 +118,14 @@ pub(crate) fn finalize<S: DexSink>(
         body_checksum = adler32(body_checksum, chunk);
     })?;
     let signature = signature.finish();
-    w.patch(header_base + OFF_SIGNATURE, signature.as_ref());
+    w.patch(header_base + 0x0c, signature.as_ref());
     // The checksum covers the signature too, which is only known now.
     let checksum = adler32_combine(
         adler32(1, signature.as_ref()),
         body_checksum,
         (logical_end - header_base - 32) as u64,
     );
-    w.patch_u32(header_base + OFF_CHECKSUM, checksum);
+    w.patch_u32(header_base + 0x08, checksum);
 
     Ok(())
 }

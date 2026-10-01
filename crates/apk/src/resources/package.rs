@@ -1,40 +1,52 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::io::Write;
+mod reader;
+mod writer;
+
 use std::ops::Range;
 
-use reseam_dex::file::DexBytes;
+use reseam_storage::Bytes;
 
 use super::config::{config_for_qualifiers, same_config};
-use super::res_type::TypePlan;
-use super::{ResType, TypeSpec, RES_TABLE_PACKAGE_TYPE, RES_TABLE_TYPE_SPEC, RES_TABLE_TYPE_TYPE};
-use crate::buf::{read_u16_le, read_u32_le, require_len, write_u16, write_u32};
-use crate::chunk::{self, write_header};
-use crate::error::{malformed, Result};
-use crate::string_pool::{PoolPlan, StringPool};
+use super::{ResType, TypeSpec, first_found};
+use crate::error::Result;
+use crate::string_pool::StringPool;
 
 const HEADER_LEN: usize = 288;
 pub(super) const NAME_UNITS: usize = 128;
 
 #[derive(Debug, Clone)]
 pub struct ResPackage {
-    pub id: u32,
-    pub name: String,
-    pub type_strings: StringPool,
-    pub key_strings: StringPool,
-    pub last_public_type: u32,
-    pub last_public_key: u32,
-    pub type_id_offset: u32,
-    pub type_specs: Vec<TypeSpec>,
-    pub types: Vec<ResType>,
+    pub(super) id: u32,
+    name: [u16; NAME_UNITS],
+    pub(super) type_strings: StringPool,
+    pub(super) key_strings: StringPool,
+    pub(super) last_public_type: u32,
+    pub(super) last_public_key: u32,
+    pub(super) type_id_offset: u32,
+    pub(super) type_specs: Vec<TypeSpec>,
+    pub(super) types: Vec<ResType>,
+    pub(super) data: Bytes,
+    chunk: Range<usize>,
+    header_size: usize,
+    pub(super) chunks: Vec<PackageChunk>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) enum PackageChunk {
+    TypeStrings,
+    KeyStrings,
+    Spec(usize),
+    Type(usize),
+    Raw(Range<usize>),
 }
 
 impl ResPackage {
     pub fn new(id: u32, name: &str, type_strings: StringPool, key_strings: StringPool) -> Self {
         Self {
             id,
-            name: name.to_string(),
+            name: Self::encode_name(name),
             type_strings,
             key_strings,
             last_public_type: 0,
@@ -42,105 +54,112 @@ impl ResPackage {
             type_id_offset: 0,
             type_specs: Vec::new(),
             types: Vec::new(),
+            data: Bytes::default(),
+            chunk: 0..0,
+            header_size: HEADER_LEN,
+            chunks: vec![PackageChunk::TypeStrings, PackageChunk::KeyStrings],
         }
     }
 
-    pub(super) fn parse(data: &DexBytes, chunk: Range<usize>, header_size: usize) -> Result<Self> {
-        let buf = &data.as_bytes()[chunk.clone()];
-        require_len(buf, 0, header_size.max(HEADER_LEN), "resource package")?;
-        let id = read_u32_le(buf, 8, "resource package")?;
-        let name_units = (0..NAME_UNITS)
-            .map(|i| read_u16_le(buf, 12 + i * 2, "package name"))
-            .take_while(|unit| !matches!(unit, Ok(0)))
-            .collect::<Result<Vec<u16>>>()?;
-        let name = String::from_utf16(&name_units).unwrap_or_default();
-        let type_strings_offset = read_u32_le(buf, 268, "resource package")? as usize;
-        let last_public_type = read_u32_le(buf, 272, "resource package")?;
-        let key_strings_offset = read_u32_le(buf, 276, "resource package")? as usize;
-        let last_public_key = read_u32_le(buf, 280, "resource package")?;
-        let type_id_offset = if header_size >= HEADER_LEN {
-            read_u32_le(buf, 284, "resource package")?
-        } else {
-            0
-        };
-
-        let pool = |offset: usize, what: &'static str| -> Result<StringPool> {
-            if offset == 0 {
-                return Ok(StringPool::new(Vec::new(), true));
-            }
-            if offset >= buf.len() {
-                return Err(malformed("resource package", offset, what));
-            }
-            let end = chunk::chunk_end(buf, offset)?;
-            StringPool::parse(data, chunk.start + offset..chunk.start + end)
-        };
-        let type_strings = pool(
-            type_strings_offset,
-            "type string pool offset is outside package",
-        )?;
-        let key_strings = pool(
-            key_strings_offset,
-            "key string pool offset is outside package",
-        )?;
-        let body_start = match (key_strings_offset, type_strings_offset) {
-            (0, 0) => header_size,
-            (0, offset) | (offset, _) => chunk::chunk_end(buf, offset)?,
-        };
-
-        let mut type_specs = Vec::new();
-        let mut types = Vec::new();
-        for sub in chunk::chunks(buf, body_start..buf.len(), "package chunk")? {
-            let range = chunk.start + sub.range.start..chunk.start + sub.range.end;
-            match sub.kind {
-                RES_TABLE_TYPE_SPEC => {
-                    type_specs.push(TypeSpec::parse(data, range, sub.header_size)?)
-                }
-                RES_TABLE_TYPE_TYPE => types.push(ResType::parse(data, range, sub.header_size)?),
-                _ => {}
-            }
-        }
-
-        Ok(Self {
-            id,
-            name,
-            type_strings,
-            key_strings,
-            last_public_type,
-            last_public_key,
-            type_id_offset,
-            type_specs,
-            types,
-        })
+    pub(super) fn resource_type_id(&self, local: u8) -> Result<u8> {
+        u32::from(local)
+            .checked_add(self.type_id_offset)
+            .and_then(|id| u8::try_from(id).ok())
+            .ok_or_else(|| {
+                crate::error::invalid("resource type", "type ID plus package offset exceeds 255")
+            })
     }
 
-    /// The id of the type named `type_name`, creating an empty type when the
-    /// package has none.
-    pub(crate) fn ensure_type(&mut self, type_name: &str) -> Option<u8> {
-        if let Some(index) = self.type_strings.find(type_name) {
-            return u8::try_from(index + 1).ok();
+    pub(super) fn local_type_id(&self, effective: u8) -> Option<u8> {
+        u32::from(effective)
+            .checked_sub(self.type_id_offset)
+            .and_then(|id| u8::try_from(id).ok())
+    }
+
+    /// Builds an ID from a local type ID and entry index, applying this package's
+    /// type offset. IDs outside Android's package, type or entry ranges are errors.
+    pub fn resource_id(&self, local: u8, index: usize) -> Result<u32> {
+        let package = u8::try_from(self.id)
+            .map_err(|_| crate::error::invalid("resource package", "package ID exceeds 255"))?;
+        let index = u16::try_from(index)
+            .map_err(|_| crate::error::invalid("resource entry", "entry index exceeds 65535"))?;
+        Ok(super::res_id(
+            u32::from(package),
+            self.resource_type_id(local)?,
+            usize::from(index),
+        ))
+    }
+
+    pub fn id(&self) -> u32 {
+        self.id
+    }
+    pub fn types(&self) -> &[ResType] {
+        &self.types
+    }
+    pub fn type_specs(&self) -> &[TypeSpec] {
+        &self.type_specs
+    }
+    pub fn type_strings(&self) -> &StringPool {
+        &self.type_strings
+    }
+    pub fn key_strings(&self) -> &StringPool {
+        &self.key_strings
+    }
+
+    /// Adds a configuration chunk after the existing chunks, retaining their order.
+    pub fn add_type(&mut self, res_type: ResType) {
+        self.chunks.push(PackageChunk::Type(self.types.len()));
+        self.types.push(res_type);
+    }
+
+    /// Adds a type specification after the existing chunks.
+    pub fn add_type_spec(&mut self, spec: TypeSpec) {
+        self.chunks.push(PackageChunk::Spec(self.type_specs.len()));
+        self.type_specs.push(spec);
+    }
+
+    /// Decodes the NUL-terminated package name, replacing unpaired UTF-16 surrogates.
+    pub fn name(&self) -> String {
+        let end = self
+            .name
+            .iter()
+            .position(|&unit| unit == 0)
+            .unwrap_or(NAME_UNITS);
+        String::from_utf16_lossy(&self.name[..end])
+    }
+
+    pub(crate) fn set_name(&mut self, name: &str) {
+        self.name = Self::encode_name(name);
+    }
+
+    fn encode_name(name: &str) -> [u16; NAME_UNITS] {
+        let mut units = [0; NAME_UNITS];
+        for (slot, unit) in units.iter_mut().zip(name.encode_utf16()) {
+            *slot = unit;
+        }
+        units
+    }
+
+    pub(crate) fn ensure_type(&mut self, type_name: &str) -> Result<Option<u8>> {
+        if let Some(index) = self.type_strings.find(type_name)? {
+            return Ok(u8::try_from(index + 1).ok());
         }
         if self.type_strings.len() >= u8::MAX as usize {
-            return None;
+            return Ok(None);
         }
+        let type_id = (self.type_strings.len() + 1) as u8;
+        self.resource_type_id(type_id)?;
         self.type_strings.push(type_name);
-        let type_id = self.type_strings.len() as u8;
-        self.type_specs.push(TypeSpec::new(type_id, Vec::new()));
-        let config = config_for_qualifiers("", self.config_len()).ok()?;
-        self.types.push(ResType::new(type_id, config));
-        Some(type_id)
+        self.add_type_spec(TypeSpec::new(type_id, Vec::new()));
+        let config = config_for_qualifiers("", self.config_len())?;
+        self.add_type(ResType::new(type_id, config));
+        Ok(Some(type_id))
     }
 
-    /// The `ResTable_config` size the package's own type chunks use, so a
-    /// chunk this crate creates has the same shape.
     pub(crate) fn config_len(&self) -> usize {
-        self.types
-            .first()
-            .map_or(4, |res_type| res_type.config_len())
-            .max(4)
+        self.types.first().map_or(4, ResType::config_len).max(4)
     }
 
-    /// How many entries the type has: every configuration and the spec agree on
-    /// the count, so a new entry goes after the longest of them.
     pub(crate) fn entry_count(&self, type_id: u8) -> usize {
         self.types
             .iter()
@@ -156,42 +175,33 @@ impl ResPackage {
             .unwrap_or(0)
     }
 
-    /// The index `key` is filed under in any configuration of the type. An
-    /// entry defined only in `values-night` still owns its index, so writing it
-    /// must reuse that index rather than append a second entry of the same name.
     pub(crate) fn entry_index(&self, type_id: u8, key: u32) -> Result<Option<usize>> {
-        let mut first_error = None;
-        for res_type in self.types.iter().filter(|res_type| res_type.id == type_id) {
-            for i in 0..res_type.len() {
-                match res_type.entry_key_checked(i) {
-                    Ok(Some(entry_key)) if entry_key == key => return Ok(Some(i)),
-                    Err(error) => {
-                        first_error.get_or_insert(error);
-                    }
-                    _ => {}
-                }
-            }
-        }
-        first_error.map_or(Ok(None), Err)
+        first_found(
+            self.types
+                .iter()
+                .filter(|res_type| res_type.id == type_id)
+                .flat_map(|res_type| {
+                    (0..res_type.len()).map(|i| {
+                        res_type
+                            .entry_key(i)
+                            .map(|entry_key| (entry_key == Some(key)).then_some(i))
+                    })
+                }),
+        )
     }
 
-    /// The type's chunk for `config`, created when it has none. A type such as
-    /// `mipmap` can ship density variants only, so even the default
-    /// configuration may have to be made.
     pub(crate) fn config_type(&mut self, type_id: u8, config: Vec<u8>) -> &mut ResType {
         let existing = self
             .types
             .iter()
             .position(|res_type| res_type.id == type_id && same_config(res_type.config(), &config));
         let index = existing.unwrap_or_else(|| {
-            self.types.push(ResType::new(type_id, config));
+            self.add_type(ResType::new(type_id, config));
             self.types.len() - 1
         });
         &mut self.types[index]
     }
 
-    /// Grows the type's spec and every configuration of it to `len` entries, so
-    /// an added index is addressable in all of them.
     pub(crate) fn grow_type(&mut self, type_id: u8, len: usize) {
         for spec in self.type_specs.iter_mut().filter(|spec| spec.id == type_id) {
             while spec.len() < len {
@@ -201,68 +211,5 @@ impl ResPackage {
         for res_type in self.types.iter_mut().filter(|t| t.id == type_id) {
             res_type.pad_to(len);
         }
-    }
-
-    pub(super) fn plan(&self) -> Result<PackagePlan<'_>> {
-        let type_strings = self.type_strings.plan();
-        let key_strings = self.key_strings.plan();
-        let types = self
-            .types
-            .iter()
-            .map(ResType::plan)
-            .collect::<Result<Vec<_>>>()?;
-        let size = HEADER_LEN
-            + type_strings.size
-            + key_strings.size
-            + self.type_specs.iter().map(TypeSpec::size).sum::<usize>()
-            + types.iter().map(|t| t.size).sum::<usize>();
-        Ok(PackagePlan {
-            package: self,
-            size,
-            type_strings,
-            key_strings,
-            types,
-        })
-    }
-}
-
-pub(super) struct PackagePlan<'a> {
-    package: &'a ResPackage,
-    pub size: usize,
-    type_strings: PoolPlan<'a>,
-    key_strings: PoolPlan<'a>,
-    types: Vec<TypePlan<'a>>,
-}
-
-impl PackagePlan<'_> {
-    pub(super) fn write(&self, out: &mut dyn Write) -> Result<()> {
-        let package = self.package;
-        let mut head = Vec::with_capacity(HEADER_LEN);
-        write_header(
-            &mut head,
-            RES_TABLE_PACKAGE_TYPE,
-            HEADER_LEN as u16,
-            self.size,
-        );
-        write_u32(&mut head, package.id);
-        let name_units: Vec<u16> = package.name.encode_utf16().collect();
-        for i in 0..NAME_UNITS {
-            write_u16(&mut head, name_units.get(i).copied().unwrap_or(0));
-        }
-        write_u32(&mut head, HEADER_LEN as u32);
-        write_u32(&mut head, package.last_public_type);
-        write_u32(&mut head, (HEADER_LEN + self.type_strings.size) as u32);
-        write_u32(&mut head, package.last_public_key);
-        write_u32(&mut head, package.type_id_offset);
-        out.write_all(&head)?;
-        self.type_strings.write(out)?;
-        self.key_strings.write(out)?;
-        for spec in &package.type_specs {
-            spec.write(out)?;
-        }
-        for res_type in &self.types {
-            res_type.write(out)?;
-        }
-        Ok(())
     }
 }

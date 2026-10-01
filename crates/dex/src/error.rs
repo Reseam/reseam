@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-/// Errors produced while parsing, validating, or writing DEX data.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum DexError {
@@ -42,7 +41,6 @@ pub enum DexError {
     Io(#[from] std::io::Error),
 }
 
-/// Convenient result alias used throughout the crate.
 pub type Result<T> = std::result::Result<T, DexError>;
 
 pub(crate) fn truncated(
@@ -102,6 +100,19 @@ pub(crate) fn require_len(
     Ok(())
 }
 
+pub(crate) fn require_array(
+    buf: &[u8],
+    offset: usize,
+    count: usize,
+    width: usize,
+    section: &'static str,
+) -> Result<()> {
+    let bytes = count
+        .checked_mul(width)
+        .ok_or_else(|| malformed(section, offset, "array size overflow"))?;
+    require_len(buf, offset, bytes, section)
+}
+
 pub(crate) fn slice<'a>(
     buf: &'a [u8],
     offset: usize,
@@ -110,21 +121,6 @@ pub(crate) fn slice<'a>(
 ) -> Result<&'a [u8]> {
     require_len(buf, offset, len, section)?;
     Ok(&buf[offset..offset + len])
-}
-
-pub(crate) fn read_u8(buf: &[u8], offset: usize, section: &'static str) -> Result<u8> {
-    require_len(buf, offset, 1, section)?;
-    Ok(buf[offset])
-}
-
-pub(crate) fn read_u16_le(buf: &[u8], offset: usize, section: &'static str) -> Result<u16> {
-    let bytes = slice(buf, offset, 2, section)?;
-    Ok(u16::from_le_bytes([bytes[0], bytes[1]]))
-}
-
-pub(crate) fn read_u32_le(buf: &[u8], offset: usize, section: &'static str) -> Result<u32> {
-    let bytes = slice(buf, offset, 4, section)?;
-    Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
 }
 
 pub(crate) fn buffer_exhausted(section: &'static str, offset: usize) -> DexError {
@@ -186,10 +182,6 @@ pub(crate) fn invalid_method_handle_type(value: u16) -> DexError {
 
 pub(crate) fn invalid_call_site(index: u32, detail: impl Into<String>) -> DexError {
     malformed("call site", index as usize, detail)
-}
-
-pub(crate) fn invalid_hidden_api_flag(value: u32) -> DexError {
-    invalid("hidden api", format!("invalid hidden API flag {value}"))
 }
 
 pub(crate) fn invalid_annotation_visibility(value: u8) -> DexError {

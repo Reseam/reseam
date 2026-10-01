@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::error::{Problem, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[boltffi::data]
@@ -97,41 +99,15 @@ impl OptionValue {
 }
 
 impl OptionDeclaration {
-    pub fn parse(&self, raw: &str) -> std::result::Result<OptionValue, String> {
-        let value = match self.option_type {
-            OptionType::String => OptionValue::Text(raw.to_string()),
-            OptionType::Bool => OptionValue::Bool(
-                raw.parse()
-                    .map_err(|_| format!("expected bool, got '{raw}'"))?,
-            ),
-            OptionType::Int => OptionValue::Int(
-                raw.parse()
-                    .map_err(|_| format!("expected int, got '{raw}'"))?,
-            ),
-            OptionType::Float => OptionValue::Float(
-                raw.parse()
-                    .map_err(|_| format!("expected float, got '{raw}'"))?,
-            ),
-            OptionType::StringList => OptionValue::TextList(
-                raw.split(',')
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(str::to_string)
-                    .collect(),
-            ),
-            OptionType::Path => OptionValue::Path(raw.to_owned()),
-        };
-        self.validate(&value)?;
-        Ok(value)
-    }
-
-    pub fn validate(&self, value: &OptionValue) -> std::result::Result<(), String> {
+    /// Checks the value's type and declared choices without accessing the filesystem.
+    /// Path existence is checked by the engine when resolving a run's options.
+    pub fn validate(&self, value: &OptionValue) -> Result<()> {
         if value.option_type() != self.option_type {
-            return Err(format!(
-                "expected {:?}, got {:?}",
-                self.option_type,
-                value.option_type()
-            ));
+            return Err(Problem::OptionType {
+                key: self.key.clone(),
+                expected: self.option_type,
+                actual: value.option_type(),
+            });
         }
         if let Some(valid) = &self.valid_values {
             let candidates: &[String] = match value {
@@ -143,14 +119,56 @@ impl OptionDeclaration {
                 .iter()
                 .find(|candidate| !valid.contains(candidate))
             {
-                return Err(format!("'{bad}' is not in [{}]", valid.join(", ")));
-            }
-        }
-        if let OptionValue::Path(path) = value {
-            if !Path::new(path).exists() {
-                return Err(format!("path does not exist: {}", path));
+                return Err(Problem::OptionChoice {
+                    key: self.key.clone(),
+                    value: bad.clone(),
+                    allowed: valid.clone(),
+                });
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn values_obey_types_and_choices_without_environmental_validation() {
+        let mut declaration = OptionDeclaration {
+            key: "targets".into(),
+            title: "Targets".into(),
+            description: String::new(),
+            option_type: OptionType::StringList,
+            default_value: None,
+            valid_values: Some(vec!["home".into(), "feed".into()]),
+            required: true,
+        };
+        assert!(
+            declaration
+                .validate(&OptionValue::TextList(vec!["feed".into()]))
+                .is_ok()
+        );
+        assert!(matches!(
+            declaration.validate(&OptionValue::TextList(vec!["other".into()])),
+            Err(Problem::OptionChoice { .. })
+        ));
+        let problem = declaration.validate(&OptionValue::Bool(true)).unwrap_err();
+        assert!(matches!(problem, Problem::OptionType { .. }));
+        let response = crate::SdkError {
+            message: problem.to_string(),
+            problem,
+        };
+        let json = serde_json::to_string(&response).unwrap();
+        let decoded: crate::SdkError = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.problem, response.problem);
+        declaration.option_type = OptionType::Path;
+        declaration.valid_values = None;
+        assert!(
+            declaration
+                .validate(&OptionValue::Path("/a/host-specific/path".into()))
+                .is_ok()
+        );
     }
 }

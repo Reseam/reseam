@@ -1,25 +1,21 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::error::{require_len, Result};
+use super::refs::instruction_stream;
+use crate::error::{Result, malformed, require_len};
 use crate::types::instruction::Instruction;
+use crate::types::instruction_encoding::opcodes::{
+    AGET, CONST_METHOD_HANDLE, CONST_METHOD_TYPE, FILL_ARRAY_DATA_PAYLOAD, IF_LEZ,
+    INVOKE_CUSTOM_RANGE, INVOKE_INTERFACE, INVOKE_INTERFACE_RANGE, INVOKE_POLYMORPHIC,
+    INVOKE_VIRTUAL, INVOKE_VIRTUAL_RANGE, NEG_INT, NOP, PACKED_SWITCH_PAYLOAD,
+    SPARSE_SWITCH_PAYLOAD, SPUT_SHORT, USHR_INT_LIT8,
+};
 
-use super::invoke::{decode_35c_invoke, decode_3rc_invoke, decode_invoke_polymorphic};
+use super::invoke::{decode_3rc_invoke, decode_35c_invoke, decode_invoke_polymorphic};
 
 mod access;
 mod basic;
 mod ops;
-
-pub(super) struct DecodedInstruction {
-    instruction: Instruction,
-    units: usize,
-}
-
-impl DecodedInstruction {
-    pub(super) fn new(instruction: Instruction, units: usize) -> Self {
-        Self { instruction, units }
-    }
-}
 
 pub(super) fn nibbles(unit: u16) -> (u8, u8) {
     let a = ((unit >> 8) & 0xF) as u8;
@@ -31,83 +27,34 @@ pub(super) fn hi8(unit: u16) -> u8 {
     (unit >> 8) as u8
 }
 
-/// Code units of a fixed-format instruction; `0x00` may instead start a
-/// variable-length payload, see [`payload_units`].
-pub(super) fn opcode_units(opcode: u8) -> usize {
-    match opcode {
-        0x03
-        | 0x06
-        | 0x09
-        | 0x14
-        | 0x17
-        | 0x1b
-        | 0x24
-        | 0x25
-        | 0x26
-        | 0x2a
-        | 0x2b
-        | 0x2c
-        | 0x6e..=0x72
-        | 0x74..=0x78
-        | 0xfc
-        | 0xfd => 3,
-        0x18 => 5,
-        0xfa | 0xfb => 4,
-        0x00
-        | 0x01
-        | 0x04
-        | 0x07
-        | 0x0a..=0x12
-        | 0x1d..=0x1e
-        | 0x21
-        | 0x27..=0x28
-        | 0x3e..=0x43
-        | 0x73
-        | 0x79..=0x7a
-        | 0x7b..=0x8f
-        | 0xb0..=0xcf
-        | 0xe3..=0xf9 => 1,
-        _ => 2,
-    }
-}
+pub(super) use crate::types::instruction_encoding::opcode_units;
 
 /// Counts the instructions in a code item by walking opcode lengths, without
 /// decoding operands or building instructions.
 pub fn count_instructions(buf: &[u8], start: usize, insns_size: usize) -> Result<u32> {
-    let mut pc = 0usize;
-    let mut count = 0u32;
-    while pc < insns_size {
-        let unit_off = start + pc * 2;
-        require_len(buf, unit_off, 2, "code item instruction")?;
-        let unit0 = super::format::u16_at(buf, unit_off);
-        let opcode = (unit0 & 0xFF) as u8;
-        pc += if opcode == 0x00 {
-            payload_units(buf, unit_off, unit0)?
-        } else {
-            opcode_units(opcode)
-        };
-        count += 1;
-    }
-    Ok(count)
+    instruction_stream(buf, start, insns_size)?.try_fold(0, |count, frame| frame.map(|_| count + 1))
 }
 
-/// Length of a `nop` or of the switch / fill-array payload it introduces.
 pub(super) fn payload_units(buf: &[u8], unit_off: usize, unit0: u16) -> Result<usize> {
-    use super::format::{u16_at, u32_at};
+    use crate::read::{u16_at, u32_at};
     Ok(match unit0 {
-        0x0100 => {
+        PACKED_SWITCH_PAYLOAD => {
             require_len(buf, unit_off, 4, "packed-switch payload")?;
             4 + u16_at(buf, unit_off + 2) as usize * 2
         }
-        0x0200 => {
+        SPARSE_SWITCH_PAYLOAD => {
             require_len(buf, unit_off, 4, "sparse-switch payload")?;
             2 + u16_at(buf, unit_off + 2) as usize * 4
         }
-        0x0300 => {
+        FILL_ARRAY_DATA_PAYLOAD => {
             require_len(buf, unit_off, 8, "fill-array-data payload")?;
-            let data_bytes =
-                u32_at(buf, unit_off + 4) as usize * u16_at(buf, unit_off + 2) as usize;
-            (8 + data_bytes).div_ceil(2)
+            let data_bytes = (u32_at(buf, unit_off + 4) as usize)
+                .checked_mul(u16_at(buf, unit_off + 2) as usize)
+                .and_then(|bytes| bytes.checked_add(8))
+                .ok_or_else(|| {
+                    malformed("fill-array-data payload", unit_off, "payload size overflow")
+                })?;
+            data_bytes.div_ceil(2)
         }
         _ => 1,
     })
@@ -118,7 +65,7 @@ pub fn decode_instructions(
     start: usize,
     insns_size: usize,
 ) -> Result<Vec<Instruction>> {
-    let mut instructions = Vec::with_capacity(insns_size);
+    let mut instructions = Vec::with_capacity(insns_size.min(buf.len().saturating_sub(start) / 2));
     decode_instructions_into(buf, start, insns_size, &mut instructions)?;
     Ok(instructions)
 }
@@ -134,41 +81,50 @@ pub fn decode_instructions_into(
     out: &mut Vec<Instruction>,
 ) -> Result<()> {
     out.clear();
-    let mut pc = 0usize;
-
-    while pc < insns_size {
-        let unit_off = start + pc * 2;
-        require_len(buf, unit_off, 2, "code item instruction")?;
-        let unit0 = super::format::u16_at(buf, unit_off);
-        let opcode = (unit0 & 0xFF) as u8;
-        require_len(
-            buf,
-            unit_off,
-            opcode_units(opcode) * 2,
-            "code item instruction",
-        )?;
-
-        let decoded = match opcode {
-            0x00..=0x43 => basic::decode_opcode(buf, unit_off, opcode)?,
-            0x44..=0x6d => access::decode_opcode(buf, unit_off, opcode)?,
-            0x6e..=0x72 => DecodedInstruction::new(decode_35c_invoke(buf, unit_off, opcode), 3),
-            0x73 => DecodedInstruction::new(Instruction::Nop, 1),
-            0x74..=0x78 => DecodedInstruction::new(decode_3rc_invoke(buf, unit_off, opcode), 3),
-            0x79..=0x7a => DecodedInstruction::new(Instruction::Nop, 1),
-            0x7b..=0xe2 => ops::decode_opcode(buf, unit_off, opcode)?,
-            0xe3..=0xf9 => DecodedInstruction::new(Instruction::Nop, 1),
-            0xfa..=0xfd => {
-                let units = match opcode {
-                    0xfa | 0xfb => 4,
-                    _ => 3,
-                };
-                DecodedInstruction::new(decode_invoke_polymorphic(buf, unit_off, opcode), units)
+    for frame in instruction_stream(buf, start, insns_size)? {
+        let frame = frame?;
+        let unit_off = frame.offset();
+        let opcode = frame.opcode;
+        let raw = || Instruction::Raw {
+            code_units: buf[unit_off..unit_off + frame.units * 2]
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|unit| u16::from_le_bytes([unit[0], unit[1]]))
+                .collect(),
+        };
+        let decoded = match u16::from(opcode) {
+            0x3e..=0x43 => raw(),
+            NOP if crate::read::u16_at(buf, unit_off) != 0
+                && !matches!(crate::read::u16_at(buf, unit_off), 0x0100 | 0x0200 | 0x0300) =>
+            {
+                raw()
             }
-            0xfe..=0xff => basic::decode_opcode(buf, unit_off, opcode)?,
+            NOP..=IF_LEZ => basic::decode_opcode(buf, unit_off, opcode)?,
+            AGET..=SPUT_SHORT => access::decode_opcode(buf, unit_off, opcode)?,
+            INVOKE_VIRTUAL..=INVOKE_INTERFACE => decode_35c_invoke(buf, unit_off, opcode)?,
+            0x73 => raw(),
+            INVOKE_VIRTUAL_RANGE..=INVOKE_INTERFACE_RANGE => {
+                decode_3rc_invoke(buf, unit_off, opcode)?
+            }
+            0x79..=0x7a => raw(),
+            NEG_INT..=USHR_INT_LIT8 => ops::decode_opcode(buf, unit_off, opcode)?,
+            0xe3..=0xf9 => raw(),
+            INVOKE_POLYMORPHIC..=INVOKE_CUSTOM_RANGE => {
+                decode_invoke_polymorphic(buf, unit_off, opcode)?
+            }
+            CONST_METHOD_HANDLE..=CONST_METHOD_TYPE => basic::decode_opcode(buf, unit_off, opcode)?,
+            _ => {
+                return Err(malformed(
+                    "instruction opcode",
+                    unit_off,
+                    "opcode is outside the decoded families",
+                ));
+            }
         };
 
-        pc += decoded.units;
-        out.push(decoded.instruction);
+        debug_assert_eq!(frame.units, decoded.code_units() as usize);
+        out.push(decoded);
     }
 
     Ok(())

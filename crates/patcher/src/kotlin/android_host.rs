@@ -1,76 +1,65 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::sync::{Mutex, OnceLock};
+use std::sync::{OnceLock, RwLock};
 
-use jni::objects::{GlobalRef, JObject};
-use jni::JavaVM;
+use jni::objects::{Global, JObject};
+use jni::{Env, JavaVM, jni_str};
 
-static VM: OnceLock<JavaVM> = OnceLock::new();
-static PATCH_CLASS_LOADER: OnceLock<Mutex<Option<PatchClassLoader>>> = OnceLock::new();
+use super::jvm::jvm_err;
+use crate::error::Result;
 
-#[derive(Clone, Debug)]
-struct PatchClassLoader(GlobalRef);
+struct AndroidHost {
+    vm: JavaVM,
+    loader: RwLock<Global<JObject<'static>>>,
+}
 
-// GlobalRef is safe to share across threads by JNI contract. The jni crate does
-// not mark it Sync because it wraps a raw JNI reference.
-unsafe impl Send for PatchClassLoader {}
-unsafe impl Sync for PatchClassLoader {}
+static HOST: OnceLock<AndroidHost> = OnceLock::new();
 
-pub(super) fn java_vm() -> Result<&'static JavaVM, String> {
-    VM.get().ok_or_else(|| {
-        "Android JavaVM is not initialized; call ReseamAndroidHost.setClassLoader first".to_string()
+fn host() -> Result<&'static AndroidHost> {
+    HOST.get().ok_or_else(|| {
+        jvm_err("Android host is not initialized; call ReseamAndroidHost.setClassLoader first")
     })
 }
 
-pub(super) fn configured_class_loader<'a>(
-    env: &mut jni::JNIEnv<'a>,
-) -> Result<Option<JObject<'a>>, String> {
-    let Some(loader) = current_patch_class_loader()? else {
-        return Ok(None);
-    };
-    env.new_local_ref(loader.0.as_obj())
-        .map(Some)
-        .map_err(|error| format!("configured Android classLoader: {error}"))
+pub(super) fn java_vm() -> Result<&'static JavaVM> {
+    Ok(&host()?.vm)
 }
 
-pub fn install_class_loader(env: &mut jni::JNIEnv<'_>, loader: JObject<'_>) -> Result<(), String> {
-    set_patch_class_loader(env, loader)
+pub(super) fn configured_class_loader<'a>(env: &mut Env<'a>) -> Result<JObject<'a>> {
+    let loader = host()?
+        .loader
+        .read()
+        .map_err(|error| jvm_err(format!("Android class loader lock: {error}")))?;
+    env.new_local_ref(loader.as_ref()).map_err(jvm_err)
 }
 
-fn current_patch_class_loader() -> Result<Option<PatchClassLoader>, String> {
-    class_loader_slot()
-        .lock()
-        .map(|slot| slot.clone())
-        .map_err(|_| "classLoader lock is poisoned".to_string())
-}
-
-fn set_patch_class_loader(env: &mut jni::JNIEnv<'_>, loader: JObject<'_>) -> Result<(), String> {
-    if loader.is_null() {
-        return Err("classLoader must not be null".to_string());
-    }
-
-    remember_java_vm(env)?;
-    let global = env
-        .new_global_ref(&loader)
-        .map_err(|error| format!("failed to retain classLoader: {error}"))?;
-    *class_loader_slot()
-        .lock()
-        .map_err(|_| "classLoader lock is poisoned".to_string())? = Some(PatchClassLoader(global));
-    Ok(())
-}
-
-fn class_loader_slot() -> &'static Mutex<Option<PatchClassLoader>> {
-    PATCH_CLASS_LOADER.get_or_init(|| Mutex::new(None))
-}
-
-fn remember_java_vm(env: &jni::JNIEnv<'_>) -> Result<(), String> {
-    if VM.get().is_some() {
-        return Ok(());
-    }
-    let vm = env
-        .get_java_vm()
-        .map_err(|error| format!("failed to get Android JavaVM: {error}"))?;
-    let _ = VM.set(vm);
-    Ok(())
+/// Installs the parent loader patches delegate to. It must expose the patch API
+/// and Kotlin runtime. A replacement must belong to the original host VM.
+/// Null arguments, objects other than `ClassLoader`, JNI failures and poisoned
+/// host state are errors.
+pub fn install_class_loader(env: &mut Env<'_>, loader: JObject<'_>) -> Result<()> {
+    super::jvm::with_frame(env, |env| {
+        if loader.is_null() {
+            return Err(jvm_err("Android classLoader must not be null"));
+        }
+        if !env.is_instance_of(&loader, jni_str!("java/lang/ClassLoader"))? {
+            return Err(jvm_err("Android parent must be a ClassLoader"));
+        }
+        let vm = env.get_java_vm()?;
+        let loader = env.new_global_ref(loader)?;
+        let candidate = AndroidHost {
+            vm,
+            loader: RwLock::new(env.new_global_ref(&loader)?),
+        };
+        let installed = HOST.get_or_init(|| candidate);
+        if installed.vm.get_raw() != env.get_java_vm()?.get_raw() {
+            return Err(jvm_err("Android classLoader belongs to another VM"));
+        }
+        *installed
+            .loader
+            .write()
+            .map_err(|error| jvm_err(format!("Android class loader lock: {error}")))? = loader;
+        Ok(())
+    })
 }

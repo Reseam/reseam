@@ -1,7 +1,8 @@
 [package]
 name = "reseam-sign"
 version.workspace = true
-edition = "2021"
+edition.workspace = true
+rust-version.workspace = true
 description = "APK signing for Reseam with Android Signature Scheme v2"
 readme = "README.md"
 
@@ -11,7 +12,13 @@ ring      = { workspace = true }
 rayon     = { workspace = true }
 thiserror = { workspace = true }
 tracing   = { workspace = true }
+rcgen = { version = "0.14.10", default-features = false, features = ["ring", "zeroize"] }
+x509-parser = { version = "0.18.1", default-features = false }
+tempfile = { workspace = true }
 
 [dev-dependencies]
-tempfile = { workspace = true }
+flate2 = { workspace = true }
 zip      = { workspace = true }
+
+[lints]
+workspace = true

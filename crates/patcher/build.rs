@@ -1,18 +1,40 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Compiles the BoltFFI JNI bridge the hosted patch runtime registers on each
-//! bundle's `Native` class. `cargo xtask regen patch-api` generates it.
-
 use std::env;
 use std::error::Error;
 use std::path::PathBuf;
 
+#[path = "../../build-support/java.rs"]
+mod java;
+
 fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=../../build-support/java.rs");
     println!("cargo:rerun-if-env-changed=BOLTFFI_BINDING_METADATA");
+    println!("cargo:rustc-check-cfg=cfg(reseam_jni_bridge)");
     if env::var_os("CARGO_FEATURE_KOTLIN").is_none() {
         return Ok(());
+    }
+    let out = PathBuf::from(env::var("OUT_DIR")?);
+    let runtime = out.join("runtime.jar");
+    if env::var("CARGO_CFG_TARGET_OS")? != "android" {
+        if env::var_os("BOLTFFI_BINDING_METADATA").is_some() {
+            std::fs::write(runtime, [])?;
+        } else {
+            println!("cargo:rerun-if-env-changed=RESEAM_RUNTIME_JAR");
+            let source = env::var_os("RESEAM_RUNTIME_JAR").map_or_else(
+                || {
+                    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                        .join("../../build/runtime/reseam-runtime.jar")
+                },
+                PathBuf::from,
+            );
+            println!("cargo:rerun-if-changed={}", source.display());
+            std::fs::copy(&source, runtime).map_err(|error| format!(
+                "patch runtime jar {} is unavailable: {error}; run `cargo xtask runtime` before building desktop hosts", source.display()
+            ))?;
+        }
     }
     // BoltFFI reads Binding IR from a metadata build, which has no bridge yet.
     if env::var_os("BOLTFFI_BINDING_METADATA").is_some() {
@@ -44,20 +66,25 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut build = cc::Build::new();
     build.file(&registration).include(&jni_dir);
     // The NDK's clang wrappers carry their own sysroot with jni.h.
-    if !env::var("TARGET")?.contains("android") {
-        let java_home = PathBuf::from(env::var("JAVA_HOME").map_err(|_| "JAVA_HOME is not set")?);
-        let platform = match env::var("CARGO_CFG_TARGET_OS")?.as_str() {
-            "macos" => "darwin",
-            "windows" => "win32",
-            _ => "linux",
-        };
-        build
-            .include(java_home.join("include"))
-            .include(java_home.join("include").join(platform));
+    if env::var("CARGO_CFG_TARGET_OS")? != "android" {
+        let target = env::var("TARGET")?;
+        for variable in java::variables(&target) {
+            println!("cargo:rerun-if-env-changed={variable}");
+        }
+        let java_home = java::home(&target)?;
+        let include = java_home.join("include");
+        let platform = include.join(java::platform(&target));
+        println!("cargo:rerun-if-changed={}", include.join("jni.h").display());
+        println!(
+            "cargo:rerun-if-changed={}",
+            platform.join("jni_md.h").display()
+        );
+        build.include(include).include(platform);
     }
     // Generated JNI entry points keep the standard `env`/`cls` parameters even
     // when a call uses neither.
     build.flag_if_supported("-Wno-unused-parameter");
     build.compile("reseam_jni_bridge");
+    println!("cargo:rustc-cfg=reseam_jni_bridge");
     Ok(())
 }

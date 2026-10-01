@@ -3,7 +3,7 @@
 
 use std::process::Command;
 
-use anyhow::{ensure, Context, Result};
+use anyhow::{Context, Result, ensure};
 
 /// Check before either generator writes output, including for `regen all`.
 pub fn check_version() -> Result<()> {

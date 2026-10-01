@@ -3,3 +3,7 @@ xtask = "run --quiet --package xtask --release --"
 
 [env]
 LZMA_API_STATIC = "1"
+
+[target.x86_64-pc-windows-gnullvm]
+# Embed llvm-mingw's runtime instead of requiring libunwind.dll.
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=-static"]

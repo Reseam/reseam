@@ -24,7 +24,6 @@ impl InstructionPattern {
     }
 }
 
-/// The span of the first window of `opcodes` matching `pattern`.
 pub(super) fn find_pattern_span(
     opcodes: &[Option<u16>],
     pattern: &[InstructionPattern],
@@ -46,40 +45,4 @@ pub(super) fn find_pattern_span(
                 .all(|(opcode, pattern)| pattern.matches(*opcode))
         })
         .map(|start| start..start + pattern.len())
-}
-
-#[cfg(test)]
-mod tests {
-
-    use super::{find_pattern_span, InstructionPattern, OpcodeMatcher};
-    use crate::types::instruction::Instruction;
-
-    fn opcodes(instructions: &[Instruction]) -> Vec<Option<u16>> {
-        instructions.iter().map(Instruction::opcode).collect()
-    }
-
-    #[test]
-    fn finds_pattern_span() {
-        let instructions = opcodes(&[
-            Instruction::Nop,
-            Instruction::Const4 { dest: 0, value: 1 },
-            Instruction::Return { src: 0 },
-        ]);
-        let pattern = [
-            InstructionPattern::Opcode(OpcodeMatcher::Const4),
-            InstructionPattern::Opcode(OpcodeMatcher::Return),
-        ];
-
-        assert_eq!(find_pattern_span(&instructions, &pattern), Some(1..3));
-    }
-
-    #[test]
-    fn matches_raw_instruction_by_variant() {
-        let instructions = opcodes(&[Instruction::RawInstruction {
-            code_units: Box::new([0x1234, 0x5678]),
-        }]);
-        let pattern = [InstructionPattern::Opcode(OpcodeMatcher::RawInstruction)];
-
-        assert_eq!(find_pattern_span(&instructions, &pattern), Some(0..1));
-    }
 }

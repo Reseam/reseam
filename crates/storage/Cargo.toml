@@ -1,0 +1,19 @@
+[package]
+name = "reseam-storage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "File-backed bytes, positional IO and run-scoped temporary storage"
+
+[dependencies]
+memmap2 = { workspace = true }
+tempfile = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true }
+
+[lints]
+workspace = true

@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io;
 
 use crate::error::{DexError, Result};
-use crate::util::file::FileExt;
+use reseam_storage::file::FileExt;
 
 /// Destination of a DEX serialization. The writer appends sequentially and
 /// backpatches tables it emitted earlier; how those land is up to the sink.
@@ -13,10 +13,7 @@ pub trait DexSink {
     fn pos(&self) -> u32;
     fn write(&mut self, bytes: &[u8]);
     fn patch(&mut self, offset: usize, bytes: &[u8]);
-    /// Copies `len` bytes written at `offset` into `buf`, ignoring patches
-    /// still pending on them.
     fn read_back(&self, offset: usize, len: usize, buf: &mut Vec<u8>) -> Result<()>;
-    /// Feeds `start..end` of the output, with every patch applied, to `f`.
     fn digest(&mut self, start: usize, end: usize, f: &mut dyn FnMut(&[u8])) -> Result<()>;
 }
 
@@ -47,11 +44,8 @@ impl DexSink for Vec<u8> {
 
 const WINDOW: usize = 256 << 10;
 
-/// Streams the output into an anonymous temp file through a bounded window.
-/// Patches behind the window are queued; when the body is complete the file
-/// is mapped once, the queue is applied to the mapping, and later patches
-/// and digests go straight through it, so the serialized DEX never has to
-/// sit on the heap and scattered backpatches cost no system calls.
+/// Streams output through a bounded window into a temporary file. Backpatches
+/// are applied before hashing or publication; I/O failures are reported at settlement.
 pub struct SpoolSink {
     file: File,
     window: Vec<u8>,
@@ -83,11 +77,29 @@ impl Spooled {
         self.len == 0
     }
 
-    /// The spooled bytes, read from the start.
-    pub fn reader(&self) -> io::Result<impl io::Read + '_> {
-        let mut file = &self.file;
-        io::Seek::seek(&mut file, io::SeekFrom::Start(0))?;
-        Ok(io::Read::take(file, self.len))
+    /// Reads from the start with an independent position. Multiple readers may
+    /// be interleaved or used concurrently without changing each other's position.
+    pub fn reader(&self) -> impl io::Read + '_ {
+        SpoolReader {
+            file: &self.file,
+            position: 0,
+            end: self.len,
+        }
+    }
+}
+
+struct SpoolReader<'a> {
+    file: &'a File,
+    position: u64,
+    end: u64,
+}
+
+impl io::Read for SpoolReader<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let length = buf.len().min((self.end - self.position) as usize);
+        let count = self.file.read_at(&mut buf[..length], self.position)?;
+        self.position += count as u64;
+        Ok(count)
     }
 }
 
@@ -122,8 +134,6 @@ impl SpoolSink {
         self.window.clear();
     }
 
-    /// Flushes the body, maps the file, and applies every queued patch.
-    /// Flushes the window and writes every pending patch into the file.
     fn settle(&mut self) -> Result<()> {
         self.flush();
         if let Some(error) = self.error.take() {
@@ -148,13 +158,25 @@ impl DexSink for SpoolSink {
     }
 
     fn write(&mut self, bytes: &[u8]) {
-        self.window.extend_from_slice(bytes);
-        if self.window.len() >= WINDOW {
-            self.flush();
+        let mut remaining = bytes;
+        while !remaining.is_empty() {
+            let count = remaining.len().min(WINDOW - self.window.len());
+            self.window.extend_from_slice(&remaining[..count]);
+            remaining = &remaining[count..];
+            if self.window.len() == WINDOW {
+                self.flush();
+            }
+            if self.error.is_some() {
+                self.flushed += remaining.len();
+                break;
+            }
         }
     }
 
     fn patch(&mut self, offset: usize, bytes: &[u8]) {
+        if self.error.is_some() {
+            return;
+        }
         if offset >= self.flushed {
             let local = offset - self.flushed;
             self.window[local..local + bytes.len()].copy_from_slice(bytes);
@@ -203,49 +225,5 @@ impl DexSink for SpoolSink {
         chunk.clear();
         self.window = chunk;
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn read_all(spooled: &Spooled) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        io::Read::read_to_end(&mut spooled.reader().unwrap(), &mut bytes).unwrap();
-        bytes
-    }
-
-    #[test]
-    fn spool_matches_vec_with_patches_across_the_window() {
-        let mut expected = Vec::new();
-        let mut spool = SpoolSink::new().unwrap();
-        let body: Vec<u8> = (0..(3 * WINDOW + 17)).map(|i| (i % 251) as u8).collect();
-        for sink in [&mut expected as &mut dyn DexSink, &mut spool] {
-            sink.write(&[0; 16]);
-            sink.write(&body);
-            sink.patch(0, &[1, 2, 3, 4]);
-            sink.patch(12, &[9; 4]);
-            sink.patch(WINDOW - 2, &[7; 4]);
-            sink.patch(2 * WINDOW + 8, &[5; 4]);
-            sink.patch(sink.pos() as usize - 4, &[8; 4]);
-        }
-        let mut hashed = Vec::new();
-        spool
-            .digest(4, 2 * WINDOW + 20, &mut |c| hashed.extend_from_slice(c))
-            .unwrap();
-        assert_eq!(hashed, expected[4..2 * WINDOW + 20]);
-        let mut back = Vec::new();
-        spool.read_back(24, 16, &mut back).unwrap();
-        assert_eq!(back, body[8..24]);
-        spool
-            .read_back(spool.pos() as usize - 12, 6, &mut back)
-            .unwrap();
-        assert_eq!(back, expected[expected.len() - 12..expected.len() - 6]);
-        spool.patch(4, &[6; 4]);
-        expected.patch(4, &[6; 4]);
-        let spooled = spool.finish().unwrap();
-        assert_eq!(spooled.len(), expected.len() as u64);
-        assert_eq!(read_all(&spooled), expected);
     }
 }

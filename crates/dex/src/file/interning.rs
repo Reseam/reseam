@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::DexFile;
-use crate::error::{invalid_descriptor, Result};
+use crate::error::{Result, invalid_descriptor};
 use crate::types::{
     FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx, TypeList,
 };
@@ -16,51 +16,62 @@ impl DexFile {
         self.strings.push(s)
     }
 
-    pub fn intern_type(&mut self, descriptor: &str) -> TypeIdx {
-        debug_assert!(crate::util::descriptor::is_type_descriptor(descriptor));
+    /// Interns a complete type descriptor, including `V` for prototype returns.
+    /// Invalid descriptors fail before changing the pools.
+    pub fn intern_type(&mut self, descriptor: &str) -> Result<TypeIdx> {
+        Self::validate_type_descriptor("type descriptor", descriptor)?;
 
         let string_idx = self.intern_string(descriptor);
         if let Some(idx) = self.find_type_idx(descriptor) {
-            return idx;
+            return Ok(idx);
         }
         self.touch();
-        TypeIdx(self.types.push(string_idx) as u32)
+        Ok(TypeIdx(self.types.push(string_idx) as u32))
     }
 
     pub fn intern_proto(&mut self, descriptor: &str) -> Result<ProtoIdx> {
-        use crate::util::descriptor::{parse_method_descriptor, shorty_from_descriptor};
+        use crate::util::descriptor::{parse_method_descriptor, shorty_from_parts};
 
         let (param_strs, ret_str) = parse_method_descriptor(descriptor)
             .ok_or_else(|| invalid_descriptor("method descriptor", descriptor))?;
+        let existing = self.find_type_idx(ret_str).and_then(|return_type| {
+            let parameters = param_strs
+                .iter()
+                .map(|param| self.find_type_idx(param))
+                .collect::<Option<TypeList>>()?;
+            self.find_proto_idx(return_type, &parameters)
+        });
+        if let Some(idx) = existing {
+            return Ok(idx);
+        }
 
-        let return_type = self.intern_type(ret_str);
+        let index = u32::try_from(self.prototypes.len())
+            .map_err(|_| crate::error::invalid("prototype pool", "too many prototypes"))?;
+
+        let return_type = self.intern_type(ret_str)?;
         let parameters: TypeList = param_strs
             .iter()
             .copied()
             .map(|p| self.intern_type(p))
-            .collect();
+            .collect::<Result<_>>()?;
 
-        if let Some(idx) = self.find_proto_idx(return_type, &parameters) {
-            return Ok(idx);
-        }
-
-        let shorty_str = shorty_from_descriptor(descriptor)
-            .ok_or_else(|| invalid_descriptor("method shorty descriptor", descriptor))?;
+        let shorty_str = shorty_from_parts(&param_strs, ret_str);
         let shorty = self.intern_string(&shorty_str);
         self.touch();
-        Ok(ProtoIdx(self.prototypes.push(Prototype {
+        self.prototypes.push(Prototype {
             shorty,
             return_type,
             parameters,
-        }) as u16))
+        });
+        Ok(ProtoIdx(index))
     }
 
     pub fn intern_method(&mut self, class: &str, name: &str, proto: &str) -> Result<MethodIdx> {
         Self::validate_type_descriptor("class descriptor", class)?;
 
-        let class_idx = self.intern_type(class);
-        let name_idx = self.intern_string(name);
         let proto_idx = self.intern_proto(proto)?;
+        let class_idx = self.intern_type(class)?;
+        let name_idx = self.intern_string(name);
 
         if let Some(idx) = self.find_method_idx(class_idx, name_idx, proto_idx) {
             return Ok(idx);
@@ -77,9 +88,9 @@ impl DexFile {
         Self::validate_type_descriptor("class descriptor", class)?;
         Self::validate_type_descriptor("field descriptor", type_)?;
 
-        let class_idx = self.intern_type(class);
+        let class_idx = self.intern_type(class)?;
         let name_idx = self.intern_string(name);
-        let type_idx = self.intern_type(type_);
+        let type_idx = self.intern_type(type_)?;
 
         if let Some(idx) = self.find_field_idx(class_idx, name_idx, type_idx) {
             return Ok(idx);

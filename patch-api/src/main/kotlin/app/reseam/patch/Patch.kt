@@ -7,18 +7,38 @@ import app.reseam.patch.settings.SettingsHost
 import app.reseam.patch.settings.SettingsSection
 
 interface ReseamPatch {
-    /** Display name; need not be unique. Identity comes from the public declaration. Null means an internal dependency, never listed. */
+    /**
+     * Display name; need not be unique. Identity comes from the public declaration. Null means an
+     * internal dependency, never listed.
+     */
     val name: String?
-    val hidden: Boolean get() = name == null
-    val description: String get() = ""
-    val dependencies: List<ReseamPatch> get() = emptyList()
-    val compatibleWith: List<CompatiblePackage> get() = emptyList()
+    val hidden: Boolean
+        get() = name == null
+
+    val description: String
+        get() = ""
+
+    val dependencies: List<ReseamPatch>
+        get() = emptyList()
+
+    val compatibleWith: List<CompatiblePackage>
+        get() = emptyList()
+
     /** A patch with no declared package works with every app, so it stays opt-in. */
-    val universal: Boolean get() = compatibleWith.isEmpty()
-    val enabled: Boolean get() = !hidden && !universal
-    val options: List<Option<*>> get() = emptyList()
+    val universal: Boolean
+        get() = compatibleWith.isEmpty()
+
+    val enabled: Boolean
+        get() = !hidden && !universal
+
+    val options: List<Option<*>>
+        get() = emptyList()
 
     fun execute(ctx: PatchRuntime)
+
+    /**
+     * Runs once after execution succeeds, after dependent finalizers, including for leaf patches.
+     */
     fun afterDependents(ctx: PatchRuntime) {}
 }
 
@@ -31,20 +51,21 @@ data class CompatiblePackage(
 operator fun String.invoke(vararg versions: String) = CompatiblePackage(this, versions.toList())
 
 /**
- * A patch in another bundle, for `dependsOn`. The Gradle plugin generates one
- * per patch of every bundle a module declares; it is never written by hand.
+ * A patch in another bundle, for `dependsOn`. The Gradle plugin generates one per patch of every
+ * bundle a module declares; it is never written by hand.
  */
 class ExternalPatch(val bundle: String, val id: String) : ReseamPatch {
     override val name: String? = null
+
     override fun execute(ctx: PatchRuntime) = error("$this belongs to another bundle")
+
     override fun toString() = "$bundle/$id"
 }
 
 fun patch(name: String, block: PatchBuilder.() -> Unit): ReseamPatch =
     PatchBuilder(name).apply(block).build()
 
-fun patch(block: PatchBuilder.() -> Unit): ReseamPatch =
-    PatchBuilder(null).apply(block).build()
+fun patch(block: PatchBuilder.() -> Unit): ReseamPatch = PatchBuilder(null).apply(block).build()
 
 abstract class PatchDeclaration internal constructor() {
     internal val compatibility = mutableListOf<CompatiblePackage>()
@@ -68,8 +89,7 @@ class PatchBuilder internal constructor(private val name: String?) : PatchDeclar
     private var hidden = name == null
     private var enabledByDefault: Boolean? = null
     private val options = mutableListOf<Option<*>>()
-    private var settingsHost: SettingsHost? = null
-    private val settings = mutableListOf<SettingsSection>()
+    private val settings = mutableListOf<Pair<SettingsHost, List<SettingsSection>>>()
     private var executeBlock: (PatchRuntime.() -> Unit)? = null
     private var afterDependentsBlock: (PatchRuntime.() -> Unit)? = null
 
@@ -86,28 +106,59 @@ class PatchBuilder internal constructor(private val name: String?) : PatchDeclar
         hidden = true
     }
 
-    fun stringOption(key: String, title: String = key, description: String = "", default: String? = null, validValues: List<String>? = null, required: Boolean = false) =
-        StringOption(key, title, description, required, default, validValues).also { options += it }
+    fun stringOption(
+        key: String,
+        title: String = key,
+        description: String = "",
+        default: String? = null,
+        validValues: List<String>? = null,
+        required: Boolean = false,
+    ) = StringOption(key, title, description, required, default, validValues).also { options += it }
 
-    fun boolOption(key: String, title: String = key, description: String = "", default: Boolean? = null, required: Boolean = false) =
-        BoolOption(key, title, description, required, default).also { options += it }
+    fun boolOption(
+        key: String,
+        title: String = key,
+        description: String = "",
+        default: Boolean? = null,
+        required: Boolean = false,
+    ) = BoolOption(key, title, description, required, default).also { options += it }
 
-    fun intOption(key: String, title: String = key, description: String = "", default: Long? = null, required: Boolean = false) =
-        IntOption(key, title, description, required, default).also { options += it }
+    fun intOption(
+        key: String,
+        title: String = key,
+        description: String = "",
+        default: Long? = null,
+        required: Boolean = false,
+    ) = IntOption(key, title, description, required, default).also { options += it }
 
-    fun floatOption(key: String, title: String = key, description: String = "", default: Double? = null, required: Boolean = false) =
-        FloatOption(key, title, description, required, default).also { options += it }
+    fun floatOption(
+        key: String,
+        title: String = key,
+        description: String = "",
+        default: Double? = null,
+        required: Boolean = false,
+    ) = FloatOption(key, title, description, required, default).also { options += it }
 
-    fun stringListOption(key: String, title: String = key, description: String = "", default: List<String>? = null, required: Boolean = false) =
-        StringListOption(key, title, description, required, default).also { options += it }
+    fun stringListOption(
+        key: String,
+        title: String = key,
+        description: String = "",
+        default: List<String>? = null,
+        required: Boolean = false,
+    ) = StringListOption(key, title, description, required, default).also { options += it }
 
-    fun pathOption(key: String, title: String = key, description: String = "", required: Boolean = false) =
-        PathOption(key, title, description, required).also { options += it }
+    fun pathOption(
+        key: String,
+        title: String = key,
+        description: String = "",
+        required: Boolean = false,
+    ) = PathOption(key, title, description, required).also { options += it }
 
     /** Registers settings with `host`, which becomes a dependency. */
     fun settings(host: SettingsHost, vararg sections: SettingsSection) {
-        settingsHost = host
-        settings += sections
+        val index = settings.indexOfFirst { it.first === host }
+        if (index < 0) settings += host to sections.toList()
+        else settings[index] = host to (settings[index].second + sections)
         if (host !in dependencies) dependencies += host
     }
 
@@ -121,8 +172,9 @@ class PatchBuilder internal constructor(private val name: String?) : PatchDeclar
 
     internal fun build(): ReseamPatch {
         val builder = this
-        val host = settingsHost
-        val sections = settings.toList()
+        val contributions = settings.toList()
+        val execute = executeBlock
+        val finalize = afterDependentsBlock
         return object : ReseamPatch {
             override val name = builder.name
             override val hidden = builder.hidden
@@ -133,12 +185,12 @@ class PatchBuilder internal constructor(private val name: String?) : PatchDeclar
             override val options = builder.options.toList()
 
             override fun execute(ctx: PatchRuntime) {
-                host?.register(this, sections)
-                ActiveRuntime.run(ctx) { executeBlock?.invoke(ctx) }
+                execute?.invoke(ctx)
+                contributions.forEach { (host, sections) -> host.register(this, sections) }
             }
 
             override fun afterDependents(ctx: PatchRuntime) {
-                ActiveRuntime.run(ctx) { afterDependentsBlock?.invoke(ctx) }
+                finalize?.invoke(ctx)
             }
 
             override fun toString() = name ?: "internal patch"

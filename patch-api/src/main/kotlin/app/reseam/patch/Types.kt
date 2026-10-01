@@ -6,9 +6,9 @@
 package app.reseam.patch
 
 /**
- * Type descriptors for the types patches name most. Every API that takes a
- * type accepts a descriptor (`Ljava/lang/String;`), a dotted class name
- * (`java.lang.String`), or one of these constants.
+ * Type descriptors for the types patches name most. Every API that takes a type accepts a
+ * descriptor (`Ljava/lang/String;`), a dotted class name (`java.lang.String`), or one of these
+ * constants.
  */
 object Type {
     const val Void = "V"
@@ -35,13 +35,14 @@ object Type {
 private val primitives = setOf("V", "Z", "B", "S", "C", "I", "J", "F", "D")
 
 /** The DEX descriptor of `type`, which may already be one. */
-fun descriptor(type: String): String = when {
-    type in primitives -> type
-    type.startsWith("[") -> "[" + descriptor(type.substring(1))
-    type.endsWith("[]") -> "[" + descriptor(type.removeSuffix("[]"))
-    type.startsWith("L") && type.endsWith(";") -> type
-    else -> "L${type.replace('.', '/')};"
-}
+fun descriptor(type: String): String =
+    when {
+        type in primitives -> type
+        type.startsWith("[") -> "[" + descriptor(type.substring(1))
+        type.endsWith("[]") -> "[" + descriptor(type.removeSuffix("[]"))
+        type.startsWith("L") && type.endsWith(";") -> type
+        else -> "L${type.replace('.', '/')};"
+    }
 
 /** The dotted class name of a class descriptor. */
 fun className(descriptor: String): String =

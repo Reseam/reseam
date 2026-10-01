@@ -12,7 +12,25 @@ pub struct MultiDexContainer {
 
 /// How much class-data IR is currently materialized across all DEXes. Used to
 /// attribute apply-phase memory to decoded instructions vs everything else.
-pub use reseam_model::{MaterializationStats, MemoryBreakdown};
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MaterializationStats {
+    pub total_classes: u64,
+    pub resolved_classes: u64,
+    pub methods: u64,
+    pub instructions: u64,
+}
+
+/// Heap estimates exclude allocation overhead and unused capacity; mapped bytes
+/// describe the source span, not how many of its pages are currently resident.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MemoryBreakdown {
+    pub raw_buffer_bytes: u64,
+    pub string_pool_bytes: u64,
+    pub string_count: u64,
+    pub id_table_bytes: u64,
+    pub class_def_bytes: u64,
+    pub materialized: MaterializationStats,
+}
 
 impl MultiDexContainer {
     pub fn new() -> Self {
@@ -24,9 +42,9 @@ impl MultiDexContainer {
     pub fn parse(buffers: &[&[u8]], opts: ParseOptions) -> Result<Self> {
         use rayon::prelude::*;
 
-        let results: std::result::Result<Vec<_>, _> = buffers
+        let results: Result<Vec<_>> = buffers
             .par_iter()
-            .map(|buf| crate::read::parse::parse(buf, opts.clone()))
+            .map(|buf| crate::read::parse::parse(buf, opts))
             .collect();
         Ok(Self {
             dex_files: results?,
@@ -48,8 +66,7 @@ impl MultiDexContainer {
             breakdown.raw_buffer_bytes += dex
                 .raw
                 .as_ref()
-                .map(|raw| raw.as_bytes().len() as u64)
-                .unwrap_or(0);
+                .map_or(0, |raw| raw.as_bytes().len() as u64);
             breakdown.string_pool_bytes += dex.strings.heap_bytes();
             breakdown.string_count += dex.strings.len() as u64;
             breakdown.id_table_bytes += dex.types.heap_bytes()
@@ -122,9 +139,8 @@ impl MultiDexContainer {
         index: usize,
         class_idx: usize,
     ) -> Result<Option<&mut DexFile>> {
-        let dex = match self.dex_files.get_mut(index) {
-            Some(dex) => dex,
-            None => return Ok(None),
+        let Some(dex) = self.dex_files.get_mut(index) else {
+            return Ok(None);
         };
         if class_idx >= dex.classes.len() {
             return Ok(None);

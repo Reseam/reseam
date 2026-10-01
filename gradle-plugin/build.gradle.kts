@@ -4,6 +4,7 @@
 plugins {
     kotlin("jvm")
     kotlin("plugin.sam.with.receiver")
+    alias(libs.plugins.kotlin.serialization)
     `java-gradle-plugin`
     `maven-publish`
 }
@@ -11,12 +12,32 @@ plugins {
 samWithReceiver { annotation("org.gradle.api.HasImplicitReceiver") }
 
 dependencies {
-    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.10")
+    implementation(libs.kotlin.gradle.plugin)
+    implementation(libs.kotlinx.serialization.json)
+    implementation("org.ow2.asm:asm:9.10")
 }
 
 kotlin {
     jvmToolchain(17)
 }
+
+val indexBindings =
+    tasks.register<JavaExec>("generatePatchIndexBindings") {
+        description = "Checks the engine's bindings against the patch index serialization model."
+        classpath = sourceSets.main.get().runtimeClasspath
+        mainClass.set("app.reseam.gradle.PatchIndexFormatKt")
+        val bindings = rootProject.file("crates/patcher/src/bundle/index.rs")
+        inputs.file(bindings)
+        args(bindings.absolutePath)
+        systemProperty(
+            "reseam.updateIndexBindings",
+            providers.systemProperty("reseam.updateIndexBindings").getOrElse("false"),
+        )
+    }
+
+tasks.check { dependsOn(indexBindings) }
+
+tasks.jar { dependsOn(indexBindings) }
 
 gradlePlugin {
     plugins {

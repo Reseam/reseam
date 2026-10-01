@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-/// A `Res_value`: the typed scalar carried by AXML attributes and resource
-/// entries.
+use crate::buf::slice;
+use crate::error::Result;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ResValue {
     pub kind: u8,
@@ -10,10 +11,28 @@ pub struct ResValue {
 }
 
 impl ResValue {
+    pub(crate) fn read(bytes: &[u8], offset: usize, section: &'static str) -> Result<Self> {
+        let bytes = slice(bytes, offset, 8, section)?;
+        Ok(Self::new(
+            bytes[3],
+            u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
+        ))
+    }
+
+    pub(crate) fn encoded(self) -> [u8; 8] {
+        let [a, b, c, d] = self.data.to_le_bytes();
+        [8, 0, 0, self.kind, a, b, c, d]
+    }
+
+    pub(crate) fn replace_payload(self, bytes: &mut [u8]) {
+        bytes[3..8].copy_from_slice(&self.encoded()[3..]);
+    }
+
     pub const REFERENCE: u8 = 0x01;
     pub const ATTRIBUTE: u8 = 0x02;
     pub const STRING: u8 = 0x03;
     pub const FLOAT: u8 = 0x04;
+    pub const FRACTION: u8 = 0x06;
     pub const DIMENSION: u8 = 0x05;
     pub const INT_DEC: u8 = 0x10;
     pub const INT_HEX: u8 = 0x11;
@@ -85,14 +104,12 @@ impl ResValue {
             .then_some(self.data)
     }
 
-    /// `#RGB`, `#ARGB`, `#RRGGBB` or `#AARRGGBB`.
     pub(crate) fn parse_color(text: &str) -> Option<Self> {
         let hex = text.strip_prefix('#')?;
-        let nibble = |i: usize| {
-            u32::from_str_radix(&hex[i..i + 1], 16)
-                .ok()
-                .map(|v| v * 0x11)
-        };
+        if !hex.is_ascii() {
+            return None;
+        }
+        let nibble = |i: usize| u32::from_str_radix(&hex[i..=i], 16).ok().map(|v| v * 0x11);
         Some(match hex.len() {
             3 => Self::new(
                 Self::INT_COLOR_RGB8,
@@ -111,9 +128,6 @@ impl ResValue {
         })
     }
 
-    /// A number with a `dp`, `dip`, `sp`, `pt`, `in`, `mm` or `px` suffix,
-    /// encoded as a complex dimension: unit in bits 0-3, radix in bits 4-5,
-    /// mantissa in bits 8-31.
     pub(crate) fn parse_dimension(text: &str) -> Option<Self> {
         const UNITS: [(&str, u32); 7] = [
             ("dip", 1),
@@ -127,13 +141,36 @@ impl ResValue {
         let (number, unit) = UNITS
             .iter()
             .find_map(|(suffix, unit)| text.strip_suffix(suffix).map(|n| (n, *unit)))?;
-        let value: f32 = number.parse().ok()?;
-        let whole = value as i32;
-        let data = if (value - whole as f32).abs() < f32::EPSILON && whole.abs() < 0x80_0000 {
-            ((whole as u32) & 0xFF_FFFF) << 8 | unit
-        } else {
-            (((value * 128.0) as i32 as u32) & 0xFF_FFFF) << 8 | (1 << 4) | unit
-        };
-        Some(Self::new(Self::DIMENSION, data))
+        Self::complex(number.parse().ok()?, unit).map(|data| Self::new(Self::DIMENSION, data))
+    }
+
+    pub(crate) fn parse_fraction(text: &str) -> Option<Self> {
+        let (number, unit) = text
+            .strip_suffix("%p")
+            .map(|number| (number, 1))
+            .or_else(|| text.strip_suffix('%').map(|number| (number, 0)))?;
+        Self::complex(number.parse::<f32>().ok()? / 100.0, unit)
+            .map(|data| Self::new(Self::FRACTION, data))
+    }
+
+    fn complex(value: f32, unit: u32) -> Option<u32> {
+        if !value.is_finite() || !(-8_388_608.0..8_388_608.0).contains(&value) {
+            return None;
+        }
+        if value.fract() == 0.0 {
+            return Some(((value as i32 as u32) & 0xff_ffff) << 8 | unit);
+        }
+        let legacy = f64::from(value) * 128.0;
+        if legacy.fract() == 0.0 && (-8_388_608.0..=8_388_607.0).contains(&legacy) {
+            return Some(((legacy as i32 as u32) & 0xff_ffff) << 8 | 1 << 4 | unit);
+        }
+        [(3, 8_388_608.0), (2, 32_768.0), (1, 128.0), (0, 1.0)]
+            .into_iter()
+            .find_map(|(radix, scale)| {
+                let mantissa = (f64::from(value) * scale).round();
+                (-8_388_608.0..=8_388_607.0)
+                    .contains(&mantissa)
+                    .then_some(((mantissa as i32 as u32) & 0xff_ffff) << 8 | radix << 4 | unit)
+            })
     }
 }

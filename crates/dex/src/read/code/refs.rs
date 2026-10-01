@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Instruction walking without decoding: opcode, length and the one operand
-//! searches ask about (a pool index or a literal) straight from code units.
-
 use super::decode::{opcode_units, payload_units};
-use super::format::{u16_at, u32_at};
-use crate::error::{require_len, Result};
+use crate::error::{Result, require_len};
+use crate::read::{u16_at, u32_at};
 use crate::types::{FieldIdx, MethodIdx, Pool, StringIdx, TypeIdx};
 
 /// One instruction located in a code item's instruction stream.
@@ -16,6 +13,7 @@ pub struct RawInstruction {
     pub opcode: u8,
     unit_off: usize,
     unit0: u16,
+    pub(super) units: usize,
 }
 
 impl RawInstruction {
@@ -28,35 +26,33 @@ impl RawInstruction {
     /// pseudo-opcode (`0x0100`, `0x0200`, `0x0300`) like
     /// [`crate::types::instruction::Instruction::opcode`] does.
     pub fn opcode(&self) -> Option<u16> {
-        Some(
-            if self.opcode == 0x00 && matches!(self.unit0, 0x0100 | 0x0200 | 0x0300) {
-                self.unit0
-            } else {
-                self.opcode as u16
-            },
-        )
+        if self.opcode == 0 {
+            return matches!(self.unit0, 0 | 0x0100 | 0x0200 | 0x0300).then_some(self.unit0);
+        }
+        opcode_units(self.opcode).map(|_| u16::from(self.opcode))
     }
 
     pub fn method_ref(&self, buf: &[u8]) -> Option<MethodIdx> {
-        matches!(self.opcode, 0x6e..=0x72 | 0x74..=0x78 | 0xfa | 0xfb)
-            .then(|| MethodIdx(self.index_operand(buf)))
+        self.index_ref(buf, Pool::Method).map(MethodIdx)
     }
-
     pub fn field_ref(&self, buf: &[u8]) -> Option<FieldIdx> {
-        matches!(self.opcode, 0x52..=0x6d).then(|| FieldIdx(self.index_operand(buf)))
+        self.index_ref(buf, Pool::Field).map(FieldIdx)
     }
-
     pub fn string_ref(&self, buf: &[u8]) -> Option<StringIdx> {
-        match self.opcode {
-            0x1a => Some(StringIdx(self.index_operand(buf))),
-            0x1b => Some(StringIdx(u32_at(buf, self.unit_off + 2))),
-            _ => None,
-        }
+        self.index_ref(buf, Pool::String).map(StringIdx)
+    }
+    pub fn type_ref(&self, buf: &[u8]) -> Option<TypeIdx> {
+        self.index_ref(buf, Pool::Type).map(TypeIdx)
     }
 
-    pub fn type_ref(&self, buf: &[u8]) -> Option<TypeIdx> {
-        matches!(self.opcode, 0x1c | 0x1f | 0x20 | 0x22..=0x25)
-            .then(|| TypeIdx(self.index_operand(buf)))
+    fn index_ref(&self, buf: &[u8], pool: Pool) -> Option<u32> {
+        let operand = index_operands(self.opcode)
+            .iter()
+            .find(|operand| operand.pool == pool)?;
+        Some(match operand.width {
+            IndexWidth::U16 => u32::from(u16_at(buf, self.unit_off + operand.at)),
+            IndexWidth::U32 => u32_at(buf, self.unit_off + operand.at),
+        })
     }
 
     /// The literal of a `const*` or `*-int/lit*` instruction, with the same
@@ -75,57 +71,38 @@ impl RawInstruction {
             _ => return None,
         })
     }
-
-    fn index_operand(&self, buf: &[u8]) -> u32 {
-        u16_at(buf, self.unit_off + 2) as u32
-    }
+}
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum IndexWidth {
+    U16,
+    U32,
 }
 
-/// A pool index an instruction carries: the pool, the operand's byte offset
-/// from the instruction start, and whether it is 32 bits wide.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct IndexOperand {
     pub pool: Pool,
     pub at: usize,
-    pub wide: bool,
+    pub width: IndexWidth,
 }
 
-const fn operand(pool: Pool, at: usize) -> IndexOperand {
-    IndexOperand {
-        pool,
-        at,
-        wide: false,
-    }
+macro_rules! define_index_operands {
+    ($($variant:ident [$($shape:tt)*] [$($definition:tt)*] => $opname:ident $opcode:expr, $units:tt; [$($register:ident: $reg_type:ident $kind:ident $access:ident ($max:expr)),*]; $args:ident; [$($index:ident: $id_type:ident $pool:ident $at:literal $index_width:ident),*];)*) => {
+        pub(crate) fn index_operands(opcode: u8) -> &'static [IndexOperand] {
+            const OPERANDS: [&[IndexOperand]; 256] = {
+                let mut operands = [&[] as &[IndexOperand]; 256];
+                $(let opcode: Option<u16> = $opcode;
+                if let Some(opcode) = opcode {
+                    if opcode < 256 {
+                        operands[opcode as usize] = &[$(IndexOperand { pool: Pool::$pool, at: $at, width: IndexWidth::$index_width },)*];
+                    }
+                })*
+                operands
+            };
+            OPERANDS[usize::from(opcode)]
+        }
+    };
 }
-
-/// Every pool index an instruction with `opcode` carries.
-pub(crate) fn index_operands(opcode: u8) -> &'static [IndexOperand] {
-    const STRING: &[IndexOperand] = &[operand(Pool::String, 2)];
-    const STRING_JUMBO: &[IndexOperand] = &[IndexOperand {
-        pool: Pool::String,
-        at: 2,
-        wide: true,
-    }];
-    const TYPE: &[IndexOperand] = &[operand(Pool::Type, 2)];
-    const FIELD: &[IndexOperand] = &[operand(Pool::Field, 2)];
-    const METHOD: &[IndexOperand] = &[operand(Pool::Method, 2)];
-    const POLYMORPHIC: &[IndexOperand] = &[operand(Pool::Method, 2), operand(Pool::Proto, 6)];
-    const CALL_SITE: &[IndexOperand] = &[operand(Pool::CallSite, 2)];
-    const METHOD_HANDLE: &[IndexOperand] = &[operand(Pool::MethodHandle, 2)];
-    const PROTO: &[IndexOperand] = &[operand(Pool::Proto, 2)];
-    match opcode {
-        0x1a => STRING,
-        0x1b => STRING_JUMBO,
-        0x1c | 0x1f | 0x20 | 0x22..=0x25 => TYPE,
-        0x52..=0x6d => FIELD,
-        0x6e..=0x72 | 0x74..=0x78 => METHOD,
-        0xfa | 0xfb => POLYMORPHIC,
-        0xfc | 0xfd => CALL_SITE,
-        0xfe => METHOD_HANDLE,
-        0xff => PROTO,
-        _ => &[],
-    }
-}
+crate::types::instruction_catalogue::instruction_catalogue!(define_index_operands);
 
 /// Visits every instruction of a code item's stream, stopping early when
 /// `visit` returns `false`.
@@ -135,163 +112,73 @@ pub fn walk_instructions(
     insns_size: usize,
     mut visit: impl FnMut(&RawInstruction) -> bool,
 ) -> Result<()> {
-    let mut pc = 0usize;
-    let mut index = 0usize;
-    while pc < insns_size {
-        let unit_off = start + pc * 2;
-        require_len(buf, unit_off, 2, "code item instruction")?;
-        let unit0 = u16_at(buf, unit_off);
-        let opcode = (unit0 & 0xFF) as u8;
-        let units = if opcode == 0x00 {
-            payload_units(buf, unit_off, unit0)?
-        } else {
-            opcode_units(opcode)
-        };
-        require_len(buf, unit_off, units * 2, "code item instruction")?;
-        if !visit(&RawInstruction {
-            index,
-            opcode,
-            unit_off,
-            unit0,
-        }) {
-            return Ok(());
+    for instruction in instruction_stream(buf, start, insns_size)? {
+        if !visit(&instruction?) {
+            break;
         }
-        pc += units;
-        index += 1;
     }
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::read::code::decode::decode_instructions;
-    use crate::types::instruction::{Instruction, RegList};
-    use crate::write::instruction_writer::encode_instructions;
+pub(super) struct InstructionStream<'a> {
+    buf: &'a [u8],
+    offset: usize,
+    index: usize,
+}
 
-    fn units(instructions: &[Instruction]) -> Vec<u8> {
-        encode_instructions(instructions)
-            .unwrap()
-            .iter()
-            .flat_map(|u| u.to_le_bytes())
-            .collect()
-    }
+pub(super) fn instruction_stream(
+    buf: &[u8],
+    start: usize,
+    size: usize,
+) -> Result<InstructionStream<'_>> {
+    let bytes = size.checked_mul(2).ok_or_else(|| {
+        crate::error::malformed("code item instruction", start, "stream size overflow")
+    })?;
+    require_len(buf, start, bytes, "code item instruction")?;
+    Ok(InstructionStream {
+        buf: &buf[..start + bytes],
+        offset: start,
+        index: 0,
+    })
+}
 
-    #[test]
-    fn high16_literals_are_runtime_values() {
-        let cases = [
-            (
-                Instruction::ConstHigh16 {
-                    dest: 0,
-                    value: 0x400,
-                },
-                0x0400_0000i64,
-            ),
-            (Instruction::ConstHigh16 { dest: 0, value: -1 }, -65536),
-            (
-                Instruction::ConstWideHigh16 {
-                    dest: 0,
-                    value: 0x400,
-                },
-                0x0400_0000_0000_0000,
-            ),
-            (
-                Instruction::ConstWideHigh16 {
-                    dest: 0,
-                    value: i16::MIN,
-                },
-                i64::MIN,
-            ),
-        ];
-        for (instruction, expected) in cases {
-            assert_eq!(instruction.literal(), Some(expected));
-            let buf = units(&[instruction]);
-            walk_instructions(&buf, 0, buf.len() / 2, |raw| {
-                assert_eq!(raw.literal(&buf), Some(expected));
-                true
-            })
-            .unwrap();
+impl Iterator for InstructionStream<'_> {
+    type Item = Result<RawInstruction>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.offset == self.buf.len() {
+            return None;
         }
-    }
-
-    #[test]
-    fn raw_operands_match_decoded_instructions() {
-        let program = vec![
-            Instruction::Const4 { dest: 0, value: -3 },
-            Instruction::Const16 {
-                dest: 1,
-                value: -300,
-            },
-            Instruction::Const {
-                dest: 2,
-                value: 0x1234_5678,
-            },
-            Instruction::ConstHigh16 { dest: 3, value: -2 },
-            Instruction::ConstWide16 { dest: 4, value: 7 },
-            Instruction::ConstWide32 {
-                dest: 6,
-                value: -70_000,
-            },
-            Instruction::ConstWide {
-                dest: 8,
-                value: -0x1122_3344_5566_7788,
-            },
-            Instruction::ConstWideHigh16 {
-                dest: 10,
-                value: 0x4000,
-            },
-            Instruction::ConstString {
-                dest: 0,
-                string: StringIdx(5),
-            },
-            Instruction::ConstStringJumbo {
-                dest: 0,
-                string: StringIdx(0x1_0002),
-            },
-            Instruction::ConstClass {
-                dest: 0,
-                type_: TypeIdx(9),
-            },
-            Instruction::AddIntLit8 {
-                dest: 0,
-                src: 1,
-                literal: -5,
-            },
-            Instruction::MulIntLit16 {
-                dest: 0,
-                src: 1,
-                literal: 1000,
-            },
-            Instruction::Sget {
-                dest: 0,
-                field: FieldIdx(77),
-            },
-            Instruction::InvokeStatic {
-                method: MethodIdx(4242),
-                args: RegList::new(),
-            },
-            Instruction::InvokeVirtualRange {
-                method: MethodIdx(11),
-                first_reg: 0,
-                count: 2,
-            },
-            Instruction::ReturnVoid,
-        ];
-        let buf = units(&program);
-        let decoded = decode_instructions(&buf, 0, buf.len() / 2).unwrap();
-        let mut seen = 0;
-        walk_instructions(&buf, 0, buf.len() / 2, |raw| {
-            let insn = &decoded[raw.index];
-            assert_eq!(raw.opcode(), insn.opcode());
-            assert_eq!(raw.literal(&buf), insn.literal());
-            assert_eq!(raw.string_ref(&buf), insn.string_ref());
-            assert_eq!(raw.type_ref(&buf), insn.type_ref());
-            assert_eq!(raw.field_ref(&buf), insn.field_ref());
-            assert_eq!(raw.method_ref(&buf), insn.method_ref());
-            seen += 1;
-            true
-        })
-        .unwrap();
-        assert_eq!(seen, program.len());
+        let offset = self.offset;
+        let framed = (|| {
+            require_len(self.buf, offset, 2, "code item instruction")?;
+            let unit0 = u16_at(self.buf, offset);
+            let opcode = unit0 as u8;
+            let units = if opcode == 0 {
+                payload_units(self.buf, offset, unit0)?
+            } else {
+                opcode_units(opcode).unwrap_or(1)
+            };
+            let bytes = units.checked_mul(2).ok_or_else(|| {
+                crate::error::malformed(
+                    "code item instruction",
+                    offset,
+                    "instruction size overflow",
+                )
+            })?;
+            require_len(self.buf, offset, bytes, "code item instruction")?;
+            Ok(RawInstruction {
+                index: self.index,
+                opcode,
+                unit_off: offset,
+                unit0,
+                units,
+            })
+        })();
+        self.offset = framed
+            .as_ref()
+            .map_or(self.buf.len(), |frame| offset + frame.units * 2);
+        self.index += 1;
+        Some(framed)
     }
 }

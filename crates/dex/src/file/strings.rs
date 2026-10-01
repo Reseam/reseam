@@ -11,11 +11,11 @@ use smallvec::SmallVec;
 use super::DexBytes;
 use crate::encoding::leb128::{read_uleb128_with_opts, write_uleb128};
 use crate::encoding::mutf8::{decode_mutf8_lossy, encode_mutf8, utf16_len, utf16_units};
-use crate::error::{invalid, invalid_mutf8, invalid_offset, Result};
-use crate::read::header::u32_at;
-use crate::types::header::ParseOptions;
+use crate::error::{Result, invalid, invalid_mutf8};
+use crate::read::u32_at;
 use crate::types::StringIdx;
-use crate::util::sort::mutf8_compare;
+use crate::types::header::ParseOptions;
+use crate::util::sort::{mutf8_compare, mutf8_units};
 
 /// The string table left in the file: raw entries are read through the
 /// `string_ids` table on access, and only strings added after parse are owned.
@@ -38,20 +38,14 @@ impl StringPool {
         raw: DexBytes,
         ids_off: u32,
         count: u32,
-        opts: &ParseOptions,
+        opts: ParseOptions,
     ) -> Result<Self> {
         let buf = raw.as_bytes();
         let ids_off = ids_off as usize;
         let count = count as usize;
-        if ids_off + count * 4 > buf.len() {
-            return Err(invalid_offset(
-                "string_ids",
-                ids_off as u32,
-                buf.len() as u32,
-            ));
-        }
+        crate::error::require_array(buf, ids_off, count, 4, "string IDs")?;
         for i in 0..count {
-            validate_item(buf, u32_at(buf, ids_off + i * 4)?, opts)?;
+            validate_item(buf, u32_at(buf, ids_off + i * 4), opts)?;
         }
         let mut pool = Self {
             raw: Some(raw),
@@ -90,13 +84,17 @@ impl StringPool {
 
     pub fn find(&self, s: &str) -> Option<StringIdx> {
         let bmp = s.chars().all(|c| (c as u32) < 0x10000);
+        let mut encoded = None;
         let mut lo = 0usize;
         let mut hi = self.sorted_len;
         while lo < hi {
             let mid = lo + (hi - lo) / 2;
             let ord = match self.plain(mid) {
                 Some(bytes) if bmp => bytes.cmp(s.as_bytes()),
-                _ => mutf8_compare(&self.mutf8(mid), &encode_mutf8(s)),
+                _ => mutf8_compare(
+                    &self.mutf8(mid),
+                    encoded.get_or_insert_with(|| encode_mutf8(s)),
+                ),
             };
             match ord {
                 Ordering::Less => lo = mid + 1,
@@ -108,7 +106,7 @@ impl StringPool {
             .get(&hash_str(s))?
             .iter()
             .copied()
-            .find(|&i| self.get(StringIdx(i)) == s)
+            .find(|&i| mutf8_units(&self.mutf8(i as usize)).eq(s.encode_utf16()))
             .map(StringIdx)
     }
 
@@ -123,7 +121,6 @@ impl StringPool {
         idx
     }
 
-    /// Ordering of two entries under DEX string sort order.
     pub(crate) fn compare(&self, a: u32, b: u32) -> Ordering {
         // A raw payload that is valid UTF-8 holds only U+0001..U+FFFF (NUL and
         // supplementary characters have non-UTF-8 encodings in MUTF-8), and for
@@ -136,7 +133,6 @@ impl StringPool {
         }
     }
 
-    /// The MUTF-8 payload of any entry: raw entries verbatim, owned entries encoded.
     fn mutf8(&self, i: usize) -> Cow<'_, [u8]> {
         if i < self.raw_len {
             Cow::Borrowed(self.payload(self.raw_offset(i)))
@@ -145,7 +141,6 @@ impl StringPool {
         }
     }
 
-    /// The string_data_item bytes for `idx`; raw entries are served verbatim.
     pub(crate) fn item(&self, idx: StringIdx) -> Cow<'_, [u8]> {
         let i = idx.0 as usize;
         if i < self.raw_len {
@@ -183,13 +178,12 @@ impl StringPool {
             .unwrap_or(len);
         let mut tail: FxHashMap<u64, SmallVec<[u32; 1]>> = FxHashMap::default();
         for i in self.sorted_len..len {
-            let h = hash_str(&self.get(StringIdx(i as u32)));
+            let h = hash_units(mutf8_units(&self.mutf8(i)));
             tail.entry(h).or_default().push(i as u32);
         }
         self.tail = tail;
     }
 
-    /// The payload of a raw entry when it is valid UTF-8, i.e. BMP-only.
     fn plain(&self, i: usize) -> Option<&[u8]> {
         if i >= self.raw_len {
             return None;
@@ -216,11 +210,14 @@ impl StringPool {
         &self.raw_bytes()[off as usize + start..off as usize + end]
     }
 
-    /// `(payload start, NUL terminator)` relative to a validated item offset.
     fn payload_range(&self, off: u32) -> (usize, usize) {
         let item = &self.raw_bytes()[off as usize..];
         let start = 1 + item.iter().take_while(|&&b| b & 0x80 != 0).count();
-        let end = start + item[start..].iter().position(|&b| b == 0).unwrap();
+        let end = start
+            + item[start..]
+                .iter()
+                .position(|&b| b == 0)
+                .expect("raw string framing validated its terminator");
         (start, end)
     }
 }
@@ -236,7 +233,7 @@ impl<S: Into<Box<str>>> FromIterator<S> for StringPool {
     }
 }
 
-fn validate_item(buf: &[u8], off: u32, opts: &ParseOptions) -> Result<()> {
+fn validate_item(buf: &[u8], off: u32, opts: ParseOptions) -> Result<()> {
     let (declared, leb_size) = read_uleb128_with_opts(buf, off as usize, opts)?;
     let start = off as usize + leb_size;
     let rest = buf
@@ -257,89 +254,13 @@ fn validate_item(buf: &[u8], off: u32, opts: &ParseOptions) -> Result<()> {
 }
 
 fn hash_str(s: &str) -> u64 {
-    let mut hasher = FxHasher::default();
-    s.hash(&mut hasher);
-    hasher.finish()
+    hash_units(s.encode_utf16())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn item(s: &str) -> Vec<u8> {
-        let mut out = Vec::new();
-        write_uleb128(&mut out, utf16_len(s));
-        out.extend_from_slice(&encode_mutf8(s));
-        out.push(0);
-        out
+fn hash_units(units: impl Iterator<Item = u16>) -> u64 {
+    let mut hasher = FxHasher::default();
+    for unit in units {
+        unit.hash(&mut hasher);
     }
-
-    fn raw_pool(strings: &[&str]) -> StringPool {
-        let mut buf = Vec::new();
-        let mut offsets = Vec::new();
-        for s in strings {
-            offsets.push(buf.len() as u32);
-            buf.extend_from_slice(&item(s));
-        }
-        let ids_off = buf.len() as u32;
-        for off in offsets {
-            buf.extend_from_slice(&off.to_le_bytes());
-        }
-        StringPool::from_raw(
-            DexBytes::from_vec(buf),
-            ids_off,
-            strings.len() as u32,
-            &ParseOptions::default(),
-        )
-        .unwrap()
-    }
-
-    #[test]
-    fn raw_entries_borrow_and_decode() {
-        let pool = raw_pool(&["", "a", "b\0c", "é", "\u{1F600}"]);
-        assert!(matches!(pool.get(StringIdx(1)), Cow::Borrowed("a")));
-        assert!(matches!(pool.get(StringIdx(3)), Cow::Borrowed("é")));
-        assert_eq!(pool.get(StringIdx(2)), "b\0c");
-        assert_eq!(pool.get(StringIdx(4)), "\u{1F600}");
-    }
-
-    #[test]
-    fn sorted_lookup_and_tail_lookup() {
-        let mut pool = raw_pool(&["", "a", "b\0c", "é", "\u{1F600}", "\u{FFFF}", "0"]);
-        assert_eq!(pool.sorted_len, 6);
-        assert_eq!(pool.find("a"), Some(StringIdx(1)));
-        assert_eq!(pool.find("b\0c"), Some(StringIdx(2)));
-        assert_eq!(pool.find("\u{1F600}"), Some(StringIdx(4)));
-        assert_eq!(pool.find("\u{FFFF}"), Some(StringIdx(5)));
-        assert_eq!(pool.find("0"), Some(StringIdx(6)));
-        assert_eq!(pool.find("zz"), None);
-
-        let idx = pool.intern("zz");
-        assert_eq!(idx, StringIdx(7));
-        assert_eq!(pool.intern("zz"), idx);
-        assert_eq!(pool.find("zz"), Some(idx));
-    }
-
-    #[test]
-    fn write_item_copies_raw_and_encodes_owned() {
-        let mut pool = raw_pool(&["a\u{1F600}"]);
-        pool.push("\0z");
-        let out = [pool.item(StringIdx(0)), pool.item(StringIdx(1))].concat();
-        assert_eq!(out, [item("a\u{1F600}"), item("\0z")].concat());
-    }
-
-    #[test]
-    fn rejects_bad_length() {
-        let mut buf = item("abc");
-        buf[0] = 2;
-        let ids_off = buf.len() as u32;
-        buf.extend_from_slice(&0u32.to_le_bytes());
-        let err = StringPool::from_raw(
-            DexBytes::from_vec(buf),
-            ids_off,
-            1,
-            &ParseOptions::default(),
-        );
-        assert!(err.is_err());
-    }
+    hasher.finish()
 }

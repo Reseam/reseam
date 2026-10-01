@@ -18,23 +18,39 @@ import app.reseam.patch.skipWhen
 fun CodeScope.whenEnabled(setting: ToggleSetting, block: CodeScope.() -> Unit): Otherwise =
     whenTrue(call(ReseamSettings.getBoolean, string(setting.key), bool(setting.default)), block)
 
-fun MethodTarget.before(gate: ToggleSetting, block: CodeScope.() -> Unit) = before { whenEnabled(gate, block) }
-fun MethodTarget.after(gate: ToggleSetting, block: CodeScope.() -> Unit) = after { whenEnabled(gate, block) }
-fun PointTarget.before(gate: ToggleSetting, block: CodeScope.() -> Unit) = before { whenEnabled(gate, block) }
-fun PointTarget.after(gate: ToggleSetting, block: CodeScope.() -> Unit) = after { whenEnabled(gate, block) }
+fun MethodTarget.before(gate: ToggleSetting, block: CodeScope.() -> Unit) = before {
+    whenEnabled(gate, block)
+}
+
+fun MethodTarget.after(gate: ToggleSetting, block: CodeScope.() -> Unit) = after {
+    whenEnabled(gate, block)
+}
+
+fun PointTarget.before(gate: ToggleSetting, block: CodeScope.() -> Unit) = before {
+    whenEnabled(gate, block)
+}
+
+fun PointTarget.after(gate: ToggleSetting, block: CodeScope.() -> Unit) = after {
+    whenEnabled(gate, block)
+}
 
 /** Returns immediately when the toggle is on; the method must be void. */
 fun MethodTarget.skipWhen(setting: ToggleSetting) {
-    require(returnType == Type.Void) { "skipWhen(${setting.key}) needs a void method, got $returnType in $descriptor" }
+    require(returnType == Type.Void) {
+        "skipWhen(${setting.key}) needs a void method, got $returnType in $descriptor"
+    }
     before(setting) { returnVoid() }
 }
 
 /** Skips the call at the point when the toggle is on; the call's result must be unused. */
-fun PointTarget.skipWhen(setting: ToggleSetting) =
-    skipWhen { call(ReseamSettings.getBoolean, string(setting.key), bool(setting.default)) }
+fun PointTarget.skipWhen(setting: ToggleSetting) = skipWhen {
+    call(ReseamSettings.getBoolean, string(setting.key), bool(setting.default))
+}
 
 fun MethodTarget.returnNullWhen(setting: ToggleSetting) {
-    require(returnType.startsWith("L") || returnType.startsWith("[")) { "returnNullWhen(${setting.key}) needs an object method, got $returnType in $descriptor" }
+    require(returnType.startsWith("L") || returnType.startsWith("[")) {
+        "returnNullWhen(${setting.key}) needs an object method, got $returnType in $descriptor"
+    }
     before(setting) { returnNull() }
 }
 
@@ -43,6 +59,8 @@ fun MethodTarget.returnTrueWhen(setting: ToggleSetting) = returnBooleanWhen(sett
 fun MethodTarget.returnFalseWhen(setting: ToggleSetting) = returnBooleanWhen(setting, false)
 
 private fun MethodTarget.returnBooleanWhen(setting: ToggleSetting, value: Boolean) {
-    require(returnType == Type.Boolean) { "return${value}When(${setting.key}) needs a boolean method, got $returnType in $descriptor" }
+    require(returnType == Type.Boolean) {
+        "return${value}When(${setting.key}) needs a boolean method, got $returnType in $descriptor"
+    }
     before(setting) { if (value) returnTrue() else returnFalse() }
 }

@@ -3,34 +3,40 @@
 
 package app.reseam.gradle
 
-import groovy.json.JsonSlurper
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.Serializable as JavaSerializable
+import java.net.URI
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption.ATOMIC_MOVE
+import java.nio.file.StandardCopyOption.REPLACE_EXISTING
+import java.security.MessageDigest
+import javax.inject.Inject
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
-import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
 import org.gradle.process.ExecOperations
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.io.Serializable
-import java.net.URI
-import javax.inject.Inject
 
-/** A released bundle, located through its `patches.json`. */
-data class PublishedBundle(val index: String, val version: String, val signer: String?) : Serializable
+internal data class PublishedBundle(val index: String, val version: String, val signer: String?) :
+    JavaSerializable
 
-/** Bundles whose patches this module may depend on; each one yields an `ExternalPatch` per patch, in its original package. */
+/** Bundles whose patches this module may reference through generated Kotlin declarations. */
 abstract class ReseamPatchesExtension {
     internal val published = mutableListOf<PublishedBundle>()
     internal val local = mutableListOf<File>()
 
-    /** `signer` pins the public key the index must carry. */
     fun bundle(index: String, version: String, signer: String? = null) {
         published += PublishedBundle(index, version, signer)
     }
@@ -40,80 +46,191 @@ abstract class ReseamPatchesExtension {
     }
 }
 
-private class Listing(val name: String, val publicKey: String, val trusted: Boolean, val patches: List<String>)
+@Serializable
+internal data class BundleMetadata(
+    val name: String,
+    @SerialName("public_key") val publicKey: String = "",
+)
 
-abstract class GeneratePatchRefsTask @Inject constructor(private val exec: ExecOperations) : DefaultTask() {
-    @get:Input
-    abstract val published: ListProperty<PublishedBundle>
+@Serializable
+private data class Release(
+    val version: String,
+    @SerialName("download_url") val downloadUrl: String,
+)
 
-    @get:InputFiles
-    abstract val local: ConfigurableFileCollection
+@Serializable
+private data class ReleaseIndex(val bundle: BundleMetadata, val releases: List<Release>)
 
-    @get:Input
-    abstract val reseamBinary: Property<String>
+@Serializable
+private data class ListedBundle(
+    val name: String,
+    @SerialName("public_key") val publicKey: String,
+    val trusted: Boolean,
+    val problem: BundleProblem? = null,
+)
 
-    @get:Internal
-    abstract val cache: DirectoryProperty
+@Serializable private data class BundleProblem(val type: String)
 
-    @get:OutputDirectory
-    abstract val output: DirectoryProperty
+@Serializable private data class ListedPatch(val id: String)
+
+@Serializable
+private data class BundleListing(val bundles: List<ListedBundle>, val patches: List<ListedPatch>)
+
+@Serializable
+private data class ReleaseIdentity(
+    val source: String,
+    val download: String,
+    val version: String,
+    val signer: String,
+)
+
+private data class Listing(val bundle: BundleMetadata, val patches: List<String>)
+
+internal abstract class GeneratePatchRefsTask
+@Inject
+constructor(private val exec: ExecOperations) : DefaultTask() {
+    @get:Input abstract val published: ListProperty<PublishedBundle>
+    @get:InputFiles abstract val local: ConfigurableFileCollection
+    @get:InputFile @get:Optional abstract val reseamBinary: org.gradle.api.file.RegularFileProperty
+    @get:Internal abstract val cache: DirectoryProperty
+    @get:OutputDirectory abstract val output: DirectoryProperty
+
+    init {
+        // Release indexes can change a version's download URL or signer.
+        outputs.upToDateWhen { published.get().isEmpty() }
+    }
 
     @TaskAction
     fun run() {
-        val outDir = output.get().asFile
-        outDir.deleteRecursively()
-        outDir.mkdirs()
-        for (bundle in published.get()) {
-            val (file, signer) = download(bundle)
-            write(outDir, list(file, signer))
-        }
-        for (file in local.files) {
-            write(outDir, list(file, list(file, null).publicKey))
-        }
+        val outDir = output.get().asFile.also(::recreate)
+        val listings =
+            published.get().map { bundle ->
+                val source = URI(bundle.index).normalize()
+                val index =
+                    source.toURL().openStream().use {
+                        bundleJson.decodeFromString<ReleaseIndex>(it.reader().readText())
+                    }
+                val publisher = index.bundle.copy(publicKey = index.bundle.publicKey.lowercase())
+                if (
+                    index.releases.distinctBy { it.version.removePrefix("v") }.size !=
+                        index.releases.size
+                )
+                    throw GradleException("$source has duplicate release versions")
+                if (bundle.signer != null && bundle.signer.lowercase() != publisher.publicKey)
+                    throw GradleException("$source signer differs from pinned ${bundle.signer}")
+                if (publisher.publicKey.isEmpty())
+                    throw GradleException("$source has no bundle public key")
+                val wanted = bundle.version.removePrefix("v")
+                val release =
+                    index.releases.singleOrNull { it.version.removePrefix("v") == wanted }
+                        ?: throw GradleException("$source has no release $wanted")
+                download(
+                    source,
+                    publisher,
+                    source.resolve(release.downloadUrl).normalize(),
+                    wanted,
+                )
+            } +
+                local.files
+                    .sortedBy { it.path }
+                    .map { file -> list(file, list(file, null).bundle.publicKey) }
+        if (listings.map { it.bundle.name }.toSet().size != listings.size)
+            throw GradleException("referenced bundle names must be unique")
+        listings.forEach { write(outDir, it) }
     }
 
-    private fun download(bundle: PublishedBundle): Pair<File, String> {
-        val index = JsonSlurper().parse(URI(bundle.index).toURL()) as Map<*, *>
-        val info = index["bundle"] as Map<*, *>
-        val signer = info["public_key"] as String
-        if (bundle.signer != null && bundle.signer != signer) {
-            throw GradleException("${bundle.index} is signed by $signer, not the pinned ${bundle.signer}")
+    private fun download(
+        source: URI,
+        bundle: BundleMetadata,
+        download: URI,
+        version: String,
+    ): Listing {
+        val identity =
+            bundleJson.encodeToString(
+                ReleaseIdentity(
+                    source.toASCIIString(),
+                    download.toASCIIString(),
+                    version,
+                    bundle.publicKey,
+                )
+            )
+        val digest =
+            MessageDigest.getInstance("SHA-256").digest(identity.toByteArray(Charsets.UTF_8))
+        val key = java.util.HexFormat.of().formatHex(digest)
+        val dir = cache.get().asFile.toPath()
+        Files.createDirectories(dir)
+        val file = dir.resolve("$key.reseam")
+        val temporary =
+            if (Files.isRegularFile(file)) null else Files.createTempFile(dir, "$key-", ".download")
+        try {
+            if (temporary != null) {
+                download.toURL().openStream().use { stream ->
+                    Files.newOutputStream(temporary).use(stream::copyTo)
+                }
+            }
+            val listing = list((temporary ?: file).toFile(), bundle.publicKey)
+            if (listing.bundle != bundle)
+                throw GradleException("${source} release identity differs from its signed bundle")
+            if (temporary != null) {
+                Files.move(temporary, file, ATOMIC_MOVE, REPLACE_EXISTING)
+            }
+            return listing
+        } finally {
+            if (temporary != null) Files.deleteIfExists(temporary)
         }
-        val releases = (index["releases"] as List<*>).map { it as Map<*, *> }
-        val wanted = bundle.version.removePrefix("v")
-        val release = releases.firstOrNull { (it["version"] as String).removePrefix("v") == wanted }
-            ?: throw GradleException("${bundle.index} has no release $wanted; available: ${releases.joinToString { it["version"] as String }}")
-        val file = cache.get().asFile.resolve("${info["name"]}-$wanted.reseam")
-        if (!file.isFile) {
-            file.parentFile.mkdirs()
-            URI(release["download_url"] as String).toURL().openStream().use { stream -> file.outputStream().use(stream::copyTo) }
-        }
-        return file to signer
     }
 
     private fun list(file: File, trust: String?): Listing {
         val stdout = ByteArrayOutputStream()
         exec.exec {
-            commandLine(listOfNotNull(reseamBinary.get(), "bundle", "list", file.absolutePath, "--json") + (trust?.let { listOf("--trust", it) } ?: emptyList()))
+            commandLine(
+                listOf(
+                    reseamBinary.get().asFile.absolutePath,
+                    "bundle",
+                    "list",
+                    file.absolutePath,
+                    "--json",
+                ) + (trust?.let { listOf("--trust", it) } ?: emptyList())
+            )
             standardOutput = stdout
         }
-        val response = JsonSlurper().parseText(stdout.toString(Charsets.UTF_8)) as Map<*, *>
-        val info = (response["bundles"] as List<*>).single() as Map<*, *>
-        val patches = (response["patches"] as List<*>).map { (it as Map<*, *>)["id"] as String }
-        return Listing(info["name"] as String, info["public_key"] as String, info["trusted"] as Boolean, patches)
+        val response = bundleJson.decodeFromString<BundleListing>(stdout.toString(Charsets.UTF_8))
+        val info = response.bundles.single()
+        if (trust != null && (info.problem != null || !info.trusted || info.publicKey != trust))
+            throw GradleException("cannot load $file with trusted signer $trust: ${info.problem}")
+        return Listing(BundleMetadata(info.name, info.publicKey), response.patches.map { it.id })
     }
 
     private fun write(outDir: File, listing: Listing) {
-        check(listing.trusted) { "${listing.name} could not be listed; its patches are only visible for a trusted signer" }
         for ((pkg, ids) in listing.patches.groupBy { it.substringBeforeLast('.', "") }) {
-            val file = outDir.resolve(listing.name).resolve(pkg.replace('.', '/')).resolve("PatchRefs.kt")
-            file.parentFile.mkdirs()
+            val segments =
+                pkg.split('.').filter(String::isNotEmpty) + ids.map { it.substringAfterLast('.') }
+            if (
+                segments.any {
+                    it.contains('`') ||
+                        it.contains('/') ||
+                        it.contains('\\') ||
+                        it.any(Char::isISOControl) ||
+                        it in setOf(".", "..")
+                }
+            )
+                throw GradleException("invalid Kotlin declaration in ${listing.bundle.name}")
+            val file =
+                outDir
+                    .resolve(listing.bundle.name)
+                    .resolve(pkg.replace('.', '/'))
+                    .resolve("PatchRefs.kt")
+            Files.createDirectories(file.parentFile.toPath())
+            val literal = { value: String -> bundleJson.encodeToString(value).replace("$", "\\$") }
             file.writeText(
                 buildString {
-                    if (pkg.isNotEmpty()) append("package $pkg\n\n")
+                    if (pkg.isNotEmpty())
+                        append("package ${pkg.split('.').joinToString(".") { "`$it`" }}\n\n")
                     append("import app.reseam.patch.ExternalPatch\n\n")
-                    for (id in ids) append("val ${id.substringAfterLast('.')} = ExternalPatch(\"${listing.name}\", \"$id\")\n")
-                },
+                    for (id in ids) append(
+                        "val `${id.substringAfterLast('.')}` = ExternalPatch(${literal(listing.bundle.name)}, ${literal(id)})\n"
+                    )
+                }
             )
         }
     }

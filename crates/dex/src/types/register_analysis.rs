@@ -3,6 +3,11 @@
 
 use super::code::CodeItem;
 
+enum LiveChange {
+    Read,
+    Write,
+}
+
 pub fn find_free_register(code: &CodeItem, at_index: usize, exclude: &[u16]) -> Option<u16> {
     let live = live_registers(code, at_index);
     let excluded = BitSet::from_slice(usize::from(code.registers_size), exclude);
@@ -96,49 +101,60 @@ pub fn reaching_definitions(
         return None;
     }
     let graph = ControlFlow::new(code)?;
-    // One bit per instruction that could have defined the register, plus one
-    // for the value the method was called with.
-    let entry = count;
-    let mut before = vec![BitSet::new(count + 1); count];
-    before[0].insert(entry);
-    let mut pending = std::collections::VecDeque::from([0usize]);
-    let mut queued = vec![false; count];
-    queued[0] = true;
-    while let Some(index) = pending.pop_front() {
-        queued[index] = false;
-        let incoming = before[index].clone();
-        let mut writes = false;
-        code.instructions[index].visit_written_registers(|reg| writes |= reg == register);
-        let outgoing = if writes {
-            let mut defined = BitSet::new(count + 1);
-            defined.insert(index);
-            defined
-        } else {
-            incoming.clone()
-        };
-        let mut propagate = |edges: &[u32], set: &BitSet, before: &mut Vec<BitSet>| {
-            for &next in edges {
-                let next = next as usize;
-                if before[next].merge(set) && !queued[next] {
-                    queued[next] = true;
-                    pending.push_back(next);
+    let mut reachable = vec![false; count];
+    let mut pending = vec![0];
+    while let Some(current) = pending.pop() {
+        if std::mem::replace(&mut reachable[current], true) {
+            continue;
+        }
+        pending.extend(
+            graph
+                .successors(current)
+                .iter()
+                .chain(graph.handlers(current))
+                .map(|&next| next as usize),
+        );
+    }
+
+    let mut visited = vec![false; count];
+    let mut definitions = BitSet::new(count);
+    let mut entry = false;
+    pending.push(index);
+    while let Some(current) = pending.pop() {
+        if !reachable[current] || std::mem::replace(&mut visited[current], true) {
+            continue;
+        }
+        entry |= current == 0;
+        for &previous in graph.predecessors(current) {
+            let previous = previous as usize;
+            if !reachable[previous] {
+                continue;
+            }
+            // Exceptions observe the input even if the normal edge writes a value.
+            if graph.handlers(previous).contains(&(current as u32)) {
+                pending.push(previous);
+            }
+            if graph.successors(previous).contains(&(current as u32)) {
+                let mut writes = false;
+                code.instructions[previous]
+                    .visit_written_registers(|reg| writes |= reg == register);
+                if writes {
+                    definitions.insert(previous);
+                } else {
+                    pending.push(previous);
                 }
             }
-        };
-        propagate(graph.successors(index), &outgoing, &mut before);
-        propagate(graph.handlers(index), &incoming, &mut before);
+        }
     }
-    let reaching = &before[index];
     Some((
-        (0..count).filter(|&i| reaching.contains(i)).collect(),
-        reaching.contains(entry),
+        (0..count).filter(|&i| definitions.contains(i)).collect(),
+        entry,
     ))
 }
 
 /// Register-word liveness at instruction boundaries, including exception edges.
 /// Unknown instructions or malformed control flow conservatively keep every register live.
 pub struct RegisterLiveness {
-    /// `words` words per instruction: the registers live on entry to it.
     before: Vec<u64>,
     words: usize,
     register_count: u16,
@@ -175,10 +191,13 @@ impl RegisterLiveness {
         let mut live = vec![0u64; words];
         let mut pending: std::collections::VecDeque<usize> = (0..count).rev().collect();
         let mut queued = vec![true; count];
-        let set = |live: &mut [u64], reg: u16, on: bool| {
+        let set = |live: &mut [u64], reg: u16, change: LiveChange| {
             let (word, bit) = (usize::from(reg) / 64, 1u64 << (reg % 64));
             if let Some(word) = live.get_mut(word) {
-                *word = if on { *word | bit } else { *word & !bit };
+                *word = match change {
+                    LiveChange::Read => *word | bit,
+                    LiveChange::Write => *word & !bit,
+                };
             }
         };
         let union = |live: &mut [u64], before: &[u64], index: usize| {
@@ -193,12 +212,12 @@ impl RegisterLiveness {
                 union(&mut live, &before, next as usize);
             }
             let insn = &code.instructions[index];
-            insn.visit_written_registers(|reg| set(&mut live, reg, false));
+            insn.visit_written_registers(|reg| set(&mut live, reg, LiveChange::Write));
             // An instruction can throw before writing its result.
             for &handler in graph.handlers(index) {
                 union(&mut live, &before, handler as usize);
             }
-            insn.visit_read_registers(|reg| set(&mut live, reg, true));
+            insn.visit_read_registers(|reg| set(&mut live, reg, LiveChange::Read));
             let slot = &mut before[index * words..(index + 1) * words];
             if slot != live.as_slice() {
                 slot.copy_from_slice(&live);
@@ -213,7 +232,6 @@ impl RegisterLiveness {
     }
 }
 
-/// Edge lists of every instruction, stored back to back.
 struct Edges {
     start: Vec<u32>,
     targets: Vec<u32>,
@@ -228,14 +246,17 @@ impl Edges {
 pub(crate) struct ControlFlow {
     successors: Edges,
     predecessors: Edges,
-    /// Per instruction, its entry in `handler_lists`, or `u32::MAX` outside every try.
     handler_of: Vec<u32>,
     handler_lists: Vec<Vec<u32>>,
 }
 
 impl ControlFlow {
     pub fn new(code: &CodeItem) -> Option<Self> {
-        use super::instruction::Instruction::*;
+        use super::instruction::Instruction::{
+            FillArrayDataPayload, Goto, Goto16, Goto32, IfEq, IfEqz, IfGe, IfGez, IfGt, IfGtz,
+            IfLe, IfLez, IfLt, IfLtz, IfNe, IfNez, PackedSwitch, PackedSwitchPayload, Raw, Return,
+            ReturnObject, ReturnVoid, ReturnWide, SparseSwitch, SparseSwitchPayload, Throw,
+        };
         let count = code.instructions.len();
         let offsets: Vec<u32> = code
             .instructions
@@ -261,7 +282,7 @@ impl ControlFlow {
         for (index, insn) in code.instructions.iter().enumerate() {
             let next = &mut successors.targets;
             match insn {
-                RawInstruction { .. } => return None,
+                Raw { .. } => return None,
                 ReturnVoid
                 | Return { .. }
                 | ReturnWide { .. }
@@ -319,26 +340,18 @@ impl ControlFlow {
             successors.start.push(next.len() as u32);
         }
 
-        let mut handler_of = vec![u32::MAX; count];
-        let mut handler_lists = Vec::with_capacity(code.tries.len());
-        for protected in &code.tries {
-            let end = protected
-                .start_addr
-                .checked_add(u32::from(protected.insn_count))?;
-            let handler = code.catch_handlers.get(protected.handler_idx)?;
-            let targets: Vec<u32> = handler
-                .typed_catches
-                .iter()
-                .map(|catch| catch.addr)
-                .chain(handler.catch_all_addr)
-                .map(|addr| offsets.binary_search(&addr).ok().map(|i| i as u32))
-                .collect::<Option<_>>()?;
-            let first = offsets.partition_point(|&offset| offset < protected.start_addr);
-            let last = offsets.partition_point(|&offset| offset < end);
-            handler_of[first..last].fill(handler_lists.len() as u32);
-            handler_lists.push(targets);
-        }
+        let (handler_of, handler_lists) = Self::exception_edges(code, &offsets)?;
+        let predecessors = Self::reverse_edges(&successors, &handler_of, &handler_lists);
+        Some(Self {
+            successors,
+            predecessors,
+            handler_of,
+            handler_lists,
+        })
+    }
 
+    fn reverse_edges(successors: &Edges, handler_of: &[u32], handler_lists: &[Vec<u32>]) -> Edges {
+        let count = handler_of.len();
         let handlers = |index: usize| -> &[u32] {
             handler_lists
                 .get(handler_of[index] as usize)
@@ -361,12 +374,32 @@ impl ControlFlow {
                 fill[next as usize] += 1;
             }
         }
-        Some(Self {
-            successors,
-            predecessors: Edges { start, targets },
-            handler_of,
-            handler_lists,
-        })
+        Edges { start, targets }
+    }
+
+    fn exception_edges(code: &CodeItem, offsets: &[u32]) -> Option<(Vec<u32>, Vec<Vec<u32>>)> {
+        let count = code.instructions.len();
+        let mut handler_of = vec![u32::MAX; count];
+        let mut handler_lists = Vec::with_capacity(code.tries.len());
+        for protected in &code.tries {
+            let end = protected
+                .start_addr
+                .checked_add(u32::from(protected.insn_count))?;
+            let handler = code.catch_handlers.get(protected.handler_idx)?;
+            let targets: Vec<u32> = handler
+                .typed_catches
+                .iter()
+                .map(|catch| catch.addr)
+                .chain(handler.catch_all_addr)
+                .map(|addr| offsets.binary_search(&addr).ok().map(|i| i as u32))
+                .collect::<Option<_>>()?;
+            let first = offsets.partition_point(|&offset| offset < protected.start_addr);
+            let last = offsets.partition_point(|&offset| offset < end);
+            handler_of[first..last].fill(handler_lists.len() as u32);
+            handler_lists.push(targets);
+        }
+
+        Some((handler_of, handler_lists))
     }
 
     pub fn successors(&self, index: usize) -> &[u32] {
@@ -394,7 +427,6 @@ fn live_registers(code: &CodeItem, at_index: usize) -> BitSet {
     }
 }
 
-/// A set of registers, or of the instruction indices that defined one.
 #[derive(Clone, PartialEq, Eq)]
 struct BitSet {
     words: Vec<u64>,
@@ -421,17 +453,6 @@ impl BitSet {
         }
     }
 
-    /// Unions `other` in and reports whether that added anything.
-    fn merge(&mut self, other: &Self) -> bool {
-        let mut changed = false;
-        for (word, other) in self.words.iter_mut().zip(&other.words) {
-            let merged = *word | other;
-            changed |= merged != *word;
-            *word = merged;
-        }
-        changed
-    }
-
     fn contains(&self, member: usize) -> bool {
         self.words
             .get(member / 64)
@@ -440,199 +461,4 @@ impl BitSet {
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::types::code::CodeItem;
-    use crate::types::instruction::Instruction;
-
-    use super::{
-        find_contiguous_free_registers, find_free_register, find_free_registers,
-        reaching_definitions,
-    };
-
-    fn code(instructions: Vec<Instruction>, registers_size: u16) -> CodeItem {
-        CodeItem {
-            registers_size,
-            ins_size: 0,
-            outs_size: 0,
-            debug_info: None,
-            instructions,
-            tries: Vec::new(),
-            catch_handlers: Vec::new(),
-        }
-    }
-
-    #[test]
-    fn finds_first_available_register() {
-        let code = code(
-            vec![
-                Instruction::Const { dest: 0, value: 1 },
-                Instruction::AddInt {
-                    dest: 1,
-                    a: 0,
-                    b: 2,
-                },
-                Instruction::Return { src: 1 },
-            ],
-            5,
-        );
-
-        assert_eq!(find_free_register(&code, 1, &[]), Some(1));
-    }
-
-    #[test]
-    fn respects_excluded_registers() {
-        let code = code(
-            vec![
-                Instruction::Const { dest: 0, value: 1 },
-                Instruction::Return { src: 0 },
-            ],
-            4,
-        );
-
-        assert_eq!(find_free_registers(&code, 1, 2, &[1]), Some(vec![2, 3]));
-    }
-
-    #[test]
-    fn finds_contiguous_range_after_invoke_range() {
-        let code = code(
-            vec![
-                Instruction::InvokeStaticRange {
-                    method: crate::types::MethodIdx(0),
-                    first_reg: 1,
-                    count: 2,
-                },
-                Instruction::ReturnVoid,
-            ],
-            6,
-        );
-
-        assert_eq!(
-            find_contiguous_free_registers(&code, 0, 2, &[]),
-            Some(vec![3, 4])
-        );
-    }
-    #[test]
-    fn keeps_both_words_of_incoming_wide_values_live() {
-        let mut code = code(
-            vec![
-                Instruction::IputBoolean {
-                    src: 0,
-                    obj: 1,
-                    field: crate::FieldIdx(0),
-                },
-                Instruction::IputWide {
-                    src: 2,
-                    obj: 1,
-                    field: crate::FieldIdx(1),
-                },
-                Instruction::ReturnVoid,
-            ],
-            4,
-        );
-        code.ins_size = 4;
-        assert_eq!(find_free_register(&code, 0, &[]), None);
-        assert_eq!(find_free_registers(&code, 0, 1, &[]), None);
-        assert_eq!(find_contiguous_free_registers(&code, 0, 1, &[]), None);
-        assert_eq!(find_free_register(&code, 1, &[]), Some(0));
-    }
-
-    #[test]
-    fn follows_branches_and_back_edges_before_reusing_a_register() {
-        let code = code(
-            vec![
-                Instruction::IfEqz { a: 0, offset: 4 },
-                Instruction::Const16 { dest: 1, value: 0 },
-                Instruction::Return { src: 1 },
-            ],
-            2,
-        );
-        assert_eq!(find_free_register(&code, 0, &[]), None);
-        assert_eq!(find_free_register(&code, 1, &[]), Some(0));
-        let code = super::tests::code(
-            vec![
-                Instruction::SputWide {
-                    src: 1,
-                    field: crate::FieldIdx(0),
-                },
-                Instruction::IfNez { a: 0, offset: -2 },
-                Instruction::ReturnVoid,
-            ],
-            3,
-        );
-        assert_eq!(find_free_register(&code, 1, &[]), None);
-    }
-
-    #[test]
-    fn preserves_values_read_by_exception_handlers_before_a_write_completes() {
-        let mut code = code(
-            vec![
-                Instruction::IgetWide {
-                    dest: 1,
-                    obj: 0,
-                    field: crate::FieldIdx(0),
-                },
-                Instruction::ReturnWide { src: 1 },
-                Instruction::MoveException { dest: 0 },
-                Instruction::ReturnWide { src: 1 },
-            ],
-            3,
-        );
-        code.tries.push(crate::TryItem {
-            start_addr: 0,
-            insn_count: 2,
-            handler_idx: 0,
-        });
-        code.catch_handlers.push(crate::CatchHandler {
-            typed_catches: vec![],
-            catch_all_addr: Some(3),
-        });
-        assert_eq!(find_free_register(&code, 0, &[]), None);
-    }
-
-    /// Both words of a wide write are definitions, so the pair below a
-    /// register redefines it.
-    #[test]
-    fn a_wide_write_to_the_register_below_defines_this_one() {
-        let code = code(
-            vec![
-                Instruction::Const { dest: 1, value: 1 },
-                Instruction::ConstWide16 { dest: 0, value: 7 },
-                Instruction::Return { src: 1 },
-            ],
-            3,
-        );
-        assert_eq!(reaching_definitions(&code, 2, 1), Some((vec![1], false)));
-        assert_eq!(reaching_definitions(&code, 0, 1), Some((vec![], true)));
-    }
-
-    /// An instruction inside a try can throw before it writes, so its handler
-    /// sees what reached the instruction, not what it would have written.
-    #[test]
-    fn an_exception_edge_carries_the_definitions_reaching_the_thrower() {
-        let mut code = code(
-            vec![
-                Instruction::Const4 { dest: 1, value: 1 },
-                Instruction::IgetWide {
-                    dest: 1,
-                    obj: 0,
-                    field: crate::FieldIdx(0),
-                },
-                Instruction::ReturnWide { src: 1 },
-                Instruction::MoveException { dest: 0 },
-                Instruction::Return { src: 1 },
-            ],
-            3,
-        );
-        code.tries.push(crate::TryItem {
-            start_addr: 1,
-            insn_count: 2,
-            handler_idx: 0,
-        });
-        code.catch_handlers.push(crate::CatchHandler {
-            typed_catches: vec![],
-            catch_all_addr: Some(4),
-        });
-        assert_eq!(reaching_definitions(&code, 2, 1), Some((vec![1], false)));
-        assert_eq!(reaching_definitions(&code, 4, 1), Some((vec![0], false)));
-    }
-}
+mod tests;

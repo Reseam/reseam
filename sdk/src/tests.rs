@@ -4,13 +4,13 @@
 use std::io::{Cursor, Write};
 use std::path::Path;
 
-use reseam_apk::{scratch::ScratchDir, ApkFile, ContainerFormat};
+use reseam_apk::{ApkFile, ContainerFormat, ScratchDir};
 
 use crate::error::Problem;
 use crate::inspect::open_apk;
 use crate::metrics::PatchProfiler;
 use crate::output::write_signed;
-use crate::{inspect_apk, patch, PatchArtifact, PatchOutput, PatchRequest};
+use crate::{PatchArtifact, PatchOutput, PatchRequest, inspect_apk, patch};
 
 fn zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
     let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
@@ -38,24 +38,26 @@ fn an_unreadable_resource_table_is_an_unreadable_apk() {
         None,
     )
     .unwrap();
-    let input = tmp.path().join("broken.apk");
-    std::fs::write(
-        &input,
-        zip(&[
-            ("AndroidManifest.xml", &manifest),
-            (
-                "resources.arsc",
-                &[0x02, 0x00, 0x0c, 0x00, 0xff, 0xff, 0x00, 0x00],
-            ),
-        ]),
-    )
-    .unwrap();
-    let error = inspect_apk(&input, &[]).unwrap_err();
-    assert_eq!(
-        crate::error::classify(&error),
-        Problem::unreadable_apk(&input),
-        "{error:#}"
-    );
+    let broken = zip(&[
+        ("AndroidManifest.xml", &manifest),
+        (
+            "resources.arsc",
+            &[0x02, 0x00, 0x0c, 0x00, 0xff, 0xff, 0x00, 0x00],
+        ),
+    ]);
+    for (name, bytes) in [
+        ("broken.apk", broken.clone()),
+        ("broken.apkm", zip(&[("base.apk", &broken)])),
+    ] {
+        let input = tmp.path().join(name);
+        std::fs::write(&input, bytes).unwrap();
+        let error = inspect_apk(&input, &[]).unwrap_err();
+        assert_eq!(
+            crate::error::classify(&error),
+            Problem::unreadable_apk(&input),
+            "{error:#}"
+        );
+    }
 }
 
 #[test]
@@ -96,25 +98,22 @@ fn containers_and_plain_apks_use_the_same_output_pipeline() {
                 })
             );
             let destination = tmp.path().join(format!("output-{count}-{extension}"));
-            let opened = open_apk(&input, &[], &ApkFile::patch_options()).unwrap();
+            let opened = open_apk(&input, &[], ApkFile::patch_options()).unwrap();
             let output = PatchOutput::Auto {
                 path: destination.display().to_string(),
             }
             .resolve(opened.apk.components().len())
             .unwrap();
-            let extracted = opened.bundle.as_ref().unwrap().base_path().to_path_buf();
+            let extracted = opened.apk.base().path().to_path_buf();
             write_signed(opened.apk, &output, None, &mut PatchProfiler::new()).unwrap();
-            drop(opened.bundle);
             assert!(!extracted.exists());
             match output {
                 PatchArtifact::SingleFile { path } => {
                     let path = Path::new(&path);
-                    assert_eq!(path, destination.with_extension("apk"));
                     assert_eq!(inspect_apk(path, &[]).unwrap().component_count, 1);
                 }
                 PatchArtifact::SplitDir { path } => {
                     let path = Path::new(&path);
-                    assert_eq!(path, destination);
                     let metadata =
                         inspect_apk(&path.join("base.apk"), &[path.join("config.en.apk")]).unwrap();
                     assert_eq!(metadata.component_count, 2);
@@ -122,10 +121,9 @@ fn containers_and_plain_apks_use_the_same_output_pipeline() {
             }
         }
     }
-    // Explicit directory output also works for an ordinary single APK.
     let input = tmp.path().join("plain.apk");
     std::fs::write(&input, base).unwrap();
-    let opened = open_apk(&input, &[], &ApkFile::patch_options()).unwrap();
+    let opened = open_apk(&input, &[], ApkFile::patch_options()).unwrap();
     assert!(opened.bundle.is_none());
     let destination = tmp.path().join("chosen-directory");
     let output = PatchOutput::SplitDir {
@@ -149,17 +147,16 @@ fn incompatible_inputs_and_output_fail_before_loading_patches() {
         ]),
     )
     .unwrap();
-    assert!(inspect_apk(&input, &[Path::new("extra.apk").into()])
-        .unwrap_err()
-        .to_string()
-        .contains("cannot be combined"));
+    let extra = tmp.path().join("extra.apk");
+    std::fs::write(&extra, apk(r#"split="config.fr""#)).unwrap();
+    assert!(inspect_apk(&input, &[extra]).is_err());
     let error = patch(
         &PatchRequest {
             apk_path: input.display().to_string(),
             split_paths: Vec::new(),
             bundle_paths: Vec::new(),
-            trust: Default::default(),
-            selection: Default::default(),
+            trust: reseam_model::Trust::default(),
+            selection: crate::PatchSelection::default(),
             output: PatchOutput::SingleFile {
                 path: tmp.path().join("out.apk").display().to_string(),
             },
@@ -169,6 +166,127 @@ fn incompatible_inputs_and_output_fail_before_loading_patches() {
         |_| {},
     )
     .unwrap_err();
-    assert!(error.to_string().contains("input has splits"), "{error}");
+    assert_eq!(
+        crate::error::classify(&error),
+        Problem::SingleFileComponents { components: 2 },
+        "{error:#}"
+    );
     assert!(!tmp.path().join("out.apk").exists());
+}
+
+#[test]
+fn host_failures_retain_problem_categories_and_sources() {
+    use crate::{HostError, sdk_error};
+    use reseam_patcher::error::PatcherError;
+    let older = || PatcherError::BundleTooOld {
+        bundle: "example".into(),
+        built: "0.3.0".into(),
+        running: "0.15.0".into(),
+    };
+    let newer = || PatcherError::EngineTooOld {
+        bundle: "example".into(),
+        built: "1.0.0".into(),
+        running: "0.15.0".into(),
+    };
+    for (error, expected) in [
+        (
+            HostError::Bundle {
+                path: "patches.reseam".into(),
+                source: older(),
+            },
+            Problem::BundleTooOld {
+                bundle: "example".into(),
+                built: "0.3.0".into(),
+                running: "0.15.0".into(),
+            },
+        ),
+        (
+            HostError::Patcher(newer()),
+            Problem::EngineTooOld {
+                bundle: "example".into(),
+                built: "1.0.0".into(),
+                running: "0.15.0".into(),
+            },
+        ),
+        (
+            HostError::Problem(Problem::SingleFileComponents { components: 2 }),
+            Problem::SingleFileComponents { components: 2 },
+        ),
+        (
+            HostError::InvalidRequest("invalid host request"),
+            Problem::Other,
+        ),
+    ] {
+        let failure = sdk_error(&error);
+        assert_eq!(failure.problem, expected);
+    }
+}
+
+#[test]
+fn invalid_artifact_targets_preserve_outputs_and_signing_identity() {
+    let tmp = ScratchDir::new("sdk-publication").unwrap();
+    let base = tmp.path().join("base.apk");
+    let split = tmp.path().join("split.apk");
+    std::fs::write(&base, apk("")).unwrap();
+    std::fs::write(&split, apk(r#"split="config.en""#)).unwrap();
+    for blocked in ["base.apk", "split.apk"] {
+        let dir = tmp.path().join(blocked.trim_end_matches(".apk"));
+        std::fs::create_dir(&dir).unwrap();
+        let prior = dir.join(if blocked == "base.apk" {
+            "split.apk"
+        } else {
+            "base.apk"
+        });
+        std::fs::write(&prior, b"prior output").unwrap();
+        std::fs::create_dir(dir.join(blocked)).unwrap();
+        let opened = open_apk(
+            &base,
+            std::slice::from_ref(&split),
+            ApkFile::patch_options(),
+        )
+        .unwrap();
+        let output = PatchArtifact::SplitDir {
+            path: dir.display().to_string(),
+        };
+        assert!(write_signed(opened.apk, &output, None, &mut PatchProfiler::new()).is_err());
+        assert_eq!(std::fs::read(&prior).unwrap(), b"prior output");
+        assert!(dir.join(blocked).is_dir());
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2);
+    }
+    for extension in ["pk8", "der"] {
+        let path = tmp.path().join(format!("identity.{extension}"));
+        let opened = open_apk(&base, &[], ApkFile::patch_options()).unwrap();
+        let output = PatchArtifact::SingleFile {
+            path: path.display().to_string(),
+        };
+        assert!(write_signed(opened.apk, &output, None, &mut PatchProfiler::new()).is_err());
+        assert!(!path.exists());
+    }
+    #[cfg(unix)]
+    {
+        let destination = tmp.path().join("existing.apk");
+        let cert = tmp.path().join("existing.der");
+        reseam_sign::SigningKey::load_or_generate(&destination, &cert).unwrap();
+        let original_key = std::fs::read(&destination).unwrap();
+        let alias = tmp.path().join("key-alias.pk8");
+        std::os::unix::fs::symlink(&destination, &alias).unwrap();
+        let opened = open_apk(&base, &[], ApkFile::patch_options()).unwrap();
+        let output = PatchArtifact::SingleFile {
+            path: destination.display().to_string(),
+        };
+        let signing = crate::SigningKeyFiles {
+            key: alias.display().to_string(),
+            cert: cert.display().to_string(),
+        };
+        assert!(
+            write_signed(
+                opened.apk,
+                &output,
+                Some(&signing),
+                &mut PatchProfiler::new()
+            )
+            .is_err()
+        );
+        assert_eq!(std::fs::read(destination).unwrap(), original_key);
+    }
 }

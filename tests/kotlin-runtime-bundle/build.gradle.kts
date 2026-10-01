@@ -2,28 +2,28 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 plugins {
-    kotlin("jvm") version "2.4.10"
+    id("app.reseam.patches")
 }
 
 repositories {
+    google { mavenContent { includeGroupAndSubgroups("com.android") } }
     mavenCentral()
 }
 
-dependencies {
-    implementation(kotlin("stdlib"))
-    implementation("app.reseam:reseam-patch-sdk:0.0.0-local")
-}
+(extensions.findByType(app.reseam.gradle.ReseamArtifactExtension::class.java)
+        ?: extensions.create(
+            "reseamArtifact",
+            app.reseam.gradle.ReseamArtifactExtension::class.java,
+        ))
+    .name
+    .set("reseam-test")
 
-kotlin {
-    jvmToolchain(17)
-}
-
-tasks.jar {
-    archiveBaseName.set("reseam-test-patches")
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    from(
-        configurations.runtimeClasspath.get()
-            .filter { it.name.endsWith(".jar") }
-            .map { zipTree(it) }
+// This fixture exercises the internal JNI bridge as well as the authoring API.
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    compilerOptions.freeCompilerArgs.add(
+        libraries.elements.map { classpath ->
+            val sdk = classpath.single { it.asFile.name.startsWith("reseam-patch-sdk-") }
+            "-Xfriend-paths=${sdk.asFile.absolutePath}"
+        }
     )
 }

@@ -28,7 +28,9 @@ Calls are synchronous. The engine keeps a thread-local patch context, and Manage
 
 ## Patch bridge
 
-Bundles call the engine through `app.reseam.patch.native`, the generated Kotlin the patch API wraps. Each bundle jar carries its own copy of the patch runtime.
+Bundles call the engine through internal functions in `app.reseam.patch.native`. Public value models live in `app.reseam.patch.types`; both come from the patcher's Rust schema, with codecs kept internal. The generator separates these surfaces so author signatures and the Kotlin ABI snapshot never expose JNI implementation types. Deprecated aliases retain source imports for `native.MethodRef` and `native.FieldRef`. Bundle binaries must be rebuilt for the new model namespace.
+
+Each bundle jar carries its own copy of the patch runtime.
 
 The engine loads a bundle in a class loader whose parent is the host's: the app's loader on Android, the system loader on the JVM. When the host ships `reseam-patch-sdk`, as Manager does through `reseam-sdk`, every bundle resolves the host's `Native` class, and the generated loader's `System.loadLibrary` finds the SDK library already loaded. When it does not, as in the CLI, the bundle's own copy is used and the generated loader does nothing. The engine registers the bridge on whichever `Native` class the bundle resolved.
 
@@ -36,16 +38,23 @@ BoltFFI generates JNI entry points as exported symbols for the JVM to resolve by
 
 The patcher is a second binding root. BoltFFI emits exported functions only for the crate it generates bindings for, so `crates/patcher/build.rs` sets the expansion environment for its own crate in every build except BoltFFI's metadata builds. Without it, the SDK library and the CLI would link a patch bridge that references missing symbols.
 
+Metadata builds omit the generated C bridge so patch-api can regenerate before the glue exists. The patcher build script enables `reseam_jni_bridge` only after compiling that bridge; Rust references its registration function only with that configuration. This also applies when the patcher is a dependency of the SDK metadata build. Metadata libraries cannot load patches and return an error if asked to do so.
+
+Registration adapters validate the active thread and recorded callback failure before and after each call. Successful checks use a Rust state probe without allocating a message or making another JNI round trip. Failures use BoltFFI's existing error-buffer exception channel; the Kotlin bridge decodes them immediately. XML borrow finalization runs only at the invocation boundary.
+
+Opcode values, widths and bridge conversion shapes come from the DEX instruction catalogue, including polymorphic and custom call operands. Pool origins preserve distinct call sites when instructions are copied between DEX files.
+
 The generated sources are not committed. `patch-api/build.gradle.kts` compiles `patch-api/generated/app` alongside the handwritten API, and `crates/patcher/build.rs` compiles `patch-api/generated/jni/registration.c`, which includes the unmodified glue.
 
 ## Known BoltFFI limitations
 
 As of the pinned version:
 
-- Kotlin reads direct (all-scalar) records packed on the wire, while the Rust runtime writes their padded C layout. A record with padding inside an enum payload or a vector desyncs the stream. `RegLiteralInsn`, `Branch0Insn`, `Branch2Insn`, and `TryItem` declare `#[repr(Rust)]` so BoltFFI encodes them field by field on both sides. TypeScript, Python, and Java already honour the layout; the fix belongs in the Kotlin backend.
+BoltFFI 0.31 includes the Kotlin direct-record padding fix (PR #889); bridge records use the generated layout without `repr(Rust)` workarounds.
+
 - The experimental Kotlin Multiplatform backend rejects a record body in this surface ("KMP declaration body emission has not been ported"). The application SDK uses the JVM backend in Android/JVM shared sources instead.
 - A payload variant named `String` shadows `kotlin.String` in generated code. The option variants are `Text` and `TextList` in Rust and Kotlin; their serde names stay `string` and `string_list`.
-- There is no option to emit a `RegisterNatives` table, no per-dependency opt-out from export aggregation, and no way to keep generated top-level functions `internal`. The patch bridge lives in its own Kotlin package so the raw calls stay out of `app.reseam.patch`.
+- There is no option to emit a `RegisterNatives` table, no per-dependency opt-out from export aggregation, and no way to keep generated top-level functions `internal`. The local generation pass keeps the calls internal and separates owned SDK values from the native package.
 
 ## Regeneration
 

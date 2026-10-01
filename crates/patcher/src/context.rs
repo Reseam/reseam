@@ -1,19 +1,18 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! What a patch sees while it runs: the APK session plus the run's log,
-//! options, and decode caches.
-
 mod app_entry;
 mod dex;
 mod extensions;
 mod files;
+mod search;
 
-pub use dex::MethodRefQuery;
+pub use dex::ClassFields;
 pub use extensions::ExtensionSet;
+pub use search::MethodRefQuery;
 
-use reseam_apk::reseam_dex::{ClassSkeleton, CodeItem, DexFile, EncodedMethod};
 use reseam_apk::ApkFile;
+use reseam_apk::reseam_dex::{ClassSkeleton, CodeItem, DexFile, EncodedMethod, MethodKind};
 
 use crate::log::{LogEntry, PatchLog};
 use crate::options::PatchOptions;
@@ -29,7 +28,7 @@ pub struct MethodLocation {
     pub dex_idx: usize,
     pub class_idx: usize,
     pub method_idx: usize,
-    pub is_virtual: bool,
+    pub kind: MethodKind,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -38,7 +37,6 @@ pub struct InstructionLocation {
     pub insn_idx: usize,
 }
 
-/// An instruction referring to one of the targets a search asked for.
 #[derive(Debug, Clone, Copy)]
 pub struct SiteHit {
     pub loc: InstructionLocation,
@@ -55,11 +53,7 @@ pub struct PatchContext<'a> {
     apk: &'a mut ApkFile,
     log: PatchLog,
     options: PatchOptions,
-    /// Skeleton of the deferred class most recently inspected: patches walk a
-    /// class's methods one FFI call at a time, and this keeps that linear.
     skeleton: Option<CachedSkeleton>,
-    /// The method most recently decoded for inspection: patches read a
-    /// method one instruction per FFI call, and this decodes it once.
     method: Option<CachedMethod>,
     extensions: ExtensionSet,
 }
@@ -114,17 +108,24 @@ impl<'a> PatchContext<'a> {
     }
 }
 
-/// The encoded method at `m` in a DEX whose class is materialized.
-pub fn method_mut(dex: &mut DexFile, m: MethodLocation) -> Option<&mut EncodedMethod> {
-    let data = dex.class_mut(m.class_idx).ok()?.class_data.as_mut()?;
-    let list = if m.is_virtual {
+pub fn method_mut(
+    dex: &mut DexFile,
+    m: MethodLocation,
+) -> crate::error::Result<Option<&mut EncodedMethod>> {
+    let Some(data) = dex.class_mut(m.class_idx)?.class_data.as_mut() else {
+        return Ok(None);
+    };
+    let list = if m.kind == MethodKind::Virtual {
         &mut data.virtual_methods
     } else {
         &mut data.direct_methods
     };
-    list.get_mut(m.method_idx)
+    Ok(list.get_mut(m.method_idx))
 }
 
-pub fn code_mut(dex: &mut DexFile, m: MethodLocation) -> Option<&mut CodeItem> {
-    method_mut(dex, m)?.code.as_mut()
+pub fn code_mut(
+    dex: &mut DexFile,
+    m: MethodLocation,
+) -> crate::error::Result<Option<&mut CodeItem>> {
+    Ok(method_mut(dex, m)?.and_then(|method| method.code.as_mut()))
 }

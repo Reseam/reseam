@@ -1,35 +1,30 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use super::DexWriter;
 use super::instruction_writer::encode_instructions;
 use super::intern::ByteInterner;
 use super::plan::{WriteClass, WritePlan};
 use super::raw_code::{copy_code_item, copy_debug_info};
 use super::sink::DexSink;
 use super::sort::Remap;
-use super::DexWriter;
 use crate::encoding::leb128::{write_sleb128, write_uleb128};
 use crate::error::Result;
 use crate::read::class::read_class_skeleton_at;
 use crate::read::code::read_code_item;
+use crate::types::MethodIdx;
 use crate::types::access_flags::AccessFlags;
 use crate::types::class::{ClassData, EncodedField};
 use crate::types::code::CodeItem;
 use crate::types::header::ParseOptions;
 use crate::types::map::{MapItem, TYPE_CODE_ITEM, TYPE_DEBUG_INFO_ITEM};
-use crate::types::MethodIdx;
 
-/// A method's class-data entry with its code stripped: enough to emit the
-/// `class_data_item` after the code items are laid out, without keeping any
-/// decoded instructions resident.
 pub(crate) struct MethodLayout {
     pub method: MethodIdx,
     pub access_flags: AccessFlags,
-    pub has_code: bool,
+    pub code_off: u32,
 }
 
-/// A class's `class_data_item` shape, retained while its (heavy) code is
-/// dropped. Cheap: a few integers per member.
 pub(crate) struct ClassLayout {
     pub static_fields: Vec<EncodedField>,
     pub instance_fields: Vec<EncodedField>,
@@ -37,28 +32,14 @@ pub(crate) struct ClassLayout {
     pub virtual_methods: Vec<MethodLayout>,
 }
 
-/// Writes all code items and their deduplicated debug info in a single pass
-/// and returns the per-class layout the class-data section needs afterwards.
-///
-/// Resident classes (a patch touched them) were already remapped and widened
-/// by the write plan and are written from their IR. A file class is read
-/// from the original buffer as a skeleton, its member indices remapped and
-/// re-sorted exactly as the resident path does, and each method's code item
-/// is copied with its pool indices rewritten in place; only a method whose
-/// `const-string` outgrows 16 bits goes through decode, widen and encode.
-///
-/// Layout matches the eager writer byte-for-byte: every `code_item` first (in
-/// class-then-direct-then-virtual order), then the contiguous debug-info
-/// section, then the code items' `debug_info_off` fields backpatched.
 pub(crate) fn write_code_and_debug<S: DexSink>(
     w: &mut DexWriter<S>,
     plan: &WritePlan<'_>,
 ) -> Result<Vec<Option<ClassLayout>>> {
     let code_start = w.pos();
-    w.code_item_offsets.clear();
 
     let mut emitter = CodeEmitter {
-        debug: ByteInterner::default(),
+        debug: ByteInterner::new()?,
         code_debug_item: Vec::new(),
         scratch: Vec::new(),
         code_buf: Vec::new(),
@@ -69,7 +50,7 @@ pub(crate) fn write_code_and_debug<S: DexSink>(
     for class in &plan.classes {
         let layout = match class {
             WriteClass::Resident(class) => match &class.class_data {
-                Some(data) => Some(emitter.write_resident(w, data)?),
+                Some(data) => Some(emitter.write_resident(w, data, remap.as_ref())?),
                 None => None,
             },
             WriteClass::Raw(raw) if raw.class_data_off != 0 => {
@@ -80,7 +61,7 @@ pub(crate) fn write_code_and_debug<S: DexSink>(
         layouts.push(layout);
     }
 
-    let code_item_count = w.code_item_offsets.len() as u32;
+    let code_item_count = emitter.code_debug_item.len() as u32;
     if code_item_count > 0 {
         w.map_entries.push(MapItem {
             type_code: TYPE_CODE_ITEM,
@@ -91,7 +72,7 @@ pub(crate) fn write_code_and_debug<S: DexSink>(
 
     let debug_start = w.pos();
     if !emitter.debug.is_empty() {
-        w.write(emitter.debug.data());
+        emitter.debug.write_to(&mut w.sink)?;
         w.map_entries.push(MapItem {
             type_code: TYPE_DEBUG_INFO_ITEM,
             size: emitter.debug.len() as u32,
@@ -99,10 +80,9 @@ pub(crate) fn write_code_and_debug<S: DexSink>(
         });
     }
 
-    for (ci_idx, item) in emitter.code_debug_item.iter().enumerate() {
-        let ci_off = w.code_item_offsets[ci_idx] as usize;
+    for &(code_off, item) in &emitter.code_debug_item {
         let value = item.map_or(0, |i| debug_start + emitter.debug.offset(i as usize));
-        w.patch_u32(ci_off + 8, value);
+        w.patch_u32(code_off as usize + 8, value);
     }
 
     Ok(layouts)
@@ -110,8 +90,7 @@ pub(crate) fn write_code_and_debug<S: DexSink>(
 
 struct CodeEmitter {
     debug: ByteInterner,
-    /// Per code item, the index of its debug item in `debug`.
-    code_debug_item: Vec<Option<u32>>,
+    code_debug_item: Vec<(u32, Option<u32>)>,
     scratch: Vec<u8>,
     code_buf: Vec<u8>,
 }
@@ -121,6 +100,7 @@ impl CodeEmitter {
         &mut self,
         w: &mut DexWriter<S>,
         data: &ClassData,
+        remap: Option<&Remap<'_>>,
     ) -> Result<ClassLayout> {
         let mut layout = ClassLayout {
             static_fields: data.static_fields.clone(),
@@ -132,15 +112,43 @@ impl CodeEmitter {
             (&data.direct_methods, &mut layout.direct_methods),
             (&data.virtual_methods, &mut layout.virtual_methods),
         ] {
+            let mut methods: Vec<_> = methods.iter().collect();
+            let map = |method| remap.map_or(method, |remap| remap.remap_method(method));
+            if remap.is_some() {
+                methods.sort_by_key(|method| map(method.method));
+            }
             for method in methods {
-                if let Some(code) = &method.code {
-                    self.write_code(w, code)?;
-                }
+                let code_off = match &method.code {
+                    Some(code) => {
+                        if let Some(remap) = remap {
+                            let mut code = code.clone();
+                            if code.debug_info.as_ref().is_some_and(|metadata| {
+                                !w.options.debug_info.keeps(metadata, w.original.as_ref())
+                            }) {
+                                code.debug_info = None;
+                            }
+                            remap.remap_code(&mut code)?;
+                            super::sort::fixup_code(&mut code)?;
+                            self.write_code(w, &code)?
+                        } else {
+                            self.write_code(w, code)?
+                        }
+                    }
+                    None => 0,
+                };
                 entries.push(MethodLayout {
-                    method: method.method,
+                    method: map(method.method),
                     access_flags: method.access_flags,
-                    has_code: method.code.is_some(),
+                    code_off,
                 });
+            }
+        }
+        if let Some(remap) = remap {
+            for fields in [&mut layout.static_fields, &mut layout.instance_fields] {
+                for field in &mut *fields {
+                    field.field = remap.remap_field(field.field);
+                }
+                fields.sort_by_key(|field| field.field);
             }
         }
         Ok(layout)
@@ -154,8 +162,9 @@ impl CodeEmitter {
         remap: Option<&Remap<'_>>,
     ) -> Result<ClassLayout> {
         let buf = plan.raw_bytes();
-        let opts = &plan.dex.parse_options;
+        let opts = plan.dex.parse_options;
         let mut skeleton = read_class_skeleton_at(buf, offset as usize, opts)?;
+        crate::references::validate_skeleton(plan.dex, &skeleton)?;
 
         if let Some(remap) = remap {
             for field in skeleton
@@ -189,78 +198,95 @@ impl CodeEmitter {
             (&skeleton.virtual_methods, &mut layout.virtual_methods),
         ] {
             for header in headers {
-                if header.code_off != 0 {
-                    self.write_file_code(w, buf, header.code_off, remap, opts)?;
-                }
+                let code_off = if header.code_off == 0 {
+                    0
+                } else {
+                    self.write_file_code(
+                        w,
+                        plan.dex.raw.as_ref().expect("raw code retains source"),
+                        header.code_off,
+                        remap,
+                        opts,
+                    )?
+                };
                 entries.push(MethodLayout {
                     method: header.method,
                     access_flags: header.access_flags,
-                    has_code: header.code_off != 0,
+                    code_off,
                 });
             }
         }
         Ok(layout)
     }
 
-    /// Writes a file class's method from its bytes, falling back to the
-    /// decoding path when an operand has to be widened.
     fn write_file_code<S: DexSink>(
         &mut self,
         w: &mut DexWriter<S>,
-        buf: &[u8],
+        source: &crate::file::DexBytes,
         code_off: u32,
         remap: Option<&Remap<'_>>,
-        opts: &ParseOptions,
-    ) -> Result<()> {
+        opts: ParseOptions,
+    ) -> Result<u32> {
+        let buf = source.as_bytes();
         self.code_buf.clear();
         if copy_code_item(buf, code_off, remap, opts, &mut self.code_buf)? {
             w.align(4);
-            w.code_item_offsets.push(w.pos());
+            let off = w.pos();
             w.write(&self.code_buf);
-            let debug_off = u32::from_le_bytes(
-                buf[code_off as usize + 8..code_off as usize + 12]
-                    .try_into()
-                    .unwrap(),
-            );
-            let item = if debug_off != 0 && opts.include_debug_info {
+            let debug_off = crate::read::u32_at(buf, code_off as usize + 8);
+            let item = if debug_off != 0 && w.options.debug_info == super::MetadataPolicy::Preserve
+            {
                 self.scratch.clear();
                 copy_debug_info(buf, debug_off, remap, opts, &mut self.scratch)?;
-                Some(self.debug.intern(&self.scratch) as u32)
+                Some(self.debug.intern(&self.scratch)? as u32)
             } else {
                 None
             };
-            self.code_debug_item.push(item);
-            return Ok(());
+            self.code_debug_item.push((off, item));
+            return Ok(off);
         }
-        let mut code = read_code_item(buf, code_off, opts)?;
+        let mut code = read_code_item(source, code_off, opts)?;
+        if code
+            .debug_info
+            .as_ref()
+            .is_some_and(|metadata| !w.options.debug_info.keeps(metadata, w.original.as_ref()))
+        {
+            code.debug_info = None;
+        }
         if let Some(remap) = remap {
-            remap.remap_code(&mut code);
+            remap.remap_code(&mut code)?;
             super::sort::fixup_code(&mut code)?;
         }
         self.write_code(w, &code)
     }
 
-    fn write_code<S: DexSink>(&mut self, w: &mut DexWriter<S>, code: &CodeItem) -> Result<()> {
+    fn write_code<S: DexSink>(&mut self, w: &mut DexWriter<S>, code: &CodeItem) -> Result<u32> {
         w.align(4);
         let off = w.pos();
-        w.code_item_offsets.push(off);
         write_code_item(w, code)?;
-        let item = code.debug_info.as_ref().map(|debug| {
-            self.scratch.clear();
-            super::debug::write_debug_info(&mut self.scratch, debug);
-            self.debug.intern(&self.scratch) as u32
-        });
-        self.code_debug_item.push(item);
-        Ok(())
+        let item = code
+            .debug_info
+            .as_ref()
+            .filter(|metadata| w.options.debug_info.keeps(metadata, w.original.as_ref()))
+            .map(|debug| {
+                self.scratch.clear();
+                super::debug::write_debug_info(&mut self.scratch, debug.read()?.as_ref());
+                Ok::<_, crate::DexError>(self.debug.intern(&self.scratch)? as u32)
+            })
+            .transpose()?;
+        self.code_debug_item.push((off, item));
+        Ok(off)
     }
 }
 
-/// Writes one `code_item`, including the shared encoded catch-handler stream.
 pub(crate) fn write_code_item<S: DexSink>(w: &mut DexWriter<S>, code: &CodeItem) -> Result<()> {
     w.write_u16(code.registers_size);
     w.write_u16(code.ins_size);
     w.write_u16(code.compute_outs_size());
-    w.write_u16(code.tries.len() as u16);
+    w.write_u16(
+        u16::try_from(code.tries.len())
+            .map_err(|_| crate::error::invalid("code item", "more than 65535 try ranges"))?,
+    );
     w.write_u32(0);
     let insns = encode_instructions(&code.instructions)?;
     w.write_u32(insns.len() as u32);
@@ -275,9 +301,9 @@ pub(crate) fn write_code_item<S: DexSink>(w: &mut DexWriter<S>, code: &CodeItem)
 
         let mut handler_buf: Vec<u8> = Vec::new();
         write_uleb128(&mut handler_buf, code.catch_handlers.len() as u32);
-        let mut handler_byte_offsets: Vec<u16> = Vec::new();
+        let mut handler_byte_offsets = Vec::new();
         for handler in &code.catch_handlers {
-            handler_byte_offsets.push(handler_buf.len() as u16);
+            handler_byte_offsets.push(handler_buf.len());
             let size = if handler.catch_all_addr.is_some() {
                 -(handler.typed_catches.len() as i32)
             } else {
@@ -296,7 +322,15 @@ pub(crate) fn write_code_item<S: DexSink>(w: &mut DexWriter<S>, code: &CodeItem)
         for t in &code.tries {
             w.write_u32(t.start_addr);
             w.write_u16(t.insn_count);
-            w.write_u16(handler_byte_offsets[t.handler_idx]);
+            let offset = handler_byte_offsets.get(t.handler_idx).ok_or_else(|| {
+                crate::error::invalid("catch handler", "try refers to an absent handler")
+            })?;
+            w.write_u16(u16::try_from(*offset).map_err(|_| {
+                crate::error::invalid(
+                    "catch handler",
+                    "referenced handler offset exceeds 65535 bytes",
+                )
+            })?);
         }
 
         w.write(&handler_buf);

@@ -1,15 +1,11 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! `ResTable_config` blocks built from the directory qualifiers aapt reads,
-//! such as the `xxhdpi` of `res/mipmap-xxhdpi`.
-
-use crate::error::{invalid, Result};
+use crate::error::{Result, invalid};
 
 const DENSITY: usize = 14;
 const SDK_VERSION: usize = 24;
 const UI_MODE: usize = 29;
-/// The config must reach past `uiMode` for every qualifier this module writes.
 const MIN_LEN: usize = UI_MODE + 1;
 
 const UI_MODE_NIGHT_NO: u8 = 0x10;
@@ -42,15 +38,15 @@ pub fn config_for_qualifiers(qualifiers: &str, len: usize) -> Result<Vec<u8>> {
         } else {
             return Err(invalid(
                 "resource qualifiers",
-                format!("unsupported qualifier '{qualifier}' in '{qualifiers}'; supported are densities, night, notnight and vN"),
+                format!(
+                    "unsupported qualifier '{qualifier}' in '{qualifiers}'; supported are densities, night, notnight and vN"
+                ),
             ));
         }
     }
     Ok(config)
 }
 
-/// Whether two configs select the same resources; the size field and zero
-/// padding past the shorter one do not count.
 pub(crate) fn same_config(a: &[u8], b: &[u8]) -> bool {
     let tail = |config: &[u8], i: usize| config.get(i).copied().unwrap_or(0);
     (4..a.len().max(b.len())).all(|i| tail(a, i) == tail(b, i))

@@ -1,15 +1,10 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Bag entries: `<style>` items and `<array>` elements. The framework merges a
-//! bag with its parent by walking both in name order, so items are kept sorted.
-
 use super::{EntryValue, MapEntry, ResourceScope, ResourceTable};
-use crate::error::{invalid, Result};
+use crate::error::{Result, invalid};
 use crate::value::ResValue;
 
-/// `ResTable_map::ATTR_MIN`, the name aapt gives an array's first element,
-/// counting up from there.
 const ARRAY_FIRST_NAME: u32 = 0x0100_0001;
 
 impl ResourceScope<'_> {
@@ -29,7 +24,7 @@ impl ResourceScope<'_> {
         let names = items
             .iter()
             .map(|(item, _)| {
-                self.attr_id(item).ok_or_else(|| {
+                self.table().attr_id(item)?.ok_or_else(|| {
                     invalid(
                         "style item",
                         format!(
@@ -51,12 +46,14 @@ impl ResourceScope<'_> {
             .zip(&values)
             .map(|(&name, &value)| MapEntry { name, value })
             .collect();
-        match self.edit_complex_entries("style", name, |style_parent, entries| {
-            if let Some(parent) = parent {
-                *style_parent = parent;
-            }
-            merge(entries, &added);
-        }) {
+        match self
+            .table_mut()
+            .edit_complex_entries("style", name, |style_parent, entries| {
+                if let Some(parent) = parent {
+                    *style_parent = parent;
+                }
+                merge(entries, &added);
+            })? {
             Some((id, edited)) if edited > 0 => Ok(id),
             Some(_) => Err(invalid(
                 "style",
@@ -71,7 +68,8 @@ impl ResourceScope<'_> {
                 })?;
                 let mut entries = Vec::new();
                 merge(&mut entries, &added);
-                self.set_entry("style", name, EntryValue::Complex { parent, entries })
+                self.table_mut()
+                    .set_entry_in("style", name, EntryValue::Complex { parent, entries }, "")?
                     .ok_or_else(|| invalid("style", format!("could not add style/{name}")))
             }
         }
@@ -85,10 +83,9 @@ impl ResourceScope<'_> {
             .iter()
             .map(|value| self.parse_value(value, None))
             .collect::<Result<Vec<_>>>()?;
-        self.set_array_values(name, &values)
+        self.table_mut().set_array_values(name, &values)
     }
 
-    /// A `@type/name` reference, rejecting a value that is anything else.
     fn reference(&mut self, text: &str) -> Result<u32> {
         match self.parse_value(text, None)? {
             value if value.kind == ResValue::REFERENCE => Ok(value.data),
@@ -105,7 +102,7 @@ impl ResourceTable {
     /// Use [`Self::set_string_array`] to write string-array elements without
     /// interpreting numeric text, booleans or references as typed literals.
     pub fn array(&self, name: &str) -> Result<Vec<String>> {
-        let entries = self.complex_entries("array", name).ok_or_else(|| {
+        let entries = self.complex_entries("array", name)?.ok_or_else(|| {
             invalid(
                 "array",
                 format!("the table has no array/{name} in the default configuration"),
@@ -114,7 +111,7 @@ impl ResourceTable {
         entries
             .iter()
             .map(|entry| {
-                self.value_text(entry.value).ok_or_else(|| {
+                self.value_text(entry.value)?.ok_or_else(|| {
                     invalid(
                         "array",
                         format!(
@@ -136,7 +133,43 @@ impl ResourceTable {
         self.set_array_values(name, &values)
     }
 
-    fn set_array_values(&mut self, name: &str, values: &[ResValue]) -> Result<u32> {
+    /// Reads array scalars without converting their kinds or pool indices to text.
+    /// String values refer to this table's global string pool. An absent array,
+    /// a non-bag entry, or malformed entry is an error.
+    pub fn array_values(&self, name: &str) -> Result<Vec<ResValue>> {
+        let location = self
+            .find_entry("array", name)?
+            .ok_or_else(|| invalid("array", format!("the table has no array/{name}")))?;
+        let (_, entry) = self.default_entry(location.res_id())?.ok_or_else(|| {
+            invalid(
+                "array",
+                format!("array/{name} has no default configuration"),
+            )
+        })?;
+        match entry.value {
+            EntryValue::Complex { entries, .. } => {
+                Ok(entries.into_iter().map(|entry| entry.value).collect())
+            }
+            EntryValue::Simple(_) => Err(invalid("array", format!("{name} is not an array"))),
+        }
+    }
+
+    /// Replaces array scalars in every configuration without interpreting them.
+    /// String indices must belong to this table's global pool. The array must
+    /// already exist; its resource ID and configuration coverage are retained.
+    pub fn set_array_values(&mut self, name: &str, values: &[ResValue]) -> Result<u32> {
+        let count = u32::try_from(values.len())
+            .map_err(|_| invalid("array", "array exceeds the map name range"))?;
+        if ARRAY_FIRST_NAME
+            .checked_add(count.saturating_sub(1))
+            .is_none()
+        {
+            return Err(invalid("array", "array index exceeds the map name range"));
+        }
+        for value in values.iter().filter(|value| value.kind == ResValue::STRING) {
+            self.get_string(value.data)?
+                .ok_or_else(|| invalid("array", format!("invalid string index {}", value.data)))?;
+        }
         let entries: Vec<MapEntry> = values
             .iter()
             .enumerate()
@@ -147,7 +180,7 @@ impl ResourceTable {
             .collect();
         match self.edit_complex_entries("array", name, |_, existing| {
             existing.clone_from(&entries);
-        }) {
+        })? {
             Some((id, edited)) if edited > 0 => Ok(id),
             Some(_) => Err(invalid(
                 "array",

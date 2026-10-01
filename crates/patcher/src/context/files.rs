@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use reseam_apk::axml::{self, AxmlDocument};
+use reseam_apk::axml;
 use reseam_apk::entry::MANIFEST_ENTRY;
 use reseam_apk::{ApkComponent, ApkFile, Compression};
 
@@ -22,22 +22,17 @@ impl PatchContext<'_> {
         compression: Compression,
     ) -> Result<()> {
         let data = compile_if_xml(self.apk_mut(), component, path, data)?;
-        let component = self.component_mut(component)?;
-        if path == MANIFEST_ENTRY {
-            *component.manifest_mut() = AxmlDocument::parse(&data)?;
-        } else {
-            component.inject_file(path, data, compression);
-        }
-        Ok(())
+        Ok(self
+            .apk_mut()
+            .inject_file(component, path, data, compression)?)
     }
 
     pub fn delete_file(&mut self, component: usize, path: &str) -> Result<()> {
-        self.component_mut(component)?.delete_file(path);
-        Ok(())
+        Ok(self.apk_mut().delete_file(component, path)?)
     }
 
     pub fn read_file(&mut self, component: usize, path: &str) -> Result<Option<Vec<u8>>> {
-        Ok(self.component_mut(component)?.read_entry(path)?)
+        Ok(self.apk_mut().read_component_entry(component, path)?)
     }
 
     /// Copies `<bundle_dir>/resources/<res_type>/<file>` into `res/<res_type>/<file>`.
@@ -69,6 +64,10 @@ impl PatchContext<'_> {
     }
 }
 
+#[expect(
+    clippy::case_sensitive_file_extension_comparisons,
+    reason = "Android resource entry suffixes are case-sensitive"
+)]
 fn compile_if_xml(
     apk: &mut ApkFile,
     component: usize,

@@ -80,13 +80,10 @@ pub struct InstructionHit {
     pub index: u32,
 }
 
-/// Where the value a register holds at one instruction came from.
 #[data]
 #[derive(Debug, Clone)]
 pub struct RegisterWriters {
-    /// Instructions whose write of the register reaches that instruction.
     pub indices: Vec<u32>,
-    /// Whether the value the method was entered with reaches it as well.
     pub from_entry: bool,
 }
 
@@ -113,8 +110,6 @@ pub struct NewMethod {
 }
 
 #[data]
-// Padded layout: sent encoded, not blitted (docs/bindings.md).
-#[repr(Rust)]
 #[derive(Debug, Clone, Copy)]
 pub struct TryItem {
     pub start_addr: u32,
@@ -161,6 +156,63 @@ pub enum EncodedVal {
     DoubleVal(f64),
     StringVal(String),
     TypeVal(String),
+    ProtoVal(String),
+    HandleVal(HandleRef),
+    FieldVal(FieldRef),
+    MethodVal(MethodRef),
+    EnumVal(FieldRef),
+    ArrayVal(Vec<EncodedVal>),
+    AnnotationVal(AnnotationValue),
+}
+
+#[data]
+#[derive(Debug, Clone)]
+pub struct AnnotationValue {
+    pub annotation_type: String,
+    pub elements: Vec<AnnotationElement>,
+}
+
+#[data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PoolOrigin {
+    pub dex_index: u32,
+    pub index: u32,
+}
+
+#[data]
+#[derive(Debug, Clone)]
+pub enum HandleRef {
+    Field(FieldHandleRef),
+    Method(MethodHandleRef),
+}
+
+#[data]
+#[derive(Debug, Clone)]
+pub struct FieldHandleRef {
+    #[boltffi::default(None)]
+    pub origin: Option<PoolOrigin>,
+    pub kind: u16,
+    pub field: FieldRef,
+}
+
+#[data]
+#[derive(Debug, Clone)]
+pub struct MethodHandleRef {
+    #[boltffi::default(None)]
+    pub origin: Option<PoolOrigin>,
+    pub kind: u16,
+    pub method: MethodRef,
+}
+
+#[data]
+#[derive(Debug, Clone)]
+pub struct CallSiteRef {
+    #[boltffi::default(None)]
+    pub origin: Option<PoolOrigin>,
+    pub bootstrap: HandleRef,
+    pub name: String,
+    pub proto: String,
+    pub arguments: Vec<EncodedVal>,
 }
 
 #[data]
@@ -185,7 +237,13 @@ pub struct ResourceRef {
     pub key_name: String,
 }
 
-/// One `<item>` of a style: an attribute name and its value as text.
+#[data]
+#[derive(Debug, Clone, Copy)]
+pub struct ResourceScalar {
+    pub kind: u8,
+    pub data: u32,
+}
+
 #[data]
 #[derive(Debug, Clone)]
 pub struct StyleItem {
@@ -209,176 +267,4 @@ pub struct FieldRef {
     pub field_type: String,
 }
 
-#[data]
-#[derive(Debug, Clone, Copy)]
-pub struct SimpleInsn {
-    pub opcode: u16,
-}
-
-#[data]
-#[derive(Debug, Clone, Copy)]
-pub struct Reg1Insn {
-    pub opcode: u16,
-    pub reg_a: u16,
-}
-
-#[data]
-#[derive(Debug, Clone, Copy)]
-pub struct Reg2Insn {
-    pub opcode: u16,
-    pub reg_a: u16,
-    pub reg_b: u16,
-}
-
-#[data]
-#[derive(Debug, Clone, Copy)]
-pub struct Reg3Insn {
-    pub opcode: u16,
-    pub reg_a: u16,
-    pub reg_b: u16,
-    pub reg_c: u16,
-}
-
-#[data]
-// Padded layout: sent encoded, not blitted (docs/bindings.md).
-#[repr(Rust)]
-#[derive(Debug, Clone, Copy)]
-pub struct RegLiteralInsn {
-    pub opcode: u16,
-    pub reg_a: u16,
-    pub reg_b: u16,
-    pub literal: i64,
-}
-
-#[data]
-#[derive(Debug, Clone)]
-pub struct RegStringInsn {
-    pub opcode: u16,
-    pub reg_a: u16,
-    pub value: String,
-}
-
-#[data]
-#[derive(Debug, Clone)]
-pub struct RegTypeInsn {
-    pub opcode: u16,
-    pub reg_a: u16,
-    pub reg_b: u16,
-    pub type_descriptor: String,
-}
-
-#[data]
-#[derive(Debug, Clone)]
-pub struct RegFieldInsn {
-    pub opcode: u16,
-    pub reg_a: u16,
-    pub reg_b: u16,
-    pub field: FieldRef,
-}
-
-#[data]
-#[derive(Debug, Clone)]
-pub struct InvokeInsn {
-    pub opcode: u16,
-    pub registers: Vec<u16>,
-    pub method: MethodRef,
-}
-
-#[data]
-#[derive(Debug, Clone)]
-pub struct InvokeRangeInsn {
-    pub opcode: u16,
-    pub start_reg: u16,
-    pub reg_count: u16,
-    pub method: MethodRef,
-}
-
-#[data]
-// Padded layout: sent encoded, not blitted (docs/bindings.md).
-#[repr(Rust)]
-#[derive(Debug, Clone, Copy)]
-pub struct Branch0Insn {
-    pub opcode: u16,
-    pub offset: i32,
-}
-
-#[data]
-#[derive(Debug, Clone, Copy)]
-pub struct BranchInsn {
-    pub opcode: u16,
-    pub reg_a: u16,
-    pub offset: i32,
-}
-
-#[data]
-// Padded layout: sent encoded, not blitted (docs/bindings.md).
-#[repr(Rust)]
-#[derive(Debug, Clone, Copy)]
-pub struct Branch2Insn {
-    pub opcode: u16,
-    pub reg_a: u16,
-    pub reg_b: u16,
-    pub offset: i32,
-}
-
-#[data]
-#[derive(Debug, Clone)]
-pub struct FilledArrayInsn {
-    pub opcode: u16,
-    pub registers: Vec<u16>,
-    pub type_descriptor: String,
-}
-
-#[data]
-#[derive(Debug, Clone)]
-pub struct FilledArrayRangeInsn {
-    pub opcode: u16,
-    pub start_reg: u16,
-    pub reg_count: u16,
-    pub type_descriptor: String,
-}
-
-#[data]
-#[derive(Debug, Clone)]
-pub struct PackedSwitchInsn {
-    pub first_key: i32,
-    pub targets: Vec<i32>,
-}
-
-#[data]
-#[derive(Debug, Clone)]
-pub struct SparseSwitchInsn {
-    pub keys: Vec<i32>,
-    pub targets: Vec<i32>,
-}
-
-#[data]
-#[derive(Debug, Clone)]
-pub struct FillArrayInsn {
-    pub element_width: u16,
-    pub data: Vec<u8>,
-}
-
-#[data]
-#[derive(Debug, Clone)]
-pub enum Instruction {
-    Simple(SimpleInsn),
-    Reg1(Reg1Insn),
-    Reg2(Reg2Insn),
-    Reg3(Reg3Insn),
-    RegLiteral(RegLiteralInsn),
-    RegString(RegStringInsn),
-    RegType(RegTypeInsn),
-    RegField(RegFieldInsn),
-    Invoke(InvokeInsn),
-    InvokeRange(InvokeRangeInsn),
-    Branch0(Branch0Insn),
-    Branch(BranchInsn),
-    Branch2(Branch2Insn),
-    FilledArray(FilledArrayInsn),
-    FilledArrayRange(FilledArrayRangeInsn),
-    PackedSwitchData(PackedSwitchInsn),
-    SparseSwitchData(SparseSwitchInsn),
-    FillArrayData(FillArrayInsn),
-    Raw(Vec<u8>),
-}
+pub use super::instruction_types::*;

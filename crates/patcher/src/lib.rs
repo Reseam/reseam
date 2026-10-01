@@ -11,7 +11,9 @@ pub mod log;
 pub mod options;
 pub mod patch;
 
-pub use crate::patch::{is_slug, Compatibility, CompatiblePackage, Patch, PatchPreset, PatchSpec};
+pub use crate::patch::{
+    Compatibility, CompatiblePackage, Patch, PatchPhase, PatchPreset, PatchSpec, is_slug,
+};
 pub use reseam_apk;
 pub use reseam_apk::reseam_dex;
 
@@ -35,3 +37,6 @@ pub fn release_runtime_memory() {
     #[cfg(feature = "kotlin")]
     kotlin::jvm::collect_garbage();
 }
+
+#[cfg(test)]
+mod test_support;

@@ -1,42 +1,64 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#[derive(Debug, Clone)]
-pub struct HiddenApiData {
-    pub class_flags: Vec<Option<ClassHiddenApiFlags>>,
+use super::{FieldIdx, MethodIdx};
+use std::collections::BTreeMap;
+
+#[derive(Debug, Clone, Default)]
+pub struct ClassHiddenApiFlags {
+    pub field_flags: BTreeMap<FieldIdx, HiddenApiFlags>,
+    pub method_flags: BTreeMap<MethodIdx, HiddenApiFlags>,
 }
 
-#[derive(Debug, Clone)]
-pub struct ClassHiddenApiFlags {
-    pub static_field_flags: Vec<HiddenApiFlag>,
-    pub instance_field_flags: Vec<HiddenApiFlag>,
-    pub direct_method_flags: Vec<HiddenApiFlag>,
-    pub virtual_method_flags: Vec<HiddenApiFlag>,
-}
+/// Hidden-API access restriction and domain bits, retained verbatim for ART.
+/// The low nibble is the restriction; domain and future flags occupy higher bits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct HiddenApiFlags(u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u32)]
-pub enum HiddenApiFlag {
-    Sdk = 0,
-    Greylist = 1,
-    Blacklist = 2,
-    GreylistMaxO = 3,
-    GreylistMaxP = 4,
-    GreylistMaxQ = 5,
-    GreylistMaxR = 6,
+pub enum HiddenApiRestriction {
+    Sdk,
+    Unsupported,
+    Blocked,
+    MaxO,
+    MaxP,
+    MaxQ,
+    MaxR,
+    MaxS,
 }
 
-impl HiddenApiFlag {
-    pub fn from_u32(v: u32) -> Option<Self> {
-        match v {
-            0 => Some(Self::Sdk),
-            1 => Some(Self::Greylist),
-            2 => Some(Self::Blacklist),
-            3 => Some(Self::GreylistMaxO),
-            4 => Some(Self::GreylistMaxP),
-            5 => Some(Self::GreylistMaxQ),
-            6 => Some(Self::GreylistMaxR),
-            _ => None,
+impl HiddenApiFlags {
+    pub const SDK: Self = Self(0);
+    pub const UNSUPPORTED: Self = Self(1);
+    pub const BLOCKED: Self = Self(2);
+
+    /// Preserves all bits, including flags introduced by newer ART versions.
+    pub const fn from_bits(bits: u32) -> Self {
+        Self(bits)
+    }
+
+    pub const fn bits(self) -> u32 {
+        self.0
+    }
+
+    /// ART treats an unknown restriction value as unsupported.
+    pub const fn restriction(self) -> HiddenApiRestriction {
+        match self.0 & 0xf {
+            0 => HiddenApiRestriction::Sdk,
+            2 => HiddenApiRestriction::Blocked,
+            3 => HiddenApiRestriction::MaxO,
+            4 => HiddenApiRestriction::MaxP,
+            5 => HiddenApiRestriction::MaxQ,
+            6 => HiddenApiRestriction::MaxR,
+            7 => HiddenApiRestriction::MaxS,
+            _ => HiddenApiRestriction::Unsupported,
         }
+    }
+
+    pub const fn is_core_platform_api(self) -> bool {
+        self.0 & 0x10 != 0
+    }
+    pub const fn is_test_api(self) -> bool {
+        self.0 & 0x20 != 0
     }
 }

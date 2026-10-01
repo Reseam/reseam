@@ -4,6 +4,7 @@
 use crate::{OptionValue, PatchPreset};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
 /// What the caller asked for: the patches `preset` selects for the APK's
 /// package, plus `enable`, minus `disable`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

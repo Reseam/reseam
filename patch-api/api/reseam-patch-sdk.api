@@ -1,0 +1,2839 @@
+public abstract interface class app/reseam/patch/AppEntryScope : app/reseam/patch/CodeScope {
+	public abstract fun getApplication ()Lapp/reseam/patch/ValueRef;
+}
+
+public abstract interface class app/reseam/patch/BindingQuery {
+	public abstract fun bind (Ljava/lang/String;Lapp/reseam/patch/BindingTarget;Lkotlin/jvm/functions/Function1;)V
+	public abstract fun context (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public abstract fun fromClass (Lapp/reseam/patch/ClassTarget;)V
+	public abstract fun fromField (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public static synthetic fun fromField$default (Lapp/reseam/patch/BindingQuery;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public abstract fun fromMethod (Lapp/reseam/patch/MethodTarget;)V
+	public abstract fun getSourceType ()Ljava/lang/String;
+	public abstract fun intValue (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public abstract fun objectValue (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public abstract fun raw (Lkotlin/jvm/functions/Function1;)V
+	public abstract fun string (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+}
+
+public final class app/reseam/patch/BindingQuery$DefaultImpls {
+	public static synthetic fun fromField$default (Lapp/reseam/patch/BindingQuery;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+}
+
+public final class app/reseam/patch/BindingTarget : app/reseam/patch/Target {
+	public final fun getSourceField ()Lapp/reseam/patch/FieldTarget;
+	public final fun getSourceType ()Ljava/lang/String;
+	public final fun member (Ljava/lang/String;Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
+	public final fun of (Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
+}
+
+public final class app/reseam/patch/BindingsKt {
+	public static final fun bind (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/BindingTarget;
+	public static synthetic fun bind$default (Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/BindingTarget;
+}
+
+public final class app/reseam/patch/BoolOption : app/reseam/patch/Option {
+	public synthetic fun read$app_reseam_reseam_patch_sdk ()Ljava/lang/Object;
+}
+
+public final class app/reseam/patch/BytecodeScope {
+	public final fun classesExtending (Ljava/lang/String;)Ljava/util/List;
+	public final fun findClass-cbruItE (Ljava/lang/String;)Lapp/reseam/patch/dex/DexClass;
+	public final fun getClasses ()Ljava/util/List;
+	public final fun redirectCalls (Lapp/reseam/patch/types/MethodRef;Lapp/reseam/patch/ExtMethod;)I
+	public final fun redirectCalls (Ljava/lang/String;Ljava/lang/String;Lapp/reseam/patch/ExtMethod;)I
+	public final fun replaceAllStrings (Ljava/lang/String;Ljava/lang/String;)I
+	public final fun replaceStringsContaining (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)I
+}
+
+public final class app/reseam/patch/CallRedirectsKt {
+	public static final fun redirectTo (Lapp/reseam/patch/PointTarget;Lapp/reseam/patch/ExtMethod;)V
+}
+
+public final class app/reseam/patch/Capture {
+	public final fun getName ()Ljava/lang/String;
+	public final fun getRegister ()I
+	public final fun getType ()Ljava/lang/String;
+}
+
+public abstract interface class app/reseam/patch/ClassQuery {
+	public abstract fun custom (Lkotlin/jvm/functions/Function1;)V
+	public abstract fun extends (Ljava/lang/String;)V
+	public abstract fun first ()V
+	public abstract fun hasInstanceField (Ljava/lang/String;)V
+	public abstract fun implements (Ljava/lang/String;)V
+	public abstract fun includeExtensions ()V
+	public abstract fun rankBy (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public abstract fun sourceFile (Ljava/lang/String;)V
+	public abstract fun strings ([Ljava/lang/String;)V
+}
+
+public abstract interface class app/reseam/patch/ClassRankScope : app/reseam/patch/RankScope {
+	public abstract fun getClassDef-QxZrAHM ()I
+}
+
+public final class app/reseam/patch/ClassTarget : app/reseam/patch/Target {
+	public final fun getClassDef-QxZrAHM ()I
+	public final fun getDescriptor ()Ljava/lang/String;
+}
+
+public abstract interface class app/reseam/patch/CodeScope {
+	public abstract fun bool (Z)Lapp/reseam/patch/ValueRef;
+	public abstract fun call (Lapp/reseam/patch/ExtMethod;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
+	public abstract fun call (Lapp/reseam/patch/MethodTarget;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
+	public abstract fun callStatic (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
+	public abstract fun capture (Ljava/lang/String;)Lapp/reseam/patch/ValueRef;
+	public abstract fun enumValue (Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/ValueRef;
+	public abstract fun getLastParam ()Lapp/reseam/patch/ValueRef;
+	public abstract fun getNullObject ()Lapp/reseam/patch/ValueRef;
+	public abstract fun getThisObject ()Lapp/reseam/patch/ValueRef;
+	public abstract fun int (I)Lapp/reseam/patch/ValueRef;
+	public abstract fun local (Lapp/reseam/patch/MethodLocal;)Lapp/reseam/patch/ValueRef;
+	public abstract fun long (J)Lapp/reseam/patch/ValueRef;
+	public abstract fun newInstance (Ljava/lang/String;Ljava/lang/String;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
+	public static synthetic fun newInstance$default (Lapp/reseam/patch/CodeScope;Ljava/lang/String;Ljava/lang/String;[Lapp/reseam/patch/ValueRef;ILjava/lang/Object;)Lapp/reseam/patch/ValueRef;
+	public abstract fun param (I)Lapp/reseam/patch/ValueRef;
+	public abstract fun paramOfType (Ljava/lang/String;)Lapp/reseam/patch/ValueRef;
+	public abstract fun returnFalse ()V
+	public abstract fun returnNull ()V
+	public abstract fun returnTrue ()V
+	public abstract fun returnValue (Lapp/reseam/patch/ValueRef;)V
+	public abstract fun returnVoid ()V
+	public abstract fun setStatic (Lapp/reseam/patch/FieldTarget;Lapp/reseam/patch/ValueRef;)V
+	public abstract fun setStatic (Lapp/reseam/patch/types/FieldRef;Lapp/reseam/patch/ValueRef;)V
+	public abstract fun staticField (Lapp/reseam/patch/FieldTarget;)Lapp/reseam/patch/ValueRef;
+	public abstract fun staticField (Lapp/reseam/patch/types/FieldRef;)Lapp/reseam/patch/ValueRef;
+	public abstract fun string (Ljava/lang/String;)Lapp/reseam/patch/ValueRef;
+	public abstract fun whenEqual (Lapp/reseam/patch/ValueRef;Lapp/reseam/patch/ValueRef;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/Otherwise;
+	public abstract fun whenFalse (Lapp/reseam/patch/ValueRef;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/Otherwise;
+	public abstract fun whenInstanceOf (Lapp/reseam/patch/ValueRef;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/Otherwise;
+	public abstract fun whenNotEqual (Lapp/reseam/patch/ValueRef;Lapp/reseam/patch/ValueRef;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/Otherwise;
+	public abstract fun whenNotNull (Lapp/reseam/patch/ValueRef;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/Otherwise;
+	public abstract fun whenNull (Lapp/reseam/patch/ValueRef;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/Otherwise;
+	public abstract fun whenTrue (Lapp/reseam/patch/ValueRef;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/Otherwise;
+}
+
+public final class app/reseam/patch/CodeScope$DefaultImpls {
+	public static synthetic fun newInstance$default (Lapp/reseam/patch/CodeScope;Ljava/lang/String;Ljava/lang/String;[Lapp/reseam/patch/ValueRef;ILjava/lang/Object;)Lapp/reseam/patch/ValueRef;
+}
+
+public final class app/reseam/patch/CompatiblePackage {
+	public fun <init> (Ljava/lang/String;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/util/List;)Lapp/reseam/patch/CompatiblePackage;
+	public static synthetic fun copy$default (Lapp/reseam/patch/CompatiblePackage;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lapp/reseam/patch/CompatiblePackage;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getName ()Ljava/lang/String;
+	public final fun getVersions ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public class app/reseam/patch/ExtClass {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun field (Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/FieldTarget;
+	public final fun getDescriptor ()Ljava/lang/String;
+	public final fun getTarget ()Lapp/reseam/patch/ClassTarget;
+	public final fun method (Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/ExtMethod;
+	public static synthetic fun method$default (Lapp/reseam/patch/ExtClass;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/ExtMethod;
+	public final fun static (Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/ExtMethod;
+	public static synthetic fun static$default (Lapp/reseam/patch/ExtClass;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/ExtMethod;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/ExtMethod {
+	public final fun getName ()Ljava/lang/String;
+	public final fun getOwner ()Ljava/lang/String;
+	public final fun getProto ()Ljava/lang/String;
+	public final fun getRef ()Lapp/reseam/patch/types/MethodRef;
+	public final fun getTarget ()Lapp/reseam/patch/MethodTarget;
+	public final fun implement (Lkotlin/jvm/functions/Function1;)V
+	public final fun isStatic ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/ExternalPatch : app/reseam/patch/ReseamPatch {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public fun afterDependents (Lapp/reseam/patch/PatchRuntime;)V
+	public fun execute (Lapp/reseam/patch/PatchRuntime;)Ljava/lang/Void;
+	public synthetic fun execute (Lapp/reseam/patch/PatchRuntime;)V
+	public final fun getBundle ()Ljava/lang/String;
+	public fun getCompatibleWith ()Ljava/util/List;
+	public fun getDependencies ()Ljava/util/List;
+	public fun getDescription ()Ljava/lang/String;
+	public fun getEnabled ()Z
+	public fun getHidden ()Z
+	public final fun getId ()Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public fun getOptions ()Ljava/util/List;
+	public fun getUniversal ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class app/reseam/patch/FieldLocator {
+	public abstract fun firstObjectRead ()V
+	public abstract fun firstObjectReadAnyOwner ()V
+	public abstract fun nearestObjectReadBeforeString (Ljava/lang/String;)V
+	public abstract fun owner (Ljava/lang/String;)V
+	public abstract fun rankBy (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public abstract fun requireScoreAtLeast (I)V
+}
+
+public abstract interface class app/reseam/patch/FieldRefMatch {
+	public abstract fun name (Ljava/lang/String;)V
+	public abstract fun owner (Ljava/lang/String;)V
+	public abstract fun type (Ljava/lang/String;)V
+}
+
+public final class app/reseam/patch/FieldTarget : app/reseam/patch/Target {
+	public final fun getName ()Ljava/lang/String;
+	public final fun getOwner ()Ljava/lang/String;
+	public final fun getRef ()Lapp/reseam/patch/types/FieldRef;
+	public final fun getType ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/FileScope {
+	public final fun component (Ljava/lang/String;)Lapp/reseam/patch/FileScope;
+	public final fun components ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun delete (Ljava/lang/String;)V
+	public final fun editXml (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Ljava/lang/Object;
+	public final fun list ()Ljava/util/List;
+	public final fun read (Ljava/lang/String;)[B
+	public final fun signers ()Ljava/util/List;
+	public final fun source ()[B
+	public final fun sourceStream ()Ljava/io/InputStream;
+	public final fun write (Ljava/lang/String;[B)V
+	public final fun writeStored (Ljava/lang/String;[B)V
+	public final fun xml (Ljava/lang/String;)Lapp/reseam/patch/XmlDocument;
+}
+
+public final class app/reseam/patch/FloatOption : app/reseam/patch/Option {
+	public synthetic fun read$app_reseam_reseam_patch_sdk ()Ljava/lang/Object;
+}
+
+public final class app/reseam/patch/HooksKt {
+	public static final fun after (Lapp/reseam/patch/MethodTarget;Lkotlin/jvm/functions/Function1;)V
+	public static final fun after (Lapp/reseam/patch/PointTarget;Lkotlin/jvm/functions/Function1;)V
+	public static final fun alwaysReturn (Lapp/reseam/patch/MethodTarget;)V
+	public static final fun alwaysReturn (Lapp/reseam/patch/MethodTarget;I)V
+	public static final fun alwaysReturn (Lapp/reseam/patch/MethodTarget;J)V
+	public static final fun alwaysReturn (Lapp/reseam/patch/MethodTarget;Ljava/lang/String;)V
+	public static final fun alwaysReturn (Lapp/reseam/patch/MethodTarget;Z)V
+	public static final fun alwaysReturnNull (Lapp/reseam/patch/MethodTarget;)V
+	public static final fun appEntry (Lkotlin/jvm/functions/Function1;)V
+	public static final fun before (Lapp/reseam/patch/MethodTarget;Lkotlin/jvm/functions/Function1;)V
+	public static final fun before (Lapp/reseam/patch/PointTarget;Lkotlin/jvm/functions/Function1;)V
+	public static final fun replace (Lapp/reseam/patch/MethodTarget;Lkotlin/jvm/functions/Function1;)V
+	public static final fun replaceAllLiterals (Lapp/reseam/patch/MethodTarget;JJ)I
+	public static final fun replaceAllStrings (Lapp/reseam/patch/MethodTarget;Ljava/lang/String;Ljava/lang/String;)I
+	public static final fun reserveLocal (Lapp/reseam/patch/MethodTarget;Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/MethodLocal;
+	public static final fun skipWhen (Lapp/reseam/patch/PointTarget;Lkotlin/jvm/functions/Function1;)V
+}
+
+public final class app/reseam/patch/IntOption : app/reseam/patch/Option {
+	public synthetic fun read$app_reseam_reseam_patch_sdk ()Ljava/lang/Object;
+}
+
+public final class app/reseam/patch/ManifestScope {
+	public final fun addActivity (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public static synthetic fun addActivity$default (Lapp/reseam/patch/ManifestScope;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public final fun addActivityAlias (Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;)V
+	public static synthetic fun addActivityAlias$default (Lapp/reseam/patch/ManifestScope;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;ILjava/lang/Object;)V
+	public final fun addIntentFilter (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun addIntentFilter$default (Lapp/reseam/patch/ManifestScope;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun addPermission (Ljava/lang/String;)V
+	public final fun component (Ljava/lang/String;)Lapp/reseam/patch/ManifestScope;
+	public final fun components ()Ljava/util/List;
+	public final fun copyIntentFilters (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun document ()Lapp/reseam/patch/XmlDocument;
+	public final fun edit (Lkotlin/jvm/functions/Function1;)Ljava/lang/Object;
+	public final fun getApplicationClass ()Ljava/lang/String;
+	public final fun getMinSdkVersion-0hXNFcg ()Lkotlin/UInt;
+	public final fun getPackageName ()Ljava/lang/String;
+	public final fun getSplitName ()Ljava/lang/String;
+	public final fun getVersionCode-0hXNFcg ()Lkotlin/UInt;
+	public final fun getVersionName ()Ljava/lang/String;
+	public final fun setActivityConfigChanges (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun setAttributeInt (Ljava/lang/String;Ljava/lang/String;I)V
+	public final fun setAttributeString (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun setMinSdk-WZ4Q5Ns (I)V
+	public final fun setVersionCode-WZ4Q5Ns (I)V
+	public final fun setVersionName (Ljava/lang/String;)V
+}
+
+public abstract interface class app/reseam/patch/MatchReport {
+	public abstract fun getConsidered ()I
+	public abstract fun getName ()Ljava/lang/String;
+	public abstract fun getNearMisses ()Ljava/util/List;
+	public abstract fun getReasons ()Ljava/util/List;
+	public abstract fun getWinner ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/MethodLocal {
+	public final fun getName ()Ljava/lang/String;
+	public final fun getType ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class app/reseam/patch/MethodQuery {
+	public abstract fun calledBy (Lapp/reseam/patch/MethodTarget;)V
+	public abstract fun calls (Lapp/reseam/patch/MethodTarget;)V
+	public abstract fun calls (Lapp/reseam/patch/types/MethodRef;)V
+	public abstract fun calls (Lkotlin/jvm/functions/Function1;)V
+	public abstract fun callsMethod (Lkotlin/jvm/functions/Function1;)V
+	public abstract fun custom (Lkotlin/jvm/functions/Function1;)V
+	public abstract fun first ()V
+	public abstract fun flags (I)V
+	public abstract fun hasParam (Ljava/lang/String;)V
+	public abstract fun inClass (Lapp/reseam/patch/ClassTarget;Z)V
+	public static synthetic fun inClass$default (Lapp/reseam/patch/MethodQuery;Lapp/reseam/patch/ClassTarget;ZILjava/lang/Object;)V
+	public abstract fun includeExtensions ()V
+	public abstract fun literals ([J)V
+	public abstract fun name (Ljava/lang/String;)V
+	public abstract fun opcode ([Lapp/reseam/patch/dex/Opcode;)V
+	public abstract fun opcodeSequence ([Lapp/reseam/patch/dex/Opcode;)V
+	public abstract fun param (ILjava/lang/String;)V
+	public abstract fun paramCount (I)V
+	public abstract fun params ([Ljava/lang/String;)V
+	public abstract fun rankBy (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public abstract fun returns (Ljava/lang/String;)V
+	public abstract fun strings ([Ljava/lang/String;)V
+	public abstract fun stringsStartingWith (Ljava/lang/String;)V
+}
+
+public final class app/reseam/patch/MethodQuery$DefaultImpls {
+	public static synthetic fun inClass$default (Lapp/reseam/patch/MethodQuery;Lapp/reseam/patch/ClassTarget;ZILjava/lang/Object;)V
+}
+
+public abstract interface class app/reseam/patch/MethodRank {
+	public abstract fun rankBy (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+}
+
+public abstract interface class app/reseam/patch/MethodRankScope : app/reseam/patch/RankScope {
+	public abstract fun callSitesFollowedByCast (Ljava/lang/String;I)I
+	public static synthetic fun callSitesFollowedByCast$default (Lapp/reseam/patch/MethodRankScope;Ljava/lang/String;IILjava/lang/Object;)I
+	public abstract fun getMethod-75rPyp8 ()I
+	public abstract fun getParamCount ()I
+}
+
+public final class app/reseam/patch/MethodRankScope$DefaultImpls {
+	public static synthetic fun callSitesFollowedByCast$default (Lapp/reseam/patch/MethodRankScope;Ljava/lang/String;IILjava/lang/Object;)I
+}
+
+public abstract interface class app/reseam/patch/MethodRefMatch {
+	public abstract fun hasParam (Ljava/lang/String;)V
+	public abstract fun name (Ljava/lang/String;)V
+	public abstract fun owner (Ljava/lang/String;)V
+	public abstract fun ownerAssignableTo (Ljava/lang/String;)V
+	public abstract fun paramCount (I)V
+	public abstract fun params ([Ljava/lang/String;)V
+	public abstract fun returns (Ljava/lang/String;)V
+}
+
+public final class app/reseam/patch/MethodTarget : app/reseam/patch/Target {
+	public final fun getDescriptor ()Ljava/lang/String;
+	public final fun getMethod-75rPyp8 ()I
+	public final fun getName ()Ljava/lang/String;
+	public final fun getOwner ()Ljava/lang/String;
+	public final fun getParameterTypes ()Ljava/util/List;
+	public final fun getProto ()Ljava/lang/String;
+	public final fun getRef ()Lapp/reseam/patch/types/MethodRef;
+	public final fun getReturnType ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/MethodsTarget : app/reseam/patch/Target {
+	public final fun forEach (Lkotlin/jvm/functions/Function1;)V
+	public final fun getAll ()Ljava/util/List;
+	public final fun single (Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/MethodTarget;
+	public static synthetic fun single$default (Lapp/reseam/patch/MethodsTarget;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/MethodTarget;
+}
+
+public abstract class app/reseam/patch/Option {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLapp/reseam/patch/OptionKind;Ljava/lang/Object;Ljava/util/List;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getDefault ()Ljava/lang/Object;
+	public final fun getDescription ()Ljava/lang/String;
+	public final fun getKey ()Ljava/lang/String;
+	public final fun getKind ()Lapp/reseam/patch/OptionKind;
+	public final fun getRequired ()Z
+	public final fun getTitle ()Ljava/lang/String;
+	public final fun getValidValues ()Ljava/util/List;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/OptionKind : java/lang/Enum {
+	public static final field BOOL Lapp/reseam/patch/OptionKind;
+	public static final field FLOAT Lapp/reseam/patch/OptionKind;
+	public static final field INT Lapp/reseam/patch/OptionKind;
+	public static final field PATH Lapp/reseam/patch/OptionKind;
+	public static final field STRING Lapp/reseam/patch/OptionKind;
+	public static final field STRING_LIST Lapp/reseam/patch/OptionKind;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lapp/reseam/patch/OptionKind;
+	public static fun values ()[Lapp/reseam/patch/OptionKind;
+}
+
+public final class app/reseam/patch/OptionPath {
+	public final fun getPath ()Ljava/lang/String;
+	public final fun listContents ()Ljava/util/List;
+	public final fun readFile (Ljava/lang/String;)[B
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class app/reseam/patch/Otherwise {
+	public abstract fun otherwise (Lkotlin/jvm/functions/Function1;)V
+}
+
+public final class app/reseam/patch/PatchBuilder : app/reseam/patch/PatchDeclaration {
+	public final fun afterDependents (Lkotlin/jvm/functions/Function1;)V
+	public final fun boolOption (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Boolean;Z)Lapp/reseam/patch/BoolOption;
+	public static synthetic fun boolOption$default (Lapp/reseam/patch/PatchBuilder;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Boolean;ZILjava/lang/Object;)Lapp/reseam/patch/BoolOption;
+	public final fun description (Ljava/lang/String;)V
+	public final fun enabledByDefault (Z)V
+	public final fun execute (Lkotlin/jvm/functions/Function1;)V
+	public final fun floatOption (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Double;Z)Lapp/reseam/patch/FloatOption;
+	public static synthetic fun floatOption$default (Lapp/reseam/patch/PatchBuilder;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Double;ZILjava/lang/Object;)Lapp/reseam/patch/FloatOption;
+	public final fun hidden ()V
+	public final fun intOption (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Long;Z)Lapp/reseam/patch/IntOption;
+	public static synthetic fun intOption$default (Lapp/reseam/patch/PatchBuilder;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Long;ZILjava/lang/Object;)Lapp/reseam/patch/IntOption;
+	public final fun pathOption (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)Lapp/reseam/patch/PathOption;
+	public static synthetic fun pathOption$default (Lapp/reseam/patch/PatchBuilder;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZILjava/lang/Object;)Lapp/reseam/patch/PathOption;
+	public final fun settings (Lapp/reseam/patch/settings/SettingsHost;[Lapp/reseam/patch/settings/SettingsSection;)V
+	public final fun stringListOption (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Z)Lapp/reseam/patch/StringListOption;
+	public static synthetic fun stringListOption$default (Lapp/reseam/patch/PatchBuilder;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ZILjava/lang/Object;)Lapp/reseam/patch/StringListOption;
+	public final fun stringOption (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Z)Lapp/reseam/patch/StringOption;
+	public static synthetic fun stringOption$default (Lapp/reseam/patch/PatchBuilder;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ZILjava/lang/Object;)Lapp/reseam/patch/StringOption;
+}
+
+public abstract class app/reseam/patch/PatchDeclaration {
+	public final fun compatibleWith ([Lapp/reseam/patch/CompatiblePackage;)V
+	public final fun compatibleWith ([Ljava/lang/String;)V
+	public final fun dependsOn ([Lapp/reseam/patch/ReseamPatch;)V
+}
+
+public final class app/reseam/patch/PatchKt {
+	public static final fun invoke (Ljava/lang/String;[Ljava/lang/String;)Lapp/reseam/patch/CompatiblePackage;
+	public static final fun patch (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/ReseamPatch;
+	public static final fun patch (Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/ReseamPatch;
+}
+
+public final class app/reseam/patch/PatchLogger {
+	public final fun debug (Ljava/lang/String;)V
+	public final fun info (Ljava/lang/String;)V
+	public final fun warn (Ljava/lang/String;)V
+}
+
+public final class app/reseam/patch/PatchRuntime {
+	public fun <init> ()V
+	public final fun explain (Lapp/reseam/patch/Target;)Lapp/reseam/patch/MatchReport;
+	public final fun getBytecode ()Lapp/reseam/patch/BytecodeScope;
+	public final fun getFiles ()Lapp/reseam/patch/FileScope;
+	public final fun getLog ()Lapp/reseam/patch/PatchLogger;
+	public final fun getManifest ()Lapp/reseam/patch/ManifestScope;
+	public final fun getOptions ()Lapp/reseam/patch/RuntimeOptions;
+	public final fun getResources ()Lapp/reseam/patch/ResourceScope;
+}
+
+public final class app/reseam/patch/PathOption : app/reseam/patch/Option {
+	public synthetic fun read$app_reseam_reseam_patch_sdk ()Ljava/lang/Object;
+}
+
+public abstract interface class app/reseam/patch/PathQuery {
+	public abstract fun callInterface (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public abstract fun callVirtual (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public abstract fun cast (Ljava/lang/String;)V
+	public abstract fun field (Lapp/reseam/patch/FieldTarget;)V
+	public abstract fun field (Ljava/lang/String;)V
+	public abstract fun field (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public abstract fun first ()V
+	public abstract fun firstFieldRead ()V
+	public abstract fun instanceField (Ljava/lang/String;)V
+	public abstract fun instanceField (Ljava/util/List;)V
+	public abstract fun last ()V
+	public abstract fun listGetter (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public abstract fun member (Ljava/lang/String;)V
+	public abstract fun nextFieldRead (Ljava/lang/String;)V
+	public static synthetic fun nextFieldRead$default (Lapp/reseam/patch/PathQuery;Ljava/lang/String;ILjava/lang/Object;)V
+	public abstract fun nextInterfaceCall (Ljava/lang/String;Z)V
+	public static synthetic fun nextInterfaceCall$default (Lapp/reseam/patch/PathQuery;Ljava/lang/String;ZILjava/lang/Object;)V
+	public abstract fun objectSlots ()Lapp/reseam/patch/SlotQuery;
+	public abstract fun param (I)V
+	public abstract fun self ()V
+}
+
+public final class app/reseam/patch/PathQuery$DefaultImpls {
+	public static synthetic fun nextFieldRead$default (Lapp/reseam/patch/PathQuery;Ljava/lang/String;ILjava/lang/Object;)V
+	public static synthetic fun nextInterfaceCall$default (Lapp/reseam/patch/PathQuery;Ljava/lang/String;ZILjava/lang/Object;)V
+}
+
+public final class app/reseam/patch/PointKt {
+	public static final fun point (Lapp/reseam/patch/MethodTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/PointTarget;
+	public static synthetic fun point$default (Lapp/reseam/patch/MethodTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/PointTarget;
+}
+
+public abstract interface class app/reseam/patch/PointMatch {
+	public abstract fun argument (ILkotlin/jvm/functions/Function1;)V
+	public abstract fun calls (Lapp/reseam/patch/MethodTarget;)V
+	public abstract fun checkCast (Ljava/lang/String;)V
+	public abstract fun field (Lkotlin/jvm/functions/Function1;)V
+	public abstract fun invoke ([Lapp/reseam/patch/dex/Opcode;Lkotlin/jvm/functions/Function1;)V
+	public static synthetic fun invoke$default (Lapp/reseam/patch/PointMatch;[Lapp/reseam/patch/dex/Opcode;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public abstract fun invokeDirect (Lkotlin/jvm/functions/Function1;)V
+	public static synthetic fun invokeDirect$default (Lapp/reseam/patch/PointMatch;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public abstract fun invokeInterface (Lkotlin/jvm/functions/Function1;)V
+	public static synthetic fun invokeInterface$default (Lapp/reseam/patch/PointMatch;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public abstract fun invokeStatic (Lkotlin/jvm/functions/Function1;)V
+	public static synthetic fun invokeStatic$default (Lapp/reseam/patch/PointMatch;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public abstract fun invokeVirtual (Lkotlin/jvm/functions/Function1;)V
+	public static synthetic fun invokeVirtual$default (Lapp/reseam/patch/PointMatch;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public abstract fun literal (J)V
+	public abstract fun newInstance (Ljava/lang/String;)V
+	public abstract fun opcode ([Lapp/reseam/patch/dex/Opcode;)V
+	public abstract fun resultOf (Ljava/lang/String;)V
+	public static synthetic fun resultOf$default (Lapp/reseam/patch/PointMatch;Ljava/lang/String;ILjava/lang/Object;)V
+	public abstract fun string (Ljava/lang/String;)V
+	public abstract fun stringContains (Ljava/lang/String;)V
+	public abstract fun then (ILkotlin/jvm/functions/Function1;)V
+	public static synthetic fun then$default (Lapp/reseam/patch/PointMatch;ILkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public abstract fun type (Ljava/lang/String;)V
+	public abstract fun where (Lkotlin/jvm/functions/Function1;)V
+}
+
+public final class app/reseam/patch/PointMatch$DefaultImpls {
+	public static synthetic fun invoke$default (Lapp/reseam/patch/PointMatch;[Lapp/reseam/patch/dex/Opcode;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public static synthetic fun invokeDirect$default (Lapp/reseam/patch/PointMatch;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public static synthetic fun invokeInterface$default (Lapp/reseam/patch/PointMatch;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public static synthetic fun invokeStatic$default (Lapp/reseam/patch/PointMatch;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public static synthetic fun invokeVirtual$default (Lapp/reseam/patch/PointMatch;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public static synthetic fun resultOf$default (Lapp/reseam/patch/PointMatch;Ljava/lang/String;ILjava/lang/Object;)V
+	public static synthetic fun then$default (Lapp/reseam/patch/PointMatch;ILkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+}
+
+public final class app/reseam/patch/PointQueriesKt {
+	public static final fun points (Lapp/reseam/patch/MethodTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/PointsTarget;
+	public static final fun points (Lapp/reseam/patch/MethodsTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/PointsTarget;
+	public static synthetic fun points$default (Lapp/reseam/patch/MethodTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/PointsTarget;
+	public static synthetic fun points$default (Lapp/reseam/patch/MethodsTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/PointsTarget;
+}
+
+public final class app/reseam/patch/PointTarget : app/reseam/patch/Target {
+	public final fun callee (Ljava/lang/String;)Lapp/reseam/patch/MethodTarget;
+	public static synthetic fun callee$default (Lapp/reseam/patch/PointTarget;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/MethodTarget;
+	public final fun captureArgumentAs (Ljava/lang/String;ILjava/lang/String;)Lapp/reseam/patch/PointTarget;
+	public static synthetic fun captureArgumentAs$default (Lapp/reseam/patch/PointTarget;Ljava/lang/String;ILjava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/PointTarget;
+	public final fun captureAs (Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/PointTarget;
+	public static synthetic fun captureAs$default (Lapp/reseam/patch/PointTarget;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/PointTarget;
+	public final fun field (Ljava/lang/String;)Lapp/reseam/patch/FieldTarget;
+	public static synthetic fun field$default (Lapp/reseam/patch/PointTarget;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/FieldTarget;
+	public final fun getIndex ()I
+	public final fun getInstruction ()Lapp/reseam/patch/types/Instruction;
+	public final fun getMethod ()Lapp/reseam/patch/MethodTarget;
+	public final fun next (Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/PointTarget;
+	public final fun previous (Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/PointTarget;
+	public final fun writer (ILjava/lang/String;)Lapp/reseam/patch/PointTarget;
+	public static synthetic fun writer$default (Lapp/reseam/patch/PointTarget;ILjava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/PointTarget;
+}
+
+public final class app/reseam/patch/PointsTarget : app/reseam/patch/Target {
+	public final fun forEach (Lkotlin/jvm/functions/Function1;)V
+	public final fun getAll ()Ljava/util/List;
+	public final fun single ()Lapp/reseam/patch/PointTarget;
+}
+
+public abstract interface class app/reseam/patch/RankScope {
+	public abstract fun getType ()Ljava/lang/String;
+	public abstract fun methods (Ljava/lang/String;)Ljava/util/List;
+	public abstract fun zeroArgListGetters ()I
+}
+
+public abstract interface class app/reseam/patch/ReseamPatch {
+	public fun afterDependents (Lapp/reseam/patch/PatchRuntime;)V
+	public abstract fun execute (Lapp/reseam/patch/PatchRuntime;)V
+	public fun getCompatibleWith ()Ljava/util/List;
+	public fun getDependencies ()Ljava/util/List;
+	public fun getDescription ()Ljava/lang/String;
+	public fun getEnabled ()Z
+	public fun getHidden ()Z
+	public abstract fun getName ()Ljava/lang/String;
+	public fun getOptions ()Ljava/util/List;
+	public fun getUniversal ()Z
+}
+
+public final class app/reseam/patch/ReseamPatch$DefaultImpls {
+	public static fun afterDependents (Lapp/reseam/patch/ReseamPatch;Lapp/reseam/patch/PatchRuntime;)V
+	public static fun getCompatibleWith (Lapp/reseam/patch/ReseamPatch;)Ljava/util/List;
+	public static fun getDependencies (Lapp/reseam/patch/ReseamPatch;)Ljava/util/List;
+	public static fun getDescription (Lapp/reseam/patch/ReseamPatch;)Ljava/lang/String;
+	public static fun getEnabled (Lapp/reseam/patch/ReseamPatch;)Z
+	public static fun getHidden (Lapp/reseam/patch/ReseamPatch;)Z
+	public static fun getOptions (Lapp/reseam/patch/ReseamPatch;)Ljava/util/List;
+	public static fun getUniversal (Lapp/reseam/patch/ReseamPatch;)Z
+}
+
+public final class app/reseam/patch/ResolvedBinding {
+}
+
+public final class app/reseam/patch/ResolvedPoint {
+	public final fun getIndex ()I
+	public final fun getMethod-75rPyp8 ()I
+}
+
+public final class app/reseam/patch/ResourceScope {
+	public final fun add-L32MxnI (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lkotlin/UInt;
+	public final fun addBool-uT2Fmlo (Ljava/lang/String;Z)Lkotlin/UInt;
+	public final fun addColor-uT2Fmlo (Ljava/lang/String;Ljava/lang/String;)Lkotlin/UInt;
+	public final fun addDimen-uT2Fmlo (Ljava/lang/String;Ljava/lang/String;)Lkotlin/UInt;
+	public final fun addFile-K0zNJlA (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[BLjava/lang/String;)I
+	public static synthetic fun addFile-K0zNJlA$default (Lapp/reseam/patch/ResourceScope;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[BLjava/lang/String;ILjava/lang/Object;)I
+	public final fun addFile-qdVX4Bk (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I
+	public static synthetic fun addFile-qdVX4Bk$default (Lapp/reseam/patch/ResourceScope;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)I
+	public final fun addId-gbq4QnA (Ljava/lang/String;)Lkotlin/UInt;
+	public final fun addInteger-uT2Fmlo (Ljava/lang/String;I)Lkotlin/UInt;
+	public final fun addRaw-MfrEPMM (Ljava/lang/String;Ljava/lang/String;BI)Lkotlin/UInt;
+	public final fun addString-uT2Fmlo (Ljava/lang/String;Ljava/lang/String;)Lkotlin/UInt;
+	public final fun component (Ljava/lang/String;)Lapp/reseam/patch/ResourceScope;
+	public final fun components ()Ljava/util/List;
+	public final fun editXml (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Ljava/lang/Object;
+	public final fun exists (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun getArray (Ljava/lang/String;)Ljava/util/List;
+	public final fun getArrayValues (Ljava/lang/String;)Ljava/util/List;
+	public final fun getRaw (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Long;
+	public final fun getString (Ljava/lang/String;)Ljava/lang/String;
+	public final fun id-uT2Fmlo (Ljava/lang/String;Ljava/lang/String;)Lkotlin/UInt;
+	public final fun owningComponent (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+	public final fun owningComponent-WZ4Q5Ns (I)Ljava/lang/String;
+	public final fun path (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+	public final fun paths (Ljava/lang/String;Ljava/lang/String;)Ljava/util/List;
+	public final fun poolAdd-gbq4QnA (Ljava/lang/String;)Lkotlin/UInt;
+	public final fun poolFindRefs-WZ4Q5Ns (I)Ljava/util/List;
+	public final fun poolGet-WZ4Q5Ns (I)Ljava/lang/String;
+	public final fun poolSet-qim9Vi0 (ILjava/lang/String;)V
+	public final fun replaceEntry-feOb9K0 (II)V
+	public final fun setArray-xfHcF5w (Ljava/lang/String;Ljava/util/List;)I
+	public final fun setArrayValues-xfHcF5w (Ljava/lang/String;Ljava/util/List;)I
+	public final fun setPackageName (Ljava/lang/String;)V
+	public final fun setString (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun setStringArray-xfHcF5w (Ljava/lang/String;Ljava/util/List;)I
+	public final fun style-_W1zjd8 (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)I
+	public static synthetic fun style-_W1zjd8$default (Lapp/reseam/patch/ResourceScope;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)I
+	public final fun xml (Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/XmlDocument;
+}
+
+public final class app/reseam/patch/ResourceValue {
+	public synthetic fun <init> (BILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-w2LRezQ ()B
+	public final fun component2-pVg5ArA ()I
+	public final fun copy-g_SBl1M (BI)Lapp/reseam/patch/ResourceValue;
+	public static synthetic fun copy-g_SBl1M$default (Lapp/reseam/patch/ResourceValue;BIILjava/lang/Object;)Lapp/reseam/patch/ResourceValue;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getData-pVg5ArA ()I
+	public final fun getKind-w2LRezQ ()B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/RuntimeOptions {
+	public final fun get (Lapp/reseam/patch/Option;)Ljava/lang/Object;
+	public final fun getOrNull (Lapp/reseam/patch/Option;)Ljava/lang/Object;
+}
+
+public final class app/reseam/patch/ScopesKt {
+	public static final fun resourceRef (Ljava/lang/String;)Lkotlin/UInt;
+}
+
+public abstract interface class app/reseam/patch/SlotQuery {
+	public abstract fun firstInstanceOf (Ljava/lang/String;)V
+}
+
+public final class app/reseam/patch/StringListOption : app/reseam/patch/Option {
+	public synthetic fun read$app_reseam_reseam_patch_sdk ()Ljava/lang/Object;
+}
+
+public final class app/reseam/patch/StringOption : app/reseam/patch/Option {
+	public synthetic fun read$app_reseam_reseam_patch_sdk ()Ljava/lang/Object;
+}
+
+public final class app/reseam/patch/StyleScope {
+	public final fun set (Ljava/lang/String;Ljava/lang/String;)V
+}
+
+public abstract class app/reseam/patch/Target {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun explain ()Lapp/reseam/patch/MatchReport;
+	public final fun getDebugName ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/TargetsKt {
+	public static final fun classTarget (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/ClassTarget;
+	public static final fun field (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;)Lapp/reseam/patch/FieldTarget;
+	public static final fun field (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/FieldTarget;
+	public static final fun fieldOfType (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;)Lapp/reseam/patch/FieldTarget;
+	public static final fun fieldTarget (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/FieldTarget;
+	public static final fun klass (Ljava/lang/String;)Lapp/reseam/patch/ClassTarget;
+	public static final fun klass (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/ClassTarget;
+	public static final fun method (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;)Lapp/reseam/patch/MethodTarget;
+	public static final fun method (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/MethodTarget;
+	public static synthetic fun method$default (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/MethodTarget;
+	public static synthetic fun method$default (Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/MethodTarget;
+	public static final fun methodTarget (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/MethodTarget;
+	public static final fun methods (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;)Lapp/reseam/patch/MethodsTarget;
+	public static final fun methods (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/MethodsTarget;
+	public static synthetic fun methods$default (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/MethodsTarget;
+	public static synthetic fun methods$default (Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/MethodsTarget;
+}
+
+public final class app/reseam/patch/Type {
+	public static final field Activity Ljava/lang/String;
+	public static final field Application Ljava/lang/String;
+	public static final field ArrayList Ljava/lang/String;
+	public static final field Boolean Ljava/lang/String;
+	public static final field Byte Ljava/lang/String;
+	public static final field Char Ljava/lang/String;
+	public static final field CharSequence Ljava/lang/String;
+	public static final field Context Ljava/lang/String;
+	public static final field Double Ljava/lang/String;
+	public static final field Float Ljava/lang/String;
+	public static final field INSTANCE Lapp/reseam/patch/Type;
+	public static final field Int Ljava/lang/String;
+	public static final field List Ljava/lang/String;
+	public static final field Long Ljava/lang/String;
+	public static final field Map Ljava/lang/String;
+	public static final field Object Ljava/lang/String;
+	public static final field Short Ljava/lang/String;
+	public static final field String Ljava/lang/String;
+	public static final field View Ljava/lang/String;
+	public static final field Void Ljava/lang/String;
+}
+
+public final class app/reseam/patch/TypesKt {
+	public static final fun className (Ljava/lang/String;)Ljava/lang/String;
+	public static final fun descriptor (Ljava/lang/String;)Ljava/lang/String;
+	public static final fun proto (Ljava/lang/String;[Ljava/lang/String;)Ljava/lang/String;
+}
+
+public abstract interface class app/reseam/patch/ValueRef {
+	public abstract fun assign (Lapp/reseam/patch/ValueRef;)V
+	public abstract fun call (Lapp/reseam/patch/ExtMethod;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
+	public abstract fun call (Lapp/reseam/patch/MethodTarget;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
+	public abstract fun callInterface (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
+	public abstract fun callVirtual (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
+	public abstract fun cast (Ljava/lang/String;)Lapp/reseam/patch/ValueRef;
+	public abstract fun field (Lapp/reseam/patch/FieldTarget;)Lapp/reseam/patch/ValueRef;
+	public abstract fun field (Lapp/reseam/patch/types/FieldRef;)Lapp/reseam/patch/ValueRef;
+	public abstract fun fieldOfType (Ljava/lang/String;)Lapp/reseam/patch/ValueRef;
+	public abstract fun get (Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
+	public abstract fun getType ()Ljava/lang/String;
+	public abstract fun minus (Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
+	public abstract fun plus (Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
+	public abstract fun set (Lapp/reseam/patch/FieldTarget;Lapp/reseam/patch/ValueRef;)V
+	public abstract fun set (Lapp/reseam/patch/types/FieldRef;Lapp/reseam/patch/ValueRef;)V
+	public abstract fun size ()Lapp/reseam/patch/ValueRef;
+}
+
+public final class app/reseam/patch/XmlDocument : java/lang/AutoCloseable {
+	public static final field Companion Lapp/reseam/patch/XmlDocument$Companion;
+	public synthetic fun <init> (ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun adopt (Lapp/reseam/patch/XmlElement;)Lapp/reseam/patch/XmlElement;
+	public fun close ()V
+	public final fun createElement (Ljava/lang/String;)Lapp/reseam/patch/XmlElement;
+	public final fun declareNamespace (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun findByAttribute (Ljava/lang/String;Ljava/lang/String;)Ljava/util/List;
+	public final fun findByTag (Ljava/lang/String;)Ljava/util/List;
+	public final fun getHandle-pVg5ArA ()I
+	public final fun getRoot ()Lapp/reseam/patch/XmlElement;
+}
+
+public final class app/reseam/patch/XmlDocument$Companion {
+	public final fun compile (Ljava/lang/String;)Lapp/reseam/patch/XmlDocument;
+}
+
+public final class app/reseam/patch/XmlElement {
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun appendChild (Lapp/reseam/patch/XmlElement;)V
+	public final fun clone (Z)Lapp/reseam/patch/XmlElement;
+	public static synthetic fun clone$default (Lapp/reseam/patch/XmlElement;ZILjava/lang/Object;)Lapp/reseam/patch/XmlElement;
+	public final fun get (Ljava/lang/String;)Ljava/lang/String;
+	public final fun getChildren ()Ljava/util/List;
+	public final fun getDoc-pVg5ArA ()I
+	public final fun getHandle-pVg5ArA ()I
+	public final fun getParent ()Lapp/reseam/patch/XmlElement;
+	public final fun getTag ()Ljava/lang/String;
+	public final fun insertBefore (Lapp/reseam/patch/XmlElement;Lapp/reseam/patch/XmlElement;)Lapp/reseam/patch/XmlElement;
+	public final fun remove ()V
+	public final fun removeAttribute (Ljava/lang/String;)V
+	public final fun set (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun setBool (Ljava/lang/String;Z)V
+	public final fun setInt (Ljava/lang/String;I)V
+	public final fun setResourceRef-Qn1smSk (Ljava/lang/String;I)V
+}
+
+public final class app/reseam/patch/dex/AccessFlags {
+	public static final field ABSTRACT I
+	public static final field ANNOTATION I
+	public static final field BRIDGE I
+	public static final field CONSTRUCTOR I
+	public static final field DECLARED_SYNCHRONIZED I
+	public static final field ENUM I
+	public static final field FINAL I
+	public static final field INSTANCE Lapp/reseam/patch/dex/AccessFlags;
+	public static final field INTERFACE I
+	public static final field NATIVE I
+	public static final field PRIVATE I
+	public static final field PROTECTED I
+	public static final field PUBLIC I
+	public static final field STATIC I
+	public static final field STRICT I
+	public static final field SYNCHRONIZED I
+	public static final field SYNTHETIC I
+	public static final field TRANSIENT I
+	public static final field VARARGS I
+	public static final field VOLATILE I
+}
+
+public final class app/reseam/patch/dex/AccessFlagsKt {
+	public static final fun allSet (II)Z
+	public static final fun allSet-Qn1smSk (II)Z
+	public static final fun isSet (II)Z
+	public static final fun isSet-Qn1smSk (II)Z
+}
+
+public final class app/reseam/patch/dex/DexClass {
+	public static final fun addAnnotation-impl (ILapp/reseam/patch/types/AnnotationItem;)V
+	public static final fun addField-impl (ILapp/reseam/patch/types/NewField;)V
+	public static final fun addFieldAnnotation-impl (ILjava/lang/String;Lapp/reseam/patch/types/AnnotationItem;)V
+	public static final fun addInterface-impl (ILjava/lang/String;)V
+	public static final fun addMethod-KE_i9tI (ILapp/reseam/patch/types/NewMethod;)I
+	public static final synthetic fun box-impl (I)Lapp/reseam/patch/dex/DexClass;
+	public static fun constructor-impl (I)I
+	public static final fun definal-impl (I)V
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (ILjava/lang/Object;)Z
+	public static final fun equals-impl0 (II)Z
+	public static final fun field-impl (ILjava/lang/String;)Lapp/reseam/patch/types/FieldRef;
+	public static final fun getDescriptor-impl (I)Ljava/lang/String;
+	public static final fun getDirectMethods-impl (I)Ljava/util/List;
+	public static final fun getFields-impl (I)Ljava/util/List;
+	public final fun getHandle-pVg5ArA ()I
+	public static final fun getInfo-impl (I)Lapp/reseam/patch/types/ClassInfo;
+	public static final fun getInstanceFields-impl (I)Ljava/util/List;
+	public static final fun getInterfaces-impl (I)Ljava/util/List;
+	public static final fun getMethods-impl (I)Ljava/util/List;
+	public static final fun getSourceFile-impl (I)Ljava/lang/String;
+	public static final fun getStaticFields-impl (I)Ljava/util/List;
+	public static final fun getSuperclass-impl (I)Ljava/lang/String;
+	public static final fun getSuperclassChain-impl (I)Ljava/util/List;
+	public static final fun getVirtualMethods-impl (I)Ljava/util/List;
+	public fun hashCode ()I
+	public static fun hashCode-impl (I)I
+	public static final fun isInterface-impl (I)Z
+	public static final fun method-upA1SSc (ILjava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/dex/Method;
+	public static synthetic fun method-upA1SSc$default (ILjava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/dex/Method;
+	public static final fun remove-impl (I)V
+	public static final fun removeField-impl (ILjava/lang/String;)V
+	public static final fun setAccessFlags-impl (II)V
+	public static final fun setFieldAccessFlags-impl (ILjava/lang/String;I)V
+	public static final fun setStaticFieldValue-impl (ILjava/lang/String;Lapp/reseam/patch/types/EncodedVal;)V
+	public static final fun setSuperclass-impl (ILjava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (I)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()I
+}
+
+public final class app/reseam/patch/dex/DexClassKt {
+	public static final fun getRef (Lapp/reseam/patch/types/FieldInfo;)Lapp/reseam/patch/types/FieldRef;
+}
+
+public final class app/reseam/patch/dex/InstructionBuilder {
+	public fun <init> ()V
+	public final fun add (Lapp/reseam/patch/types/Instruction;)V
+	public final fun addInt (III)V
+	public final fun agetObject (III)V
+	public final fun andIntLit16 (III)V
+	public final fun andIntLit8 (III)V
+	public final fun aputObject (III)V
+	public final fun arrayLength (II)V
+	public final fun build ()Ljava/util/List;
+	public final fun checkCast (ILjava/lang/String;)V
+	public final fun cmpLong (III)V
+	public final fun cmpgDouble (III)V
+	public final fun cmpgFloat (III)V
+	public final fun cmplDouble (III)V
+	public final fun cmplFloat (III)V
+	public final fun const16 (II)V
+	public final fun const32 (II)V
+	public final fun const4 (II)V
+	public final fun constClass (ILjava/lang/String;)V
+	public final fun constHigh16 (II)V
+	public final fun constInt (II)V
+	public final fun constLong (IJ)V
+	public final fun constString (ILjava/lang/String;)V
+	public final fun constWide (IJ)V
+	public final fun constWide16 (IJ)V
+	public final fun constWide32 (IJ)V
+	public final fun divInt (III)V
+	public final fun field (Lapp/reseam/patch/dex/Opcode;IILapp/reseam/patch/types/FieldRef;)V
+	public final fun goto (Ljava/lang/String;)V
+	public final fun ifEq (IILjava/lang/String;)V
+	public final fun ifEqz (ILjava/lang/String;)V
+	public final fun ifGe (IILjava/lang/String;)V
+	public final fun ifGez (ILjava/lang/String;)V
+	public final fun ifGt (IILjava/lang/String;)V
+	public final fun ifGtz (ILjava/lang/String;)V
+	public final fun ifLe (IILjava/lang/String;)V
+	public final fun ifLez (ILjava/lang/String;)V
+	public final fun ifLt (IILjava/lang/String;)V
+	public final fun ifLtz (ILjava/lang/String;)V
+	public final fun ifNe (IILjava/lang/String;)V
+	public final fun ifNez (ILjava/lang/String;)V
+	public final fun iget (IILapp/reseam/patch/types/FieldRef;)V
+	public final fun igetBoolean (IILapp/reseam/patch/types/FieldRef;)V
+	public final fun igetByte (IILapp/reseam/patch/types/FieldRef;)V
+	public final fun igetChar (IILapp/reseam/patch/types/FieldRef;)V
+	public final fun igetObject (IILapp/reseam/patch/types/FieldRef;)V
+	public final fun igetShort (IILapp/reseam/patch/types/FieldRef;)V
+	public final fun igetTyped (IILapp/reseam/patch/types/FieldRef;)V
+	public final fun igetWide (IILapp/reseam/patch/types/FieldRef;)V
+	public final fun instanceOf (IILjava/lang/String;)V
+	public final fun invoke (Lapp/reseam/patch/dex/Opcode;Lapp/reseam/patch/types/MethodRef;Ljava/util/List;)V
+	public final fun invokeDirect (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[I)V
+	public final fun invokeInterface (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[I)V
+	public final fun invokeRange (Lapp/reseam/patch/dex/Opcode;Lapp/reseam/patch/types/MethodRef;II)V
+	public final fun invokeStatic (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[I)V
+	public final fun invokeSuper (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[I)V
+	public final fun invokeVirtual (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[I)V
+	public final fun iput (IILapp/reseam/patch/types/FieldRef;)V
+	public final fun iputBoolean (IILapp/reseam/patch/types/FieldRef;)V
+	public final fun iputByte (IILapp/reseam/patch/types/FieldRef;)V
+	public final fun iputChar (IILapp/reseam/patch/types/FieldRef;)V
+	public final fun iputObject (IILapp/reseam/patch/types/FieldRef;)V
+	public final fun iputShort (IILapp/reseam/patch/types/FieldRef;)V
+	public final fun iputTyped (IILapp/reseam/patch/types/FieldRef;)V
+	public final fun iputWide (IILapp/reseam/patch/types/FieldRef;)V
+	public final fun label (Ljava/lang/String;)V
+	public final fun literal (Lapp/reseam/patch/dex/Opcode;IJI)V
+	public static synthetic fun literal$default (Lapp/reseam/patch/dex/InstructionBuilder;Lapp/reseam/patch/dex/Opcode;IJIILjava/lang/Object;)V
+	public final fun move (II)V
+	public final fun move16 (II)V
+	public final fun moveException (I)V
+	public final fun moveFrom16 (II)V
+	public final fun moveObject (II)V
+	public final fun moveObject16 (II)V
+	public final fun moveObjectFrom16 (II)V
+	public final fun moveResult (I)V
+	public final fun moveResultObject (I)V
+	public final fun moveResultTyped (ILjava/lang/String;)V
+	public final fun moveResultWide (I)V
+	public final fun moveTyped (IILjava/lang/String;)V
+	public final fun moveWide (II)V
+	public final fun moveWide16 (II)V
+	public final fun moveWideFrom16 (II)V
+	public final fun mulInt (III)V
+	public final fun newArray (IILjava/lang/String;)V
+	public final fun newInstance (ILjava/lang/String;)V
+	public final fun nop ()V
+	public final fun reg1 (Lapp/reseam/patch/dex/Opcode;I)V
+	public final fun reg2 (Lapp/reseam/patch/dex/Opcode;II)V
+	public final fun reg3 (Lapp/reseam/patch/dex/Opcode;III)V
+	public final fun remInt (III)V
+	public final fun returnObject (I)V
+	public final fun returnValue (I)V
+	public final fun returnVoid ()V
+	public final fun returnWide (I)V
+	public final fun sget (ILapp/reseam/patch/types/FieldRef;)V
+	public final fun sgetBoolean (ILapp/reseam/patch/types/FieldRef;)V
+	public final fun sgetByte (ILapp/reseam/patch/types/FieldRef;)V
+	public final fun sgetChar (ILapp/reseam/patch/types/FieldRef;)V
+	public final fun sgetObject (ILapp/reseam/patch/types/FieldRef;)V
+	public final fun sgetShort (ILapp/reseam/patch/types/FieldRef;)V
+	public final fun sgetTyped (ILapp/reseam/patch/types/FieldRef;)V
+	public final fun sgetWide (ILapp/reseam/patch/types/FieldRef;)V
+	public final fun sput (ILapp/reseam/patch/types/FieldRef;)V
+	public final fun sputBoolean (ILapp/reseam/patch/types/FieldRef;)V
+	public final fun sputByte (ILapp/reseam/patch/types/FieldRef;)V
+	public final fun sputChar (ILapp/reseam/patch/types/FieldRef;)V
+	public final fun sputObject (ILapp/reseam/patch/types/FieldRef;)V
+	public final fun sputShort (ILapp/reseam/patch/types/FieldRef;)V
+	public final fun sputTyped (ILapp/reseam/patch/types/FieldRef;)V
+	public final fun sputWide (ILapp/reseam/patch/types/FieldRef;)V
+	public final fun subInt (III)V
+	public final fun throwValue (I)V
+	public final fun type (Lapp/reseam/patch/dex/Opcode;IILjava/lang/String;)V
+}
+
+public final class app/reseam/patch/dex/InstructionsKt {
+	public static final fun buildInstructions (Lkotlin/jvm/functions/Function1;)Ljava/util/List;
+	public static final fun getCodeUnitSize (Lapp/reseam/patch/types/Instruction;)I
+	public static final fun getDescriptor (Lapp/reseam/patch/types/MethodInfo;)Ljava/lang/String;
+	public static final fun getDescriptor (Lapp/reseam/patch/types/MethodRef;)Ljava/lang/String;
+	public static final fun getFieldRef (Lapp/reseam/patch/types/Instruction;)Lapp/reseam/patch/types/FieldRef;
+	public static final fun getInvokeArgumentTypes (Lapp/reseam/patch/types/Instruction;)Ljava/util/List;
+	public static final fun getInvokeRegisters (Lapp/reseam/patch/types/Instruction;)Ljava/util/List;
+	public static final fun getLiteral (Lapp/reseam/patch/types/Instruction;)Ljava/lang/Long;
+	public static final fun getMethodRef (Lapp/reseam/patch/types/Instruction;)Lapp/reseam/patch/types/MethodRef;
+	public static final fun getOpcode (Lapp/reseam/patch/types/Instruction;)Lapp/reseam/patch/dex/Opcode;
+	public static final fun getOpcodeValue (Lapp/reseam/patch/types/Instruction;)I
+	public static final fun getParameterTypes (Lapp/reseam/patch/types/MethodInfo;)Ljava/util/List;
+	public static final fun getParameterTypes (Lapp/reseam/patch/types/MethodRef;)Ljava/util/List;
+	public static final fun getReferencedRegisters (Lapp/reseam/patch/types/Instruction;)Ljava/util/List;
+	public static final fun getRegA (Lapp/reseam/patch/types/Instruction;)Ljava/lang/Integer;
+	public static final fun getRegB (Lapp/reseam/patch/types/Instruction;)Ljava/lang/Integer;
+	public static final fun getRegC (Lapp/reseam/patch/types/Instruction;)Ljava/lang/Integer;
+	public static final fun getReturnType (Lapp/reseam/patch/types/MethodInfo;)Ljava/lang/String;
+	public static final fun getReturnType (Lapp/reseam/patch/types/MethodRef;)Ljava/lang/String;
+	public static final fun getStringValue (Lapp/reseam/patch/types/Instruction;)Ljava/lang/String;
+	public static final fun getTypeRef (Lapp/reseam/patch/types/Instruction;)Ljava/lang/String;
+	public static final fun isReferenceType (Ljava/lang/String;)Z
+	public static final fun isStatic (Lapp/reseam/patch/types/MethodInfo;)Z
+	public static final fun parseParameterTypes (Ljava/lang/String;)Ljava/util/List;
+	public static final fun registerWordCount (Ljava/lang/String;)I
+}
+
+public final class app/reseam/patch/dex/Method {
+	public static final fun addAnnotation-impl (ILapp/reseam/patch/types/AnnotationItem;)V
+	public static final fun addInstructions-impl (IILkotlin/jvm/functions/Function1;)V
+	public static final fun alwaysReturn-impl (I)V
+	public static final fun alwaysReturn-impl (II)V
+	public static final fun alwaysReturn-impl (IJ)V
+	public static final fun alwaysReturn-impl (ILjava/lang/String;)V
+	public static final fun alwaysReturn-impl (IZ)V
+	public static final fun alwaysReturnNull-impl (I)V
+	public static final synthetic fun box-impl (I)Lapp/reseam/patch/dex/Method;
+	public static final fun clone-KE_i9tI (ILjava/lang/String;)I
+	public static synthetic fun clone-KE_i9tI$default (ILjava/lang/String;ILjava/lang/Object;)I
+	public static fun constructor-impl (I)I
+	public static final fun containsLiteral-impl (IJ)Z
+	public static final fun ensureOutsSize-impl (II)V
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (ILjava/lang/Object;)Z
+	public static final fun equals-impl0 (II)Z
+	public static final fun fieldRef-impl (II)Lapp/reseam/patch/types/FieldRef;
+	public static final fun findAllIndices-impl (ILapp/reseam/patch/dex/Opcode;)Ljava/util/List;
+	public static final fun findContiguousFreeRegisters-impl (IIILjava/util/List;)Ljava/util/List;
+	public static synthetic fun findContiguousFreeRegisters-impl$default (IIILjava/util/List;ILjava/lang/Object;)Ljava/util/List;
+	public static final fun findFreeRegister-impl (IILjava/util/List;)I
+	public static synthetic fun findFreeRegister-impl$default (IILjava/util/List;ILjava/lang/Object;)I
+	public static final fun findFreeRegisters-impl (IIILjava/util/List;)Ljava/util/List;
+	public static synthetic fun findFreeRegisters-impl$default (IIILjava/util/List;ILjava/lang/Object;)Ljava/util/List;
+	public static final fun getClassDef-QxZrAHM (I)I
+	public static final fun getDescriptor-impl (I)Ljava/lang/String;
+	public static final fun getDexIndex-impl (I)I
+	public final fun getHandle-pVg5ArA ()I
+	public static final fun getInfo-impl (I)Lapp/reseam/patch/types/MethodInfo;
+	public static final fun getInsSize-impl (I)I
+	public static final fun getInstructionCount-impl (I)I
+	public static final fun getInstructions-impl (I)Ljava/util/List;
+	public static final fun getName-impl (I)Ljava/lang/String;
+	public static final fun getOutsSize-impl (I)I
+	public static final fun getOwner-impl (I)Ljava/lang/String;
+	public static final fun getParameterTypes-impl (I)Ljava/util/List;
+	public static final fun getProto-impl (I)Ljava/lang/String;
+	public static final fun getRegistersSize-impl (I)I
+	public static final fun getReturnType-impl (I)Ljava/lang/String;
+	public static final fun growLocalRegisters-impl (II)Z
+	public fun hashCode ()I
+	public static fun hashCode-impl (I)I
+	public static final fun indexOfFirst-impl (ILapp/reseam/patch/dex/Opcode;I)Ljava/lang/Integer;
+	public static synthetic fun indexOfFirst-impl$default (ILapp/reseam/patch/dex/Opcode;IILjava/lang/Object;)Ljava/lang/Integer;
+	public static final fun indexOfFirstFieldAccess-impl (ILapp/reseam/patch/dex/Opcode;Ljava/lang/String;Ljava/lang/String;I)Ljava/lang/Integer;
+	public static synthetic fun indexOfFirstFieldAccess-impl$default (ILapp/reseam/patch/dex/Opcode;Ljava/lang/String;Ljava/lang/String;IILjava/lang/Object;)Ljava/lang/Integer;
+	public static final fun indexOfFirstInstruction-impl (IILkotlin/jvm/functions/Function1;)Ljava/lang/Integer;
+	public static synthetic fun indexOfFirstInstruction-impl$default (IILkotlin/jvm/functions/Function1;ILjava/lang/Object;)Ljava/lang/Integer;
+	public static final fun indexOfFirstInstructionReversed-impl (ILjava/lang/Integer;Lkotlin/jvm/functions/Function1;)Ljava/lang/Integer;
+	public static synthetic fun indexOfFirstInstructionReversed-impl$default (ILjava/lang/Integer;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Ljava/lang/Integer;
+	public static final fun indexOfFirstLiteral-impl (IJ)Ljava/lang/Integer;
+	public static final fun indexOfFirstLiteralReversed-impl (IJ)Ljava/lang/Integer;
+	public static final fun indexOfFirstMethodCall-impl (ILjava/lang/String;Ljava/lang/String;I)Ljava/lang/Integer;
+	public static synthetic fun indexOfFirstMethodCall-impl$default (ILjava/lang/String;Ljava/lang/String;IILjava/lang/Object;)Ljava/lang/Integer;
+	public static final fun indexOfFirstReversed-impl (ILapp/reseam/patch/dex/Opcode;I)Ljava/lang/Integer;
+	public static final fun indexOfFirstString-impl (ILjava/lang/String;)Ljava/lang/Integer;
+	public static final fun indexOfOpcodeSequence-impl (I[Lapp/reseam/patch/dex/Opcode;I)Ljava/lang/Integer;
+	public static synthetic fun indexOfOpcodeSequence-impl$default (I[Lapp/reseam/patch/dex/Opcode;IILjava/lang/Object;)Ljava/lang/Integer;
+	public static final fun insertInstruction-impl (IILapp/reseam/patch/types/Instruction;)V
+	public static final fun insertInstructions-impl (IILjava/util/List;)V
+	public static final fun isStatic-impl (I)Z
+	public static final fun methodRef-impl (II)Lapp/reseam/patch/types/MethodRef;
+	public static final fun registerA-impl (II)I
+	public static final fun registerB-impl (II)I
+	public static final fun registerC-impl (II)I
+	public static final fun registerD-impl (II)I
+	public static final fun remove-impl (I)V
+	public static final fun removeInstruction-impl (II)V
+	public static final fun removeInstructions-impl (III)V
+	public static final fun replaceAllLiterals-impl (IJJ)I
+	public static final fun replaceAllStrings-impl (ILjava/lang/String;Ljava/lang/String;)I
+	public static final fun replaceBody-impl (IIILjava/util/List;)V
+	public static final fun replaceInstruction-impl (IILapp/reseam/patch/types/Instruction;)V
+	public static final fun replaceLiteral-impl (IJJ)Z
+	public static final fun replaceMethodCall-impl (IILapp/reseam/patch/types/MethodRef;)Z
+	public static final fun replaceString-impl (ILjava/lang/String;Ljava/lang/String;)Z
+	public static final fun setAccessFlags-impl (II)V
+	public static final fun setInstructions-impl (ILjava/util/List;)V
+	public static final fun stringRef-impl (II)Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (I)Ljava/lang/String;
+	public static final fun typeRef-impl (II)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()I
+	public static final fun wideLiteral-impl (II)J
+}
+
+public final class app/reseam/patch/dex/MethodKt {
+	public static final fun getRangeVariant (Lapp/reseam/patch/dex/Opcode;)Lapp/reseam/patch/dex/Opcode;
+	public static final fun lowerInvokes (Ljava/util/List;Lkotlin/jvm/functions/Function1;)Ljava/util/List;
+}
+
+public final class app/reseam/patch/dex/Opcode : java/lang/Enum {
+	public static final field ADD_DOUBLE Lapp/reseam/patch/dex/Opcode;
+	public static final field ADD_DOUBLE_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field ADD_FLOAT Lapp/reseam/patch/dex/Opcode;
+	public static final field ADD_FLOAT_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field ADD_INT Lapp/reseam/patch/dex/Opcode;
+	public static final field ADD_INT_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field ADD_INT_LIT16 Lapp/reseam/patch/dex/Opcode;
+	public static final field ADD_INT_LIT8 Lapp/reseam/patch/dex/Opcode;
+	public static final field ADD_LONG Lapp/reseam/patch/dex/Opcode;
+	public static final field ADD_LONG_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field AGET Lapp/reseam/patch/dex/Opcode;
+	public static final field AGET_BOOLEAN Lapp/reseam/patch/dex/Opcode;
+	public static final field AGET_BYTE Lapp/reseam/patch/dex/Opcode;
+	public static final field AGET_CHAR Lapp/reseam/patch/dex/Opcode;
+	public static final field AGET_OBJECT Lapp/reseam/patch/dex/Opcode;
+	public static final field AGET_SHORT Lapp/reseam/patch/dex/Opcode;
+	public static final field AGET_WIDE Lapp/reseam/patch/dex/Opcode;
+	public static final field AND_INT Lapp/reseam/patch/dex/Opcode;
+	public static final field AND_INT_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field AND_INT_LIT16 Lapp/reseam/patch/dex/Opcode;
+	public static final field AND_INT_LIT8 Lapp/reseam/patch/dex/Opcode;
+	public static final field AND_LONG Lapp/reseam/patch/dex/Opcode;
+	public static final field AND_LONG_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field APUT Lapp/reseam/patch/dex/Opcode;
+	public static final field APUT_BOOLEAN Lapp/reseam/patch/dex/Opcode;
+	public static final field APUT_BYTE Lapp/reseam/patch/dex/Opcode;
+	public static final field APUT_CHAR Lapp/reseam/patch/dex/Opcode;
+	public static final field APUT_OBJECT Lapp/reseam/patch/dex/Opcode;
+	public static final field APUT_SHORT Lapp/reseam/patch/dex/Opcode;
+	public static final field APUT_WIDE Lapp/reseam/patch/dex/Opcode;
+	public static final field ARRAY_LENGTH Lapp/reseam/patch/dex/Opcode;
+	public static final field CHECK_CAST Lapp/reseam/patch/dex/Opcode;
+	public static final field CMPG_DOUBLE Lapp/reseam/patch/dex/Opcode;
+	public static final field CMPG_FLOAT Lapp/reseam/patch/dex/Opcode;
+	public static final field CMPL_DOUBLE Lapp/reseam/patch/dex/Opcode;
+	public static final field CMPL_FLOAT Lapp/reseam/patch/dex/Opcode;
+	public static final field CMP_LONG Lapp/reseam/patch/dex/Opcode;
+	public static final field CONST Lapp/reseam/patch/dex/Opcode;
+	public static final field CONST_16 Lapp/reseam/patch/dex/Opcode;
+	public static final field CONST_4 Lapp/reseam/patch/dex/Opcode;
+	public static final field CONST_CLASS Lapp/reseam/patch/dex/Opcode;
+	public static final field CONST_HIGH16 Lapp/reseam/patch/dex/Opcode;
+	public static final field CONST_METHOD_HANDLE Lapp/reseam/patch/dex/Opcode;
+	public static final field CONST_METHOD_TYPE Lapp/reseam/patch/dex/Opcode;
+	public static final field CONST_STRING Lapp/reseam/patch/dex/Opcode;
+	public static final field CONST_STRING_JUMBO Lapp/reseam/patch/dex/Opcode;
+	public static final field CONST_WIDE Lapp/reseam/patch/dex/Opcode;
+	public static final field CONST_WIDE_16 Lapp/reseam/patch/dex/Opcode;
+	public static final field CONST_WIDE_32 Lapp/reseam/patch/dex/Opcode;
+	public static final field CONST_WIDE_HIGH16 Lapp/reseam/patch/dex/Opcode;
+	public static final field Companion Lapp/reseam/patch/dex/Opcode$Companion;
+	public static final field DIV_DOUBLE Lapp/reseam/patch/dex/Opcode;
+	public static final field DIV_DOUBLE_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field DIV_FLOAT Lapp/reseam/patch/dex/Opcode;
+	public static final field DIV_FLOAT_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field DIV_INT Lapp/reseam/patch/dex/Opcode;
+	public static final field DIV_INT_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field DIV_INT_LIT16 Lapp/reseam/patch/dex/Opcode;
+	public static final field DIV_INT_LIT8 Lapp/reseam/patch/dex/Opcode;
+	public static final field DIV_LONG Lapp/reseam/patch/dex/Opcode;
+	public static final field DIV_LONG_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field DOUBLE_TO_FLOAT Lapp/reseam/patch/dex/Opcode;
+	public static final field DOUBLE_TO_INT Lapp/reseam/patch/dex/Opcode;
+	public static final field DOUBLE_TO_LONG Lapp/reseam/patch/dex/Opcode;
+	public static final field FILLED_NEW_ARRAY Lapp/reseam/patch/dex/Opcode;
+	public static final field FILLED_NEW_ARRAY_RANGE Lapp/reseam/patch/dex/Opcode;
+	public static final field FILL_ARRAY_DATA Lapp/reseam/patch/dex/Opcode;
+	public static final field FLOAT_TO_DOUBLE Lapp/reseam/patch/dex/Opcode;
+	public static final field FLOAT_TO_INT Lapp/reseam/patch/dex/Opcode;
+	public static final field FLOAT_TO_LONG Lapp/reseam/patch/dex/Opcode;
+	public static final field GOTO Lapp/reseam/patch/dex/Opcode;
+	public static final field GOTO_16 Lapp/reseam/patch/dex/Opcode;
+	public static final field GOTO_32 Lapp/reseam/patch/dex/Opcode;
+	public static final field IF_EQ Lapp/reseam/patch/dex/Opcode;
+	public static final field IF_EQZ Lapp/reseam/patch/dex/Opcode;
+	public static final field IF_GE Lapp/reseam/patch/dex/Opcode;
+	public static final field IF_GEZ Lapp/reseam/patch/dex/Opcode;
+	public static final field IF_GT Lapp/reseam/patch/dex/Opcode;
+	public static final field IF_GTZ Lapp/reseam/patch/dex/Opcode;
+	public static final field IF_LE Lapp/reseam/patch/dex/Opcode;
+	public static final field IF_LEZ Lapp/reseam/patch/dex/Opcode;
+	public static final field IF_LT Lapp/reseam/patch/dex/Opcode;
+	public static final field IF_LTZ Lapp/reseam/patch/dex/Opcode;
+	public static final field IF_NE Lapp/reseam/patch/dex/Opcode;
+	public static final field IF_NEZ Lapp/reseam/patch/dex/Opcode;
+	public static final field IGET Lapp/reseam/patch/dex/Opcode;
+	public static final field IGET_BOOLEAN Lapp/reseam/patch/dex/Opcode;
+	public static final field IGET_BYTE Lapp/reseam/patch/dex/Opcode;
+	public static final field IGET_CHAR Lapp/reseam/patch/dex/Opcode;
+	public static final field IGET_OBJECT Lapp/reseam/patch/dex/Opcode;
+	public static final field IGET_SHORT Lapp/reseam/patch/dex/Opcode;
+	public static final field IGET_WIDE Lapp/reseam/patch/dex/Opcode;
+	public static final field INSTANCE_OF Lapp/reseam/patch/dex/Opcode;
+	public static final field INT_TO_BYTE Lapp/reseam/patch/dex/Opcode;
+	public static final field INT_TO_CHAR Lapp/reseam/patch/dex/Opcode;
+	public static final field INT_TO_DOUBLE Lapp/reseam/patch/dex/Opcode;
+	public static final field INT_TO_FLOAT Lapp/reseam/patch/dex/Opcode;
+	public static final field INT_TO_LONG Lapp/reseam/patch/dex/Opcode;
+	public static final field INT_TO_SHORT Lapp/reseam/patch/dex/Opcode;
+	public static final field INVOKE_CUSTOM Lapp/reseam/patch/dex/Opcode;
+	public static final field INVOKE_CUSTOM_RANGE Lapp/reseam/patch/dex/Opcode;
+	public static final field INVOKE_DIRECT Lapp/reseam/patch/dex/Opcode;
+	public static final field INVOKE_DIRECT_RANGE Lapp/reseam/patch/dex/Opcode;
+	public static final field INVOKE_INTERFACE Lapp/reseam/patch/dex/Opcode;
+	public static final field INVOKE_INTERFACE_RANGE Lapp/reseam/patch/dex/Opcode;
+	public static final field INVOKE_POLYMORPHIC Lapp/reseam/patch/dex/Opcode;
+	public static final field INVOKE_POLYMORPHIC_RANGE Lapp/reseam/patch/dex/Opcode;
+	public static final field INVOKE_STATIC Lapp/reseam/patch/dex/Opcode;
+	public static final field INVOKE_STATIC_RANGE Lapp/reseam/patch/dex/Opcode;
+	public static final field INVOKE_SUPER Lapp/reseam/patch/dex/Opcode;
+	public static final field INVOKE_SUPER_RANGE Lapp/reseam/patch/dex/Opcode;
+	public static final field INVOKE_VIRTUAL Lapp/reseam/patch/dex/Opcode;
+	public static final field INVOKE_VIRTUAL_RANGE Lapp/reseam/patch/dex/Opcode;
+	public static final field IPUT Lapp/reseam/patch/dex/Opcode;
+	public static final field IPUT_BOOLEAN Lapp/reseam/patch/dex/Opcode;
+	public static final field IPUT_BYTE Lapp/reseam/patch/dex/Opcode;
+	public static final field IPUT_CHAR Lapp/reseam/patch/dex/Opcode;
+	public static final field IPUT_OBJECT Lapp/reseam/patch/dex/Opcode;
+	public static final field IPUT_SHORT Lapp/reseam/patch/dex/Opcode;
+	public static final field IPUT_WIDE Lapp/reseam/patch/dex/Opcode;
+	public static final field LONG_TO_DOUBLE Lapp/reseam/patch/dex/Opcode;
+	public static final field LONG_TO_FLOAT Lapp/reseam/patch/dex/Opcode;
+	public static final field LONG_TO_INT Lapp/reseam/patch/dex/Opcode;
+	public static final field MONITOR_ENTER Lapp/reseam/patch/dex/Opcode;
+	public static final field MONITOR_EXIT Lapp/reseam/patch/dex/Opcode;
+	public static final field MOVE Lapp/reseam/patch/dex/Opcode;
+	public static final field MOVE_16 Lapp/reseam/patch/dex/Opcode;
+	public static final field MOVE_EXCEPTION Lapp/reseam/patch/dex/Opcode;
+	public static final field MOVE_FROM16 Lapp/reseam/patch/dex/Opcode;
+	public static final field MOVE_OBJECT Lapp/reseam/patch/dex/Opcode;
+	public static final field MOVE_OBJECT_16 Lapp/reseam/patch/dex/Opcode;
+	public static final field MOVE_OBJECT_FROM16 Lapp/reseam/patch/dex/Opcode;
+	public static final field MOVE_RESULT Lapp/reseam/patch/dex/Opcode;
+	public static final field MOVE_RESULT_OBJECT Lapp/reseam/patch/dex/Opcode;
+	public static final field MOVE_RESULT_WIDE Lapp/reseam/patch/dex/Opcode;
+	public static final field MOVE_WIDE Lapp/reseam/patch/dex/Opcode;
+	public static final field MOVE_WIDE_16 Lapp/reseam/patch/dex/Opcode;
+	public static final field MOVE_WIDE_FROM16 Lapp/reseam/patch/dex/Opcode;
+	public static final field MUL_DOUBLE Lapp/reseam/patch/dex/Opcode;
+	public static final field MUL_DOUBLE_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field MUL_FLOAT Lapp/reseam/patch/dex/Opcode;
+	public static final field MUL_FLOAT_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field MUL_INT Lapp/reseam/patch/dex/Opcode;
+	public static final field MUL_INT_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field MUL_INT_LIT16 Lapp/reseam/patch/dex/Opcode;
+	public static final field MUL_INT_LIT8 Lapp/reseam/patch/dex/Opcode;
+	public static final field MUL_LONG Lapp/reseam/patch/dex/Opcode;
+	public static final field MUL_LONG_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field NEG_DOUBLE Lapp/reseam/patch/dex/Opcode;
+	public static final field NEG_FLOAT Lapp/reseam/patch/dex/Opcode;
+	public static final field NEG_INT Lapp/reseam/patch/dex/Opcode;
+	public static final field NEG_LONG Lapp/reseam/patch/dex/Opcode;
+	public static final field NEW_ARRAY Lapp/reseam/patch/dex/Opcode;
+	public static final field NEW_INSTANCE Lapp/reseam/patch/dex/Opcode;
+	public static final field NOP Lapp/reseam/patch/dex/Opcode;
+	public static final field NOT_INT Lapp/reseam/patch/dex/Opcode;
+	public static final field NOT_LONG Lapp/reseam/patch/dex/Opcode;
+	public static final field OR_INT Lapp/reseam/patch/dex/Opcode;
+	public static final field OR_INT_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field OR_INT_LIT16 Lapp/reseam/patch/dex/Opcode;
+	public static final field OR_INT_LIT8 Lapp/reseam/patch/dex/Opcode;
+	public static final field OR_LONG Lapp/reseam/patch/dex/Opcode;
+	public static final field OR_LONG_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field PACKED_SWITCH Lapp/reseam/patch/dex/Opcode;
+	public static final field REM_DOUBLE Lapp/reseam/patch/dex/Opcode;
+	public static final field REM_DOUBLE_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field REM_FLOAT Lapp/reseam/patch/dex/Opcode;
+	public static final field REM_FLOAT_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field REM_INT Lapp/reseam/patch/dex/Opcode;
+	public static final field REM_INT_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field REM_INT_LIT16 Lapp/reseam/patch/dex/Opcode;
+	public static final field REM_INT_LIT8 Lapp/reseam/patch/dex/Opcode;
+	public static final field REM_LONG Lapp/reseam/patch/dex/Opcode;
+	public static final field REM_LONG_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field RETURN Lapp/reseam/patch/dex/Opcode;
+	public static final field RETURN_OBJECT Lapp/reseam/patch/dex/Opcode;
+	public static final field RETURN_VOID Lapp/reseam/patch/dex/Opcode;
+	public static final field RETURN_WIDE Lapp/reseam/patch/dex/Opcode;
+	public static final field RSUB_INT Lapp/reseam/patch/dex/Opcode;
+	public static final field RSUB_INT_LIT8 Lapp/reseam/patch/dex/Opcode;
+	public static final field SGET Lapp/reseam/patch/dex/Opcode;
+	public static final field SGET_BOOLEAN Lapp/reseam/patch/dex/Opcode;
+	public static final field SGET_BYTE Lapp/reseam/patch/dex/Opcode;
+	public static final field SGET_CHAR Lapp/reseam/patch/dex/Opcode;
+	public static final field SGET_OBJECT Lapp/reseam/patch/dex/Opcode;
+	public static final field SGET_SHORT Lapp/reseam/patch/dex/Opcode;
+	public static final field SGET_WIDE Lapp/reseam/patch/dex/Opcode;
+	public static final field SHL_INT Lapp/reseam/patch/dex/Opcode;
+	public static final field SHL_INT_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field SHL_INT_LIT8 Lapp/reseam/patch/dex/Opcode;
+	public static final field SHL_LONG Lapp/reseam/patch/dex/Opcode;
+	public static final field SHL_LONG_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field SHR_INT Lapp/reseam/patch/dex/Opcode;
+	public static final field SHR_INT_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field SHR_INT_LIT8 Lapp/reseam/patch/dex/Opcode;
+	public static final field SHR_LONG Lapp/reseam/patch/dex/Opcode;
+	public static final field SHR_LONG_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field SPARSE_SWITCH Lapp/reseam/patch/dex/Opcode;
+	public static final field SPUT Lapp/reseam/patch/dex/Opcode;
+	public static final field SPUT_BOOLEAN Lapp/reseam/patch/dex/Opcode;
+	public static final field SPUT_BYTE Lapp/reseam/patch/dex/Opcode;
+	public static final field SPUT_CHAR Lapp/reseam/patch/dex/Opcode;
+	public static final field SPUT_OBJECT Lapp/reseam/patch/dex/Opcode;
+	public static final field SPUT_SHORT Lapp/reseam/patch/dex/Opcode;
+	public static final field SPUT_WIDE Lapp/reseam/patch/dex/Opcode;
+	public static final field SUB_DOUBLE Lapp/reseam/patch/dex/Opcode;
+	public static final field SUB_DOUBLE_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field SUB_FLOAT Lapp/reseam/patch/dex/Opcode;
+	public static final field SUB_FLOAT_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field SUB_INT Lapp/reseam/patch/dex/Opcode;
+	public static final field SUB_INT_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field SUB_LONG Lapp/reseam/patch/dex/Opcode;
+	public static final field SUB_LONG_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field THROW Lapp/reseam/patch/dex/Opcode;
+	public static final field USHR_INT Lapp/reseam/patch/dex/Opcode;
+	public static final field USHR_INT_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field USHR_INT_LIT8 Lapp/reseam/patch/dex/Opcode;
+	public static final field USHR_LONG Lapp/reseam/patch/dex/Opcode;
+	public static final field USHR_LONG_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field XOR_INT Lapp/reseam/patch/dex/Opcode;
+	public static final field XOR_INT_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public static final field XOR_INT_LIT16 Lapp/reseam/patch/dex/Opcode;
+	public static final field XOR_INT_LIT8 Lapp/reseam/patch/dex/Opcode;
+	public static final field XOR_LONG Lapp/reseam/patch/dex/Opcode;
+	public static final field XOR_LONG_2ADDR Lapp/reseam/patch/dex/Opcode;
+	public final fun getEndsFlow ()Z
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getValue ()I
+	public final fun isInvoke ()Z
+	public final fun isMoveResult ()Z
+	public final fun isReturn ()Z
+	public static fun valueOf (Ljava/lang/String;)Lapp/reseam/patch/dex/Opcode;
+	public static fun values ()[Lapp/reseam/patch/dex/Opcode;
+}
+
+public final class app/reseam/patch/dex/Opcode$Companion {
+	public final fun of (I)Lapp/reseam/patch/dex/Opcode;
+}
+
+public final class app/reseam/patch/settings/Choice {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/settings/Choice;
+	public static synthetic fun copy$default (Lapp/reseam/patch/settings/Choice;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/settings/Choice;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getTitle ()Ljava/lang/String;
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/settings/ChoiceSetting : app/reseam/patch/settings/Setting {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getChoices ()Ljava/util/List;
+}
+
+public final class app/reseam/patch/settings/FolderSetting : app/reseam/patch/settings/Setting {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class app/reseam/patch/settings/GatesKt {
+	public static final fun after (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;Lkotlin/jvm/functions/Function1;)V
+	public static final fun after (Lapp/reseam/patch/PointTarget;Lapp/reseam/patch/settings/ToggleSetting;Lkotlin/jvm/functions/Function1;)V
+	public static final fun before (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;Lkotlin/jvm/functions/Function1;)V
+	public static final fun before (Lapp/reseam/patch/PointTarget;Lapp/reseam/patch/settings/ToggleSetting;Lkotlin/jvm/functions/Function1;)V
+	public static final fun returnFalseWhen (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
+	public static final fun returnNullWhen (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
+	public static final fun returnTrueWhen (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
+	public static final fun skipWhen (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
+	public static final fun skipWhen (Lapp/reseam/patch/PointTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
+	public static final fun whenEnabled (Lapp/reseam/patch/CodeScope;Lapp/reseam/patch/settings/ToggleSetting;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/Otherwise;
+}
+
+public final class app/reseam/patch/settings/ReseamSettings : app/reseam/patch/ExtClass {
+	public static final field INSTANCE Lapp/reseam/patch/settings/ReseamSettings;
+	public final fun getGetBoolean ()Lapp/reseam/patch/ExtMethod;
+	public final fun getGetString ()Lapp/reseam/patch/ExtMethod;
+}
+
+public abstract class app/reseam/patch/settings/Setting {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getDefault ()Ljava/lang/Object;
+	public final fun getKey ()Ljava/lang/String;
+	public final fun getSummary ()Ljava/lang/String;
+	public final fun getTitle ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/settings/SettingDelegate : kotlin/properties/PropertyDelegateProvider {
+	public synthetic fun provideDelegate (Ljava/lang/Object;Lkotlin/reflect/KProperty;)Ljava/lang/Object;
+	public fun provideDelegate (Ljava/lang/Object;Lkotlin/reflect/KProperty;)Lkotlin/properties/ReadOnlyProperty;
+}
+
+public final class app/reseam/patch/settings/SettingsHost : app/reseam/patch/ReseamPatch {
+	public fun afterDependents (Lapp/reseam/patch/PatchRuntime;)V
+	public fun execute (Lapp/reseam/patch/PatchRuntime;)V
+	public final fun getAppId ()Ljava/lang/String;
+	public fun getCompatibleWith ()Ljava/util/List;
+	public fun getDependencies ()Ljava/util/List;
+	public fun getDescription ()Ljava/lang/String;
+	public fun getEnabled ()Z
+	public fun getHidden ()Z
+	public fun getName ()Ljava/lang/String;
+	public fun getOptions ()Ljava/util/List;
+	public fun getUniversal ()Z
+	public final fun register (Lapp/reseam/patch/ReseamPatch;Ljava/util/List;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/settings/SettingsHostBuilder : app/reseam/patch/PatchDeclaration {
+	public final fun install (Lkotlin/jvm/functions/Function1;)V
+	public final fun settings ([Lapp/reseam/patch/settings/SettingsSection;)V
+}
+
+public final class app/reseam/patch/settings/SettingsKt {
+	public static final field SETTINGS_SCHEMA_PATH Ljava/lang/String;
+	public static final fun choice (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static synthetic fun choice$default (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static final fun folder (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static synthetic fun folder$default (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static final fun section (Lapp/reseam/patch/settings/SettingsPage;Ljava/lang/String;[Lapp/reseam/patch/settings/Setting;)Lapp/reseam/patch/settings/SettingsSection;
+	public static final fun section (Ljava/lang/String;[Lapp/reseam/patch/settings/Setting;)Lapp/reseam/patch/settings/SettingsSection;
+	public static final fun settingsHost (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/settings/SettingsHost;
+	public static final fun text (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static synthetic fun text$default (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static final fun toggle (Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static synthetic fun toggle$default (Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/settings/SettingDelegate;
+}
+
+public final class app/reseam/patch/settings/SettingsPage {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lapp/reseam/patch/settings/SettingsPage;I)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lapp/reseam/patch/settings/SettingsPage;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lapp/reseam/patch/settings/SettingsPage;
+	public final fun component4 ()I
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lapp/reseam/patch/settings/SettingsPage;I)Lapp/reseam/patch/settings/SettingsPage;
+	public static synthetic fun copy$default (Lapp/reseam/patch/settings/SettingsPage;Ljava/lang/String;Ljava/lang/String;Lapp/reseam/patch/settings/SettingsPage;IILjava/lang/Object;)Lapp/reseam/patch/settings/SettingsPage;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()Ljava/lang/String;
+	public final fun getOrder ()I
+	public final fun getParent ()Lapp/reseam/patch/settings/SettingsPage;
+	public final fun getTitle ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/settings/SettingsSection {
+	public fun <init> (Ljava/lang/String;Ljava/util/List;Lapp/reseam/patch/settings/SettingsPage;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Lapp/reseam/patch/settings/SettingsPage;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Lapp/reseam/patch/settings/SettingsPage;
+	public final fun copy (Ljava/lang/String;Ljava/util/List;Lapp/reseam/patch/settings/SettingsPage;)Lapp/reseam/patch/settings/SettingsSection;
+	public static synthetic fun copy$default (Lapp/reseam/patch/settings/SettingsSection;Ljava/lang/String;Ljava/util/List;Lapp/reseam/patch/settings/SettingsPage;ILjava/lang/Object;)Lapp/reseam/patch/settings/SettingsSection;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPage ()Lapp/reseam/patch/settings/SettingsPage;
+	public final fun getSettings ()Ljava/util/List;
+	public final fun getTitle ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/settings/TextSetting : app/reseam/patch/settings/Setting {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getMultiline ()Z
+}
+
+public final class app/reseam/patch/settings/ToggleSetting : app/reseam/patch/settings/Setting {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class app/reseam/patch/types/AnnotationElement {
+	public static final field Companion Lapp/reseam/patch/types/AnnotationElement$Companion;
+	public fun <init> (Ljava/lang/String;Lapp/reseam/patch/types/EncodedVal;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lapp/reseam/patch/types/EncodedVal;
+	public final fun copy (Ljava/lang/String;Lapp/reseam/patch/types/EncodedVal;)Lapp/reseam/patch/types/AnnotationElement;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/AnnotationElement;Ljava/lang/String;Lapp/reseam/patch/types/EncodedVal;ILjava/lang/Object;)Lapp/reseam/patch/types/AnnotationElement;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getName ()Ljava/lang/String;
+	public final fun getValue ()Lapp/reseam/patch/types/EncodedVal;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/AnnotationElement$Companion {
+}
+
+public final class app/reseam/patch/types/AnnotationItem {
+	public static final field Companion Lapp/reseam/patch/types/AnnotationItem$Companion;
+	public synthetic fun <init> (BLjava/lang/String;Ljava/util/List;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-w2LRezQ ()B
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/util/List;
+	public final fun copy-d-jbwkw (BLjava/lang/String;Ljava/util/List;)Lapp/reseam/patch/types/AnnotationItem;
+	public static synthetic fun copy-d-jbwkw$default (Lapp/reseam/patch/types/AnnotationItem;BLjava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lapp/reseam/patch/types/AnnotationItem;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnnotationType ()Ljava/lang/String;
+	public final fun getElements ()Ljava/util/List;
+	public final fun getVisibility-w2LRezQ ()B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/AnnotationItem$Companion {
+}
+
+public final class app/reseam/patch/types/AnnotationValue {
+	public static final field Companion Lapp/reseam/patch/types/AnnotationValue$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/util/List;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/util/List;)Lapp/reseam/patch/types/AnnotationValue;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/AnnotationValue;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lapp/reseam/patch/types/AnnotationValue;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnnotationType ()Ljava/lang/String;
+	public final fun getElements ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/AnnotationValue$Companion {
+}
+
+public final class app/reseam/patch/types/Branch0Insn {
+	public static final field Companion Lapp/reseam/patch/types/Branch0Insn$Companion;
+	public synthetic fun <init> (SILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun component2 ()I
+	public final fun copy-vckuEUM (SI)Lapp/reseam/patch/types/Branch0Insn;
+	public static synthetic fun copy-vckuEUM$default (Lapp/reseam/patch/types/Branch0Insn;SIILjava/lang/Object;)Lapp/reseam/patch/types/Branch0Insn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOffset ()I
+	public final fun getOpcode-Mh2AYeg ()S
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Branch0Insn$Companion {
+}
+
+public final class app/reseam/patch/types/Branch2Insn {
+	public static final field Companion Lapp/reseam/patch/types/Branch2Insn$Companion;
+	public synthetic fun <init> (SSSILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun component2-Mh2AYeg ()S
+	public final fun component3-Mh2AYeg ()S
+	public final fun component4 ()I
+	public final fun copy-e5VWex0 (SSSI)Lapp/reseam/patch/types/Branch2Insn;
+	public static synthetic fun copy-e5VWex0$default (Lapp/reseam/patch/types/Branch2Insn;SSSIILjava/lang/Object;)Lapp/reseam/patch/types/Branch2Insn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOffset ()I
+	public final fun getOpcode-Mh2AYeg ()S
+	public final fun getRegA-Mh2AYeg ()S
+	public final fun getRegB-Mh2AYeg ()S
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Branch2Insn$Companion {
+}
+
+public final class app/reseam/patch/types/BranchInsn {
+	public static final field Companion Lapp/reseam/patch/types/BranchInsn$Companion;
+	public synthetic fun <init> (SSILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun component2-Mh2AYeg ()S
+	public final fun component3 ()I
+	public final fun copy-Y_-6-A0 (SSI)Lapp/reseam/patch/types/BranchInsn;
+	public static synthetic fun copy-Y_-6-A0$default (Lapp/reseam/patch/types/BranchInsn;SSIILjava/lang/Object;)Lapp/reseam/patch/types/BranchInsn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOffset ()I
+	public final fun getOpcode-Mh2AYeg ()S
+	public final fun getRegA-Mh2AYeg ()S
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/BranchInsn$Companion {
+}
+
+public final class app/reseam/patch/types/CallSiteRef {
+	public static final field Companion Lapp/reseam/patch/types/CallSiteRef$Companion;
+	public fun <init> (Lapp/reseam/patch/types/PoolOrigin;Lapp/reseam/patch/types/HandleRef;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)V
+	public synthetic fun <init> (Lapp/reseam/patch/types/PoolOrigin;Lapp/reseam/patch/types/HandleRef;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lapp/reseam/patch/types/PoolOrigin;
+	public final fun component2 ()Lapp/reseam/patch/types/HandleRef;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/util/List;
+	public final fun copy (Lapp/reseam/patch/types/PoolOrigin;Lapp/reseam/patch/types/HandleRef;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)Lapp/reseam/patch/types/CallSiteRef;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/CallSiteRef;Lapp/reseam/patch/types/PoolOrigin;Lapp/reseam/patch/types/HandleRef;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lapp/reseam/patch/types/CallSiteRef;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArguments ()Ljava/util/List;
+	public final fun getBootstrap ()Lapp/reseam/patch/types/HandleRef;
+	public final fun getName ()Ljava/lang/String;
+	public final fun getOrigin ()Lapp/reseam/patch/types/PoolOrigin;
+	public final fun getProto ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/CallSiteRef$Companion {
+}
+
+public final class app/reseam/patch/types/CatchHandler {
+	public static final field Companion Lapp/reseam/patch/types/CatchHandler$Companion;
+	public synthetic fun <init> (Ljava/util/List;Lkotlin/UInt;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/util/List;Lkotlin/UInt;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2-0hXNFcg ()Lkotlin/UInt;
+	public final fun copy-FrkygD8 (Ljava/util/List;Lkotlin/UInt;)Lapp/reseam/patch/types/CatchHandler;
+	public static synthetic fun copy-FrkygD8$default (Lapp/reseam/patch/types/CatchHandler;Ljava/util/List;Lkotlin/UInt;ILjava/lang/Object;)Lapp/reseam/patch/types/CatchHandler;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCatchAllAddr-0hXNFcg ()Lkotlin/UInt;
+	public final fun getTypedCatches ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/CatchHandler$Companion {
+}
+
+public final class app/reseam/patch/types/ClassInfo {
+	public static final field Companion Lapp/reseam/patch/types/ClassInfo$Companion;
+	public synthetic fun <init> (Ljava/lang/String;ILjava/lang/String;Ljava/util/List;Ljava/lang/String;IIIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;ILjava/lang/String;Ljava/util/List;Ljava/lang/String;IIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component10-pVg5ArA ()I
+	public final fun component2-pVg5ArA ()I
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/util/List;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6-pVg5ArA ()I
+	public final fun component7-pVg5ArA ()I
+	public final fun component8-pVg5ArA ()I
+	public final fun component9-pVg5ArA ()I
+	public final fun copy-ccgJ8dQ (Ljava/lang/String;ILjava/lang/String;Ljava/util/List;Ljava/lang/String;IIIII)Lapp/reseam/patch/types/ClassInfo;
+	public static synthetic fun copy-ccgJ8dQ$default (Lapp/reseam/patch/types/ClassInfo;Ljava/lang/String;ILjava/lang/String;Ljava/util/List;Ljava/lang/String;IIIIIILjava/lang/Object;)Lapp/reseam/patch/types/ClassInfo;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAccessFlags-pVg5ArA ()I
+	public final fun getDescriptor ()Ljava/lang/String;
+	public final fun getDexIndex-pVg5ArA ()I
+	public final fun getDirectMethodCount-pVg5ArA ()I
+	public final fun getInstanceFieldCount-pVg5ArA ()I
+	public final fun getInterfaces ()Ljava/util/List;
+	public final fun getSourceFile ()Ljava/lang/String;
+	public final fun getStaticFieldCount-pVg5ArA ()I
+	public final fun getSuperclass ()Ljava/lang/String;
+	public final fun getVirtualMethodCount-pVg5ArA ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/ClassInfo$Companion {
+}
+
+public final class app/reseam/patch/types/CustomInsn {
+	public static final field Companion Lapp/reseam/patch/types/CustomInsn$Companion;
+	public synthetic fun <init> (SLapp/reseam/patch/types/CallSiteRef;[SLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun component2 ()Lapp/reseam/patch/types/CallSiteRef;
+	public final fun component3-amswpOA ()[S
+	public final fun copy-e5GkXv4 (SLapp/reseam/patch/types/CallSiteRef;[S)Lapp/reseam/patch/types/CustomInsn;
+	public static synthetic fun copy-e5GkXv4$default (Lapp/reseam/patch/types/CustomInsn;SLapp/reseam/patch/types/CallSiteRef;[SILjava/lang/Object;)Lapp/reseam/patch/types/CustomInsn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCallSite ()Lapp/reseam/patch/types/CallSiteRef;
+	public final fun getOpcode-Mh2AYeg ()S
+	public final fun getRegisters-amswpOA ()[S
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/CustomInsn$Companion {
+}
+
+public final class app/reseam/patch/types/CustomRangeInsn {
+	public static final field Companion Lapp/reseam/patch/types/CustomRangeInsn$Companion;
+	public synthetic fun <init> (SLapp/reseam/patch/types/CallSiteRef;SSLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun component2 ()Lapp/reseam/patch/types/CallSiteRef;
+	public final fun component3-Mh2AYeg ()S
+	public final fun component4-Mh2AYeg ()S
+	public final fun copy-36GeZhg (SLapp/reseam/patch/types/CallSiteRef;SS)Lapp/reseam/patch/types/CustomRangeInsn;
+	public static synthetic fun copy-36GeZhg$default (Lapp/reseam/patch/types/CustomRangeInsn;SLapp/reseam/patch/types/CallSiteRef;SSILjava/lang/Object;)Lapp/reseam/patch/types/CustomRangeInsn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCallSite ()Lapp/reseam/patch/types/CallSiteRef;
+	public final fun getOpcode-Mh2AYeg ()S
+	public final fun getRegCount-Mh2AYeg ()S
+	public final fun getStartReg-Mh2AYeg ()S
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/CustomRangeInsn$Companion {
+}
+
+public abstract class app/reseam/patch/types/EncodedVal {
+	public static final field Companion Lapp/reseam/patch/types/EncodedVal$Companion;
+}
+
+public final class app/reseam/patch/types/EncodedVal$AnnotationVal : app/reseam/patch/types/EncodedVal {
+	public fun <init> (Lapp/reseam/patch/types/AnnotationValue;)V
+	public final fun component1 ()Lapp/reseam/patch/types/AnnotationValue;
+	public final fun copy (Lapp/reseam/patch/types/AnnotationValue;)Lapp/reseam/patch/types/EncodedVal$AnnotationVal;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/EncodedVal$AnnotationVal;Lapp/reseam/patch/types/AnnotationValue;ILjava/lang/Object;)Lapp/reseam/patch/types/EncodedVal$AnnotationVal;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/AnnotationValue;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/EncodedVal$ArrayVal : app/reseam/patch/types/EncodedVal {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Lapp/reseam/patch/types/EncodedVal$ArrayVal;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/EncodedVal$ArrayVal;Ljava/util/List;ILjava/lang/Object;)Lapp/reseam/patch/types/EncodedVal$ArrayVal;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/EncodedVal$BoolVal : app/reseam/patch/types/EncodedVal {
+	public fun <init> (Z)V
+	public final fun component1 ()Z
+	public final fun copy (Z)Lapp/reseam/patch/types/EncodedVal$BoolVal;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/EncodedVal$BoolVal;ZILjava/lang/Object;)Lapp/reseam/patch/types/EncodedVal$BoolVal;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/EncodedVal$ByteVal : app/reseam/patch/types/EncodedVal {
+	public fun <init> (B)V
+	public final fun component1 ()B
+	public final fun copy (B)Lapp/reseam/patch/types/EncodedVal$ByteVal;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/EncodedVal$ByteVal;BILjava/lang/Object;)Lapp/reseam/patch/types/EncodedVal$ByteVal;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/EncodedVal$CharVal : app/reseam/patch/types/EncodedVal {
+	public synthetic fun <init> (SLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun copy-xj2QHRw (S)Lapp/reseam/patch/types/EncodedVal$CharVal;
+	public static synthetic fun copy-xj2QHRw$default (Lapp/reseam/patch/types/EncodedVal$CharVal;SILjava/lang/Object;)Lapp/reseam/patch/types/EncodedVal$CharVal;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0-Mh2AYeg ()S
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/EncodedVal$Companion {
+}
+
+public final class app/reseam/patch/types/EncodedVal$DoubleVal : app/reseam/patch/types/EncodedVal {
+	public fun <init> (D)V
+	public final fun component1 ()D
+	public final fun copy (D)Lapp/reseam/patch/types/EncodedVal$DoubleVal;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/EncodedVal$DoubleVal;DILjava/lang/Object;)Lapp/reseam/patch/types/EncodedVal$DoubleVal;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()D
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/EncodedVal$EnumVal : app/reseam/patch/types/EncodedVal {
+	public fun <init> (Lapp/reseam/patch/types/FieldRef;)V
+	public final fun component1 ()Lapp/reseam/patch/types/FieldRef;
+	public final fun copy (Lapp/reseam/patch/types/FieldRef;)Lapp/reseam/patch/types/EncodedVal$EnumVal;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/EncodedVal$EnumVal;Lapp/reseam/patch/types/FieldRef;ILjava/lang/Object;)Lapp/reseam/patch/types/EncodedVal$EnumVal;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/FieldRef;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/EncodedVal$FieldVal : app/reseam/patch/types/EncodedVal {
+	public fun <init> (Lapp/reseam/patch/types/FieldRef;)V
+	public final fun component1 ()Lapp/reseam/patch/types/FieldRef;
+	public final fun copy (Lapp/reseam/patch/types/FieldRef;)Lapp/reseam/patch/types/EncodedVal$FieldVal;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/EncodedVal$FieldVal;Lapp/reseam/patch/types/FieldRef;ILjava/lang/Object;)Lapp/reseam/patch/types/EncodedVal$FieldVal;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/FieldRef;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/EncodedVal$FloatVal : app/reseam/patch/types/EncodedVal {
+	public fun <init> (F)V
+	public final fun component1 ()F
+	public final fun copy (F)Lapp/reseam/patch/types/EncodedVal$FloatVal;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/EncodedVal$FloatVal;FILjava/lang/Object;)Lapp/reseam/patch/types/EncodedVal$FloatVal;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/EncodedVal$HandleVal : app/reseam/patch/types/EncodedVal {
+	public fun <init> (Lapp/reseam/patch/types/HandleRef;)V
+	public final fun component1 ()Lapp/reseam/patch/types/HandleRef;
+	public final fun copy (Lapp/reseam/patch/types/HandleRef;)Lapp/reseam/patch/types/EncodedVal$HandleVal;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/EncodedVal$HandleVal;Lapp/reseam/patch/types/HandleRef;ILjava/lang/Object;)Lapp/reseam/patch/types/EncodedVal$HandleVal;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/HandleRef;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/EncodedVal$IntVal : app/reseam/patch/types/EncodedVal {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lapp/reseam/patch/types/EncodedVal$IntVal;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/EncodedVal$IntVal;IILjava/lang/Object;)Lapp/reseam/patch/types/EncodedVal$IntVal;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/EncodedVal$LongVal : app/reseam/patch/types/EncodedVal {
+	public fun <init> (J)V
+	public final fun component1 ()J
+	public final fun copy (J)Lapp/reseam/patch/types/EncodedVal$LongVal;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/EncodedVal$LongVal;JILjava/lang/Object;)Lapp/reseam/patch/types/EncodedVal$LongVal;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/EncodedVal$MethodVal : app/reseam/patch/types/EncodedVal {
+	public fun <init> (Lapp/reseam/patch/types/MethodRef;)V
+	public final fun component1 ()Lapp/reseam/patch/types/MethodRef;
+	public final fun copy (Lapp/reseam/patch/types/MethodRef;)Lapp/reseam/patch/types/EncodedVal$MethodVal;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/EncodedVal$MethodVal;Lapp/reseam/patch/types/MethodRef;ILjava/lang/Object;)Lapp/reseam/patch/types/EncodedVal$MethodVal;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/MethodRef;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/EncodedVal$Null : app/reseam/patch/types/EncodedVal {
+	public static final field INSTANCE Lapp/reseam/patch/types/EncodedVal$Null;
+}
+
+public final class app/reseam/patch/types/EncodedVal$ProtoVal : app/reseam/patch/types/EncodedVal {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lapp/reseam/patch/types/EncodedVal$ProtoVal;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/EncodedVal$ProtoVal;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/types/EncodedVal$ProtoVal;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/EncodedVal$ShortVal : app/reseam/patch/types/EncodedVal {
+	public fun <init> (S)V
+	public final fun component1 ()S
+	public final fun copy (S)Lapp/reseam/patch/types/EncodedVal$ShortVal;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/EncodedVal$ShortVal;SILjava/lang/Object;)Lapp/reseam/patch/types/EncodedVal$ShortVal;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()S
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/EncodedVal$StringVal : app/reseam/patch/types/EncodedVal {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lapp/reseam/patch/types/EncodedVal$StringVal;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/EncodedVal$StringVal;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/types/EncodedVal$StringVal;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/EncodedVal$TypeVal : app/reseam/patch/types/EncodedVal {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lapp/reseam/patch/types/EncodedVal$TypeVal;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/EncodedVal$TypeVal;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/types/EncodedVal$TypeVal;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/FieldHandleRef {
+	public static final field Companion Lapp/reseam/patch/types/FieldHandleRef$Companion;
+	public synthetic fun <init> (Lapp/reseam/patch/types/PoolOrigin;SLapp/reseam/patch/types/FieldRef;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Lapp/reseam/patch/types/PoolOrigin;SLapp/reseam/patch/types/FieldRef;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lapp/reseam/patch/types/PoolOrigin;
+	public final fun component2-Mh2AYeg ()S
+	public final fun component3 ()Lapp/reseam/patch/types/FieldRef;
+	public final fun copy-qEOnv9Y (Lapp/reseam/patch/types/PoolOrigin;SLapp/reseam/patch/types/FieldRef;)Lapp/reseam/patch/types/FieldHandleRef;
+	public static synthetic fun copy-qEOnv9Y$default (Lapp/reseam/patch/types/FieldHandleRef;Lapp/reseam/patch/types/PoolOrigin;SLapp/reseam/patch/types/FieldRef;ILjava/lang/Object;)Lapp/reseam/patch/types/FieldHandleRef;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField ()Lapp/reseam/patch/types/FieldRef;
+	public final fun getKind-Mh2AYeg ()S
+	public final fun getOrigin ()Lapp/reseam/patch/types/PoolOrigin;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/FieldHandleRef$Companion {
+}
+
+public final class app/reseam/patch/types/FieldInfo {
+	public static final field Companion Lapp/reseam/patch/types/FieldInfo$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILapp/reseam/patch/types/EncodedVal;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILapp/reseam/patch/types/EncodedVal;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4-pVg5ArA ()I
+	public final fun component5 ()Lapp/reseam/patch/types/EncodedVal;
+	public final fun copy-dZZXe8Y (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILapp/reseam/patch/types/EncodedVal;)Lapp/reseam/patch/types/FieldInfo;
+	public static synthetic fun copy-dZZXe8Y$default (Lapp/reseam/patch/types/FieldInfo;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILapp/reseam/patch/types/EncodedVal;ILjava/lang/Object;)Lapp/reseam/patch/types/FieldInfo;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAccessFlags-pVg5ArA ()I
+	public final fun getClassDescriptor ()Ljava/lang/String;
+	public final fun getFieldType ()Ljava/lang/String;
+	public final fun getInitialValue ()Lapp/reseam/patch/types/EncodedVal;
+	public final fun getName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/FieldInfo$Companion {
+}
+
+public final class app/reseam/patch/types/FieldRef {
+	public static final field Companion Lapp/reseam/patch/types/FieldRef$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/types/FieldRef;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/FieldRef;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/types/FieldRef;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDefiningClass ()Ljava/lang/String;
+	public final fun getFieldType ()Ljava/lang/String;
+	public final fun getName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/FieldRef$Companion {
+}
+
+public final class app/reseam/patch/types/FillArrayInsn {
+	public static final field Companion Lapp/reseam/patch/types/FillArrayInsn$Companion;
+	public synthetic fun <init> (S[BLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun component2 ()[B
+	public final fun copy-vckuEUM (S[B)Lapp/reseam/patch/types/FillArrayInsn;
+	public static synthetic fun copy-vckuEUM$default (Lapp/reseam/patch/types/FillArrayInsn;S[BILjava/lang/Object;)Lapp/reseam/patch/types/FillArrayInsn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getData ()[B
+	public final fun getElementWidth-Mh2AYeg ()S
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/FillArrayInsn$Companion {
+}
+
+public final class app/reseam/patch/types/FilledArrayInsn {
+	public static final field Companion Lapp/reseam/patch/types/FilledArrayInsn$Companion;
+	public synthetic fun <init> (S[SLjava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun component2-amswpOA ()[S
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy-8WlruUk (S[SLjava/lang/String;)Lapp/reseam/patch/types/FilledArrayInsn;
+	public static synthetic fun copy-8WlruUk$default (Lapp/reseam/patch/types/FilledArrayInsn;S[SLjava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/types/FilledArrayInsn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOpcode-Mh2AYeg ()S
+	public final fun getRegisters-amswpOA ()[S
+	public final fun getTypeDescriptor ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/FilledArrayInsn$Companion {
+}
+
+public final class app/reseam/patch/types/FilledArrayRangeInsn {
+	public static final field Companion Lapp/reseam/patch/types/FilledArrayRangeInsn$Companion;
+	public synthetic fun <init> (SSSLjava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun component2-Mh2AYeg ()S
+	public final fun component3-Mh2AYeg ()S
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy-e5VWex0 (SSSLjava/lang/String;)Lapp/reseam/patch/types/FilledArrayRangeInsn;
+	public static synthetic fun copy-e5VWex0$default (Lapp/reseam/patch/types/FilledArrayRangeInsn;SSSLjava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/types/FilledArrayRangeInsn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOpcode-Mh2AYeg ()S
+	public final fun getRegCount-Mh2AYeg ()S
+	public final fun getStartReg-Mh2AYeg ()S
+	public final fun getTypeDescriptor ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/FilledArrayRangeInsn$Companion {
+}
+
+public abstract class app/reseam/patch/types/HandleRef {
+	public static final field Companion Lapp/reseam/patch/types/HandleRef$Companion;
+}
+
+public final class app/reseam/patch/types/HandleRef$Companion {
+}
+
+public final class app/reseam/patch/types/HandleRef$Field : app/reseam/patch/types/HandleRef {
+	public fun <init> (Lapp/reseam/patch/types/FieldHandleRef;)V
+	public final fun component1 ()Lapp/reseam/patch/types/FieldHandleRef;
+	public final fun copy (Lapp/reseam/patch/types/FieldHandleRef;)Lapp/reseam/patch/types/HandleRef$Field;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/HandleRef$Field;Lapp/reseam/patch/types/FieldHandleRef;ILjava/lang/Object;)Lapp/reseam/patch/types/HandleRef$Field;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/FieldHandleRef;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/HandleRef$Method : app/reseam/patch/types/HandleRef {
+	public fun <init> (Lapp/reseam/patch/types/MethodHandleRef;)V
+	public final fun component1 ()Lapp/reseam/patch/types/MethodHandleRef;
+	public final fun copy (Lapp/reseam/patch/types/MethodHandleRef;)Lapp/reseam/patch/types/HandleRef$Method;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/HandleRef$Method;Lapp/reseam/patch/types/MethodHandleRef;ILjava/lang/Object;)Lapp/reseam/patch/types/HandleRef$Method;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/MethodHandleRef;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract class app/reseam/patch/types/Instruction {
+	public static final field Companion Lapp/reseam/patch/types/Instruction$Companion;
+}
+
+public final class app/reseam/patch/types/Instruction$Branch : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/BranchInsn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/BranchInsn;
+	public final fun copy (Lapp/reseam/patch/types/BranchInsn;)Lapp/reseam/patch/types/Instruction$Branch;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$Branch;Lapp/reseam/patch/types/BranchInsn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$Branch;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/BranchInsn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$Branch0 : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/Branch0Insn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/Branch0Insn;
+	public final fun copy (Lapp/reseam/patch/types/Branch0Insn;)Lapp/reseam/patch/types/Instruction$Branch0;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$Branch0;Lapp/reseam/patch/types/Branch0Insn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$Branch0;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/Branch0Insn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$Branch2 : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/Branch2Insn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/Branch2Insn;
+	public final fun copy (Lapp/reseam/patch/types/Branch2Insn;)Lapp/reseam/patch/types/Instruction$Branch2;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$Branch2;Lapp/reseam/patch/types/Branch2Insn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$Branch2;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/Branch2Insn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$Companion {
+}
+
+public final class app/reseam/patch/types/Instruction$Custom : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/CustomInsn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/CustomInsn;
+	public final fun copy (Lapp/reseam/patch/types/CustomInsn;)Lapp/reseam/patch/types/Instruction$Custom;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$Custom;Lapp/reseam/patch/types/CustomInsn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$Custom;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/CustomInsn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$CustomRange : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/CustomRangeInsn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/CustomRangeInsn;
+	public final fun copy (Lapp/reseam/patch/types/CustomRangeInsn;)Lapp/reseam/patch/types/Instruction$CustomRange;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$CustomRange;Lapp/reseam/patch/types/CustomRangeInsn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$CustomRange;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/CustomRangeInsn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$FillArrayData : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/FillArrayInsn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/FillArrayInsn;
+	public final fun copy (Lapp/reseam/patch/types/FillArrayInsn;)Lapp/reseam/patch/types/Instruction$FillArrayData;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$FillArrayData;Lapp/reseam/patch/types/FillArrayInsn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$FillArrayData;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/FillArrayInsn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$FilledArray : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/FilledArrayInsn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/FilledArrayInsn;
+	public final fun copy (Lapp/reseam/patch/types/FilledArrayInsn;)Lapp/reseam/patch/types/Instruction$FilledArray;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$FilledArray;Lapp/reseam/patch/types/FilledArrayInsn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$FilledArray;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/FilledArrayInsn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$FilledArrayRange : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/FilledArrayRangeInsn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/FilledArrayRangeInsn;
+	public final fun copy (Lapp/reseam/patch/types/FilledArrayRangeInsn;)Lapp/reseam/patch/types/Instruction$FilledArrayRange;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$FilledArrayRange;Lapp/reseam/patch/types/FilledArrayRangeInsn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$FilledArrayRange;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/FilledArrayRangeInsn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$Invoke : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/InvokeInsn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/InvokeInsn;
+	public final fun copy (Lapp/reseam/patch/types/InvokeInsn;)Lapp/reseam/patch/types/Instruction$Invoke;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$Invoke;Lapp/reseam/patch/types/InvokeInsn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$Invoke;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/InvokeInsn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$InvokeRange : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/InvokeRangeInsn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/InvokeRangeInsn;
+	public final fun copy (Lapp/reseam/patch/types/InvokeRangeInsn;)Lapp/reseam/patch/types/Instruction$InvokeRange;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$InvokeRange;Lapp/reseam/patch/types/InvokeRangeInsn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$InvokeRange;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/InvokeRangeInsn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$PackedSwitchData : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/PackedSwitchInsn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/PackedSwitchInsn;
+	public final fun copy (Lapp/reseam/patch/types/PackedSwitchInsn;)Lapp/reseam/patch/types/Instruction$PackedSwitchData;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$PackedSwitchData;Lapp/reseam/patch/types/PackedSwitchInsn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$PackedSwitchData;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/PackedSwitchInsn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$Polymorphic : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/PolymorphicInsn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/PolymorphicInsn;
+	public final fun copy (Lapp/reseam/patch/types/PolymorphicInsn;)Lapp/reseam/patch/types/Instruction$Polymorphic;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$Polymorphic;Lapp/reseam/patch/types/PolymorphicInsn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$Polymorphic;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/PolymorphicInsn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$PolymorphicRange : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/PolymorphicRangeInsn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/PolymorphicRangeInsn;
+	public final fun copy (Lapp/reseam/patch/types/PolymorphicRangeInsn;)Lapp/reseam/patch/types/Instruction$PolymorphicRange;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$PolymorphicRange;Lapp/reseam/patch/types/PolymorphicRangeInsn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$PolymorphicRange;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/PolymorphicRangeInsn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$Raw : app/reseam/patch/types/Instruction {
+	public fun <init> ([B)V
+	public final fun component1 ()[B
+	public final fun copy ([B)Lapp/reseam/patch/types/Instruction$Raw;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$Raw;[BILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$Raw;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()[B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$Reg1 : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/Reg1Insn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/Reg1Insn;
+	public final fun copy (Lapp/reseam/patch/types/Reg1Insn;)Lapp/reseam/patch/types/Instruction$Reg1;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$Reg1;Lapp/reseam/patch/types/Reg1Insn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$Reg1;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/Reg1Insn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$Reg2 : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/Reg2Insn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/Reg2Insn;
+	public final fun copy (Lapp/reseam/patch/types/Reg2Insn;)Lapp/reseam/patch/types/Instruction$Reg2;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$Reg2;Lapp/reseam/patch/types/Reg2Insn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$Reg2;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/Reg2Insn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$Reg3 : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/Reg3Insn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/Reg3Insn;
+	public final fun copy (Lapp/reseam/patch/types/Reg3Insn;)Lapp/reseam/patch/types/Instruction$Reg3;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$Reg3;Lapp/reseam/patch/types/Reg3Insn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$Reg3;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/Reg3Insn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$RegField : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/RegFieldInsn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/RegFieldInsn;
+	public final fun copy (Lapp/reseam/patch/types/RegFieldInsn;)Lapp/reseam/patch/types/Instruction$RegField;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$RegField;Lapp/reseam/patch/types/RegFieldInsn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$RegField;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/RegFieldInsn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$RegHandle : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/RegHandleInsn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/RegHandleInsn;
+	public final fun copy (Lapp/reseam/patch/types/RegHandleInsn;)Lapp/reseam/patch/types/Instruction$RegHandle;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$RegHandle;Lapp/reseam/patch/types/RegHandleInsn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$RegHandle;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/RegHandleInsn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$RegLiteral : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/RegLiteralInsn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/RegLiteralInsn;
+	public final fun copy (Lapp/reseam/patch/types/RegLiteralInsn;)Lapp/reseam/patch/types/Instruction$RegLiteral;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$RegLiteral;Lapp/reseam/patch/types/RegLiteralInsn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$RegLiteral;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/RegLiteralInsn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$RegProto : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/RegProtoInsn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/RegProtoInsn;
+	public final fun copy (Lapp/reseam/patch/types/RegProtoInsn;)Lapp/reseam/patch/types/Instruction$RegProto;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$RegProto;Lapp/reseam/patch/types/RegProtoInsn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$RegProto;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/RegProtoInsn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$RegString : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/RegStringInsn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/RegStringInsn;
+	public final fun copy (Lapp/reseam/patch/types/RegStringInsn;)Lapp/reseam/patch/types/Instruction$RegString;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$RegString;Lapp/reseam/patch/types/RegStringInsn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$RegString;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/RegStringInsn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$RegType : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/RegTypeInsn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/RegTypeInsn;
+	public final fun copy (Lapp/reseam/patch/types/RegTypeInsn;)Lapp/reseam/patch/types/Instruction$RegType;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$RegType;Lapp/reseam/patch/types/RegTypeInsn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$RegType;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/RegTypeInsn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$Simple : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/SimpleInsn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/SimpleInsn;
+	public final fun copy (Lapp/reseam/patch/types/SimpleInsn;)Lapp/reseam/patch/types/Instruction$Simple;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$Simple;Lapp/reseam/patch/types/SimpleInsn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$Simple;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/SimpleInsn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Instruction$SparseSwitchData : app/reseam/patch/types/Instruction {
+	public fun <init> (Lapp/reseam/patch/types/SparseSwitchInsn;)V
+	public final fun component1 ()Lapp/reseam/patch/types/SparseSwitchInsn;
+	public final fun copy (Lapp/reseam/patch/types/SparseSwitchInsn;)Lapp/reseam/patch/types/Instruction$SparseSwitchData;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/Instruction$SparseSwitchData;Lapp/reseam/patch/types/SparseSwitchInsn;ILjava/lang/Object;)Lapp/reseam/patch/types/Instruction$SparseSwitchData;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/SparseSwitchInsn;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/InvokeInsn {
+	public static final field Companion Lapp/reseam/patch/types/InvokeInsn$Companion;
+	public synthetic fun <init> (S[SLapp/reseam/patch/types/MethodRef;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun component2-amswpOA ()[S
+	public final fun component3 ()Lapp/reseam/patch/types/MethodRef;
+	public final fun copy-8WlruUk (S[SLapp/reseam/patch/types/MethodRef;)Lapp/reseam/patch/types/InvokeInsn;
+	public static synthetic fun copy-8WlruUk$default (Lapp/reseam/patch/types/InvokeInsn;S[SLapp/reseam/patch/types/MethodRef;ILjava/lang/Object;)Lapp/reseam/patch/types/InvokeInsn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMethod ()Lapp/reseam/patch/types/MethodRef;
+	public final fun getOpcode-Mh2AYeg ()S
+	public final fun getRegisters-amswpOA ()[S
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/InvokeInsn$Companion {
+}
+
+public final class app/reseam/patch/types/InvokeRangeInsn {
+	public static final field Companion Lapp/reseam/patch/types/InvokeRangeInsn$Companion;
+	public synthetic fun <init> (SSSLapp/reseam/patch/types/MethodRef;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun component2-Mh2AYeg ()S
+	public final fun component3-Mh2AYeg ()S
+	public final fun component4 ()Lapp/reseam/patch/types/MethodRef;
+	public final fun copy-e5VWex0 (SSSLapp/reseam/patch/types/MethodRef;)Lapp/reseam/patch/types/InvokeRangeInsn;
+	public static synthetic fun copy-e5VWex0$default (Lapp/reseam/patch/types/InvokeRangeInsn;SSSLapp/reseam/patch/types/MethodRef;ILjava/lang/Object;)Lapp/reseam/patch/types/InvokeRangeInsn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMethod ()Lapp/reseam/patch/types/MethodRef;
+	public final fun getOpcode-Mh2AYeg ()S
+	public final fun getRegCount-Mh2AYeg ()S
+	public final fun getStartReg-Mh2AYeg ()S
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/InvokeRangeInsn$Companion {
+}
+
+public final class app/reseam/patch/types/MethodHandleRef {
+	public static final field Companion Lapp/reseam/patch/types/MethodHandleRef$Companion;
+	public synthetic fun <init> (Lapp/reseam/patch/types/PoolOrigin;SLapp/reseam/patch/types/MethodRef;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Lapp/reseam/patch/types/PoolOrigin;SLapp/reseam/patch/types/MethodRef;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lapp/reseam/patch/types/PoolOrigin;
+	public final fun component2-Mh2AYeg ()S
+	public final fun component3 ()Lapp/reseam/patch/types/MethodRef;
+	public final fun copy-qEOnv9Y (Lapp/reseam/patch/types/PoolOrigin;SLapp/reseam/patch/types/MethodRef;)Lapp/reseam/patch/types/MethodHandleRef;
+	public static synthetic fun copy-qEOnv9Y$default (Lapp/reseam/patch/types/MethodHandleRef;Lapp/reseam/patch/types/PoolOrigin;SLapp/reseam/patch/types/MethodRef;ILjava/lang/Object;)Lapp/reseam/patch/types/MethodHandleRef;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKind-Mh2AYeg ()S
+	public final fun getMethod ()Lapp/reseam/patch/types/MethodRef;
+	public final fun getOrigin ()Lapp/reseam/patch/types/PoolOrigin;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/MethodHandleRef$Companion {
+}
+
+public final class app/reseam/patch/types/MethodInfo {
+	public static final field Companion Lapp/reseam/patch/types/MethodInfo$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IISSSILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4-pVg5ArA ()I
+	public final fun component5-pVg5ArA ()I
+	public final fun component6-Mh2AYeg ()S
+	public final fun component7-Mh2AYeg ()S
+	public final fun component8-Mh2AYeg ()S
+	public final fun component9-pVg5ArA ()I
+	public final fun copy-H6TgJJw (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IISSSI)Lapp/reseam/patch/types/MethodInfo;
+	public static synthetic fun copy-H6TgJJw$default (Lapp/reseam/patch/types/MethodInfo;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IISSSIILjava/lang/Object;)Lapp/reseam/patch/types/MethodInfo;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAccessFlags-pVg5ArA ()I
+	public final fun getClassDescriptor ()Ljava/lang/String;
+	public final fun getDexIndex-pVg5ArA ()I
+	public final fun getInsSize-Mh2AYeg ()S
+	public final fun getInstructionCount-pVg5ArA ()I
+	public final fun getMethodName ()Ljava/lang/String;
+	public final fun getOutsSize-Mh2AYeg ()S
+	public final fun getProto ()Ljava/lang/String;
+	public final fun getRegisterCount-Mh2AYeg ()S
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/MethodInfo$Companion {
+}
+
+public final class app/reseam/patch/types/MethodRef {
+	public static final field Companion Lapp/reseam/patch/types/MethodRef$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/types/MethodRef;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/MethodRef;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/types/MethodRef;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDefiningClass ()Ljava/lang/String;
+	public final fun getName ()Ljava/lang/String;
+	public final fun getProto ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/MethodRef$Companion {
+}
+
+public final class app/reseam/patch/types/NewField {
+	public static final field Companion Lapp/reseam/patch/types/NewField$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ILapp/reseam/patch/types/EncodedVal;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ILapp/reseam/patch/types/EncodedVal;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3-pVg5ArA ()I
+	public final fun component4 ()Lapp/reseam/patch/types/EncodedVal;
+	public final fun copy-BzPDsQc (Ljava/lang/String;Ljava/lang/String;ILapp/reseam/patch/types/EncodedVal;)Lapp/reseam/patch/types/NewField;
+	public static synthetic fun copy-BzPDsQc$default (Lapp/reseam/patch/types/NewField;Ljava/lang/String;Ljava/lang/String;ILapp/reseam/patch/types/EncodedVal;ILjava/lang/Object;)Lapp/reseam/patch/types/NewField;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAccessFlags-pVg5ArA ()I
+	public final fun getFieldType ()Ljava/lang/String;
+	public final fun getInitialValue ()Lapp/reseam/patch/types/EncodedVal;
+	public final fun getName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/NewField$Companion {
+}
+
+public final class app/reseam/patch/types/NewMethod {
+	public static final field Companion Lapp/reseam/patch/types/NewMethod$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ISSSLjava/util/List;Ljava/util/List;Ljava/util/List;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3-pVg5ArA ()I
+	public final fun component4-Mh2AYeg ()S
+	public final fun component5-Mh2AYeg ()S
+	public final fun component6-Mh2AYeg ()S
+	public final fun component7 ()Ljava/util/List;
+	public final fun component8 ()Ljava/util/List;
+	public final fun component9 ()Ljava/util/List;
+	public final fun copy-6jBMNDQ (Ljava/lang/String;Ljava/lang/String;ISSSLjava/util/List;Ljava/util/List;Ljava/util/List;)Lapp/reseam/patch/types/NewMethod;
+	public static synthetic fun copy-6jBMNDQ$default (Lapp/reseam/patch/types/NewMethod;Ljava/lang/String;Ljava/lang/String;ISSSLjava/util/List;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)Lapp/reseam/patch/types/NewMethod;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAccessFlags-pVg5ArA ()I
+	public final fun getCatchHandlers ()Ljava/util/List;
+	public final fun getInsSize-Mh2AYeg ()S
+	public final fun getInstructions ()Ljava/util/List;
+	public final fun getName ()Ljava/lang/String;
+	public final fun getOutsSize-Mh2AYeg ()S
+	public final fun getProto ()Ljava/lang/String;
+	public final fun getRegistersSize-Mh2AYeg ()S
+	public final fun getTries ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/NewMethod$Companion {
+}
+
+public final class app/reseam/patch/types/PackedSwitchInsn {
+	public static final field Companion Lapp/reseam/patch/types/PackedSwitchInsn$Companion;
+	public fun <init> (I[I)V
+	public final fun component1 ()I
+	public final fun component2 ()[I
+	public final fun copy (I[I)Lapp/reseam/patch/types/PackedSwitchInsn;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/PackedSwitchInsn;I[IILjava/lang/Object;)Lapp/reseam/patch/types/PackedSwitchInsn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFirstKey ()I
+	public final fun getTargets ()[I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/PackedSwitchInsn$Companion {
+}
+
+public final class app/reseam/patch/types/PolymorphicInsn {
+	public static final field Companion Lapp/reseam/patch/types/PolymorphicInsn$Companion;
+	public synthetic fun <init> (SLapp/reseam/patch/types/MethodRef;Ljava/lang/String;[SLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun component2 ()Lapp/reseam/patch/types/MethodRef;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4-amswpOA ()[S
+	public final fun copy-lh5Z2d4 (SLapp/reseam/patch/types/MethodRef;Ljava/lang/String;[S)Lapp/reseam/patch/types/PolymorphicInsn;
+	public static synthetic fun copy-lh5Z2d4$default (Lapp/reseam/patch/types/PolymorphicInsn;SLapp/reseam/patch/types/MethodRef;Ljava/lang/String;[SILjava/lang/Object;)Lapp/reseam/patch/types/PolymorphicInsn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMethod ()Lapp/reseam/patch/types/MethodRef;
+	public final fun getOpcode-Mh2AYeg ()S
+	public final fun getProto ()Ljava/lang/String;
+	public final fun getRegisters-amswpOA ()[S
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/PolymorphicInsn$Companion {
+}
+
+public final class app/reseam/patch/types/PolymorphicRangeInsn {
+	public static final field Companion Lapp/reseam/patch/types/PolymorphicRangeInsn$Companion;
+	public synthetic fun <init> (SLapp/reseam/patch/types/MethodRef;Ljava/lang/String;SSLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun component2 ()Lapp/reseam/patch/types/MethodRef;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4-Mh2AYeg ()S
+	public final fun component5-Mh2AYeg ()S
+	public final fun copy-9Gn-MQE (SLapp/reseam/patch/types/MethodRef;Ljava/lang/String;SS)Lapp/reseam/patch/types/PolymorphicRangeInsn;
+	public static synthetic fun copy-9Gn-MQE$default (Lapp/reseam/patch/types/PolymorphicRangeInsn;SLapp/reseam/patch/types/MethodRef;Ljava/lang/String;SSILjava/lang/Object;)Lapp/reseam/patch/types/PolymorphicRangeInsn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMethod ()Lapp/reseam/patch/types/MethodRef;
+	public final fun getOpcode-Mh2AYeg ()S
+	public final fun getProto ()Ljava/lang/String;
+	public final fun getRegCount-Mh2AYeg ()S
+	public final fun getStartReg-Mh2AYeg ()S
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/PolymorphicRangeInsn$Companion {
+}
+
+public final class app/reseam/patch/types/PoolOrigin {
+	public static final field Companion Lapp/reseam/patch/types/PoolOrigin$Companion;
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-pVg5ArA ()I
+	public final fun component2-pVg5ArA ()I
+	public final fun copy-feOb9K0 (II)Lapp/reseam/patch/types/PoolOrigin;
+	public static synthetic fun copy-feOb9K0$default (Lapp/reseam/patch/types/PoolOrigin;IIILjava/lang/Object;)Lapp/reseam/patch/types/PoolOrigin;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDexIndex-pVg5ArA ()I
+	public final fun getIndex-pVg5ArA ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/PoolOrigin$Companion {
+}
+
+public final class app/reseam/patch/types/Reg1Insn {
+	public static final field Companion Lapp/reseam/patch/types/Reg1Insn$Companion;
+	public synthetic fun <init> (SSLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun component2-Mh2AYeg ()S
+	public final fun copy-HQPci0I (SS)Lapp/reseam/patch/types/Reg1Insn;
+	public static synthetic fun copy-HQPci0I$default (Lapp/reseam/patch/types/Reg1Insn;SSILjava/lang/Object;)Lapp/reseam/patch/types/Reg1Insn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOpcode-Mh2AYeg ()S
+	public final fun getRegA-Mh2AYeg ()S
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Reg1Insn$Companion {
+}
+
+public final class app/reseam/patch/types/Reg2Insn {
+	public static final field Companion Lapp/reseam/patch/types/Reg2Insn$Companion;
+	public synthetic fun <init> (SSSLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun component2-Mh2AYeg ()S
+	public final fun component3-Mh2AYeg ()S
+	public final fun copy-Ut6C-W8 (SSS)Lapp/reseam/patch/types/Reg2Insn;
+	public static synthetic fun copy-Ut6C-W8$default (Lapp/reseam/patch/types/Reg2Insn;SSSILjava/lang/Object;)Lapp/reseam/patch/types/Reg2Insn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOpcode-Mh2AYeg ()S
+	public final fun getRegA-Mh2AYeg ()S
+	public final fun getRegB-Mh2AYeg ()S
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Reg2Insn$Companion {
+}
+
+public final class app/reseam/patch/types/Reg3Insn {
+	public static final field Companion Lapp/reseam/patch/types/Reg3Insn$Companion;
+	public synthetic fun <init> (SSSSLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun component2-Mh2AYeg ()S
+	public final fun component3-Mh2AYeg ()S
+	public final fun component4-Mh2AYeg ()S
+	public final fun copy-bG7qQr4 (SSSS)Lapp/reseam/patch/types/Reg3Insn;
+	public static synthetic fun copy-bG7qQr4$default (Lapp/reseam/patch/types/Reg3Insn;SSSSILjava/lang/Object;)Lapp/reseam/patch/types/Reg3Insn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOpcode-Mh2AYeg ()S
+	public final fun getRegA-Mh2AYeg ()S
+	public final fun getRegB-Mh2AYeg ()S
+	public final fun getRegC-Mh2AYeg ()S
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/Reg3Insn$Companion {
+}
+
+public final class app/reseam/patch/types/RegFieldInsn {
+	public static final field Companion Lapp/reseam/patch/types/RegFieldInsn$Companion;
+	public synthetic fun <init> (SSSLapp/reseam/patch/types/FieldRef;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun component2-Mh2AYeg ()S
+	public final fun component3-Mh2AYeg ()S
+	public final fun component4 ()Lapp/reseam/patch/types/FieldRef;
+	public final fun copy-e5VWex0 (SSSLapp/reseam/patch/types/FieldRef;)Lapp/reseam/patch/types/RegFieldInsn;
+	public static synthetic fun copy-e5VWex0$default (Lapp/reseam/patch/types/RegFieldInsn;SSSLapp/reseam/patch/types/FieldRef;ILjava/lang/Object;)Lapp/reseam/patch/types/RegFieldInsn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField ()Lapp/reseam/patch/types/FieldRef;
+	public final fun getOpcode-Mh2AYeg ()S
+	public final fun getRegA-Mh2AYeg ()S
+	public final fun getRegB-Mh2AYeg ()S
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/RegFieldInsn$Companion {
+}
+
+public final class app/reseam/patch/types/RegHandleInsn {
+	public static final field Companion Lapp/reseam/patch/types/RegHandleInsn$Companion;
+	public synthetic fun <init> (SSLapp/reseam/patch/types/HandleRef;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun component2-Mh2AYeg ()S
+	public final fun component3 ()Lapp/reseam/patch/types/HandleRef;
+	public final fun copy-Y_-6-A0 (SSLapp/reseam/patch/types/HandleRef;)Lapp/reseam/patch/types/RegHandleInsn;
+	public static synthetic fun copy-Y_-6-A0$default (Lapp/reseam/patch/types/RegHandleInsn;SSLapp/reseam/patch/types/HandleRef;ILjava/lang/Object;)Lapp/reseam/patch/types/RegHandleInsn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHandle ()Lapp/reseam/patch/types/HandleRef;
+	public final fun getOpcode-Mh2AYeg ()S
+	public final fun getRegA-Mh2AYeg ()S
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/RegHandleInsn$Companion {
+}
+
+public final class app/reseam/patch/types/RegLiteralInsn {
+	public static final field Companion Lapp/reseam/patch/types/RegLiteralInsn$Companion;
+	public synthetic fun <init> (SSSJLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun component2-Mh2AYeg ()S
+	public final fun component3-Mh2AYeg ()S
+	public final fun component4 ()J
+	public final fun copy-e5VWex0 (SSSJ)Lapp/reseam/patch/types/RegLiteralInsn;
+	public static synthetic fun copy-e5VWex0$default (Lapp/reseam/patch/types/RegLiteralInsn;SSSJILjava/lang/Object;)Lapp/reseam/patch/types/RegLiteralInsn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLiteral ()J
+	public final fun getOpcode-Mh2AYeg ()S
+	public final fun getRegA-Mh2AYeg ()S
+	public final fun getRegB-Mh2AYeg ()S
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/RegLiteralInsn$Companion {
+}
+
+public final class app/reseam/patch/types/RegProtoInsn {
+	public static final field Companion Lapp/reseam/patch/types/RegProtoInsn$Companion;
+	public synthetic fun <init> (SSLjava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun component2-Mh2AYeg ()S
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy-Y_-6-A0 (SSLjava/lang/String;)Lapp/reseam/patch/types/RegProtoInsn;
+	public static synthetic fun copy-Y_-6-A0$default (Lapp/reseam/patch/types/RegProtoInsn;SSLjava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/types/RegProtoInsn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOpcode-Mh2AYeg ()S
+	public final fun getProto ()Ljava/lang/String;
+	public final fun getRegA-Mh2AYeg ()S
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/RegProtoInsn$Companion {
+}
+
+public final class app/reseam/patch/types/RegStringInsn {
+	public static final field Companion Lapp/reseam/patch/types/RegStringInsn$Companion;
+	public synthetic fun <init> (SSLjava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun component2-Mh2AYeg ()S
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy-Y_-6-A0 (SSLjava/lang/String;)Lapp/reseam/patch/types/RegStringInsn;
+	public static synthetic fun copy-Y_-6-A0$default (Lapp/reseam/patch/types/RegStringInsn;SSLjava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/types/RegStringInsn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOpcode-Mh2AYeg ()S
+	public final fun getRegA-Mh2AYeg ()S
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/RegStringInsn$Companion {
+}
+
+public final class app/reseam/patch/types/RegTypeInsn {
+	public static final field Companion Lapp/reseam/patch/types/RegTypeInsn$Companion;
+	public synthetic fun <init> (SSSLjava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun component2-Mh2AYeg ()S
+	public final fun component3-Mh2AYeg ()S
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy-e5VWex0 (SSSLjava/lang/String;)Lapp/reseam/patch/types/RegTypeInsn;
+	public static synthetic fun copy-e5VWex0$default (Lapp/reseam/patch/types/RegTypeInsn;SSSLjava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/types/RegTypeInsn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOpcode-Mh2AYeg ()S
+	public final fun getRegA-Mh2AYeg ()S
+	public final fun getRegB-Mh2AYeg ()S
+	public final fun getTypeDescriptor ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/RegTypeInsn$Companion {
+}
+
+public final class app/reseam/patch/types/ResourceRef {
+	public static final field Companion Lapp/reseam/patch/types/ResourceRef$Companion;
+	public synthetic fun <init> (ILjava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-pVg5ArA ()I
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy-qim9Vi0 (ILjava/lang/String;)Lapp/reseam/patch/types/ResourceRef;
+	public static synthetic fun copy-qim9Vi0$default (Lapp/reseam/patch/types/ResourceRef;ILjava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/types/ResourceRef;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKeyName ()Ljava/lang/String;
+	public final fun getResId-pVg5ArA ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/ResourceRef$Companion {
+}
+
+public final class app/reseam/patch/types/SimpleInsn {
+	public static final field Companion Lapp/reseam/patch/types/SimpleInsn$Companion;
+	public synthetic fun <init> (SLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Mh2AYeg ()S
+	public final fun copy-xj2QHRw (S)Lapp/reseam/patch/types/SimpleInsn;
+	public static synthetic fun copy-xj2QHRw$default (Lapp/reseam/patch/types/SimpleInsn;SILjava/lang/Object;)Lapp/reseam/patch/types/SimpleInsn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOpcode-Mh2AYeg ()S
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/SimpleInsn$Companion {
+}
+
+public final class app/reseam/patch/types/SparseSwitchInsn {
+	public static final field Companion Lapp/reseam/patch/types/SparseSwitchInsn$Companion;
+	public fun <init> ([I[I)V
+	public final fun component1 ()[I
+	public final fun component2 ()[I
+	public final fun copy ([I[I)Lapp/reseam/patch/types/SparseSwitchInsn;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/SparseSwitchInsn;[I[IILjava/lang/Object;)Lapp/reseam/patch/types/SparseSwitchInsn;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKeys ()[I
+	public final fun getTargets ()[I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/SparseSwitchInsn$Companion {
+}
+
+public final class app/reseam/patch/types/StyleItem {
+	public static final field Companion Lapp/reseam/patch/types/StyleItem$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/types/StyleItem;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/StyleItem;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/types/StyleItem;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getName ()Ljava/lang/String;
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/StyleItem$Companion {
+}
+
+public final class app/reseam/patch/types/TryItem {
+	public static final field Companion Lapp/reseam/patch/types/TryItem$Companion;
+	public synthetic fun <init> (ISILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-pVg5ArA ()I
+	public final fun component2-Mh2AYeg ()S
+	public final fun component3-pVg5ArA ()I
+	public final fun copy-4KLctTY (ISI)Lapp/reseam/patch/types/TryItem;
+	public static synthetic fun copy-4KLctTY$default (Lapp/reseam/patch/types/TryItem;ISIILjava/lang/Object;)Lapp/reseam/patch/types/TryItem;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHandlerIdx-pVg5ArA ()I
+	public final fun getInsnCount-Mh2AYeg ()S
+	public final fun getStartAddr-pVg5ArA ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/TryItem$Companion {
+}
+
+public final class app/reseam/patch/types/TypedCatch {
+	public static final field Companion Lapp/reseam/patch/types/TypedCatch$Companion;
+	public synthetic fun <init> (Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2-pVg5ArA ()I
+	public final fun copy-Qn1smSk (Ljava/lang/String;I)Lapp/reseam/patch/types/TypedCatch;
+	public static synthetic fun copy-Qn1smSk$default (Lapp/reseam/patch/types/TypedCatch;Ljava/lang/String;IILjava/lang/Object;)Lapp/reseam/patch/types/TypedCatch;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAddr-pVg5ArA ()I
+	public final fun getExceptionType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/TypedCatch$Companion {
+}
+

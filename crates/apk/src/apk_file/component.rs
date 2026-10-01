@@ -2,16 +2,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::BTreeMap;
 use std::fs::File;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use reseam_dex::file::DexBytes;
+use reseam_dex::types::header::Loading;
+use reseam_storage::Bytes;
 
 use crate::axml::AxmlDocument;
-use crate::entry::{is_native_library, MANIFEST_ENTRY, RESOURCES_ENTRY};
-use crate::error::Result;
+use crate::entry::{EntryName, MANIFEST_ENTRY, RESOURCES_ENTRY, is_native_library};
+use crate::error::{Result, invalid};
 use crate::resources::ResourceTable;
 use crate::zip::reader::{self, Archive};
 
@@ -35,53 +37,53 @@ pub struct ApkComponent {
     path: PathBuf,
     archive: Archive,
     manifest: AxmlDocument,
-    manifest_dirty: bool,
     resources: Resources,
-    resources_dirty: bool,
-    injected: HashMap<String, (Vec<u8>, Compression)>,
-    deleted: HashSet<String>,
-    original_dex_names: Vec<String>,
+    edits: BTreeMap<EntryName, EntryEdit>,
+}
+
+pub(super) enum EntryEdit {
+    Staged {
+        file: File,
+        compression: Compression,
+    },
+    Manifest,
+    Resources,
+    Dex,
+    Deleted,
 }
 
 enum Resources {
     Absent,
     Deferred,
-    Loaded(ResourceTable),
+    Loaded(Box<ResourceTable>),
 }
 
 impl ApkComponent {
-    /// `name` defaults to the manifest's split name, then the file stem.
-    pub(crate) fn open(path: &Path, name: Option<String>, defer_resources: bool) -> Result<Self> {
+    pub(crate) fn open(path: &Path, loading: Loading) -> Result<Self> {
         let mut archive = reader::open_archive(path)?;
-        let manifest = AxmlDocument::parse(&reader::read_entry(&mut archive, MANIFEST_ENTRY)?)?;
-        let name = name
-            .or_else(|| manifest.split_name().map(Cow::into_owned))
-            .unwrap_or_else(|| {
-                path.file_stem()
-                    .and_then(|stem| stem.to_str())
-                    .unwrap_or("unknown")
-                    .to_string()
-            });
-        let resources = if !reader::contains(&archive, RESOURCES_ENTRY) {
-            Resources::Absent
-        } else if defer_resources {
+        let manifest =
+            (|| AxmlDocument::parse(&reader::read_entry(&mut archive, MANIFEST_ENTRY)?))()
+                .map_err(|error| error.in_entry(MANIFEST_ENTRY).in_file(path))?;
+        let name = manifest
+            .split_name()
+            .map_or_else(|| "base".into(), Cow::into_owned);
+        let resources = if reader::contains(&archive, RESOURCES_ENTRY) {
             Resources::Deferred
         } else {
-            Resources::Loaded(load_resources(&mut archive)?)
+            Resources::Absent
         };
-        let original_dex_names = reader::dex_entry_names(&archive);
-        Ok(Self {
+        let mut component = Self {
             name,
             path: path.to_path_buf(),
             archive,
             manifest,
-            manifest_dirty: false,
             resources,
-            resources_dirty: false,
-            injected: HashMap::new(),
-            deleted: HashSet::new(),
-            original_dex_names,
-        })
+            edits: BTreeMap::new(),
+        };
+        if loading == Loading::Eager {
+            component.resources()?;
+        }
+        Ok(component)
     }
 
     pub fn name(&self) -> &str {
@@ -92,9 +94,8 @@ impl ApkComponent {
         &self.path
     }
 
-    /// The original, unmodified bytes of this component's APK file, mapped
-    /// read-only and including its signing block. Reflects the input on disk,
-    /// not the session's staged edits.
+    /// Maps the original APK, including its signing block. Staged edits are
+    /// available through the session's entry APIs instead.
     pub fn source(&self) -> Result<memmap2::Mmap> {
         reader::map_file(&self.archive)
     }
@@ -104,7 +105,8 @@ impl ApkComponent {
     }
 
     pub fn manifest_mut(&mut self) -> &mut AxmlDocument {
-        self.manifest_dirty = true;
+        self.edits
+            .insert(MANIFEST_ENTRY.into(), EntryEdit::Manifest);
         &mut self.manifest
     }
 
@@ -112,8 +114,8 @@ impl ApkComponent {
         !matches!(self.resources, Resources::Absent)
     }
 
-    /// The resource table, parsed on first access; `None` when the component
-    /// has no `resources.arsc`.
+    /// Parses the current resource entry on first access. A deleted or absent
+    /// table returns `None`; an unreadable table returns an error.
     pub fn resources(&mut self) -> Result<Option<&ResourceTable>> {
         self.load_resources()?;
         Ok(match &self.resources {
@@ -127,110 +129,138 @@ impl ApkComponent {
         let Resources::Loaded(table) = &mut self.resources else {
             return Ok(None);
         };
-        self.resources_dirty = true;
+        self.edits
+            .insert(RESOURCES_ENTRY.into(), EntryEdit::Resources);
         Ok(Some(table))
     }
 
     fn load_resources(&mut self) -> Result<()> {
         if matches!(self.resources, Resources::Deferred) {
-            self.resources = Resources::Loaded(load_resources(&mut self.archive)?);
+            let mapped = reader::map_entry(&mut self.archive, RESOURCES_ENTRY)?;
+            self.resources = Resources::Loaded(Box::new(ResourceTable::parse(Bytes::from_mmap(
+                Arc::new(mapped),
+            ))?));
         }
         Ok(())
     }
 
-    /// Entries as they will be written: the archive's minus deletions, plus
-    /// injected files.
+    /// Current entry names, in archive order followed by new entries in name
+    /// order. DEX names allocated by the session are included.
     pub fn entry_names(&self) -> Vec<String> {
-        let mut names: Vec<String> = reader::entry_names(&self.archive)
+        reader::entry_names(&self.archive)
             .into_iter()
-            .filter(|name| !self.deleted.contains(name))
-            .collect();
-        names.extend(
-            self.injected
-                .keys()
-                .filter(|name| !reader::contains(&self.archive, name.as_str()))
-                .cloned(),
-        );
-        names
+            .filter(|name| self.contains(name))
+            .chain(
+                self.edits
+                    .iter()
+                    .filter(|(name, edit)| {
+                        !matches!(edit, EntryEdit::Deleted)
+                            && !reader::contains(&self.archive, name.as_str())
+                    })
+                    .map(|(name, _)| name.to_string()),
+            )
+            .collect()
     }
 
     pub fn contains(&self, name: &str) -> bool {
-        !self.deleted.contains(name)
-            && (self.injected.contains_key(name) || reader::contains(&self.archive, name))
+        match self.edits.get(name) {
+            Some(EntryEdit::Deleted) => false,
+            Some(_) => true,
+            None => reader::contains(&self.archive, name),
+        }
     }
 
-    /// The entry's current bytes: injected data, a dirty manifest or resource
-    /// table serialized, or the archive's copy.
-    pub fn read_entry(&mut self, name: &str) -> Result<Option<Vec<u8>>> {
-        if self.deleted.contains(name) {
-            return Ok(None);
+    pub(super) fn stage(
+        &mut self,
+        path: &str,
+        file: File,
+        manifest: Option<AxmlDocument>,
+        compression: Compression,
+    ) -> Result<()> {
+        let resources = if path == RESOURCES_ENTRY {
+            Some(ResourceTable::parse(Bytes::from_mmap(Arc::new(
+                reader::map_spooled(&file)?,
+            )))?)
+        } else {
+            None
+        };
+        if let Some(manifest) = manifest {
+            self.manifest = manifest;
         }
-        if let Some((data, _)) = self.injected.get(name) {
-            return Ok(Some(data.clone()));
+        if let Some(resources) = resources {
+            self.resources = Resources::Loaded(Box::new(resources));
         }
-        if let Some(bytes) = self.manifest_bytes()? {
-            if name == MANIFEST_ENTRY {
-                return Ok(Some(bytes));
-            }
-        }
-        if name == RESOURCES_ENTRY && self.resources_dirty {
-            if let Resources::Loaded(table) = &self.resources {
-                return table.serialize().map(Some);
-            }
-        }
-        if !reader::contains(&self.archive, name) {
-            return Ok(None);
-        }
-        reader::read_entry(&mut self.archive, name).map(Some)
-    }
-
-    /// Native libraries are always stored, since the platform maps them.
-    pub fn inject_file(&mut self, path: &str, data: Vec<u8>, compression: Compression) {
         let compression = if is_native_library(path) {
             Compression::Stored
         } else {
             compression
         };
-        self.deleted.remove(path);
-        self.injected.insert(path.into(), (data, compression));
+        self.edits
+            .insert(path.into(), EntryEdit::Staged { file, compression });
+        Ok(())
     }
 
-    pub fn delete_file(&mut self, path: &str) {
-        self.injected.remove(path);
-        self.deleted.insert(path.into());
+    pub(super) fn delete(&mut self, path: &str) -> Result<()> {
+        if path == MANIFEST_ENTRY {
+            return Err(invalid(
+                "apk entry",
+                "AndroidManifest.xml is required and cannot be deleted",
+            ));
+        }
+        if path == RESOURCES_ENTRY {
+            self.resources = Resources::Absent;
+        }
+        self.edits.insert(path.into(), EntryEdit::Deleted);
+        Ok(())
+    }
+
+    pub(super) fn add_dex_entry(&mut self, name: &str) {
+        self.edits.insert(name.into(), EntryEdit::Dex);
     }
 
     pub(crate) fn archive(&self) -> &Archive {
         &self.archive
     }
 
-    pub(crate) fn manifest_bytes(&self) -> Result<Option<Vec<u8>>> {
-        self.manifest_dirty
-            .then(|| self.manifest.serialize())
-            .transpose()
+    pub(super) fn edits(&self) -> &BTreeMap<EntryName, EntryEdit> {
+        &self.edits
     }
 
-    pub(crate) fn resources_file(&self) -> Result<Option<File>> {
-        match &self.resources {
-            Resources::Loaded(table) if self.resources_dirty => table.serialize_spooled().map(Some),
-            _ => Ok(None),
+    pub(super) fn reserved_names(&self) -> impl Iterator<Item = &str> {
+        self.archive
+            .file_names()
+            .chain(self.edits.keys().map(EntryName::as_str))
+    }
+
+    pub(super) fn copy_entry(&mut self, name: &str, output: &mut impl Write) -> Result<bool> {
+        if !self.contains(name) {
+            return Ok(false);
         }
+        match self.edits.get(name) {
+            Some(EntryEdit::Staged { file, .. }) => {
+                reader::copy_spooled(file, output)?;
+            }
+            Some(EntryEdit::Manifest) => output.write_all(&self.manifest.serialize()?)?,
+            Some(EntryEdit::Resources) => {
+                let Resources::Loaded(table) = &self.resources else {
+                    return Err(invalid("resources", "edited resource table is not loaded"));
+                };
+                reader::copy_spooled(&table.serialize_spooled()?, output)?;
+            }
+            Some(EntryEdit::Dex) => {
+                return Err(invalid("apk entry", "DEX entries are owned by the session"));
+            }
+            _ => {
+                io::copy(&mut self.archive.by_name(name)?, output)?;
+            }
+        }
+        Ok(true)
     }
 
-    pub(crate) fn injected(&self) -> &HashMap<String, (Vec<u8>, Compression)> {
-        &self.injected
+    pub(super) fn resources_file(&self) -> Result<File> {
+        let Resources::Loaded(table) = &self.resources else {
+            return Err(invalid("resources", "edited resource table is not loaded"));
+        };
+        table.serialize_spooled()
     }
-
-    pub(crate) fn deleted(&self) -> &HashSet<String> {
-        &self.deleted
-    }
-
-    pub(crate) fn original_dex_names(&self) -> &[String] {
-        &self.original_dex_names
-    }
-}
-
-fn load_resources(archive: &mut Archive) -> Result<ResourceTable> {
-    let mapped = reader::map_entry(archive, RESOURCES_ENTRY)?;
-    ResourceTable::parse(DexBytes::from_mmap(Arc::new(mapped)))
 }

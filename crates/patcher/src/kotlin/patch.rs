@@ -1,77 +1,74 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::path::PathBuf;
+use std::sync::Arc;
 
-use jni::objects::{GlobalRef, JClass, JObject, JValue};
-use jni::JNIEnv;
+use jni::objects::{Global, JClass, JObject, JValue};
+use jni::{Env, jni_sig, jni_str};
 
 use super::handles::ContextGuard;
 use super::jvm::{self, jvm_err};
 use crate::context::PatchContext;
 use crate::error::Result;
-use crate::patch::{Patch, PatchSpec};
+use crate::patch::PatchPhase;
 
-/// A `ReseamPatch` object living in the JVM.
-pub(super) struct KotlinPatch {
-    pub spec: PatchSpec,
-    pub object: GlobalRef,
-    pub bundle_dir: PathBuf,
+pub(super) struct KotlinCallback {
+    object: Global<JObject<'static>>,
+    loader: Arc<super::loader::PatchLoader>,
 }
 
-// SAFETY: a JNI global reference may be used from any thread; the jni crate
-// leaves `GlobalRef` !Sync only because it wraps a raw pointer.
-unsafe impl Send for KotlinPatch {}
-unsafe impl Sync for KotlinPatch {}
-
-impl Patch for KotlinPatch {
-    fn spec(&self) -> &PatchSpec {
-        &self.spec
+impl KotlinCallback {
+    pub(super) fn new(
+        object: Global<JObject<'static>>,
+        loader: Arc<super::loader::PatchLoader>,
+    ) -> Self {
+        Self { object, loader }
     }
 
-    fn execute(&self, ctx: &mut PatchContext) -> Result<()> {
-        self.invoke(ctx, "execute")
-    }
-
-    fn after_dependents(&self, ctx: &mut PatchContext) -> Result<()> {
-        self.invoke(ctx, "afterDependents")
-    }
-}
-
-impl KotlinPatch {
-    fn invoke(&self, ctx: &mut PatchContext, method: &str) -> Result<()> {
-        let mut env = jvm::get_or_init()?
-            .attach_current_thread()
-            .map_err(|e| jvm_err(format!("attach thread: {e}")))?;
-        let _guard = ContextGuard::enter(ctx, self.bundle_dir.clone());
-        jvm::with_frame(&mut env, |env| {
-            call_with_runtime(env, self.object.as_obj(), method)
-        })
+    pub(super) fn invoke(&self, phase: PatchPhase, ctx: &mut PatchContext<'_>) -> Result<()> {
+        let method = match phase {
+            PatchPhase::Execute => "invokeExecute",
+            PatchPhase::Finalize => "invokeAfterDependents",
+        };
+        let guard = ContextGuard::enter(ctx, self.loader.directory().to_path_buf())?;
+        let outcome = jvm::get_or_init()?.attach_current_thread(|env| {
+            jvm::with_frame(env, |env| {
+                call_with_runtime(env, self.object.as_ref(), self.loader.reference(), method)
+            })
+        });
+        let native = guard.finish();
+        outcome.and(native)
     }
 }
 
-/// Calls `patch.<method>(PatchRuntime)` with a fresh runtime built by the
-/// patch's own class loader.
-fn call_with_runtime(env: &mut JNIEnv<'_>, patch: &JObject<'_>, method: &str) -> Result<()> {
-    let class = env
-        .call_method(patch, "getClass", "()Ljava/lang/Class;", &[])
-        .and_then(|v| v.l())
-        .map_err(|e| jvm_err(format!("patch.getClass(): {e}")))?;
-    let loader = env
-        .call_method(&class, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])
-        .and_then(|v| v.l())
-        .map_err(|e| jvm_err(format!("patch class loader: {e}")))?;
-    let runtime_class = load_class(env, &loader, "app.reseam.patch.PatchRuntime")?;
+fn call_with_runtime(
+    env: &mut Env<'_>,
+    patch: &JObject<'_>,
+    loader: &JObject<'_>,
+    method: &str,
+) -> Result<()> {
+    let run = super::handles::kotlin_run(|| {
+        let class = load_class(env, loader, "app.reseam.patch.PatchRun")?;
+        let class = JClass::cast_local(env, class)?;
+        let object = env.new_object(class, jni_sig!("()V"), &[])?;
+        Ok(env.new_global_ref(object)?)
+    })?;
+    let runtime_class = load_class(env, loader, "app.reseam.patch.PatchRuntime")?;
+    let runtime_class = JClass::cast_local(env, runtime_class)?;
     let runtime = env
-        .new_object(JClass::from(runtime_class), "()V", &[])
+        .new_object(
+            runtime_class,
+            jni_sig!("(Lapp/reseam/patch/PatchRun;)V"),
+            &[JValue::Object(run.as_ref().as_ref())],
+        )
         .map_err(|e| jvm_err(format!("construct PatchRuntime: {e}")))?;
     let call = env.call_method(
-        patch,
-        method,
-        "(Lapp/reseam/patch/PatchRuntime;)V",
-        &[JValue::Object(&runtime)],
+        &runtime,
+        jni::strings::JNIString::new(method),
+        jni_sig!("(Lapp/reseam/patch/ReseamPatch;)V"),
+        &[JValue::Object(patch)],
     );
-    match (call, jvm::take_pending_exception(env)) {
+    match (call, jvm::take_pending_exception(env)?) {
         (_, Some(exception)) => Err(jvm_err(format!("{method}(PatchRuntime): {exception}"))),
         (Err(e), None) => Err(jvm_err(format!("{method}(PatchRuntime): {e}"))),
         (Ok(_), None) => Ok(()),
@@ -79,7 +76,7 @@ fn call_with_runtime(env: &mut JNIEnv<'_>, patch: &JObject<'_>, method: &str) ->
 }
 
 pub(super) fn load_class<'a>(
-    env: &mut JNIEnv<'a>,
+    env: &mut Env<'a>,
     loader: &JObject<'_>,
     name: &str,
 ) -> Result<JObject<'a>> {
@@ -88,10 +85,10 @@ pub(super) fn load_class<'a>(
         .map_err(|e| jvm_err(format!("new_string: {e}")))?;
     env.call_method(
         loader,
-        "loadClass",
-        "(Ljava/lang/String;)Ljava/lang/Class;",
+        jni_str!("loadClass"),
+        jni_sig!("(Ljava/lang/String;)Ljava/lang/Class;"),
         &[JValue::Object(&name_j)],
     )
-    .and_then(|v| v.l())
+    .and_then(jni::JValueOwned::l)
     .map_err(|e| jvm_err(format!("loadClass({name}): {e}")))
 }

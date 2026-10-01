@@ -7,45 +7,40 @@
 //!
 //! # Examples
 //!
-//! Parse a single DEX buffer:
-//! ```no_run
-//! use reseam_dex::{parse, ParseOptions};
+//! Parse and stream a rewritten file without buffering the complete DEX:
+//! ```text
+//! use reseam_dex::{parse_file, write_spooled, Loading, ParseOptions};
 //!
-//! let bytes = std::fs::read("classes.dex")?;
-//! let dex = parse(&bytes, ParseOptions::default())?;
-//! println!("{} classes", dex.classes.len());
-//! # Ok::<(), reseam_dex::DexError>(())
-//! ```
-//!
-//! Parse and rewrite an on-disk DEX file:
-//! ```no_run
-//! use reseam_dex::{parse_file, write, ParseOptions};
-//!
-//! let mut dex = parse_file("classes.dex", ParseOptions::default())?;
-//! let rewritten = write(&mut dex)?;
-//! std::fs::write("classes-rewritten.dex", rewritten)?;
-//! # Ok::<(), reseam_dex::DexError>(())
+//! let dex = parse_file("classes.dex", ParseOptions {
+//!     classes: Loading::Deferred,
+//!     ..ParseOptions::default()
+//! })?;
+//! let rewritten = write_spooled(&dex, None)?;
+//! let mut output = std::fs::File::create("classes-rewritten.dex")?;
+//! std::io::copy(&mut rewritten.reader(), &mut output)?;
 //! ```
 
 pub mod encoding;
 pub mod error;
 pub mod file;
 pub mod read;
+mod references;
 pub mod types;
 pub mod util;
 pub mod write;
 
 pub use error::{DexError, Result};
 pub use file::container::{
-    estimated_ir_bytes, MaterializationStats, MemoryBreakdown, MultiDexContainer,
+    MaterializationStats, MemoryBreakdown, MultiDexContainer, estimated_ir_bytes,
 };
 pub use file::{
-    summarize_resident, DexFile, Fingerprint, FingerprintBuilder, FingerprintHit, InstructionHit,
-    InstructionPattern, InstructionSite, MemberCounts, MethodHit, MethodSummary, MethodView,
-    OpcodeMatcher, RefKey, RefQuery,
+    DexFile, Fingerprint, FingerprintHit, HiddenApiData, InstructionHit, InstructionPattern,
+    InstructionSite, MemberCounts, MethodHit, MethodSummary, MethodView, OpcodeMatcher, RefKey,
+    RefQuery, TypePattern, summarize_resident,
 };
 pub use read::class::{ClassSkeleton, MethodHeader};
 pub use read::parse;
+pub use read::parse::parse_container_with_bytes;
 pub use read::parse_bytes;
 pub use read::parse_container;
 pub use read::parse_file;
@@ -54,16 +49,15 @@ pub use types::access_flags::AccessFlags;
 pub use types::annotation::{
     AnnotationElement, AnnotationItem, AnnotationVisibility, AnnotationsDirectory,
 };
-pub use types::class::{ClassData, ClassDef, EncodedField, EncodedMethod};
+pub use types::class::{ClassData, ClassDef, EncodedField, EncodedMethod, MethodKind};
 pub use types::code::{CatchHandler, CodeItem, TryItem, TypedCatch};
 pub use types::debug::DebugInfo;
 pub use types::encoded_value::EncodedValue;
-pub use types::header::{DexHeader, DexVersion, ParseOptions};
-pub use types::hidden_api::{ClassHiddenApiFlags, HiddenApiData, HiddenApiFlag};
+pub use types::header::{DexHeader, DexVersion, Loading, ParseOptions, Validation, Verification};
+pub use types::hidden_api::{ClassHiddenApiFlags, HiddenApiFlags, HiddenApiRestriction};
 pub use types::instruction::{
     FillArrayPayloadData, Instruction, PackedSwitchData, RegList, SparseSwitchData,
 };
-pub use types::label::{CodeBuilder, Label};
 pub use types::map::MapItem;
 pub use types::method_handle::{CallSiteIdx, CallSiteItem, MethodHandle, MethodHandleIdx};
 pub use types::register_analysis::{
@@ -72,4 +66,5 @@ pub use types::register_analysis::{
 pub use types::{FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx};
 pub use write::write;
 pub use write::write_container;
-pub use write::{split_to_fit, write_spooled, DexPart, Spooled};
+pub use write::write_container_spooled;
+pub use write::{DexPart, Spooled, split_to_fit, write_spooled};

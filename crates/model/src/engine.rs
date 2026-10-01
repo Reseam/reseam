@@ -3,6 +3,7 @@
 
 use crate::LogEntry;
 use serde::{Deserialize, Serialize};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[boltffi::data]
 pub struct PatchResult {
@@ -36,7 +37,7 @@ pub enum PatchStatus {
 #[derive(Debug, Clone)]
 #[boltffi::data]
 pub enum ProgressEvent {
-    PatchStarted { patch: String },
-    PatchLog(LogEntry),
-    PatchFinished { patch: String, status: PatchStatus },
+    Started { patch: String },
+    Log(LogEntry),
+    Finished { patch: String, status: PatchStatus },
 }

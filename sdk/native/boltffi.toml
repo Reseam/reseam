@@ -18,8 +18,5 @@ output = "../generated"
 module_name = "ReseamSdk"
 desktop_loader = "bundled"
 
-[targets.android.kotlin.desktop_pack]
-enabled = true
-
 [targets.android.pack]
 output = "../jniLibs"

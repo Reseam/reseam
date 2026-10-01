@@ -48,7 +48,7 @@ impl DexFile {
             return_type: ret,
             parameters: params.iter().copied().collect(),
         };
-        self.prototypes.find(&probe).map(|i| ProtoIdx(i as u16))
+        self.prototypes.find(&probe).map(|i| ProtoIdx(i as u32))
     }
 
     pub(crate) fn find_method_idx(
@@ -58,11 +58,10 @@ impl DexFile {
         proto: ProtoIdx,
     ) -> Option<MethodIdx> {
         self.methods
-            .find(&MethodId { class, proto, name })
+            .find(&MethodId { class, name, proto })
             .map(|i| MethodIdx(i as u32))
     }
 
-    /// Methods declared on `class`, optionally only those named `name`.
     pub fn methods_of(
         &self,
         class: TypeIdx,
@@ -77,7 +76,6 @@ impl DexFile {
             .map(|i| MethodIdx(i as u32))
     }
 
-    /// Fields declared on `class`, optionally only those named `name`.
     pub fn fields_of(
         &self,
         class: TypeIdx,
@@ -99,7 +97,7 @@ impl DexFile {
         type_: TypeIdx,
     ) -> Option<FieldIdx> {
         self.fields
-            .find(&FieldId { class, type_, name })
+            .find(&FieldId { class, name, type_ })
             .map(|i| FieldIdx(i as u32))
     }
 

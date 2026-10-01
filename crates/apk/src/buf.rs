@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::error::{truncated, Result};
+use crate::error::{Result, truncated};
 
 pub(crate) fn require_len(
     buf: &[u8],
@@ -28,11 +28,6 @@ pub(crate) fn slice<'a>(
 ) -> Result<&'a [u8]> {
     require_len(buf, offset, len, section)?;
     Ok(&buf[offset..offset + len])
-}
-
-pub(crate) fn read_u8(buf: &[u8], offset: usize, section: &'static str) -> Result<u8> {
-    require_len(buf, offset, 1, section)?;
-    Ok(buf[offset])
 }
 
 pub(crate) fn read_u16_le(buf: &[u8], offset: usize, section: &'static str) -> Result<u16> {

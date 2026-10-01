@@ -2,81 +2,101 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::encoding::leb128::{read_sleb128_with_opts, read_uleb128_with_opts};
-use crate::error::{invalid_offset, Result};
+use crate::error::{Result, invalid_offset, require_len};
+use crate::read::{u16_at, u32_at};
+use crate::types::TypeIdx;
 use crate::types::code::{CatchHandler, TryItem, TypedCatch};
 use crate::types::header::ParseOptions;
-use crate::types::TypeIdx;
 
-use super::format::{u16_at, u32_at};
+pub(crate) enum HandlerEvent {
+    Count(u32),
+    Handler { offset: usize, size: i32 },
+    Typed(TypedCatch),
+    CatchAll(u32),
+}
 
-/// Decodes the try-item table and the shared encoded catch-handler list.
+pub(crate) fn walk_handler_list(
+    buf: &[u8],
+    list_off: usize,
+    opts: ParseOptions,
+    mut visit: impl FnMut(HandlerEvent) -> Result<()>,
+) -> Result<usize> {
+    let (count, size) = read_uleb128_with_opts(buf, list_off, opts)?;
+    visit(HandlerEvent::Count(count))?;
+    let mut pos = list_off + size;
+    for _ in 0..count {
+        let offset = pos - list_off;
+        let (size, consumed) = read_sleb128_with_opts(buf, pos, opts)?;
+        pos += consumed;
+        visit(HandlerEvent::Handler { offset, size })?;
+        for _ in 0..size.unsigned_abs() {
+            let (type_idx, consumed) = read_uleb128_with_opts(buf, pos, opts)?;
+            pos += consumed;
+            let (addr, consumed) = read_uleb128_with_opts(buf, pos, opts)?;
+            pos += consumed;
+            visit(HandlerEvent::Typed(TypedCatch {
+                exception_type: TypeIdx(type_idx),
+                addr,
+            }))?;
+        }
+        if size <= 0 {
+            let (addr, consumed) = read_uleb128_with_opts(buf, pos, opts)?;
+            pos += consumed;
+            visit(HandlerEvent::CatchAll(addr))?;
+        }
+    }
+    Ok(pos)
+}
+
+pub(crate) fn handler_index(offsets: &[usize], offset: usize) -> Result<usize> {
+    offsets
+        .binary_search(&offset)
+        .map_err(|_| invalid_offset("catch handler", offset as u32, 0))
+}
+
 pub fn read_tries_and_handlers(
     buf: &[u8],
     tries_off: usize,
     tries_size: u16,
-    opts: &ParseOptions,
+    opts: ParseOptions,
 ) -> Result<(Vec<TryItem>, Vec<CatchHandler>)> {
-    let mut tries = Vec::with_capacity(tries_size as usize);
-    let handler_list_off = tries_off + tries_size as usize * 8;
-
-    let (handler_count, n) = read_uleb128_with_opts(buf, handler_list_off, opts)?;
-    let mut pos = handler_list_off + n;
-    let mut handler_offsets: Vec<usize> = Vec::new();
-    let mut catch_handlers = Vec::with_capacity(handler_count as usize);
-
-    for _ in 0..handler_count {
-        handler_offsets.push(pos - handler_list_off);
-
-        let (size_raw, n) = read_sleb128_with_opts(buf, pos, opts)?;
-        pos += n;
-
-        let catch_count = size_raw.unsigned_abs() as usize;
-        let has_catch_all = size_raw <= 0;
-
-        let mut typed_catches = Vec::with_capacity(catch_count);
-        for _ in 0..catch_count {
-            let (type_idx, n) = read_uleb128_with_opts(buf, pos, opts)?;
-            pos += n;
-            let (addr, n) = read_uleb128_with_opts(buf, pos, opts)?;
-            pos += n;
-            typed_catches.push(TypedCatch {
-                exception_type: TypeIdx(type_idx),
-                addr,
-            });
+    require_len(buf, tries_off, usize::from(tries_size) * 8, "try items")?;
+    let list_off = tries_off + usize::from(tries_size) * 8;
+    let mut offsets = Vec::new();
+    let mut handlers: Vec<CatchHandler> = Vec::new();
+    walk_handler_list(buf, list_off, opts, |event| {
+        match event {
+            HandlerEvent::Count(_) => {}
+            HandlerEvent::Handler { offset, .. } => {
+                offsets.push(offset);
+                handlers.push(CatchHandler {
+                    typed_catches: Vec::new(),
+                    catch_all_addr: None,
+                });
+            }
+            HandlerEvent::Typed(catch) => handlers
+                .last_mut()
+                .expect("typed catches follow a handler header")
+                .typed_catches
+                .push(catch),
+            HandlerEvent::CatchAll(addr) => {
+                handlers
+                    .last_mut()
+                    .expect("catch-all follows a handler header")
+                    .catch_all_addr = Some(addr);
+            }
         }
-
-        let catch_all_addr = if has_catch_all {
-            let (addr, n) = read_uleb128_with_opts(buf, pos, opts)?;
-            pos += n;
-            Some(addr)
-        } else {
-            None
-        };
-
-        catch_handlers.push(CatchHandler {
-            typed_catches,
-            catch_all_addr,
-        });
-    }
-
-    for i in 0..tries_size as usize {
-        let t_off = tries_off + i * 8;
-        crate::error::require_len(buf, t_off, 8, "try item")?;
-        let start_addr = u32_at(buf, t_off);
-        let insn_count = u16_at(buf, t_off + 4);
-        let handler_off = u16_at(buf, t_off + 6) as usize;
-
-        let handler_idx = handler_offsets
-            .iter()
-            .position(|&o| o == handler_off)
-            .ok_or_else(|| invalid_offset("catch_handler", handler_off as u32, buf.len() as u32))?;
-
-        tries.push(TryItem {
-            start_addr,
-            insn_count,
-            handler_idx,
-        });
-    }
-
-    Ok((tries, catch_handlers))
+        Ok(())
+    })?;
+    let tries = (0..usize::from(tries_size))
+        .map(|index| {
+            let off = tries_off + index * 8;
+            Ok(TryItem {
+                start_addr: u32_at(buf, off),
+                insn_count: u16_at(buf, off + 4),
+                handler_idx: handler_index(&offsets, usize::from(u16_at(buf, off + 6)))?,
+            })
+        })
+        .collect::<Result<_>>()?;
+    Ok((tries, handlers))
 }

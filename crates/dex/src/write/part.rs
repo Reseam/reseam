@@ -1,17 +1,12 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Splitting a DEX whose id pools outgrew the 16-bit limit. Each part is a
-//! run of the file's classes written as its own DEX with only the pool
-//! entries those classes reach, straight from the original buffer, so no
-//! class is materialized and the [`DexFile`] is left as it is.
-
-use super::refs::{self, RefSink};
 use super::MAX_POOL_SIZE;
-use crate::error::{invalid, Result};
+use crate::error::{Result, invalid};
 use crate::file::DexFile;
-use crate::types::method_handle::MethodHandleMember;
+use crate::references::{self as refs, RefSink, pool_len};
 use crate::types::Pool;
+use crate::types::method_handle::MethodHandleMember;
 
 /// Classes of one DEX that are written together, with every pool entry
 /// they reach.
@@ -51,6 +46,12 @@ pub fn split_to_fit(dex: &DexFile) -> Result<Option<Vec<DexPart>>> {
                 pools: std::mem::replace(&mut packer.pools, PoolSet::new(dex)),
             });
             packer.add_class(class_idx)?;
+            if packer.pools.overflows() {
+                return Err(invalid(
+                    "class_defs",
+                    format!("class {class_idx} alone exceeds the DEX id limits"),
+                ));
+            }
         }
         classes.push(class_idx);
     }
@@ -61,27 +62,12 @@ pub fn split_to_fit(dex: &DexFile) -> Result<Option<Vec<DexPart>>> {
     Ok(Some(parts))
 }
 
-pub(crate) fn pool_len(dex: &DexFile, pool: Pool) -> usize {
-    match pool {
-        Pool::String => dex.strings.len(),
-        Pool::Type => dex.types.len(),
-        Pool::Proto => dex.prototypes.len(),
-        Pool::Field => dex.fields.len(),
-        Pool::Method => dex.methods.len(),
-        Pool::CallSite => dex.call_sites.len(),
-        Pool::MethodHandle => dex.method_handles.len(),
-    }
-}
-
-/// Whether any pool indexed by 16-bit operands holds more entries than they
-/// can address. Strings are exempt: `const-string/jumbo` reaches them all.
 pub(crate) fn overflows(len: impl Fn(Pool) -> usize) -> bool {
     Pool::ALL
         .into_iter()
         .any(|pool| pool != Pool::String && len(pool) > MAX_POOL_SIZE)
 }
 
-/// A subset of every pool of one DEX.
 #[derive(Debug, Clone)]
 pub(crate) struct PoolSet {
     bits: [Vec<u64>; 7],
@@ -100,7 +86,6 @@ impl PoolSet {
         self.counts[pool as usize]
     }
 
-    /// Members of `pool` in ascending index order.
     pub(crate) fn members(&self, pool: Pool) -> impl Iterator<Item = u32> + '_ {
         self.bits[pool as usize]
             .iter()
@@ -117,11 +102,16 @@ impl PoolSet {
             })
     }
 
+    pub(crate) fn contains(&self, pool: Pool, index: u32) -> bool {
+        self.bits[pool as usize]
+            .get(index as usize / 64)
+            .is_some_and(|word| word & (1 << (index % 64)) != 0)
+    }
+
     fn overflows(&self) -> bool {
         overflows(|pool| self.len(pool))
     }
 
-    /// Adds `idx`, returning whether it was new.
     fn insert(&mut self, pool: Pool, idx: u32) -> bool {
         let (word, bit) = (idx as usize / 64, 1u64 << (idx % 64));
         let slot = &mut self.bits[pool as usize][word];
@@ -137,12 +127,11 @@ impl PoolSet {
     }
 }
 
-/// Grows a [`PoolSet`] one class at a time, closing it over the entries
-/// each new entry references and remembering what the last class added.
 struct Packer<'a> {
     dex: &'a DexFile,
     pools: PoolSet,
     added: Vec<(Pool, u32)>,
+    error: Option<crate::DexError>,
 }
 
 impl<'a> Packer<'a> {
@@ -151,6 +140,7 @@ impl<'a> Packer<'a> {
             dex,
             pools: PoolSet::new(dex),
             added: Vec::new(),
+            error: None,
         }
     }
 
@@ -161,16 +151,24 @@ impl<'a> Packer<'a> {
             dex.classes.resident(class_idx),
             dex.classes.raw_def(class_idx),
         ) {
-            (Some(class), _) => refs::class(self, class),
+            (Some(class), _) => refs::class(self, class, dex)?,
             (None, Some(raw)) => {
-                let buf = dex
-                    .raw_buffer()
-                    .expect("file classes exist only while the buffer is retained");
-                refs::raw_class(self, buf, &raw, &dex.parse_options)?;
+                let buf = dex.raw_buffer().ok_or_else(|| {
+                    invalid("DEX source", "deferred classes require the original buffer")
+                })?;
+                refs::raw_class(self, buf, &raw, dex.parse_options, dex.write_options())?;
             }
-            (None, None) => unreachable!("every slot is resident or raw"),
+            (None, None) => {
+                return Err(invalid(
+                    "DEX part",
+                    format!("class index {class_idx} has no source"),
+                ));
+            }
         }
-        Ok(())
+        match self.error.take() {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
     }
 
     fn undo(&mut self) {
@@ -182,6 +180,16 @@ impl<'a> Packer<'a> {
 
 impl RefSink for Packer<'_> {
     fn add(&mut self, pool: Pool, idx: u32) {
+        if self.error.is_some() {
+            return;
+        }
+        if idx as usize >= pool_len(self.dex, pool) {
+            self.error = Some(invalid(
+                "pool reference",
+                format!("{pool:?} index {idx} is out of bounds"),
+            ));
+            return;
+        }
         if !self.pools.insert(pool, idx) {
             return;
         }
@@ -207,13 +215,19 @@ impl RefSink for Packer<'_> {
             Pool::Method => {
                 let method = dex.methods.get(idx as usize);
                 self.add(Pool::Type, method.class.0);
-                self.add(Pool::Proto, method.proto.0 as u32);
+                self.add(Pool::Proto, method.proto.0);
                 self.add(Pool::String, method.name.0);
             }
-            Pool::CallSite => refs::call_site(self, &dex.call_sites[idx as usize]),
-            Pool::MethodHandle => match dex.method_handles[idx as usize].member {
-                MethodHandleMember::Field(field) => self.add(Pool::Field, field.0),
-                MethodHandleMember::Method(method) => self.add(Pool::Method, method.0),
+            Pool::CallSite => match dex.call_sites.get(idx as usize) {
+                Ok(site) => refs::call_site(self, &site),
+                Err(error) => self.error = Some(error),
+            },
+            Pool::MethodHandle => match dex.method_handles.get(idx as usize) {
+                Err(error) => self.error = Some(error),
+                Ok(handle) => match handle.member {
+                    MethodHandleMember::Field(field) => self.add(Pool::Field, field.0),
+                    MethodHandleMember::Method(method) => self.add(Pool::Method, method.0),
+                },
             },
         }
     }

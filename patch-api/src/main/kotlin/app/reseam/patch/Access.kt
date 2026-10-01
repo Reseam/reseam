@@ -5,17 +5,12 @@ package app.reseam.patch
 
 import app.reseam.patch.dex.AccessFlags
 import app.reseam.patch.dex.isSet
-import app.reseam.patch.native.FieldRef
-import app.reseam.patch.native.MethodRef
+import app.reseam.patch.types.FieldRef
+import app.reseam.patch.types.MethodRef
 
-/**
- * The access rules the runtime enforces when code in [from] links a reference.
- * ART checks them only when the reference is first used, so an inaccessible
- * one passes verification and throws `IllegalAccessError` in the app instead.
- * Classes outside the app and its extensions are not checked.
- */
 internal class Access(private val from: String) {
-    private val index get() = ActiveRuntime.current.index
+    private val index
+        get() = ActiveRuntime.current.index
 
     fun requireClass(type: String) {
         val owner = type.trimStart('[')
@@ -28,16 +23,23 @@ internal class Access(private val from: String) {
 
     fun requireField(ref: FieldRef) {
         requireClass(ref.definingClass)
-        val flags = index.classFor(ref.definingClass)?.fields
-            ?.firstOrNull { it.name == ref.name && it.fieldType == ref.fieldType }
-            ?.accessFlags ?: return
+        val flags =
+            index
+                .classFor(ref.definingClass)
+                ?.fields
+                ?.firstOrNull { it.name == ref.name && it.fieldType == ref.fieldType }
+                ?.accessFlags ?: return
         requireMember("${ref.definingClass}->${ref.name}", ref.definingClass, flags)
     }
 
     fun requireMethod(ref: MethodRef) {
         requireClass(ref.definingClass)
         val method = index.methodFor(ref) ?: return
-        requireMember("${ref.definingClass}->${ref.name}${ref.proto}", method.owner, method.info.accessFlags)
+        requireMember(
+            "${ref.definingClass}->${ref.name}${ref.proto}",
+            method.owner,
+            method.info.accessFlags,
+        )
     }
 
     private fun requireMember(name: String, declaringClass: String, flags: UInt) {
@@ -45,8 +47,11 @@ internal class Access(private val from: String) {
         require(!AccessFlags.PRIVATE.isSet(flags)) {
             "$name is private to ${className(declaringClass)}, so ${className(from)} cannot reach it"
         }
-        require(samePackage(declaringClass) || AccessFlags.PUBLIC.isSet(flags) ||
-            (AccessFlags.PROTECTED.isSet(flags) && isAssignableType(from, declaringClass))) {
+        require(
+            samePackage(declaringClass) ||
+                AccessFlags.PUBLIC.isSet(flags) ||
+                (AccessFlags.PROTECTED.isSet(flags) && isAssignableType(from, declaringClass))
+        ) {
             "$name is package-private, so ${className(from)} in another package cannot reach it"
         }
     }

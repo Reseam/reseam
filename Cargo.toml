@@ -1,6 +1,7 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = [
+    "crates/storage",
     "crates/dex",
     "crates/model",
     "crates/apk",
@@ -14,9 +15,43 @@ members = [
 
 [workspace.package]
 version = "0.15.0"
+edition = "2024"
+rust-version = "1.98"
+
+[workspace.lints.rust]
+rust_2018_idioms = { level = "warn", priority = -1 }
+unsafe_op_in_unsafe_fn = "deny"
+unused_qualifications = "warn"
+unused_lifetimes = "warn"
+redundant_lifetimes = "warn"
+let_underscore_drop = "warn"
+unit_bindings = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# Binary formats read and write fixed-width fields; widths are checked where input is parsed.
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_sign_loss = "allow"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+similar_names = "allow"
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+unwrap_used = "warn"
+undocumented_unsafe_blocks = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+large_include_file = "warn"
 
 [workspace.dependencies]
 # Internal crates
+reseam-storage = { path = "crates/storage" }
 reseam-model = { path = "crates/model" }
 reseam-dex     = { path = "crates/dex" }
 reseam-apk     = { path = "crates/apk" }
@@ -31,28 +66,28 @@ smallvec    = "1"
 rustc-hash  = "2"
 rayon       = "1.10"
 memmap2     = "0.9"
-zip         = { version = "2", default-features = false, features = ["deflate-flate2", "flate2"] }
+zip         = { version = "8", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 flate2      = { version = "1", default-features = false, features = ["zlib-rs"] }
 zlib-rs     = "0.6"
-quick-xml   = "0.37"
+quick-xml   = "0.42"
 ring        = "0.17"
-ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
-sha2        = "0.10"
+ed25519-dalek = { version = "3", default-features = false, features = ["alloc", "fast", "zeroize"] }
+sha2        = "0.11"
 hex         = "0.4"
 tempfile    = "3"
-toml        = "0.8"
+toml        = "1"
 serde       = { version = "1", features = ["derive"] }
 serde_json  = "1"
 time        = { version = "0.3", features = ["formatting", "parsing"] }
-boltffi_backend = "=0.30.1"
-boltffi_bindgen = "=0.30.1"
-boltffi_binding = "=0.30.1"
-boltffi     = { version = "=0.30.1", default-features = false }
-jni         = { version = "0.21", features = ["invocation"] }
+boltffi_backend = "=0.31.0"
+boltffi_bindgen = "=0.31.0"
+boltffi_binding = "=0.31.0"
+boltffi     = { version = "=0.31.0", default-features = false }
+jni         = { version = "0.22", features = ["invocation"] }
 clap        = { version = "4", features = ["derive"] }
 anyhow      = "1"
 libc        = "0.2"
-libloading  = "0.7"
+libloading  = "0.9"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }
 tracing     = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

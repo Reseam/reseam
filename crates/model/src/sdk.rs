@@ -7,6 +7,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[boltffi::data]
 pub struct ApkMetadata {
@@ -70,8 +71,8 @@ pub struct InspectRequest {
     pub trust: Trust,
 }
 
-/// `patches` is empty while any bundle is untrusted: untrusted code is never
-/// loaded, and loading is what reveals the patches.
+/// Patches are listed only for bundles that were trusted and loaded. Problems
+/// with other bundles are reported in `bundles`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[boltffi::data]
 pub struct InspectResponse {
@@ -81,7 +82,7 @@ pub struct InspectResponse {
     pub patches: Vec<PatchMetadata>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[boltffi::data]
 pub struct PatchRequest {
     pub apk_path: String,
@@ -93,7 +94,9 @@ pub struct PatchRequest {
     #[serde(default)]
     pub selection: PatchSelection,
     pub output: PatchOutput,
-    /// Generated next to the output when absent.
+    /// When absent, reuse or generate a pair next to the output.
+    /// Supplied paths also generate on first use when both files are missing.
+    /// Exactly one existing file is an error; existing credentials are never replaced.
     #[serde(default)]
     #[boltffi::default(None)]
     pub signing: Option<SigningKeyFiles>,
@@ -102,7 +105,7 @@ pub struct PatchRequest {
     pub dry_run: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[boltffi::data]
 pub struct SigningKeyFiles {
     pub key: String,
@@ -125,7 +128,6 @@ pub enum PatchOutput {
     },
 }
 
-/// The concrete output selected after opening the input, including for dry runs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[boltffi::data]
@@ -152,7 +154,9 @@ impl PatchOutput {
         }
     }
 
-    pub fn resolve(&self, components: usize) -> anyhow::Result<PatchArtifact> {
+    /// Resolves automatic output using the input component count.
+    /// Explicit file output requires exactly one component; directories are preserved.
+    pub fn resolve(&self, components: usize) -> crate::Result<PatchArtifact> {
         Ok(match self {
             Self::Auto { path } if components == 1 => {
                 let mut name = path.clone();
@@ -163,7 +167,9 @@ impl PatchOutput {
                 PatchArtifact::SplitDir { path: path.clone() }
             }
             Self::SingleFile { path } => {
-                anyhow::ensure!(components == 1, "input has splits; use a split directory (--output-dir) instead of single-file output");
+                if components != 1 {
+                    return Err(Problem::SingleFileComponents { components });
+                }
                 PatchArtifact::SingleFile { path: path.clone() }
             }
         })
@@ -191,9 +197,9 @@ pub enum RunEvent {
 impl From<ProgressEvent> for RunEvent {
     fn from(event: ProgressEvent) -> Self {
         match event {
-            ProgressEvent::PatchStarted { patch } => Self::PatchStarted { patch },
-            ProgressEvent::PatchLog(entry) => Self::PatchLog(entry),
-            ProgressEvent::PatchFinished { patch, status } => Self::PatchFinished { patch, status },
+            ProgressEvent::Started { patch } => Self::PatchStarted { patch },
+            ProgressEvent::Log(entry) => Self::PatchLog(entry),
+            ProgressEvent::Finished { patch, status } => Self::PatchFinished { patch, status },
         }
     }
 }
@@ -203,40 +209,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn automatic_output_depends_on_components_and_preserves_dotted_names() {
-        let output: PatchOutput =
-            serde_json::from_str(r#"{"kind":"auto","path":"out/com.example.app.reseamed"}"#)
-                .unwrap();
-        assert_eq!(
-            output.resolve(1).unwrap(),
-            PatchArtifact::SingleFile {
-                path: "out/com.example.app.reseamed.apk".into()
+    fn output_selection_honors_component_counts_and_explicit_destinations() {
+        let path = "out/com.example.app.reseamed";
+        let file = |path: &str| Some(PatchArtifact::SingleFile { path: path.into() });
+        let directory = || Some(PatchArtifact::SplitDir { path: path.into() });
+        for (kind, expected) in [
+            ("auto", [file(&format!("{path}.apk")), directory()]),
+            ("split_dir", [directory(), directory()]),
+            ("single_file", [file(path), None]),
+        ] {
+            let output: PatchOutput =
+                serde_json::from_value(serde_json::json!({"kind": kind, "path": path})).unwrap();
+            for (count, expected) in [1, 2].into_iter().zip(expected) {
+                let actual = output.resolve(count);
+                if let Some(expected) = expected {
+                    assert_eq!(actual.unwrap(), expected);
+                } else {
+                    assert!(matches!(actual, Err(Problem::SingleFileComponents { .. })));
+                }
             }
-        );
-        assert_eq!(
-            output.resolve(2).unwrap(),
-            PatchArtifact::SplitDir {
-                path: "out/com.example.app.reseamed".into()
-            }
-        );
-    }
-
-    #[test]
-    fn explicit_outputs_are_honored_or_rejected_never_redirected() {
-        let path = String::from("chosen");
-        let directory = PatchOutput::SplitDir { path: path.clone() };
-        for count in [1, 2] {
-            assert_eq!(
-                directory.resolve(count).unwrap(),
-                PatchArtifact::SplitDir { path: path.clone() }
-            );
         }
-        let file = PatchOutput::SingleFile { path: path.clone() };
-        assert_eq!(file.resolve(1).unwrap(), PatchArtifact::SingleFile { path });
-        assert!(file
-            .resolve(2)
-            .unwrap_err()
-            .to_string()
-            .contains("--output-dir"));
     }
 }

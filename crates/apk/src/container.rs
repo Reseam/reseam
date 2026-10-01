@@ -1,25 +1,22 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! ZIP containers that distribute a base APK with its splits as one file:
-//! APKMirror's `.apkm` and APKPure's `.xapk`. Opening a container extracts
-//! its APK entries, CRC-verified, into a scratch directory, so the rest of
-//! the engine works on a plain split set.
-
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
 
 use rayon::prelude::*;
-use serde::Deserialize;
+use serde::{Deserialize, de::IgnoredAny};
 use tracing::instrument;
 
-use crate::axml::AxmlDocument;
+use crate::apk_file::validate_components;
 use crate::entry::MANIFEST_ENTRY;
-use crate::error::{invalid, Result};
-use crate::scratch::ScratchDir;
+use crate::error::{Result, invalid};
 use crate::zip::reader::{self, Archive};
+use crate::{ApkComponent, ApkFile};
+use reseam_dex::{ParseOptions, types::header::Loading};
+use reseam_storage::ScratchDir;
 
 const INFO_JSON: &str = "info.json";
 const MANIFEST_JSON: &str = "manifest.json";
@@ -32,7 +29,22 @@ struct ContainerMetadata {
     package_name: Option<String>,
     split_apks: Option<Vec<XapkSplitFile>>,
     #[serde(default)]
-    expansions: Vec<serde_json::Value>,
+    expansions: Vec<IgnoredAny>,
+}
+
+#[derive(Deserialize)]
+struct ContainerMarker {
+    apkm_version: Option<u64>,
+    xapk_version: Option<u64>,
+}
+
+impl ContainerMarker {
+    fn version(&self, format: ContainerFormat) -> Option<u64> {
+        match format {
+            ContainerFormat::Apkm => self.apkm_version,
+            ContainerFormat::Xapk => self.xapk_version,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -44,7 +56,6 @@ struct XapkSplitFile {
 /// A materialized container: the base APK and its splits extracted into a
 /// scratch directory under their container entry names. Dropping the bundle
 /// deletes the extracted files.
-#[derive(Debug)]
 pub struct ContainerBundle {
     format: ContainerFormat,
     package: String,
@@ -52,7 +63,8 @@ pub struct ContainerBundle {
     split_entries: Vec<String>,
     base_path: PathBuf,
     split_paths: Vec<PathBuf>,
-    _scratch: ScratchDir,
+    components: Vec<ApkComponent>,
+    scratch: ScratchDir,
 }
 
 impl ContainerBundle {
@@ -87,8 +99,29 @@ impl ContainerBundle {
             ));
         }
         let scratch = ScratchDir::new("apk-container")?;
-        let (base_entry, split_entries, package) =
-            classify(&archive, metadata.as_ref(), &apk_entries, &scratch)?;
+        let components = classify(&archive, metadata.as_ref(), &apk_entries, &scratch)?;
+        let base_entry = components[0]
+            .path()
+            .file_name()
+            .expect("extracted filename")
+            .to_string_lossy()
+            .into_owned();
+        let split_entries: Vec<_> = components[1..]
+            .iter()
+            .map(|component| {
+                component
+                    .path()
+                    .file_name()
+                    .expect("extracted filename")
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        let package = components[0]
+            .manifest()
+            .package_name()
+            .expect("validated package")
+            .into_owned();
         let base_path = scratch.path().join(&base_entry);
         let split_paths = split_entries
             .iter()
@@ -101,8 +134,18 @@ impl ContainerBundle {
             split_entries,
             base_path,
             split_paths,
-            _scratch: scratch,
+            components,
+            scratch,
         }))
+    }
+
+    /// Consumes the bundle into a session using its already parsed manifests.
+    /// The session takes ownership of the extraction directory, so its paths
+    /// remain valid until the session is dropped.
+    pub fn into_apk(self, options: ParseOptions) -> Result<ApkFile> {
+        let mut apk = ApkFile::from_components(self.components, options)?;
+        apk.scratch = Some(self.scratch);
+        Ok(apk)
     }
 
     pub fn format(&self) -> ContainerFormat {
@@ -139,15 +182,14 @@ fn detect_format(archive: &mut Archive, path: &Path) -> Result<Option<ContainerF
     if reader::contains(archive, MANIFEST_ENTRY) {
         return Ok(None);
     }
-    for (entry, marker, format) in [
-        (INFO_JSON, "apkm_version", ContainerFormat::Apkm),
-        (MANIFEST_JSON, "xapk_version", ContainerFormat::Xapk),
+    for (entry, format) in [
+        (INFO_JSON, ContainerFormat::Apkm),
+        (MANIFEST_JSON, ContainerFormat::Xapk),
     ] {
         if reader::contains(archive, entry) {
             let data = reader::read_entry(archive, entry)?;
-            if serde_json::from_slice::<serde_json::Value>(&data)
-                .ok()
-                .is_some_and(|info| info.get(marker).is_some_and(serde_json::Value::is_u64))
+            if serde_json::from_slice::<ContainerMarker>(&data)
+                .is_ok_and(|info| info.version(format).is_some())
             {
                 return Ok(Some(format));
             }
@@ -166,67 +208,25 @@ fn read_metadata(archive: &mut Archive, name: &str) -> Result<Option<ContainerMe
         .map_err(|error| invalid("container", format!("malformed {name}: {error}")))
 }
 
-/// Every APK is classified by its own manifest. Container metadata can
-/// confirm that classification, but cannot override it.
 fn classify(
     archive: &Archive,
     metadata: Option<&ContainerMetadata>,
     entries: &[String],
     scratch: &ScratchDir,
-) -> Result<(String, Vec<String>, String)> {
-    let mut manifests = HashMap::new();
-    let mut base = None;
-    let mut splits = Vec::new();
-    let mut split_names = HashSet::new();
-    let paths: Vec<PathBuf> = entries
+) -> Result<Vec<ApkComponent>> {
+    let mut components: Vec<_> = entries
         .par_iter()
         .map_with(archive.clone(), |archive, entry| {
-            extract_entry(archive, entry, scratch.path())
+            let path = extract_entry(archive, entry, scratch.path())?;
+            ApkComponent::open(&path, Loading::Deferred)
         })
         .collect::<Result<_>>()?;
-    for (entry, path) in entries.iter().zip(paths) {
-        let manifest = manifest_of(path, entry)?;
-        if let Some(name) = manifest.split_name() {
-            if name.is_empty() || !split_names.insert(name.into_owned()) {
-                return Err(invalid(
-                    "container",
-                    format!("empty or duplicate split name in {entry}"),
-                ));
-            }
-            splits.push(entry.clone());
-        } else if let Some(previous) = &base {
-            return Err(invalid(
-                "container",
-                format!("multiple base APKs: {previous} and {entry}"),
-            ));
-        } else {
-            base = Some(entry.clone());
-        }
-        manifests.insert(entry.as_str(), manifest);
-    }
-    let base = base.ok_or_else(|| {
-        invalid(
-            "container",
-            "no base APK: no entry carries a base AndroidManifest.xml",
-        )
-    })?;
-    let base_manifest = &manifests[base.as_str()];
-    let package = base_manifest
+    components.sort_by_key(|component| component.manifest().split_name().is_some());
+    validate_components(&components)?;
+    let package = components[0]
+        .manifest()
         .package_name()
-        .filter(|name| !name.is_empty())
-        .ok_or_else(|| invalid("container", "base APK has no package name"))?
-        .into_owned();
-    for entry in &splits {
-        let manifest = &manifests[entry.as_str()];
-        if manifest.package_name().as_deref() != Some(package.as_str())
-            || manifest.version_code() != base_manifest.version_code()
-        {
-            return Err(invalid(
-                "container",
-                format!("{entry} does not match the base APK package and version code"),
-            ));
-        }
-    }
+        .expect("validated package");
     if let Some(metadata) = metadata {
         if metadata
             .package_name
@@ -241,20 +241,33 @@ fn classify(
         if let Some(mapping) = &metadata.split_apks {
             let mut listed = HashSet::new();
             for split in mapping {
-                let manifest = manifests.get(split.file.as_str()).ok_or_else(|| {
-                    invalid(
-                        "container",
-                        format!("manifest references missing APK {}", split.file),
-                    )
-                })?;
+                let component = components
+                    .iter()
+                    .find(|component| {
+                        component
+                            .path()
+                            .file_name()
+                            .is_some_and(|name| name == split.file.as_str())
+                    })
+                    .ok_or_else(|| {
+                        invalid(
+                            "container",
+                            format!("manifest references missing APK {}", split.file),
+                        )
+                    })?;
                 if !listed.insert(split.file.as_str()) {
                     return Err(invalid(
                         "container",
                         format!("duplicate APK reference {}", split.file),
                     ));
                 }
-                let name = manifest.split_name();
-                if split.id != name.as_deref().unwrap_or("base") {
+                if split.id
+                    != component
+                        .manifest()
+                        .split_name()
+                        .as_deref()
+                        .unwrap_or("base")
+                {
                     return Err(invalid(
                         "container",
                         format!(
@@ -272,20 +285,20 @@ fn classify(
             }
         }
     }
-    Ok((base, splits, package))
+    Ok(components)
 }
 
 fn apk_entries(archive: &Archive) -> Result<Vec<String>> {
     let mut entries = Vec::new();
     for name in archive.file_names() {
-        let lower = name.to_ascii_lowercase();
-        if lower.ends_with(".obb") {
+        let extension = Path::new(name).extension();
+        if extension.is_some_and(|ext| ext.eq_ignore_ascii_case("obb")) {
             return Err(invalid(
                 "container",
                 "XAPK expansion files are not supported",
             ));
         }
-        if lower.ends_with(".apk") {
+        if extension.is_some_and(|ext| ext.eq_ignore_ascii_case("apk")) {
             // Only a single portable filename may be joined to the scratch path.
             if name.contains(['/', '\\', ':']) {
                 return Err(invalid(
@@ -311,8 +324,6 @@ fn extension_format(path: &Path) -> Option<ContainerFormat> {
     }
 }
 
-/// Streams the entry into `dir` under its name and returns the new path,
-/// checking the ZIP CRC as the entry is read to completion.
 fn extract_entry(archive: &mut Archive, name: &str, dir: &Path) -> Result<PathBuf> {
     let path = dir.join(name);
     let mut entry = archive.by_name(name)?;
@@ -328,28 +339,12 @@ fn extract_entry(archive: &mut Archive, name: &str, dir: &Path) -> Result<PathBu
     Ok(path)
 }
 
-/// Parses the `AndroidManifest.xml` inside an extracted APK file.
-fn manifest_of(path: PathBuf, entry: &str) -> Result<AxmlDocument> {
-    let mut archive = reader::open_archive(&path)?;
-    let data = reader::read_entry(&mut archive, MANIFEST_ENTRY)?;
-    AxmlDocument::parse(&data)
-        .map_err(|error| invalid("container", format!("{entry} is not a valid APK: {error}")))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn extension_format_is_case_insensitive() {
-        assert_eq!(
-            extension_format(Path::new("App.APKM")),
-            Some(ContainerFormat::Apkm)
-        );
-        assert_eq!(
-            extension_format(Path::new("App.xapk")),
-            Some(ContainerFormat::Xapk)
-        );
-        assert_eq!(extension_format(Path::new("App.apk")), None);
+impl std::fmt::Debug for ContainerBundle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ContainerBundle")
+            .field("format", &self.format)
+            .field("base", &self.base_path)
+            .field("splits", &self.split_paths)
+            .finish_non_exhaustive()
     }
 }

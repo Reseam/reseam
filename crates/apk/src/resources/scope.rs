@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::ops::{Deref, DerefMut};
-
 use super::ResourceTable;
 use crate::axml;
 use crate::error::Result;
@@ -30,7 +28,7 @@ impl<'a> ResourceScope<'a> {
 
     pub fn resource_id(&mut self, type_name: &str, entry_name: &str) -> Result<Option<u32>> {
         match (
-            self.table.find_resource_id(type_name, entry_name),
+            self.table.find_resource_id(type_name, entry_name)?,
             &mut self.splits,
         ) {
             (Some(id), _) => Ok(Some(id)),
@@ -39,12 +37,35 @@ impl<'a> ResourceScope<'a> {
         }
     }
 
-    /// Reads `text` the way a value of `attr` is read, interning plain text
-    /// into the global pool the way a resource entry holds it.
+    /// Finds an existing application-wide ID before creating it in this table.
+    /// Other split tables are loaded only when the local lookup misses.
+    pub fn ensure_id(&mut self, name: &str) -> Result<Option<u32>> {
+        match self.resource_id("id", name)? {
+            Some(id) => Ok(Some(id)),
+            None => self.table.ensure_id(name),
+        }
+    }
+
+    /// The edited component's table. Attribute definitions are configuration
+    /// independent and deliberately resolve against this table only.
+    pub fn table(&self) -> &ResourceTable {
+        self.table
+    }
+
+    /// Edits entries in this component; application-wide name lookups use
+    /// [`Self::resource_id`] and [`Self::ensure_id`].
+    pub fn table_mut(&mut self) -> &mut ResourceTable {
+        self.table
+    }
+
     pub(crate) fn parse_value(&mut self, text: &str, attr: Option<u32>) -> Result<ResValue> {
-        Ok(match axml::parse_attribute_value(text, attr, Some(self))? {
+        let value = match attr {
+            Some(attr) => axml::parse_attribute_value(text, attr, Some(self))?,
+            None => axml::infer_value(text, Some(self))?,
+        };
+        Ok(match value {
             axml::AttributeValue::Value(value) => value,
-            axml::AttributeValue::Text => ResValue::string(self.add_global_string(text)),
+            axml::AttributeValue::Text => ResValue::string(self.table.add_global_string(text)),
         })
     }
 }
@@ -55,19 +76,5 @@ impl<'a> From<&'a mut ResourceTable> for ResourceScope<'a> {
             table,
             splits: None,
         }
-    }
-}
-
-impl Deref for ResourceScope<'_> {
-    type Target = ResourceTable;
-
-    fn deref(&self) -> &ResourceTable {
-        self.table
-    }
-}
-
-impl DerefMut for ResourceScope<'_> {
-    fn deref_mut(&mut self) -> &mut ResourceTable {
-        self.table
     }
 }
