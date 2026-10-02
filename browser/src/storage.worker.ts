@@ -66,7 +66,26 @@ async function handle(operation: string, args: Record<string, unknown>): Promise
     default: throw new Error(`Unknown storage operation ${operation}`);
   }
 }
+function connect(port: MessagePort, channel: Channel): void {
+  port.onmessage = async message => {
+    if (stopped) return;
+    try {
+      const value = await handle(message.data.operation, message.data.args);
+      // File artifacts use structured clone rather than copying their bytes.
+      if (message.data.operation === 'artifact') port.postMessage({ type: 'artifact', value });
+      else channel.sendSync(4, encode({ value }));
+    } catch (error) {
+      if (Atomics.load(channel.control, 3)) return;
+      channel.sendSync(4, encode({ error: String(error), quota: error instanceof DOMException && error.name === 'QuotaExceededError' }));
+    }
+  };
+}
 self.onmessage = async event => {
+  if (event.data.type === 'connect') {
+    connect(event.data.port, new Channel(event.data.buffer));
+    self.postMessage({ type: 'result', id: event.data.id });
+    return;
+  }
   if (event.data.type !== 'init') {
     try {
       const value = await handle(event.data.type, { id: event.data.storageId });
@@ -80,18 +99,7 @@ self.onmessage = async event => {
     root = await navigator.storage.getDirectory();
     await protectSession();
     directory = await root.getDirectoryHandle(name, { create: true });
-    port.onmessage = async message => {
-      if (stopped) return;
-      try {
-        const value = await handle(message.data.operation, message.data.args);
-        // File artifacts use structured clone rather than copying their bytes.
-        if (message.data.operation === 'artifact') port.postMessage({ type: 'artifact', value });
-        else channel.sendSync(4, encode({ value }));
-      } catch (error) {
-        if (Atomics.load(channel.control, 3)) return;
-        channel.sendSync(4, encode({ error: String(error), quota: error instanceof DOMException && error.name === 'QuotaExceededError' }));
-      }
-    };
+    connect(port, channel);
     self.postMessage({ type: 'ready' });
   } catch (error) { self.postMessage({ type: 'error', error: String(error) }); }
 };

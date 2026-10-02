@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { mkdir, copyFile, writeFile, rm } from 'node:fs/promises';
 const browser = resolve(import.meta.dir, '..');
-const files = ['reseam_sdk_browser.wasm', 'methods.json', 'reseam-runtime.jar', 'browser-host.jar'];
+const files = ['reseam_sdk_browser.wasm', 'reseam_browser_compression.wasm', 'methods.json', 'reseam-runtime.jar', 'browser-host.jar'];
 const assets: Record<string, { path: string; sha256: string; size: number }> = {};
 for (const path of files) {
   const bytes = await Bun.file(resolve(browser, 'build/runtime', path)).arrayBuffer();

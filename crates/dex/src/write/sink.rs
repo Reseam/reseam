@@ -69,6 +69,12 @@ pub struct Spooled {
 }
 
 impl Spooled {
+    /// Transfers ownership of the serialized bytes to a file-based consumer.
+    /// The caller must establish its own read position.
+    pub fn into_file(self) -> File {
+        self.file
+    }
+
     pub fn len(&self) -> u64 {
         self.len
     }

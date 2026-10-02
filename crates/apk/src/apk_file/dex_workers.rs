@@ -1,19 +1,23 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#[cfg(not(target_os = "wasi"))]
 use std::fs::File;
-use std::io::{self, BufWriter};
 #[cfg(not(target_os = "wasi"))]
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 #[cfg(not(target_os = "wasi"))]
 use std::sync::{Arc, Mutex};
+#[cfg(not(target_os = "wasi"))]
 use std::thread::Scope;
 
 use reseam_dex::DexFile;
+#[cfg(not(target_os = "wasi"))]
 use tracing::debug;
 
 use super::write::{DexJob, DexMember};
-use crate::error::{Result, invalid};
+use crate::error::Result;
+#[cfg(not(target_os = "wasi"))]
+use crate::error::invalid;
 
 #[cfg(not(target_os = "wasi"))]
 pub(super) struct DexEntryStream<'a> {
@@ -33,7 +37,7 @@ impl DexEntryStream<'_> {
         jobs: &'env [DexJob],
         workers: usize,
         level: i64,
-    ) -> Self {
+    ) -> Result<Self> {
         let workers = workers.min(jobs.len());
         let window = workers.saturating_mul(2).min(jobs.len());
         let (pending, queue) = sync_channel::<usize>(window);
@@ -44,7 +48,7 @@ impl DexEntryStream<'_> {
         for _ in 0..workers {
             let queue = Arc::clone(&queue);
             let outputs = Arc::clone(&outputs);
-            scope.spawn(move || {
+            std::thread::Builder::new().spawn_scoped(scope, move || {
                 loop {
                     let Ok(index) = queue
                         .lock()
@@ -61,21 +65,21 @@ impl DexEntryStream<'_> {
                         break;
                     }
                 }
-            });
+            })?;
         }
         for index in 0..window {
             pending
                 .send(index)
                 .expect("initial jobs fit in the queue while its receiver is retained");
         }
-        Self {
+        Ok(Self {
             _lifetime: std::marker::PhantomData,
             pending,
             receivers,
             next: 0,
             scheduled: window,
             job_count: jobs.len(),
-        }
+        })
     }
 
     pub fn next(&mut self) -> Result<File> {
@@ -97,13 +101,10 @@ impl DexEntryStream<'_> {
     }
 }
 
-fn compress_dex(
+fn serialize_dex(
     dex_files: &[DexFile],
     members: &[DexMember],
-    name: &str,
-    level: i64,
-) -> Result<File> {
-    let started = std::time::Instant::now();
+) -> Result<reseam_dex::write::Spooled> {
     let spooled = match members {
         [member] => {
             reseam_dex::write_spooled(&dex_files[member.dex_index.0], member.part.as_ref())?
@@ -117,20 +118,26 @@ fn compress_dex(
     if let Some(member) = members.first() {
         dex_files[member.dex_index.0].release_pages();
     }
+    Ok(spooled)
+}
+
+#[cfg(not(target_os = "wasi"))]
+fn compress_dex(
+    dex_files: &[DexFile],
+    members: &[DexMember],
+    name: &str,
+    level: i64,
+) -> Result<File> {
+    let started = std::time::Instant::now();
+    let spooled = serialize_dex(dex_files, members)?;
     let serialized = started.elapsed();
     let deflating = std::time::Instant::now();
-    let mut archive = zip::ZipWriter::new(BufWriter::new(reseam_storage::temporary_file()?));
-    archive.start_file(
+    let file = crate::compression::compress_dex_entry(
+        spooled.reader(),
+        reseam_storage::temporary_file()?,
         name,
-        zip::write::SimpleFileOptions::default()
-            .compression_method(zip::CompressionMethod::Deflated)
-            .compression_level(Some(level)),
+        level,
     )?;
-    io::copy(&mut spooled.reader(), &mut archive)?;
-    let file = archive
-        .finish()?
-        .into_inner()
-        .map_err(io::IntoInnerError::into_error)?;
     debug!(
         entry = name,
         bytes = spooled.len(),
@@ -142,38 +149,7 @@ fn compress_dex(
 }
 
 #[cfg(target_os = "wasi")]
-pub(super) struct DexEntryStream<'a> {
-    dex: &'a [DexFile],
-    jobs: &'a [DexJob],
-    next: usize,
-    level: i64,
-}
-
+#[path = "dex_browser.rs"]
+mod browser;
 #[cfg(target_os = "wasi")]
-impl<'a> DexEntryStream<'a> {
-    pub fn start<'scope, 'env>(
-        _scope: &'scope Scope<'scope, 'env>,
-        dex: &'a [DexFile],
-        jobs: &'a [DexJob],
-        _workers: usize,
-        level: i64,
-    ) -> Self {
-        Self {
-            dex,
-            jobs,
-            next: 0,
-            level,
-        }
-    }
-
-    pub fn next(&mut self) -> Result<File> {
-        let job = self
-            .jobs
-            .get(self.next)
-            .ok_or_else(|| invalid("dex write", "no pending DEX entry"))?;
-        let file = compress_dex(self.dex, &job.members, job.name.as_str(), self.level)
-            .map_err(|error| error.in_entry(job.name.as_str()))?;
-        self.next += 1;
-        Ok(file)
-    }
-}
+pub(super) use browser::DexEntryStream;

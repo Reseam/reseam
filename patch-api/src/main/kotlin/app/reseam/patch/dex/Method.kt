@@ -26,19 +26,14 @@ import app.reseam.patch.native.indexOfFirstMethodCall
 import app.reseam.patch.native.indexOfFirstReversed
 import app.reseam.patch.native.indexOfFirstString
 import app.reseam.patch.native.indexOfOpcodeSequence
-import app.reseam.patch.native.insSize
 import app.reseam.patch.native.insertBeforeInstruction
 import app.reseam.patch.native.insertInstructions
-import app.reseam.patch.native.instructionCount
 import app.reseam.patch.native.instructionFieldRef
 import app.reseam.patch.native.instructionMethodRef
 import app.reseam.patch.native.instructionRegister
 import app.reseam.patch.native.instructionStringRef
 import app.reseam.patch.native.instructionTypeRef
 import app.reseam.patch.native.instructionWideLiteral
-import app.reseam.patch.native.methodDex
-import app.reseam.patch.native.outsSize
-import app.reseam.patch.native.registersSize
 import app.reseam.patch.native.removeInstructions
 import app.reseam.patch.native.removeMethod
 import app.reseam.patch.native.replaceBody
@@ -95,19 +90,19 @@ value class Method(val handle: UInt) {
         get() = getInstructions(handle)
 
     val instructionCount: Int
-        get() = instructionCount(handle).toInt()
+        get() = info.instructionCount.toInt()
 
     val registersSize: Int
-        get() = registersSize(handle).toInt()
+        get() = info.registerCount.toInt()
 
     val insSize: Int
-        get() = insSize(handle).toInt()
+        get() = info.insSize.toInt()
 
     val outsSize: Int
-        get() = outsSize(handle).toInt()
+        get() = info.outsSize.toInt()
 
     val dexIndex: Int
-        get() = methodDex(handle).toInt()
+        get() = info.dexIndex.toInt()
 
     fun alwaysReturn() = bodyReplaced { returnEarly(handle) }
 

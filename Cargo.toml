@@ -11,6 +11,7 @@ members = [
     "sdk",
     "sdk/native",
     "sdk/browser",
+    "sdk/compression",
     "crates/cli",
     "xtask",
 ]

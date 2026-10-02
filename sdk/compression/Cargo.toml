@@ -1,0 +1,15 @@
+[package]
+name = "reseam-browser-compression"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Streaming DEX compression worker for the browser host"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+reseam-apk = { workspace = true }
+
+[lints]
+workspace = true

@@ -1247,6 +1247,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "reseam-browser-compression"
+version = "0.17.1"
+dependencies = [
+ "reseam-apk",
+]
+
+[[package]]
 name = "reseam-cli"
 version = "0.17.1"
 dependencies = [

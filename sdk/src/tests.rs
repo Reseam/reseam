@@ -97,6 +97,15 @@ fn inspection_reads_signed_catalogs_without_loading_even_trusted_code() {
     write_bundle(manifest.as_bytes());
     let input = tmp.path().join("app.apk");
     std::fs::write(&input, apk("")).unwrap();
+    let inspection_request = crate::InspectRequest {
+        apk_path: Some(input.display().to_string()),
+        split_paths: Vec::new(),
+        bundle_paths: vec![path.display().to_string()],
+        trust: crate::Trust {
+            keys: vec![public_key.clone()],
+        },
+    };
+    check_prepared_trust(&inspection_request, &tmp.path().join("prepared.apk"));
     for trusted in [false, true] {
         let trust = crate::TrustStore::from_hex(if trusted {
             std::slice::from_ref(&public_key)
@@ -154,6 +163,53 @@ fn inspection_reads_signed_catalogs_without_loading_even_trusted_code() {
     .unwrap();
     assert!(response.bundles[0].problem.is_some());
     assert!(response.patches.is_empty());
+}
+
+fn check_prepared_trust(inspection_request: &crate::InspectRequest, output: &Path) {
+    for approved in [false, true] {
+        let prepared = crate::PreparedInspection::open(inspection_request).unwrap();
+        let error = prepared
+            .patch(
+                &PatchRequest {
+                    apk_path: inspection_request.apk_path.clone().unwrap(),
+                    split_paths: Vec::new(),
+                    bundle_paths: inspection_request.bundle_paths.clone(),
+                    trust: crate::Trust {
+                        keys: if approved {
+                            inspection_request.trust.keys.clone()
+                        } else {
+                            Vec::new()
+                        },
+                    },
+                    selection: crate::PatchSelection::default(),
+                    output: PatchOutput::SingleFile {
+                        path: output.display().to_string(),
+                    },
+                    signing: None,
+                    dry_run: false,
+                },
+                |_| {},
+            )
+            .unwrap_err();
+        if approved {
+            assert!(
+                matches!(
+                    error,
+                    crate::HostError::Bundle {
+                        source: reseam_patcher::error::PatcherError::Bundle(_),
+                        ..
+                    }
+                ),
+                "{error}"
+            );
+        } else {
+            assert!(matches!(
+                crate::error::classify(&error),
+                Problem::UntrustedBundle { .. }
+            ));
+        }
+        assert!(!output.exists());
+    }
 }
 
 #[test]

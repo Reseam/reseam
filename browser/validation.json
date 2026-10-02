@@ -19,12 +19,21 @@
           "sha256": "39a06e606bac54186fecb44d27e9642a1644638a1774fe2d6bace61e0bb3a7a9"
         }
       ],
-      "cli_sdk_ms": 1392,
-      "cli_peak_rss_bytes": 209833984,
-      "browser_sdk_ms": 10241,
-      "browser_patch_wall_ms": 11231,
-      "browser_total_wall_ms": 12681,
-      "browser_wasm_memory_bytes": 221642752,
+      "cli_sdk_ms": 1387,
+      "cli_peak_rss_bytes": 209186816,
+      "browser_sdk_ms": 7368,
+      "browser_patch_wall_ms": 8374,
+      "browser_total_wall_ms": 9813,
+      "browser_wasm_memory_bytes": 252313600,
+      "browser_phases_ms": {
+        "open_apk": 0,
+        "load_bundles": 1536,
+        "apply_patches": 3412,
+        "write_unsigned_artifacts": 1511,
+        "load_signing_key": 2,
+        "sign_artifacts": 867
+      },
+      "applied_patches": 19,
       "outputs": [
         {
           "file": "base.apk",
@@ -33,8 +42,8 @@
           "zip_entries": 3228,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "41e81b94121a62835f9f33d9a1c03f3fc190b05e7d900bc3c7653f25be9cef1b",
-          "browser_sha256": "73cad294a6a80d9194140041a0974698bce619d29044aea1e48f6f7eaf14977f"
+          "cli_sha256": "0de04f5ba49300e901ffd6af7773e93223b240f6cb4635b2a16b6407901b47ee",
+          "browser_sha256": "b186847d0983d4aeed773ef3145710e96823bfac20dfb6f55889435d34e26ed1"
         },
         {
           "file": "split_config.ar.apk",
@@ -43,8 +52,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "ad1f32797c0923cad3a6e853264ceeb5eacd683bc0508112ec28536e825a71dd",
-          "browser_sha256": "149f2c0bcd91f6b35e4b1b75d9b4bfc08f5b76ebe59b073558c3b26ab5bd51fa"
+          "cli_sha256": "1421fd0cbcb8cfe2b4552a5040b41169e880e2575b939b83f9d01f1f4627b720",
+          "browser_sha256": "8d796c641cd87f933d567aab66bdac3ad3a6e3e46d65f0d9200692a4b1c38f42"
         },
         {
           "file": "split_config.arm64_v8a.apk",
@@ -53,8 +62,8 @@
           "zip_entries": 6,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "468619b8d49613bdd435d3a5eea4345e1f7c20b3d299b2f45a33e14221ac9f14",
-          "browser_sha256": "4fdcee72e398bb2f6160da87f56266cb6d21465b2f43a35f80c5c20656f60c5d"
+          "cli_sha256": "b1e025ed7c38b3551bbd563fa68a0eca86342dcb989db3a87481f0ef9654a780",
+          "browser_sha256": "6f07c8b8d1dec60789f50b5d6b2aba1ff2174e11d0cca58c420ce74ea11bcf15"
         },
         {
           "file": "split_config.armeabi_v7a.apk",
@@ -63,8 +72,8 @@
           "zip_entries": 6,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "652e90c463a7fcedd82e0a319715e11188a5f5be0b6221df106b4c0699aefd12",
-          "browser_sha256": "ed0f1c5f3b9aeee854558c49ff1454752983adc06974196d2166718980c489d7"
+          "cli_sha256": "4caf2638773d3807bf1b5f6f72053ddc848a9bc88fc3fafeea1103cb747bdf3d",
+          "browser_sha256": "d854fdad978749e96e3f31f1d96f55584c6d833d26370e1be626df5d5ec3b9ab"
         },
         {
           "file": "split_config.de.apk",
@@ -73,8 +82,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "7836cdc822e990ae6cef69af3e2ece5cb018513d86094463a703726856db0313",
-          "browser_sha256": "a67a19f75d3a8f7c6e8d5f43a3f9c3bdafb7d4e08e697dc02493458699d74717"
+          "cli_sha256": "d9b28595e78b9b13d4932303d42bdcb2b4c72b04f5d387d7172131079ce1fc82",
+          "browser_sha256": "fffa90af2c503ac67230923a2c37ae6003705f1d9686fdc4a61731d85f45a392"
         },
         {
           "file": "split_config.en.apk",
@@ -83,8 +92,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "0232f7b7dfbea337b922ba3e3ca5e0798e25c4affe1d616a1c6bfc5907f487ee",
-          "browser_sha256": "a0a1456c7308c6940c2e407b1d898a8b7d2e60129d0ac725eecb6ae5d4f94fd1"
+          "cli_sha256": "e7f2302ee3db2bada24181d70541e1d8efe1fda9a93e3ef140dbfb58e4065a55",
+          "browser_sha256": "fc9bc0be3a6e950b4b1486030f8d72c42a72707ce6c927ae971bc2abde8dc491"
         },
         {
           "file": "split_config.es.apk",
@@ -93,8 +102,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "7257dd221ae28399dd1c1bc2384f880f37b1b010937def875c4c1f5bca9d939e",
-          "browser_sha256": "828c17521db9d4b0769036992ee2907937f3c7abfb88b5b08dc7ab43240511eb"
+          "cli_sha256": "922701b6bf57c7f5ea41b8333aa5bc830593326b86057f7822d45d982841543f",
+          "browser_sha256": "e8463ed9edb2d6f08241efb39c7dd358fbdd245148cc2389a399abf3ef7f0faa"
         },
         {
           "file": "split_config.fi.apk",
@@ -103,8 +112,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "d43d046ee098ee6048ca4a22f9dbc49e11eb74e2c789b1f8d0e4cb79e129afd2",
-          "browser_sha256": "b193f3bc278b0629dc5e8bfe4e339ab8c81c590ed37d55e2d85c5a19fed44796"
+          "cli_sha256": "6e874e03333e9c953b54b4d13a864d0452c3b74dcc12e7d54936ece51fe90915",
+          "browser_sha256": "46bba19e88490c48ed27eb9d219c01fcef60c567b637247f84ca8dcc1493d88f"
         },
         {
           "file": "split_config.fr.apk",
@@ -113,8 +122,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "a34572c3034f47d4ce6df37b400e5c3da78fd652853e58032cd99adf283d7365",
-          "browser_sha256": "f369c553e6f3d4ea0b61147232b60a6ee9bbba93797f2f68f38f803c890cddcd"
+          "cli_sha256": "a3a7d0705a1388448cc2ac22c7eed2f95f2bcbff2142933b9509a75ec6a467e2",
+          "browser_sha256": "027c0795bd46ce1de5af4437ee6a914980a183be2b14328047f76148db9594f3"
         },
         {
           "file": "split_config.hdpi.apk",
@@ -123,8 +132,8 @@
           "zip_entries": 319,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "7b525fe89359b6d7c115ff8ca76d4e7650f7f7ef6ce35246cfcf0423a50505aa",
-          "browser_sha256": "1729e38fd11d1bc31ddead9e64257167fd4604da78d4f9303f80796a37719abc"
+          "cli_sha256": "637d897b121aa2f24e29af72970021407d8aaadf7084a7b438f421b8d15d223a",
+          "browser_sha256": "2e08eee0dff456e1346a14c8abd298f5be1dd08af073fc3625fc42693291310f"
         },
         {
           "file": "split_config.hi.apk",
@@ -133,8 +142,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "a6c59372c4e6e4cb017d09c3d21f76fce808834cae8f33913c2fb424f5928743",
-          "browser_sha256": "02c0050d15579c0cd6b4214d9128ddd306e6ab48b589ab613bfc223f6f90075c"
+          "cli_sha256": "c44dcf4957242a6b98d57e691754500d0a2f944bd549bd879ec051e0097a1376",
+          "browser_sha256": "8a0ac7cf576ff198253e9163e1bc0d1b6fb59e41d69810a220727e00c3e84eaa"
         },
         {
           "file": "split_config.hu.apk",
@@ -143,8 +152,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "e44d40865b5f0fa39b980629de945762a082d3744f456c9980a67c892b90111e",
-          "browser_sha256": "a5b54981fb49ff0d3f321f437bf0d069f7e8dd34d8b43dcd1fdc867878f56624"
+          "cli_sha256": "db8353e091fe19919bdca2906d0fb2017224cf6432e3b9c55726993efbc254d6",
+          "browser_sha256": "dc6dc3ba074a36a228b915bebb46ff6a59dd41b3f5f7bc91c177fa536a8a212b"
         },
         {
           "file": "split_config.in.apk",
@@ -153,8 +162,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "5b3da74a223ffb68a2602b176cb4dbe947125e3e66b62d7d5f5bd5fb82942421",
-          "browser_sha256": "5240cd7ef94303d413124b12bc990e456c804ae4bf2c8bee2c1b898ae97ac077"
+          "cli_sha256": "8e36d6e2f2d2dd43b6f9e2a4e79f80ccb9a10368a5226ecda4e602535f6142b4",
+          "browser_sha256": "127006e789e20c41aad9d0ea7625cffd994dcb110f935c3de2f5d0877e49e9fd"
         },
         {
           "file": "split_config.it.apk",
@@ -163,8 +172,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "1cf66bec559fe6ded8ec304369fbb6e4e2a6547414fdfac1342b038c1285fc7a",
-          "browser_sha256": "ccc478ec491fbc470276095c30c9891151f24a8bdcede3c18a9e17da5bb13f58"
+          "cli_sha256": "622c443a195636179fa111805f3b9ac12a9d18cbea1cd781a8469c03ff04c4f6",
+          "browser_sha256": "1ca2fc3e5bf2ef9d785ad0622a6510600708e4d4c57c442d2759556898d9a35e"
         },
         {
           "file": "split_config.ja.apk",
@@ -173,8 +182,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "66cf5b1bd4ed66c9b8e40db2e78b6f681bcc091ac90a775ea17417a0ebb39ffc",
-          "browser_sha256": "3c9a0f3dcc7291894f188ba8faabf55c90316497ac0c7f3dd079875846598561"
+          "cli_sha256": "e53c73df229b02c1956fb952f2a7f87c73bb994da5242bf1f1fdda231f67db2d",
+          "browser_sha256": "e8005987e54da95fe21975f3ecd337027e649d38cc7c50fea92f4db1db540a85"
         },
         {
           "file": "split_config.ko.apk",
@@ -183,8 +192,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "c747e6178fa429bf6caa413469a04e82fc3a6319b8c70e23c7722b0bb9494b58",
-          "browser_sha256": "cdf6791a0b0b1515fd97c0f45f6cc6f98d662e999e295deab1d47015270631ad"
+          "cli_sha256": "a5713dc48a03497e4ffab3d6e28e302559fd1571d3958127af0c5c3ff3d80bf2",
+          "browser_sha256": "4695e702ab020220ebb7fd5e6e9b4922be3924356c3326aea22a3160ef443613"
         },
         {
           "file": "split_config.ldpi.apk",
@@ -193,8 +202,8 @@
           "zip_entries": 523,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "dcff6842fbab43d1c98ea7e6f740e6012b7d151ba4b53d2e53acb788b6168873",
-          "browser_sha256": "42982c310a9e1a65df6d2f649fcca097f34999caa287de8ec9de0e5d1e00f5d0"
+          "cli_sha256": "34efe6b7a59d04e84c0b92fb567642db841633d4baf9a68b2a3943e0ee9a1684",
+          "browser_sha256": "4397f7dc7fc5726f3b354db474a9610cf5f08f537888b075de9792703d7bf5a7"
         },
         {
           "file": "split_config.mdpi.apk",
@@ -203,8 +212,8 @@
           "zip_entries": 319,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "3ee3f1d1210a70b94cbca545c8082677d3c594b6b3dcb202e5cdfb0e58498aaa",
-          "browser_sha256": "bb0e1a5b2f25f6b0df4c23adfcf9637bb973a9b8bce5b00c8b135c766ce556a4"
+          "cli_sha256": "84c13b9487c8a384ef85092592ede5fbfec32aef3c9e1bb3ed255ad413f05908",
+          "browser_sha256": "74cd874f548a17f669a335f844629fe943f4254d31e80a36dfa0982f5c1254c5"
         },
         {
           "file": "split_config.ms.apk",
@@ -213,8 +222,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "abe39cc046c74a7127e665715be7e51f9aeca9691197120696119e2e70c9a9b1",
-          "browser_sha256": "12fff1e607435a0140f2e3eb1ffb0691ff200792c8a7485e8250486740b195b3"
+          "cli_sha256": "97b2d2ad184041a7b8e8d57d05884c913e857a8a744e510c7c21c4c4bae91a70",
+          "browser_sha256": "cd997b1cf01f7776b4d94a728b2a2aea349233a2873f367345264c2089cf1644"
         },
         {
           "file": "split_config.nl.apk",
@@ -223,8 +232,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "31b766aa8096c8cf6154286dd2630b8106944dc42880a32066e3c8f860de1190",
-          "browser_sha256": "b827af003d92659aa753804122496c7bd360cb6a542e2a1ae27929f9c0f4db47"
+          "cli_sha256": "f72ff9897aa8c6d63fc7c860c8bab51885947ca59e5fcc541116bd9d982a0b0d",
+          "browser_sha256": "3488b11954f6347c50a14fa23ea165abbb8d7f29605e9154d7e85b0a319a7afd"
         },
         {
           "file": "split_config.pl.apk",
@@ -233,8 +242,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "eb65fdd64eef22490b07063126435b8ca96f85aeeb386585ad48bbfc53187c81",
-          "browser_sha256": "523cc47c9cda4bc4863e43e4dddb24b04c6ba2ee0a92e8d3865c6f3e0edb76e8"
+          "cli_sha256": "705e4da072c2d29343500cd284d40f36c5a2930a98e5102a44a61ecfb1670256",
+          "browser_sha256": "5c2ca5f4196d87ddd2608ff3a9a99063043eb4b4d8eb31e0d89602649989bed3"
         },
         {
           "file": "split_config.pt.apk",
@@ -243,8 +252,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "0c306caa1484319399977db52ec6ec213a2f9fafdcbd965640ec6b975ada5080",
-          "browser_sha256": "7d32c11fac30c3af36f8967406d0460efca984347080d15f075f7a93c13046bf"
+          "cli_sha256": "de30316f36b8c0a5378ae5600160e50d66e20a7f862043ac36c451f138dad0d1",
+          "browser_sha256": "a98999b5d47587a24c96213cca6c3472e7bbff29421e1120b3a1fea0939820bf"
         },
         {
           "file": "split_config.ru.apk",
@@ -253,8 +262,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "0ec57530d8a176d4fc3d43c78d9b329ae9b52a50f98143e685db461d235cef70",
-          "browser_sha256": "e22cf296624457eddc8067c6fd83627cdcd854d3fef249cbe7c6478a18ba97dc"
+          "cli_sha256": "612e286f3f5d43943a209302997078080e57eaf03b769fab1be6f19feacf15b0",
+          "browser_sha256": "df001080e8044b31cb2f2871c47c2712f46e516cdf6e1c2ff9868592a4713bfd"
         },
         {
           "file": "split_config.sv.apk",
@@ -263,8 +272,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "19659367d055d5793427ea5076f47693a4a2892bd8099ef4e723c6058c62afa8",
-          "browser_sha256": "d464957ad3a8ada392e97eb1b47be1011a6b014c7621fece27220109fd44a08e"
+          "cli_sha256": "b201acf8ecf123825aeba8b8ae5ebfb4daa4bd831537618975bf62dbfcd98fcd",
+          "browser_sha256": "8591462574b3a93ce69b132baa6f776b1d5e4b2195b964256adbb725e83e1a34"
         },
         {
           "file": "split_config.th.apk",
@@ -273,8 +282,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "eedb778327af922b17487319a886dd392bb69cd20a51aa7ba87aecdca8ab07e3",
-          "browser_sha256": "69ce83f213778565fd28c0fdfb2db335ab845d49cfed78c13bcecfce5bdfc4fb"
+          "cli_sha256": "3c4706d5e219b547c2e45e6ecf14a955f92e681cc7204abb9cd524a7cc601e24",
+          "browser_sha256": "9eece427a203ad41c01583cebb1f966873b5ba37c44238245d0b39869461442a"
         },
         {
           "file": "split_config.tr.apk",
@@ -283,8 +292,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "180f085617edf48a1ac8903582f59b31f722910a489cf37c9abfe687b2a86d78",
-          "browser_sha256": "5a65a1edc01b6893b564269969f31606b90c7b732608b1325755bbc39c95a54e"
+          "cli_sha256": "9a64780aef8ad9baa247357b66c25ee7e5d3f4b9da7a564f625b2f14c68a708f",
+          "browser_sha256": "cc7b9eb24ba9f2a7ae32400b4e90f115eccd72afe4f34a9aa0f83b7989786222"
         },
         {
           "file": "split_config.tvdpi.apk",
@@ -293,8 +302,8 @@
           "zip_entries": 474,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "b869e23074fc3f401c3585ec59bd72336497c0415f6865f4401402c3c810b2e8",
-          "browser_sha256": "b37dfd2364fc6dec4fe7f01ad9d1f5ad1c1019608d4a013501f2a060693182ef"
+          "cli_sha256": "0b09c14797b5b97b5ac647c0e81677f521bc54ca7168807684e8368b5b9ebc29",
+          "browser_sha256": "e618440123ea4eb7d0e96a67da07341d47f1c1308854813aa55b69334f361032"
         },
         {
           "file": "split_config.uk.apk",
@@ -303,8 +312,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "37a59011c100ebd8428a8046c9e3d96d81e7684c857d426a5a6aeae9766a4230",
-          "browser_sha256": "2751fddeb405090d39fccfb01f7e656e039aa9e64c717c73bfadcc3ca3dc7960"
+          "cli_sha256": "8e19a1f8b62ffe22adae6450a0afb44f3aa79ede9388e38b4439c8297f529d3f",
+          "browser_sha256": "9d45f11ea00c3e2e141039f0ff70d012f965dd5357483fd058d146ee277e1b6f"
         },
         {
           "file": "split_config.vi.apk",
@@ -313,8 +322,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "114d360a52301e72bee7596440627b9c5704c90ae80ee1d5e9e0276ceb41f006",
-          "browser_sha256": "bd9b1c8a9a88ebbc0de0ee838abf46823fd0ef65824ebab8581d10df1449029b"
+          "cli_sha256": "70a07ca150ad9a8478f3eeefcae508afbe03faa53cbf626e14fe20b52b9836f0",
+          "browser_sha256": "9e2383a9dd8cf2caeef81e11cc573b3582d80a1f0fa99b959a042bdc25952a92"
         },
         {
           "file": "split_config.x86_64.apk",
@@ -323,8 +332,8 @@
           "zip_entries": 6,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "fb02ae903cfb990f75c59e87e228f0ae9e068b4da2aa61c3a020260e659c9e4e",
-          "browser_sha256": "076f836cf488cab072f901eb0bc34113d4266cee4b1edca3a8e9380610cc0415"
+          "cli_sha256": "f682a73fda832d39bce1bded65696d0f3d8d45026ebeac7de648e05d1b27eda2",
+          "browser_sha256": "77af6bcf3d72b0d03190c89eaa2f44c34c0225e022e935e7ec2a2fe8671a20a9"
         },
         {
           "file": "split_config.xhdpi.apk",
@@ -333,8 +342,8 @@
           "zip_entries": 319,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "b61cbd5f47bac15d29376c7c3be050b0219fdbe03ead2a376255cefd72cc749f",
-          "browser_sha256": "8bb2ed644bff76f56e84054fd09d59c05ca2e63816ca6421b574d7cf72d2217a"
+          "cli_sha256": "a5ddb3277080e7c124e44cefbb648bdbaa641a285e9cc0d7b1f78fc6323a7e1a",
+          "browser_sha256": "c1aea9dea4aa73662d05dba469d5ec810f9fb2fab8df401087dd97d18ece0a2c"
         },
         {
           "file": "split_config.xxhdpi.apk",
@@ -343,8 +352,8 @@
           "zip_entries": 319,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "e6cdf7ade8659714f8f416c001021db08d2f28881038dbaaced16fa60db9000d",
-          "browser_sha256": "5544f077ca90e56707cd1d4a442f5d5fc6243185c13175953db0ae4be6b1d0aa"
+          "cli_sha256": "0393565bb34e8272d96290ad3d5399ca650492b2e89712806c777b7bf6ac7cca",
+          "browser_sha256": "6abc338dd0155d51894832beb31f9ce3fe906bde6a09a523884481d7237ae68f"
         },
         {
           "file": "split_config.xxxhdpi.apk",
@@ -353,8 +362,8 @@
           "zip_entries": 319,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "6e6143f681adc382649b02a13fe0437dad673e73c0d21285479762b1da522081",
-          "browser_sha256": "58b1918e05a20df80cdeb58e33ff27ad4e7f0beb0c04dc963c845dbeb15b9185"
+          "cli_sha256": "428a1041ffb66f0734afeb3f68bef6e49c67d69f4676322735bb01a41cd1aa32",
+          "browser_sha256": "65dee6d797415049edfca62380503b6cc3c6ff5e122da212b26973722d27076f"
         },
         {
           "file": "split_config.zh.apk",
@@ -363,19 +372,10 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "b2e4ccccd134be5a6f2f2929f1c5bbab508717f873435123e9f5bf0fa258ece7",
-          "browser_sha256": "133f03aa5397be1006109e70637903644db11ed3bb472281542c857a8d5e219c"
+          "cli_sha256": "c8d57da89a99f851f3ace08aa6da969206c61c1be22fdd33e76019ac3a596c89",
+          "browser_sha256": "0be7a5719e18633dc1db4410f14b9f05fd9bf370c1b4d1097070562a5a07cf17"
         }
-      ],
-      "browser_phases_ms": {
-        "open_apk": 1269,
-        "load_bundles": 2183,
-        "apply_patches": 3566,
-        "write_unsigned_artifacts": 2245,
-        "load_signing_key": 2,
-        "sign_artifacts": 933
-      },
-      "applied_patches": 19
+      ]
     },
     {
       "id": "x-12-29-1",
@@ -385,12 +385,21 @@
           "sha256": "cab254a2d753ba014a230f6587edfbfaf097c2998c4ecc602aebd1d35fb27331"
         }
       ],
-      "cli_sdk_ms": 1146,
-      "cli_peak_rss_bytes": 250863616,
-      "browser_sdk_ms": 11384,
-      "browser_patch_wall_ms": 12377,
-      "browser_total_wall_ms": 14319,
-      "browser_wasm_memory_bytes": 151584768,
+      "cli_sdk_ms": 1166,
+      "cli_peak_rss_bytes": 251969536,
+      "browser_sdk_ms": 8736,
+      "browser_patch_wall_ms": 9730,
+      "browser_total_wall_ms": 11581,
+      "browser_wasm_memory_bytes": 173867008,
+      "browser_phases_ms": {
+        "open_apk": 0,
+        "load_bundles": 1534,
+        "apply_patches": 4478,
+        "write_unsigned_artifacts": 1271,
+        "load_signing_key": 2,
+        "sign_artifacts": 1407
+      },
+      "applied_patches": 16,
       "outputs": [
         {
           "file": "base.apk",
@@ -399,8 +408,8 @@
           "zip_entries": 3962,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "6517e28bbe3d7fbec4f07c842ab8669b411467c9b216cbf84c7931d69f36d130",
-          "browser_sha256": "56ec5d715f3be035800b5cce8baf38373a904fdebfd39770cd1d82e55ea11d49"
+          "cli_sha256": "6007b045cd02df914f13565f203fd62a2e6d171e3725d4b43ebb9ec9f65b90f7",
+          "browser_sha256": "f2ad3574c59c320a364cb0049f6801767bd6c61d65dd5893cfe6d6beae3af2b7"
         },
         {
           "file": "split_c2pa.apk",
@@ -409,8 +418,8 @@
           "zip_entries": 5,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "3a50f37a049d95b3eb3ad041cd25c2554f60af88ba77dd1a6f5e9db208366159",
-          "browser_sha256": "ba30bbc29300f610c9f454e86c595ed4a8c7ad21a7d896f76ab464eb697115c0"
+          "cli_sha256": "5a315262cd73fdc215653de6fb9ee9583535ec61781a62356d60d3eb55a45ec1",
+          "browser_sha256": "d5a8b19797649af6b007874af608a0b2f73161d927306f0aa9cfab9a7f43ff03"
         },
         {
           "file": "split_c2pa.config.arm64_v8a.apk",
@@ -419,8 +428,8 @@
           "zip_entries": 4,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "ca8c96c09cd1e43d4be7ba09c737ca18e9473922eb08349a2d0d31d3b5ecea55",
-          "browser_sha256": "0234e418d73028a799bec50b05f98847cf78636b89cd120966220bafc086255c"
+          "cli_sha256": "ba7cb2f5786d0c5aad9cddf304c97a8439cc2d9103086c3e970323cc9870adeb",
+          "browser_sha256": "1dae249285002f53e426941472642b908620ea327c05cd43e0323a666188a6e2"
         },
         {
           "file": "split_config.ar.apk",
@@ -429,8 +438,8 @@
           "zip_entries": 4,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "41fc0497e589473358c3b6250da81782ec74a0aa6155f9650bf298a351575393",
-          "browser_sha256": "e47e14974f36b3781fbd53b54794bba38a640f2cbcfc22f2c8fd3455cc3b1a51"
+          "cli_sha256": "9b2bd3f7e2b417a53d66d130a6403b61b71987f1c4d642d5c8d24e10ed94d62d",
+          "browser_sha256": "0dab30cafc864f1b2d22c8c7afc26342221bb117e3d24c9ede5d253afadbf925"
         },
         {
           "file": "split_config.arm64_v8a.apk",
@@ -439,8 +448,8 @@
           "zip_entries": 21,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "3e5f3e5575b8451e71769663779619e760c56f6eb2a28f0d443eda36e4a75a80",
-          "browser_sha256": "5f880a4afce79c3fecbf6b287c05ca2298d35d43406876ff949036660376854e"
+          "cli_sha256": "6189bfbd9861b2df89398d394113b45f2a75639c52eed848c86ca6e210d4ed00",
+          "browser_sha256": "18a6ff7bb5c5541f8636eeaafa789118c67713e3c0186a35b29ec7e0958cb7f3"
         },
         {
           "file": "split_config.armeabi_v7a.apk",
@@ -449,8 +458,8 @@
           "zip_entries": 21,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "b9e8ce94593cca9b6e9a6ac0de7b87a4dba3a24b63c33cf1777af03bf4a348b8",
-          "browser_sha256": "dcc7ebac5fef3125a4e4c14a60cc5bcc9f490ab39b8796e2b188c127ef890a0b"
+          "cli_sha256": "8a1a9b65b36e1f6dc4d3260c9c2968035188fb487d2bfc254abd16fc834ec815",
+          "browser_sha256": "2b2e86ffb247df1dbb6fc04d431412de1eeb9b5c5da980671b7b64542c434bcc"
         },
         {
           "file": "split_config.bn.apk",
@@ -459,8 +468,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "c01a0837fc276eeaee80d3666c51209acf4d6e48f34c47f76494e8339381684a",
-          "browser_sha256": "acc9ff0747f1d850169aae668b57b3838ace64a95ba5a79c5c4cdaf3a11ffd69"
+          "cli_sha256": "696bc060185d0a541d06a1c463b2986610ec79833e4dce27871fb7b501096084",
+          "browser_sha256": "1322992226006495f78747d08291ee461013cd160b90ffafa7773a8025eb3f28"
         },
         {
           "file": "split_config.de.apk",
@@ -469,8 +478,8 @@
           "zip_entries": 4,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "912f2dcf91d8afc949ec021ff8753ba377dda1ee06a6aaddfdd9f5c8b93cdd8a",
-          "browser_sha256": "d0c2300b0ae7153c5bfc73d8b4ff5e0e40bb29df503877122d0b6d55442b299b"
+          "cli_sha256": "4739cd065f90ea412b8d951d3f9524c39736c5f761553da9ce1599fcec33d02c",
+          "browser_sha256": "c34d219603b4c55fd4d26052d5a50dbc45118a2508cb0363fccad7b930834579"
         },
         {
           "file": "split_config.en.apk",
@@ -479,8 +488,8 @@
           "zip_entries": 10,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "91def57911d6975f4320bd46d03b7e56bc2614bfe3a7e880e46702ecc9f1fe53",
-          "browser_sha256": "82aac666cbe06bb2860bb5f2681c140056cbb67de3155b15d60bfc92aa0a7481"
+          "cli_sha256": "95079b82affd9460167c7d81393864c0737f610000a6e8bac4ba726feb695b2c",
+          "browser_sha256": "a164abadc9fe1e589a0b67e9bba16aacba6f9a5d6b1405713873940632604f29"
         },
         {
           "file": "split_config.es.apk",
@@ -489,8 +498,8 @@
           "zip_entries": 5,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "bcefc6d6bc544009b96f8b8681fa6452c9b886aa71eedadbfc3641191e153344",
-          "browser_sha256": "be82ced7b77572122e233cbeb1fb0c36f7dab5a0abb57ba4cc63fd7ea6aca2e8"
+          "cli_sha256": "85cfe3ef40b0fedc7779a90238e7b18c2426c001b5ab3bc6c20bf9dd5a3559c0",
+          "browser_sha256": "eb6b79cf5f98e96c5735cb62cc9098782454dd5d0d8d8638343b32d4cbab3318"
         },
         {
           "file": "split_config.et.apk",
@@ -499,8 +508,8 @@
           "zip_entries": 4,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "788a6d695f099b23ec73a0c29f16f4137d1b18f324c4045110c2ac57797db362",
-          "browser_sha256": "57b750447f13017124b68096cfa5e2a3161a72ecfd7bbeab6dd811d9bb41602d"
+          "cli_sha256": "8fe41ea8e0a783725564daf6131bf98c96e7a69895793745c881a3f1c91a3034",
+          "browser_sha256": "6c8379e854e1bcb85a5f4d4c00c3c94d9a5e9e2137b55c68b4969dcddaec18de"
         },
         {
           "file": "split_config.fi.apk",
@@ -509,8 +518,8 @@
           "zip_entries": 4,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "0d3c6c9bc7840b9e3f78931b2f511b0efbbdc79b94c3dac0c5783eafeb8b1ed7",
-          "browser_sha256": "e6c0b08121c9d599b54291235398821c2f48f1dc9cec53d16cd5aaecd7497f11"
+          "cli_sha256": "f2869396e343a7cd113e6c8ddcc5ef1531358cc083e60d1a6a4d209899ef3ace",
+          "browser_sha256": "611a59cf169773f7f291da6301487c660a0795f909f22482fa70cb67c4d5a4e7"
         },
         {
           "file": "split_config.fr.apk",
@@ -519,8 +528,8 @@
           "zip_entries": 5,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "6c7f412d4e96ae921798a5b929070170d6dd945b18169f50d677fa643a8de989",
-          "browser_sha256": "7fb5a46610101531ecc2547cefcf901e767edf264d10b73febd08bcab93a7440"
+          "cli_sha256": "159a229541e3736bfdeb2c888004bf68cf618559aa39eb1238bb87d442a845b6",
+          "browser_sha256": "6d55dbdf0da7bf7a06cbc22a61d00619714040841783845ffd4e0f9ed08a6188"
         },
         {
           "file": "split_config.hdpi.apk",
@@ -529,8 +538,8 @@
           "zip_entries": 310,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "27b353630332880255296eae8f3c1ee57b63f70d0a9d36f870e5e359a48c9048",
-          "browser_sha256": "20fe622a28f1988512af5cc87fa484def2556cf34e7edca4f8c2aa69eddd2964"
+          "cli_sha256": "ce118815dd484b0cbf3d42c87f2209733c2dae3da8034d43884c5a6fcc305745",
+          "browser_sha256": "b6342a6b43f6a2abbe363724dd989cefc1ce708ed3bb24bee70a0e60e92d2a68"
         },
         {
           "file": "split_config.hi.apk",
@@ -539,8 +548,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "f80f85aa7d054508f76ed56b88a8009662e67ca596482e9cdc09247641743426",
-          "browser_sha256": "03167580f3adb8ba951339c2e739d76a9af60cd1381f21711f5ed0d978a4fd56"
+          "cli_sha256": "da73379982b402d58b9bd0744476977ff803cc5366dac62a6d459921db8cd31f",
+          "browser_sha256": "2daffe17fa999096e751b9d4279c81eac824f841331dbd3d57b71fe024111d2b"
         },
         {
           "file": "split_config.hu.apk",
@@ -549,8 +558,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "62b3066001c35be22f77003957f3005ed20f6c2cbc3c6e382dcee3c830899b60",
-          "browser_sha256": "642ea4e4616a0fa9a80f1366aa167c48878884c25ce1d06a13582cbc3d70b7f7"
+          "cli_sha256": "689f2f433e03c298ef72e109780851b897b5580de811191dd9a2846ee66b5217",
+          "browser_sha256": "3c3a281ab4b3db41951d9ecb64e9b3a5d582f6ece394f5c8f0750dad2bd9a4d5"
         },
         {
           "file": "split_config.in.apk",
@@ -559,8 +568,8 @@
           "zip_entries": 4,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "8c012ee8760c1c814487c981521130c5682c7ec382e2998e4041970d0f49e66c",
-          "browser_sha256": "af7e4eb08eaf8b9202126c3dcd93e6ddb18060e6218b7fcc92846fb4638ab702"
+          "cli_sha256": "ce1976c68046c0c44f0992ad5678f408634f98a696081d00d457f4e27c5ab345",
+          "browser_sha256": "fa58e7ea5d3d36d34f95e212b841113ff0f86b19c9d01acd722e01cf9dc25cc2"
         },
         {
           "file": "split_config.it.apk",
@@ -569,8 +578,8 @@
           "zip_entries": 4,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "39decf9655d9ed2200b65f378479da1ffc6d1fcc924614ceb8e17e05f0bbde13",
-          "browser_sha256": "b5788a360085f6e8e0c5954e3eca22d7482e54777d55bda5d80fc1d4c13800dc"
+          "cli_sha256": "ac8b8c3a1ee766b07cca88a3692d3706cec34baf3a884cf54514bda71ba299cd",
+          "browser_sha256": "9043f1b347b3ebfb4284827b104edc74b990a63b6eeb530cc24b6232c1979c98"
         },
         {
           "file": "split_config.iw.apk",
@@ -579,8 +588,8 @@
           "zip_entries": 4,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "7f7d8cbe932a153af3fefb6c785c88ff996c97c87c843b91416a22765c742a41",
-          "browser_sha256": "bd9ccd759f5e2c13829f20ce63d33de5419ee19ab2038f33e86dae725bda2a5c"
+          "cli_sha256": "3032b8d77c5628fceda55487f3b084c58a1632850d610b79fd815f869c330fe2",
+          "browser_sha256": "dc369a452c12b2870c1e38d56380d345d47276c27960b1642ec76f12f785b55b"
         },
         {
           "file": "split_config.ja.apk",
@@ -589,8 +598,8 @@
           "zip_entries": 4,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "2e3dbc12ce270c7198799143656ea5dcaa2aba5cbcc6ebe062e07d7859b80fb4",
-          "browser_sha256": "403432ec9e3bf5fcd0198f616472729faeb7c857c63d620e9453a13ba3082b73"
+          "cli_sha256": "d010e59e39a3426b6db42a60be2aeb490d0012882b89b93499b0f75a51c057ce",
+          "browser_sha256": "307858fe86fecb1e212491ac069ec4bf3a30de1b2136fc01102d4b88894e31aa"
         },
         {
           "file": "split_config.ko.apk",
@@ -599,8 +608,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "17d6063a5f7e7adfc625a787aee3d7523c512e7637683c81e0a95ff0009f52d7",
-          "browser_sha256": "2d3eb474bdb1ce33700bb741bfd0b0aab9201d97183f72bae9d6d7164788a158"
+          "cli_sha256": "80e2360245b2d5b6eea91c9fc25914144ed4240c372c0aef2ebe15607eb5cd1e",
+          "browser_sha256": "98d92b50bb4f3c20a98e27dd6a52215fef47650c0803af981d9f8988374daf89"
         },
         {
           "file": "split_config.ldpi.apk",
@@ -609,8 +618,8 @@
           "zip_entries": 542,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "8519dfd0bf1e48c19bf110805b6b102399bd81286e9d96179f8f4cea8a56a902",
-          "browser_sha256": "abd3a3bd0410c5500f26b3a04088f0137b7b86e2ed996e7e10103ae77ce09b37"
+          "cli_sha256": "b083a72bb3f41b509f2e8160533c41b73441fa84e946d08ae788dbc6b5bc684e",
+          "browser_sha256": "64bdacfa0beff80b53a59e38d8a4e0f704f62e189ab84e95ee88f0feafbb34d1"
         },
         {
           "file": "split_config.mdpi.apk",
@@ -619,8 +628,8 @@
           "zip_entries": 310,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "879e50917f32dc9879e7c74614817737e502fb31756d50a64baa65971d587a17",
-          "browser_sha256": "a3dc21b27306684abb6587eb7bd4d293968d800f81d842c2d3a0d25d362c16a2"
+          "cli_sha256": "b7ad925294561045b3c01717cf32f645c0c9b96cca9903113df76c6c9fee0eaf",
+          "browser_sha256": "9f252f620c4ca6d081fd2d84d20fe9cf0ca905d8f362de405f8d1a772aefbb7f"
         },
         {
           "file": "split_config.ms.apk",
@@ -629,8 +638,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "34a4cc5d6914d0deafd009130a2433cc5507af5635404f08ce8c0a3ce4a1fd34",
-          "browser_sha256": "9f44c914d8d12f181bc5583635fb75e7d6f268ec22699fea3e4151a8792fb4a7"
+          "cli_sha256": "54531cd6d900491efb9d1df407ed488ac81f52942998f2ee6018bf2bd45a67c8",
+          "browser_sha256": "a0ef69eea9befde45531b75aecd559a7b30fafebdaed6a9fdcf9ab8f81ba3ace"
         },
         {
           "file": "split_config.nl.apk",
@@ -639,8 +648,8 @@
           "zip_entries": 4,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "070c569f8b7f710604ddac3e6cf8f93c240a08f4e27deef66b05f029dda1d88f",
-          "browser_sha256": "bb267010af84313cb63959df666a038f6bc09056601e2c4639643f0fa8af722d"
+          "cli_sha256": "d5082ea879f53f91929f2593f2d10644bfd91ee62604cef8b75667f85d57526b",
+          "browser_sha256": "4f0c467816f60dbeba52a2dba6a17d36b241aeae90f83ff7cfbe3060474887a1"
         },
         {
           "file": "split_config.pl.apk",
@@ -649,8 +658,8 @@
           "zip_entries": 4,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "3ea772618dfcf613c0c3b0a82714fb6feb6438be0529cd990d16dba80cc1081d",
-          "browser_sha256": "66d01748ef50f6441882a4820abcebbe35ecd37f8b9b0ccab6909cf9fd24e75b"
+          "cli_sha256": "60301d9f348127be77b157d28e89a9ae54915690b8e5d7cdd376c72396c0e0ea",
+          "browser_sha256": "7a13fa61b359d60a996afb6a39fa52807d1542509bb48b6d3560046c446b137c"
         },
         {
           "file": "split_config.pt.apk",
@@ -659,8 +668,8 @@
           "zip_entries": 4,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "7d503572e678bb1235dc17a48c69d29b1668cb43828a4154890571d7988e8be7",
-          "browser_sha256": "0b3fa2f5f0b605f100977002a93da19bc4d7f230681ec4cc904e863ba4288133"
+          "cli_sha256": "b5b349105da53bd333a05dadd53d51e079e8f1448719168fefe41123ece18e6e",
+          "browser_sha256": "d5cdcf0cef35cb9446e8c9d77444c2727a1ef25be88ca22373926cddc1afcda5"
         },
         {
           "file": "split_config.ru.apk",
@@ -669,8 +678,8 @@
           "zip_entries": 4,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "1c154407fa6a3367f0324fd39d770fcb4f0c05e680bfdd32d6a71dd17311b6ca",
-          "browser_sha256": "2f77922f0729dfbdd23ad83da16b474936d31424c7ca8f5956591420b7e1ec09"
+          "cli_sha256": "66fba76976074a2caae363b8b67644003da98d997d5e672bae01472ed5968939",
+          "browser_sha256": "841ee38569482866f6e6e4a6bc91f4d28c8fc0d31a89b880cdf1ce8302b991aa"
         },
         {
           "file": "split_config.sv.apk",
@@ -679,8 +688,8 @@
           "zip_entries": 4,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "19ca90c3f16cf884e9ab33822a3abe80838d134f85360b46fb722bc25a54316c",
-          "browser_sha256": "b083a19d7e582116f0c7539052c7aa17e236312e0f354e4c2dd1c8a8544beb16"
+          "cli_sha256": "a3719e2b9f2e40864259bf921557d728a29820389142764fbad0f45a73fcbb69",
+          "browser_sha256": "65f3569518f14e0868b2481b9e2ed48e500291509e41d053f2140f6da57e556a"
         },
         {
           "file": "split_config.th.apk",
@@ -689,8 +698,8 @@
           "zip_entries": 4,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "b90a6c7a3033ffacbb3bf7130007d8b28bafc3c5ffa23cf5f9f015154247a7e4",
-          "browser_sha256": "39a3f8abda125d0672492f959cb25b7c620f8c0bce63ba281c7c1b9d18bb2b47"
+          "cli_sha256": "d831d1bcd86bc93c366cdf1753f42a1de9e563af31f929e13c0c5a807c0c390b",
+          "browser_sha256": "8aa47aa6110497297f8e5979382860c23f7c37575b83f987ae82f608b0473848"
         },
         {
           "file": "split_config.tr.apk",
@@ -699,8 +708,8 @@
           "zip_entries": 4,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "5f9282d43db2ff3e4ccc7d1f43e4c8921939829adc5cdd13b614a18cf53c2428",
-          "browser_sha256": "c581a7d6c577d0dd45eebf953d68d56c36e6d21bbe38df7273072828a66a27bb"
+          "cli_sha256": "db2a9863aad29ab4e7bd2227a9090696f1fb8698891829a9b5db917898e31ce1",
+          "browser_sha256": "ab288978037417ab3d5fd7492f7c26446952411720f83151e71bf0d5d1424905"
         },
         {
           "file": "split_config.tvdpi.apk",
@@ -709,8 +718,8 @@
           "zip_entries": 446,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "e914f4be96443d90153435bd21e4ab81dbcf9f77850a53c7c8ece7747736a789",
-          "browser_sha256": "aa46f1e37d0a86f0baa631e674fe90d9063b86cacf9dfe2003717eb563344082"
+          "cli_sha256": "fae929ece52377cf343a21bf1764d089a725d82b6577ea158ae1f5576494bd01",
+          "browser_sha256": "70750718a726d1a26b87cfad6f9b04c0b41fc2dc0ff786d3ed31ecbf97c57d77"
         },
         {
           "file": "split_config.uk.apk",
@@ -719,8 +728,8 @@
           "zip_entries": 4,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "fbfa28594a550afe13ba4dc92845b42942d85447fcdc75fdd21a46c88de71bb0",
-          "browser_sha256": "7312d1164900f869304485cedc31bb639e0cbb4ca4b75926c1a20796f1d45c49"
+          "cli_sha256": "3644609c0a88861fef109aff3efd2861eb480e716c3b1a46e5b0147a66ca1537",
+          "browser_sha256": "3bc531936053c992eb6708668be0f361c680f20b9b460198cfbfad1fe01765d3"
         },
         {
           "file": "split_config.vi.apk",
@@ -729,8 +738,8 @@
           "zip_entries": 4,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "1f8df7fa9923c2f94bc6f42ce671db78bc7598cfa70e74e5db1e00aef1cda98f",
-          "browser_sha256": "7037e0c394375d8ae2b083860df3379dd612f5db70bd86ee313b65fad2456b74"
+          "cli_sha256": "293f829fb9b3e1c2f748d1fed879418e09a5fa76239690e7626f3f9011eecf9c",
+          "browser_sha256": "6c1158f9f7d9275d27c06588ef32ce76c82723e255777b835a7f34fd49a099ca"
         },
         {
           "file": "split_config.xhdpi.apk",
@@ -739,8 +748,8 @@
           "zip_entries": 310,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "2ec886c246ada6109c93d79457e54974ebfc10044837ac6f69b95dd35f918eaa",
-          "browser_sha256": "f796500236b0efa71f5f6130937afd3dcba63483f62c2650720016ec33f3e2b6"
+          "cli_sha256": "f5c06f449789c10638053b707ad6d5611c054b20c5378c2a545919e88e67e236",
+          "browser_sha256": "46efa7ad80ef607f438ca0c33a906b88c9fd622edb07950c9aed6b90cc7774a1"
         },
         {
           "file": "split_config.xxhdpi.apk",
@@ -749,8 +758,8 @@
           "zip_entries": 310,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "6eb7e4f2d02ca243ffca89b8fe33187a5197767541b1c99da9d69875623287b1",
-          "browser_sha256": "3c022821f50c1b1e4bd59d76c352480b7a12050343115b1c21660d7b83dc1449"
+          "cli_sha256": "dd87500925c47c2d16f6666700f05122769dfbc8e722b357473323bf701e8005",
+          "browser_sha256": "85294ce0dec4dc849cf31f45f0e3883654e976b4eb889a1e2b15d87d3a477628"
         },
         {
           "file": "split_config.xxxhdpi.apk",
@@ -759,8 +768,8 @@
           "zip_entries": 310,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "50fb18c80441f5d1adf27974e91ccb7a2f2d0e8ef55fa11868979239b01b89bf",
-          "browser_sha256": "3abc870f1d31b92118e6a55b4ebadb0fa9e7f39026f406d4171afdff815fa3ad"
+          "cli_sha256": "a511089c07ab7a54d2cbd080e94e3f151c14cadf923fe599e42607a871aae27f",
+          "browser_sha256": "3482d00f377546273f941111afef4d5067a55778b288c850a73d4d5a012a3138"
         },
         {
           "file": "split_config.zh.apk",
@@ -769,19 +778,10 @@
           "zip_entries": 6,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "505b78060a1765f0a037495dbb23bb83ac37c4439753e8b24011df06115f45de",
-          "browser_sha256": "e9dcf1ba8f48c52d4c3d29afe3630047d08f5de3f3793c0054c400030f49b00c"
+          "cli_sha256": "367eceed364c4f582b18e00dce96f1efc1b7bc7e0430618464b1fbc6b87bbd3e",
+          "browser_sha256": "a86a900100b5aa96b8a62afd239c2d12921d0fe5742b49865ca1d8f1ba9557b7"
         }
-      ],
-      "browser_phases_ms": {
-        "open_apk": 1627,
-        "load_bundles": 1616,
-        "apply_patches": 4672,
-        "write_unsigned_artifacts": 1971,
-        "load_signing_key": 2,
-        "sign_artifacts": 1446
-      },
-      "applied_patches": 16
+      ]
     },
     {
       "id": "telegram-12-7-1",
@@ -791,12 +791,21 @@
           "sha256": "ac672c26667dd216636adfbcb0d86d1905895d621c1fa9168388be4b0fc0b486"
         }
       ],
-      "cli_sdk_ms": 524,
-      "cli_peak_rss_bytes": 179187712,
-      "browser_sdk_ms": 5156,
-      "browser_patch_wall_ms": 6142,
-      "browser_total_wall_ms": 6528,
+      "cli_sdk_ms": 589,
+      "cli_peak_rss_bytes": 180006912,
+      "browser_sdk_ms": 4750,
+      "browser_patch_wall_ms": 5710,
+      "browser_total_wall_ms": 6111,
       "browser_wasm_memory_bytes": 81526784,
+      "browser_phases_ms": {
+        "open_apk": 0,
+        "load_bundles": 1545,
+        "apply_patches": 819,
+        "write_unsigned_artifacts": 1317,
+        "load_signing_key": 2,
+        "sign_artifacts": 1036
+      },
+      "applied_patches": 12,
       "outputs": [
         {
           "file": "org.telegram.messenger_12.7.1.apk",
@@ -805,19 +814,10 @@
           "zip_entries": 11267,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "a44d6aa0aa4b296a6fc95e9a5136d9cf7f0d0c39ded55076963fc1b5feb2ea68",
-          "browser_sha256": "6062646fc621d262305a95ecf2ce94b91b7b81b8e1b02065dad6ec232cdeaf58"
+          "cli_sha256": "fe40f2144b192aacf3c6fc06eb74c05e911b7869927dcb9e20d8407be012faff",
+          "browser_sha256": "b8a40764c560a4d4ef278b0d6dcdeb67804b83a51b7bc95e1c01109abdc342f6"
         }
-      ],
-      "browser_phases_ms": {
-        "open_apk": 228,
-        "load_bundles": 1581,
-        "apply_patches": 832,
-        "write_unsigned_artifacts": 1529,
-        "load_signing_key": 2,
-        "sign_artifacts": 956
-      },
-      "applied_patches": 12
+      ]
     },
     {
       "id": "instagram-447-splits",
@@ -843,12 +843,21 @@
           "sha256": "10aa7263c17518aa339d5554ab7d1a6cbd9512382782351a12a9cc2724e1a699"
         }
       ],
-      "cli_sdk_ms": 1710,
-      "cli_peak_rss_bytes": 267034624,
-      "browser_sdk_ms": 12158,
-      "browser_patch_wall_ms": 13132,
-      "browser_total_wall_ms": 13584,
-      "browser_wasm_memory_bytes": 240451584,
+      "cli_sdk_ms": 1764,
+      "cli_peak_rss_bytes": 261287936,
+      "browser_sdk_ms": 10413,
+      "browser_patch_wall_ms": 11400,
+      "browser_total_wall_ms": 11860,
+      "browser_wasm_memory_bytes": 241631232,
+      "browser_phases_ms": {
+        "open_apk": 0,
+        "load_bundles": 1619,
+        "apply_patches": 5292,
+        "write_unsigned_artifacts": 2478,
+        "load_signing_key": 2,
+        "sign_artifacts": 994
+      },
+      "applied_patches": 22,
       "outputs": [
         {
           "file": "base.apk",
@@ -857,8 +866,8 @@
           "zip_entries": 9990,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "98b71ccd895a9395b709e8b5c9f78b313c3799505d9bab3c2e0db4219e3ac4f1",
-          "browser_sha256": "c70499de594727a4f83c3a5aa77a8fbcf72863569ba15bd06d6020c35d705737"
+          "cli_sha256": "981a0a3f2410ce85409d2035e4fced5a8fb315233ab34e219e28cd85d25d5053",
+          "browser_sha256": "7dcd4b7e846fdef746846472604d76ff167fef90d32722eff1d510b52dabf7e3"
         },
         {
           "file": "split_arservicesforpersonsegmentation.apk",
@@ -867,8 +876,8 @@
           "zip_entries": 6,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "68029f0e101c99093da9b6505725f4523dec27b9e640c43354efaf947767c77a",
-          "browser_sha256": "bd953cff18a94ce204fc781c3a5563c0a3dea422673040e7544aab6e1854781c"
+          "cli_sha256": "379fa81d0020adf54ac528165aa3b573db91e38ed28e843dc167191026fd8fe6",
+          "browser_sha256": "724664cb04991408374b41e98952288424a417bcad346ac1422261c0af925921"
         },
         {
           "file": "split_config.xxhdpi.apk",
@@ -877,8 +886,8 @@
           "zip_entries": 7097,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "1aa0a41ae4bf0ac444a6932744caf1005be2426340cabb456b5efdc91293f2ee",
-          "browser_sha256": "c869d62651e356156130654e0ae4ad120858a1a8e58a50796765e92d016b61c3"
+          "cli_sha256": "8b01819b7481a3e7f396be7b72c17ba04a72caaf8d56799a56170da6ac5ff3d7",
+          "browser_sha256": "ff5785e7fec2fd2cea0b119449cff5ed7a7a0244118145248d86b2bbf1c2fa3d"
         },
         {
           "file": "split_executorch.apk",
@@ -887,8 +896,8 @@
           "zip_entries": 4,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "75d9af90b43f1c29888ab4a359e5fe46b3d585e9a51f7cd04c0917ec835f1736",
-          "browser_sha256": "0cf0a3388f042ce6bc99b124afcc5c959f68d05de5fcf3c1be9b84a0bea18a69"
+          "cli_sha256": "dda0d8d33962814d6ea106150943b6ed5c22a414cd7c6cf3b124420ab2ad319d",
+          "browser_sha256": "e8e28f036e5f5ef7551ecfd88ce1390fdca1253611e249ad5eb49f3d080d855d"
         },
         {
           "file": "split_pytorch.apk",
@@ -897,19 +906,10 @@
           "zip_entries": 4,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "9ac76c14f1ac6a894c020b3f07a6b1e2b5c65ac39f10bcd13a4f49659c8b0c3c",
-          "browser_sha256": "88e47ce143390f2b366a213cd7754ed3be24dfa1a0b1491d7ad3888139c5b05a"
+          "cli_sha256": "08ea2e850d45e475b895e45b698dd81b6d4b637c50bef22b4e6cefb7c40fa06c",
+          "browser_sha256": "01f9c493b8c76c6e286a373ef88a6010e293c709beafe51907a7e4e9c8d83d42"
         }
-      ],
-      "browser_phases_ms": {
-        "open_apk": 264,
-        "load_bundles": 1585,
-        "apply_patches": 5405,
-        "write_unsigned_artifacts": 3852,
-        "load_signing_key": 1,
-        "sign_artifacts": 1022
-      },
-      "applied_patches": 22
+      ]
     },
     {
       "id": "youtube-21-37-42",
@@ -919,12 +919,21 @@
           "sha256": "87ec9734319f7437d8da24b10d7ec35b0d3f65ae404d9d845917bc2705cfee42"
         }
       ],
-      "cli_sdk_ms": 1882,
-      "cli_peak_rss_bytes": 227516416,
-      "browser_sdk_ms": 16205,
-      "browser_patch_wall_ms": 17204,
-      "browser_total_wall_ms": 17701,
+      "cli_sdk_ms": 1901,
+      "cli_peak_rss_bytes": 231956480,
+      "browser_sdk_ms": 15078,
+      "browser_patch_wall_ms": 16057,
+      "browser_total_wall_ms": 16593,
       "browser_wasm_memory_bytes": 128647168,
+      "browser_phases_ms": {
+        "open_apk": 0,
+        "load_bundles": 1596,
+        "apply_patches": 10298,
+        "write_unsigned_artifacts": 1837,
+        "load_signing_key": 2,
+        "sign_artifacts": 1306
+      },
+      "applied_patches": 90,
       "outputs": [
         {
           "file": "com.google.android.youtube_21.37.42-1561296049_minAPI29(arm64-v8a,armeabi-v7a,x86,x86_64)(nodpi)_apkmirror.com.apk",
@@ -933,19 +942,10 @@
           "zip_entries": 17093,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "21b036a8411d2ffc4a19906528add599480f15e380ee300beec88079d453ea0b",
-          "browser_sha256": "e5d823de4c2380132e2d7ef9511558a74b9a6cd1a550357301d1263dfd9667ea"
+          "cli_sha256": "17a9d4ff7d5e5a972a8301fe1285a0ac031804f24907e8f13f3b1d1b64ddefe5",
+          "browser_sha256": "8d89c38467db0a5b55debd011f0324c9b224a47867010763a0958c062fdf18d5"
         }
-      ],
-      "browser_phases_ms": {
-        "open_apk": 304,
-        "load_bundles": 1566,
-        "apply_patches": 10641,
-        "write_unsigned_artifacts": 2344,
-        "load_signing_key": 2,
-        "sign_artifacts": 1310
-      },
-      "applied_patches": 90
+      ]
     },
     {
       "id": "youtube-21-37-42-apkm",
@@ -955,12 +955,21 @@
           "sha256": "80da4655ada94c547efff26ebd20e0cbe273a7a957ac33b81daed4d072c97561"
         }
       ],
-      "cli_sdk_ms": 3187,
-      "cli_peak_rss_bytes": 230354944,
-      "browser_sdk_ms": 20299,
-      "browser_patch_wall_ms": 21299,
-      "browser_total_wall_ms": 24180,
+      "cli_sdk_ms": 2072,
+      "cli_peak_rss_bytes": 232071168,
+      "browser_sdk_ms": 16713,
+      "browser_patch_wall_ms": 17713,
+      "browser_total_wall_ms": 20559,
       "browser_wasm_memory_bytes": 113704960,
+      "browser_phases_ms": {
+        "open_apk": 0,
+        "load_bundles": 1565,
+        "apply_patches": 10256,
+        "write_unsigned_artifacts": 2341,
+        "load_signing_key": 2,
+        "sign_artifacts": 2484
+      },
+      "applied_patches": 90,
       "outputs": [
         {
           "file": "base.apk",
@@ -969,8 +978,8 @@
           "zip_entries": 6518,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "854b8c381c017035d2da3856d01caf66f44cb0c575597129d9d6d015e729dc28",
-          "browser_sha256": "f2d6544347a24825a2edfab3e76d61b8e351272ffa2032ce634c173e05d2892a"
+          "cli_sha256": "cf287ff722467256ec74ff0c58266e8a82d66bc351afe454ece6205da8232343",
+          "browser_sha256": "4675f9db790eb4d16e76c169cb2216f6bf0d540b582903e665b626a929672add"
         },
         {
           "file": "split_config.ar.apk",
@@ -979,8 +988,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "895f2af9de1a9243cc2eaaac279643a275c98f47bd4bf1ebf84db9f79fd666d9",
-          "browser_sha256": "e10a73c069ecbf87799ad8ebe7a5345d1846a13dcd7ed58476b718fed8fcb221"
+          "cli_sha256": "204b3e16958570943e70a20c34177ab52d8d0303de1bc0433bca8b8590b23dc2",
+          "browser_sha256": "a686a3c9d5bc202817b7bd0f76e09c443b99cee72aa99b5b997bddf4bbf4f252"
         },
         {
           "file": "split_config.arm64_v8a.apk",
@@ -989,8 +998,8 @@
           "zip_entries": 39,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "4eb8c32473f72437cccf6f16f3c2506ba47740652b1c4dc3a797f4e1361b3a39",
-          "browser_sha256": "b17e0975eb5d6dc5c9b6277cb67e2fe6b903426e143bf80e8647d72ffcf03496"
+          "cli_sha256": "d48a80c125d3b1f1150d79c69a295dc77174fe0307a4cd754ef7ce67ae674b39",
+          "browser_sha256": "306f4ba070aa504634b1948c0f43c26a10d188d036057194477ea59688cd5afd"
         },
         {
           "file": "split_config.armeabi_v7a.apk",
@@ -999,8 +1008,8 @@
           "zip_entries": 39,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "eb269fdf83a055f0c91c1e067363ae822bd6dc9e60ececbbf58ce3b1f00f1c02",
-          "browser_sha256": "1ab729229d9d210baa8e2879b8e3fd7d5cae394017aa3e4b6d1f52a7f8a244ac"
+          "cli_sha256": "dac992a42ab7b0763fff6a96f67a61b2967e9032ffebe75ec7c13d939a4c55f8",
+          "browser_sha256": "52cbb6458e2ef6219360e80e36238a8a25eb1904b00296407804078372052f1f"
         },
         {
           "file": "split_config.de.apk",
@@ -1009,8 +1018,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "e39621e434a62b6038f83d8964f13ad5934d4d4fb6e7f4709dee3d2106dd48b5",
-          "browser_sha256": "81182f577661ea0a5858a011b029610b1549c22af112def6f96fe6d028c2b55b"
+          "cli_sha256": "4058662efaf107dfab30daeaa085300d135911a635dfac7e4482bd455663569e",
+          "browser_sha256": "998d4473ed748d9f8a9f7b1dc4c08792126dc32c85257fb91e0044cf016faaa7"
         },
         {
           "file": "split_config.en.apk",
@@ -1019,8 +1028,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "f8b9e75a3b9e0bd0bb249a486949163330bc20512cfe43989a856779188eaf8b",
-          "browser_sha256": "ab219c8bc99633bff95bf91c415aed0150640bb2d6cfc878b79af74992cf6ff2"
+          "cli_sha256": "bd86365e0f7214416a49dd6931df845b1ea5bd528cd676ea022847de5908556c",
+          "browser_sha256": "5c5351e7a4c162bef5eae7dd64af752957247cfa43fad66f486d66bfe59ecc3f"
         },
         {
           "file": "split_config.es.apk",
@@ -1029,8 +1038,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "4b6cf20d2cf5728b2021a17c846617744cc0faebaa81c7de76d8a6dd7e79772a",
-          "browser_sha256": "9e12269e6f8f9e2f6948e312b7d3e6a204d34eed8e4035030700e8e3ea14db16"
+          "cli_sha256": "c0928a106b496e44e032175c4f843998d007ef8eec0cc155987d5b992ffb27a0",
+          "browser_sha256": "d2dac95085fa8d558588819de13c0a8f4a53805540651edcf60b2c4a033ea5d4"
         },
         {
           "file": "split_config.et.apk",
@@ -1039,8 +1048,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "729fb9f4dca6c40157ee634356c7c8188ab64dcc06ae3a3bbcfebce85c33e9f6",
-          "browser_sha256": "a71e73fe32148c178d65a75c3b94783c5efc097d32d24e1e850bfea1b1be3de4"
+          "cli_sha256": "5a0e331a7a1cbfd5f292195df93519f3c92a4c128d9d2f2dd643f54f61ad1eae",
+          "browser_sha256": "41d79f9778cf834288a220e1aa1c4c141373585bc3504e5c70c07d03b326e024"
         },
         {
           "file": "split_config.fi.apk",
@@ -1049,8 +1058,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "9c764ca0140b0051089b06a1ee93509aad995c21e231141e30f25b828f60bf03",
-          "browser_sha256": "89b6308234968c02cb42889a29933a4222c245c476e52a62c81c52cbbc2e9c91"
+          "cli_sha256": "82cb9ee2a7aa74515b429d0acdd7f088d888a31d374ccc7ddafba0d13b936b12",
+          "browser_sha256": "0576d33b651795e5a8e3d7dc9e53b875c2968a39360ee48de64a00c7c681e9be"
         },
         {
           "file": "split_config.fr.apk",
@@ -1059,8 +1068,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "359be3016e5cf99c211c625569cf0e001a1c744dd4a3053358fb8e0159358ca6",
-          "browser_sha256": "50da3d18d326b9a8957c93a2b170cf651763af6e391be7abcdcf8eb2a3a45552"
+          "cli_sha256": "35920e23614cc552b8bce0c2c31b7a848d5ee72235355555837311a26a1dab01",
+          "browser_sha256": "0bfeb0f9f344c7f0f62651f2b2db663c7d91ce8af2fddb9b87e0517bae09e93f"
         },
         {
           "file": "split_config.hdpi.apk",
@@ -1069,8 +1078,8 @@
           "zip_entries": 2202,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "9430e575a9ac2f7a7b5e5d34505d0d3482033b57da969c245cca2d0d2f8b9e9f",
-          "browser_sha256": "df2f27ad57365292c3800ac6b68ee7155562646d1ea0d28253eebe174834b91d"
+          "cli_sha256": "c12694d1a035db701a2d176895e073fbd79a6dcd4e1e74b5eedac762d932f4c8",
+          "browser_sha256": "d0b56e658263f543d7614798dfb065289b8e2d4c92fd79163973f8510b217869"
         },
         {
           "file": "split_config.hi.apk",
@@ -1079,8 +1088,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "e63fb7b5f100508e6287143299086e3268059d2b01b4a8177f615a89910ba074",
-          "browser_sha256": "ae386976658c920479232197279533bc96a48efcfe8f682a272bf20fe244e769"
+          "cli_sha256": "91967ead16ee11d196bb497aeaf28bb3c02430782878c7bd0d48e44b30ac1bed",
+          "browser_sha256": "a9738c53878bccb76e9662b38c1ba4127c05da863d9d1f3984263fe46b146893"
         },
         {
           "file": "split_config.hu.apk",
@@ -1089,8 +1098,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "49dbd54716978f326042399c946cc060bc297d9855186deca361eaead3ab9ac9",
-          "browser_sha256": "76f3f2dec900c9fd3cf0ea8d275b918344a48545ca728064108a075bf9679af2"
+          "cli_sha256": "c29c1ff5fd1880ba99af68db75b1fc1b7e4fe5fc95164bc5dda9894979a10b08",
+          "browser_sha256": "3478d68861fd6cfa6fa99ee2462a6785a387d36599cea207298ef4b5f632f87a"
         },
         {
           "file": "split_config.in.apk",
@@ -1099,8 +1108,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "4649ac49de672a502c38145004700013ab4d3bde31ce7a89c184585640bec9ab",
-          "browser_sha256": "60c66cb4d83957e252dd0cc8e6aaabb40c800dffd5bf46cc2a94c58f34b23a00"
+          "cli_sha256": "2f09fa5c42bfbd94717f3eb39cc3b8a22cc128c1160e20c8195e934a5b70974b",
+          "browser_sha256": "a3d539c7648f4b56c4ffb44abf428bdb3eb6eba061764200febfe3708784478d"
         },
         {
           "file": "split_config.it.apk",
@@ -1109,8 +1118,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "02a5a2a19548dc15bc16540caaf85c14e612a49bf908bee9d32e409fe02640c7",
-          "browser_sha256": "00d8af8d758f7bfe75972b8c44aa3e240b69474ba11ec4ea3c255fe246b873e9"
+          "cli_sha256": "ea63b95e8ab69583a42a5ac7689d549f52641d9c3b01fd6783c0c059c8befa29",
+          "browser_sha256": "bd10ce18128280cc5524e647cff2779f8945fcca9d07ad43708c66ad7b73b2fb"
         },
         {
           "file": "split_config.iw.apk",
@@ -1119,8 +1128,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "3ad744184c180090e5673d2ea7899260acb6cd3a56134f2b5ebf52e241f9a0d8",
-          "browser_sha256": "1a12bd93f6f3257b04006eec68d992d50d022213082ea2b4c747f16fd877b598"
+          "cli_sha256": "0f67af415b8921e32b215f134de96be62b66eb7ed300270933c5b6221d8ceaa3",
+          "browser_sha256": "be65b1f8c85117e0d14cf85766d0bcb55cf7b791b5672ac59734847e028dfdcb"
         },
         {
           "file": "split_config.ja.apk",
@@ -1129,8 +1138,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "cec95809d9016a995826112ba655fc4dd115dfb807e37781f74177089ab2de3c",
-          "browser_sha256": "4b8a0958a0900bddc6fcd5a92203bab881f8721ca0591ce2f2708925215e07f7"
+          "cli_sha256": "a37bda328c35cc42daddf60aa882458b8b0fa6bb0a4cf9b1c45f8690baf4d26b",
+          "browser_sha256": "d062f6565df925a4aa8b058daf79e16d49e7e8abf9266a286e4c72e5c7575a8a"
         },
         {
           "file": "split_config.ko.apk",
@@ -1139,8 +1148,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "2a4c10127e545c41f478dc7acf3a86429898e2fc84f95736419b45e43e259108",
-          "browser_sha256": "3f821fca0fa173a92d4a3a09752d529ca5ca4f8059908fe0b3ea433cd31ee86a"
+          "cli_sha256": "019cb85dfcc9307b3848d5341b361d81ccd7a513fe3d8c80b8a2fd965178ae94",
+          "browser_sha256": "cec6345fcc0f6d3550218d34732eb5d65d305b8ed402d854ccad1f4dc5c28bb2"
         },
         {
           "file": "split_config.ldpi.apk",
@@ -1149,8 +1158,8 @@
           "zip_entries": 2216,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "61c9a3cf9c80a57c9d7b07c6a63f03e9d3c330fd49e715262b6bd55b1af5436a",
-          "browser_sha256": "96ce626048095c39db9766905ccd18143fb90fb0fda1866b84c7afce86d4bee7"
+          "cli_sha256": "032ff42986fef930e5c44e9c890fe94e2bfcb5179f26f81ba6ab5897cad80082",
+          "browser_sha256": "aad37d385ae25a75bcc27f6cc688a2858bcab4701ea2a06370cbe4d63e0e1652"
         },
         {
           "file": "split_config.mdpi.apk",
@@ -1159,8 +1168,8 @@
           "zip_entries": 2202,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "bf761d87b14ce996530c8ba3872541b838ec8011117d3f698a6bb6d26fe22cff",
-          "browser_sha256": "81f0a7f672f368fc6046d4c54cfab5afac52e6925611aadb66476636765103a1"
+          "cli_sha256": "b3035c92000ea1b68f47c953f9246690351c229b43375eb09849612b18e08dd0",
+          "browser_sha256": "53e25bc97445f2a42e412617d12b4e2315d7e21a65eec7942de29d694405fe41"
         },
         {
           "file": "split_config.ms.apk",
@@ -1169,8 +1178,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "e773a4c845ada9d370ae420d6256da4f20795ae052943fbfc132cfa08fae93ce",
-          "browser_sha256": "785ca2511cd109b972ac965798d3bce4a3c3d8be4669e0473390fa6d65e1ffb3"
+          "cli_sha256": "e2b1cd6bc0e8e59d04e6037b98343346bdec04474b84972a30b538fc119266a5",
+          "browser_sha256": "7e2847d3ada513d986f8ce50d379cae955e4923b3405ef88bed541b4a762b3d3"
         },
         {
           "file": "split_config.nl.apk",
@@ -1179,8 +1188,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "fd562de9d5b56ece1390d72d55fb500c0ac7ce1cdd5dc04a78452926b6c5e088",
-          "browser_sha256": "f917c7171bc565d32c679788c420557380a33bb373f645fc2ebe3e139bc83ac0"
+          "cli_sha256": "eb0ca4af5b26352a1da9ea13094ef6319ae8514fdfe83a2375199523058865ea",
+          "browser_sha256": "cda9c6e519562710ea6e50167ff13870d375691d6125d8a05a0fe854672f94ca"
         },
         {
           "file": "split_config.pl.apk",
@@ -1189,8 +1198,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "f21010eaf73313fc68ad7edadaedc8a0ded6a8719ced52ce774039a92575b57c",
-          "browser_sha256": "7099a19a3a3686324489792e68734eb6fceaddff95e90cd6d718eea6b66501c4"
+          "cli_sha256": "98ceb5c040894ffc0672776dd1a58a14e494c0f7e483c38dc4a6d8e97fed8e3e",
+          "browser_sha256": "27ddbeec9fdb5140c108908ad1c3c3ff173e2e9a8f2efd5d1b755984db00d5b6"
         },
         {
           "file": "split_config.pt.apk",
@@ -1199,8 +1208,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "1817d1e50942a603d4368b409ea7c17867c7cda55b95b1d96a0bb7e7e785a037",
-          "browser_sha256": "1bd8b1deb1caa1adf6a47714dd911f59cedc36897f1bed5f6a1070335de3321c"
+          "cli_sha256": "28af4abf582843e446d270a420da69d82c72a3af2c7208c831dc0431823324a2",
+          "browser_sha256": "0e4ee12ccfb78e4e6eae29a691729864ac49922eac6e4100a242e9e3c109b053"
         },
         {
           "file": "split_config.ru.apk",
@@ -1209,8 +1218,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "7add78752ee7734c31ae49b9816a5a15a4419c8d7bf6405be97c1e0ecc5985ec",
-          "browser_sha256": "1a9e6f0df4b704dadb112ea8df6cd2e08319228f9c752504b8852f683b247eaa"
+          "cli_sha256": "bade597a9268156f7af5456776725a5abf9e01ab5f93d07a4571bc36c4c68d48",
+          "browser_sha256": "400d161cef330cec7b390a655137bf351b20ea2754dd6444e6d9c107d1a3e737"
         },
         {
           "file": "split_config.sv.apk",
@@ -1219,8 +1228,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "909aae8370f96b739e78fe42e0c4ae985355f3adc9c9cca207fa72efefe13027",
-          "browser_sha256": "cb509954f15a2854fbbd1dd8cabf3b00c6ac77d6d2ac02887bc6c55d33e9d5e9"
+          "cli_sha256": "daef589f0841bcfd6cfcbe0b8e0bb19f23d63aafdbc420a07970c50693ef2392",
+          "browser_sha256": "eee4325478d6cb00fc9a524c953ac9bfeae3f775eb8f94b52c4f946dc9ff0041"
         },
         {
           "file": "split_config.th.apk",
@@ -1229,8 +1238,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "e726c750d0f75ac60fe999248b0000cac538d65e08016ac2bdcd8fbd5ae8a416",
-          "browser_sha256": "63e95436684c8d7fa1d217c68f70af708b6a8171e858b2f34f286a6ce022f446"
+          "cli_sha256": "8e27bb9e1a80148fe602540fe2570a5193069d7a95d32a1f4cc7dce162167b13",
+          "browser_sha256": "32e4888a19d39dae8e32c4f2926d01d69d6a71f08b45d8a64e0f9f9e82ed8994"
         },
         {
           "file": "split_config.tr.apk",
@@ -1239,8 +1248,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "efe77800d6b6d196ef0003b50f28422f0766898d93dccaaf9d8a48a9200a732d",
-          "browser_sha256": "42bc4f034870266212cd0b5074fc089a33dc9afa4b34db6b8c01642f6a7ae0c2"
+          "cli_sha256": "d1754d89218eec2239b36e65ddb93538ac64d5cf52011d3532edcc71839dafad",
+          "browser_sha256": "04cc34e6169520bbf61a17fcc74dc89e443b5fc36ca039248633dfadf765d18f"
         },
         {
           "file": "split_config.tvdpi.apk",
@@ -1249,8 +1258,8 @@
           "zip_entries": 4265,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "805e123a82ad62c00c9c5377c1ea6aabbe362b6a79a4248d076d821ca854e96f",
-          "browser_sha256": "48cdb97ba9691e1782c9015b10d8e080b36dcb2f1f4c267529e173e689994593"
+          "cli_sha256": "f93d384a7ad57761de9452aa2e8868fb387d8fd20a1390b0da9c704213113eb7",
+          "browser_sha256": "9404d541fd34682bb933a9d9880ae17f0c7b2d57e3928d41097606da7bc3a879"
         },
         {
           "file": "split_config.uk.apk",
@@ -1259,8 +1268,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "8660ffd3b2da06d1407b0d39dedebe35442a3e909125f5f7103e3b9738b7ee0b",
-          "browser_sha256": "d5d003750427a62fb1b7cab10b4124291a128b713e685f002a6a2d4894898d08"
+          "cli_sha256": "45a1c389a6172d185ea44be7819f69cf0ff739a1e6509ebcac7b1ffae085c7af",
+          "browser_sha256": "6c8eb2550b48246920fc8f7e4aaf0835dd02a440cb81cbb9fd8d4019404fa1b0"
         },
         {
           "file": "split_config.vi.apk",
@@ -1269,8 +1278,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "10995bb6dbd70fda8c83451a38e2d5294ec5f849e94f1b739ca50402d8821c44",
-          "browser_sha256": "f050305d36c1cc8c576d5fe2929e91f8550d0183480231560b6d9575e1c48e39"
+          "cli_sha256": "2d9adeef154e22ff28a5a6a79beb1b6666f59ef06dea4f9269c5203e23a73b58",
+          "browser_sha256": "85e58666b89625ea55daeab7fde062806c2f0faa1ae79be6d18fad5ecb89b252"
         },
         {
           "file": "split_config.x86.apk",
@@ -1279,8 +1288,8 @@
           "zip_entries": 39,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "d0915b802d4cc410fd44763fd06cee9986cbc6fe4c3113aedddb5c429e8f75e9",
-          "browser_sha256": "9a625ff6e8d194faf18aa3765337179148216415572f4641896d86af84232b4c"
+          "cli_sha256": "73fa28b74cfc4e00b6ea96bfeb4fde9c45f89dc40dad8fa65fd077d3f92e11ae",
+          "browser_sha256": "62590c645fec5f646bd97184f7668316ad3ff68e4fdd9cebf30e44355dc00e69"
         },
         {
           "file": "split_config.x86_64.apk",
@@ -1289,8 +1298,8 @@
           "zip_entries": 39,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "2d4a1c95900375cf6cff26010134163e35cf10f2499e904f90f73afba823d9ed",
-          "browser_sha256": "34cde85a7f4a69c8f22801508d8c7623b28fc55619d38b1c2ce7184d4a23eb25"
+          "cli_sha256": "4774834e575db0551bc462ef33ecc0a5707b8ac6f39a5f15593a2e72efbaf378",
+          "browser_sha256": "24e6c2d0a5b4a6198ae3c40024941c4c58fcb3d8ef9fcd139cba01b41fd0b590"
         },
         {
           "file": "split_config.xhdpi.apk",
@@ -1299,8 +1308,8 @@
           "zip_entries": 2203,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "0dd28d5446fd59c6d93616fe04be1a15eeafc3cccef1acc84776060262074538",
-          "browser_sha256": "2effe046fad20cddc6757dc25904b67503121937200099db0bf3f1640e3a9c7e"
+          "cli_sha256": "9431ff0b1da47cb2fa9c7f94568e5eff46ed3c0f1428b001bd640bc2410ecd8b",
+          "browser_sha256": "aafb794fa7ea26d5c54c412c2603bf99d78edebe6e18fee3119b947c80d46171"
         },
         {
           "file": "split_config.xxhdpi.apk",
@@ -1309,8 +1318,8 @@
           "zip_entries": 2202,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "3a41edbcabe462c06f5bfa9e5b0e7bcbec153ff5631e8b76a965d66fa230c059",
-          "browser_sha256": "ac49315c73fe419013e4f2a9a3a1925d76c5046c53ccc0f8d10985bd1772f8fa"
+          "cli_sha256": "181923e66c57e824ed708e10628260d4d52ec63acae51c51ae5783d53168d915",
+          "browser_sha256": "20c3589b8adce7802c053190b4b12a2e37b38cf812bcc2b6ede8b454c9c0fae9"
         },
         {
           "file": "split_config.zh.apk",
@@ -1319,19 +1328,10 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "fc80e94439fc2887568f3960422c9bcad5f542156b6b515a4b9ffa046d46c235",
-          "browser_sha256": "96852de1598770c7f2b4168ba482f2418d9231601d4468d30e5d91279e971023"
+          "cli_sha256": "b9fe2558e2bc287db52d2a1fcec15ddd32295850228348aa3c99fac9c447b665",
+          "browser_sha256": "444f295a4807c4ff1c43e01d5f6d74825a426a620668e61586a205cf800bdbd0"
         }
-      ],
-      "browser_phases_ms": {
-        "open_apk": 2557,
-        "load_bundles": 1592,
-        "apply_patches": 10660,
-        "write_unsigned_artifacts": 2903,
-        "load_signing_key": 2,
-        "sign_artifacts": 2523
-      },
-      "applied_patches": 90
+      ]
     },
     {
       "id": "reddit-2026-39-build2639031",
@@ -1341,12 +1341,21 @@
           "sha256": "b0d34e6d1dfc0d876f101943294990dc13263a4a20b076786f979651b43d78cc"
         }
       ],
-      "cli_sdk_ms": 1397,
-      "cli_peak_rss_bytes": 210219008,
-      "browser_sdk_ms": 9745,
-      "browser_patch_wall_ms": 10726,
-      "browser_total_wall_ms": 12215,
-      "browser_wasm_memory_bytes": 221446144,
+      "cli_sdk_ms": 1395,
+      "cli_peak_rss_bytes": 211648512,
+      "browser_sdk_ms": 7595,
+      "browser_patch_wall_ms": 8575,
+      "browser_total_wall_ms": 10013,
+      "browser_wasm_memory_bytes": 252051456,
+      "browser_phases_ms": {
+        "open_apk": 0,
+        "load_bundles": 1599,
+        "apply_patches": 3484,
+        "write_unsigned_artifacts": 1601,
+        "load_signing_key": 2,
+        "sign_artifacts": 868
+      },
+      "applied_patches": 19,
       "outputs": [
         {
           "file": "base.apk",
@@ -1355,8 +1364,8 @@
           "zip_entries": 3237,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "9cb17caafd460e7fa64dd1b3a5c0b8db94aba8b208aac0f1fa3c0fa705bc27c1",
-          "browser_sha256": "cfcca0e725c9c9e3e1f5816b96d3efc691bd9ad556dbaf63983b552434668a66"
+          "cli_sha256": "7ce1f67bd11ee8733a0bceb82171727bb97845a241d60c2d95a7d7f586a0994b",
+          "browser_sha256": "1e3d407d7e372aa7b8fc90bd7e0805470e55fb67187ff755662f2cf8dbc0a791"
         },
         {
           "file": "split_config.ar.apk",
@@ -1365,8 +1374,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "4f313901e5b6545c6659d4f51896b6b4f6f4037be9fef866f1a586ce4bf43a17",
-          "browser_sha256": "dfa8fda4d1258e83ac1a7eec8d5f9a1b1d1d2188c2f40fe61150d1da3e65a9b3"
+          "cli_sha256": "38f103910e5eed3bd2ca7da8b28f12d372820486dfb9943baa07d08372d94542",
+          "browser_sha256": "08601f73f136a59b61663f2578c82a200e8588f7ed83fb32144e2c716e86522f"
         },
         {
           "file": "split_config.arm64_v8a.apk",
@@ -1375,8 +1384,8 @@
           "zip_entries": 6,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "ba496f7a8ce0b597c4e6277b6dc9073de73e500364ab812a532e9844f58513da",
-          "browser_sha256": "71488b9282991fb79dea38c3c1a223583a0b986a03eab1803b964bb8711e99bd"
+          "cli_sha256": "7a0a250ea866ebcd3f2e036669ad82fc9e1b2f7f4ad033ac50c239d87de31f76",
+          "browser_sha256": "d06d4d51de2ddddcbe12fc4cde4a42148a0f4b4f088f66ff8becd89a1098460e"
         },
         {
           "file": "split_config.armeabi_v7a.apk",
@@ -1385,8 +1394,8 @@
           "zip_entries": 6,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "4033ee73eb63f08fdfe9403f15e3d94183e6b14f4df7148506b20258af40b264",
-          "browser_sha256": "2fdaa21dcc656a9a66f405e525d7c4d8b455613920e49356a5a50214a6cd52e4"
+          "cli_sha256": "9bd3edb6408dc1dd3d4aae9cf00f65d35c9172582bc26791f7cd79e97363f2a8",
+          "browser_sha256": "28d84fb46c54fa3a2b398d8da7a2f1002a85b1f4db390f856a1ff8e95f07ac3e"
         },
         {
           "file": "split_config.de.apk",
@@ -1395,8 +1404,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "fb7187e6198591a24747e4d8e337cba2ffc43c020c42ab5f131b438a897da8fa",
-          "browser_sha256": "d8bed0de40d11bda40baf4f61045c84ec6ea0c60178e4c4021612490d6dae201"
+          "cli_sha256": "4bceaa6b50c63ab358a723249168dd80ca7b765bf7e947fa626e9ad94742611c",
+          "browser_sha256": "187162cf0f2407165a0802679816e526f867ff4d3e4694754727bc8610cb9630"
         },
         {
           "file": "split_config.en.apk",
@@ -1405,8 +1414,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "dc062284b12c2a8f6386d5a2abfb0bf12069b49cc2e19d27353fd8c2b85fc844",
-          "browser_sha256": "a599f734d38fc45a0e8581715e466aaec23a304992971f727834fa55271df13c"
+          "cli_sha256": "aebe0ad7cc034673796277ecc8395c96628fd8a9e23de694b0dd0dbe5c9a2208",
+          "browser_sha256": "1d0d0fb0b6cfdfdb230ebfa0e47c9e8b7fcf56479d62cef9abec5da3ad25ea9c"
         },
         {
           "file": "split_config.es.apk",
@@ -1415,8 +1424,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "9a9b3a0421ce110db5c772453d2c8d5fbdc5f13c262c8669cf91ae36e8c0cc89",
-          "browser_sha256": "c432c96186ac67c59bcd2f00699a12c47746e19942082c2fba159f42429d42b5"
+          "cli_sha256": "50d552bed9da32d1e7f70e21807413a7ebdf63988476e9a444421ba579dd7f83",
+          "browser_sha256": "7af6c9d5abd0565a2656401bd6c33777d63b39a2a0982dfaa308b584f422001b"
         },
         {
           "file": "split_config.fi.apk",
@@ -1425,8 +1434,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "ea960f3f4dd4b9824ec0498ee6a98efcd41176077f75a5deae852ded52c239ed",
-          "browser_sha256": "d5149df054a9d2e3a32a7d92d65e46923917014a56cf9f6e8b2d39eba0d9874e"
+          "cli_sha256": "9b3a62b5147f9fbe1f6e7d953270912e434d72f5277425ea496c70fd454fc6d4",
+          "browser_sha256": "8e80c4af666f58a3464970ae20c09f5accd15cbcf52cf73a47c64c4c29c81831"
         },
         {
           "file": "split_config.fr.apk",
@@ -1435,8 +1444,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "267527f97b293e7f3a880257f4b7f74a9c489bc1760ab111acadce4af3230600",
-          "browser_sha256": "3488249c02320cd7ab4a6d100bcf2032dbb7aa5b5c6de26f311bfd8b2a1e7767"
+          "cli_sha256": "17ae81ddfb8a71f983cfab9248c28e0ba8a9ac70a7d148b36edd64d7fee5aae7",
+          "browser_sha256": "79678809db1fddae0228a0022eae690b2746ea8d92062a3a619cca45de2e532c"
         },
         {
           "file": "split_config.hdpi.apk",
@@ -1445,8 +1454,8 @@
           "zip_entries": 319,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "48ce6f49d4a342910407c5e75bc045a6113e541fd317b35b94e386676c903813",
-          "browser_sha256": "92108f9cc1a030683dc7bdc24a651b6dc848984d60da60688e81953053c92145"
+          "cli_sha256": "9f47100953f41c5812f59dceea0717fffad19c448c6eedf7477d8e0d9d86e42d",
+          "browser_sha256": "159503584e07537e6b796666342dd035b809052b9eaa3b42f070481dbe42c649"
         },
         {
           "file": "split_config.hi.apk",
@@ -1455,8 +1464,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "d13bfa701b252dedeb07399311615ce30163e5152d685587f88a2ba89a8b95ec",
-          "browser_sha256": "707574c4c28f760a17068abfed44dcce0224d210ddf8edf9ab9dd5b98d3e5b1c"
+          "cli_sha256": "e22ca66402d76c1b83aa7fc2569c47bee52972a922691147c6a78f6029d8ab37",
+          "browser_sha256": "c85edd9c779f0a4f638f5a1a78ed4f24d03440cc7575cba3c47315d7b5a0a75d"
         },
         {
           "file": "split_config.hu.apk",
@@ -1465,8 +1474,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "2ce0f54f58b2ac0e2ac11e3e324a12373dfb88996cd9adedab39b5f4e958155b",
-          "browser_sha256": "742d0b8f145613b1b074f192e486f76cbf87bb44447440dfd0298994893b84ca"
+          "cli_sha256": "59ca3866b9788a9228c3060d1603f22cba0b676faa765ec888e0458ad123bade",
+          "browser_sha256": "adef87b376694f326d374268550fbfa757b17583bfce50a7af22ee3712addb1b"
         },
         {
           "file": "split_config.in.apk",
@@ -1475,8 +1484,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "f75a910bfacd8b71fb9c7e41105a7c3073d14942735ef3f4a70da5c486913f61",
-          "browser_sha256": "438e1cccb3eff2f8896be3b2ceb16d65d11aecaad8fe123c10dc3673b280d779"
+          "cli_sha256": "10616911459a97170ea87ddd873747a693096ff5c98452df27589de93dc05ca9",
+          "browser_sha256": "6b3b35d1025cf19fbd8d6595a480c331653cb57d0b65ea54f6e5d64b3e61c0a3"
         },
         {
           "file": "split_config.it.apk",
@@ -1485,8 +1494,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "b42216f91acfc035d16c374b5a5eb04b4e949847a54eba8df663267dcbb40ac8",
-          "browser_sha256": "24ab6b7ab05dbbf96a53c87aab8798286c4ef93cf9fde7f767285144a25675bc"
+          "cli_sha256": "6864cfb1c4e3b7e105e1e7913505577fcaf9f081c9b6c901d7827cf627be5b7a",
+          "browser_sha256": "240cc96e2d0c976dc1f3bcd2f2679bd372c976ba56a74072dcc56b622891abd9"
         },
         {
           "file": "split_config.ja.apk",
@@ -1495,8 +1504,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "0e498181e9405afb23c4a247ee4bfa3f3cccf6105ca276c80bdc3835e6f81488",
-          "browser_sha256": "42a82d9543af58cdcccacce3cb7b65a8104e157aabbef1e358140f54783cb87b"
+          "cli_sha256": "df8d397d74522c12825eeb2ddea58a398da15521841898e383da77637893fc65",
+          "browser_sha256": "f28dd89828089abd72d0f11925664830a839faeee3506c2f777a7f683648709e"
         },
         {
           "file": "split_config.ko.apk",
@@ -1505,8 +1514,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "b0166e8c929cf562cbee696d66132f356b3e44e392472375732dbfb526a5c573",
-          "browser_sha256": "00e70972a895214b0805438c955a56636ff060eda11c6a962fe59e169b3d37fe"
+          "cli_sha256": "a92a5efca2711b6a49050804c82c33d0998448ef705b7b9f50fb29e163d26326",
+          "browser_sha256": "be5ca010eaa01b0c0432c74e26a96d62cf02ac9c3dae096a040161fb3165649e"
         },
         {
           "file": "split_config.ldpi.apk",
@@ -1515,8 +1524,8 @@
           "zip_entries": 523,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "b0de65ca0ce978501c9aa7e114672c82e241646adb18fa5d063b68ddfe4aa3e6",
-          "browser_sha256": "e7627d16d5a875ec1baab57a9e7fe7cdef953189f4dee21e9c3ba0c16f881ed2"
+          "cli_sha256": "87fad49d8840695c6c136537316a1ac11dd36bf4513588871221e9cc12df4816",
+          "browser_sha256": "d4187180c596caa9ff130dcb48f6864e3e17dbbe408842c26fb53a85f0608787"
         },
         {
           "file": "split_config.mdpi.apk",
@@ -1525,8 +1534,8 @@
           "zip_entries": 319,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "5529591a46eb232ba569c5dbe3e265add22500082fb1e9fcc77f0f7ccb39ed4a",
-          "browser_sha256": "d006701cfb814c03cd9695a79898bb671de3d43324934f3b833af86086a420ec"
+          "cli_sha256": "4a80adc34eeaddb1873594d82bc8cae10cbf3a3c6e13061ade809c908c3565cf",
+          "browser_sha256": "5968c10d06cbfdc2d9599b82f4149290fafc84f3bd76eef9d9841d9c0658328d"
         },
         {
           "file": "split_config.ms.apk",
@@ -1535,8 +1544,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "1b309ea8febb52516264a7269c7a15f0a3c8dcca865d277d37e96184ec8645ac",
-          "browser_sha256": "122afd2ac63f75ad44e86f838793233ff0b442b678887ba4d502f92699a1f5a1"
+          "cli_sha256": "52dcdcd3a8809d4d5f6062a6db0ea46b582295d2ef3b1f5b6cb00d9a130d11f1",
+          "browser_sha256": "746e210e044a6fd7fba897bf1b0368667b5ea1e159c1e6e2b129bb4fea22ec6a"
         },
         {
           "file": "split_config.nl.apk",
@@ -1545,8 +1554,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "bdc0afe12d2dcde163c2700e9981dea7001b1af47478c019b660480b2fe5cd56",
-          "browser_sha256": "625ec1617eb1b64658c3bee102dd08776ed280bf0c9c7ea904ef31bfa4bb6ce8"
+          "cli_sha256": "e9b5fa2ecdb2853e6c89a057ead5ef1cd54aebad7e8a2b0ca0eee7b4da68860a",
+          "browser_sha256": "15ca8ee0e5ef70d0351d7c912ba0bf00ef00fac04a29d773489a91ce9f0dda8e"
         },
         {
           "file": "split_config.pl.apk",
@@ -1555,8 +1564,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "41a0dd561d81672045de17027653aff2850697123c05b112385b62a4a688e153",
-          "browser_sha256": "815ca940cae56371d04f47bc392e224976d8ce095f1f7a86461bbcc0da5bc33a"
+          "cli_sha256": "e23173b5620461b104d52263f87b006debce2686a8b19107523592ab5fefdfc2",
+          "browser_sha256": "e405b0aa3e6dd81061730adda49bfedfdf9158582986e646c03038a4b0e72418"
         },
         {
           "file": "split_config.pt.apk",
@@ -1565,8 +1574,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "035210ccfd022888d8218cf179e44ba6c921f810c60aee5f953590eddd9b68e6",
-          "browser_sha256": "101fdbcb8f079d18a57832d7b131b6b61846568432e9af39815b6222a0361ea1"
+          "cli_sha256": "dd47060c90c0d2f7a2cf4b79114bab17cacb3245da291a517b243254e1eb3f06",
+          "browser_sha256": "0c37da320af7ce45d2fbdec4a357b62989f382c59fbfdbf413fc24243ca0322b"
         },
         {
           "file": "split_config.ru.apk",
@@ -1575,8 +1584,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "9a4f77936e6e469f171cabf2fef30a3387a764c632115104b5ef04d19212d44b",
-          "browser_sha256": "1b949035242b36198c65df3969dbc5c14c302f07983ebfe20f75543114491c43"
+          "cli_sha256": "79640859107e79b0269046e89ede2458bd0824d0a58e7fc7870cbb3c6356fac9",
+          "browser_sha256": "12c60dcb2e9cd17369cd5c81cad2e5828ee68455e6e55d8874222d3767532abd"
         },
         {
           "file": "split_config.sv.apk",
@@ -1585,8 +1594,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "4624fea21c8ec9cba0d747dfe7ae0a670e9c44db8c8f54e3ae74f9ef3086a9db",
-          "browser_sha256": "2d2b9986104372d326697bfc2cbacdc62d528deb9e1d92125ae3b4016eac5358"
+          "cli_sha256": "9d6140f587c6ae7d3ae4d4b35b8b41397544326a0a685560ecb6294873905f92",
+          "browser_sha256": "551353d4732d0b1ceaf407ca2bb0b31e0eab327f26c760143e3b3742784647ae"
         },
         {
           "file": "split_config.th.apk",
@@ -1595,8 +1604,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "38469e668c740ac26fb137ec7fd6cf0ed0c265a2413c5dd29e92b978c3b72b8e",
-          "browser_sha256": "b79a75935b4c991cd7a3b35a9ec871bcb4b3ae8f03c8b5c7539d4e5fde70f0de"
+          "cli_sha256": "a4c4fe34b6b96fe6a7570a9e13a457ea5535b2af7a88b46f86512f998615a29e",
+          "browser_sha256": "faa3b7ef284524f98801d88afa7237a52eebc9964ac48c2da16a10c96ea90388"
         },
         {
           "file": "split_config.tr.apk",
@@ -1605,8 +1614,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "da86784e04d347b16d2997c1d08e786444a76b4cbab2384a3efa7e3cad10a43c",
-          "browser_sha256": "151e7457db47695ffd3fb10d70576d1584add4513f3e54ec58367c9aa3dc6ff9"
+          "cli_sha256": "eb99f067a0e8e004ee024aaede0ba9d3ddffd5e231274c8a12d25ecaadbb3723",
+          "browser_sha256": "fd53eb8cf3ab69dc65f5dbcc5e85320660462d926275fbbcfb188a3084fa5bd2"
         },
         {
           "file": "split_config.tvdpi.apk",
@@ -1615,8 +1624,8 @@
           "zip_entries": 474,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "cc65c7ce22f294ee5bafbfc933bfbec3bfcb22616eac3c9cb1460ec17319f425",
-          "browser_sha256": "774507120d38e5ad5749de454bdf5b5615851a26591f3c4790434c62f7d69cd1"
+          "cli_sha256": "4de5177c9b9ceedce41c2fe1a2dc0b4b43724e7e44cb200a05be202ec3f98c5b",
+          "browser_sha256": "40306cfbf908aa1e9b8455d20e486740907f7d44f184a459e2a9d8a294c91d02"
         },
         {
           "file": "split_config.uk.apk",
@@ -1625,8 +1634,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "0add940b198cc291656a762f27697f741b936e9c036cab67b6dd4b80cba575e1",
-          "browser_sha256": "9139a5f3070ade7fcdea915a349cd2c6f14cf12602f9bca103977e4fa0b7cd3b"
+          "cli_sha256": "1591470ba610640e53d201d44c8516d2567858db45b13ccf6bb5896e3b43882f",
+          "browser_sha256": "ec663edfe52ce3e5d871f358890f7b3691e142b1facdaa20952fd108f77c07f7"
         },
         {
           "file": "split_config.vi.apk",
@@ -1635,8 +1644,8 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "d40014b6a3336840944aa9ddf05b506e13aedaba9df369e6ecc892a707a5c1e1",
-          "browser_sha256": "0472d96f375213ef7993b127eb91cf3de4bb0fadb33319820fb2777131406cd2"
+          "cli_sha256": "036adf6d011df269b9f87d1b7510a3de74af91c81c7aaf1681db2a260e8a304f",
+          "browser_sha256": "8d71acdef871fedd10847039f62eba388ae2c6dfb7c3968c94c07cd1bdce94f3"
         },
         {
           "file": "split_config.x86_64.apk",
@@ -1645,8 +1654,8 @@
           "zip_entries": 6,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "8f1646c45baa91a4e32bf7d927132372a9a2f3d5a2ecb4d1b509dfd62e25fc59",
-          "browser_sha256": "88bb43da558de5715a6bd0c4b5f2e4d934800ad31d1072da94bfea6a5fdc9209"
+          "cli_sha256": "dc426d81da33dda974fa601829bd7f4217ce2a4f4adc779ef724ca07ed253d3c",
+          "browser_sha256": "07c259a3c0457d9afd9cb02dbcb8b372e8d577e21f6657f813c42012add4a514"
         },
         {
           "file": "split_config.xhdpi.apk",
@@ -1655,8 +1664,8 @@
           "zip_entries": 319,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "b2224fe1b3e8d665cf36b5b29251d8c6f29ea73f373b80c414515b929e24edcd",
-          "browser_sha256": "1c046866e51195e84ff74f9b6e280004a72c2d7ea9409d67ba169ef5d5bfc79e"
+          "cli_sha256": "f4caa754623441998e4a1bcc3015748c431381d98138ded50a7dc14d043d24cd",
+          "browser_sha256": "89305802bd129d2035d1b71e5c5c548db6635880d01773a37b11ec1cd772cb21"
         },
         {
           "file": "split_config.xxhdpi.apk",
@@ -1665,8 +1674,8 @@
           "zip_entries": 319,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "2a45274183eca948d53719b51a318a5b169ed981ae14b3e5f6b964f17380acc5",
-          "browser_sha256": "98a24e7dbfbaccfad071d74c03f0e2656b0b5b4ba68c60a95dbc94b5c1345ca7"
+          "cli_sha256": "42ae4e7b7870be30def30c61b5c69d054c5aa0e1b79d4d78bfa2ff57087f5bff",
+          "browser_sha256": "c9ddf88fad4f37e41f0f19c1221142702a1adf1c90ec7f4f498b835a7aa47903"
         },
         {
           "file": "split_config.xxxhdpi.apk",
@@ -1675,8 +1684,8 @@
           "zip_entries": 319,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "1be1d59dc8fd5d9ed27dcf9efe74fdd4b51bc8f81bff5e60b86010fc5e3904c2",
-          "browser_sha256": "92540c051c50b5880c062bd79b5052e2dbd998efac2575d1fe365e1bab021ee7"
+          "cli_sha256": "c174d972b88a0f61dabb0a30e33fee86013645c77949481da4e2d25272dcb957",
+          "browser_sha256": "34de26a72e8e85fa1e130a612ba03e6a439703d79be894c67c885bf86f61dabd"
         },
         {
           "file": "split_config.zh.apk",
@@ -1685,39 +1694,36 @@
           "zip_entries": 3,
           "different_entries": [],
           "same_signing_certificates": true,
-          "cli_sha256": "41604ecf264702cbf9bbd65e6245d7fbc6b1aff98c5e0efb8531b67394dc51c0",
-          "browser_sha256": "510141a4b83220fa81c5903057252f21d86a582a27cacc61706cfb434accb546"
+          "cli_sha256": "818ef585e10eae049498165265c40a2935d3ef4876d067b398eba96d85e0eef5",
+          "browser_sha256": "968c2061abc79aff1f7cd30d1f1faad3faac7a7690a2aba7a27aba69f3e3c378"
         }
-      ],
-      "browser_phases_ms": {
-        "open_apk": 1234,
-        "load_bundles": 1596,
-        "apply_patches": 3635,
-        "write_unsigned_artifacts": 2328,
-        "load_signing_key": 2,
-        "sign_artifacts": 908
-      },
-      "applied_patches": 19
+      ]
     }
   ],
   "apk_pairs": 149,
   "all_payloads_identical": true,
   "all_signatures_valid": true,
   "all_certificates_match_supplied_identity": true,
-  "additional_chromium145_validation": {
-    "browser": "Chrome for Testing 145.0.7632.6",
-    "app": "YouTube 21.37.42 APK",
-    "selection": "Loop video and its transitive dependencies",
-    "apk_pairs": 1,
-    "identical_outside_signing_block": true,
-    "all_signatures_valid": true,
-    "same_signing_certificate": true,
-    "implementation_commit": "be24406"
+  "cli_parity": {
+    "rebuilt_cli": {
+      "apk_pairs": 149,
+      "identical_outside_signing_block": true
+    },
+    "previous_cli": {
+      "commit": "b369714",
+      "apk_pairs": 149,
+      "identical_outside_signing_block": true
+    }
   },
   "production_ui_validation": {
     "app": "x-12-29-1",
     "gzipRuntimeAssets": true,
     "cancellation": true,
+    "compressionCancellation": true,
+    "cancellationCleanup": true,
+    "retry": true,
+    "javaReuse": true,
+    "repeatedWallMs": 17368,
     "signerApproval": true,
     "importedIdentity": true,
     "persistedIdentity": true,
@@ -1730,120 +1736,79 @@
     ],
     "browser": "Chrome for Testing 145.0.7632.6",
     "production_build": true,
-    "patched_base_identical_outside_signing_block": true,
-    "same_signing_certificate": true,
-    "base_cli_sha256": "6517e28bbe3d7fbec4f07c842ab8669b411467c9b216cbf84c7931d69f36d130",
-    "base_browser_sha256": "14523ffd9dfc5a80be17bb572c0681e944d710acc8ce06c4cb4fc798a54e0657"
+    "downloads_identical_to_cli_outside_signing_block": [
+      "first",
+      "repeated",
+      "retry"
+    ]
   },
   "previous_measurements": {
-    "commit": "be24406",
-    "browser": "Chromium 133.0.6943.16",
-    "note": "These earlier matrix measurements used a different Chromium version. The separate Telegram comparison uses the same Chrome 145 executable and cached profile.",
+    "commit": "b369714",
     "cases": [
       {
         "id": "reddit-2026-39-build2639041",
-        "browser_sdk_ms": 20676,
-        "browser_patch_wall_ms": 24423
+        "browser_sdk_ms": 10241,
+        "cli_peak_rss_bytes": 209833984
       },
       {
         "id": "x-12-29-1",
-        "browser_sdk_ms": 23130,
-        "browser_patch_wall_ms": 26823
+        "browser_sdk_ms": 11384,
+        "cli_peak_rss_bytes": 250863616
       },
       {
         "id": "telegram-12-7-1",
-        "browser_sdk_ms": 88113,
-        "browser_patch_wall_ms": 91614
+        "browser_sdk_ms": 5156,
+        "cli_peak_rss_bytes": 179187712
       },
       {
         "id": "instagram-447-splits",
-        "browser_sdk_ms": 38954,
-        "browser_patch_wall_ms": 42734
+        "browser_sdk_ms": 12158,
+        "cli_peak_rss_bytes": 267034624
       },
       {
         "id": "youtube-21-37-42",
-        "browser_sdk_ms": 49685,
-        "browser_patch_wall_ms": 63867
+        "browser_sdk_ms": 16205,
+        "cli_peak_rss_bytes": 227516416
       },
       {
         "id": "youtube-21-37-42-apkm",
-        "browser_sdk_ms": 44558,
-        "browser_patch_wall_ms": 65777
+        "browser_sdk_ms": 20299,
+        "cli_peak_rss_bytes": 230354944
       },
       {
         "id": "reddit-2026-39-build2639031",
-        "browser_sdk_ms": 20739,
-        "browser_patch_wall_ms": 25719
+        "browser_sdk_ms": 9745,
+        "cli_peak_rss_bytes": 210219008
       }
     ]
   },
-  "telegram_speed_comparison": {
-    "browser": "Chrome for Testing 145.0.7632.6",
-    "baseline_commit": "be24406",
-    "case": "telegram-12-7-1",
-    "method": "Sequential single runs on the same workstation, Chrome executable, cached browser profile, input, signed bundle, recommended selection and signing identity. Bridge profiling disabled. No concurrent builds.",
-    "before": {
-      "browser_sdk_ms": 81707,
-      "browser_patch_wall_ms": 83129,
-      "browser_phases_ms": {
-        "open_apk": 7825,
-        "load_bundles": 1781,
-        "apply_patches": 63231,
-        "write_unsigned_artifacts": 7681,
-        "load_signing_key": 2,
-        "sign_artifacts": 1159
-      },
-      "payload_matches_cli": true
-    },
-    "after": {
-      "browser_sdk_ms": 5156,
-      "browser_patch_wall_ms": 6142,
-      "browser_phases_ms": {
-        "open_apk": 228,
-        "load_bundles": 1581,
-        "apply_patches": 832,
-        "write_unsigned_artifacts": 1529,
-        "load_signing_key": 2,
-        "sign_artifacts": 956
-      },
-      "payload_matches_cli": true
-    },
-    "intermediate": {
-      "browser_sdk_ms": 7622,
-      "browser_patch_wall_ms": 8598,
-      "browser_phases_ms": {
-        "open_apk": 236,
-        "load_bundles": 1575,
-        "apply_patches": 844,
-        "write_unsigned_artifacts": 3992,
-        "load_signing_key": 1,
-        "sign_artifacts": 941
-      },
-      "payload_matches_cli": true
-    }
-  },
   "runtime": {
-    "base": "runtime/0460326972ef70deccd0/",
+    "base": "runtime/3d3179c5c0e33e8c39eb/",
     "assets": {
       "reseam_sdk_browser.wasm": {
         "path": "reseam_sdk_browser.wasm",
-        "sha256": "aa767ae2dc7640890e950d5534fd802c9fa70235c9ad9147b0ef114b9e6c6f46",
-        "size": 5026536
+        "sha256": "0d7c35565f1df55a943ed2bd0f0f38ae1b7000d3fb5a045294edae79c37d5fe6",
+        "size": 5075157
+      },
+      "reseam_browser_compression.wasm": {
+        "path": "reseam_browser_compression.wasm",
+        "sha256": "1c4894d5c1deb894614053d145349add04230be41c554fa47d5d75239ef308ae",
+        "size": 265233
       },
       "methods.json": {
         "path": "methods.json",
-        "sha256": "83bff13da9d74b0f9ad422b78a025d8051a129fcb4a8861a128c02a8dda6f312",
-        "size": 63352
+        "sha256": "29df71efa9e875edf9ebb833a45a6ef1c158153538973f8c426cc25e58a48986",
+        "size": 64707
       },
       "reseam-runtime.jar": {
         "path": "reseam-runtime.jar",
-        "sha256": "b0d82452689f5f0d7f65334db1d2a220e6d866c436c5c462b412db7c048bbc01",
-        "size": 2818786
+        "sha256": "ff158608f5a4c1bbb67508efecfea060887baf42c23d11beb5c03ad4538531b6",
+        "size": 2822440
       },
       "browser-host.jar": {
         "path": "browser-host.jar",
-        "sha256": "342a1fab143705be903658b50bc5fdc68b518b6629276af8f180819e20fd97d4",
-        "size": 2187943
+        "sha256": "692aa91061d81836fcff0ef6c3fd25b7f68793d6f3cedd7b152895c5bfb8d448",
+        "size": 2188079
       }
     }
   },
@@ -1855,112 +1820,7 @@
     "kotlin_spotless": true,
     "kotlin_public_abi": true,
     "wasi_clippy": true,
-    "typescript": true,
-    "browser_transport_tests_passed": 3
-  },
-  "previous_optimization_measurements": {
-    "commit": "e84abdd",
-    "browser": "Chrome for Testing 145.0.7632.6",
-    "cases": [
-      {
-        "id": "reddit-2026-39-build2639041",
-        "browser_sdk_ms": 15050,
-        "browser_patch_wall_ms": 15999,
-        "browser_phases_ms": {
-          "open_apk": 1198,
-          "load_bundles": 1558,
-          "apply_patches": 3913,
-          "write_unsigned_artifacts": 7431,
-          "load_signing_key": 2,
-          "sign_artifacts": 904
-        }
-      },
-      {
-        "id": "x-12-29-1",
-        "browser_sdk_ms": 13978,
-        "browser_patch_wall_ms": 14970,
-        "browser_phases_ms": {
-          "open_apk": 1620,
-          "load_bundles": 1578,
-          "apply_patches": 4419,
-          "write_unsigned_artifacts": 4924,
-          "load_signing_key": 2,
-          "sign_artifacts": 1387
-        }
-      },
-      {
-        "id": "telegram-12-7-1",
-        "browser_sdk_ms": 7622,
-        "browser_patch_wall_ms": 8598,
-        "browser_phases_ms": {
-          "open_apk": 236,
-          "load_bundles": 1575,
-          "apply_patches": 844,
-          "write_unsigned_artifacts": 3992,
-          "load_signing_key": 1,
-          "sign_artifacts": 941
-        }
-      },
-      {
-        "id": "instagram-447-splits",
-        "browser_sdk_ms": 21723,
-        "browser_patch_wall_ms": 22680,
-        "browser_phases_ms": {
-          "open_apk": 277,
-          "load_bundles": 1568,
-          "apply_patches": 6852,
-          "write_unsigned_artifacts": 11964,
-          "load_signing_key": 2,
-          "sign_artifacts": 1030
-        }
-      },
-      {
-        "id": "youtube-21-37-42",
-        "browser_sdk_ms": 19622,
-        "browser_patch_wall_ms": 20593,
-        "browser_phases_ms": {
-          "open_apk": 320,
-          "load_bundles": 1598,
-          "apply_patches": 10718,
-          "write_unsigned_artifacts": 5617,
-          "load_signing_key": 1,
-          "sign_artifacts": 1329
-        }
-      },
-      {
-        "id": "youtube-21-37-42-apkm",
-        "browser_sdk_ms": 23533,
-        "browser_patch_wall_ms": 24535,
-        "browser_phases_ms": {
-          "open_apk": 2535,
-          "load_bundles": 1600,
-          "apply_patches": 10588,
-          "write_unsigned_artifacts": 6249,
-          "load_signing_key": 2,
-          "sign_artifacts": 2492
-        }
-      },
-      {
-        "id": "reddit-2026-39-build2639031",
-        "browser_sdk_ms": 18119,
-        "browser_patch_wall_ms": 19216,
-        "browser_phases_ms": {
-          "open_apk": 1727,
-          "load_bundles": 1787,
-          "apply_patches": 4858,
-          "write_unsigned_artifacts": 8800,
-          "load_signing_key": 2,
-          "sign_artifacts": 901
-        }
-      }
-    ]
-  },
-  "previous_cli_parity": {
-    "commit": "e84abdd",
-    "apk_pairs": 149,
-    "all_payloads_identical": true,
-    "all_signatures_valid": true,
-    "note": "The optimized browser was compared with the previous CLI, then the rebuilt CLI was compared with the same browser artifacts."
+    "typescript": true
   },
   "build_profile": {
     "cargo_profile": "browser",

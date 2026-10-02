@@ -17,6 +17,7 @@ import app.reseam.patch.dex.Opcode
 import app.reseam.patch.dex.opcode
 import app.reseam.patch.klass
 import app.reseam.patch.method
+import app.reseam.patch.methods
 import app.reseam.patch.native.FieldRef
 import app.reseam.patch.native.NewField
 import app.reseam.patch.patch
@@ -285,6 +286,40 @@ val instructionShapeQueries =
             "assets/instruction-shape.txt",
             "${orderedShape.name}|${shortestMethod.name}|${publicFinalHook.name}|${binderClass.descriptor}"
                 .encodeToByteArray(),
+        )
+        val owner = bytecode.findClass("com.example.ShapeHolder")!!
+        val changed = orderedShape.method
+        check(changed.info.instructionCount > 1u)
+        changed.alwaysReturn()
+        check(changed.instructionCount == 1)
+        check(
+            methods {
+                inClass(shapeHolder)
+                opcode(Opcode.CONST, Opcode.CONST_STRING)
+            }
+                .all
+                .none { it.method.handle == changed.handle }
+        )
+        val before = owner.info.directMethodCount + owner.info.virtualMethodCount
+        val added = changed.clone("newDeclaration")
+        check(owner.info.directMethodCount + owner.info.virtualMethodCount == before + 1u)
+        check(
+            method {
+                inClass(shapeHolder)
+                name("newDeclaration")
+            }
+                .method
+                .handle == added.handle
+        )
+        added.remove()
+        check(owner.info.directMethodCount + owner.info.virtualMethodCount == before)
+        check(
+            methods {
+                inClass(shapeHolder)
+                name("newDeclaration")
+            }
+                .all
+                .isEmpty()
         )
     }
 

@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { CompressionPool } from './compression';
 import { WASI, ConsoleStdout, File as MemoryFile, Directory } from '@bjorn3/browser_wasi_shim';
 import { Channel, decode, encode } from './channel';
 import { parseJson, stringifyJson } from './json';
@@ -8,6 +9,9 @@ import { DiskDirectory, DiskFile, InputFile, InputReader, RootDescriptor, Storag
 import { alloc, callNative, EngineExports, fn, free, NativeMethod, read } from './native';
 
 let exports: EngineExports;
+let sessionState: number;
+let compression: CompressionPool;
+const inputReader = new InputReader();
 let root: DiskDirectory;
 let jvm: MessagePort;
 let jvmChannel: Channel;
@@ -83,9 +87,11 @@ async function initialize(data: Record<string, any>): Promise<void> {
     }
     return 0;
   };
+  compression = new CompressionPool(data.compression, wasi, () => exports);
   const module = await WebAssembly.compile(await loadRuntime(data.runtimeBase, 'reseam_sdk_browser.wasm'));
   const instance = await WebAssembly.instantiate(module, {
     wasi_snapshot_preview1: wasi.wasiImport,
+    reseam_compression: compression.imports,
     reseam_host: {
       call: hostCall,
       event: (pointer: number, length: number) => self.postMessage({ type: 'event', event: parseJson<any>(decoder.decode(new Uint8Array(exports.memory.buffer, pointer, length))) }),
@@ -93,8 +99,12 @@ async function initialize(data: Record<string, any>): Promise<void> {
   });
   exports = instance.exports as EngineExports;
   wasi.initialize(instance as unknown as Parameters<WASI['initialize']>[0]);
-  const inputReader = new InputReader();
-  for (const input of data.files as { name: string; file: File; directory?: string }[]) {
+  sessionState = Number(fn(exports, 'reseam_session_new')());
+  mount(data.files);
+  self.postMessage({ type: 'ready' });
+}
+function mount(files: { name: string; file: File; directory?: string }[]): void {
+  for (const input of files) {
     let folder = root.contents.get(input.directory ?? 'input') as Directory;
     const parts = input.name.split('/');
     for (const part of parts.slice(0, -1)) {
@@ -106,12 +116,16 @@ async function initialize(data: Record<string, any>): Promise<void> {
     if (folder.contents.has(parts.at(-1)!)) throw new Error('Duplicate input path');
     folder.contents.set(parts.at(-1)!, new InputFile(input.file, inputReader));
   }
-  self.postMessage({ type: 'ready' });
 }
 self.onmessage = async event => {
   const data = event.data;
   try {
     if (data.type === 'init') { await initialize(data); return; }
+    if (data.type === 'mount') {
+      if (busy) throw new Error('A patch run is already active');
+      mount(data.files);
+      self.postMessage({ type: 'result', id: data.id });
+    }
     if (data.type === 'request') {
       if (busy) throw new Error('A patch run is already active');
       busy = true;
@@ -119,8 +133,8 @@ self.onmessage = async event => {
         const request = alloc(exports, new TextEncoder().encode(stringifyJson(data.request)));
         let result = 0;
         try {
-          result = Number(fn(exports, 'reseam_request')(request + 8, new DataView(exports.memory.buffer).getUint32(request, true)));
-          self.postMessage({ type: 'result', id: data.id, wasmMemoryBytes: exports.memory.buffer.byteLength, ...parseJson<any>(decoder.decode(read(exports, result))) });
+          result = Number(fn(exports, 'reseam_request')(sessionState, request + 8, new DataView(exports.memory.buffer).getUint32(request, true)));
+          self.postMessage({ type: 'result', id: data.id, wasmMemoryBytes: exports.memory.buffer.byteLength, compressionMemoryBytes: compression.memoryBytes, ...parseJson<any>(decoder.decode(read(exports, result))) });
         } finally { free(exports, request); free(exports, result); }
       } finally { busy = false; }
     }

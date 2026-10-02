@@ -31,6 +31,35 @@ pub fn get_instructions(m: u32) -> Vec<Instruction> {
 }
 
 #[export]
+pub fn method_references(m: u32) -> Vec<MethodRef> {
+    with_code(m, |dex, code| {
+        let mut seen = rustc_hash::FxHashSet::default();
+        Some(
+            code.instructions()
+                .iter()
+                .filter_map(DexInsn::method_ref)
+                .filter(|reference| seen.insert(*reference))
+                .map(|reference| crate::kotlin::convert::resolve_method_ref(dex, reference))
+                .collect(),
+        )
+    })
+    .unwrap_or_default()
+}
+
+#[export]
+pub fn find_methods_by_string_prefix(prefix: String) -> Vec<u32> {
+    let mut seen = rustc_hash::FxHashSet::default();
+    find_instructions_by_string_contains(prefix.clone())
+        .into_iter()
+        .filter(|hit| {
+            instruction_string_ref(hit.method, hit.index)
+                .is_some_and(|value| value.starts_with(&prefix))
+        })
+        .filter_map(|hit| seen.insert(hit.method).then_some(hit.method))
+        .collect()
+}
+
+#[export]
 pub fn get_instruction(m: u32, index: u32) -> Instruction {
     with_instruction(m, index, |dex, instruction| {
         let dex_index = method_location(m)?.dex_idx;

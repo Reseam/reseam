@@ -190,7 +190,7 @@ impl ApkFile {
                 &jobs,
                 options.dex_workers.get(),
                 options.dex_compression_level,
-            );
+            )?;
             self.components
                 .iter()
                 .zip(plans)

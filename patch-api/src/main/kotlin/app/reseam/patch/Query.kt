@@ -174,6 +174,8 @@ internal abstract class QuerySpec<T : Any, S : RankScope>(private val kind: Stri
 
     protected abstract fun candidates(runtime: PatchRuntime): CandidatePool<T>
 
+    protected open fun prefetch(runtime: PatchRuntime, candidates: List<T>) {}
+
     protected abstract fun mismatch(value: T, runtime: PatchRuntime): String?
 
     protected abstract fun matchReasons(): List<String>
@@ -218,20 +220,23 @@ internal abstract class QuerySpec<T : Any, S : RankScope>(private val kind: Stri
         val pool = candidates(runtime)
         val scored = mutableListOf<Scored<T>>()
         val rejected = mutableListOf<Rejected<T>>()
-        for (value in pool.candidates.ifEmpty { pool.nearMissSeed }) {
-            val failure = mismatch(value, runtime)
-            if (failure != null) {
-                rejected.addBounded(Rejected(value, failure)) { describe(it.value) }
-                continue
+        for (batch in pool.candidates.ifEmpty { pool.nearMissSeed }.chunked(256)) {
+            prefetch(runtime, batch)
+            for (value in batch) {
+                val failure = mismatch(value, runtime)
+                if (failure != null) {
+                    rejected.addBounded(Rejected(value, failure)) { describe(it.value) }
+                    continue
+                }
+                val scope = rankScope(runtime.index, value)
+                val scores = rankers.map { it.label to it.block(scope) }
+                scored +=
+                    Scored(
+                        value,
+                        scores.sumOf { it.second },
+                        pool.pipeline + matchReasons() + scores.map { "${it.first}=${it.second}" },
+                    )
             }
-            val scope = rankScope(runtime.index, value)
-            val scores = rankers.map { it.label to it.block(scope) }
-            scored +=
-                Scored(
-                    value,
-                    scores.sumOf { it.second },
-                    pool.pipeline + matchReasons() + scores.map { "${it.first}=${it.second}" },
-                )
         }
         return Evaluated(
             accepted =

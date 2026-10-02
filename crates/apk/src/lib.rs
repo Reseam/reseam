@@ -5,6 +5,7 @@ mod apk_file;
 pub mod axml;
 mod buf;
 mod chunk;
+pub mod compression;
 mod container;
 mod dex;
 pub mod entry;

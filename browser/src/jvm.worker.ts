@@ -10,7 +10,8 @@ declare function cheerpjRunLibrary(path: string): Promise<any>;
 declare function cheerpOSAddStringFile(path: string, bytes: Uint8Array): void;
 declare function cheerpOSRemoveStringFile(path: string): void;
 let channel: Channel;
-let port: MessagePort;
+let port: MessagePort | undefined;
+let active = false;
 let host: any;
 let runtimePath: string;
 let next = 1;
@@ -108,28 +109,38 @@ async function operation(request: any): Promise<unknown> {
   }
 }
 self.onmessage = async event => {
-  if (event.data.type !== 'init') return;
+  const data = event.data;
   try {
-    channel = new Channel(event.data.buffer); port = event.data.port;
-    profiling = !!event.data.profileBridge;
-    const base = event.data.runtimeBase as string;
-    const methods: NativeMethod[] = parseJson<NativeMethod[]>(new TextDecoder().decode(await loadRuntime(base, 'methods.json')));
-    importScripts('https://cjrtnc.leaningtech.com/4.3/loader.js');
-    const natives = Object.fromEntries(methods.map(method => [method.name, (lib: any, ...args: unknown[]) => profiledNative(method, lib, args)]));
-    await cheerpjInit({ version: 17, status: 'none', natives, licenseKey: event.data.licenseKey });
-    cheerpOSAddStringFile('/str/browser-host.jar', await loadRuntime(base, 'browser-host.jar'));
-    cheerpOSAddStringFile('/str/reseam-runtime.jar', await loadRuntime(base, 'reseam-runtime.jar'));
-    const library = await cheerpjRunLibrary('/str/browser-host.jar');
-    host = await library.app.reseam.browser.BrowserHost;
-    runtimePath = '/str/reseam-runtime.jar';
-    port.onmessage = async message => {
-      if (message.data.type !== 'host') return;
-      try { await channel.send(3, encode({ value: await operation(message.data.request) })); }
-      catch (error) {
-        const reason = error && typeof (error as any).getMessage === 'function' ? await (error as any).getMessage() : String(error);
-        await channel.send(3, encode({ error: reason, value: null }));
-      }
-    };
-    self.postMessage({ type: 'ready' });
-  } catch (error) { self.postMessage({ type: 'error', error: String(error) }); }
+    if (data.type === 'connect') {
+      if (port || active || loaders.size) throw new Error('Java runtime still has an active session');
+      channel = new Channel(data.buffer);
+      port = data.port as MessagePort;
+      port.onmessage = async message => {
+        if (message.data.type !== 'host') return;
+        if (active) throw new Error('Concurrent Java host calls are not supported');
+        active = true;
+        try { await channel.send(3, encode({ value: await operation(message.data.request) })); }
+        catch (error) {
+          const reason = error && typeof (error as any).getMessage === 'function' ? await (error as any).getMessage() : String(error);
+          await channel.send(3, encode({ error: reason, value: null }));
+        } finally { active = false; }
+      };
+    } else if (data.type === 'disconnect') {
+      if (active || loaders.size) throw new Error('Java session did not close all bundle loaders');
+      port?.close(); port = undefined; revision = undefined;
+    } else if (data.type === 'init') {
+      profiling = !!data.profileBridge;
+      const base = data.runtimeBase as string;
+      const methods: NativeMethod[] = parseJson<NativeMethod[]>(new TextDecoder().decode(await loadRuntime(base, 'methods.json')));
+      importScripts('https://cjrtnc.leaningtech.com/4.3/loader.js');
+      const natives = Object.fromEntries(methods.map(method => [method.name, (lib: any, ...args: unknown[]) => profiledNative(method, lib, args)]));
+      await cheerpjInit({ version: 17, status: 'none', natives, licenseKey: data.licenseKey });
+      cheerpOSAddStringFile('/str/browser-host.jar', await loadRuntime(base, 'browser-host.jar'));
+      cheerpOSAddStringFile('/str/reseam-runtime.jar', await loadRuntime(base, 'reseam-runtime.jar'));
+      const library = await cheerpjRunLibrary('/str/browser-host.jar');
+      host = await library.app.reseam.browser.BrowserHost;
+      runtimePath = '/str/reseam-runtime.jar';
+    } else throw new Error(`Unknown Java runtime operation ${data.type}`);
+    self.postMessage({ type: 'result', id: data.id });
+  } catch (error) { self.postMessage({ type: 'error', id: data.id, error: String(error) }); }
 };

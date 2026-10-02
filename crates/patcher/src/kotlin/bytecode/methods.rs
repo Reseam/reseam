@@ -133,6 +133,7 @@ fn push_method(
     method: EncodedMethod,
     kind: MethodKind,
 ) -> Option<u32> {
+    crate::kotlin::handles::changed();
     if kind == MethodKind::Virtual {
         class.add_virtual_method(method);
     } else {
@@ -183,6 +184,7 @@ pub fn set_method_access_flags(
     m: u32,
     flags: u32,
 ) -> Result<Option<crate::kotlin::types::MethodEdit>, String> {
+    crate::kotlin::handles::changed();
     let outcome = with_method_mut(m, |dex, loc| {
         let flags = AccessFlags::from_bits_retain(flags);
         let method = logged("access method", crate::context::method_mut(dex, loc))?

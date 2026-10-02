@@ -33,6 +33,7 @@ pub fn find_method(class_descriptor: String, method_name: String) -> Option<u32>
 
 #[export]
 pub fn app_entry_hook() -> Result<u32, String> {
+    changed();
     #[expect(
         clippy::redundant_closure_for_method_calls,
         reason = "the closure accepts every context lifetime"
@@ -190,6 +191,16 @@ pub fn get_class_info(c: u32) -> Option<ClassInfo> {
 }
 
 #[export]
+pub fn get_method_infos(methods: Vec<u32>) -> Vec<MethodInfo> {
+    methods.into_iter().filter_map(get_method_info).collect()
+}
+
+#[export]
+pub fn get_class_infos(classes: Vec<u32>) -> Vec<ClassInfo> {
+    classes.into_iter().filter_map(get_class_info).collect()
+}
+
+#[export]
 pub fn class_direct_methods(c: u32) -> Vec<u32> {
     method_handles(c, MethodKind::Direct)
 }
@@ -201,11 +212,56 @@ pub fn class_virtual_methods(c: u32) -> Vec<u32> {
 
 #[export]
 pub fn class_methods_by_name(c: u32, name: String) -> Vec<u32> {
-    method_handles(c, MethodKind::Direct)
-        .into_iter()
-        .chain(method_handles(c, MethodKind::Virtual))
-        .filter(|&method| get_method_info(method).is_some_and(|info| info.method_name == name))
-        .collect()
+    let Some(location) = class_location(c) else {
+        return Vec::new();
+    };
+    with_ctx(|ctx| {
+        let Some(dex) = ctx.dex_file(location.dex_idx) else {
+            return Vec::new();
+        };
+        let Some(name) = dex.find_string_idx(&name) else {
+            return Vec::new();
+        };
+        let mut result = Vec::new();
+        let mut collect =
+            |kind, methods: &mut dyn Iterator<Item = reseam_apk::reseam_dex::MethodIdx>| {
+                result.extend(
+                    methods
+                        .enumerate()
+                        .filter(|(_, method)| dex.method_id(*method).name == name)
+                        .map(|(method_idx, _)| {
+                            alloc_method(MethodLocation {
+                                dex_idx: location.dex_idx,
+                                class_idx: location.class_idx,
+                                method_idx,
+                                kind,
+                            })
+                        }),
+                );
+            };
+        if let Some(class) = dex.resident_class(location.class_idx) {
+            if let Some(data) = class.class_data.as_ref() {
+                collect(
+                    MethodKind::Direct,
+                    &mut data.direct_methods.iter().map(|method| method.method),
+                );
+                collect(
+                    MethodKind::Virtual,
+                    &mut data.virtual_methods.iter().map(|method| method.method),
+                );
+            }
+        } else if let Some(skeleton) = checked(dex.class_skeleton(location.class_idx)) {
+            collect(
+                MethodKind::Direct,
+                &mut skeleton.direct_methods.iter().map(|method| method.method),
+            );
+            collect(
+                MethodKind::Virtual,
+                &mut skeleton.virtual_methods.iter().map(|method| method.method),
+            );
+        }
+        result
+    })
 }
 
 fn method_handles(c: u32, kind: MethodKind) -> Vec<u32> {

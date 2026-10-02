@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 import './style.css';
-import { BrowserSession, type MountedFile, type Artifact } from './session';
+import { BrowserSession, JavaRuntime, type MountedFile, type Artifact } from './session';
 import { preference, savePreference, type Identity } from './preferences';
 import { stringifyJson } from './json';
 import type { Inspection, OptionDeclaration, OptionValue, Outcome, PatchMetadata, Preset } from './models';
 
-if (import.meta.env.VITE_TEST_HARNESS === '1') Object.assign(window, { BrowserSession });
+if (import.meta.env.VITE_TEST_HARNESS === '1') Object.assign(window, { BrowserSession, JavaRuntime });
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const picked = (id: string) => [...(element<HTMLInputElement>(id).files ?? [])];
 const status = (message: string) => { element('status').textContent = message; };
@@ -21,6 +21,7 @@ let apkPath: string;
 let splitPaths: string[] = [];
 let bundlePaths: string[] = [];
 let session: BrowserSession | undefined;
+const javaRuntime = new JavaRuntime({ licenseKey: import.meta.env.VITE_CHEERPJ_LICENSE_KEY });
 let controller = new AbortController();
 let busy = false;
 let active = new Set<string>();
@@ -174,7 +175,7 @@ function download(artifact: Artifact): void {
   link.textContent = `${artifact.name} (${(artifact.file.size / 1024 / 1024).toFixed(2)} MiB)`; element('downloads').append(link);
 }
 const runtimeOptions = () => ({
-  signal: controller.signal, licenseKey: import.meta.env.VITE_CHEERPJ_LICENSE_KEY,
+  javaRuntime, signal: controller.signal, licenseKey: import.meta.env.VITE_CHEERPJ_LICENSE_KEY,
   onLog: (message: string) => { log(message); status(message); },
   onEvent: (event: unknown) => { log(stringifyJson(event)); const info = event as { type: string; message?: string; patch?: string }; if (info.message || info.patch) status(info.message ?? info.patch!); },
 });
@@ -188,6 +189,7 @@ element<HTMLFormElement>('inputs').onsubmit = async event => {
     splitPaths = picked('splits').map((file, i) => { const name = `split-${i}.apk`; files.push({ name, file }); return '/input/' + name; });
     bundlePaths = picked('bundles').map((file, i) => { const name = `bundle-${i}.reseam`; files.push({ name, file }); return '/input/' + name; });
     session = await BrowserSession.open(files, runtimeOptions());
+    void session.warmup().catch(error => log(String(error)));
     inspection = await session.request<Inspection>('inspect', { apk_path: apkPath, split_paths: splitPaths, bundle_paths: bundlePaths });
     await render(inspection); status('Choose patches and approve their signers');
   } catch (error) { showError(error); status(controller.signal.aborted ? 'Cancelled' : 'Inspection failed'); await clearSession().catch(showError); }
@@ -200,19 +202,20 @@ element<HTMLFormElement>('configuration').onsubmit = async event => {
     const selection = resolveOptions(); const importedKey = picked('key')[0], importedCert = picked('cert')[0];
     if (!!importedKey !== !!importedCert) throw new Error('Import both the private key and its certificate');
     if ((importedKey?.size ?? 0) > 1_048_576 || (importedCert?.size ?? 0) > 1_048_576) throw new Error('Signing identity files are too large');
-    controller = new AbortController(); working(true); status('Preparing patch run…');
+    if (!session || session.completed) { await clearSession(); controller = new AbortController(); }
+    working(true); status('Preparing patch run…');
     const keys = [...approvals].filter(([, input]) => input.checked).map(([key]) => key);
     const trusted = new Set(await preference<string[]>('trusted-signers') ?? []);
     for (const [key, input] of approvals) input.checked ? trusted.add(key) : trusted.delete(key);
     await savePreference('trusted-signers', [...trusted]);
-    await clearSession();
     await navigator.locks.request('reseam-signing-identity', { signal: controller.signal }, async () => {
       let identity = importedKey && importedCert ? { key: await importedKey.arrayBuffer(), cert: await importedCert.arrayBuffer() } : await preference<Identity>('identity');
       const credentials: MountedFile[] = identity ? [
         { name: 'reseam.pk8', file: new File([identity.key], 'reseam.pk8'), directory: 'identity' },
         { name: 'reseam.der', file: new File([identity.cert], 'reseam.der'), directory: 'identity' },
       ] : [];
-      session = await BrowserSession.open([...files, ...selection.uploads, ...credentials], runtimeOptions());
+      if (session) await session.mount([...selection.uploads, ...credentials]);
+      else session = await BrowserSession.open([...files, ...selection.uploads, ...credentials], runtimeOptions());
       await session.request<Outcome>('patch', {
         apk_path: apkPath, split_paths: splitPaths, bundle_paths: bundlePaths, trust: { keys },
         selection: { preset: 'none', enable: [...choices].filter(([, input]) => input.checked).map(([key]) => key), options: selection.options, ignore_versions: element<HTMLInputElement>('ignore-versions').checked },
@@ -242,6 +245,6 @@ element<HTMLSelectElement>('preset').onchange = () => {
 };
 element<HTMLInputElement>('ignore-versions').onchange = updateSelection;
 element('cancel').onclick = () => { controller.abort(); status('Cancelling…'); };
-for (const id of ['apk', 'splits', 'bundles']) element(id).onchange = () => { inspection = undefined; element('configuration').hidden = true; updateSelection(); };
-addEventListener('pagehide', () => { void session?.dispose().catch(error => log(String(error))); });
+for (const id of ['apk', 'splits', 'bundles']) element(id).onchange = () => { inspection = undefined; element('configuration').hidden = true; updateSelection(); void clearSession().catch(showError); };
+addEventListener('pagehide', () => { void session?.dispose().catch(error => log(String(error))); javaRuntime.dispose(); });
 if (!crossOriginIsolated) { showError(new Error('This page needs cross-origin isolation headers before browser patching can run.')); element<HTMLButtonElement>('inspect').disabled = true; }

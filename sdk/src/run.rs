@@ -9,7 +9,7 @@ use reseam_patcher::{Patch, PatchSpec};
 
 use crate::TrustStore;
 use crate::error::Problem;
-use crate::inspect::{load_bundles, open_apk};
+use crate::inspect::{PreparedInspection, load_bundles, open_apk};
 use crate::metrics::{ApplyDiagnostics, PatchPhase, PatchProfiler};
 use crate::output::write_signed;
 use crate::{PatchArtifact, PatchOutcome, PatchRequest, RunEvent};
@@ -36,11 +36,20 @@ pub fn patch(request: &PatchRequest, emit: impl FnMut(RunEvent)) -> Result<Patch
 pub fn patch_with_selection(
     request: &PatchRequest,
     resolve: impl FnOnce(&[&PatchSpec], Option<&str>) -> Result<reseam_model::PatchSelection>,
+    emit: impl FnMut(RunEvent),
+) -> Result<PatchOutcome> {
+    patch_with_inputs(request, None, resolve, emit)
+}
+
+pub(crate) fn patch_with_inputs(
+    request: &PatchRequest,
+    prepared: Option<PreparedInspection>,
+    resolve: impl FnOnce(&[&PatchSpec], Option<&str>) -> Result<reseam_model::PatchSelection>,
     mut emit: impl FnMut(RunEvent),
 ) -> Result<PatchOutcome> {
     let trust = TrustStore::from_hex(&request.trust.keys)?;
     let mut profiler = PatchProfiler::new();
-    let result = run(request, &trust, resolve, &mut emit, &mut profiler);
+    let result = run(request, &trust, prepared, resolve, &mut emit, &mut profiler);
     release_process_memory();
     let (results, output) = result?;
     Ok(PatchOutcome {
@@ -53,12 +62,21 @@ pub fn patch_with_selection(
 fn run(
     request: &PatchRequest,
     trust: &TrustStore,
+    mut prepared: Option<PreparedInspection>,
     resolve: impl FnOnce(&[&PatchSpec], Option<&str>) -> Result<reseam_model::PatchSelection>,
     emit: &mut impl FnMut(RunEvent),
     profiler: &mut PatchProfiler,
 ) -> Result<(Vec<PatchResult>, PatchArtifact)> {
     emit(info(format!("Opening APK {}", request.apk_path)));
     let mut opened = profiler.measure(PatchPhase::OpenApk, || {
+        if let Some(prepared) = prepared.as_mut() {
+            return prepared
+                .opened
+                .take()
+                .ok_or(crate::HostError::InvalidRequest(
+                    "prepared inspection has no APK",
+                ));
+        }
         open_apk(
             Path::new(&request.apk_path),
             &request
@@ -69,27 +87,14 @@ fn run(
             ApkFile::patch_options(),
         )
     })?;
-    if let Some(bundle) = &opened.bundle {
-        let splits = opened.apk.components().len() - 1;
-        emit(info(format!(
-            "Opened {} bundle {}: {} base APK, {} split{}",
-            bundle.as_str(),
-            opened.apk.package_name().as_deref().unwrap_or_default(),
-            opened
-                .apk
-                .base()
-                .path()
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy(),
-            splits,
-            if splits == 1 { "" } else { "s" },
-        )));
-    }
+    report_container(&opened, emit);
     let output = request.output.resolve(opened.apk.components().len())?;
 
     emit(info("Loading bundles".to_string()));
     let bundles = profiler.measure(PatchPhase::LoadBundles, || {
+        if let Some(prepared) = prepared {
+            return prepared.load_bundles(trust);
+        }
         load_bundles(
             &request
                 .bundle_paths
@@ -162,6 +167,26 @@ fn run(
     }
     write_signed(opened.apk, &output, request.signing.as_ref(), profiler)?;
     Ok((results, output))
+}
+
+fn report_container(opened: &crate::inspect::OpenedApk, emit: &mut impl FnMut(RunEvent)) {
+    if let Some(bundle) = &opened.bundle {
+        let splits = opened.apk.components().len() - 1;
+        emit(info(format!(
+            "Opened {} bundle {}: {} base APK, {} split{}",
+            bundle.as_str(),
+            opened.apk.package_name().as_deref().unwrap_or_default(),
+            opened
+                .apk
+                .base()
+                .path()
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy(),
+            splits,
+            if splits == 1 { "" } else { "s" },
+        )));
+    }
 }
 
 fn info(message: String) -> RunEvent {

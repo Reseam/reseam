@@ -30,6 +30,8 @@ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PAT
 const context = await browser.newContext({ acceptDownloads: true });
 const page = await context.newPage();
 const log: string[] = [];
+let javaWorkers = 0;
+page.on('worker', worker => { if (worker.url().includes('jvm.worker-')) javaWorkers++; });
 page.on('console', message => log.push(message.text()));
 page.on('pageerror', error => log.push(String(error)));
 try {
@@ -65,6 +67,41 @@ try {
     Buffer.from(key).equals(Buffer.from(await Bun.file(matrix.key).bytes())) &&
     Buffer.from(await Bun.file(resolve(output, 'reseam.der')).bytes()).equals(Buffer.from(await Bun.file(matrix.cert).bytes())));
   if (!identityMatches) throw new Error('UI used a different signing identity');
+  const warmedWorkers = javaWorkers;
+  const firstArtifact = await page.locator('#downloads a').first().getAttribute('href');
+  const repeatedStarted = performance.now();
+  await page.locator('#patch').click();
+  // Each run publishes fresh blob URLs; the status text alone still reads the previous run's completion.
+  await expect(page.locator('#downloads a').first()).not.toHaveAttribute('href', firstArtifact!, { timeout: 600_000 });
+  await expect(page.locator('#status')).toHaveText('Patch complete');
+  const repeatedWallMs = Math.round(performance.now() - repeatedStarted);
+  if (javaWorkers !== warmedWorkers) throw new Error('A completed session did not reuse its Java runtime');
+  const repeatedDownload = page.waitForEvent('download');
+  await page.locator('#downloads a').first().click();
+  const repeated = await repeatedDownload;
+  await mkdir(resolve(output, 'repeated'), { recursive: true });
+  await repeated.saveAs(resolve(output, 'repeated', repeated.suggestedFilename()));
+  // Cancel while compression workers are active, then exercise a fresh retry.
+  await page.locator('#patch').click();
+  await expect(page.locator('#status')).toContainText('Writing signed output', { timeout: 600_000 });
+  await page.locator('#cancel').click();
+  await expect(page.locator('#status')).toHaveText('Cancelled', { timeout: 30_000 });
+  await expect(page.locator('#patch')).toBeEnabled();
+  await expect(page.locator('#downloads a')).toHaveCount(0);
+  const abandoned = await page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const names: string[] = [];
+    for await (const name of (root as any).keys()) if (name.startsWith('reseam-session-')) names.push(name);
+    return names;
+  });
+  if (abandoned.length) throw new Error('Cancelled session left scratch storage behind');
+  await page.locator('#patch').click();
+  await expect(page.locator('#status')).toHaveText('Patch complete', { timeout: 600_000 });
+  const retryDownload = page.waitForEvent('download');
+  await page.locator('#downloads a').first().click();
+  const retry = await retryDownload;
+  await mkdir(resolve(output, 'retry'), { recursive: true });
+  await retry.saveAs(resolve(output, 'retry', retry.suggestedFilename()));
   await page.reload();
   await page.locator('#apk').setInputFiles(resolve(app.apk));
   await page.locator('#splits').setInputFiles((app.splits ?? []).map((path: string) => resolve(path)));
@@ -82,7 +119,7 @@ try {
     } finally { db.close(); }
   });
   if (!persisted || !Buffer.from(persisted.key).equals(Buffer.from(await Bun.file(matrix.key).bytes())) || !Buffer.from(persisted.cert).equals(Buffer.from(await Bun.file(matrix.cert).bytes()))) throw new Error('Signing identity did not persist after reload');
-  await Bun.write(resolve(output, 'result.json'), stringifyJson({ app: app.id, gzipRuntimeAssets: process.env.GZIP_ASSETS === '1', cancellation: true, signerApproval: true, importedIdentity: identityMatches, persistedIdentity: true, rememberedApproval: true, downloadLinks: links.length, downloads: files }));
+  await Bun.write(resolve(output, 'result.json'), stringifyJson({ app: app.id, gzipRuntimeAssets: process.env.GZIP_ASSETS === '1', cancellation: true, compressionCancellation: true, cancellationCleanup: true, retry: true, javaReuse: true, repeatedWallMs, signerApproval: true, importedIdentity: identityMatches, persistedIdentity: true, rememberedApproval: true, downloadLinks: links.length, downloads: files }));
   console.log(`${app.id}: UI patching, cancellation, signing identity, downloads and persistence passed`);
 } finally {
   await Bun.write(resolve(output, 'browser.log'), log.join('\n'));

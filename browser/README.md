@@ -81,27 +81,19 @@ The default selection is `recommended`. `OUTPUT_DIR`, `RESEAM_BIN`, `TEST_PORT` 
 
 [validation.json](validation.json) records the 2026-10-02 real-app run, input and output hashes, matching signing identities, and timings. All five supported apps passed with recommended patches and default options. Seven cases cover APK, APKM and separately supplied splits: two Reddit builds, X, Telegram, Instagram, and YouTube as both APK and APKM. All **149 APK pairs** have identical bytes outside the signing block and identical ZIP entries, including `META-INF`; every APK v2 signature verifies on Android 7+. The complete signed files differ because the signer randomizes ECDSA.
 
-| Input | APK outputs | CLI SDK | Browser SDK | Browser patch wall time |
-| --- | ---: | ---: | ---: | ---: |
-| Reddit 2026.39, build 2639041, APKM | 34 | 1.39 s | 10.24 s | 11.23 s |
-| X 12.29.1, APKM | 38 | 1.15 s | 11.38 s | 12.38 s |
-| Telegram 12.7.1, APK | 1 | 0.52 s | 5.16 s | 6.14 s |
-| Instagram 447, APK + splits | 5 | 1.71 s | 12.16 s | 13.13 s |
-| YouTube 21.37.42, APK | 1 | 1.88 s | 16.20 s | 17.20 s |
-| YouTube 21.37.42, APKM | 36 | 3.19 s | 20.30 s | 21.30 s |
-| Reddit 2026.39, build 2639031, APKM | 34 | 1.40 s | 9.74 s | 10.73 s |
+| Input | APK outputs | CLI SDK | Browser SDK | Browser patch wall time | Browser SDK at `b369714` |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Reddit 2026.39, build 2639041, APKM | 34 | 1.39 s | 7.37 s | 8.37 s | 10.24 s |
+| X 12.29.1, APKM | 38 | 1.17 s | 8.74 s | 9.73 s | 11.38 s |
+| Telegram 12.7.1, APK | 1 | 0.59 s | 4.75 s | 5.71 s | 5.16 s |
+| Instagram 447, APK + splits | 5 | 1.76 s | 10.41 s | 11.40 s | 12.16 s |
+| YouTube 21.37.42, APK | 1 | 1.90 s | 15.08 s | 16.06 s | 16.20 s |
+| YouTube 21.37.42, APKM | 36 | 2.07 s | 16.71 s | 17.71 s | 20.30 s |
+| Reddit 2026.39, build 2639031, APKM | 34 | 1.40 s | 7.59 s | 8.57 s | 9.74 s |
 
-These are sequential workstation measurements in Chrome for Testing 145, with cached Java runtime downloads and bridge profiling disabled. SDK timings exclude Java runtime initialization; patch wall time includes it, and a cold network adds further download time. Native peak RSS stayed below 255 MiB; browser engine linear memory ranged from 78 to 230 MiB and excludes CheerpJ and browser overhead.
+These are sequential workstation measurements in Chrome for Testing 145, with cached Java runtime downloads and bridge profiling disabled. SDK timings exclude Java runtime initialization; patch wall time includes it, and a cold network adds further download time. Native peak RSS stayed at or below 249 MiB, unchanged from `b369714`; browser engine linear memory ranged from 77 to 240 MiB and excludes CheerpJ, compression workers and browser overhead.
 
-A separate before/after Telegram run used the same Chrome 145 executable, cached profile, APK, bundle, patch selection and signing identity. SDK time fell from **81.71 s to 5.16 s** (15.8×); patch execution fell from **63.23 s to 0.83 s**. Both outputs matched the CLI outside the signing block. These are single-run measurements.
-
-Metadata-cache checks read an invocation-scoped Java `long[]` updated by each native response. Named method queries filter in Rust before crossing the Java bridge, including superclass resolution. Telegram's native method-metadata calls fell from 21,928 to 91. Input and scratch-file reads each use an 8 MiB cache shared across all files in the session; writes, truncation and removal invalidate scratch-file cache entries. Large reads remain streamed.
-
-The second speed pass batches DEX header backpatches through the writer's existing 256 KiB window, retaining patch order and overlapping-write semantics. Instagram's output-writing phase fell from 11.96 s to 3.85 s, and Reddit's from 7.43 s to 2.25 s. A call-site cast query now executes in Rust, replacing 66,431 instruction bridge calls in Instagram with 272 batched queries. The optimized browser matched both the previous CLI (`e84abdd`) and the rebuilt CLI across all 149 APK pairs.
-
-Relative to `e84abdd`, browser SDK times fell from 21.72 s to 12.16 s for Instagram, 15.05 s to 10.24 s for Reddit build 2639041, 13.98 s to 11.38 s for X, 7.62 s to 5.16 s for Telegram, and 19.62 s to 16.20 s for YouTube APK. The APKM and second Reddit cases are recorded in `validation.json`.
-
-The earlier implementation also passed a separate YouTube Loop video run in Chrome for Testing 145. The current matrix applies all 90 recommended YouTube patches, including Loop video and its dependencies. The production UI also passed in Chrome 145 with gzip-compressed runtime assets. Its downloaded X base APK matched the CLI outside the signing block. The real UI workflow was checked for cancellation and retry, explicit signer approval, imported keys, downloading the patched base APK and identity backups, and persistence across reload. To repeat it against an app from the comparison matrix:
+The browser outputs match both the CLI built at `b369714` and the rebuilt CLI across all 149 APK pairs. The production UI passed in Chrome 145 with gzip-compressed runtime assets: signer approval, imported keys, downloads and identity backups, a repeat run on the same Java runtime, cancellation during DEX compression with scratch storage removed, a retry, and persistence across reload. Its three downloaded X base APKs match the CLI outside the signing block. To repeat it against an app from the comparison matrix:
 
 ```sh
 MATRIX_PATH=/path/to/apps.json APP_ID=x-12-29-1 \
@@ -116,4 +108,8 @@ The UI includes Leaning Technologies' credit. This FOSS implementation loads Che
 
 ## Replacing the UI
 
-Import `BrowserSession` from `src/session.ts`. Open it with mounted files and an optional abort signal, call `request('inspect', ...)`, then `request('patch', ...)`, and obtain downloadable `File` objects from `artifacts()`. Pass the same SDK request models used by native hosts. Events and structured `EngineError.problem` values are available to the host UI. One session permits one completed patch run. Keep it alive while its downloads are needed, then await `dispose()`. `wasmMemoryBytes` reports the engine's linear-memory allocation after a request; it does not include the JVM worker or the browser's total memory.
+Import `BrowserSession` from `src/session.ts`. Open it with mounted files and an optional abort signal, call `request('inspect', ...)`, then `request('patch', ...)`, and obtain downloadable `File` objects from `artifacts()`. Pass the same SDK request models used by native hosts. Events and structured `EngineError.problem` values are available to the host UI. Inspection retains the opened APK and verified catalogs for the subsequent patch request. Use `mount()` to add signing credentials and option files after inspection; original input paths cannot be replaced. Trust is rechecked and payload hashes are verified before executable code loads. One session permits one completed patch run. Keep it alive while its downloads are needed, then await `dispose()`. `wasmMemoryBytes` reports the engine's linear-memory allocation after a request; it does not include the JVM worker or the browser's total memory.
+
+`open()` accepts `compressionWorkers` (1 to 4; default 2, or 1 on hosts with two or fewer cores). DEX entries are compressed in that many workers with the native ZIP writer and settings, and written in their original order.
+
+To reuse Java across sessions, create one `JavaRuntime`, pass it as `javaRuntime` to every `open()`, and call `dispose()` on it when the UI closes. `warmup()` starts Java without loading bundle code; the basic UI calls it during inspection. Each run gets a fresh bundle class loader. A cancelled run discards its JVM, and the next session starts a new one.

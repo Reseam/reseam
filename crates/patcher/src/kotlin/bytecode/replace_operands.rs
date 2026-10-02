@@ -48,6 +48,7 @@ pub fn replace_literals(m: u32, old: i64, new: i64, all: bool) -> u32 {
     let Some(location) = method_location(m) else {
         return 0;
     };
+    crate::kotlin::handles::method_changed(m);
     with_ctx(|ctx| {
         let (count, first_error, skipped) = {
             let Some(dex) = checked(ctx.class_dex_mut(location.dex_idx, location.class_idx)) else {

@@ -5,7 +5,10 @@ package app.reseam.patch
 
 import app.reseam.patch.native.checkInvocation
 import app.reseam.patch.native.getClassInfo
+import app.reseam.patch.native.getClassInfos
 import app.reseam.patch.native.getMethodInfo
+import app.reseam.patch.native.getMethodInfos
+import app.reseam.patch.native.mutationChanges
 import app.reseam.patch.native.mutationRevision
 import app.reseam.patch.settings.SettingsHost
 import app.reseam.patch.settings.SettingsSection
@@ -48,10 +51,16 @@ class PatchRuntime() {
     internal fun synchronize() {
         val current = mutationRevision()
         if (current == revision) return
+        val changes = mutationChanges(revision)
         revision = current
-        methodInfos.clear()
-        classInfos.clear()
-        searchIndex?.invalidate()
+        if (changes == null) {
+            methodInfos.clear()
+            classInfos.clear()
+            searchIndex?.invalidate()
+        } else {
+            changes.forEach { methodInfos.remove(it) }
+            searchIndex?.invalidateMethods(changes)
+        }
     }
 
     internal fun afterSuccess(action: () -> Unit) {
@@ -110,6 +119,24 @@ class PatchRuntime() {
     internal fun classInfo(handle: UInt): ClassInfo = synchronizedInfo {
         classInfos.getOrPut(handle) {
             getClassInfo(handle) ?: error("invalid class handle: $handle")
+        }
+    }
+
+    internal fun prefetchMethods(handles: Collection<UInt>) {
+        synchronize()
+        handles.filterNot(methodInfos::containsKey).chunked(256).forEach { batch ->
+            val infos = getMethodInfos(batch.toUIntArray())
+            check(infos.size == batch.size) { "Invalid method in query candidates" }
+            batch.zip(infos).forEach { (handle, info) -> methodInfos[handle] = info }
+        }
+    }
+
+    internal fun prefetchClasses(handles: Collection<UInt>) {
+        synchronize()
+        handles.filterNot(classInfos::containsKey).chunked(256).forEach { batch ->
+            val infos = getClassInfos(batch.toUIntArray())
+            check(infos.size == batch.size) { "Invalid class in query candidates" }
+            batch.zip(infos).forEach { (handle, info) -> classInfos[handle] = info }
         }
     }
 }

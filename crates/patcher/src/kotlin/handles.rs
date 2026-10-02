@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
 use std::path::PathBuf;
 #[cfg(feature = "kotlin")]
 use std::sync::Arc;
@@ -30,6 +31,8 @@ thread_local! {
     static HANDLES: RefCell<HandleTable> = RefCell::new(HandleTable::default());
     static FAILURE: RefCell<Option<String>> = const { RefCell::new(None) };
     static REVISION: Cell<u64> = const { Cell::new(0) };
+    static CHANGES: RefCell<VecDeque<MethodChange>> = const { RefCell::new(VecDeque::new()) };
+    static STRUCTURAL_REVISION: Cell<u64> = const { Cell::new(0) };
     static POOL_COPIES: RefCell<FxHashMap<PoolCopy, u32>> = RefCell::new(FxHashMap::default());
     static BUNDLE_DIR: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
 }
@@ -120,6 +123,8 @@ fn reset() {
     HANDLES.with(|handles| *handles.borrow_mut() = HandleTable::default());
     FAILURE.with(|failure| *failure.borrow_mut() = None);
     REVISION.with(|revision| revision.set(0));
+    STRUCTURAL_REVISION.with(|revision| revision.set(0));
+    CHANGES.with(|changes| changes.borrow_mut().clear());
     xml::reset();
 }
 
@@ -173,6 +178,50 @@ pub fn check_invocation() -> Result<(), String> {
 
 pub(super) fn changed() {
     REVISION.with(|revision| revision.set(revision.get().wrapping_add(1)));
+    STRUCTURAL_REVISION.with(|revision| revision.set(mutation_revision()));
+    CHANGES.with(|changes| changes.borrow_mut().clear());
+}
+
+struct MethodChange {
+    revision: u64,
+    handle: u32,
+}
+
+pub(super) fn method_changed(handle: u32) {
+    REVISION.with(|revision| revision.set(revision.get().wrapping_add(1)));
+    CHANGES.with(|changes| {
+        let mut changes = changes.borrow_mut();
+        if changes.len() == 1024 {
+            let removed = changes.pop_front().expect("change journal is full");
+            STRUCTURAL_REVISION.with(|revision| revision.set(removed.revision));
+        }
+        changes.push_back(MethodChange {
+            revision: mutation_revision(),
+            handle,
+        });
+    });
+}
+
+/// Returns changes since a reader's revision. Readers older than the bounded
+/// journal receive `None` and must discard all cached data, just as for a
+/// structural mutation. `Some` lists only the methods that changed.
+#[boltffi::export]
+pub fn mutation_changes(since: u64) -> Option<Vec<u32>> {
+    if since > mutation_revision() || STRUCTURAL_REVISION.with(|revision| since < revision.get()) {
+        return None;
+    }
+    let mut handles: Vec<_> = CHANGES.with(|changes| {
+        changes
+            .borrow()
+            .iter()
+            .rev()
+            .take_while(|change| change.revision > since)
+            .map(|change| change.handle)
+            .collect()
+    });
+    handles.sort_unstable();
+    handles.dedup();
+    Some(handles)
 }
 
 #[boltffi::export]
@@ -276,10 +325,12 @@ pub(super) fn method_location(handle: u32) -> Option<MethodLocation> {
 
 pub(super) fn forget_method(location: MethodLocation) {
     HANDLES.with(|h| h.borrow_mut().forget_method(location));
+    changed();
 }
 
 pub(super) fn relocate_method(old: MethodLocation, new: MethodLocation) {
     HANDLES.with(|handles| handles.borrow_mut().relocate_method(old, new));
+    changed();
 }
 
 pub(super) fn forget_class(location: ClassLocation) {
@@ -342,7 +393,7 @@ pub(super) fn with_method_mut<R>(
     f: impl FnOnce(&mut DexFile, MethodLocation) -> Result<Option<R>, String>,
 ) -> Option<R> {
     let location = method_location(handle)?;
-    changed();
+    method_changed(handle);
     with_ctx(|ctx| {
         let result = f(
             checked(ctx.class_dex_mut(location.dex_idx, location.class_idx))?,

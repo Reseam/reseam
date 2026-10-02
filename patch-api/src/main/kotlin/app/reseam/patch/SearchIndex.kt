@@ -21,13 +21,14 @@ import app.reseam.patch.native.findCallsMatching
 import app.reseam.patch.native.findClass
 import app.reseam.patch.native.findClassesWithInstanceField
 import app.reseam.patch.native.findInstructionsByLiteral
-import app.reseam.patch.native.findInstructionsByStringContains
 import app.reseam.patch.native.findMethodsByName
 import app.reseam.patch.native.findMethodsByOpcodes
 import app.reseam.patch.native.findMethodsByProto
+import app.reseam.patch.native.findMethodsByStringPrefix
 import app.reseam.patch.native.findMethodsByStrings
 import app.reseam.patch.native.getAllClasses
 import app.reseam.patch.native.isAddedDex
+import app.reseam.patch.native.methodReferences
 import app.reseam.patch.types.InstructionHit
 import app.reseam.patch.types.MethodRef
 
@@ -74,7 +75,11 @@ internal class SearchIndex(private val runtime: PatchRuntime) {
     private val classesBySourceFile: Map<String?, List<DexClass>>
         get() {
             runtime.synchronize()
-            return sourceFiles ?: allClasses.groupBy { it.sourceFile }.also { sourceFiles = it }
+            return sourceFiles
+                ?: run {
+                    runtime.prefetchClasses(allClasses.map { it.handle })
+                    allClasses.groupBy { it.sourceFile }.also { sourceFiles = it }
+                }
         }
 
     private val classByDescriptor = HashMap<String, DexClass?>()
@@ -104,6 +109,21 @@ internal class SearchIndex(private val runtime: PatchRuntime) {
         invokeSites.clear()
         castCounts.clear()
         addedDex.clear()
+        matchingCalls.clear()
+    }
+
+    fun invalidateMethods(handles: UIntArray) {
+        handles.forEach { refsByMethod.remove(it) }
+        seeds.keys.removeAll {
+            it is Seed.Op ||
+                it is Seed.Ops ||
+                it is Seed.Strings ||
+                it is Seed.Prefix ||
+                it is Seed.Literal
+        }
+        classesByString.clear()
+        invokeSites.clear()
+        castCounts.clear()
         matchingCalls.clear()
     }
 
@@ -188,14 +208,7 @@ internal class SearchIndex(private val runtime: PatchRuntime) {
     }
 
     fun methodsWithStringPrefix(prefix: String) =
-        seed(Seed.Prefix(prefix)) {
-            findInstructionsByStringContains(prefix)
-                .filter {
-                    Method(it.method).stringRef(it.index.toInt())?.startsWith(prefix) == true
-                }
-                .map { it.method }
-                .toUIntArray()
-        }
+        seed(Seed.Prefix(prefix)) { findMethodsByStringPrefix(prefix) }
 
     fun methodsWithLiteral(value: Long) =
         seed(Seed.Literal(value)) {
@@ -258,7 +271,7 @@ internal class SearchIndex(private val runtime: PatchRuntime) {
 
     fun methodRefsOf(method: Method): List<MethodRef> =
         cached(refsByMethod, method.handle) {
-            method.instructions.mapNotNull { it.methodRef }.distinct()
+            methodReferences(method.handle).distinct()
         }
 
     fun calleesOf(method: Method): List<Method> = methodRefsOf(method).mapNotNull(::methodFor)

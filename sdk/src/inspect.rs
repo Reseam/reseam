@@ -55,41 +55,114 @@ pub(crate) fn apk_metadata(opened: &mut OpenedApk) -> Result<ApkMetadata> {
 /// its metadata so hosts can display the readable bundles alongside it.
 /// Reads signed patch metadata without loading bundle code, regardless of trust.
 pub fn inspect(request: &InspectRequest) -> Result<InspectResponse> {
-    let trust = TrustStore::from_hex(&request.trust.keys)?;
-    let splits = request
-        .split_paths
-        .iter()
-        .map(PathBuf::from)
-        .collect::<Vec<_>>();
-    let apk = request
-        .apk_path
-        .as_deref()
-        .map(|path| inspect_apk(Path::new(path), &splits))
-        .transpose()?;
-    let mut bundles = Vec::with_capacity(request.bundle_paths.len());
-    let mut patches = Vec::new();
-    for path in &request.bundle_paths {
-        let path = Path::new(path);
-        let archive = match open_bundle(path) {
-            Ok(archive) => archive,
-            Err(error) => {
-                bundles.push(unreadable_bundle(path, &error));
-                continue;
-            }
-        };
-        patches.extend(
-            archive
-                .patches()
-                .iter()
-                .map(|spec| patch_metadata(spec, apk.as_ref())),
-        );
-        bundles.push(bundle_metadata(path, &archive, &trust));
+    Ok(PreparedInspection::open(request)?.metadata)
+}
+
+/// Retains the opened APK and verified catalogs between inspection and one patch
+/// run. Input files must remain unchanged until this object is consumed or dropped,
+/// as with [`ApkInspection`]. Inspection never loads executable bundle payloads.
+pub struct PreparedInspection {
+    request: InspectRequest,
+    pub(crate) opened: Option<OpenedApk>,
+    archives: Vec<(PathBuf, Result<BundleArchive>)>,
+    metadata: InspectResponse,
+}
+
+impl PreparedInspection {
+    pub fn open(request: &InspectRequest) -> Result<Self> {
+        let trust = TrustStore::from_hex(&request.trust.keys)?;
+        let splits = request
+            .split_paths
+            .iter()
+            .map(PathBuf::from)
+            .collect::<Vec<_>>();
+        let mut opened = request
+            .apk_path
+            .as_deref()
+            .map(|path| open_apk(Path::new(path), &splits, ApkFile::patch_options()))
+            .transpose()?;
+        let apk = opened.as_mut().map(apk_metadata).transpose()?;
+        let mut bundles = Vec::with_capacity(request.bundle_paths.len());
+        let mut patches = Vec::new();
+        let archives: Vec<_> = request
+            .bundle_paths
+            .iter()
+            .map(|path| {
+                let path = PathBuf::from(path);
+                let archive = open_bundle(&path);
+                (path, archive)
+            })
+            .collect();
+        for (path, result) in &archives {
+            let archive = match result {
+                Ok(archive) => archive,
+                Err(error) => {
+                    bundles.push(unreadable_bundle(path, error));
+                    continue;
+                }
+            };
+            patches.extend(
+                archive
+                    .patches()
+                    .iter()
+                    .map(|spec| patch_metadata(spec, apk.as_ref())),
+            );
+            bundles.push(bundle_metadata(path, archive, &trust));
+        }
+        Ok(Self {
+            request: request.clone(),
+            opened,
+            archives,
+            metadata: InspectResponse {
+                apk,
+                bundles,
+                patches,
+            },
+        })
     }
-    Ok(InspectResponse {
-        apk,
-        bundles,
-        patches,
-    })
+
+    pub fn metadata(&self) -> &InspectResponse {
+        &self.metadata
+    }
+
+    /// Consumes the inspected inputs. Paths and their ordering must match inspection;
+    /// selection, signer approvals, signing identity and destination may change.
+    /// Trust is checked again and every payload hash is verified before execution.
+    pub fn patch(
+        self,
+        request: &crate::PatchRequest,
+        emit: impl FnMut(crate::RunEvent),
+    ) -> Result<crate::PatchOutcome> {
+        self.check_request(request)?;
+        crate::run::patch_with_inputs(
+            request,
+            Some(self),
+            |_, _| Ok(request.selection.clone()),
+            emit,
+        )
+    }
+
+    fn check_request(&self, request: &crate::PatchRequest) -> Result<()> {
+        if self.request.apk_path.as_deref() != Some(request.apk_path.as_str())
+            || self.request.split_paths != request.split_paths
+            || self.request.bundle_paths != request.bundle_paths
+        {
+            return Err(HostError::InvalidRequest(
+                "patch inputs differ from the prepared inspection",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn load_bundles(self, trust: &TrustStore) -> Result<Vec<PatchBundle>> {
+        if self.archives.is_empty() {
+            return Err(HostError::InvalidRequest("at least one bundle is required"));
+        }
+        self.archives
+            .into_iter()
+            .map(|(path, archive)| load_archive(&path, archive?, trust))
+            .collect()
+    }
 }
 
 fn unreadable_bundle(path: &Path, error: &(dyn std::error::Error + 'static)) -> BundleMetadata {
@@ -164,19 +237,23 @@ pub fn load_bundles(paths: &[PathBuf], trust: &TrustStore) -> Result<Vec<PatchBu
         .iter()
         .map(|path| {
             let archive = open_bundle(path)?;
-            if !trust.contains(archive.public_key()) {
-                return Err(Problem::UntrustedBundle {
-                    path: path.display().to_string(),
-                    public_key: hex::encode(archive.public_key()),
-                }
-                .into());
-            }
-            archive.load().map_err(|source| HostError::Bundle {
-                path: path.to_owned(),
-                source,
-            })
+            load_archive(path, archive, trust)
         })
         .collect()
+}
+
+fn load_archive(path: &Path, archive: BundleArchive, trust: &TrustStore) -> Result<PatchBundle> {
+    if !trust.contains(archive.public_key()) {
+        return Err(Problem::UntrustedBundle {
+            path: path.display().to_string(),
+            public_key: hex::encode(archive.public_key()),
+        }
+        .into());
+    }
+    archive.load().map_err(|source| HostError::Bundle {
+        path: path.to_owned(),
+        source,
+    })
 }
 
 fn open_bundle(path: &Path) -> Result<BundleArchive> {

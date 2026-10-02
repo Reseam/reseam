@@ -35,6 +35,59 @@ pub fn patch(
     reseam_sdk::patch(&request, on_event).map_err(SdkError::from)
 }
 
+/// Keeps inspected APK data and signed catalogs for one patch run. Input files
+/// must remain unchanged until this object is closed or consumed by `patch`.
+pub struct PreparedInspection {
+    prepared: Mutex<Option<reseam_sdk::PreparedInspection>>,
+}
+
+#[export]
+impl PreparedInspection {
+    pub fn new(request: InspectRequest) -> Result<Self, SdkError> {
+        Ok(Self {
+            prepared: Mutex::new(Some(
+                reseam_sdk::PreparedInspection::open(&request).map_err(SdkError::from)?,
+            )),
+        })
+    }
+
+    pub fn metadata(&self) -> Result<InspectResponse, SdkError> {
+        Ok(self
+            .prepared()?
+            .as_ref()
+            .ok_or_else(Self::consumed)?
+            .metadata()
+            .clone())
+    }
+
+    /// Consumes the preparation even if patching fails. Trust is rechecked using
+    /// this request, and bundle payloads are verified before loading code.
+    pub fn patch(
+        &self,
+        request: PatchRequest,
+        on_event: impl Fn(RunEvent) + Send + Sync + 'static,
+    ) -> Result<PatchOutcome, SdkError> {
+        let prepared = self.prepared()?.take().ok_or_else(Self::consumed)?;
+        prepared.patch(&request, on_event).map_err(SdkError::from)
+    }
+}
+
+impl PreparedInspection {
+    fn consumed() -> SdkError {
+        SdkError {
+            problem: reseam_model::Problem::Other,
+            message: "Prepared inspection is consumed; open another inspection".into(),
+        }
+    }
+
+    fn prepared(&self) -> Result<MutexGuard<'_, Option<reseam_sdk::PreparedInspection>>, SdkError> {
+        self.prepared.lock().map_err(|_| SdkError {
+            problem: reseam_model::Problem::Other,
+            message: "Prepared inspection was interrupted by a panic; close and reopen it".into(),
+        })
+    }
+}
+
 /// An opened APK or container. Extracted component files stay valid until
 /// the inspection is closed.
 pub struct ApkInspection {

@@ -74,6 +74,9 @@ internal class ClassQuerySpec : QuerySpec<DexClass, ClassRankScope>("class"), Cl
         return index.poolFromSeeds(seeds, "class(es)") { handles -> handles.map(::DexClass) }
     }
 
+    override fun prefetch(runtime: PatchRuntime, candidates: List<DexClass>) =
+        runtime.prefetchClasses(candidates.map { it.handle })
+
     override fun rankScope(index: SearchIndex, value: DexClass) = ClassRankScopeImpl(index, value)
 
     override fun describe(value: DexClass) = value.descriptor

@@ -30,8 +30,14 @@ export class DiskFile extends Inode {
   private length = 0n;
   private descriptors = 0;
   private unlinked = false;
-  constructor(readonly storage: StorageClient, readonly id = crypto.randomUUID()) {
-    super(); storage.call('create', { id });
+  constructor(readonly storage: StorageClient, readonly id: string = crypto.randomUUID(), existingSize?: bigint) {
+    super();
+    if (existingSize === undefined) storage.call('create', { id });
+    else this.length = existingSize;
+  }
+  writtenExternally(size: bigint): void {
+    this.storage.invalidate(this.id);
+    this.length = size;
   }
   get size(): bigint { return this.length; }
   stat(): wasi.Filestat { return new wasi.Filestat(this.ino, wasi.FILETYPE_REGULAR_FILE, this.size); }
@@ -112,7 +118,7 @@ export class InputFile extends Inode {
   }
 }
 
-class DiskDescriptor extends Fd {
+export class DiskDescriptor extends Fd {
   private position = 0n;
   private closed = false;
   constructor(readonly file: DiskFile | InputFile, private flags: number) { super(); if (file instanceof DiskFile) file.opened(); }

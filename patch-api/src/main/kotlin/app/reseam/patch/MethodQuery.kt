@@ -196,6 +196,9 @@ internal class MethodQuerySpec : QuerySpec<Method, MethodRankScope>("method"), M
         return index.poolFromSeeds(seeds, "method(s)") { handles -> handles.map(::Method) }
     }
 
+    override fun prefetch(runtime: PatchRuntime, candidates: List<Method>) =
+        runtime.prefetchMethods(candidates.map { it.handle })
+
     override fun rankScope(index: SearchIndex, value: Method) = MethodRankScopeImpl(index, value)
 
     override fun describe(value: Method) = value.descriptor
