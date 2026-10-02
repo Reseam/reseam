@@ -7,7 +7,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 enum Storage {
     Owned(Arc<Vec<u8>>),
-    Mapped(Arc<memmap2::Mmap>),
+    Mapped(Arc<crate::MappedFile>),
 }
 
 #[derive(Clone)]
@@ -35,7 +35,7 @@ impl Bytes {
         }
     }
 
-    pub fn from_mmap(mmap: Arc<memmap2::Mmap>) -> Self {
+    pub fn from_mmap(mmap: Arc<crate::MappedFile>) -> Self {
         let len = mmap.len();
         Self {
             storage: Storage::Mapped(mmap),
@@ -54,6 +54,13 @@ impl Bytes {
     }
 
     /// Whether views share an allocation or mapping, regardless of visible prefix.
+    #[cfg_attr(
+        target_os = "wasi",
+        expect(
+            clippy::match_same_arms,
+            reason = "copied WASI mappings and owned bytes retain separate storage identities"
+        )
+    )]
     pub fn same_source(&self, other: &Self) -> bool {
         match (&self.storage, &other.storage) {
             (Storage::Owned(a), Storage::Owned(b)) => Arc::ptr_eq(a, b),
@@ -72,6 +79,13 @@ impl Bytes {
     /// Drops the resident pages of a mapped file after a pass over all of
     /// it, so a large file stays resident only while it is being read. The
     /// pages come back from the page cache on the next access.
+    #[cfg_attr(
+        not(unix),
+        expect(
+            clippy::unused_self,
+            reason = "page eviction requires native Unix memory maps"
+        )
+    )]
     pub fn release_pages(&self) {
         #[cfg(unix)]
         if let Storage::Mapped(map) = &self.storage {

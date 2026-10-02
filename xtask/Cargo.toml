@@ -11,6 +11,7 @@ name = "xtask"
 path = "src/main.rs"
 
 [dependencies]
+serde_json = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
 toml_edit = "0.25"

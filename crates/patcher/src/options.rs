@@ -108,9 +108,9 @@ impl PatchOptions {
         let Some(base) = self.get(key).and_then(OptionValue::as_path) else {
             return Ok(None);
         };
-        let base = base.canonicalize()?;
+        let base = reseam_storage::canonicalize(base)?;
         let full = base.join(relative);
-        let full = full.canonicalize().map_err(|e| {
+        let full = reseam_storage::canonicalize(&full).map_err(|e| {
             PatcherError::NotFound(format!("file not found: {} ({e})", full.display()))
         })?;
         if !full.starts_with(&base) {

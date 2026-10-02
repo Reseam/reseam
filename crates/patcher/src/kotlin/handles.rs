@@ -3,10 +3,12 @@
 
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
+#[cfg(feature = "kotlin")]
 use std::sync::Arc;
 
 pub(super) use super::handle_table::HandleSpace;
 use super::handle_table::HandleTable;
+#[cfg(feature = "kotlin")]
 use jni::objects::{Global, JObject};
 use reseam_apk::reseam_dex::{CodeItem, DexFile, EncodedMethod, Instruction};
 use rustc_hash::FxHashMap;
@@ -21,6 +23,7 @@ use crate::context::{ClassLocation, MethodLocation, PatchContext};
 pub(super) use crate::context::{code_mut, method_mut};
 
 thread_local! {
+    #[cfg(feature = "kotlin")]
     static KOTLIN_RUN: RefCell<Option<Arc<Global<JObject<'static>>>>> = const { RefCell::new(None) };
     static RUN_ACTIVE: Cell<bool> = const { Cell::new(false) };
     static CTX_PTR: Cell<*mut ()> = const { Cell::new(std::ptr::null_mut()) };
@@ -95,6 +98,7 @@ impl Drop for RunGuard {
     }
 }
 
+#[cfg(feature = "kotlin")]
 pub(super) fn kotlin_run(
     create: impl FnOnce() -> PatcherResult<Global<JObject<'static>>>,
 ) -> PatcherResult<Arc<Global<JObject<'static>>>> {
@@ -110,6 +114,7 @@ pub(super) fn kotlin_run(
 }
 
 fn reset() {
+    #[cfg(feature = "kotlin")]
     KOTLIN_RUN.with(|run| *run.borrow_mut() = None);
     POOL_COPIES.with(|copies| copies.borrow_mut().clear());
     HANDLES.with(|handles| *handles.borrow_mut() = HandleTable::default());

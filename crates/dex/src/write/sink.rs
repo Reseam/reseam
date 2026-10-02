@@ -106,7 +106,7 @@ impl io::Read for SpoolReader<'_> {
 impl SpoolSink {
     pub fn new() -> io::Result<Self> {
         Ok(Self {
-            file: tempfile::tempfile()?,
+            file: reseam_storage::temporary_file()?,
             window: Vec::with_capacity(WINDOW),
             flushed: 0,
             patches: Vec::new(),

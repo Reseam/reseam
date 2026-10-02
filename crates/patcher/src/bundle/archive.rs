@@ -142,10 +142,10 @@ impl BundleArchive {
         jars.sort();
         extension_dex.sort();
 
-        #[cfg(feature = "kotlin")]
+        #[cfg(feature = "bridge")]
         let patches =
             crate::kotlin::load_patches(&jars, Arc::clone(&extracted), &self.manifest.bundle.name)?;
-        #[cfg(not(feature = "kotlin"))]
+        #[cfg(not(feature = "bridge"))]
         let patches = Vec::new();
 
         let mut loaded: Vec<_> = patches.iter().map(crate::patch::Patch::spec).collect();

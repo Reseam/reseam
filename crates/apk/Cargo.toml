@@ -20,7 +20,6 @@ zip        = { workspace = true }
 quick-xml  = { workspace = true }
 rayon      = { workspace = true }
 tracing    = { workspace = true }
-memmap2    = { workspace = true }
 tempfile   = { workspace = true }
 
 [dev-dependencies]

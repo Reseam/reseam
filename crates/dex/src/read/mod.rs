@@ -43,7 +43,7 @@ pub fn parse_file(
 
     let file = std::fs::File::open(path).map_err(crate::error::DexError::Io)?;
     // SAFETY: The caller must not mutate the file while the mapping is live.
-    let mmap = unsafe { memmap2::Mmap::map(&file) }.map_err(crate::error::DexError::Io)?;
+    let mmap = unsafe { reseam_storage::map_file(&file) }.map_err(crate::error::DexError::Io)?;
     parse_bytes(crate::file::DexBytes::from_mmap(Arc::new(mmap)), opts)
 }
 

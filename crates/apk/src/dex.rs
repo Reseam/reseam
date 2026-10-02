@@ -30,7 +30,10 @@ pub(crate) fn load_dex(archive: &Archive, opts: ParseOptions) -> Result<Vec<(Ent
         })
 }
 
-pub(crate) fn parse_entry(mapped: memmap2::Mmap, opts: ParseOptions) -> Result<Vec<DexFile>> {
+pub(crate) fn parse_entry(
+    mapped: reseam_storage::MappedFile,
+    opts: ParseOptions,
+) -> Result<Vec<DexFile>> {
     let members = reseam_dex::parse_container_with_bytes(Bytes::from_mmap(Arc::new(mapped)), opts)?;
     if let Some(member) = members.first() {
         member.release_pages();

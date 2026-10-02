@@ -30,12 +30,14 @@ ed25519-dalek = { workspace = true }
 sha2        = { workspace = true }
 hex         = { workspace = true }
 
-[target.'cfg(not(target_os = "android"))'.dependencies]
+[target.'cfg(not(any(target_os = "android", target_os = "wasi")))'.dependencies]
 libloading  = { workspace = true }
 
 [features]
 default = ["kotlin"]
-kotlin = ["dep:boltffi", "dep:jni", "dep:reseam-sign"]
+kotlin = ["bridge", "dep:jni"]
+bridge = ["dep:boltffi", "dep:reseam-sign"]
+browser = ["bridge"]
 
 [build-dependencies]
 cc = "1"

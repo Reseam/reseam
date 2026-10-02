@@ -2,7 +2,7 @@
 
 pub(crate) const PATCH_INDEX: &str = "META-INF/reseam/patches.json";
 
-#[cfg(feature = "kotlin")]
+#[cfg(feature = "bridge")]
 #[derive(Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub(crate) enum MemberKind {
     #[serde(rename = "field")]
@@ -11,7 +11,7 @@ pub(crate) enum MemberKind {
     Method,
 }
 
-#[cfg(feature = "kotlin")]
+#[cfg(feature = "bridge")]
 #[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub(crate) struct Declaration {
     #[serde(rename = "class")]

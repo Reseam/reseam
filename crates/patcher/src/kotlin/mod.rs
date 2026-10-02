@@ -15,13 +15,17 @@ mod handle_table;
 pub(crate) mod handles;
 mod instruction_types;
 mod invoke;
+#[cfg(feature = "kotlin")]
 pub(crate) mod jvm;
 mod link;
+#[cfg(feature = "kotlin")]
 mod loader;
 mod log_host;
 mod manifest;
+#[cfg(feature = "kotlin")]
 mod metadata;
 mod options;
+#[cfg(feature = "kotlin")]
 mod patch;
 mod pool_values;
 mod resource_files;
@@ -34,7 +38,12 @@ mod xml_nodes;
 
 use boltffi::export;
 
+#[cfg(feature = "kotlin")]
 pub use loader::load_patches;
+#[cfg(all(feature = "browser", not(feature = "kotlin")))]
+mod browser;
+#[cfg(all(feature = "browser", not(feature = "kotlin")))]
+pub use browser::load_patches;
 
 #[export]
 pub fn ctx_is_active() -> bool {

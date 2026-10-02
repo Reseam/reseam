@@ -5,7 +5,7 @@ pub mod bundle;
 pub mod context;
 pub mod engine;
 pub mod error;
-#[cfg(feature = "kotlin")]
+#[cfg(feature = "bridge")]
 pub mod kotlin;
 pub mod log;
 pub mod options;

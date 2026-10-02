@@ -1,0 +1,17 @@
+[package]
+name = "reseam-sdk-browser"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Browser host for the Reseam engine"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+reseam-sdk = { workspace = true, features = ["browser"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

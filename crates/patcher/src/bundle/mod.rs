@@ -7,6 +7,8 @@
 //! intact and signed by the key it carries.
 
 mod archive;
+#[cfg(feature = "bridge")]
+pub(crate) mod declarations;
 pub(crate) mod index;
 mod pack;
 

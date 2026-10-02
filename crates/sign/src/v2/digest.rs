@@ -59,15 +59,11 @@ pub(super) fn file_chunk_digests(file: &File, section: Range<u64>) -> Result<Vec
                 let count = (len - relative).min(CHUNK_SIZE as u64) as usize;
                 // SAFETY: signing requires exclusive use of the file until completion;
                 // the validated range is hashed before any in-place writes occur.
-                let chunk = unsafe {
-                    memmap2::MmapOptions::new()
-                        .offset(section.start + relative)
-                        .len(count)
-                        .map(file)
-                }
-                .map_err(|source| {
-                    io_at("mapping APK digest chunk", section.start + relative, source)
-                })?;
+                let chunk =
+                    unsafe { reseam_storage::map_range(file, section.start + relative, count) }
+                        .map_err(|source| {
+                            io_at("mapping APK digest chunk", section.start + relative, source)
+                        })?;
                 *digest = chunk_digest(&chunk);
             }
             Ok(())

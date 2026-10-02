@@ -1,0 +1,70 @@
+name: browser
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: docker
+    container:
+      image: cimg/android:2026.03-node
+    env:
+      CARGO_BUILD_JOBS: 4
+      GRADLE_OPTS: -Xmx1g
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: https://github.com/dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.98.1'
+          components: rustfmt,clippy
+          targets: wasm32-wasip1
+
+      - uses: https://github.com/Swatinem/rust-cache@v2
+
+      - uses: https://github.com/oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+
+      - uses: https://github.com/gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      - name: Install pinned BoltFFI CLI
+        run: cargo install boltffi_cli --version "=$(cat .boltffi-version)" --locked
+
+      - name: Install verified WASI SDK 33
+        run: |
+          archive="$RUNNER_TEMP/wasi-sdk.tar.gz"
+          curl -fsSL https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-33/wasi-sdk-33.0-x86_64-linux.tar.gz -o "$archive"
+          echo "0ba8b5bfaeb2adf3f29bab5841d76cf5318ab8e1642ea195f88baba1abd47bce  $archive" | sha256sum -c -
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          echo "WASI_SDK_PATH=$RUNNER_TEMP/wasi-sdk-33.0-x86_64-linux" >> "$GITHUB_ENV"
+
+      - name: Install browser dependencies
+        run: bun install --cwd browser --frozen-lockfile
+
+      - name: Build browser engine and Java runtimes
+        run: bun run --cwd browser engine
+
+      - name: Check WASI lints
+        run: CC_wasm32_wasip1="$WASI_SDK_PATH/bin/clang" AR_wasm32_wasip1="$WASI_SDK_PATH/bin/llvm-ar" cargo clippy -p reseam-sdk-browser --target wasm32-wasip1 -- -D warnings
+
+      - name: Check formatting and Kotlin ABI
+        run: |
+          cargo fmt --all --check
+          ./gradlew --no-daemon spotlessCheck :reseam-patch-sdk:checkKotlinAbi
+
+      - name: Build production application
+        run: bun run --cwd browser build
+
+      - name: Archive static application
+        run: tar -czf browser-dist.tar.gz -C browser/dist .
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: browser-dist
+          path: browser-dist.tar.gz

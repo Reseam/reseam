@@ -1,0 +1,25 @@
+{
+  "name": "@reseam/browser",
+  "private": true,
+  "version": "0.17.1",
+  "type": "module",
+  "scripts": {
+    "dev": "bun scripts/dev.ts",
+    "preview": "vite preview --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "build:test": "VITE_TEST_HARNESS=1 bun run build",
+    "check": "tsc --noEmit",
+    "test": "bun test test",
+    "engine": "bash scripts/build-engine.sh"
+  },
+  "dependencies": {
+    "@bjorn3/browser_wasi_shim": "0.4.2",
+    "lossless-json": "4.3.0"
+  },
+  "devDependencies": {
+    "typescript": "6.0.2",
+    "vite": "8.0.7",
+    "@types/bun": "1.3.10",
+    "@playwright/test": "1.58.2"
+  }
+}

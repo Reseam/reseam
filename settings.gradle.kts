@@ -30,10 +30,12 @@ dependencyResolutionManagement {
 
 rootProject.name = "reseam"
 
-include(":patch-api", ":sdk-kotlin", ":gradle-plugin")
+include(":patch-api", ":sdk-kotlin", ":gradle-plugin", ":browser")
 
 project(":patch-api").name = "reseam-patch-sdk"
 
 project(":sdk-kotlin").name = "reseam-sdk"
 
 project(":gradle-plugin").name = "reseam-gradle-plugin"
+
+project(":browser").name = "reseam-browser-host"

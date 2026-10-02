@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::collections::{BTreeMap, HashSet};
-use std::io::Read;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -15,7 +14,7 @@ use jni::{Env, jni_sig, jni_str};
 use super::jvm::{self, jvm_err};
 use super::metadata::{object, read_patch, string};
 use super::patch::load_class;
-use crate::bundle::PATCH_INDEX;
+use crate::bundle::declarations::declarations;
 use crate::bundle::index::{Declaration, MemberKind};
 use crate::error::Result;
 use crate::patch::Patch;
@@ -190,54 +189,6 @@ fn retain_patch(
         declaration: id.to_owned(),
     });
     Ok(())
-}
-
-fn declarations(jars: &[PathBuf]) -> Result<BTreeMap<String, Vec<Declaration>>> {
-    let mut classes = HashSet::new();
-    let mut found: BTreeMap<String, Vec<Declaration>> = BTreeMap::new();
-    for jar in jars {
-        let mut archive = zip::ZipArchive::new(std::fs::File::open(jar)?)?;
-        classes.extend(
-            archive
-                .file_names()
-                .filter_map(|name| name.strip_suffix(".class"))
-                .map(|name| name.replace('/', ".")),
-        );
-        let mut entry = archive.by_name(PATCH_INDEX).map_err(|error| jvm_err(format!(
-            "patch jar {} has no declaration index: {error}; rebuild it with the Reseam Gradle plugin", jar.display()
-        )))?;
-        let mut bytes = Vec::new();
-        entry
-            .by_ref()
-            .take(16 * 1024 * 1024 + 1)
-            .read_to_end(&mut bytes)?;
-        if bytes.len() > 16 * 1024 * 1024 {
-            return Err(jvm_err(format!(
-                "declaration index in {} is too large",
-                jar.display()
-            )));
-        }
-        let index: Vec<Declaration> = serde_json::from_slice(&bytes)
-            .map_err(|error| jvm_err(format!("declaration index in {}: {error}", jar.display())))?;
-        for declaration in index {
-            let members = found.entry(declaration.class_name.clone()).or_default();
-            if !members.contains(&declaration) {
-                members.push(declaration);
-            }
-        }
-    }
-    for class in found.keys() {
-        if !classes.contains(class)
-            || found[class]
-                .iter()
-                .any(|declaration| !classes.contains(&declaration.owner))
-        {
-            return Err(jvm_err(format!(
-                "indexed declaration class {class} is absent from the bundle jars"
-            )));
-        }
-    }
-    Ok(found)
 }
 
 // Reflection order determines the input order of independent patches. Only indexed

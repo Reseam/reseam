@@ -35,7 +35,7 @@ internal fun main(args: Array<String>) {
         append("pub(crate) const PATCH_INDEX: &str = \"$PATCH_INDEX\";\n\n")
         val kind = MemberKind.serializer().descriptor
         append(
-            "#[cfg(feature = \"kotlin\")]\n#[derive(Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]\npub(crate) enum MemberKind {\n"
+            "#[cfg(feature = \"bridge\")]\n#[derive(Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]\npub(crate) enum MemberKind {\n"
         )
         for (index in 0 until kind.elementsCount) {
             val name = kind.getElementName(index)
@@ -44,7 +44,7 @@ internal fun main(args: Array<String>) {
             )
         }
         append(
-            "}\n\n#[cfg(feature = \"kotlin\")]\n#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq)]\npub(crate) struct Declaration {\n"
+            "}\n\n#[cfg(feature = \"bridge\")]\n#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq)]\npub(crate) struct Declaration {\n"
         )
         val declaration = PatchDeclaration.serializer().descriptor
         for (index in 0 until declaration.elementsCount) {

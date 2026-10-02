@@ -16,7 +16,7 @@ impl ResourceTable {
     }
 
     pub(crate) fn serialize_spooled(&self) -> Result<File> {
-        let mut file = tempfile::tempfile()?;
+        let mut file = reseam_storage::temporary_file()?;
         let mut out = BufWriter::with_capacity(1 << 20, &mut file);
         self.write_to(&mut out)?;
         out.flush()?;

@@ -3,7 +3,9 @@
 
 use std::fs::File;
 use std::io::{self, BufWriter};
+#[cfg(not(target_os = "wasi"))]
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
+#[cfg(not(target_os = "wasi"))]
 use std::sync::{Arc, Mutex};
 use std::thread::Scope;
 
@@ -13,7 +15,9 @@ use tracing::debug;
 use super::write::{DexJob, DexMember};
 use crate::error::{Result, invalid};
 
-pub(super) struct DexEntryStream {
+#[cfg(not(target_os = "wasi"))]
+pub(super) struct DexEntryStream<'a> {
+    _lifetime: std::marker::PhantomData<&'a ()>,
     pending: SyncSender<usize>,
     receivers: Vec<Receiver<Result<File>>>,
     next: usize,
@@ -21,7 +25,8 @@ pub(super) struct DexEntryStream {
     job_count: usize,
 }
 
-impl DexEntryStream {
+#[cfg(not(target_os = "wasi"))]
+impl DexEntryStream<'_> {
     pub fn start<'scope, 'env>(
         scope: &'scope Scope<'scope, 'env>,
         dex_files: &'env [DexFile],
@@ -64,6 +69,7 @@ impl DexEntryStream {
                 .expect("initial jobs fit in the queue while its receiver is retained");
         }
         Self {
+            _lifetime: std::marker::PhantomData,
             pending,
             receivers,
             next: 0,
@@ -113,7 +119,7 @@ fn compress_dex(
     }
     let serialized = started.elapsed();
     let deflating = std::time::Instant::now();
-    let mut archive = zip::ZipWriter::new(BufWriter::new(tempfile::tempfile()?));
+    let mut archive = zip::ZipWriter::new(BufWriter::new(reseam_storage::temporary_file()?));
     archive.start_file(
         name,
         zip::write::SimpleFileOptions::default()
@@ -133,4 +139,41 @@ fn compress_dex(
         "dex entry written"
     );
     Ok(file)
+}
+
+#[cfg(target_os = "wasi")]
+pub(super) struct DexEntryStream<'a> {
+    dex: &'a [DexFile],
+    jobs: &'a [DexJob],
+    next: usize,
+    level: i64,
+}
+
+#[cfg(target_os = "wasi")]
+impl<'a> DexEntryStream<'a> {
+    pub fn start<'scope, 'env>(
+        _scope: &'scope Scope<'scope, 'env>,
+        dex: &'a [DexFile],
+        jobs: &'a [DexJob],
+        _workers: usize,
+        level: i64,
+    ) -> Self {
+        Self {
+            dex,
+            jobs,
+            next: 0,
+            level,
+        }
+    }
+
+    pub fn next(&mut self) -> Result<File> {
+        let job = self
+            .jobs
+            .get(self.next)
+            .ok_or_else(|| invalid("dex write", "no pending DEX entry"))?;
+        let file = compress_dex(self.dex, &job.members, job.name.as_str(), self.level)
+            .map_err(|error| error.in_entry(job.name.as_str()))?;
+        self.next += 1;
+        Ok(file)
+    }
 }

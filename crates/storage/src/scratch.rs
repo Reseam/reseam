@@ -15,10 +15,10 @@ impl ScratchDir {
     /// Creates `<TMPDIR>/reseam-<pid>-<label>-<random>` after sweeping directories
     /// left by processes that no longer exist.
     pub fn new(label: &str) -> io::Result<Self> {
-        let root = std::env::temp_dir();
+        let root = crate::temp_root();
         sweep_stale(&root);
         let dir = tempfile::Builder::new()
-            .prefix(&format!("{PREFIX}{}-{label}-", std::process::id()))
+            .prefix(&format!("{PREFIX}{}-{label}-", process_id()))
             .tempdir_in(root)?;
         Ok(Self { dir })
     }
@@ -32,7 +32,7 @@ fn sweep_stale(root: &Path) {
     let Ok(entries) = fs::read_dir(root) else {
         return;
     };
-    let own = std::process::id();
+    let own = process_id();
     for entry in entries.flatten() {
         let name = entry.file_name();
         let Some(pid) = name
@@ -48,6 +48,12 @@ fn sweep_stale(root: &Path) {
             drop(fs::remove_dir_all(entry.path()));
         }
     }
+}
+
+#[cfg(target_os = "wasi")]
+fn process_alive(_pid: u32) -> bool {
+    // Browser hosts own and clean their isolated filesystem at worker shutdown.
+    true
 }
 
 #[cfg(unix)]
@@ -77,5 +83,16 @@ fn process_alive(pid: u32) -> bool {
             GetExitCodeProcess(process, &mut exit_code) != 0 && exit_code == STILL_ACTIVE as u32;
         CloseHandle(process);
         alive
+    }
+}
+
+fn process_id() -> u32 {
+    #[cfg(target_os = "wasi")]
+    {
+        0
+    }
+    #[cfg(not(target_os = "wasi"))]
+    {
+        std::process::id()
     }
 }

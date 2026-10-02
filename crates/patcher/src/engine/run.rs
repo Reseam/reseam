@@ -22,7 +22,7 @@ pub fn apply_patches(
     selection: &PatchSelection,
     mut observer: impl FnMut(ProgressEvent),
 ) -> Result<Vec<PatchResult>> {
-    #[cfg(feature = "kotlin")]
+    #[cfg(feature = "bridge")]
     let _bridge = crate::kotlin::handles::RunGuard::enter()?;
     info!(patch_count = patches.len(), "starting patch application");
     let package = ctx.apk().package_name().map(Cow::into_owned);

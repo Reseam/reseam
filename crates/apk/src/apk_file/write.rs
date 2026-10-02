@@ -93,9 +93,9 @@ impl ApkFile {
         let paths: Vec<_> = names.iter().map(|name| output_dir.join(name)).collect();
         for path in &paths {
             if path.exists() {
-                let destination = path.canonicalize()?;
+                let destination = reseam_storage::canonicalize(path)?;
                 for component in &self.components {
-                    if destination == component.path().canonicalize()? {
+                    if destination == reseam_storage::canonicalize(component.path())? {
                         return Err(invalid(
                             "apk output",
                             format!("{} is an input APK", path.display()),
@@ -126,12 +126,7 @@ impl ApkFile {
         dir: &Path,
     ) -> Result<Vec<(String, File)>> {
         let names = self.output_names()?;
-        let mut files = Vec::with_capacity(names.len());
-        self.write_components(options, |_| {
-            let file = tempfile::tempfile_in(dir)?;
-            files.push(file.try_clone()?);
-            Ok(file)
-        })?;
+        let files = self.write_components(options, |_| tempfile::tempfile_in(dir))?;
         Ok(names.into_iter().zip(files).collect())
     }
 
@@ -165,7 +160,7 @@ impl ApkFile {
         &self,
         options: ApkWriteOptions,
         mut open: impl FnMut(usize) -> io::Result<File>,
-    ) -> Result<()> {
+    ) -> Result<Vec<File>> {
         let mut jobs = self.dex_jobs()?;
         jobs.sort_by_key(|job| {
             (
@@ -196,10 +191,14 @@ impl ApkFile {
                 options.dex_workers.get(),
                 options.dex_compression_level,
             );
-            for (index, (component, plan)) in self.components.iter().zip(plans).enumerate() {
-                write_component(component, &plan, &mut entries, open(index)?)?;
-            }
-            Ok(())
+            self.components
+                .iter()
+                .zip(plans)
+                .enumerate()
+                .map(|(index, (component, plan))| {
+                    write_component(component, &plan, &mut entries, open(index)?)
+                })
+                .collect()
         })
     }
 
@@ -365,9 +364,9 @@ fn plan<'a>(
 fn write_component(
     component: &ApkComponent,
     plan: &[PlannedEntry<'_>],
-    entries: &mut DexEntryStream,
+    entries: &mut DexEntryStream<'_>,
     output: File,
-) -> Result<()> {
+) -> Result<File> {
     debug!(component = component.name(), "writing APK component");
     let mut source = component.archive().clone();
     let mut writer = writer::Writer::new(BufWriter::with_capacity(1 << 20, output));
@@ -396,9 +395,8 @@ fn write_component(
         };
         result.map_err(|error| error.in_entry(entry.name.as_str()))?;
     }
-    writer
+    Ok(writer
         .finish()?
         .into_inner()
-        .map_err(io::IntoInnerError::into_error)?;
-    Ok(())
+        .map_err(io::IntoInnerError::into_error)?)
 }

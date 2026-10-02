@@ -20,3 +20,12 @@ tests/kotlin-runtime-bundle/build
 tests/kotlin-runtime-bundle/.gradle
 reseam.pk8
 reseam.der
+/browser/node_modules/
+/browser/dist/
+/browser/public/runtime/*.wasm
+/browser/public/runtime/*.jar
+/browser/public/runtime/methods.json
+/browser/test-results/
+
+browser/public/runtime/
+browser/src/runtime.generated.ts

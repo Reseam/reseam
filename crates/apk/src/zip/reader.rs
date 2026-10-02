@@ -41,7 +41,7 @@ pub(crate) fn read_entry(archive: &mut Archive, name: &str) -> Result<Vec<u8>> {
     Ok(buf)
 }
 
-pub(crate) fn map_entry(archive: &mut Archive, name: &str) -> Result<memmap2::Mmap> {
+pub(crate) fn map_entry(archive: &mut Archive, name: &str) -> Result<reseam_storage::MappedFile> {
     let file = archive.clone().into_inner();
     let mut entry = archive.by_name(name)?;
     if entry.compression() != zip::CompressionMethod::Stored {
@@ -61,27 +61,22 @@ pub(crate) fn map_entry(archive: &mut Archive, name: &str) -> Result<memmap2::Mm
     let length = usize::try_from(size)
         .map_err(|_| invalid("zip entry", format!("{name}: entry is too large to map")))?;
     // SAFETY: this read-only range is inside the immutable input archive.
-    Ok(unsafe {
-        memmap2::MmapOptions::new()
-            .offset(offset)
-            .len(length)
-            .map(file.file())?
-    })
+    Ok(unsafe { reseam_storage::map_range(file.file(), offset, length)? })
 }
 
-pub(crate) fn map_file(archive: &Archive) -> Result<memmap2::Mmap> {
+pub(crate) fn map_file(archive: &Archive) -> Result<reseam_storage::MappedFile> {
     let file = archive.clone().into_inner();
     // SAFETY: the archive is opened read-only for the whole run and nothing
     // in this process writes to it.
-    Ok(unsafe { memmap2::Mmap::map(file.file())? })
+    Ok(unsafe { reseam_storage::map_file(file.file())? })
 }
 
-pub(crate) fn spool(reader: &mut impl Read) -> Result<memmap2::Mmap> {
+pub(crate) fn spool(reader: &mut impl Read) -> Result<reseam_storage::MappedFile> {
     map_spooled(&spool_file(reader)?)
 }
 
 pub(crate) fn spool_file(reader: &mut impl Read) -> Result<File> {
-    let mut file = tempfile::tempfile()?;
+    let mut file = reseam_storage::temporary_file()?;
     let mut out = BufWriter::with_capacity(1 << 20, &mut file);
     io::copy(reader, &mut out)?;
     out.flush()?;
@@ -89,13 +84,21 @@ pub(crate) fn spool_file(reader: &mut impl Read) -> Result<File> {
     Ok(file)
 }
 
-pub(crate) fn map_spooled(file: &File) -> Result<memmap2::Mmap> {
+pub(crate) fn map_spooled(file: &File) -> Result<reseam_storage::MappedFile> {
     // SAFETY: spooled files are immutable after creation and never exposed for writing.
-    Ok(unsafe { memmap2::MmapOptions::new().map(file)? })
+    Ok(unsafe { reseam_storage::map_file(file)? })
 }
 
 pub(crate) fn copy_spooled(file: &File, output: &mut impl Write) -> Result<()> {
+    #[cfg(not(target_os = "wasi"))]
     let mut file = io::BufReader::new(FileReader::new(file.try_clone()?)?);
+    #[cfg(target_os = "wasi")]
+    let mut file = {
+        // WASI has one engine thread and cannot clone file descriptors.
+        let mut source = file;
+        io::Seek::seek(&mut source, io::SeekFrom::Start(0))?;
+        io::BufReader::new(source)
+    };
     io::copy(&mut file, output)?;
     Ok(())
 }

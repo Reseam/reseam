@@ -11,7 +11,7 @@ crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
 reseam-model = { workspace = true }
-reseam-sdk = { workspace = true }
+reseam-sdk = { workspace = true, features = ["kotlin"] }
 boltffi = { workspace = true }
 jni = { workspace = true }
 serde      = { workspace = true }

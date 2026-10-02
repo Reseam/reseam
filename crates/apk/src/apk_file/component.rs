@@ -96,7 +96,7 @@ impl ApkComponent {
 
     /// Maps the original APK, including its signing block. Staged edits are
     /// available through the session's entry APIs instead.
-    pub fn source(&self) -> Result<memmap2::Mmap> {
+    pub fn source(&self) -> Result<reseam_storage::MappedFile> {
         reader::map_file(&self.archive)
     }
 

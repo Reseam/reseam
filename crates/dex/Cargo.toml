@@ -15,7 +15,6 @@ smallvec  = { workspace = true, features = ["union"] }
 rustc-hash = { workspace = true }
 ring      = { workspace = true }
 zlib-rs   = { workspace = true }
-memmap2   = { workspace = true }
 tempfile  = { workspace = true }
 rayon     = { workspace = true }
 tracing   = { workspace = true }

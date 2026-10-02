@@ -282,8 +282,6 @@ dependencies = [
 [[package]]
 name = "boltffi_macros"
 version = "0.31.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57510b047b08637e820d3c076d72d6cb6317f74c65891997b523e8fb3a3341e1"
 dependencies = [
  "boltffi_ast",
  "boltffi_binding",
@@ -1232,7 +1230,6 @@ name = "reseam-apk"
 version = "0.17.1"
 dependencies = [
  "bitflags",
- "memmap2",
  "quick-xml",
  "rayon",
  "reseam-dex",
@@ -1276,7 +1273,6 @@ name = "reseam-dex"
 version = "0.17.1"
 dependencies = [
  "bitflags",
- "memmap2",
  "pretty_assertions",
  "rayon",
  "reseam-storage",
@@ -1337,12 +1333,22 @@ dependencies = [
  "reseam-model",
  "reseam-patcher",
  "reseam-sign",
+ "reseam-storage",
  "serde_json",
  "tempfile",
  "thiserror",
  "tracing",
  "windows-sys 0.61.2",
  "zip",
+]
+
+[[package]]
+name = "reseam-sdk-browser"
+version = "0.17.1"
+dependencies = [
+ "reseam-sdk",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1363,9 +1369,9 @@ name = "reseam-sign"
 version = "0.17.1"
 dependencies = [
  "flate2",
- "memmap2",
  "rayon",
  "rcgen",
+ "reseam-storage",
  "ring",
  "tempfile",
  "thiserror",
@@ -2138,6 +2144,7 @@ dependencies = [
  "memmap2",
  "reseam-apk",
  "semver",
+ "serde_json",
  "sha2",
  "tempfile",
  "toml_edit",

@@ -74,7 +74,7 @@ pub fn file_source(component: Option<String>) -> Option<Vec<u8>> {
             .expect("component checked by with_component")
             .source();
         match source {
-            Ok(bytes) => Some(bytes.to_vec()),
+            Ok(bytes) => Some(bytes[..].to_vec()),
             Err(error) => {
                 record_failure(&error);
                 ctx.log().warn(format!("file_source: {error}"));

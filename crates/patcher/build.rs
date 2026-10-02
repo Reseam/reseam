@@ -13,12 +13,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-changed=../../build-support/java.rs");
     println!("cargo:rerun-if-env-changed=BOLTFFI_BINDING_METADATA");
     println!("cargo:rustc-check-cfg=cfg(reseam_jni_bridge)");
-    if env::var_os("CARGO_FEATURE_KOTLIN").is_none() {
+    if env::var_os("CARGO_FEATURE_BRIDGE").is_none() {
         return Ok(());
     }
     let out = PathBuf::from(env::var("OUT_DIR")?);
     let runtime = out.join("runtime.jar");
-    if env::var("CARGO_CFG_TARGET_OS")? != "android" {
+    if env::var_os("CARGO_FEATURE_KOTLIN").is_some()
+        && env::var("CARGO_CFG_TARGET_OS")? != "android"
+    {
         if env::var_os("BOLTFFI_BINDING_METADATA").is_some() {
             std::fs::write(runtime, [])?;
         } else {
@@ -55,6 +57,20 @@ fn main() -> Result<(), Box<dyn Error>> {
         manifest_dir.join("src/lib.rs").display()
     );
     println!("cargo:rustc-env=BOLTFFI_BINDING_EXPANSION_SURFACE=native");
+
+    if env::var("CARGO_CFG_TARGET_OS")? == "wasi" {
+        let generated = manifest_dir.join("../../patch-api/generated");
+        let transport = manifest_dir.join("browser");
+        println!("cargo:rerun-if-changed={}", generated.display());
+        println!("cargo:rerun-if-changed={}", transport.display());
+        cc::Build::new()
+            .file(generated.join("browser/bridge.c"))
+            .include(&transport)
+            .include(generated.join("jni"))
+            .flag_if_supported("-Wno-unused-parameter")
+            .compile("reseam_browser_bridge");
+        return Ok(());
+    }
 
     let jni_dir = manifest_dir.join("../../patch-api/generated/jni");
     let registration = jni_dir.join("registration.c");

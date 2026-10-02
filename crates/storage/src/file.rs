@@ -65,6 +65,21 @@ impl FileExt for File {
     }
 }
 
+#[cfg(target_os = "wasi")]
+impl FileExt for File {
+    fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<usize> {
+        let mut file = self;
+        file.seek(SeekFrom::Start(offset))?;
+        file.read(buf)
+    }
+
+    fn write_at(&self, buf: &[u8], offset: u64) -> io::Result<usize> {
+        let mut file = self;
+        file.seek(SeekFrom::Start(offset))?;
+        io::Write::write(&mut file, buf)
+    }
+}
+
 /// A positional file reader: clones share the descriptor but keep their own
 /// offset.
 #[derive(Clone)]
@@ -111,5 +126,29 @@ impl Seek for FileReader {
             .checked_add_signed(delta)
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "seek before start"))?;
         Ok(self.pos)
+    }
+}
+
+/// The host-mounted temporary directory. WASI does not implement `env::temp_dir`.
+pub fn temp_root() -> std::path::PathBuf {
+    #[cfg(target_os = "wasi")]
+    {
+        std::path::PathBuf::from("/tmp")
+    }
+    #[cfg(not(target_os = "wasi"))]
+    {
+        std::env::temp_dir()
+    }
+}
+
+/// Creates an unlinked temporary file under the host's scratch directory.
+pub fn temporary_file() -> io::Result<File> {
+    #[cfg(target_os = "wasi")]
+    {
+        tempfile::tempfile_in(temp_root())
+    }
+    #[cfg(not(target_os = "wasi"))]
+    {
+        tempfile::tempfile()
     }
 }

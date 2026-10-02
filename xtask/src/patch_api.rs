@@ -40,6 +40,7 @@ pub fn regen() -> Result<()> {
     let output = paths::workspace_root().join("patch-api").join("generated");
     Generation::write_output(target.render(&bindings)?, &output)?;
     fs::write(output.join("jni/registration.c"), registration(&contract)?)?;
+    browser_bridge(&contract, &output)?;
     kotlin_surface(&output)?;
     let opcodes = output.join("app/reseam/patch/dex");
     fs::create_dir_all(&opcodes)?;
@@ -51,6 +52,218 @@ pub fn regen() -> Result<()> {
         "Generated the patch bridge from Binding IR."
     )?;
     Ok(())
+}
+
+fn browser_bridge(contract: &JniBridgeContract, output: &std::path::Path) -> Result<()> {
+    let mut source = String::from(
+        "/* Generated from BoltFFI Binding IR. Do not edit. */\n#include \"transport.c\"\n#include \"registration.c\"\n",
+    );
+    let mut methods = Vec::new();
+    // LiveConnect converts scalar Java longs through JavaScript Number. Arrays
+    // cross CheerpJ by reference, preserving every bit in either direction.
+    let mut kotlin = String::from(
+        "// Generated from BoltFFI Binding IR. Do not edit.\npackage app.reseam.patch.native\ninternal object Native {\n    fun ensureInitialized() {}\n",
+    );
+    for (index, method) in contract.methods().iter().enumerate() {
+        let parameters = method
+            .parameters()
+            .iter()
+            .map(|parameter| {
+                Ok(match parameter.kind() {
+                    NativeParameterKind::Scalar(value) => vec![value.ty().signature()],
+                    NativeParameterKind::Bytes(_) => vec!["Ljava/nio/ByteBuffer;", "I"],
+                    NativeParameterKind::Record(_) => vec!["Ljava/nio/ByteBuffer;"],
+                    NativeParameterKind::DirectVector(value) => {
+                        vec![value.jni_type().array_signature()]
+                    }
+                    other => bail!("unsupported browser bridge parameter: {other:?}"),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        let mut buffer_lengths = std::collections::BTreeMap::new();
+        let mut argument_index = 0;
+        for parameter in method.parameters() {
+            if matches!(parameter.kind(), NativeParameterKind::Bytes(_)) {
+                buffer_lengths.insert(argument_index, argument_index + 1);
+                argument_index += 2;
+            } else {
+                argument_index += 1;
+            }
+        }
+        let returns = return_signature(method.returns())?;
+        let wide = returns == "J" || parameters.contains(&"J");
+        let transported = parameters
+            .iter()
+            .map(|&ty| if ty == "J" { "[J" } else { ty })
+            .collect::<Vec<_>>();
+        let transported_return = if returns == "J" { "[J" } else { returns };
+        browser_kotlin_method(
+            &mut kotlin,
+            method.c_function().name(),
+            &parameters,
+            returns,
+        )?;
+        let name = format!("reseam_bridge_{index}");
+        let original = method.symbol().to_string();
+        let exempt = [
+            "_ctx_is_active",
+            "_check_call",
+            "_invoke_scratch_words",
+            "_lower_instruction",
+            "_lower_instructions",
+        ]
+        .iter()
+        .any(|suffix| method.c_function().name().ends_with(suffix));
+        let call = if exempt {
+            original.clone()
+        } else {
+            format!("reseam_checked_{index}")
+        };
+        source.push_str(&browser_c_method(&name, &call, &parameters, returns)?);
+        if method
+            .c_function()
+            .name()
+            .ends_with("_handles_mutation_revision")
+        {
+            // Read-only engine state, piggybacked on native responses so cached
+            // Kotlin metadata does not require another worker round trip.
+            writeln!(
+                source,
+                "__attribute__((export_name(\"reseam_bridge_revision\"))) jlong reseam_bridge_revision(void) {{ return {original}(&browser_env, NULL); }}"
+            )?;
+        }
+        let symbol = if wide {
+            format!("{original}_1browser")
+        } else {
+            original
+        };
+        methods.push(serde_json::json!({"name": symbol, "export": name, "parameters": transported, "bufferLengths": buffer_lengths, "returns": transported_return}));
+    }
+    let browser = output.join("browser");
+    fs::create_dir_all(&browser)?;
+    kotlin.push_str("}\n");
+    let java_path = browser.join("kotlin/app/reseam/patch/native");
+    fs::create_dir_all(&java_path)?;
+    fs::write(java_path.join("Native.kt"), kotlin)?;
+    fs::write(browser.join("bridge.c"), source)?;
+    fs::write(
+        browser.join("methods.json"),
+        serde_json::to_vec_pretty(&methods)?,
+    )?;
+    Ok(())
+}
+
+fn browser_c_method(name: &str, call: &str, parameters: &[&str], returns: &str) -> Result<String> {
+    let transported = parameters
+        .iter()
+        .map(|&ty| if ty == "J" { "[J" } else { ty })
+        .collect::<Vec<_>>();
+    let transported_return = if returns == "J" { "[J" } else { returns };
+    let declarations = transported
+        .iter()
+        .enumerate()
+        .map(|(i, signature)| Ok(format!("{} arg{i}", jni_c_type(signature)?)))
+        .collect::<Result<Vec<_>>>()?
+        .join(", ");
+    let arguments = (0..parameters.len()).fold(String::new(), |mut output, index| {
+        if parameters[index] == "J" {
+            write!(output, ", browser_long(arg{index})")
+                .expect("writing to a String is infallible");
+        } else {
+            write!(output, ", arg{index}").expect("writing to a String is infallible");
+        }
+        output
+    });
+    let result = if returns == "V" { "" } else { "return " };
+    let pack = if returns == "J" {
+        "browser_pack_long("
+    } else {
+        ""
+    };
+    let end_pack = if returns == "J" { ")" } else { "" };
+    Ok(format!(
+        "__attribute__((export_name(\"{name}\"))) {} {name}({declarations}) {{ {result}{pack}{call}(&browser_env, NULL{arguments}){end_pack}; }}\n",
+        jni_c_type(transported_return)?
+    ))
+}
+
+fn browser_kotlin_method(
+    kotlin: &mut String,
+    java_name: &str,
+    parameters: &[&str],
+    returns: &str,
+) -> Result<()> {
+    let wide = returns == "J" || parameters.contains(&"J");
+    let native_name = if wide {
+        format!("{java_name}_browser")
+    } else {
+        java_name.to_string()
+    };
+    let java_parameters = parameters
+        .iter()
+        .enumerate()
+        .map(|(i, ty)| Ok(format!("arg{i}: {}", browser_kotlin_type(ty)?)))
+        .collect::<Result<Vec<_>>>()?
+        .join(", ");
+    if wide {
+        let args = parameters
+            .iter()
+            .enumerate()
+            .map(|(i, ty)| {
+                if *ty == "J" {
+                    format!("longArrayOf(arg{i})")
+                } else {
+                    format!("arg{i}")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let result = if returns == "V" { "" } else { "return " };
+        let unwrap = if returns == "J" { "[0]" } else { "" };
+        writeln!(
+            kotlin,
+            "    @JvmStatic fun {java_name}({java_parameters}): {} {{ {result}{native_name}({args}){unwrap} }}",
+            browser_kotlin_type(returns)?
+        )?;
+    }
+    let native_parameters = parameters
+        .iter()
+        .map(|&ty| if ty == "J" { "[J" } else { ty })
+        .collect::<Vec<_>>()
+        .iter()
+        .enumerate()
+        .map(|(i, ty)| Ok(format!("arg{i}: {}", browser_kotlin_type(ty)?)))
+        .collect::<Result<Vec<_>>>()?
+        .join(", ");
+    writeln!(
+        kotlin,
+        "    @JvmStatic external fun {native_name}({native_parameters}): {}",
+        browser_kotlin_type(if returns == "J" { "[J" } else { returns })?
+    )?;
+    Ok(())
+}
+
+fn browser_kotlin_type(signature: &str) -> Result<&'static str> {
+    Ok(match signature {
+        "V" => "Unit",
+        "Z" => "Boolean",
+        "B" => "Byte",
+        "C" => "Char",
+        "S" => "Short",
+        "I" => "Int",
+        "J" => "Long",
+        "F" => "Float",
+        "D" => "Double",
+        "[B" => "ByteArray?",
+        "[S" => "ShortArray",
+        "[I" => "IntArray",
+        "[J" => "LongArray",
+        "Ljava/nio/ByteBuffer;" => "java.nio.ByteBuffer",
+        other => bail!("unsupported browser Java type: {other}"),
+    })
 }
 
 fn reachable(bindings: &Bindings<Native>) -> BTreeSet<boltffi_binding::DeclarationId> {

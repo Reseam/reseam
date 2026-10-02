@@ -1,5 +1,6 @@
 [workspace]
 resolver = "3"
+exclude = ["vendor/boltffi_macros"]
 members = [
     "crates/storage",
     "crates/dex",
@@ -9,6 +10,7 @@ members = [
     "crates/patcher",
     "sdk",
     "sdk/native",
+    "sdk/browser",
     "crates/cli",
     "xtask",
 ]
@@ -56,8 +58,8 @@ reseam-model = { path = "crates/model" }
 reseam-dex     = { path = "crates/dex" }
 reseam-apk     = { path = "crates/apk" }
 reseam-sign    = { path = "crates/sign" }
-reseam-patcher = { path = "crates/patcher" }
-reseam-sdk     = { path = "sdk" }
+reseam-patcher = { path = "crates/patcher", default-features = false }
+reseam-sdk     = { path = "sdk", default-features = false }
 
 # Shared external dependencies (pinned versions for all crates)
 thiserror   = "2"
@@ -95,3 +97,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 # Shared dev dependencies
 pretty_assertions = "1"
 criterion         = "0.5"
+
+[patch.crates-io]
+# The browser transport uses the existing C wire ABI on WASI.
+boltffi_macros = { path = "vendor/boltffi_macros" }

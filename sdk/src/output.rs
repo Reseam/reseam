@@ -85,7 +85,7 @@ fn same_destination(output: &Path, identity: &Path) -> Result<bool> {
     if output == identity {
         return Ok(true);
     }
-    let resolved_identity = match identity.canonicalize() {
+    let resolved_identity = match reseam_storage::canonicalize(identity) {
         Ok(path) => Some(path),
         Err(error) if error.kind() == io::ErrorKind::NotFound => None,
         Err(error) => return Err(file_error("resolve signing file", identity, error)),
@@ -96,7 +96,7 @@ fn same_destination(output: &Path, identity: &Path) -> Result<bool> {
             .parent()
             .filter(|dir| !dir.as_os_str().is_empty())
             .unwrap_or(Path::new("."));
-        match dir.canonicalize() {
+        match reseam_storage::canonicalize(dir) {
             Ok(dir) => Ok(Some(dir)),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
             Err(error) => Err(file_error(

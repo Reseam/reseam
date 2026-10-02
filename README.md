@@ -1,6 +1,6 @@
 # Reseam
 
-Reseam is a Rust APK patching engine. Patches are written in Kotlin against the Reseam Patch API, while APK parsing, DEX mutation, serialization, and signing run natively in Rust.
+Reseam is a Rust APK patching engine. Patches are written in Kotlin against the Reseam Patch API, while APK parsing, DEX mutation, serialization, and signing run in Rust on native hosts or WebAssembly in the browser.
 
 ## Workspace
 
@@ -13,6 +13,8 @@ Reseam is a Rust APK patching engine. Patches are written in Kotlin against the 
 | `reseam-model` | Requests, results, events, and errors shared by the engine and its clients |
 | `reseam-sdk` | Shared application-facing patch service used by clients |
 | `reseam-sdk-native` | BoltFFI bindings of `reseam-sdk` for Android and JVM clients |
+| `reseam-sdk-browser` | WASI host of the shared SDK for browser workers |
+| `browser` | Basic browser UI, OPFS storage, and CheerpJ Kotlin host |
 | `reseam-cli` | `reseam` command-line interface |
 | `patch-api` | Kotlin patch-author API |
 | `gradle-plugin` | Gradle plugins that build a bundle from its directory layout |
@@ -67,6 +69,12 @@ cargo xtask runtime
 cargo xtask pack-sdk
 ./gradlew assemble
 ```
+
+## Browser
+
+The browser client runs patching and signing locally using the same SDK, WASI and CheerpJ 4.3. It supports existing signed bundles and APK/APKM/XAPK inputs, split APKs, patch options, signer approval, and persistent/imported signing identities.
+
+See [browser build and deployment](browser/README.md) and the [real-app CLI comparison report](browser/validation.json). Build the engine before the static application; `browser/dist` is the deployment output. Browser patching is substantially slower than the CLI; measured timings are documented there.
 
 ## Release
 
