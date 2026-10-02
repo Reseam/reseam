@@ -23,8 +23,8 @@ tasks.register<Jar>("hostJar") {
     exclude("META-INF/*.SF", "META-INF/*.RSA", "META-INF/*.DSA")
 }
 
-// The patch bytecode stays unchanged. Only the generated native transport uses
-// one-element long arrays to avoid LiveConnect's Number conversion.
+// LiveConnect converts scalar Java longs through JavaScript Number, so the generated native
+// transport passes them as one-element long arrays. Patch bytecode is untouched.
 kotlin {
     jvmToolchain(17)
     sourceSets.main { kotlin.srcDir(rootProject.file("patch-api/generated/browser/kotlin")) }

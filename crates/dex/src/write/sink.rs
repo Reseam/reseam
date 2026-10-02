@@ -156,9 +156,8 @@ impl SpoolSink {
 
     fn apply_patches(&mut self, window: &mut Vec<u8>) -> io::Result<()> {
         let mut buffered = None;
-        // Debug-info offsets touch every code item. Apply them in bounded pages
-        // rather than issuing one file write per four-byte offset. Retaining
-        // patch order also preserves the last write when patches overlap.
+        // Debug-info offsets touch every code item, so they are written in bounded pages.
+        // Patch order is kept: the last of overlapping writes wins.
         for patch in self.patches.drain(..) {
             let mut offset = patch.offset;
             let mut bytes = &self.patch_bytes[patch.start..patch.start + patch.len];
