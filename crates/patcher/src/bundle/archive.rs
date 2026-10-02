@@ -17,6 +17,7 @@ use super::{
     bundle_error, check_engine, check_info, payload_kind,
 };
 use crate::error::Result;
+use crate::patch::PatchSpec;
 
 /// A bundle whose manifest signature and format version have been checked.
 /// Payload hashes are checked when the payload is read by [`Self::load`].
@@ -54,6 +55,7 @@ impl BundleArchive {
         let manifest: BundleManifest = toml::from_str(manifest_text)?;
         check_info(&manifest.bundle)?;
         check_engine(&manifest.bundle)?;
+        manifest.check_patches()?;
         Ok(Self {
             archive,
             manifest,
@@ -71,6 +73,12 @@ impl BundleArchive {
 
     pub fn files(&self) -> impl Iterator<Item = &str> {
         self.manifest.files.keys().map(String::as_str)
+    }
+
+    /// Reads signed patch metadata without extracting payloads or executing code.
+    /// Signature verification identifies the signer; it does not establish trust.
+    pub fn patches(&self) -> &[PatchSpec] {
+        &self.manifest.patches
     }
 
     /// Extracts the payload, checking every file against the manifest, and
@@ -137,6 +145,16 @@ impl BundleArchive {
             crate::kotlin::load_patches(&jars, Arc::clone(&extracted), &self.manifest.bundle.name)?;
         #[cfg(not(feature = "kotlin"))]
         let patches = Vec::new();
+
+        let mut loaded: Vec<_> = patches.iter().map(crate::patch::Patch::spec).collect();
+        let mut declared: Vec<_> = self.manifest.patches.iter().collect();
+        loaded.sort_by(|a, b| a.id.cmp(&b.id));
+        declared.sort_by(|a, b| a.id.cmp(&b.id));
+        if loaded != declared {
+            return Err(bundle_error(
+                "loaded patch metadata differs from the signed catalog; rebuild the bundle",
+            ));
+        }
 
         info!(
             bundle = %self.manifest.bundle.name,

@@ -17,7 +17,7 @@ reseam publish patches \
 ## What it does
 
 1. Opens the bundle archive, reads `manifest.pubkey`, and verifies `manifest.sig` against it.
-2. Loads the bundle's declarations and records their patch metadata on the release. Publishing therefore requires a JVM and executes the bundle's initialization code, just like `reseam bundle list`.
+2. Reads the signed static patch catalog and records it on the release. Publishing does not require a JVM or execute bundle code.
 3. Reads bundle `name`, `author`, and `description` from `manifest.toml`. Records the public key as hex in the index.
 4. If `--out` already exists, loads it and refuses to continue when the recorded `bundle.public_key` doesn't match the archive's key. This is the safety net against publishing a differently-keyed bundle to the same index.
 5. Replaces any existing release with the same `--version`.

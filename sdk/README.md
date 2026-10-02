@@ -11,6 +11,8 @@ This crate is the Rust service; the CLI calls it directly. `sdk/native` exports 
 
 Failures throw `SdkError`, which carries a typed `Problem`. A request names the bundle signers it trusts under `trust.keys`; the engine trusts nobody on its own.
 
+`inspect` reads each bundle's signed static patch catalog without extracting payloads or loading code, even when its signer is trusted. All readable catalogs contribute patches; `trusted` reports whether the signer is approved for patching. Unknown signers are not inspection failures. Signature and catalog failures appear in the bundle's `problem`; payload hashes are verified when patching loads the bundle. `patch` still requires signer trust and rejects declarations whose metadata differs from the signed catalog. Bundles without a catalog must be rebuilt with the current packer; the bundle format version remains `1`.
+
 Calls are synchronous; run them off the main thread. `onEvent` runs on the calling thread and must not call back into the SDK. Component paths from an `ApkInspection` stay valid until it is closed.
 
 Store selections and patch metadata with the encode functions. They write the serde JSON schema, which does not change with BoltFFI's wire format.
@@ -98,7 +100,7 @@ CI publishes both to the Reseam Maven registry on every `v*` tag, with the versi
 
 ## Patcher Host Requirement
 
-Android hosts must install a classloader before inspecting or patching bundles:
+Android hosts must install a classloader before patching bundles:
 
 ```kotlin
 ReseamAndroidHost.setClassLoader(classLoader)

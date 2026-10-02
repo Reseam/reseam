@@ -4,6 +4,7 @@
 use std::io::{Cursor, Write};
 use std::path::Path;
 
+use ed25519_dalek::{Signer, SigningKey};
 use reseam_apk::{ApkFile, ContainerFormat, ScratchDir};
 
 use crate::error::Problem;
@@ -28,6 +29,131 @@ fn apk(split: &str) -> Vec<u8> {
         r#"<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.test" android:versionCode="1" {split}><application android:label="Example" /></manifest>"#
     ), None).unwrap();
     zip(&[("AndroidManifest.xml", &manifest)])
+}
+
+fn catalog_manifest() -> String {
+    format!(
+        r#"
+[bundle]
+name = "example"
+format_version = 1
+engine = "{}"
+
+[files]
+"patches.jar" = "{}"
+
+[[patches]]
+bundle = "example"
+id = "sample.patch"
+name = "Example patch"
+hidden = false
+description = "Static metadata"
+enabled_by_default = true
+dependencies = ["other/sample.core"]
+
+[patches.compatibility]
+kind = "packages"
+packages = [{{ package = "com.example.test", versions = ["1.0"] }}]
+
+[[patches.options]]
+key = "mode"
+title = "Mode"
+description = "Choose a mode"
+option_type = "string"
+required = false
+valid_values = ["fast", "slow"]
+default_value = {{ type = "string", value = "fast" }}
+"#,
+        reseam_patcher::bundle::ENGINE_VERSION,
+        "00".repeat(32),
+    )
+}
+
+#[test]
+fn inspection_reads_signed_catalogs_without_loading_even_trusted_code() {
+    let tmp = ScratchDir::new("sdk-catalog").unwrap();
+    let key = SigningKey::from_bytes(&[42; 32]);
+    let public_key = hex::encode(key.verifying_key().to_bytes());
+    let manifest = catalog_manifest();
+    let signature = key.sign(manifest.as_bytes()).to_bytes();
+    let path = tmp.path().join("example.reseam");
+    let write_bundle = |metadata: &[u8]| {
+        std::fs::write(
+            &path,
+            zip(&[
+                (
+                    "mimetype",
+                    reseam_patcher::bundle::BUNDLE_MIMETYPE.as_bytes(),
+                ),
+                ("manifest.toml", metadata),
+                ("manifest.pubkey", &key.verifying_key().to_bytes()),
+                ("manifest.sig", &signature),
+                // This payload cannot be loaded, regardless of the client's trust.
+                ("patches.jar", b"not executable code"),
+            ]),
+        )
+        .unwrap();
+    };
+    write_bundle(manifest.as_bytes());
+    let input = tmp.path().join("app.apk");
+    std::fs::write(&input, apk("")).unwrap();
+    for trusted in [false, true] {
+        let trust = crate::TrustStore::from_hex(if trusted {
+            std::slice::from_ref(&public_key)
+        } else {
+            &[]
+        })
+        .unwrap();
+        let response = crate::inspect(&crate::InspectRequest {
+            apk_path: Some(input.display().to_string()),
+            split_paths: Vec::new(),
+            bundle_paths: vec![path.display().to_string()],
+            trust: (&trust).into(),
+        })
+        .unwrap();
+        assert_eq!(response.bundles[0].trusted, trusted);
+        assert!(response.bundles[0].problem.is_none());
+        assert_eq!(response.patches.len(), 1);
+        let patch = &response.patches[0];
+        assert_eq!(patch.spec.id, "sample.patch");
+        assert_eq!(patch.spec.dependencies, ["other/sample.core"]);
+        assert_eq!(
+            patch.spec.options[0]
+                .default_value
+                .as_ref()
+                .unwrap()
+                .as_str(),
+            Some("fast")
+        );
+        assert_eq!(
+            patch.presets,
+            [crate::PatchPreset::Recommended, crate::PatchPreset::All]
+        );
+        assert!(patch.incompatibility.is_some());
+        let error = crate::load_bundles(std::slice::from_ref(&path), &trust)
+            .err()
+            .unwrap();
+        if !trusted {
+            assert!(matches!(
+                crate::error::classify(&error),
+                Problem::UntrustedBundle { .. }
+            ));
+        }
+    }
+    write_bundle(
+        manifest
+            .replace("Static metadata", "Tampered metadata")
+            .as_bytes(),
+    );
+    let response = crate::inspect(&crate::InspectRequest {
+        apk_path: None,
+        split_paths: Vec::new(),
+        bundle_paths: vec![path.display().to_string()],
+        trust: reseam_model::Trust::default(),
+    })
+    .unwrap();
+    assert!(response.bundles[0].problem.is_some());
+    assert!(response.patches.is_empty());
 }
 
 #[test]

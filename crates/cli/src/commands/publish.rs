@@ -58,13 +58,7 @@ pub fn run_publish_patches(command: &PublishPatchesCommand) -> Result<()> {
             public_key: Some(hex::encode(archive.public_key())),
         }
     };
-    let patches = archive
-        .load()
-        .with_context(|| format!("failed to inspect bundle {}", command.bundle.display()))?
-        .patches()
-        .iter()
-        .map(|patch| patch.spec().clone())
-        .collect();
+    let patches = archive.patches().to_vec();
     publish(&command.out, publisher, &command.release, Some(patches))
 }
 

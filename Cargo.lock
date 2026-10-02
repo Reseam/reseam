@@ -1330,6 +1330,7 @@ dependencies = [
 name = "reseam-sdk"
 version = "0.16.0"
 dependencies = [
+ "ed25519-dalek",
  "hex",
  "libc",
  "reseam-apk",

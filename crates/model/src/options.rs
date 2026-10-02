@@ -17,7 +17,7 @@ pub enum OptionType {
     Path,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[boltffi::data]
 pub struct OptionDeclaration {
     pub key: String,
@@ -29,7 +29,7 @@ pub struct OptionDeclaration {
     pub required: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
 #[boltffi::data]
 pub enum OptionValue {

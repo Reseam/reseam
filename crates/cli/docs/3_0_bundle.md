@@ -48,8 +48,9 @@ The command:
 1. Parses `manifest.toml` and checks `format_version` matches `reseam_patcher::bundle::BUNDLE_FORMAT_VERSION`.
 2. Reads the payload files, sorts them by name, and hashes each with SHA-256.
 3. Rewrites the manifest with a `[files]` table of name-to-hex-SHA-256 pairs.
-4. Derives the Ed25519 keypair from the `--key` seed and signs the rewritten manifest.
-5. Writes the zip: `mimetype` (stored), `manifest.toml` (deflated), `manifest.pubkey` (stored), `manifest.sig` (stored), then each payload file (deflated).
+4. Initializes the patch declarations using the runtime metadata reader and adds their complete `PatchSpec` catalog to the manifest. Packing executes the author's code and requires a JVM when patch jars are present.
+5. Derives the Ed25519 keypair from the `--key` seed and signs the rewritten manifest, including the patch catalog.
+6. Writes the zip: `mimetype` (stored), `manifest.toml` (deflated), `manifest.pubkey` (stored), `manifest.sig` (stored), then each payload file (deflated).
 
 | Argument | Purpose |
 |----------|---------|
@@ -62,7 +63,7 @@ The command:
 List every patch in a bundle with its metadata.
 
 ```bash
-reseam bundle list patches.reseam --trust <PUBLIC_KEY_HEX>
+reseam bundle list patches.reseam
 ```
 
 Output shape:
@@ -71,9 +72,8 @@ Output shape:
 bundle: example-bundle
 author: example
 description: Example patches
-signer: 1f3c... (trusted)
-engine: 0.3.0
-files: example-patches.jar, example-extension.dex
+signer: 1f3c... (untrusted)
+files: 2
 
     1. [on] Example patch - One-line description.
        id: app.example.examplePatch
@@ -83,13 +83,21 @@ files: example-patches.jar, example-extension.dex
          - mode (String, optional)
 ```
 
-`signer` is the bundle's public key and whether it matched `--trust`; `engine` is the version of the CLI that packed it; `files` lists the payload, jars and extension DEX alike. `(String, optional)` is the option's declared type and required flag. `--json` prints the same inspection as JSON, which is what the Gradle plugin reads to generate references to another bundle's patches.
+`signer` is the bundle's public key and whether it matched `--trust`; `files` counts the payload files. `--verbose` adds the packing engine version and lists each payload filename on its own line. `(String, optional)` is the option's declared type and required flag. `--json` prints the full inspection response as JSON, including filenames, engine version and internal patches, which is what the Gradle plugin reads to generate references to another bundle's patches.
 
-The bundle is loaded through the same path `reseam patch` uses: its signature is verified against the bundle's embedded public key, then that key is checked against `--trust`. Without a matching `--trust` the command prints the bundle metadata and signer but not the patches, since listing them means loading the bundle's code. A bundle with an invalid signature or the wrong `format_version` fails before any metadata is printed.
+```bash
+reseam bundle list patches.reseam --json
+```
+
+Listing reads the signed patch catalog without extracting payloads, starting a JVM, or executing bundle code. Every readable bundle's patches are listed, regardless of signer trust. `--trust` only marks whether the signer is approved for patching; it does not affect listing. Patching still checks trust before loading code and rejects loaded metadata that differs from the signed catalog.
+
+Bundles packed before the static catalog was introduced must be rebuilt. `format_version` remains `1`; the catalog is now required. A bundle with an invalid signature, missing catalog, or unsupported format fails before any metadata is printed in the human-readable listing; JSON records bundle failures in the `problem` field. Payload hashes are checked when patching loads the bundle, rather than during catalog inspection.
 
 | Argument | Purpose |
 |----------|---------|
 | `<bundle>` | `.reseam` archive to inspect. |
-| `--trust <PUBLIC_KEY_HEX>` | Repeatable. Signer to accept so patches are listed. |
+| `--trust <PUBLIC_KEY_HEX>` | Repeatable. Mark a signer as trusted; optional for listing. |
+| `--verbose` | Include the packing engine version and individual payload filenames. |
+| `--json` | Print the full inspection response as JSON. Conflicts with `--verbose`. |
 
 A bundle from an incompatible engine line fails to open with a message naming which side needs updating.

@@ -78,4 +78,6 @@ format_version = 1
 - `format_version`: currently `1`.
 - `engine`: written by `reseam bundle pack`, never by hand. Bundles load on engines of the same major version, or the same minor while the major is 0.
 
+Packing initializes the author's patch declarations once and includes their static metadata in the signed manifest. Clients inspect that catalog without executing code or trusting the signer. Patching still requires trust and checks that loaded declarations match the catalog. Existing bundles without a catalog must be rebuilt; `format_version` remains `1` during early development.
+
 Next: [Your first patch](3_first_patch.md).

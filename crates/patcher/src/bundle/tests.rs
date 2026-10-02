@@ -51,6 +51,7 @@ fn resource_archive(path: &Path, name: &str, declared: &[u8], actual: &[u8]) {
             engine: ENGINE_VERSION.into(),
         },
         files: BTreeMap::from([(name.into(), hex::encode(Sha256::digest(declared)))]),
+        patches: Vec::new(),
     };
     let manifest = toml::to_string(&manifest).unwrap();
     let mut zip = ZipWriter::new(File::create(path).unwrap());
@@ -178,7 +179,7 @@ public final class Declarations {
             Self { dir }
         }
 
-        fn archive(&self, members: &[(MemberKind, &str)]) -> BundleArchive {
+        fn archive(&self, members: &[(MemberKind, &str)]) -> crate::error::Result<BundleArchive> {
             let stage = self.dir.path().join("stage");
             std::fs::create_dir_all(&stage).unwrap();
             let index = members
@@ -213,8 +214,8 @@ public final class Declarations {
             )
             .unwrap();
             let out = self.dir.path().join("example.reseam");
-            pack(&stage, &SigningKey::from_bytes(&[42; 32]), &out).unwrap();
-            BundleArchive::open(&out).unwrap()
+            pack(&stage, &SigningKey::from_bytes(&[42; 32]), &out)?;
+            BundleArchive::open(&out)
         }
     }
 
@@ -225,11 +226,13 @@ public final class Declarations {
     )]
     fn indexed_declarations_are_atomic_and_keep_aliases_alive() {
         let fixture = Fixture::new();
-        let bundle = fixture
+        let archive = fixture
             .archive(&[(Field, "zAlias"), (Field, "aAlias"), (Method, "getGood")])
-            .load()
             .unwrap();
+        let catalog = archive.patches().to_vec();
+        let bundle = archive.load().unwrap();
         assert_eq!(bundle.patches().len(), 1);
+        assert_eq!(catalog[0], *bundle.patches()[0].spec());
         assert_eq!(bundle.patches()[0].spec().id, "sample.aAlias");
         let path = bundle._extracted.path().to_path_buf();
         let patches = bundle.into_patches();
@@ -238,9 +241,11 @@ public final class Declarations {
         assert!(!path.exists());
         let repeated = fixture
             .archive(&[(Method, "getFresh"), (Method, "getFresh")])
+            .unwrap()
             .load()
             .unwrap();
         assert_eq!(repeated.patches().len(), 1);
+        let published = std::fs::read(fixture.dir.path().join("example.reseam")).unwrap();
         for member in [
             "getNull",
             "getThrows",
@@ -249,8 +254,57 @@ public final class Declarations {
             "getNullElement",
             "getMissing",
         ] {
-            let archive = fixture.archive(&[(Method, "getGood"), (Method, member)]);
-            assert!(archive.load().is_err(), "{member}");
+            assert!(
+                fixture
+                    .archive(&[(Method, "getGood"), (Method, member)])
+                    .is_err(),
+                "{member}"
+            );
+            assert_eq!(
+                std::fs::read(fixture.dir.path().join("example.reseam")).unwrap(),
+                published
+            );
         }
+    }
+
+    #[test]
+    fn loading_rejects_a_signed_catalog_that_differs_from_code() {
+        let fixture = Fixture::new();
+        drop(fixture.archive(&[(Method, "getGood")]).unwrap());
+        let path = fixture.dir.path().join("example.reseam");
+        let mut original = zip::ZipArchive::new(File::open(&path).unwrap()).unwrap();
+        let mut entries = Vec::new();
+        for index in 0..original.len() {
+            let mut entry = original.by_index(index).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut entry, &mut bytes).unwrap();
+            entries.push((entry.name().to_owned(), bytes));
+        }
+        drop(original);
+        let manifest = entries
+            .iter_mut()
+            .find(|(name, _)| name == "manifest.toml")
+            .unwrap();
+        let mut catalog: BundleManifest =
+            toml::from_str(std::str::from_utf8(&manifest.1).unwrap()).unwrap();
+        catalog.patches[0].description = "Different metadata".into();
+        manifest.1 = toml::to_string(&catalog).unwrap().into_bytes();
+        let signature = SigningKey::from_bytes(&[42; 32])
+            .sign(&manifest.1)
+            .to_bytes();
+        entries
+            .iter_mut()
+            .find(|(name, _)| name == "manifest.sig")
+            .unwrap()
+            .1 = signature.to_vec();
+        let mut zip = ZipWriter::new(File::create(&path).unwrap());
+        for (name, bytes) in entries {
+            zip.start_file(name, SimpleFileOptions::default()).unwrap();
+            zip.write_all(&bytes).unwrap();
+        }
+        zip.finish().unwrap();
+        let archive = BundleArchive::open(&path).unwrap();
+        assert_eq!(archive.patches()[0].description, "Different metadata");
+        assert!(archive.load().is_err());
     }
 }

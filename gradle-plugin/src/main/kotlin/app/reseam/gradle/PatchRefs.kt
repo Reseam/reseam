@@ -196,8 +196,9 @@ constructor(private val exec: ExecOperations) : DefaultTask() {
         }
         val response = bundleJson.decodeFromString<BundleListing>(stdout.toString(Charsets.UTF_8))
         val info = response.bundles.single()
-        if (trust != null && (info.problem != null || !info.trusted || info.publicKey != trust))
-            throw GradleException("cannot load $file with trusted signer $trust: ${info.problem}")
+        if (info.problem != null) throw GradleException("cannot inspect $file: ${info.problem}")
+        if (trust != null && (!info.trusted || info.publicKey != trust))
+            throw GradleException("$file signer differs from pinned $trust")
         return Listing(BundleMetadata(info.name, info.publicKey), response.patches.map { it.id })
     }
 

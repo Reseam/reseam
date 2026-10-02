@@ -129,6 +129,9 @@ pub struct BundleListCommand {
     /// Print the inspect response as JSON instead of the listing.
     #[arg(long)]
     pub json: bool,
+    /// Include payload filenames and the packing engine version.
+    #[arg(long, conflicts_with = "json")]
+    pub verbose: bool,
 }
 
 #[derive(Subcommand)]

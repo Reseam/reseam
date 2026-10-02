@@ -53,7 +53,7 @@ pub(crate) fn apk_metadata(opened: &mut OpenedApk) -> Result<ApkMetadata> {
 /// Inspects an optional APK and all requested bundles.
 /// APK and trust failures abort inspection; each bundle failure is recorded in
 /// its metadata so hosts can display the readable bundles alongside it.
-/// Untrusted bundle code is never loaded.
+/// Reads signed patch metadata without loading bundle code, regardless of trust.
 pub fn inspect(request: &InspectRequest) -> Result<InspectResponse> {
     let trust = TrustStore::from_hex(&request.trust.keys)?;
     let splits = request
@@ -77,24 +77,13 @@ pub fn inspect(request: &InspectRequest) -> Result<InspectResponse> {
                 continue;
             }
         };
-        let mut metadata = bundle_metadata(path, &archive, &trust);
-        if metadata.trusted {
-            match archive.load() {
-                Ok(bundle) => patches.extend(
-                    bundle
-                        .patches()
-                        .iter()
-                        .map(|patch| patch_metadata(patch.spec(), apk.as_ref())),
-                ),
-                Err(error) => metadata.problem = Some(load_problem(path, &error)),
-            }
-        } else {
-            metadata.problem = Some(Problem::UntrustedBundle {
-                path: path.display().to_string(),
-                public_key: metadata.public_key.clone(),
-            });
-        }
-        bundles.push(metadata);
+        patches.extend(
+            archive
+                .patches()
+                .iter()
+                .map(|spec| patch_metadata(spec, apk.as_ref())),
+        );
+        bundles.push(bundle_metadata(path, &archive, &trust));
     }
     Ok(InspectResponse {
         apk,

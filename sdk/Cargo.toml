@@ -25,6 +25,7 @@ libc = { workspace = true }
 windows-sys = { workspace = true, features = ["Win32_System_ProcessStatus"] }
 
 [dev-dependencies]
+ed25519-dalek = { workspace = true }
 serde_json = { workspace = true }
 zip = { workspace = true }
 

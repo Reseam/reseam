@@ -7,7 +7,7 @@ use std::io::{Read, Write};
 use anyhow::{Context, Result, ensure};
 use ed25519_dalek::{SecretKey, SigningKey};
 use reseam_patcher::Compatibility;
-use reseam_sdk::{InspectRequest, PatchMetadata, Problem, inspect};
+use reseam_sdk::{InspectRequest, PatchMetadata, inspect};
 use ring::rand::{SecureRandom, SystemRandom};
 use tracing::info;
 
@@ -26,9 +26,8 @@ pub fn run_bundle_list(command: &BundleListCommand) -> Result<()> {
         return Ok(());
     }
     let bundle = &response.bundles[0];
-    match &bundle.problem {
-        None | Some(Problem::UntrustedBundle { .. }) => {}
-        Some(problem) => anyhow::bail!("{problem}"),
+    if let Some(problem) = &bundle.problem {
+        anyhow::bail!("{problem}");
     }
     println!("bundle: {}", bundle.name);
     if !bundle.author.is_empty() {
@@ -46,11 +45,14 @@ pub fn run_bundle_list(command: &BundleListCommand) -> Result<()> {
             "untrusted"
         }
     );
-    println!("engine: {}", bundle.engine);
-    println!("files: {}", bundle.files.join(", "));
-    if !bundle.trusted {
-        println!("patches are not listed for untrusted signers");
-        return Ok(());
+    if command.verbose {
+        println!("engine: {}", bundle.engine);
+    }
+    println!("files: {}", bundle.files.len());
+    if command.verbose {
+        for file in &bundle.files {
+            println!("  {file}");
+        }
     }
     println!();
     let hidden_references: HashSet<_> = response

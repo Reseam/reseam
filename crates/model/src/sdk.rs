@@ -39,8 +39,9 @@ pub struct BundleMetadata {
     pub files: Vec<String>,
     pub public_key: String,
     pub engine: String,
+    /// Whether the host approves this signer for execution; inspection does not require it.
     pub trusted: bool,
-    /// Set when the bundle cannot be used; its patches are then absent from the response.
+    /// Set when the signed catalog cannot be read; its patches are then absent.
     #[boltffi::default(None)]
     pub problem: Option<Problem>,
 }
@@ -67,12 +68,13 @@ pub struct InspectRequest {
     pub split_paths: Vec<String>,
     #[serde(default)]
     pub bundle_paths: Vec<String>,
+    /// Marks approved signers in the response without gating catalog inspection.
     #[serde(default)]
     pub trust: Trust,
 }
 
-/// Patches are listed only for bundles that were trusted and loaded. Problems
-/// with other bundles are reported in `bundles`.
+/// Patches come from signed catalogs without loading code or requiring trust.
+/// Problems with unreadable bundles are reported in `bundles`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[boltffi::data]
 pub struct InspectResponse {

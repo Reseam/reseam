@@ -64,13 +64,9 @@ Every subcommand supports `--help`.
 
 ## Logging
 
-Logs go to stderr through `tracing-subscriber`. The default filter is:
+Logs go to stderr. By default, Reseam shows info and errors, including patch progress and the final summary. Warnings, debug messages, trace messages, and crate targets are hidden.
 
-```
-reseam=info,reseam_cli=info,reseam_patcher=info,reseam_apk=info,reseam_sign=info
-```
-
-Override with `RUST_LOG` to dig into one crate:
+Set `RUST_LOG` to control log levels and show crate targets. For example, include warnings with `RUST_LOG=info`, or dig into one crate:
 
 ```bash
 RUST_LOG=reseam_patcher=debug reseam patch app.apk --bundle patches.reseam

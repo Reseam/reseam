@@ -11,7 +11,7 @@ Output: `build/reseam/<name>.reseam`. See [Setup](1_setup.md) for how the CLI an
 ## Apply locally
 
 ```bash
-reseam bundle list build/reseam/<name>.reseam --trust <PUBLIC_KEY_HEX>
+reseam bundle list build/reseam/<name>.reseam
 reseam patch target.apk \
   --bundle build/reseam/<name>.reseam \
   --trust <PUBLIC_KEY_HEX> \
@@ -43,7 +43,7 @@ reseam publish patches \
   --url https://example.com/releases/<name>-v0.5.0.reseam
 ```
 
-The release entry includes the bundle's complete patch catalog. Publishing loads the Kotlin declarations to obtain that metadata, so it requires a JVM and should only be run on a bundle you trust.
+The release entry includes the bundle's complete signed patch catalog. Publishing reads static metadata without loading Kotlin declarations or requiring a JVM. The catalog is generated during packing, which executes the author's initialization code.
 
 Required: `--version`, `--url`. Optional: `--homepage`, `--description` or `--description-file`, `--created-at`, `--prerelease`, `--out` (defaults to `patches.json`). An existing `patches.json` keeps prior releases; an entry matching `--version` is replaced.
 

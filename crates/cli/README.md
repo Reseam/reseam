@@ -66,7 +66,7 @@ reseam bundle keygen --out reseam.key
 
 ### `reseam bundle pack`
 
-Pack a staging directory into a signed `.reseam` bundle. The directory holds `manifest.toml` with a `[bundle]` table (`name`, `format_version`, optional `author` and `description`) beside the `.jar` and `.dex` payload. Jars must carry both JVM classes and `classes.dex` so the same bundle runs on desktop and on Android. The bundle is stamped with the engine version that packed it.
+Pack a staging directory into a signed `.reseam` bundle. The directory holds `manifest.toml` with a `[bundle]` table (`name`, `format_version`, optional `author` and `description`) beside the `.jar` and `.dex` payload. Jars must carry both JVM classes and `classes.dex` so the same bundle runs on desktop and on Android. The packer initializes the author's declarations to generate a signed static patch catalog and stamps the bundle with its engine version. Packing patch jars requires a JVM and executes the author's code.
 
 ```bash
 reseam bundle pack staging/ --key reseam.key --out patches.reseam
@@ -74,15 +74,15 @@ reseam bundle pack staging/ --key reseam.key --out patches.reseam
 
 ### `reseam bundle list`
 
-Show a bundle's metadata, signer, engine version, and, when the signer is trusted, every patch with its compatibility, dependencies, and options.
+Show a bundle's metadata, signer, and every patch with its compatibility, dependencies, and options. Reads the signed catalog without loading code or requiring trust. `--verbose` adds the engine version and payload filenames; `--json` prints the full inspection response.
 
 ```bash
-reseam bundle list patches.reseam --trust <PUBLIC_KEY_HEX>
+reseam bundle list patches.reseam
 ```
 
 ### `reseam publish patches`
 
-Add a release to a `patches.json` index, including the bundle's patch catalog for that version. The command takes the publisher identity and public key from the signed archive, replaces any release with the same version, and refuses to change the index's signer. It loads the patch declarations, so publishing requires a JVM and runs the bundle's initialization code.
+Add a release to a `patches.json` index, including the bundle's patch catalog for that version. The command takes the publisher identity and public key from the signed archive, replaces any release with the same version, and refuses to change the index's signer. It reads the signed catalog without loading code or requiring a JVM.
 
 ```bash
 reseam publish patches patches.reseam --version v0.1.0 --url https://example.com/patches-v0.1.0.reseam --description-file CHANGELOG.md

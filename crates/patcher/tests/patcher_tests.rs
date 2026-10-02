@@ -12,7 +12,7 @@ use std::sync::OnceLock;
 
 use reseam_apk::reseam_dex::{DexFile, DexHeader, DexVersion, ParseOptions};
 use reseam_apk::{ApkFile, ResValue, ResourceTable};
-use reseam_patcher::bundle::{BundleArchive, ENGINE_VERSION};
+use reseam_patcher::bundle::{BUNDLE_FORMAT_VERSION, BundleArchive, pack};
 use reseam_patcher::context::PatchContext;
 use reseam_patcher::engine::{self, PatchSelection, PatchStatus};
 use reseam_patcher::options::OptionValue;
@@ -82,51 +82,26 @@ struct TestBundle {
 }
 
 fn write_bundle_reseam() -> TestBundle {
-    use sha2::{Digest, Sha256};
-    use std::io::Write as _;
-
     let tmp = tempfile::tempdir().unwrap();
     let out_path = tmp.path().join("runtime-test-bundle.reseam");
-
-    let jar_bytes = fs::read(build_fixture_jar()).unwrap();
-    let jar_name = "reseam-test-patches.jar";
-    let jar_sha = hex::encode(Sha256::digest(&jar_bytes));
-
-    let manifest = format!(
-        r#"[bundle]
-name = "runtime-test-bundle"
-format_version = 1
-engine = "{ENGINE_VERSION}"
-
-[files]
-"{jar_name}" = "{jar_sha}"
-"#
-    );
-    let manifest_bytes = manifest.into_bytes();
-
-    let signing_key = ed25519_dalek::SigningKey::from_bytes(&TEST_SIGNING_SEED);
-    let pubkey = signing_key.verifying_key().to_bytes();
-    let signature = ed25519_dalek::Signer::sign(&signing_key, &manifest_bytes).to_bytes();
-
-    let file = File::create(&out_path).unwrap();
-    let mut zip = zip::ZipWriter::new(file);
-    let stored =
-        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
-    let deflated = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated);
-
-    zip.start_file("mimetype", stored).unwrap();
-    zip.write_all(reseam_patcher::bundle::BUNDLE_MIMETYPE.as_bytes())
-        .unwrap();
-    zip.start_file("manifest.toml", deflated).unwrap();
-    zip.write_all(&manifest_bytes).unwrap();
-    zip.start_file("manifest.pubkey", stored).unwrap();
-    zip.write_all(&pubkey).unwrap();
-    zip.start_file("manifest.sig", stored).unwrap();
-    zip.write_all(&signature).unwrap();
-    zip.start_file(jar_name, deflated).unwrap();
-    zip.write_all(&jar_bytes).unwrap();
-    zip.finish().unwrap();
+    fs::copy(
+        build_fixture_jar(),
+        tmp.path().join("reseam-test-patches.jar"),
+    )
+    .unwrap();
+    fs::write(
+        tmp.path().join("manifest.toml"),
+        format!(
+            "[bundle]\nname = 'runtime-test-bundle'\nformat_version = {BUNDLE_FORMAT_VERSION}\n"
+        ),
+    )
+    .unwrap();
+    pack(
+        tmp.path(),
+        &ed25519_dalek::SigningKey::from_bytes(&TEST_SIGNING_SEED),
+        &out_path,
+    )
+    .unwrap();
 
     TestBundle {
         _dir: tmp,

@@ -5,8 +5,10 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{Read, Seek, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use ed25519_dalek::{Signer, SigningKey};
+use reseam_storage::ScratchDir;
 use sha2::{Digest, Sha256};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
@@ -20,41 +22,13 @@ use crate::error::Result;
 /// Packs `dir/manifest.toml`, adjacent `.jar`/`.dex` files, and `resources/` into a
 /// signed bundle at `out`. Jars must carry both JVM classes and `classes.dex`
 /// so the same bundle runs on the desktop JVM and on ART.
+/// Initializes the author's patch declarations to include their static metadata
+/// in the signed manifest. Packing therefore requires trusted source code.
 pub fn pack(dir: &Path, signing_key: &SigningKey, out: &Path) -> Result<()> {
     let manifest = read_manifest(&dir.join("manifest.toml"))?;
-    let mut paths = BTreeMap::new();
-    for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        let name = entry.file_name().into_string().map_err(|name| {
-            bundle_error(format!(
-                "non-UTF-8 payload name: {}",
-                name.to_string_lossy()
-            ))
-        })?;
-        if matches!(
-            path.extension().and_then(|extension| extension.to_str()),
-            Some("jar" | "dex")
-        ) {
-            payload_kind(&name)?;
-            if !entry.file_type()?.is_file() {
-                return Err(bundle_error(format!(
-                    "payload {} must be a regular file",
-                    path.display()
-                )));
-            }
-            paths.insert(name, path);
-        } else if name == "resources" {
-            resource_paths(&path, "resources", &mut paths)?;
-        }
-    }
-    if paths.is_empty() {
-        return Err(bundle_error(format!(
-            "no payload files in {}",
-            dir.display()
-        )));
-    }
+    let paths = payload_paths(dir)?;
     let mut payload = BTreeMap::new();
+    let snapshot = Arc::new(ScratchDir::new("bundle-pack")?);
 
     for (name, path) in paths {
         let mut file = File::open(&path)
@@ -63,10 +37,31 @@ pub fn pack(dir: &Path, signing_key: &SigningKey, out: &Path) -> Result<()> {
             check_universal_jar(&name, &mut file)?;
             file.rewind()?;
         }
-        let hash = copy_hashed(&mut file, &mut std::io::sink())
+        let staged = snapshot.path().join(&name);
+        if let Some(parent) = staged.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let hash = copy_hashed(&mut file, &mut File::create(&staged)?)
             .map_err(|error| bundle_error(format!("hash payload {name}: {error}")))?;
-        payload.insert(name, (path, hash));
+        payload.insert(name, (staged, hash));
     }
+    let jars: Vec<_> = payload
+        .iter()
+        .filter(|(name, _)| Path::new(name).extension().is_some_and(|ext| ext == "jar"))
+        .map(|(_, (path, _))| path.clone())
+        .collect();
+    #[cfg(feature = "kotlin")]
+    let patches = crate::kotlin::load_patches(&jars, Arc::clone(&snapshot), &manifest.bundle.name)?
+        .iter()
+        .map(|patch| patch.spec().clone())
+        .collect();
+    #[cfg(not(feature = "kotlin"))]
+    let patches = {
+        if !jars.is_empty() {
+            return Err(bundle_error("packing patch jars requires Kotlin support"));
+        }
+        Vec::new()
+    };
     let manifest = BundleManifest {
         bundle: BundleInfo {
             engine: ENGINE_VERSION.to_string(),
@@ -76,7 +71,9 @@ pub fn pack(dir: &Path, signing_key: &SigningKey, out: &Path) -> Result<()> {
             .iter()
             .map(|(name, (_, hash))| (name.clone(), hex::encode(hash)))
             .collect(),
+        patches,
     };
+    manifest.check_patches()?;
     let manifest_bytes = toml::to_string(&manifest)
         .map_err(|e| bundle_error(format!("serialize manifest: {e}")))?
         .into_bytes();
@@ -115,6 +112,42 @@ pub fn pack(dir: &Path, signing_key: &SigningKey, out: &Path) -> Result<()> {
     temporary.as_file().sync_all()?;
     temporary.persist(out).map_err(|error| error.error)?;
     Ok(())
+}
+
+fn payload_paths(dir: &Path) -> Result<BTreeMap<String, PathBuf>> {
+    let mut paths = BTreeMap::new();
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let name = entry.file_name().into_string().map_err(|name| {
+            bundle_error(format!(
+                "non-UTF-8 payload name: {}",
+                name.to_string_lossy()
+            ))
+        })?;
+        if matches!(
+            path.extension().and_then(|extension| extension.to_str()),
+            Some("jar" | "dex")
+        ) {
+            payload_kind(&name)?;
+            if !entry.file_type()?.is_file() {
+                return Err(bundle_error(format!(
+                    "payload {} must be a regular file",
+                    path.display()
+                )));
+            }
+            paths.insert(name, path);
+        } else if name == "resources" {
+            resource_paths(&path, "resources", &mut paths)?;
+        }
+    }
+    if paths.is_empty() {
+        return Err(bundle_error(format!(
+            "no payload files in {}",
+            dir.display()
+        )));
+    }
+    Ok(paths)
 }
 
 fn check_universal_jar(name: &str, file: &mut File) -> Result<()> {

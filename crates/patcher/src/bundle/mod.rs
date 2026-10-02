@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! `.reseam` bundles: a zip whose `manifest.toml` lists every payload file
-//! with its SHA-256 and is signed with Ed25519. Whether to trust the signing
+//! `.reseam` bundles: a zip whose Ed25519-signed `manifest.toml` contains the
+//! static patch catalog and every payload file's SHA-256. Whether to trust the signing
 //! key is the host's decision; this module only verifies that the bundle is
 //! intact and signed by the key it carries.
 
@@ -17,7 +17,7 @@ use reseam_storage::ScratchDir;
 use serde::{Deserialize, Serialize};
 
 use crate::error::PatcherError;
-use crate::patch::{Patch, is_slug};
+use crate::patch::{Patch, PatchSpec, is_slug};
 
 pub use archive::BundleArchive;
 pub(crate) use pack::copy_hashed;
@@ -84,8 +84,29 @@ mod tests;
 #[derive(Debug, Serialize, Deserialize)]
 struct BundleManifest {
     bundle: BundleInfo,
+    patches: Vec<PatchSpec>,
     #[serde(default)]
     files: BTreeMap<String, String>,
+}
+
+#[derive(Deserialize)]
+struct StagingManifest {
+    bundle: BundleInfo,
+}
+
+impl BundleManifest {
+    fn check_patches(&self) -> crate::error::Result<()> {
+        for patch in &self.patches {
+            if patch.bundle != self.bundle.name || patch.id.is_empty() {
+                return Err(bundle_error(format!(
+                    "invalid patch identity {}/{} in bundle {}",
+                    patch.bundle, patch.id, self.bundle.name
+                )));
+            }
+        }
+        crate::engine::PatchIndex::new(&self.patches.iter().collect::<Vec<_>>())?;
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -162,8 +183,8 @@ pub fn manifest_info(path: &Path) -> crate::error::Result<BundleInfo> {
     Ok(read_manifest(path)?.bundle)
 }
 
-fn read_manifest(path: &Path) -> crate::error::Result<BundleManifest> {
-    let manifest: BundleManifest = toml::from_str(&std::fs::read_to_string(path)?)?;
+fn read_manifest(path: &Path) -> crate::error::Result<StagingManifest> {
+    let manifest: StagingManifest = toml::from_str(&std::fs::read_to_string(path)?)?;
     check_info(&manifest.bundle)?;
     Ok(manifest)
 }
