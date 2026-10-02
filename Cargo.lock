@@ -1227,7 +1227,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "reseam-apk"
-version = "0.17.2"
+version = "0.18.0"
 dependencies = [
  "bitflags",
  "quick-xml",
@@ -1248,14 +1248,14 @@ dependencies = [
 
 [[package]]
 name = "reseam-browser-compression"
-version = "0.17.2"
+version = "0.18.0"
 dependencies = [
  "reseam-apk",
 ]
 
 [[package]]
 name = "reseam-cli"
-version = "0.17.2"
+version = "0.18.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1277,7 +1277,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-dex"
-version = "0.17.2"
+version = "0.18.0"
 dependencies = [
  "bitflags",
  "pretty_assertions",
@@ -1294,7 +1294,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-model"
-version = "0.17.2"
+version = "0.18.0"
 dependencies = [
  "boltffi",
  "serde",
@@ -1304,7 +1304,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-patcher"
-version = "0.17.2"
+version = "0.18.0"
 dependencies = [
  "anyhow",
  "boltffi",
@@ -1331,7 +1331,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-sdk"
-version = "0.17.2"
+version = "0.18.0"
 dependencies = [
  "ed25519-dalek",
  "hex",
@@ -1351,7 +1351,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-sdk-browser"
-version = "0.17.2"
+version = "0.18.0"
 dependencies = [
  "reseam-sdk",
  "serde",
@@ -1360,7 +1360,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-sdk-native"
-version = "0.17.2"
+version = "0.18.0"
 dependencies = [
  "boltffi",
  "jni",
@@ -1373,7 +1373,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-sign"
-version = "0.17.2"
+version = "0.18.0"
 dependencies = [
  "flate2",
  "rayon",
@@ -1389,7 +1389,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-storage"
-version = "0.17.2"
+version = "0.18.0"
 dependencies = [
  "libc",
  "memmap2",
