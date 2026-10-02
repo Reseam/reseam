@@ -51,7 +51,17 @@ class ChoiceSetting(
     summary: String? = null,
     default: String,
     val choices: List<Choice>,
-) : Setting<String>(key, title, summary, default)
+) : Setting<String>(key, title, summary, default) {
+    init {
+        require(choices.any { it.value == default }) {
+            "Choice setting '$key' defaults to '$default', which is not a choice"
+        }
+    }
+
+    /** The same stored setting with other choices, for a patch that extends it from its options. */
+    fun copy(default: String = this.default, choices: List<Choice> = this.choices) =
+        ChoiceSetting(key, title, summary, default, choices)
+}
 
 data class Choice(val value: String, val title: String)
 

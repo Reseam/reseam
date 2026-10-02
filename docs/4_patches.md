@@ -145,6 +145,25 @@ val appSettings = settingsHost("example") {
 
 `settings(host, section(...))` in a patch registers its sections and adds the host as a dependency. `settings(section(...))` inside `settingsHost { }` does the same for sections the host owns, for a switch that belongs to no single feature patch; they lead the screen, since the host runs before its dependents. `install` runs after every registering patch, once the host has written `assets/reseam/settings.json`. Toggles gate emitted code; see [Gates](6_code.md#gates).
 
+### Settings from options
+
+Settings that depend on the patch's [options](12_reference.md#declaring-patches) go in a block. It runs after `execute`, with the runtime as receiver:
+
+```kotlin
+val appName = patch("App name") {
+    val customName = stringOption("customName", title = "Custom name")
+    settings(appSettings) {
+        val name = options.getOrNull(customName)
+        val setting = AppSettings.appName.let {
+            if (name == null) it else it.copy(default = "custom", choices = it.choices + Choice("custom", name))
+        }
+        listOf(section("Name", setting))
+    }
+}
+```
+
+`ChoiceSetting.copy` keeps the storage key. A stored value that the schema no longer lists stays in storage; read it with `ReseamSettings.getChoice` to fall back to the schema default. A choice setting's default must be one of its choices.
+
 ### Subpages
 
 A page groups sections behind a row on the settings screen. Share the page between patches; give it a parent to nest it:

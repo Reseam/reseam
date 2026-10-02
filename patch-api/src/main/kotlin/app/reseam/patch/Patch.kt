@@ -89,7 +89,8 @@ class PatchBuilder internal constructor(private val name: String?) : PatchDeclar
     private var hidden = name == null
     private var enabledByDefault: Boolean? = null
     private val options = mutableListOf<Option<*>>()
-    private val settings = mutableListOf<Pair<SettingsHost, List<SettingsSection>>>()
+    private val settings =
+        mutableListOf<Pair<SettingsHost, PatchRuntime.() -> List<SettingsSection>>>()
     private var executeBlock: (PatchRuntime.() -> Unit)? = null
     private var afterDependentsBlock: (PatchRuntime.() -> Unit)? = null
 
@@ -156,9 +157,13 @@ class PatchBuilder internal constructor(private val name: String?) : PatchDeclar
 
     /** Registers settings with `host`, which becomes a dependency. */
     fun settings(host: SettingsHost, vararg sections: SettingsSection) {
-        val index = settings.indexOfFirst { it.first === host }
-        if (index < 0) settings += host to sections.toList()
-        else settings[index] = host to (settings[index].second + sections)
+        val declared = sections.toList()
+        settings(host) { declared }
+    }
+
+    /** Registers settings computed after `execute`, so they can depend on options. */
+    fun settings(host: SettingsHost, sections: PatchRuntime.() -> List<SettingsSection>) {
+        settings += host to sections
         if (host !in dependencies) dependencies += host
     }
 
@@ -186,7 +191,9 @@ class PatchBuilder internal constructor(private val name: String?) : PatchDeclar
 
             override fun execute(ctx: PatchRuntime) {
                 execute?.invoke(ctx)
-                contributions.forEach { (host, sections) -> host.register(this, sections) }
+                for ((host, blocks) in contributions.groupBy({ it.first }, { it.second })) {
+                    host.register(this, blocks.flatMap { it(ctx) })
+                }
             }
 
             override fun afterDependents(ctx: PatchRuntime) {

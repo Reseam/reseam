@@ -32,6 +32,7 @@ Inside `patch { }` (`PatchBuilder`):
 | `stringListOption(...)` | `StringListOption`. |
 | `pathOption(key, title, description, required)` | `PathOption`; a directory the user picks. |
 | `settings(host, vararg sections)` | Registers settings; `host` becomes a dependency. |
+| `settings(host) { PatchRuntime -> List<SettingsSection> }` | Registers settings computed after `execute`, so they can read options. |
 | `execute { }` | The body. Receiver `PatchRuntime`. |
 | `afterDependents { }` | Runs after every dependent finished. |
 
@@ -213,7 +214,7 @@ Resource file and value helpers:
 | `choice(title, summary = null, default, choices, key = null)` | `ChoiceSetting` with `Choice(value, title)`. |
 | `Setting<T>` | `key`, `title`, `summary`, `default`. |
 | `ToggleSetting(key, title, summary = null, default)` | Boolean setting with an explicit key. `TextSetting` and `FolderSetting` take the same arguments with a string default; `TextSetting` also takes `multiline = false`. |
-| `ChoiceSetting(key, title, summary = null, default, choices)` | String setting with a `List<Choice>`; each `Choice(value, title)` supplies the stored value and displayed title. |
+| `ChoiceSetting(key, title, summary = null, default, choices)` | String setting with a `List<Choice>`; each `Choice(value, title)` supplies the stored value and displayed title. `default` must be a choice. `copy(default, choices)` keeps the key. |
 | `SettingsSection(title, settings, page = null)` | A `List<Setting<*>>` under a heading; null `page` places it at the root. |
 | `SettingsPage(id, title, parent = null, order = 0)` | A settings page; `parent` nests it, `order` sorts siblings. Only populated pages and their parents appear. |
 | `section(title, vararg settings)` | A root `SettingsSection`. |
