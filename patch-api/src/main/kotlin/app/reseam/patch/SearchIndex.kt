@@ -56,28 +56,28 @@ private sealed interface Seed {
     data class Literal(val value: Long) : Seed
 }
 
-internal class SearchIndex(private val runtime: PatchRuntime) {
+internal class SearchIndex(private val cache: RunCache) {
     private var classes: List<DexClass>? = null
     private var methods: List<Method>? = null
     private var sourceFiles: Map<String?, List<DexClass>>? = null
     val allClasses: List<DexClass>
         get() {
-            runtime.synchronize()
+            cache.synchronize()
             return classes ?: getAllClasses().map(::DexClass).also { classes = it }
         }
 
     val allMethods: List<Method>
         get() {
-            runtime.synchronize()
+            cache.synchronize()
             return methods ?: allMethodHandles().map(::Method).also { methods = it }
         }
 
     private val classesBySourceFile: Map<String?, List<DexClass>>
         get() {
-            runtime.synchronize()
+            cache.synchronize()
             return sourceFiles
                 ?: run {
-                    runtime.prefetchClasses(allClasses.map { it.handle })
+                    cache.prefetchClasses(allClasses.map { it.handle })
                     allClasses.groupBy { it.sourceFile }.also { sourceFiles = it }
                 }
         }
@@ -127,9 +127,9 @@ internal class SearchIndex(private val runtime: PatchRuntime) {
         matchingCalls.clear()
     }
 
-    private fun <K, V> cached(cache: MutableMap<K, V>, key: K, compute: () -> V): V {
-        runtime.synchronize()
-        return cache.getOrPut(key, compute)
+    private fun <K, V> cached(store: MutableMap<K, V>, key: K, compute: () -> V): V {
+        cache.synchronize()
+        return store.getOrPut(key, compute)
     }
 
     /** True for a DEX the patcher linked in, which is every extension the bundle ships. */
@@ -235,7 +235,7 @@ internal class SearchIndex(private val runtime: PatchRuntime) {
     private val matchingCalls = mutableMapOf<MethodRefMatchSpec, Set<UInt>>()
 
     fun matchesCall(method: Method, spec: MethodRefMatchSpec): Boolean {
-        runtime.synchronize()
+        cache.synchronize()
         return matchingCalls[spec]?.contains(method.handle)
             ?: methodRefsOf(method).any(spec::matches)
     }

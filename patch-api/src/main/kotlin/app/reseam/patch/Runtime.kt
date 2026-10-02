@@ -4,15 +4,10 @@
 package app.reseam.patch
 
 import app.reseam.patch.native.checkInvocation
-import app.reseam.patch.native.getClassInfo
-import app.reseam.patch.native.getClassInfos
-import app.reseam.patch.native.getMethodInfo
-import app.reseam.patch.native.getMethodInfos
-import app.reseam.patch.native.mutationChanges
-import app.reseam.patch.native.mutationRevision
 import app.reseam.patch.settings.SettingsHost
 import app.reseam.patch.settings.SettingsSection
 import app.reseam.patch.types.ClassInfo
+import app.reseam.patch.types.Instruction
 import app.reseam.patch.types.MethodInfo
 import java.util.IdentityHashMap
 
@@ -37,31 +32,11 @@ class PatchRuntime() {
 
     private val resolutions = IdentityHashMap<Target<*>, Resolution<*>>()
     private val resolving = IdentityHashMap<Target<*>, Unit>()
-    private val methodInfos = HashMap<UInt, MethodInfo>()
-    private val classInfos = HashMap<UInt, ClassInfo>()
-    private var revision = mutationRevision()
-    private var searchIndex: SearchIndex? = null
     private val successful = mutableListOf<() -> Unit>()
     internal val index: SearchIndex
-        get() {
-            synchronize()
-            return searchIndex ?: SearchIndex(this).also { searchIndex = it }
-        }
+        get() = run.cache.index
 
-    internal fun synchronize() {
-        val current = mutationRevision()
-        if (current == revision) return
-        val changes = mutationChanges(revision)
-        revision = current
-        if (changes == null) {
-            methodInfos.clear()
-            classInfos.clear()
-            searchIndex?.invalidate()
-        } else {
-            changes.forEach { methodInfos.remove(it) }
-            searchIndex?.invalidateMethods(changes)
-        }
-    }
+    internal fun synchronize() = run.cache.synchronize()
 
     internal fun afterSuccess(action: () -> Unit) {
         successful += action
@@ -105,43 +80,19 @@ class PatchRuntime() {
         return resolution
     }
 
-    private inline fun <T> synchronizedInfo(read: () -> T): T {
-        synchronize()
-        return read()
-    }
+    internal fun methodInfo(handle: UInt): MethodInfo = run.cache.methodInfo(handle)
 
-    internal fun methodInfo(handle: UInt): MethodInfo = synchronizedInfo {
-        methodInfos.getOrPut(handle) {
-            getMethodInfo(handle) ?: error("invalid method handle: $handle")
-        }
-    }
+    internal fun classInfo(handle: UInt): ClassInfo = run.cache.classInfo(handle)
 
-    internal fun classInfo(handle: UInt): ClassInfo = synchronizedInfo {
-        classInfos.getOrPut(handle) {
-            getClassInfo(handle) ?: error("invalid class handle: $handle")
-        }
-    }
+    internal fun instructions(handle: UInt): List<Instruction> = run.cache.instructions(handle)
 
-    internal fun prefetchMethods(handles: Collection<UInt>) {
-        synchronize()
-        handles.filterNot(methodInfos::containsKey).chunked(256).forEach { batch ->
-            val infos = getMethodInfos(batch.toUIntArray())
-            check(infos.size == batch.size) { "Invalid method in query candidates" }
-            batch.zip(infos).forEach { (handle, info) -> methodInfos[handle] = info }
-        }
-    }
+    internal fun prefetchMethods(handles: Collection<UInt>) = run.cache.prefetchMethods(handles)
 
-    internal fun prefetchClasses(handles: Collection<UInt>) {
-        synchronize()
-        handles.filterNot(classInfos::containsKey).chunked(256).forEach { batch ->
-            val infos = getClassInfos(batch.toUIntArray())
-            check(infos.size == batch.size) { "Invalid class in query candidates" }
-            batch.zip(infos).forEach { (handle, info) -> classInfos[handle] = info }
-        }
-    }
+    internal fun prefetchClasses(handles: Collection<UInt>) = run.cache.prefetchClasses(handles)
 }
 
 internal class PatchRun {
+    val cache = RunCache()
     private val settings =
         IdentityHashMap<SettingsHost, MutableList<Pair<ReseamPatch, List<SettingsSection>>>>()
 

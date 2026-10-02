@@ -88,24 +88,25 @@ internal fun CodeEmitter.layoutRegisters() {
                 allocated = true
             }
         }
-        for (invoke in invokes) {
-            val registers = invoke.registers.map(::resolveRegister)
-            if (invoke.scratch == null) {
-                val words =
-                    invokeScratchWords(
-                            Instruction.Invoke(
-                                InvokeInsn(
-                                    invoke.opcode.value.toUShort(),
-                                    UShortArray(registers.size) { registers[it].toUShort() },
-                                    invoke.ref,
-                                )
-                            )
+        val unscratched = invokes.filter { it.scratch == null }
+        val counts =
+            invokeScratchWords(
+                unscratched.map { invoke ->
+                    val registers = invoke.registers.map(::resolveRegister)
+                    Instruction.Invoke(
+                        InvokeInsn(
+                            invoke.opcode.value.toUShort(),
+                            UShortArray(registers.size) { registers[it].toUShort() },
+                            invoke.ref,
                         )
-                        .toInt()
-                if (words != 0) {
-                    invoke.scratch = allocTemp(words, RegisterConstraint.ANY)
-                    allocated = true
+                    )
                 }
+            )
+        unscratched.forEachIndexed { index, invoke ->
+            val words = counts[index].toInt()
+            if (words != 0) {
+                invoke.scratch = allocTemp(words, RegisterConstraint.ANY)
+                allocated = true
             }
         }
     } while (allocated)

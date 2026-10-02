@@ -341,10 +341,13 @@ pub(super) fn lower(
     .transpose()
 }
 
+/// Scratch words each instruction needs to be lowered; zero for all but wide invokes.
 #[export]
-pub fn invoke_scratch_words(instruction: Instruction) -> Result<u32, String> {
-    scratch_words(&instruction)
-        .map(|words| words as u32)
+pub fn invoke_scratch_words(instructions: Vec<Instruction>) -> Result<Vec<u32>, String> {
+    instructions
+        .iter()
+        .map(|instruction| scratch_words(instruction).map(|words| words as u32))
+        .collect::<dex::Result<_>>()
         .map_err(|error| error.to_string())
 }
 
@@ -409,8 +412,8 @@ mod tests {
                 },
             });
             assert_eq!(
-                invoke_scratch_words(input.clone()).unwrap() as usize,
-                case.scratch.len()
+                invoke_scratch_words(vec![input.clone()]).unwrap(),
+                [case.scratch.len() as u32]
             );
             let lowered = lower_instruction(input, case.scratch).unwrap();
             let mut values: BTreeMap<u16, u16> =

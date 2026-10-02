@@ -12,11 +12,9 @@ import app.reseam.patch.native.addMethodAnnotation
 import app.reseam.patch.native.cloneMethod
 import app.reseam.patch.native.ensureOutsSize
 import app.reseam.patch.native.findAllIndices
-import app.reseam.patch.native.findClass
 import app.reseam.patch.native.findContiguousFreeRegisters
 import app.reseam.patch.native.findFreeRegister
 import app.reseam.patch.native.findFreeRegisters
-import app.reseam.patch.native.getInstructions
 import app.reseam.patch.native.growLocalRegisters
 import app.reseam.patch.native.indexOfFirst
 import app.reseam.patch.native.indexOfFirstFieldAccess
@@ -61,9 +59,8 @@ value class Method(val handle: UInt) {
 
     val classDef: DexClass
         get() =
-            DexClass(
-                findClass(info.classDescriptor) ?: error("class not found: ${info.classDescriptor}")
-            )
+            ActiveRuntime.current.index.classFor(info.classDescriptor)
+                ?: error("class not found: ${info.classDescriptor}")
 
     val descriptor: String
         get() = info.descriptor
@@ -87,7 +84,7 @@ value class Method(val handle: UInt) {
         get() = info.isStatic
 
     val instructions: List<Instruction>
-        get() = getInstructions(handle)
+        get() = ActiveRuntime.current.instructions(handle)
 
     val instructionCount: Int
         get() = info.instructionCount.toInt()
@@ -367,20 +364,22 @@ fun lowerInvokes(
     insns: List<Instruction>,
     scratch: (wordCount: Int) -> List<Int>,
 ): List<Instruction> {
-    val spans = insns.mapIndexedNotNull { index, instruction ->
-        val words = app.reseam.patch.native.invokeScratchWords(instruction).toInt()
-        if (words == 0) null
-        else {
-            val registers = scratch(words)
-            require(registers.all { it in 0..UShort.MAX_VALUE.toInt() }) {
-                "scratch registers must fit the DEX frame"
+    val counts = app.reseam.patch.native.invokeScratchWords(insns)
+    val spans =
+        insns.indices.mapNotNull { index ->
+            val words = counts[index].toInt()
+            if (words == 0) null
+            else {
+                val registers = scratch(words)
+                require(registers.all { it in 0..UShort.MAX_VALUE.toInt() }) {
+                    "scratch registers must fit the DEX frame"
+                }
+                app.reseam.patch.types.ScratchSpan(
+                    index.toUInt(),
+                    UShortArray(registers.size) { registers[it].toUShort() },
+                )
             }
-            app.reseam.patch.types.ScratchSpan(
-                index.toUInt(),
-                UShortArray(registers.size) { registers[it].toUShort() },
-            )
         }
-    }
     return app.reseam.patch.native.lowerInstructions(insns, spans)
 }
 
