@@ -29,7 +29,7 @@ export class StorageClient {
 export class DiskFile extends Inode {
   private length = 0n;
   private descriptors = 0;
-  private unlinked = false;
+  private links = 1;
   constructor(readonly storage: StorageClient, readonly id: string = crypto.randomUUID(), existingSize?: bigint) {
     super();
     if (existingSize === undefined) storage.call('create', { id });
@@ -57,9 +57,12 @@ export class DiskFile extends Inode {
   sync(): void { this.storage.call('sync', { id: this.id }); }
   opened(): void { this.descriptors++; }
   closed(): void { this.descriptors--; this.removeUnused(); }
-  unlink(): void { this.unlinked = true; this.removeUnused(); }
+  link(): void { this.links++; }
+  unlink(): void { this.links--; this.removeUnused(); }
+  // Renames drop the old name before linking the new one, so detaching never deletes data.
+  detach(): void { this.links--; }
   private removeUnused(): void {
-    if (this.unlinked && this.descriptors === 0) {
+    if (this.links === 0 && this.descriptors === 0) {
       this.storage.invalidate(this.id);
       this.storage.call('remove', { id: this.id });
     }
@@ -188,6 +191,21 @@ export class DiskDirectory extends Directory {
 }
 
 class DiskDirectoryDescriptor extends OpenDirectory {
+  override path_link(path: string, inode: Inode, allowDirectory: boolean): number {
+    const { inode_obj: replaced } = this.path_lookup(path, 0);
+    const result = super.path_link(path, inode, allowDirectory);
+    if (result !== 0) return result;
+    if (inode instanceof DiskFile) inode.link();
+    if (replaced instanceof DiskFile && replaced !== inode) {
+      try { replaced.unlink(); } catch (error) { return errno(error); }
+    }
+    return result;
+  }
+  override path_unlink(path: string): { ret: number; inode_obj: Inode | null } {
+    const result = super.path_unlink(path);
+    if (result.inode_obj instanceof DiskFile) result.inode_obj.detach();
+    return result;
+  }
   override path_unlink_file(path: string): number {
     const { inode_obj: inode } = this.path_lookup(path, 0);
     const result = super.path_unlink_file(path);
