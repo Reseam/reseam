@@ -90,7 +90,7 @@ struct BundleManifest {
 }
 
 #[derive(Deserialize)]
-struct StagingManifest {
+struct ManifestHeader {
     bundle: BundleInfo,
 }
 
@@ -183,8 +183,8 @@ pub fn manifest_info(path: &Path) -> crate::error::Result<BundleInfo> {
     Ok(read_manifest(path)?.bundle)
 }
 
-fn read_manifest(path: &Path) -> crate::error::Result<StagingManifest> {
-    let manifest: StagingManifest = toml::from_str(&std::fs::read_to_string(path)?)?;
+fn read_manifest(path: &Path) -> crate::error::Result<ManifestHeader> {
+    let manifest: ManifestHeader = toml::from_str(&std::fs::read_to_string(path)?)?;
     check_info(&manifest.bundle)?;
     Ok(manifest)
 }

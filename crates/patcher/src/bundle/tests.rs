@@ -41,7 +41,6 @@ fn signed_resources_round_trip() {
 }
 
 fn resource_archive(path: &Path, name: &str, declared: &[u8], actual: &[u8]) {
-    let key = SigningKey::from_bytes(&[42; 32]);
     let manifest = BundleManifest {
         bundle: BundleInfo {
             name: "example".into(),
@@ -54,6 +53,11 @@ fn resource_archive(path: &Path, name: &str, declared: &[u8], actual: &[u8]) {
         patches: Vec::new(),
     };
     let manifest = toml::to_string(&manifest).unwrap();
+    signed_archive(path, &manifest, name, actual);
+}
+
+fn signed_archive(path: &Path, manifest: &str, name: &str, actual: &[u8]) {
+    let key = SigningKey::from_bytes(&[42; 32]);
     let mut zip = ZipWriter::new(File::create(path).unwrap());
     for (name, bytes) in [
         ("mimetype", BUNDLE_MIMETYPE.as_bytes()),
@@ -66,6 +70,30 @@ fn resource_archive(path: &Path, name: &str, declared: &[u8], actual: &[u8]) {
         zip.write_all(bytes).unwrap();
     }
     zip.finish().unwrap();
+}
+
+#[test]
+fn compatibility_errors_take_precedence_over_catalog_schema_errors() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("example.reseam");
+    for (engine, older) in [("0.16.0", true), ("1.0.0", false)] {
+        let manifest =
+            format!("[bundle]\nname = 'example'\nformat_version = 1\nengine = '{engine}'\n");
+        signed_archive(&path, &manifest, "resources/icon.png", b"resource");
+        let error = BundleArchive::open(&path).err().unwrap();
+        assert!(
+            if older {
+                matches!(error, PatcherError::BundleTooOld { .. })
+            } else {
+                matches!(error, PatcherError::EngineTooOld { .. })
+            },
+            "{error}"
+        );
+    }
+    let manifest =
+        format!("[bundle]\nname = 'example'\nformat_version = 1\nengine = '{ENGINE_VERSION}'\n");
+    signed_archive(&path, &manifest, "resources/icon.png", b"resource");
+    assert!(BundleArchive::open(&path).is_err());
 }
 
 #[test]

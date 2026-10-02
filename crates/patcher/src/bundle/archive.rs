@@ -13,8 +13,8 @@ use zip::ZipArchive;
 
 use super::copy_hashed;
 use super::{
-    BUNDLE_MIMETYPE, BundleInfo, BundleManifest, CONTROL_ENTRIES, PatchBundle, PayloadKind,
-    bundle_error, check_engine, check_info, payload_kind,
+    BUNDLE_MIMETYPE, BundleInfo, BundleManifest, CONTROL_ENTRIES, ManifestHeader, PatchBundle,
+    PayloadKind, bundle_error, check_engine, check_info, payload_kind,
 };
 use crate::error::Result;
 use crate::patch::PatchSpec;
@@ -52,9 +52,11 @@ impl BundleArchive {
 
         let manifest_text = std::str::from_utf8(&manifest_bytes)
             .map_err(|e| bundle_error(format!("manifest.toml not UTF-8: {e}")))?;
+        // Catalog schemas can differ between engine lines, so report compatibility first.
+        let header: ManifestHeader = toml::from_str(manifest_text)?;
+        check_info(&header.bundle)?;
+        check_engine(&header.bundle)?;
         let manifest: BundleManifest = toml::from_str(manifest_text)?;
-        check_info(&manifest.bundle)?;
-        check_engine(&manifest.bundle)?;
         manifest.check_patches()?;
         Ok(Self {
             archive,
