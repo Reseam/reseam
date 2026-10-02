@@ -1,115 +1,98 @@
-# Browser patcher
+# @reseam/browser
 
-This is a basic UI over the existing Reseam SDK. Rust inspection, patch planning, DEX/resource editing, bundle verification and APK signing run in a WASI WebAssembly worker. CheerpJ 4.3 runs the existing Kotlin patch JARs with Java 17 in a separate worker. Generated BoltFFI bindings connect their native calls to the same Rust patch bridge. The browser runtime replaces only the generated native transport class: scalar 64-bit values cross CheerpJ as [one-element `long[]` arrays](https://cheerpj.com/docs/reference/CJ3Library#conversion-rules), preserving literals and mutation revisions without JavaScript Number rounding. Patch JARs and the rest of the Kotlin runtime remain unchanged.
+The Reseam SDK for web pages. Rust inspection, patching and signing run in a WASI worker; CheerpJ 4.3 runs the unchanged Kotlin patch JARs on Java 17 in a second worker, calling into Rust through the generated BoltFFI bindings. 64-bit values cross CheerpJ as one-element `long[]` arrays, because its JavaScript conversion rounds scalar longs through `Number`. The package has no UI; `reseam.app/patch` hosts it.
 
-## Build and run
+## Build
 
-Install the repository's pinned Rust toolchain, JDK 17, Bun 1.4.2, and [WASI SDK 33](https://github.com/WebAssembly/wasi-sdk/releases/tag/wasi-sdk-33). Install the exact BoltFFI CLI version from `.boltffi-version`.
-
-From the engine repository:
+Needs the pinned Rust toolchain, JDK 17, Bun 1.4.2, [WASI SDK 33](https://github.com/WebAssembly/wasi-sdk/releases/tag/wasi-sdk-33) and the BoltFFI CLI from `.boltffi-version`.
 
 ```sh
 cargo install boltffi_cli --version "=$(cat .boltffi-version)" --locked
 bun install --cwd browser --frozen-lockfile
 WASI_SDK_PATH=/path/to/wasi-sdk-33.0-x86_64-linux bun run --cwd browser engine
-bun run --cwd browser build
-bun run --cwd browser preview
+bun run --cwd browser types
 ```
 
-`browser/dist` is the deployable static application. The engine build generates and packages the WASM module, Java host, shared Kotlin runtime and native-method manifest together. Runtime assets use a content-addressed directory and are checked for size and SHA-256 before loading. Publish the entire directory together; keep previous content-addressed assets available until older pages expire.
+`engine` writes the WASM modules, Java host, Kotlin runtime and native-method manifest to `public/runtime/<hash>/` and their sizes and SHA-256 sums to `src/runtime.generated.ts`, which the loader checks. `types` writes declarations to `types/`. Release tags publish the package to `https://git.reseam.app/api/packages/reseam/npm/`.
 
-The engine uses the `browser` Cargo profile with thin LTO and one codegen unit. The WASI target enables SIMD for compression, decompression and checksums without changing compression levels or output bytes.
+## Host requirements
 
-`bun run --cwd browser dev` rebuilds on changes and serves bundled workers. CheerpJ needs a classic worker, so development also uses Vite's production worker bundles.
+The package ships TypeScript sources and their workers for a Vite host to bundle. The host must:
 
-## Hosting
+- bundle workers as classic scripts (`worker: { format: 'iife' }`): CheerpJ loads through `importScripts`;
+- keep the package out of dependency pre-bundling and compile it for SSR (`optimizeDeps.exclude`, `ssr.noExternal`), so worker URLs resolve;
+- serve `public/runtime/` as immutable files and pass its URL to `JavaRuntime` as `runtimeBase`, keeping old hashes until pages that use them expire;
+- send `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` on the page and every worker script;
+- allow `https://cjrtnc.leaningtech.com/4.3/`, and WebAssembly compilation in its Content Security Policy.
 
-Serve over HTTPS, with these headers on the HTML, assets and worker responses:
+Browsers need WebAssembly SIMD, shared memory, Web Locks, IndexedDB and OPFS sync access handles in workers.
 
-```text
-Cross-Origin-Opener-Policy: same-origin
-Cross-Origin-Embedder-Policy: require-corp
+## Use
+
+```ts
+import { BrowserSession, JavaRuntime } from '@reseam/browser';
+
+const java = new JavaRuntime({ runtimeBase });
+void java.warmup();
+const session = await BrowserSession.open(files, { javaRuntime: java, signal, onEvent });
+const inspection = await session.inspect({ apk_path, split_paths, bundle_paths });
+await session.mount(signingFilesAndOptionFiles);
+const outcome = await session.patch(request);
+const artifacts = await session.artifacts();
+await session.dispose();
 ```
 
-Serve `.wasm` as `application/wasm`. Cache content-addressed assets as immutable and serve the HTML with revalidation. Vite's local preview config supplies the isolation headers; localhost is a secure context.
+Requests and results are the SDK models (`src/models.ts`). Failures are `EngineError`s carrying the SDK `Problem`.
 
-The browser must support WebAssembly SIMD, shared memory, workers, Web Locks, IndexedDB, and OPFS synchronous access handles inside workers. Chromium is the browser used for the real-app validation. The application checks essential capabilities before opening a session. Java runtime loading requires access to `https://cjrtnc.leaningtech.com/4.3/` and its runtime resources. Account for CheerpJ's WebAssembly and JavaScript compilation when setting a Content Security Policy.
+- A session runs one patch. Inspection keeps the opened APK and verified catalogs for it; trust and payload hashes are checked again before patch code loads.
+- `mount()` adds files after inspection but cannot replace inspected inputs.
+- Artifacts are OPFS files: keep the session open until they are saved, because `dispose()` deletes them.
+- One `JavaRuntime` can serve every session. `warmup()` starts Java without loading patch code; a cold start takes seconds. A cancelled run discards the JVM.
+- `compressionWorkers` (1 to 4, default 2) sets how many workers deflate DEX entries.
 
-## Files and signing
+Inputs stay browser `File`s. Scratch files are deleted once no name or descriptor refers to them, and a later session reclaims a crashed tab's storage after taking its Web Lock.
 
-APK, APKM and XAPK inputs remain browser `File` objects. Additional split APKs and file/folder patch options are mounted under the session's virtual filesystem. Scratch files and outputs live in private OPFS storage. Cancellation closes the bridge and terminates the engine/JVM workers. Scratch files are reclaimed when their final descriptor closes, and disposing the session removes its storage directory. A later session removes abandoned directories after obtaining their Web Lock, so it cannot remove another active tab's files.
+Signing is the CLI's APK v2 signer: P-256, Android 7 and later, no v1. With empty key paths the engine generates a pair, which the host should store and offer as a backup. ECDSA is randomized, so signing blocks differ between runs with the same key. Signer approval and key storage belong to the host.
 
-Signer approval is required before patch execution. Signed catalogs, dependencies, compatibility, option validation and failures use the existing SDK. Approvals and one atomic private-key/certificate record persist in IndexedDB. A Web Lock serializes signing-identity creation across tabs. Existing `.pk8`/`.der` pairs can be imported. Download and keep the identity backup to preserve updates across browser profiles or cleared site data.
+## Compare with the CLI
 
-Signing uses the same P-256 APK v2 signer as the CLI. It requires Android 7 or later; the engine does not add a v1 signature for older Android versions. Entropy comes from `crypto.getRandomValues`. The signer uses randomized ECDSA, so identical inputs and keys can produce different signing-block bytes even between two CLI runs.
-
-## Compare real apps with the CLI
-
-The comparison runner uses actual app files and the official signed bundle, the same selection/options, and the exact same private key and certificate in Chromium and the CLI. It compares whole APK hashes, every uncompressed ZIP entry, every physical byte outside the APK signing block, verifies the same signing certificate, and runs Android's `apksigner verify` on both outputs. It verifies APK v2 signatures for Android 7+ and also records the verifier's result for each APK's declared minimum SDK. An APK declaring Android below 7 requires v1 signing to pass that latter check; both hosts preserve the existing engine's v2-only behavior.
+`compare-cli.ts` patches real apps in Chromium and with the CLI using the same bundle, selection, key and certificate. It then checks that every byte outside the signing block and every ZIP entry match, and that `apksigner` verifies both.
 
 ```sh
 CARGO_BUILD_JOBS=4 cargo build --release -p reseam-cli
-bun run --cwd browser build:test
-MATRIX_PATH=/path/to/apps.json \
-CHROMIUM_PATH=/path/to/chromium \
-APKSIGNER=/path/to/android-sdk/build-tools/36.0.0/apksigner \
-bun browser/scripts/compare-cli.ts
+bun run --cwd browser harness
+MATRIX_PATH=apps.json CHROMIUM_PATH=/path/to/chromium \
+APKSIGNER=/path/to/build-tools/36.0.0/apksigner bun browser/scripts/compare-cli.ts
 ```
-
-The matrix format is:
 
 ```json
 {
   "bundle": "/path/to/official.reseam",
-  "trust": "bundle signer public key in hex",
+  "trust": "signer public key, hex",
   "key": "/path/to/reseam.pk8",
   "cert": "/path/to/reseam.der",
-  "apps": [
-    {
-      "id": "youtube",
-      "apk": "/path/to/youtube.apk",
-      "splits": [],
-      "selection": { "preset": "recommended", "enable": [], "disable": [], "options": {} }
-    }
-  ]
+  "apps": [{ "id": "youtube", "apk": "/path/to/youtube.apk", "splits": [] }]
 }
 ```
 
-The default selection is `recommended`. `OUTPUT_DIR`, `RESEAM_BIN`, `TEST_PORT` and `BROWSER_PROFILE` can override runner paths. `RESUME=1` retains successful cases and retries incomplete cases. Detailed outputs, patch metrics, and comparison results go under `browser/build/comparison`. `PROFILE_BRIDGE=1` records per-patch native-call counts and timings in `browser.log`; `PROFILE_CPU=1` writes Chromium worker CPU profiles to each case's `cpu-trace.json`. Both are disabled during the recorded matrix run. Private keys are mounted directly from disk and are not included in the report. Run `bun run --cwd browser build` again to produce the production application without the comparison hook.
+Each app may add a `selection`; the default is `recommended`. `OUTPUT_DIR`, `RESEAM_BIN`, `TEST_PORT` and `BROWSER_PROFILE` override paths, and `RESUME=1` reruns only failed cases. `PROFILE_BRIDGE=1` logs per-patch native-call counts and times; `PROFILE_CPU=1` saves Chromium CPU profiles.
 
-## Recorded validation
+## Validation
 
-[validation.json](validation.json) records the 2026-10-02 real-app run, input and output hashes, matching signing identities, and timings. All five supported apps passed with recommended patches and default options. Seven cases cover APK, APKM and separately supplied splits: two Reddit builds, X, Telegram, Instagram, and YouTube as both APK and APKM. All **149 APK pairs** have identical bytes outside the signing block and identical ZIP entries, including `META-INF`; every APK v2 signature verifies on Android 7+. The complete signed files differ because the signer randomizes ECDSA.
+[validation.json](validation.json) holds the run below: recommended patches, default options, the same key and certificate for both hosts, Chrome for Testing 145, Java already started. All 149 APK pairs match the CLI outside the signing block, with identical ZIP entries and valid signatures.
 
-| Input | APK outputs | CLI SDK | Browser SDK | Browser patch wall time | Browser SDK at `b369714` |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Reddit 2026.39, build 2639041, APKM | 34 | 1.39 s | 7.37 s | 8.37 s | 10.24 s |
-| X 12.29.1, APKM | 38 | 1.17 s | 8.74 s | 9.73 s | 11.38 s |
-| Telegram 12.7.1, APK | 1 | 0.59 s | 4.75 s | 5.71 s | 5.16 s |
-| Instagram 447, APK + splits | 5 | 1.76 s | 10.41 s | 11.40 s | 12.16 s |
-| YouTube 21.37.42, APK | 1 | 1.90 s | 15.08 s | 16.06 s | 16.20 s |
-| YouTube 21.37.42, APKM | 36 | 2.07 s | 16.71 s | 17.71 s | 20.30 s |
-| Reddit 2026.39, build 2639031, APKM | 34 | 1.40 s | 7.59 s | 8.57 s | 9.74 s |
+| Input | APKs | CLI | Browser |
+| --- | ---: | ---: | ---: |
+| Reddit 2026.39 (2639041), APKM | 34 | 1.4s | 7.6s |
+| X 12.29.1, APKM | 38 | 1.2s | 9.3s |
+| Telegram 12.7.1, APK | 1 | 0.5s | 4.7s |
+| Instagram 447, APK + splits | 5 | 1.6s | 10.5s |
+| YouTube 21.37.42, APK | 1 | 1.8s | 15.5s |
+| YouTube 21.37.42, APKM | 36 | 2.1s | 17.0s |
+| Reddit 2026.39 (2639031), APKM | 34 | 1.4s | 7.6s |
 
-These are sequential workstation measurements in Chrome for Testing 145, with cached Java runtime downloads and bridge profiling disabled. SDK timings exclude Java runtime initialization; patch wall time includes it, and a cold network adds further download time. Native peak RSS stayed at or below 249 MiB, unchanged from `b369714`; browser engine linear memory ranged from 77 to 240 MiB and excludes CheerpJ, compression workers and browser overhead.
+Firefox-based browsers take about twice as long (YouTube APK: 43s), mostly running patch code in CheerpJ. Matching bytes do not prove on-device behavior; no device run is recorded.
 
-The browser outputs match both the CLI built at `b369714` and the rebuilt CLI across all 149 APK pairs. The production UI passed in Chrome 145 with gzip-compressed runtime assets: signer approval, imported keys, downloads and identity backups, a repeat run on the same Java runtime, cancellation during DEX compression with scratch storage removed, a retry, and persistence across reload. Its three downloaded X base APKs match the CLI outside the signing block. To repeat it against an app from the comparison matrix:
+## CheerpJ license
 
-```sh
-MATRIX_PATH=/path/to/apps.json APP_ID=x-12-29-1 \
-CHROMIUM_PATH=/path/to/chromium bun browser/scripts/verify-ui.ts
-```
-
-The UI check also works with the production build. Output equivalence and Android signature verification do not establish on-device app behavior; no Android device run was performed.
-
-## CheerpJ licensing
-
-The UI includes Leaning Technologies' credit. This FOSS implementation loads CheerpJ from its CDN under the [Community License](https://cheerpj.com/docs/licensing). Self-hosting CheerpJ or use outside that license requires the relevant commercial license. Set `VITE_CHEERPJ_LICENSE_KEY` when building a deployment that uses a license key. It is a client runtime configuration value.
-
-## Replacing the UI
-
-Import `BrowserSession` from `src/session.ts`. Open it with mounted files and an optional abort signal, call `request('inspect', ...)`, then `request('patch', ...)`, and obtain downloadable `File` objects from `artifacts()`. Pass the same SDK request models used by native hosts. Events and structured `EngineError.problem` values are available to the host UI. Inspection retains the opened APK and verified catalogs for the subsequent patch request. Use `mount()` to add signing credentials and option files after inspection; original input paths cannot be replaced. Trust is rechecked and payload hashes are verified before executable code loads. One session permits one completed patch run. Keep it alive while its downloads are needed, then await `dispose()`. `wasmMemoryBytes` reports the engine's linear-memory allocation after a request; it does not include the JVM worker or the browser's total memory.
-
-`open()` accepts `compressionWorkers` (1 to 4; default 2, or 1 on hosts with two or fewer cores). DEX entries are compressed in that many workers with the native ZIP writer and settings, and written in their original order.
-
-To reuse Java across sessions, create one `JavaRuntime`, pass it as `javaRuntime` to every `open()`, and call `dispose()` on it when the UI closes. `warmup()` starts Java without loading bundle code; the basic UI calls it during inspection. Each run gets a fresh bundle class loader. A cancelled run discards its JVM, and the next session starts a new one.
+CheerpJ loads from its CDN under the [Community License](https://cheerpj.com/docs/licensing), which requires credit; hosts show it. Self-hosting needs the commercial license. Pass `licenseKey` to `JavaRuntime` when a deployment has one.

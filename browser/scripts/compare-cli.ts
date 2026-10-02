@@ -27,7 +27,7 @@ const server = Bun.serve({ hostname: '127.0.0.1', port: Number(process.env.TEST_
     } finally { await writer.end(); }
     return new Response('Saved', { headers });
   }
-  const target = resolve(dist, path.slice(1) || 'index.html');
+  const target = resolve(dist, path.slice(1));
   if (!target.startsWith(dist + '/')) return new Response('Forbidden', { status: 403 });
   const file = Bun.file(target);
   return new Response(await file.exists() ? file : 'Missing', { status: await file.exists() ? 200 : 404, headers });
@@ -71,7 +71,7 @@ try {
     page.on('console', message => { log.push(message.text()); if (message.text().startsWith('event')) console.log(`${app.id}: ${message.text().slice(0, 250)}`); });
     page.on('pageerror', error => log.push(String(error)));
     try {
-      await page.goto(server.url.href);
+      await page.goto(new URL('harness.html', server.url).href);
       await page.locator('#apk').setInputFiles(resolve(app.apk));
       await page.locator('#splits').setInputFiles((app.splits ?? []).map(path => resolve(path)));
       await page.locator('#bundles').setInputFiles(resolve(matrix.bundle));
@@ -84,13 +84,13 @@ try {
           { name: 'reseam.der', file: selected('cert')[0], directory: 'identity' }];
         const started = performance.now();
         const Session = (window as any).BrowserSession;
-        if (!Session) throw new Error('Build the comparison application with bun run build:test');
+        if (!Session) throw new Error('Build the comparison harness with bun run harness');
         const session = await Session.open(files, { traceNative: trace, profileBridge, onEvent: (event: unknown) => console.log('event', JSON.stringify(event)) });
         try {
           const apkPath = '/input/' + apk.name, splitPaths = splits.map(file => '/input/' + file.name), bundlePaths = bundles.map(file => '/input/' + file.name);
-          const inspection = await session.request('inspect', { apk_path: apkPath, split_paths: splitPaths, bundle_paths: bundlePaths });
+          const inspection = await session.inspect({ apk_path: apkPath, split_paths: splitPaths, bundle_paths: bundlePaths });
           const patchStarted = performance.now();
-          const outcome = await session.request('patch', { apk_path: apkPath, split_paths: splitPaths, bundle_paths: bundlePaths,
+          const outcome = await session.patch({ apk_path: apkPath, split_paths: splitPaths, bundle_paths: bundlePaths,
             trust: { keys: [trust] }, selection, output: { kind: 'split_dir', path: '/output/patched' },
             signing: { key: '/identity/reseam.pk8', cert: '/identity/reseam.der' } });
           const patchWallMs = Math.round(performance.now() - patchStarted);

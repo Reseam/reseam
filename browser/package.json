@@ -1,16 +1,31 @@
 {
   "name": "@reseam/browser",
-  "private": true,
   "version": "0.17.1",
+  "description": "Reseam patching in web pages: the WASI engine and the CheerpJ patch runtime in workers",
+  "license": "GPL-3.0-or-later",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./src/index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "types",
+    "public/runtime",
+    "README.md"
+  ],
+  "publishConfig": {
+    "registry": "https://git.reseam.app/api/packages/reseam/npm/"
+  },
   "scripts": {
-    "dev": "bun scripts/dev.ts",
-    "preview": "vite preview --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
-    "build:test": "VITE_TEST_HARNESS=1 bun run build",
     "check": "tsc --noEmit",
     "test": "bun test test",
-    "engine": "bash scripts/build-engine.sh"
+    "engine": "bash scripts/build-engine.sh",
+    "types": "tsc -p tsconfig.types.json",
+    "harness": "tsc --noEmit && vite build"
   },
   "dependencies": {
     "@bjorn3/browser_wasi_shim": "0.4.2",

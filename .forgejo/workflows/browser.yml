@@ -3,6 +3,7 @@ name: browser
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -58,13 +59,18 @@ jobs:
           cargo fmt --all --check
           ./gradlew --no-daemon spotlessCheck :reseam-patch-sdk:checkKotlinAbi
 
-      - name: Build production application
-        run: bun run --cwd browser build
+      - name: Check the browser package
+        run: |
+          bun run --cwd browser check
+          bun run --cwd browser test
 
-      - name: Archive static application
-        run: tar -czf browser-dist.tar.gz -C browser/dist .
-
-      - uses: actions/upload-artifact@v3
-        with:
-          name: browser-dist
-          path: browser-dist.tar.gz
+      - name: Publish the browser package to the Forgejo npm registry
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: browser
+        env:
+          FORGEJO_PACKAGES_TOKEN: ${{ secrets.FORGEJO_PACKAGES_TOKEN }}
+        run: |
+          npm version --no-git-tag-version --allow-same-version "${GITHUB_REF_NAME#v}"
+          npm config set //git.reseam.app/api/packages/reseam/npm/:_authToken "$FORGEJO_PACKAGES_TOKEN"
+          bun run types
+          npm publish

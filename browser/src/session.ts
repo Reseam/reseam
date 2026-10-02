@@ -4,7 +4,7 @@ import { Channel } from './channel';
 import { loadRuntime } from './runtime';
 import type { CompressionConnection } from './compression';
 import { JavaRuntime } from './java';
-export { JavaRuntime } from './java';
+import type { InspectRequest, Inspection, Outcome, PatchRequest, Problem, RunEvent } from './models';
 
 export interface MountedFile { name: string; file: File; directory?: 'input' | 'identity' }
 export interface Artifact { name: string; file: File }
@@ -16,17 +16,16 @@ export interface SessionOptions {
   profileBridge?: boolean;
   licenseKey?: string;
   signal?: AbortSignal;
-  onEvent?: (event: unknown) => void;
+  onEvent?: (event: RunEvent) => void;
   onLog?: (message: string) => void;
 }
-export interface EngineProblem { type: string; [key: string]: unknown }
 export class EngineError extends Error {
-  constructor(readonly problem: EngineProblem, message: string) { super(message); this.name = 'EngineError'; }
+  constructor(readonly problem: Problem, message: string) { super(message); this.name = 'EngineError'; }
 }
-function hostError(error: string | { problem: EngineProblem; message: string }): Error {
+function hostError(error: string | { problem: Problem; message: string }): Error {
   return typeof error === 'string' ? new Error(error) : new EngineError(error.problem, error.message);
 }
-interface Reply { type: string; id?: number; value?: unknown; error?: string | { problem: EngineProblem; message: string }; files?: { name: string; id: string }[]; fatal?: boolean; wasmMemoryBytes?: number; compressionMemoryBytes?: number }
+interface Reply { type: string; id?: number; value?: unknown; error?: string | { problem: Problem; message: string }; files?: { name: string; id: string }[]; fatal?: boolean; wasmMemoryBytes?: number; compressionMemoryBytes?: number }
 interface Pending { resolve(value: Reply): void; reject(error: Error): void }
 
 export class BrowserSession {
@@ -106,9 +105,9 @@ export class BrowserSession {
       this.initializing.add(cancel);
       worker.onerror = event => { const error = new Error(event.message || 'Browser worker crashed'); finish(error); void this.dispose(error).catch(error => this.options.onLog?.(String(error))); };
       worker.onmessage = event => {
-        const reply = event.data as Reply & { event?: unknown; message?: string };
+        const reply = event.data as Reply & { event?: RunEvent; message?: string };
         if (reply.type === 'ready') { this.options.onLog?.('Runtime worker ready'); finish(); return; }
-        if (reply.type === 'event') { this.options.onEvent?.(reply.event); return; }
+        if (reply.type === 'event') { this.options.onEvent?.(reply.event!); return; }
         if (reply.type === 'log') { this.options.onLog?.(reply.message ?? ''); return; }
         if (reply.id !== undefined) {
           if (reply.compressionMemoryBytes) this.compressionMemoryBytes = reply.compressionMemoryBytes;
@@ -132,7 +131,9 @@ export class BrowserSession {
     const id = this.next++;
     return new Promise((resolve, reject) => { this.pending.set(id, { resolve, reject }); worker.postMessage({ type, id, ...data }, transfer); });
   }
-  async request<T>(operation: 'inspect' | 'patch', request: unknown): Promise<T> {
+  inspect(request: InspectRequest): Promise<Inspection> { return this.request('inspect', request); }
+  patch(request: PatchRequest): Promise<Outcome> { return this.request('patch', request); }
+  private async request<T>(operation: 'inspect' | 'patch', request: InspectRequest | PatchRequest): Promise<T> {
     if (this.disposed) throw new Error('Browser patch session is closed');
     if (this.running) throw new Error('A browser operation is already running');
     if (this.patched) throw new Error('Open a new session for another patch run');

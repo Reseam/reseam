@@ -1,10 +1,6 @@
 import { defineConfig } from 'vite';
-const headers = {
-  'Cross-Origin-Opener-Policy': 'same-origin',
-  'Cross-Origin-Embedder-Policy': 'require-corp',
-};
+// Builds only the comparison harness; hosts bundle the package from source.
 export default defineConfig({
-  server: { headers }, preview: { headers },
   worker: { format: 'iife' },
-  build: { target: 'es2022', sourcemap: true },
+  build: { target: 'es2022', sourcemap: true, rollupOptions: { input: 'harness.html' } },
 });

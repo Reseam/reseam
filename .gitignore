@@ -22,6 +22,7 @@ reseam.pk8
 reseam.der
 /browser/node_modules/
 /browser/dist/
+/browser/types/
 /browser/public/runtime/*.wasm
 /browser/public/runtime/*.jar
 /browser/public/runtime/methods.json

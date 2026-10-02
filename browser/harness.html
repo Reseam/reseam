@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Reseam comparison harness</title></head>
+<body>
+<input id="apk" type="file"><input id="splits" type="file" multiple><input id="bundles" type="file" multiple>
+<input id="key" type="file"><input id="cert" type="file">
+<script type="module">
+import { BrowserSession } from './src/index';
+Object.assign(window, { BrowserSession });
+</script>
+</body>
+</html>
