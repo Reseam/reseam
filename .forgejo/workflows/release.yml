@@ -18,7 +18,7 @@ jobs:
       CARGO_TARGET_DIR: ${{ github.workspace }}/target
       GRADLE_OPTS: -Xmx1g
       RUST_VERSION: 1.98.1
-      RUST_TARGETS: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android,x86_64-pc-windows-gnullvm
+      RUST_TARGETS: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android,x86_64-pc-windows-gnullvm,wasm32-wasip1
       LLVM_MINGW_VERSION: '20260922'
       TEMURIN_WINDOWS_VERSION: '21.0.8+9'
       CC_x86_64_pc_windows_gnullvm: x86_64-w64-mingw32-clang
@@ -156,6 +156,24 @@ jobs:
       - name: Build the SDKs
         run: ./gradlew assemble --no-daemon -Dorg.gradle.jvmargs=-Xmx1536m
 
+      - name: Install verified WASI SDK 33
+        run: |
+          archive="$RUNNER_TEMP/wasi-sdk.tar.gz"
+          curl -fsSL https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-33/wasi-sdk-33.0-x86_64-linux.tar.gz -o "$archive"
+          echo "0ba8b5bfaeb2adf3f29bab5841d76cf5318ab8e1642ea195f88baba1abd47bce  $archive" | sha256sum -c -
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          echo "WASI_SDK_PATH=$RUNNER_TEMP/wasi-sdk-33.0-x86_64-linux" >> "$GITHUB_ENV"
+
+      - uses: https://github.com/oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+
+      - name: Build the browser package
+        run: |
+          bun install --cwd browser --frozen-lockfile
+          bun run --cwd browser engine
+          bun run --cwd browser types
+
       - name: Check the tag names the workspace version
         if: startsWith(github.ref, 'refs/tags/')
         run: cargo xtask check-tag ${{ github.ref_name }}
@@ -165,6 +183,16 @@ jobs:
         env:
           FORGEJO_PACKAGES_TOKEN: ${{ secrets.FORGEJO_PACKAGES_TOKEN }}
         run: ./gradlew publishAllPublicationsToForgejoRepository -PreseamSdkVersion=${{ github.ref_name }} --no-daemon -Dorg.gradle.jvmargs=-Xmx1536m
+
+      - name: Publish the browser package to the Forgejo npm registry
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: browser
+        env:
+          FORGEJO_PACKAGES_TOKEN: ${{ secrets.FORGEJO_PACKAGES_TOKEN }}
+        run: |
+          npm version --no-git-tag-version --allow-same-version "${GITHUB_REF_NAME#v}"
+          npm config set //git.reseam.app/api/packages/reseam/npm/:_authToken "$FORGEJO_PACKAGES_TOKEN"
+          npm publish
 
       - name: Stage the CLI
         if: startsWith(github.ref, 'refs/tags/')

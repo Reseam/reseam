@@ -3,7 +3,6 @@ name: browser
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -63,14 +62,3 @@ jobs:
         run: |
           bun run --cwd browser check
           bun run --cwd browser test
-
-      - name: Publish the browser package to the Forgejo npm registry
-        if: startsWith(github.ref, 'refs/tags/')
-        working-directory: browser
-        env:
-          FORGEJO_PACKAGES_TOKEN: ${{ secrets.FORGEJO_PACKAGES_TOKEN }}
-        run: |
-          npm version --no-git-tag-version --allow-same-version "${GITHUB_REF_NAME#v}"
-          npm config set //git.reseam.app/api/packages/reseam/npm/:_authToken "$FORGEJO_PACKAGES_TOKEN"
-          bun run types
-          npm publish
