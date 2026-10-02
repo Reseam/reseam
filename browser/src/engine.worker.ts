@@ -4,7 +4,7 @@ import { WASI, ConsoleStdout, File as MemoryFile, Directory } from '@bjorn3/brow
 import { Channel, decode, encode } from './channel';
 import { parseJson, stringifyJson } from './json';
 import { loadRuntime } from './runtime';
-import { DiskDirectory, DiskFile, InputFile, RootDescriptor, StorageClient } from './storage';
+import { DiskDirectory, DiskFile, InputFile, InputReader, RootDescriptor, StorageClient } from './storage';
 import { alloc, callNative, EngineExports, fn, free, NativeMethod, read } from './native';
 
 let exports: EngineExports;
@@ -93,6 +93,7 @@ async function initialize(data: Record<string, any>): Promise<void> {
   });
   exports = instance.exports as EngineExports;
   wasi.initialize(instance as unknown as Parameters<WASI['initialize']>[0]);
+  const inputReader = new InputReader();
   for (const input of data.files as { name: string; file: File; directory?: string }[]) {
     let folder = root.contents.get(input.directory ?? 'input') as Directory;
     const parts = input.name.split('/');
@@ -103,7 +104,7 @@ async function initialize(data: Record<string, any>): Promise<void> {
       folder = child;
     }
     if (folder.contents.has(parts.at(-1)!)) throw new Error('Duplicate input path');
-    folder.contents.set(parts.at(-1)!, new InputFile(input.file));
+    folder.contents.set(parts.at(-1)!, new InputFile(input.file, inputReader));
   }
   self.postMessage({ type: 'ready' });
 }

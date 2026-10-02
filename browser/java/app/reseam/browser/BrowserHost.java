@@ -40,6 +40,8 @@ public final class BrowserHost {
         private final Class<?> external;
         private final Class<?> runtime;
         private final Object run;
+        private final Method beginInvocation;
+        private final Method endInvocation;
         private String description;
 
         Bundle(String runtimePath, String[] jars, String[] classes, String[] owners,
@@ -56,6 +58,11 @@ public final class BrowserHost {
                 Class<?> patchClass = loader.loadClass("app.reseam.patch.ReseamPatch");
                 external = loader.loadClass("app.reseam.patch.ExternalPatch");
                 runtime = loader.loadClass("app.reseam.patch.PatchRuntime");
+                Class<?> nativeClass = loader.loadClass("app.reseam.patch.native.Native");
+                beginInvocation = nativeClass.getMethod("beginBrowserInvocation", long[].class);
+                endInvocation = nativeClass.getMethod("endBrowserInvocation");
+                beginInvocation.setAccessible(true);
+                endInvocation.setAccessible(true);
                 Class<?> runClass = loader.loadClass("app.reseam.patch.PatchRun");
                 run = runClass.getConstructor().newInstance();
                 for (int i = 0; i < classes.length; i++) {
@@ -93,18 +100,21 @@ public final class BrowserHost {
 
         public String describe() { return description; }
 
-        public void invoke(String reference, String phase) throws Exception {
+        public void invoke(String reference, String phase, long[] revision) throws Exception {
             Object patch = patches.get(reference);
             if (patch == null) throw new IllegalArgumentException("Unknown patch " + reference);
-            Object context = runtime.getConstructor(run.getClass()).newInstance(run);
             String method = phase.equals("execute") ? "invokeExecute" : phase.equals("finalize") ? "invokeAfterDependents" : null;
             if (method == null) throw new IllegalArgumentException("Unknown patch phase");
-            try { runtime.getMethod(method, loader.loadClass("app.reseam.patch.ReseamPatch")).invoke(context, patch); }
+            beginInvocation.invoke(null, (Object)revision);
+            try {
+                Object context = runtime.getConstructor(run.getClass()).newInstance(run);
+                runtime.getMethod(method, loader.loadClass("app.reseam.patch.ReseamPatch")).invoke(context, patch);
+            }
             catch (InvocationTargetException error) {
                 Throwable cause = error.getCause();
                 if (cause instanceof Exception) throw (Exception)cause;
                 throw error;
-            }
+            } finally { endInvocation.invoke(null); }
         }
 
         public void close() throws Exception { patches.clear(); references.clear(); description = null; loader.close(); }

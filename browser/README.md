@@ -73,7 +73,7 @@ The matrix format is:
 }
 ```
 
-The default selection is `recommended`. `OUTPUT_DIR`, `RESEAM_BIN`, `TEST_PORT` and `BROWSER_PROFILE` can override runner paths. `RESUME=1` retains successful cases and retries incomplete cases. Detailed outputs, patch metrics, and comparison results go under `browser/build/comparison`. Private keys are mounted directly from disk and are not included in the report. Run `bun run --cwd browser build` again to produce the production application without the comparison hook.
+The default selection is `recommended`. `OUTPUT_DIR`, `RESEAM_BIN`, `TEST_PORT` and `BROWSER_PROFILE` can override runner paths. `RESUME=1` retains successful cases and retries incomplete cases. Detailed outputs, patch metrics, and comparison results go under `browser/build/comparison`. `PROFILE_BRIDGE=1` records per-patch native-call counts and timings in `browser.log`; it is disabled during the recorded matrix run. Private keys are mounted directly from disk and are not included in the report. Run `bun run --cwd browser build` again to produce the production application without the comparison hook.
 
 ## Recorded validation
 
@@ -81,17 +81,21 @@ The default selection is `recommended`. `OUTPUT_DIR`, `RESEAM_BIN`, `TEST_PORT` 
 
 | Input | APK outputs | CLI SDK | Browser SDK | Browser patch wall time |
 | --- | ---: | ---: | ---: | ---: |
-| Reddit 2026.39, build 2639041, APKM | 34 | 1.41 s | 20.68 s | 24.42 s |
-| X 12.29.1, APKM | 38 | 1.16 s | 23.13 s | 26.82 s |
-| Telegram 12.7.1, APK | 1 | 0.72 s | 88.11 s | 91.61 s |
-| Instagram 447, APK + splits | 5 | 1.69 s | 38.95 s | 42.73 s |
-| YouTube 21.37.42, APK | 1 | 1.81 s | 49.69 s | 63.87 s |
-| YouTube 21.37.42, APKM | 36 | 2.25 s | 44.56 s | 65.78 s |
-| Reddit 2026.39, build 2639031, APKM | 34 | 1.81 s | 20.74 s | 25.72 s |
+| Reddit 2026.39, build 2639041, APKM | 34 | 1.38 s | 15.05 s | 16.00 s |
+| X 12.29.1, APKM | 38 | 1.17 s | 13.98 s | 14.97 s |
+| Telegram 12.7.1, APK | 1 | 0.52 s | 7.62 s | 8.60 s |
+| Instagram 447, APK + splits | 5 | 1.72 s | 21.72 s | 22.68 s |
+| YouTube 21.37.42, APK | 1 | 1.83 s | 19.62 s | 20.59 s |
+| YouTube 21.37.42, APKM | 36 | 2.03 s | 23.53 s | 24.54 s |
+| Reddit 2026.39, build 2639031, APKM | 34 | 1.57 s | 18.12 s | 19.22 s |
 
-These are workstation measurements in Chromium 133, with cached Java runtime downloads and some concurrent validation activity. SDK timings exclude Java runtime initialization; patch wall time includes it, and a cold network adds further download time. Browser performance is substantially slower than native, especially Telegram's Kotlin patch execution. Worker calls reuse the engine's current mutation revision to avoid a separate round trip on every metadata-cache check. Native peak RSS stayed below 255 MiB; browser engine linear memory ranged from 78 to 230 MiB and excludes CheerpJ and browser overhead.
+These are sequential workstation measurements in Chrome for Testing 145, with cached Java runtime downloads and bridge profiling disabled. SDK timings exclude Java runtime initialization; patch wall time includes it, and a cold network adds further download time. Native peak RSS stayed below 253 MiB; browser engine linear memory ranged from 78 to 230 MiB and excludes CheerpJ and browser overhead.
 
-An additional YouTube run passed in Chrome for Testing 145, exercising Loop video and its dependencies. The production UI also passed in Chrome 145 with gzip-compressed runtime assets. Its downloaded X base APK matched the CLI outside the signing block. The real UI workflow was checked for cancellation and retry, explicit signer approval, imported keys, downloading the patched base APK and identity backups, and persistence across reload. To repeat it against an app from the comparison matrix:
+A separate before/after Telegram run used the same Chrome 145 executable, cached profile, APK, bundle, patch selection and signing identity. SDK time fell from **81.71 s to 7.62 s** (10.7×); patch execution fell from **63.23 s to 0.84 s**. Both outputs matched the CLI outside the signing block. These are single-run measurements.
+
+Metadata-cache checks read an invocation-scoped Java `long[]` updated by each native response. Named method queries filter in Rust before crossing the Java bridge, including superclass resolution. Telegram's native method-metadata calls fell from 21,928 to 91. Input and scratch-file reads each use an 8 MiB cache shared across all files in the session; writes, truncation and removal invalidate scratch-file cache entries. Large reads remain streamed.
+
+The earlier implementation also passed a separate YouTube Loop video run in Chrome for Testing 145. The current matrix applies all 90 recommended YouTube patches, including Loop video and its dependencies. The production UI also passed in Chrome 145 with gzip-compressed runtime assets. Its downloaded X base APK matched the CLI outside the signing block. The real UI workflow was checked for cancellation and retry, explicit signer approval, imported keys, downloading the patched base APK and identity backups, and persistence across reload. To repeat it against an app from the comparison matrix:
 
 ```sh
 MATRIX_PATH=/path/to/apps.json APP_ID=x-12-29-1 \

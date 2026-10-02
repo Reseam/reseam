@@ -8,6 +8,7 @@ export interface Artifact { name: string; file: File }
 export interface SessionOptions {
   runtimeBase?: string;
   traceNative?: boolean;
+  profileBridge?: boolean;
   licenseKey?: string;
   signal?: AbortSignal;
   onEvent?: (event: unknown) => void;
@@ -66,7 +67,7 @@ export class BrowserSession {
     try {
       await session.initialize(session.storage, { name: session.name, port: storageLink.port1, buffer: session.storageChannel.buffer }, [storageLink.port1]);
       await session.initialize(session.engine, { storagePort: storageLink.port2, storageBuffer: session.storageChannel.buffer, jvmPort: jvmLink.port1, jvmBuffer: session.jvmChannel.buffer, files, runtimeBase, traceNative: options.traceNative }, [storageLink.port2, jvmLink.port1]);
-      session.initializeJvm = () => session.initialize(session.jvm, { port: jvmLink.port2, buffer: session.jvmChannel.buffer, runtimeBase, licenseKey: options.licenseKey, traceNative: options.traceNative }, [jvmLink.port2]);
+      session.initializeJvm = () => session.initialize(session.jvm, { port: jvmLink.port2, buffer: session.jvmChannel.buffer, runtimeBase, licenseKey: options.licenseKey, traceNative: options.traceNative, profileBridge: options.profileBridge }, [jvmLink.port2]);
       return session;
     } catch (error) { await session.dispose(); throw error; }
   }

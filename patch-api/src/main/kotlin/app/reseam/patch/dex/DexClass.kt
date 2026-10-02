@@ -13,6 +13,7 @@ import app.reseam.patch.native.addInterface
 import app.reseam.patch.native.addMethod
 import app.reseam.patch.native.classDirectMethods
 import app.reseam.patch.native.classFields
+import app.reseam.patch.native.classMethodsByName
 import app.reseam.patch.native.classVirtualMethods
 import app.reseam.patch.native.definalClass
 import app.reseam.patch.native.removeClass
@@ -73,9 +74,10 @@ value class DexClass(val handle: UInt) {
         get() = superclassChain(handle).map { DexClass(it) }
 
     /** The method called `name`, narrowed by `proto` when more than one overload exists. */
-    fun method(name: String, proto: String? = null): Method? = methods.firstOrNull {
-        it.name == name && (proto == null || it.proto == proto)
-    }
+    fun method(name: String, proto: String? = null): Method? =
+        classMethodsByName(handle, name).asSequence().map(::Method).firstOrNull {
+            proto == null || it.proto == proto
+        }
 
     fun field(name: String): FieldRef? =
         fields

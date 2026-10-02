@@ -14,12 +14,24 @@ let port: MessagePort;
 let host: any;
 let runtimePath: string;
 let next = 1;
-let revision: bigint | undefined;
+let revision: BigInt64Array | undefined;
+let profiling = false;
+let profile: Map<string, { calls: number; milliseconds: number }> | undefined;
+async function profiledNative(method: NativeMethod, lib: any, args: unknown[]): Promise<unknown> {
+  if (!profile) return native(method, lib, args);
+  const started = performance.now();
+  try { return await native(method, lib, args); }
+  finally {
+    const entry = profile.get(method.name) ?? { calls: 0, milliseconds: 0 };
+    entry.calls++; entry.milliseconds += performance.now() - started;
+    profile.set(method.name, entry);
+  }
+}
 const loaders = new Map<number, { loader: any; jars: string[] }>();
 async function native(method: NativeMethod, lib: any, args: unknown[]): Promise<unknown> {
   // Rust cannot mutate while waiting for this worker. Every native response
   // carries its latest revision, scoped to the current execute/finalize call.
-  if (revision !== undefined && method.name.endsWith('_1handles_1mutation_1revision_1browser')) return new BigInt64Array([revision]);
+  if (revision !== undefined && method.name.endsWith('_1handles_1mutation_1revision_1browser')) return revision;
   const inputs: unknown[] = [];
   for (let i = 0; i < args.length; i++) {
     const type = method.parameters[i];
@@ -36,7 +48,7 @@ async function native(method: NativeMethod, lib: any, args: unknown[]): Promise<
   const packet = await channel.receive();
   if (packet.kind !== 2) throw new Error('Unexpected native response');
   const response = decode<{ value: unknown; error?: Uint8Array; kind?: number; revision?: bigint }>(packet.bytes);
-  if (revision !== undefined && response.revision !== undefined) revision = response.revision;
+  if (revision !== undefined && response.revision !== undefined) revision[0] = response.revision;
   if (response.error) {
     if (response.kind === 2) {
       const ErrorBuffer = await lib.app.reseam.patch.native.BoltFfiErrorBufferException;
@@ -74,9 +86,15 @@ async function operation(request: any): Promise<unknown> {
     case 'invoke': {
       const loader = loaders.get(request.handle);
       if (!loader) throw new Error('Browser patch loader is closed');
-      revision = BigInt.asIntN(64, request.revision);
-      try { await loader.loader.invoke(request.patch, request.phase); return null; }
-      finally { revision = undefined; }
+      revision = new BigInt64Array([BigInt.asIntN(64, request.revision)]);
+      const started = performance.now();
+      if (profiling) profile = new Map();
+      try { await loader.loader.invoke(request.patch, request.phase, revision); return null; }
+      finally {
+        if (profile) console.log('bridge-profile', JSON.stringify({ patch: request.patch, phase: request.phase, milliseconds: performance.now() - started,
+          methods: [...profile].map(([name, stats]) => ({ name, ...stats })).sort((a, b) => b.milliseconds - a.milliseconds) }));
+        profile = undefined; revision = undefined;
+      }
     }
     case 'close': {
       const loader = loaders.get(request.handle);
@@ -93,10 +111,11 @@ self.onmessage = async event => {
   if (event.data.type !== 'init') return;
   try {
     channel = new Channel(event.data.buffer); port = event.data.port;
+    profiling = !!event.data.profileBridge;
     const base = event.data.runtimeBase as string;
     const methods: NativeMethod[] = parseJson<NativeMethod[]>(new TextDecoder().decode(await loadRuntime(base, 'methods.json')));
     importScripts('https://cjrtnc.leaningtech.com/4.3/loader.js');
-    const natives = Object.fromEntries(methods.map(method => [method.name, (lib: any, ...args: unknown[]) => native(method, lib, args)]));
+    const natives = Object.fromEntries(methods.map(method => [method.name, (lib: any, ...args: unknown[]) => profiledNative(method, lib, args)]));
     await cheerpjInit({ version: 17, status: 'none', natives, licenseKey: event.data.licenseKey });
     cheerpOSAddStringFile('/str/browser-host.jar', await loadRuntime(base, 'browser-host.jar'));
     cheerpOSAddStringFile('/str/reseam-runtime.jar', await loadRuntime(base, 'reseam-runtime.jar'));

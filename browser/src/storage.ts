@@ -9,7 +9,13 @@ class StorageFailure extends Error {
 const errno = (error: unknown) => error instanceof StorageFailure && error.quota ? wasi.ERRNO_NOSPC : wasi.ERRNO_IO;
 
 export class StorageClient {
+  private readonly reads = new ReadCache<string>();
   constructor(readonly port: MessagePort, readonly channel: Channel) {}
+  read(id: string, length: number, size: number, offset: number): Uint8Array {
+    return this.reads.read(id, length, size, offset, (start, end) =>
+      this.call('read', { id, offset: start, size: end - start }));
+  }
+  invalidate(id: string): void { this.reads.invalidate(id); }
   call<T>(operation: string, args: unknown): T {
     this.port.postMessage({ operation, args });
     const packet = this.channel.receiveSync();
@@ -30,14 +36,16 @@ export class DiskFile extends Inode {
   get size(): bigint { return this.length; }
   stat(): wasi.Filestat { return new wasi.Filestat(this.ino, wasi.FILETYPE_REGULAR_FILE, this.size); }
   read(size: number, offset: bigint): Uint8Array {
-    return this.storage.call('read', { id: this.id, offset: Number(offset), size });
+    return this.storage.read(this.id, Number(this.length), size, Number(offset));
   }
   write(data: Uint8Array, offset: bigint): number {
+    this.storage.invalidate(this.id);
     const count = this.storage.call<number>('write', { id: this.id, offset: Number(offset), data });
     this.length = this.length > offset + BigInt(count) ? this.length : offset + BigInt(count);
     return count;
   }
   truncate(size: bigint): void {
+    this.storage.invalidate(this.id);
     this.storage.call('truncate', { id: this.id, size: Number(size) }); this.length = size;
   }
   sync(): void { this.storage.call('sync', { id: this.id }); }
@@ -45,7 +53,10 @@ export class DiskFile extends Inode {
   closed(): void { this.descriptors--; this.removeUnused(); }
   unlink(): void { this.unlinked = true; this.removeUnused(); }
   private removeUnused(): void {
-    if (this.unlinked && this.descriptors === 0) this.storage.call('remove', { id: this.id });
+    if (this.unlinked && this.descriptors === 0) {
+      this.storage.invalidate(this.id);
+      this.storage.call('remove', { id: this.id });
+    }
   }
   path_open(oflags: number, _rights: bigint, flags: number): { ret: number; fd_obj: Fd | null } {
     if (oflags & wasi.OFLAGS_TRUNC) this.truncate(0n);
@@ -53,15 +64,47 @@ export class DiskFile extends Inode {
   }
 }
 
+// ZIP readers repeatedly request nearby headers and short ranges. Each cache
+// has an 8 MiB limit across files, including apps with many split APKs.
+class ReadCache<K> {
+  private pages: { key: K; offset: number; bytes: Uint8Array }[] = [];
+  invalidate(key: K): void { this.pages = this.pages.filter(page => page.key !== key); }
+  read(key: K, length: number, size: number, offset: number, fetch: (start: number, end: number) => Uint8Array): Uint8Array {
+    const pageSize = 512 * 1024;
+    const start = Math.floor(offset / pageSize) * pageSize;
+    const end = Math.min(offset + size, length);
+    if (offset >= end) return new Uint8Array();
+    if (size > 128 * 1024 || end > start + pageSize) {
+      return fetch(offset, end);
+    }
+    const index = this.pages.findIndex(page => page.key === key && page.offset === start);
+    const page = index >= 0 ? this.pages.splice(index, 1)[0] : {
+      key, offset: start, bytes: fetch(start, Math.min(start + pageSize, length)),
+    };
+    if (page.bytes.length !== Math.min(pageSize, length - start)) return fetch(offset, end);
+    this.pages.unshift(page);
+    if (this.pages.length > 16) this.pages.pop();
+    return page.bytes.subarray(offset - start, end - start);
+  }
+}
+
+export class InputReader {
+  private readonly reader = new FileReaderSync();
+  private readonly reads = new ReadCache<File>();
+  read(file: File, size: number, offset: number): Uint8Array {
+    return this.reads.read(file, file.size, size, offset, (start, end) =>
+      new Uint8Array(this.reader.readAsArrayBuffer(file.slice(start, end))));
+  }
+}
+
 // Input APKs remain browser File objects, so opening an APK does not copy it
 // into OPFS or retain a second full-sized buffer.
 export class InputFile extends Inode {
-  readonly reader = new FileReaderSync();
-  constructor(readonly file: File) { super(); }
+  constructor(readonly file: File, private readonly reader: InputReader) { super(); }
   get size(): bigint { return BigInt(this.file.size); }
   stat(): wasi.Filestat { return new wasi.Filestat(this.ino, wasi.FILETYPE_REGULAR_FILE, this.size); }
   read(size: number, offset: bigint): Uint8Array {
-    return new Uint8Array(this.reader.readAsArrayBuffer(this.file.slice(Number(offset), Number(offset) + size)));
+    return this.reader.read(this.file, size, Number(offset));
   }
   path_open(oflags: number, rights: bigint): { ret: number; fd_obj: Fd | null } {
     if (oflags & wasi.OFLAGS_TRUNC || rights & BigInt(wasi.RIGHTS_FD_WRITE)) return { ret: wasi.ERRNO_PERM, fd_obj: null };

@@ -199,6 +199,15 @@ pub fn class_virtual_methods(c: u32) -> Vec<u32> {
     method_handles(c, MethodKind::Virtual)
 }
 
+#[export]
+pub fn class_methods_by_name(c: u32, name: String) -> Vec<u32> {
+    method_handles(c, MethodKind::Direct)
+        .into_iter()
+        .chain(method_handles(c, MethodKind::Virtual))
+        .filter(|&method| get_method_info(method).is_some_and(|info| info.method_name == name))
+        .collect()
+}
+
 fn method_handles(c: u32, kind: MethodKind) -> Vec<u32> {
     let Some(class) = class_location(c) else {
         return Vec::new();

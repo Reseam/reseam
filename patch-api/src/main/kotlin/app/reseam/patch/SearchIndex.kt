@@ -17,6 +17,7 @@ import app.reseam.patch.dex.parameterTypes
 import app.reseam.patch.dex.returnType
 import app.reseam.patch.dex.typeRef
 import app.reseam.patch.native.allMethodHandles
+import app.reseam.patch.native.classMethodsByName
 import app.reseam.patch.native.findCallsMatching
 import app.reseam.patch.native.findClass
 import app.reseam.patch.native.findClassesWithInstanceField
@@ -32,6 +33,8 @@ import app.reseam.patch.native.isAddedDex
 import app.reseam.patch.types.MethodRef
 
 private data class CastQuery(val callee: MethodSignature, val type: String, val lookAhead: Int)
+
+private data class ClassMethods(val owner: String, val name: String?)
 
 private sealed interface Seed {
     data class Name(val value: String) : Seed
@@ -77,8 +80,8 @@ internal class SearchIndex(private val runtime: PatchRuntime) {
 
     private val classByDescriptor = HashMap<String, DexClass?>()
     private val methodBySignature = HashMap<MethodSignature, Method?>()
-    private val methodsByClass = HashMap<String, List<Method>>()
-    private val inheritedByClass = HashMap<String, List<Method>>()
+    private val methodsByClass = HashMap<ClassMethods, List<Method>>()
+    private val inheritedByClass = HashMap<ClassMethods, List<Method>>()
     private val seeds = HashMap<Seed, Set<UInt>>()
     private val classesByString = HashMap<String, Set<DexClass>>()
     private val classesByField = HashMap<String, Set<DexClass>>()
@@ -129,21 +132,30 @@ internal class SearchIndex(private val runtime: PatchRuntime) {
             val named = { methods: List<Method> ->
                 methods.firstOrNull { it.name == signature.name && it.proto == signature.proto }
             }
-            named(methodsInClass(signature.owner)) ?: named(inheritedMethods(signature.owner))
+            named(methodsInClass(signature.owner, signature.name))
+                ?: named(inheritedMethods(signature.owner, signature.name))
         }
 
-    fun methodsInClass(descriptor: String): List<Method> =
-        cached(methodsByClass, descriptor) { classFor(descriptor)?.methods.orEmpty() }
+    fun methodsInClass(descriptor: String, name: String? = null): List<Method> =
+        cached(methodsByClass, ClassMethods(descriptor, name)) {
+            classFor(descriptor)
+                ?.let { classDef ->
+                    if (name == null) classDef.methods
+                    else classMethodsByName(classDef.handle, name).map(::Method)
+                }
+                .orEmpty()
+        }
 
     /**
      * Methods this class inherits from the app classes it extends, nearest first, minus the ones it
      * or a nearer ancestor overrides. Constructors and private declarations are not inherited.
      */
-    fun inheritedMethods(descriptor: String): List<Method> =
-        cached(inheritedByClass, descriptor) {
-            val seen = methodsInClass(descriptor).mapTo(mutableSetOf()) { it.name to it.proto }
+    fun inheritedMethods(descriptor: String, name: String? = null): List<Method> =
+        cached(inheritedByClass, ClassMethods(descriptor, name)) {
+            val seen =
+                methodsInClass(descriptor, name).mapTo(mutableSetOf()) { it.name to it.proto }
             classFor(descriptor)?.superclassChain.orEmpty().flatMap { ancestor ->
-                ancestor.methods.filter {
+                methodsInClass(ancestor.descriptor, name).filter {
                     it.name != "<init>" &&
                         !AccessFlags.PRIVATE.isSet(it.info.accessFlags) &&
                         seen.add(it.name to it.proto)

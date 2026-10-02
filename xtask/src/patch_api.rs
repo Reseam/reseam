@@ -61,8 +61,10 @@ fn browser_bridge(contract: &JniBridgeContract, output: &std::path::Path) -> Res
     let mut methods = Vec::new();
     // LiveConnect converts scalar Java longs through JavaScript Number. Arrays
     // cross CheerpJ by reference, preserving every bit in either direction.
+    // Keeping the current revision in Java also avoids a LiveConnect call for
+    // each metadata cache check; native responses update the shared long array.
     let mut kotlin = String::from(
-        "// Generated from BoltFFI Binding IR. Do not edit.\npackage app.reseam.patch.native\ninternal object Native {\n    fun ensureInitialized() {}\n",
+        "// Generated from BoltFFI Binding IR. Do not edit.\npackage app.reseam.patch.native\ninternal object Native {\n    private val browserRevision = ThreadLocal<LongArray>()\n    @JvmStatic fun beginBrowserInvocation(value: LongArray) { check(browserRevision.get() == null); browserRevision.set(value) }\n    @JvmStatic fun endBrowserInvocation() { browserRevision.remove() }\n    fun ensureInitialized() {}\n",
     );
     for (index, method) in contract.methods().iter().enumerate() {
         let parameters = method
@@ -196,6 +198,17 @@ fn browser_kotlin_method(
     parameters: &[&str],
     returns: &str,
 ) -> Result<()> {
+    if java_name.ends_with("_handles_mutation_revision") {
+        writeln!(
+            kotlin,
+            "    @JvmStatic fun {java_name}(): Long = browserRevision.get()?.get(0) ?: {java_name}_browser()[0]"
+        )?;
+        writeln!(
+            kotlin,
+            "    @JvmStatic external fun {java_name}_browser(): LongArray"
+        )?;
+        return Ok(());
+    }
     let wide = returns == "J" || parameters.contains(&"J");
     let native_name = if wide {
         format!("{java_name}_browser")

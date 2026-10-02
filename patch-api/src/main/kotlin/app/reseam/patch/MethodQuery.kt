@@ -126,8 +126,8 @@ internal class MethodQuerySpec : QuerySpec<Method, MethodRankScope>("method"), M
         val seeds = mutableListOf<Pair<String, Set<UInt>>>()
         inClass?.let { target ->
             val owner = runtime.resolve(target).value.descriptor
-            val declared = index.methodsInClass(owner)
-            val inherited = index.inheritedMethods(owner)
+            val declared = index.methodsInClass(owner, methodName)
+            val inherited = index.inheritedMethods(owner, methodName)
             val label =
                 when {
                     methodScope == MethodScope.INHERITED ->
@@ -226,7 +226,7 @@ internal class MethodQuerySpec : QuerySpec<Method, MethodRankScope>("method"), M
             if (
                 !declares &&
                     !(methodScope == MethodScope.INHERITED &&
-                        index.inheritedMethods(owner).any { it.handle == value.handle })
+                        index.inheritedMethods(owner, methodName).any { it.handle == value.handle })
             ) {
                 return "class mismatch"
             }
