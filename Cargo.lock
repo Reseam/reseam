@@ -1229,7 +1229,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "reseam-apk"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "bitflags",
  "memmap2",
@@ -1251,7 +1251,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-cli"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1273,7 +1273,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-dex"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "bitflags",
  "memmap2",
@@ -1291,7 +1291,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-model"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "boltffi",
  "serde",
@@ -1301,7 +1301,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-patcher"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "anyhow",
  "boltffi",
@@ -1328,7 +1328,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-sdk"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "ed25519-dalek",
  "hex",
@@ -1347,7 +1347,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-sdk-native"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "boltffi",
  "jni",
@@ -1360,7 +1360,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-sign"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "flate2",
  "memmap2",
@@ -1376,7 +1376,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-storage"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "libc",
  "memmap2",
