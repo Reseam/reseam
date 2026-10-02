@@ -63,6 +63,10 @@ try {
     const row: Record<string, unknown> = { id: app.id, apk: resolve(app.apk), cli: nativeResult, cliWallMs: Math.round(performance.now() - started) };
     console.log(`${app.id}: patching in Chromium`);
     const page = await browser.newPage();
+    if (process.env.PROFILE_CPU === '1') await browser.browser()!.startTracing(page, {
+      path: resolve(directory, 'cpu-trace.json'),
+      categories: ['disabled-by-default-v8.cpu_profiler'],
+    });
     const log: string[] = [];
     page.on('console', message => { log.push(message.text()); if (message.text().startsWith('event')) console.log(`${app.id}: ${message.text().slice(0, 250)}`); });
     page.on('pageerror', error => log.push(String(error)));
@@ -109,7 +113,10 @@ try {
       const summary = row.comparison as { apks?: { bytes_outside_signing_block_identical: boolean; different_entries: string[]; signatures: { valid: boolean }[] }[] };
       console.log(`${app.id}: compared ${summary.apks?.length ?? 0} APKs; matching bytes outside signing block: ${summary.apks?.every(apk => apk.bytes_outside_signing_block_identical)}; all signatures valid: ${summary.apks?.every(apk => apk.signatures.every(signature => signature.valid))}`);
     } catch (error) { row.browserError = String(error); row.failed = true; console.error(`${app.id}: ${String(error)}`); }
-    finally { await Bun.write(resolve(directory, 'browser.log'), log.join('\n')); await page.close(); }
+    finally {
+      if (process.env.PROFILE_CPU === '1') await browser.browser()!.stopTracing();
+      await Bun.write(resolve(directory, 'browser.log'), log.join('\n')); await page.close();
+    }
     if (nativeResult.status !== 'success') row.failed = true;
     const existing = results.findIndex(item => item.id === app.id);
     if (existing >= 0) results[existing] = row; else results.push(row);

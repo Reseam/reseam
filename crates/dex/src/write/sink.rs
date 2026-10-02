@@ -139,15 +139,43 @@ impl SpoolSink {
         if let Some(error) = self.error.take() {
             return Err(DexError::Io(error));
         }
-        for patch in self.patches.drain(..) {
-            self.file
-                .write_all_at(
-                    &self.patch_bytes[patch.start..patch.start + patch.len],
-                    patch.offset as u64,
-                )
-                .map_err(DexError::Io)?;
-        }
+        let mut window = std::mem::take(&mut self.window);
+        let result = self.apply_patches(&mut window);
+        window.clear();
+        self.window = window;
+        result.map_err(DexError::Io)?;
         self.patch_bytes.clear();
+        Ok(())
+    }
+
+    fn apply_patches(&mut self, window: &mut Vec<u8>) -> io::Result<()> {
+        let mut buffered = None;
+        // Debug-info offsets touch every code item. Apply them in bounded pages
+        // rather than issuing one file write per four-byte offset. Retaining
+        // patch order also preserves the last write when patches overlap.
+        for patch in self.patches.drain(..) {
+            let mut offset = patch.offset;
+            let mut bytes = &self.patch_bytes[patch.start..patch.start + patch.len];
+            while !bytes.is_empty() {
+                let start = offset / WINDOW * WINDOW;
+                if buffered != Some(start) {
+                    if let Some(previous) = buffered {
+                        self.file.write_all_at(window, previous as u64)?;
+                    }
+                    window.resize(WINDOW.min(self.flushed - start), 0);
+                    self.file.read_exact_at(window, start as u64)?;
+                    buffered = Some(start);
+                }
+                let local = offset - start;
+                let count = bytes.len().min(window.len() - local);
+                window[local..local + count].copy_from_slice(&bytes[..count]);
+                offset += count;
+                bytes = &bytes[count..];
+            }
+        }
+        if let Some(start) = buffered {
+            self.file.write_all_at(window, start as u64)?;
+        }
         Ok(())
     }
 }

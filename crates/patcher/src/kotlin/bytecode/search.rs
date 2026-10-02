@@ -47,6 +47,32 @@ pub fn instruction_count(m: u32) -> u32 {
     with_code(m, |_, code| Some(code.instructions().len() as u32)).unwrap_or(0)
 }
 
+#[export]
+pub fn count_following_check_cast(
+    sites: Vec<InstructionHit>,
+    type_descriptor: String,
+    look_ahead: u32,
+) -> u32 {
+    sites
+        .iter()
+        .filter(|site| {
+            with_code(site.method, |dex, code| {
+                Some(
+                    code.instructions()
+                        .iter()
+                        .skip((site.index as usize).saturating_add(1))
+                        .take(look_ahead as usize)
+                        .any(|instruction| {
+                            matches!(instruction, DexInsn::CheckCast { type_, .. }
+                                if dex.type_descriptor(*type_) == type_descriptor)
+                        }),
+                )
+            })
+            .unwrap_or(false)
+        })
+        .count() as u32
+}
+
 fn position(m: u32, start: u32, matches: impl Fn(&DexFile, &DexInsn) -> bool) -> Option<u32> {
     with_code(m, |dex, code| {
         code.instructions()

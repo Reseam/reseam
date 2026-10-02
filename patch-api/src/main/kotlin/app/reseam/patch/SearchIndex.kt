@@ -12,12 +12,11 @@ import app.reseam.patch.dex.Opcode
 import app.reseam.patch.dex.descriptor
 import app.reseam.patch.dex.isSet
 import app.reseam.patch.dex.methodRef
-import app.reseam.patch.dex.opcode
 import app.reseam.patch.dex.parameterTypes
 import app.reseam.patch.dex.returnType
-import app.reseam.patch.dex.typeRef
 import app.reseam.patch.native.allMethodHandles
 import app.reseam.patch.native.classMethodsByName
+import app.reseam.patch.native.countFollowingCheckCast
 import app.reseam.patch.native.findCallsMatching
 import app.reseam.patch.native.findClass
 import app.reseam.patch.native.findClassesWithInstanceField
@@ -28,8 +27,8 @@ import app.reseam.patch.native.findMethodsByOpcodes
 import app.reseam.patch.native.findMethodsByProto
 import app.reseam.patch.native.findMethodsByStrings
 import app.reseam.patch.native.getAllClasses
-import app.reseam.patch.native.getInstruction
 import app.reseam.patch.native.isAddedDex
+import app.reseam.patch.types.InstructionHit
 import app.reseam.patch.types.MethodRef
 
 private data class CastQuery(val callee: MethodSignature, val type: String, val lookAhead: Int)
@@ -279,14 +278,14 @@ internal class SearchIndex(private val runtime: PatchRuntime) {
     fun followedByCheckCast(target: Method, type: String, lookAhead: Int): Int {
         val signature = signatureOf(target)
         return cached(castCounts, CastQuery(signature, type, lookAhead)) {
-            invokeSitesFor(signature).count { (handle, index) ->
-                val caller = Method(handle)
-                val end = minOf(caller.instructionCount, index + 1 + lookAhead)
-                (index + 1 until end).any { i ->
-                    val instruction = getInstruction(handle, i.toUInt())
-                    instruction.opcode == Opcode.CHECK_CAST && instruction.typeRef == type
-                }
-            }
+            countFollowingCheckCast(
+                    invokeSitesFor(signature).map { (handle, index) ->
+                        InstructionHit(handle, index.toUInt())
+                    },
+                    type,
+                    lookAhead.coerceAtLeast(0).toUInt(),
+                )
+                .toInt()
         }
     }
 

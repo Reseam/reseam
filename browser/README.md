@@ -18,6 +18,8 @@ bun run --cwd browser preview
 
 `browser/dist` is the deployable static application. The engine build generates and packages the WASM module, Java host, shared Kotlin runtime and native-method manifest together. Runtime assets use a content-addressed directory and are checked for size and SHA-256 before loading. Publish the entire directory together; keep previous content-addressed assets available until older pages expire.
 
+The engine uses the `browser` Cargo profile with thin LTO and one codegen unit. The WASI target enables SIMD for compression, decompression and checksums without changing compression levels or output bytes.
+
 `bun run --cwd browser dev` rebuilds on changes and serves bundled workers. CheerpJ needs a classic worker, so development also uses Vite's production worker bundles.
 
 ## Hosting
@@ -31,7 +33,7 @@ Cross-Origin-Embedder-Policy: require-corp
 
 Serve `.wasm` as `application/wasm`. Cache content-addressed assets as immutable and serve the HTML with revalidation. Vite's local preview config supplies the isolation headers; localhost is a secure context.
 
-The browser must support WebAssembly, shared memory, workers, Web Locks, IndexedDB, and OPFS synchronous access handles inside workers. Chromium is the browser used for the real-app validation. The application checks essential capabilities before opening a session. Java runtime loading requires access to `https://cjrtnc.leaningtech.com/4.3/` and its runtime resources. Account for CheerpJ's WebAssembly and JavaScript compilation when setting a Content Security Policy.
+The browser must support WebAssembly SIMD, shared memory, workers, Web Locks, IndexedDB, and OPFS synchronous access handles inside workers. Chromium is the browser used for the real-app validation. The application checks essential capabilities before opening a session. Java runtime loading requires access to `https://cjrtnc.leaningtech.com/4.3/` and its runtime resources. Account for CheerpJ's WebAssembly and JavaScript compilation when setting a Content Security Policy.
 
 ## Files and signing
 
@@ -73,7 +75,7 @@ The matrix format is:
 }
 ```
 
-The default selection is `recommended`. `OUTPUT_DIR`, `RESEAM_BIN`, `TEST_PORT` and `BROWSER_PROFILE` can override runner paths. `RESUME=1` retains successful cases and retries incomplete cases. Detailed outputs, patch metrics, and comparison results go under `browser/build/comparison`. `PROFILE_BRIDGE=1` records per-patch native-call counts and timings in `browser.log`; it is disabled during the recorded matrix run. Private keys are mounted directly from disk and are not included in the report. Run `bun run --cwd browser build` again to produce the production application without the comparison hook.
+The default selection is `recommended`. `OUTPUT_DIR`, `RESEAM_BIN`, `TEST_PORT` and `BROWSER_PROFILE` can override runner paths. `RESUME=1` retains successful cases and retries incomplete cases. Detailed outputs, patch metrics, and comparison results go under `browser/build/comparison`. `PROFILE_BRIDGE=1` records per-patch native-call counts and timings in `browser.log`; `PROFILE_CPU=1` writes Chromium worker CPU profiles to each case's `cpu-trace.json`. Both are disabled during the recorded matrix run. Private keys are mounted directly from disk and are not included in the report. Run `bun run --cwd browser build` again to produce the production application without the comparison hook.
 
 ## Recorded validation
 
@@ -81,19 +83,23 @@ The default selection is `recommended`. `OUTPUT_DIR`, `RESEAM_BIN`, `TEST_PORT` 
 
 | Input | APK outputs | CLI SDK | Browser SDK | Browser patch wall time |
 | --- | ---: | ---: | ---: | ---: |
-| Reddit 2026.39, build 2639041, APKM | 34 | 1.38 s | 15.05 s | 16.00 s |
-| X 12.29.1, APKM | 38 | 1.17 s | 13.98 s | 14.97 s |
-| Telegram 12.7.1, APK | 1 | 0.52 s | 7.62 s | 8.60 s |
-| Instagram 447, APK + splits | 5 | 1.72 s | 21.72 s | 22.68 s |
-| YouTube 21.37.42, APK | 1 | 1.83 s | 19.62 s | 20.59 s |
-| YouTube 21.37.42, APKM | 36 | 2.03 s | 23.53 s | 24.54 s |
-| Reddit 2026.39, build 2639031, APKM | 34 | 1.57 s | 18.12 s | 19.22 s |
+| Reddit 2026.39, build 2639041, APKM | 34 | 1.39 s | 10.24 s | 11.23 s |
+| X 12.29.1, APKM | 38 | 1.15 s | 11.38 s | 12.38 s |
+| Telegram 12.7.1, APK | 1 | 0.52 s | 5.16 s | 6.14 s |
+| Instagram 447, APK + splits | 5 | 1.71 s | 12.16 s | 13.13 s |
+| YouTube 21.37.42, APK | 1 | 1.88 s | 16.20 s | 17.20 s |
+| YouTube 21.37.42, APKM | 36 | 3.19 s | 20.30 s | 21.30 s |
+| Reddit 2026.39, build 2639031, APKM | 34 | 1.40 s | 9.74 s | 10.73 s |
 
-These are sequential workstation measurements in Chrome for Testing 145, with cached Java runtime downloads and bridge profiling disabled. SDK timings exclude Java runtime initialization; patch wall time includes it, and a cold network adds further download time. Native peak RSS stayed below 253 MiB; browser engine linear memory ranged from 78 to 230 MiB and excludes CheerpJ and browser overhead.
+These are sequential workstation measurements in Chrome for Testing 145, with cached Java runtime downloads and bridge profiling disabled. SDK timings exclude Java runtime initialization; patch wall time includes it, and a cold network adds further download time. Native peak RSS stayed below 255 MiB; browser engine linear memory ranged from 78 to 230 MiB and excludes CheerpJ and browser overhead.
 
-A separate before/after Telegram run used the same Chrome 145 executable, cached profile, APK, bundle, patch selection and signing identity. SDK time fell from **81.71 s to 7.62 s** (10.7×); patch execution fell from **63.23 s to 0.84 s**. Both outputs matched the CLI outside the signing block. These are single-run measurements.
+A separate before/after Telegram run used the same Chrome 145 executable, cached profile, APK, bundle, patch selection and signing identity. SDK time fell from **81.71 s to 5.16 s** (15.8×); patch execution fell from **63.23 s to 0.83 s**. Both outputs matched the CLI outside the signing block. These are single-run measurements.
 
 Metadata-cache checks read an invocation-scoped Java `long[]` updated by each native response. Named method queries filter in Rust before crossing the Java bridge, including superclass resolution. Telegram's native method-metadata calls fell from 21,928 to 91. Input and scratch-file reads each use an 8 MiB cache shared across all files in the session; writes, truncation and removal invalidate scratch-file cache entries. Large reads remain streamed.
+
+The second speed pass batches DEX header backpatches through the writer's existing 256 KiB window, retaining patch order and overlapping-write semantics. Instagram's output-writing phase fell from 11.96 s to 3.85 s, and Reddit's from 7.43 s to 2.25 s. A call-site cast query now executes in Rust, replacing 66,431 instruction bridge calls in Instagram with 272 batched queries. The optimized browser matched both the previous CLI (`e84abdd`) and the rebuilt CLI across all 149 APK pairs.
+
+Relative to `e84abdd`, browser SDK times fell from 21.72 s to 12.16 s for Instagram, 15.05 s to 10.24 s for Reddit build 2639041, 13.98 s to 11.38 s for X, 7.62 s to 5.16 s for Telegram, and 19.62 s to 16.20 s for YouTube APK. The APKM and second Reddit cases are recorded in `validation.json`.
 
 The earlier implementation also passed a separate YouTube Loop video run in Chrome for Testing 145. The current matrix applies all 90 recommended YouTube patches, including Loop video and its dependencies. The production UI also passed in Chrome 145 with gzip-compressed runtime assets. Its downloaded X base APK matched the CLI outside the signing block. The real UI workflow was checked for cancellation and retry, explicit signer approval, imported keys, downloading the patched base APK and identity backups, and persistence across reload. To repeat it against an app from the comparison matrix:
 
