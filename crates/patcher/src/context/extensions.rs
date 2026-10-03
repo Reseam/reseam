@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use reseam_apk::reseam_dex::types::header::Loading;
 use reseam_apk::reseam_dex::{DexFile, ParseOptions, parse_file};
-use tracing::info;
+use tracing::debug;
 
 use super::PatchContext;
 use crate::error::{PatcherError, Result};
@@ -145,7 +145,7 @@ impl PatchContext<'_> {
             let Some(dex) = self.extensions.files[index].file.take() else {
                 continue;
             };
-            info!(path = %self.extensions.files[index].path.display(), "linking extension");
+            debug!(path = %self.extensions.files[index].path.display(), "linking extension");
             pending.extend(
                 dex.types()
                     .iter()

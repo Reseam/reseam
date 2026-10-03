@@ -43,7 +43,7 @@ struct WorkerRequest {
 pub fn run_perf_worker() -> Result<()> {
     let WorkerRequest { request, options } = serde_json::from_reader(std::io::stdin().lock())
         .context("read performance worker request")?;
-    let outcome = match run_patch(&request, &options, |_| {}) {
+    let outcome = match run_patch(&request, &options, |_, _| {}) {
         Ok(outcome) => IterationOutcome::Success {
             metrics: Box::new(outcome.metrics),
         },

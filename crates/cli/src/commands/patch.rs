@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::cell::RefCell;
+use std::collections::HashSet;
+
 use anyhow::{Context, Result, anyhow, ensure};
 use reseam_patcher::engine::{PatchIndex, PatchResult, PatchSelection, PatchStatus};
 use reseam_patcher::error::PatcherError;
@@ -70,11 +73,16 @@ fn applied(result: &PatchResult) -> bool {
     matches!(result.status, PatchStatus::Applied)
 }
 
-fn log_event(event: RunEvent) {
+/// Internal patches only show their problems unless debug logging is on.
+fn log_event(event: RunEvent, hidden: &HashSet<String>) {
     match event {
         RunEvent::Info { message } => info!(message),
+        RunEvent::PatchStarted { patch } if hidden.contains(&patch) => {
+            debug!(patch, "patch started");
+        }
         RunEvent::PatchStarted { patch } => info!(patch, "patch started"),
         RunEvent::PatchFinished { patch, status } => match status {
+            PatchStatus::Applied if hidden.contains(&patch) => debug!(patch, "patch applied"),
             PatchStatus::Applied => info!(patch, "patch applied"),
             PatchStatus::Skipped { reason } => warn!(patch, reason, "patch skipped"),
             PatchStatus::Failed { reason } => error!(patch, reason, "patch failed"),
@@ -123,18 +131,27 @@ pub(crate) fn request(args: &PatchRequestArgs, output: PatchOutput) -> Result<Pa
     })
 }
 
+/// `emit` also gets the references of the run's hidden patches.
 pub(crate) fn run(
     request: &PatchRequest,
     options: &[String],
-    emit: impl FnMut(RunEvent),
+    mut emit: impl FnMut(RunEvent, &HashSet<String>),
 ) -> Result<reseam_sdk::PatchOutcome> {
+    let hidden = RefCell::new(HashSet::new());
     Ok(patch_with_selection(
         request,
         |specs, package| {
+            hidden.replace(
+                specs
+                    .iter()
+                    .filter(|spec| spec.hidden)
+                    .map(|spec| spec.reference())
+                    .collect(),
+            );
             selection(options, request.selection.clone(), specs, package)
                 .map_err(|error| HostError::Selection(error.into()))
         },
-        emit,
+        |event| emit(event, &hidden.borrow()),
     )?)
 }
 
