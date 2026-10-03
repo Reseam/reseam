@@ -1,48 +1,29 @@
-# reseam-patcher
+<p align="center">
+  <img src="https://reseam.app/logo.svg" alt="Reseam logo" width="96">
+</p>
 
-Patch execution engine. Loads signed patch bundles, resolves which patches run and in what order, applies them to an APK, and reports per-patch results. Patches are written in Kotlin and run on an in-process JVM.
+<h1 align="center">reseam-patcher</h1>
 
-## Key capabilities
+Runs patches. It opens signed patch bundles, works out which patches run and in what order, applies them to an APK, and reports a result for each one. Patches are written in Kotlin and talk to this crate through generated BoltFFI bindings.
 
-- **Patch bundles**: open a `.reseam` archive, verify its signature and file hashes, check it was built for this engine's version line, and load its patches and extension DEX
-- **Dependency resolution**: topological ordering of patches with cycle detection
-- **Execution engine**: applies patches in order, tracks status (applied, skipped, failed), reports progress to an observer
-- **Options system**: typed patch options (string, bool, int, float, string list, path) with validation and defaults
-- **Kotlin patches**: runs Kotlin-authored patches through the BoltFFI bridge, on a JVM the engine starts or the one it was loaded into. Bytecode manipulation, manifest editing, resource and XML changes all go through the bridge
-- **Patch context**: gives patches access to the APK's DEX files, manifest, resources, and files, plus a search API over all DEX
+Apps that patch should call [`reseam-sdk`](../../sdk/) instead. It wraps this crate with trust checks, output handling, and signing.
+
+- **Bundles**: verifies a `.reseam` file's signature, payload hashes, and engine version, then loads its patches and extension DEX.
+- **Planning**: checks the selection and options, adds dependencies, rejects cycles, and orders patches.
+- **Running**: applies patches in order. A failed patch doesn't stop unrelated ones; patches that depend on it are skipped.
+- **Patch context**: gives patches the app's DEX files, manifest, resources, and files, plus search across all DEX.
 
 ## Modules
 
-| Module | Purpose |
-|--------|---------|
-| `bundle` | `BundleArchive` opens and verifies a bundle, `load` extracts it and loads its patches, `pack` writes one |
-| `engine` | `apply_patches` and `validate_patches` over a `PatchSelection` |
-| `context` | `PatchContext`: the APK session, DEX search API, run log, and options |
-| `patch` | `Patch` trait and `PatchSpec`, the interface every patch implements |
-| `options` | Option declarations, values, and resolution against a selection |
-| `kotlin` | JVM host, bundle class loader, and the `#[export]` functions the Kotlin scopes call |
-| `log` | Structured patch logging |
+| Module | Contents |
+|---|---|
+| `bundle` | `BundleArchive`: open and verify, load, pack |
+| `engine` | `apply_patches` and `validate_patches` for a `PatchSelection` |
+| `context` | `PatchContext`: the open APK, DEX search, logs, and options |
+| `patch` | `Patch`, `PatchSpec`, and compatibility declarations |
+| `options` | option declarations, values, and validation |
+| `kotlin` | the JVM host, bundle class loading, and the `#[export]` functions Kotlin calls |
 
-Trust is the host's decision. The engine checks that a bundle is intact and signed by the key it carries; the host decides whether that key is acceptable before calling `load`.
+The engine checks that a bundle is intact and signed by the key it carries. Whether to accept that key is up to the host.
 
-## Kotlin/JNI boundary
-
-- Rust exports in `src/kotlin/**/*.rs` define the host API with `#[export]`
-- `patch-api/generated/` holds raw BoltFFI output and is fully replaceable
-- handwritten files in `patch-api/src/main/kotlin/app/reseam/patch/` provide the patch-author API on top
-
-Regenerate with `cargo xtask regen patch-api`. The integration test in `tests/` builds a Kotlin fixture bundle with Gradle and runs it through the JVM.
-
-## Usage
-
-```rust
-use reseam_patcher::bundle::BundleArchive;
-use reseam_patcher::engine::{apply_patches, PatchSelection};
-use reseam_patcher::Patch;
-
-let archive = BundleArchive::open("patches.reseam".as_ref())?;
-// host checks archive.public_key against its trust list here
-let bundle = archive.load()?;
-let patches: Vec<&dyn Patch> = bundle.patches.iter().map(Box::as_ref).collect();
-let results = apply_patches(&mut context, &patches, &PatchSelection::default(), |_| {})?;
-```
+The Kotlin side of the bridge lives in [`patch-api/`](../../patch-api/). After changing an `#[export]` function, run `cargo xtask regen patch-api`. [`ARCHITECTURE.md`](ARCHITECTURE.md) describes how a run flows through the modules.

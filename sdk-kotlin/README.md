@@ -1,8 +1,19 @@
-# Host SDK bindings
+<p align="center">
+  <img src="https://reseam.app/logo.svg" alt="Reseam logo" width="96">
+</p>
 
-The Android and JVM SDK packages the application bridge generated from `sdk/native` and the shared patch runtime. Calls are synchronous; progress callbacks run on the calling thread and must not re-enter the engine. Android hosts install their class loader with `ReseamAndroidHost.setClassLoader` before loading bundles. Close `ApkInspection` only after finishing with its component paths.
+<h1 align="center">Reseam SDK for Kotlin</h1>
 
-Source generation is separate from native packaging:
+The `app.reseam:reseam-sdk` package for Android and JVM apps. It wraps the [Reseam SDK](../sdk/) in Kotlin, so an app can inspect APKs, load patch bundles, and patch. Reseam Manager is built on it.
+
+The package holds the bindings generated from `sdk/native`, the native libraries, and the patch runtime that bundles run against. The calls and their rules (trust, threads, lifetimes) are in the [SDK README](../sdk/README.md#api).
+
+## Platforms
+
+- **Android**: API 24 and later. The library loads `libreseam-sdk-native.so` from the APK. Call `ReseamAndroidHost.setClassLoader(classLoader)` before loading bundles.
+- **Desktop**: a 64-bit JVM, Java 17 or newer, on Linux x86-64 or Windows x86-64. The JVM artifact carries both native libraries and extracts the right one to `java.io.tmpdir` on first use. No `java.library.path` setup is needed.
+
+## Build
 
 ```sh
 cargo xtask regen patch-api
@@ -11,16 +22,12 @@ cargo xtask runtime
 cargo xtask pack-sdk
 ```
 
-`regen sdk` requires the host Rust toolchain, the pinned BoltFFI CLI, and Java. It formats only generated SDK Kotlin. `pack-sdk` additionally requires the Android NDK, Android and Windows Rust targets, llvm-mingw, and a Windows JDK configured with `JAVA_HOME_x86_64_pc_windows_gnullvm`. See [native build configuration](../sdk/README.md#build). The runtime jar must exist before building the desktop CLI or native SDK. It is also rebuilt when patch runtime sources change.
+`regen sdk` only needs the Rust toolchain, the pinned BoltFFI CLI, and Java. `pack-sdk` also needs the Android NDK, the Android and Windows Rust targets, llvm-mingw, and a Windows JDK; see [native build setup](../sdk/README.md#build).
 
-The published JVM artifact includes Linux x86-64 and Windows x86-64 JNI libraries,
-regardless of the Gradle build host. BoltFFI's generated bundled loader selects
-`native/linux-x86_64/libreseam_sdk_native_jni.so` or
-`native/windows-x86_64/reseam_sdk_native_jni.dll` from the runtime's OS and
-architecture, extracts it to `java.io.tmpdir`, and loads it. Use a 64-bit JVM
-(Java 17 or newer); no native-library installation is needed. Android continues
-to load `libreseam-sdk-native.so` from the APK's ABI directory.
+To check the Kotlin side without packing native libraries:
 
-For host-only Kotlin validation, run `:reseam-sdk:compileKotlinJvm` and `:reseam-patch-sdk:checkKotlinAbi`. The multiplatform application module does not define `compileKotlin` or its own frozen ABI task. Generated Kotlin and JNI files are build products under `sdk/generated`.
+```sh
+./gradlew :reseam-sdk:compileKotlinJvm :reseam-patch-sdk:checkKotlinAbi
+```
 
-`PreparedInspection(request)` keeps an inspection's opened APK and verified catalogs for one patch run: show `metadata()`, then call `patch(request, onEvent)` with the same inputs in the same order. Trust and payload hashes are checked again before code loads. Inputs must not change until it is consumed, and `patch` consumes it even when it fails.
+Generated Kotlin and JNI files land in `sdk/generated/`. They are build output; don't edit them.

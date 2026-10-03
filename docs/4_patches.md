@@ -1,116 +1,100 @@
 ---
-description: One change to one app that a user can switch on.
+description: Name a patch, say which apps it is for, and give it options and dependencies.
 ---
 
-# Patches
+# Declaring patches
 
-A patch is one change to one app that a user can switch on: hide ads, unlock a paid feature, remove an update prompt. Reseam applies it by rewriting the APK on the phone; the patched app installs next to the original.
-
-In code, a patch is a public top-level `val` in `apps/<app>/patch/src/main/kotlin/`. It carries what users and the engine need up front (name, description, apps, dependencies, options) and an `execute` block with the change. The engine finds patches by scanning the compiled classes, so file and property names are yours.
+A patch is a public top-level `val` built with `patch("Name") { }`. The block declares what users and the engine need to know, then `execute { }` holds the change.
 
 ```kotlin
-import app.reseam.patch.Type
-import app.reseam.patch.invoke
-import app.reseam.patch.method
-import app.reseam.patch.patch
-import app.reseam.patch.settings.section
-import app.reseam.patch.settings.skipWhen
-
 val hideAds = patch("Hide ads") {
     description("Removes ads from the feed.")
     compatibleWith("com.example.app"("2.14.0"))
-    settings(appSettings, section("Ads", AppSettings.hideAds))
 
     execute {
-        showAd.skipWhen(AppSettings.hideAds)
+        showAd.before { returnVoid() }
     }
 }
-
-val showAd = method("showAd") {
-    strings("ad_impression")
-    returns(Type.Void)
-}
 ```
-
-The patch comes first, its [targets](5_targets.md) below it. Everything the block accepts is in the [reference](12_reference.md#declaring-patches).
-
-## How a patch runs
-
-1. **Load.** The engine opens the bundle and initializes every top-level value in the patch jar, reading metadata off the patches. Nothing has looked at the app. A target is only a description; `.method`, `options[...]` and every scope throw `This API is only available while a patch is executing`.
-2. **Selection.** A patch is skipped when its package or version does not match the APK, when a dependency was skipped, or when the user left it off.
-3. **Patch time.** `execute { }` runs once with the runtime as receiver. Targets resolve on first use and stay cached for this patch. Code blocks run immediately and emit instructions. `afterDependents { }` runs after every dependent has finished.
-
-An uncaught exception fails the patch, skips its dependents, and does not roll back what it already changed.
 
 > [!WARNING]
-> Only public top-level `val`s are discovered. A `private val` or a patch inside an `object` is invisible, and a dependency on one fails with `depends on a patch that is not declared as a public top-level value`. Top-level code that touches the app throws at load and the engine skips that file's patches with `patch declaration failed to initialize`.
+> The engine only finds public top-level values. A `private val`, or a patch inside an `object`, is invisible.
 
-## Internal patches and dependencies
+## Names and IDs
 
-`patch { }` without a name is internal: never listed, never selected, run only when a patch that can run depends on it. Use it for shared setup.
+The name is what users see; it doesn't have to be unique. Each patch also has an ID taken from its Kotlin declaration (`package.property`), and a *reference*, `<bundle>/<id>`, where the bundle name comes from `manifest.toml`. Renaming the property or its package changes the ID; changing the display name does not.
 
-```kotlin
-val adBlockerRuntime = patch {
-    compatibleWith(EXAMPLE_APP)
-
-    execute {
-        appEntry { call(AdBlocker.init, application) }
-    }
-}
-
-val hideAds = patch("Hide ads") {
-    compatibleWith(EXAMPLE_APP)
-    dependsOn(adBlockerRuntime)
-
-    execute { }
-}
-```
-
-`dependsOn` takes references, never names. A dependency runs first; skipping it skips its dependents. Dependencies are pulled in only through patches that can run on the APK. A patch skipped for its package or version, disabled explicitly, or missing a dependency does not pull in dependencies of its own.
-
-## Depending on another bundle
-
-A patch can depend on a patch from a bundle someone else publishes. Declare that bundle in the module's build script, by its `patches.json` and the version you build against, or by a file when it is a bundle you are developing next door:
-
-```kotlin
-reseam {
-    bundle(index = "https://patches.example.com/patches.json", version = "1.4.0")
-    bundle(file = file("../other-bundle/build/reseam/other-bundle.reseam"))
-}
-```
-
-The build fetches the bundle and generates a reference for each of its patches, in the same package as the original, so the dependency reads like a local one:
-
-```kotlin
-import com.example.other.removeProtection
-
-val hideBanners = patch("Hide banners") {
-    compatibleWith(EXAMPLE_APP)
-    dependsOn(removeProtection)
-
-    execute { }
-}
-```
-
-A wrong name is a compile error, and when the other bundle moves or renames a patch, your build breaks when you bump the version instead of a user's run. `signer = "<public key hex>"` on `bundle(index, ...)` pins the key the index must carry; fetching a bundle loads its code, so it is checked against the index's key either way.
-
-The user loads that bundle alongside yours. When it is missing, the patch is skipped with `depends on other-bundle/…; load bundle 'other-bundle' alongside`, and selecting it explicitly fails with the same message.
-
-## Compatibility
+## Which apps
 
 ```kotlin
 compatibleWith("com.example.app", "com.example.app.lite")
 compatibleWith("com.example.app"("2.14.0", "2.14.1"))
 ```
 
-A package alone means every version; `"package"("version", ...)` pins versions. One patch can cover several apps. Define the package once and share it across the bundle: `val EXAMPLE_APP = "com.example.app"("2.14.0")`. A patch with no `compatibleWith` is universal: it applies to every app, and because the engine cannot know it suits an arbitrary app, it is off until the user selects it. Declare `enabledByDefault(true)` to override that.
+A package on its own means every version. `"package"("version", ...)` limits the patch to those versions; on any other version it is skipped. Define the package once and reuse it: `val EXAMPLE_APP = "com.example.app"("2.14.0")`.
+
+A patch without `compatibleWith` works on any app. Users have to pick it themselves; it is never selected by default.
 
 > [!WARNING]
-> Pinned versions skip the patch on every other version, including ones where it would work. Unpinned, it runs everywhere and fails loudly when a target stops matching. Pin when a wrong match does damage silently (a rewritten constant, a replaced body).
+> Pinned versions skip the patch even on versions where it would work. Unpinned, it runs everywhere and fails loudly when its targets stop matching. Pin versions when a wrong match could do damage quietly, such as rewriting a constant.
+
+## On or off by default
+
+Patches for a specific app start switched on. `enabledByDefault(false)` makes one opt-in.
+
+## Internal patches
+
+`patch { }` without a name is internal: users never see it, and it only runs when a patch that runs depends on it. Use it for setup that several patches share.
+
+```kotlin
+val adBlockerSetup = patch {
+    compatibleWith(EXAMPLE_APP)
+    execute { appEntry { call(AdBlocker.init, application) } }
+}
+```
+
+`hidden()` keeps a named patch off the lists users see.
+
+## Dependencies
+
+```kotlin
+val hideAds = patch("Hide ads") {
+    compatibleWith(EXAMPLE_APP)
+    dependsOn(adBlockerSetup)
+    execute { /* ... */ }
+}
+```
+
+A dependency runs first. If it is skipped or fails, the patches that depend on it are skipped.
+
+### Patches from another bundle
+
+To depend on a patch someone else publishes, declare their bundle in your patch module's `build.gradle.kts`:
+
+```kotlin
+reseam {
+    bundle(index = "https://patches.example.com/patches.json", version = "1.4.0")
+}
+```
+
+Use `bundle(file = file("../other/build/reseam/other.reseam"))` for a bundle you are building next to yours, and `signer = "<public key>"` on `bundle(index = ...)` to pin the key you expect.
+
+The build downloads that bundle and generates a Kotlin value for each of its patches, in the same package as the original:
+
+```kotlin
+import com.example.other.removeProtection
+
+val hideBanners = patch("Hide banners") {
+    dependsOn(removeProtection)
+    execute { /* ... */ }
+}
+```
+
+Users need to load that bundle too. If it is missing, your patch is skipped with a message naming the bundle.
 
 ## Options
 
-Values the user sets when applying the patch. Declare them in the block, read them in `execute`:
+Options are values users set before patching, such as a new app name.
 
 ```kotlin
 val cloneApp = patch("Clone app") {
@@ -123,69 +107,15 @@ val cloneApp = patch("Clone app") {
 }
 ```
 
-`options[x]` applies defaults and throws for an empty optional option; `options.getOrNull(x)` returns null. From the CLI: `--option <patch>.<key>=<value>`.
+| Declaration | Value in Kotlin |
+|---|---|
+| `stringOption` | `String`, with optional `validValues` |
+| `boolOption` | `Boolean` |
+| `intOption` | `Long` |
+| `floatOption` | `Double` |
+| `stringListOption` | `List<String>` |
+| `pathOption` | `OptionPath`: a file or folder the user picks |
 
-## Settings
+Each takes `key`, and optionally `title`, `description`, `default` (not for paths), and `required`. `options[x]` returns the value and throws if there is none; `options.getOrNull(x)` returns null instead. From the CLI, set one with `--option <patch>.<key>=<value>`.
 
-Switches inside the patched app, shown by a settings screen a host installs. Declare them as properties; the key derives from the object and property names:
-
-```kotlin
-object AppSettings {
-    val hideAds by toggle("Hide ads", default = true)
-    val unlockFeatures by toggle("Unlock features", summary = "Server-checked features still need a subscription.", default = true)
-}
-
-val appSettings = settingsHost("example") {
-    compatibleWith(EXAMPLE_APP)
-
-    install {
-        appEntry { call(SettingsEntry.init, application) }
-        manifest.addActivity("app.example.ext.settings.ReseamSettingsActivity") {
-            this["android:label"] = "Reseam Settings"
-        }
-    }
-}
-```
-
-`settings(host, section(...))` in a patch registers its sections and adds the host as a dependency. `settings(section(...))` inside `settingsHost { }` does the same for sections the host owns, for a switch that belongs to no single feature patch; they lead the screen, since the host runs before its dependents. `install` runs after every registering patch, once the host has written `assets/reseam/settings.json`. Toggles gate emitted code; see [Gates](6_code.md#gates).
-
-### Settings from options
-
-Settings that depend on the patch's [options](12_reference.md#declaring-patches) go in a block. It runs after `execute`, with the runtime as receiver:
-
-```kotlin
-val appName = patch("App name") {
-    val customName = stringOption("customName", title = "Custom name")
-    settings(appSettings) {
-        val name = options.getOrNull(customName)
-        val setting = AppSettings.appName.let {
-            if (name == null) it else it.copy(default = "custom", choices = it.choices + Choice("custom", name))
-        }
-        listOf(section("Name", setting))
-    }
-}
-```
-
-`ChoiceSetting.copy` keeps the storage key. A stored value that the schema no longer lists stays in storage; read it with `ReseamSettings.getChoice` to fall back to the schema default. A choice setting's default must be one of its choices.
-
-### Subpages
-
-A page groups sections behind a row on the settings screen. Share the page between patches; give it a parent to nest it:
-
-```kotlin
-val mediaPage = SettingsPage("media", "Media", order = 10)
-val playbackPage = SettingsPage("playback", "Playback", parent = mediaPage)
-
-val playback = patch("Playback options") {
-    settings(appSettings, section(playbackPage, "Playback", AppSettings.unlockFeatures))
-}
-```
-
-`section(title, ...)` adds a root section; `section(page, title, ...)` adds one to a page. Only pages with settings from applied patches, and their parents, appear. Lower `order` values come first among siblings; ties keep registration order. Sections on the same page with the same heading merge, each setting key shown once. Pages sharing an id must agree on title, parent, and order. Moving a setting leaves its storage key unchanged.
-
-The schema records `pages` (`id`, `title`, `parent`) and `sections` (`page`, `title`, `settings`); a null parent or page means the root. The shared runtime opens each page in another instance of the host's settings activity. Keep its launch mode `standard` so Android handles Back and restores scroll positions. The host builds the screen with `ReseamSettingsScreen.build(this)` and forwards activity results to `ReseamSettingsScreen.onActivityResult`, which refreshes a folder selection on the current page.
-
-> [!WARNING]
-> The key (`app_settings.hide_ads`) is what the app stores the value under. Renaming the object or property resets the setting for every user. Pin `key =` before the first release.
-
-Next: [Finding code in the app](5_targets.md).
+Next: [Settings inside the app](5_settings.md).

@@ -1,23 +1,39 @@
-# Reseam SDK
+<p align="center">
+  <img src="https://reseam.app/logo.svg" alt="Reseam logo" width="96">
+</p>
 
-Application integration SDK for Reseam clients.
+<h1 align="center">Reseam SDK</h1>
 
-This crate is the Rust service; the CLI calls it directly. `sdk/native` exports it through BoltFFI, with the types from `crates/model`:
+The entry point for apps that patch. Reseam Manager, the `reseam` CLI, and the browser patcher all call it. It opens an app, reads patch bundles, checks their signers, runs the patches, and writes a signed APK.
 
-- `inspect(InspectRequest): InspectResponse`
-- `patch(PatchRequest, onEvent): PatchOutcome`, with progress delivered as `RunEvent`
-- `ApkInspection(apkPath, splitPaths)`: `metadata()`, `basePath()`, `splitPaths()`, `applicationIcon()`, `close()`
-- `encodeSelection` / `decodeSelection` and `encodePatchMetadata` / `decodePatchMetadata`
+This crate is the Rust service. [`sdk/native`](native/) exports it to Kotlin through BoltFFI, and [`sdk-kotlin/`](../sdk-kotlin/) publishes that as `app.reseam:reseam-sdk`. [`sdk/browser`](browser/) builds it for WebAssembly, used by [`@reseam/browser`](../browser/).
 
-Failures throw `SdkError`, which carries a typed `Problem`. A request names the bundle signers it trusts under `trust.keys`; the engine trusts nobody on its own.
+## API
 
-`inspect` reads each bundle's signed static patch catalog without extracting payloads or loading code, even when its signer is trusted. All readable catalogs contribute patches; `trusted` reports whether the signer is approved for patching. Unknown signers are not inspection failures. Signature and catalog failures appear in the bundle's `problem`; payload hashes are verified when patching loads the bundle. `patch` still requires signer trust and rejects declarations whose metadata differs from the signed catalog. Bundles without a catalog must be rebuilt with the current packer; the bundle format version remains `1`.
+The types come from [`crates/model`](../crates/model/).
 
-Calls are synchronous; run them off the main thread. `onEvent` runs on the calling thread and must not call back into the SDK. Component paths from an `ApkInspection` stay valid until it is closed.
+| Call | What it does |
+|---|---|
+| `inspect(InspectRequest)` | Reads an APK and each bundle's signed patch list. Doesn't load patch code. |
+| `PreparedInspection(request)` | Same as `inspect`, but keeps the opened APK and bundles for one `patch` call. |
+| `patch(PatchRequest, onEvent)` | Runs the patches and writes the signed output. Progress arrives as `RunEvent`s. |
+| `ApkInspection(apkPath, splitPaths)` | Opens an APK, APKM, or XAPK and exposes its metadata, component files, and icon. |
+| `encodeSelection`, `encodePatchMetadata` | Store a selection or patch list as JSON, with matching `decode` functions. |
 
-Store selections and patch metadata with the encode functions. They write the serde JSON schema, which does not change with BoltFFI's wire format.
+- **Trust.** A request lists the bundle signers it accepts in `trust.keys`. The SDK trusts no one on its own. `inspect` reads bundles from any signer and marks each one `trusted` or not; `patch` refuses untrusted ones.
+- **Errors.** Failures are `SdkError` with a typed `Problem`, such as `UntrustedBundle`, `EngineTooOld`, or `PatchesFailed`.
+- **Threads.** Calls are synchronous; run them off the main thread. `onEvent` runs on the calling thread and must not call back into the SDK.
+- **Lifetimes.** `ApkInspection` component paths are valid until it is closed. A `PreparedInspection` needs the same input paths, in the same order, when you call `patch`, and the inputs must not change before then. `patch` consumes it, even on failure.
 
-`sdk/native` holds the `#[export]` application surface over this crate. See [BoltFFI integration](../docs/boltffi.md).
+Android apps must install a class loader that can see the SDK and patch classes before loading bundles:
+
+```kotlin
+ReseamAndroidHost.setClassLoader(classLoader)
+```
+
+Desktop apps need nothing: the engine attaches to the JVM it was loaded into.
+
+How the BoltFFI bindings are set up is in [`docs/internals/boltffi.md`](../docs/internals/boltffi.md).
 
 ## Build
 
@@ -97,13 +113,3 @@ The Kotlin packages are built by the Gradle project at the workspace root:
 `reseam-sdk` depends on `reseam-patch-sdk`. Bundles then resolve the host's copy of the patch runtime, whose native calls reach the SDK library the host already loaded.
 
 CI publishes both to the Reseam Maven registry on every `v*` tag, with the version taken from the tag.
-
-## Patcher Host Requirement
-
-Android hosts must install a classloader before patching bundles:
-
-```kotlin
-ReseamAndroidHost.setClassLoader(classLoader)
-```
-
-The classloader must be able to resolve the Reseam SDK and patch classes. Desktop hosts need nothing: the engine attaches to the JVM it was loaded into.

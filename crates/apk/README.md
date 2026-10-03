@@ -1,30 +1,31 @@
-# reseam-apk
+<p align="center">
+  <img src="https://reseam.app/logo.svg" alt="Reseam logo" width="96">
+</p>
 
-APK file reader and writer. Handles the ZIP container, Android Binary XML (AXML), resource tables, and DEX extraction and injection.
+<h1 align="center">reseam-apk</h1>
 
-## Key capabilities
+Reads and writes APKs for the Reseam engine: the ZIP container, the binary manifest and XML, the resource table, and the DEX files inside.
 
-- **Read and write APK files** as ZIP archives with the alignment and compression Android expects, streaming large entries instead of holding them in memory
-- **Split APKs**: a base APK plus config splits opened as one session of components, each with its own manifest, resources, and injected files
-- **Parse and compile AXML**, the binary format used for `AndroidManifest.xml` and other compiled XML resources
-- **Resource table** parsing and rewriting for `resources.arsc`, including styled string pools
-- **DEX extraction and injection**: `classes*.dex` in and out of `reseam-dex` structures, multi-DEX aware
+- Reads and writes APKs with the alignment and compression Android expects, streaming large entries instead of loading them into memory.
+- Opens a base APK with its config splits, or an APKM or XAPK file, as one set of components.
+- Parses and compiles Android binary XML (AXML), used by `AndroidManifest.xml` and compiled layouts.
+- Parses and rewrites `resources.arsc`, including styled string pools.
+- Moves `classes*.dex` in and out of [`reseam-dex`](../dex/).
 
 ## Modules
 
-| Module | Purpose |
-|--------|---------|
-| `apk_file` | `ApkFile` and `ApkComponent`: open, modify, and write APKs and their splits |
-| `zip` | ZIP reader and writer for APK-specific alignment and streaming |
-| `axml` | AXML reader, writer, and compiler, plus the framework attribute ids |
+| Module | Contents |
+|---|---|
+| `apk_file` | `ApkFile` and `ApkComponent`: open, edit, and write an APK and its splits |
+| `axml` | AXML reader, writer, and compiler, plus Android framework attribute IDs |
 | `resources` | `ResourceTable` for `resources.arsc` |
-| `entry` | Entry-name rules: DEX ordinals, signature entries, native libraries |
+| `entry` | entry-name rules: DEX ordinals, signature files, native libraries |
 
-## Usage
+## Example
 
 ```rust
 use reseam_apk::{ApkFile, reseam_dex::ParseOptions};
 
 let apk = ApkFile::open("app.apk", ParseOptions::default())?;
-let dex = apk.dex(); // MultiDexContainer over every classes*.dex
+let dex = apk.dex(); // every classes*.dex as one MultiDexContainer
 ```

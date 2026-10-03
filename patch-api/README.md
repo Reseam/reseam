@@ -1,29 +1,34 @@
-# Reseam Patch API
+<p align="center">
+  <img src="https://reseam.app/logo.svg" alt="Reseam logo" width="96">
+</p>
 
-Kotlin patch authoring SDK for Reseam. Author docs live in [`docs/`](../docs/README.md). This directory mixes generated transport code with handwritten API code, and the boundary is strict:
+<h1 align="center">Reseam Patch API</h1>
 
-- `generated/` is raw BoltFFI output and is always replaceable; its Kotlin is compiled into this module as `app.reseam.patch.types` and `app.reseam.patch.native`, its C glue into the engine
-- `src/main/kotlin/app/reseam/patch/` is handwritten and must remain stable across regeneration
+The Kotlin API patches are written against, published as `app.reseam:reseam-patch-sdk`.
+
+To write patches, start from the [patch bundle template](https://git.reseam.app/reseam/patches-template) and follow the [docs](https://reseam.app/docs/authoring/start/). This README is for people changing the API itself.
 
 ## Layout
 
-- `app.reseam.patch`: the author surface. `Patch.kt` declares patches, `Targets.kt`, `Query.kt`, and `Point.kt` find things, `Code.kt`, `CodeEmitter.kt`, and `Hooks.kt` emit code, `Scopes.kt` wraps the manifest, resources, files, and XML, `Options.kt` and `settings/` cover user-facing configuration, `Bindings.kt` holds the structural binding compiler.
-- `app.reseam.patch.dex`: the escape hatch. `Method` and `DexClass` handles, `Opcode`, `InstructionBuilder`, and instruction accessors.
-- `app.reseam.patch.types`: generated data types, such as `Instruction` and `MethodRef`. Part of the author surface.
-- `app.reseam.patch.native`: generated raw engine calls for the handwritten code only.
+| Package | Contents |
+|---|---|
+| `app.reseam.patch` | What patch authors use. `Patch.kt` declares patches. `Targets.kt`, `Query.kt`, and `Point.kt` find code. `Code.kt`, `CodeEmitter.kt`, and `Hooks.kt` change it. `Scopes.kt` covers the manifest, resources, files, and XML. `Options.kt` and `settings/` cover user settings. `Bindings.kt` reads obfuscated objects. |
+| `app.reseam.patch.dex` | Raw bytecode access: `Method`, `DexClass`, `Opcode`, `InstructionBuilder`. |
+| `app.reseam.patch.types` | Generated data types such as `Instruction` and `MethodRef`. Authors use these too. |
+| `app.reseam.patch.native` | Generated calls into the engine. Only the handwritten code uses them. |
 
-## Supported workflow
+Handwritten code lives in `src/main/kotlin/app/reseam/patch/`. Everything under `generated/` is BoltFFI output: never edit it by hand.
 
-Regenerate bridge artifacts after changing Rust `#[export]` functions:
+## Adding an engine capability
 
-```bash
-cargo xtask regen patch-api      # this directory only
-cargo xtask regen all            # patch-api and sdk together (recommended)
-```
+1. Add an `#[export]` function in `crates/patcher/src/kotlin/`.
+2. Regenerate the bindings:
 
-This reads the patcher's Binding IR, keeps the declarations its exports reach, and writes the Kotlin, the C glue, and the `RegisterNatives` table the engine binds to each bundle. See [BoltFFI integration](../docs/boltffi.md).
+   ```bash
+   cargo xtask regen patch-api   # this package only
+   cargo xtask regen all         # this package and the app SDK
+   ```
 
-## Editing rules
+3. Wrap the generated call in handwritten Kotlin. Patches call the wrapper, never `native` directly.
 
-- Do not hand-edit files under `generated/`
-- New engine capabilities get an `#[export]` in Rust, a regeneration, and a handwritten wrapper; patch code calls the wrapper
+`api/reseam-patch-sdk.api` records the public API. If a change to it is intended, update it with `./gradlew :reseam-patch-sdk:updateKotlinAbi`; patch authors will see that change. How the bindings are generated is in [`docs/internals/boltffi.md`](../docs/internals/boltffi.md).

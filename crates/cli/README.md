@@ -1,116 +1,31 @@
-# reseam-cli
+<p align="center">
+  <img src="https://reseam.app/logo.svg" alt="Reseam logo" width="96">
+</p>
 
-Command-line interface for Reseam. Provides the `reseam` binary.
+<h1 align="center">reseam-cli</h1>
 
-The CLI trusts no bundle signer on its own. Every command that loads a bundle takes `--trust <PUBLIC_KEY_HEX>`, repeatable, naming the signers you accept; a bundle signed by anyone else is refused before any of its code runs.
-
-## Commands
-
-### `reseam patch`
-
-Apply a patch bundle to an APK.
+The `reseam` command. Patch authors use it to build, sign, test, and publish patch bundles. Anyone can use it to patch an APK on a computer without Reseam Manager.
 
 ```bash
-reseam patch app.apk --bundle patches.reseam --trust <PUBLIC_KEY_HEX> --output patched.apk
+reseam patch app.apk --bundle patches.reseam --trust <PUBLIC_KEY_HEX>
 ```
 
-For split APKs:
+The CLI trusts no bundle signer on its own. Pass `--trust` with the public key of every signer you accept; a bundle signed by anyone else is refused before its code runs.
+
+| Command | What it does |
+|---|---|
+| `reseam patch` | Applies patches from bundles to an APK, APKM, XAPK, or split set, and signs the result. |
+| `reseam perf` | Patches several times and reports time and memory per step. |
+| `reseam bundle` | Creates signing keys, packs bundles, checks a staging manifest, and lists a bundle's patches. |
+| `reseam publish` | Adds a release to a `patches.json` or `manager.json` index. |
+| `reseam info` | Prints an app's package, version, and size. |
+
+Install steps and every flag are in the [CLI docs](https://reseam.app/docs/cli/overview/) (source: [`docs/`](docs/)). Run any command with `--help` for a short summary.
+
+Build it from the workspace root:
 
 ```bash
-reseam patch base.apk \
-  --split config.arm64_v8a.apk \
-  --split config.xxhdpi.apk \
-  --bundle patches.reseam \
-  --trust <PUBLIC_KEY_HEX> \
-  --output-dir patched/
+cargo xtask regen patch-api
+cargo xtask runtime
+cargo build --release -p reseam-cli
 ```
-
-APKM and XAPK inputs use the same pipeline. By default, one APK component produces `<stem>-patched.apk`; multiple components produce `<stem>-patched/`. XAPKs requiring OBB expansion files are rejected.
-
-Options:
-- `--split <APK>`: add a split APK alongside the base APK, repeatable
-- `--output <FILE>`: output path for single-APK mode
-- `--output-dir <DIR>`: output directory for one or more APK components; mutually exclusive with `--output`
-- `--key <PK8>` and `--cert <DER>`: sign with an existing PKCS#8 key and X.509 certificate, provided together; otherwise Reseam reuses or generates key material next to the output
-- `--preset <PRESET>`: patches to start from, `recommended` (default), `all`, or `none`; `--enable` and `--disable` adjust it
-- `--enable <PATCH>` and `--disable <PATCH>`: toggle patches by `<bundle>/<id>`, by ID, or by an unambiguous display name for the input app, repeatable
-- `--option PATCH.KEY=VALUE`: set a patch option, typed by the patch's declaration
-- `--ignore-versions`: run patches on app versions they were not declared for
-- `--dry-run`: resolve and validate without applying patches or writing output
-
-### `reseam perf`
-
-Run the same pipeline as `patch` into a temporary output and report per-phase timings and memory. Takes the `patch` flags plus:
-
-```bash
-reseam perf app.apk --bundle patches.reseam --trust <PUBLIC_KEY_HEX> --warmup 1 --iterations 5 --json
-```
-
-- `--iterations <N>`: measured runs, default 1
-- `--warmup <N>`: unmeasured runs first, default 0
-- `--json`: machine-readable report instead of plain text
-
-### `reseam info`
-
-Print APK metadata: package name, version, DEX file count, and split information.
-
-```bash
-reseam info app.apk
-```
-
-### `reseam bundle keygen`
-
-Generate an Ed25519 signing seed for bundle packing. Prints the public key; that hex string is what users pass to `--trust`.
-
-```bash
-reseam bundle keygen --out reseam.key
-```
-
-### `reseam bundle pack`
-
-Pack a staging directory into a signed `.reseam` bundle. The directory holds `manifest.toml` with a `[bundle]` table (`name`, `format_version`, optional `author` and `description`) beside the `.jar` and `.dex` payload. Jars must carry both JVM classes and `classes.dex` so the same bundle runs on desktop and on Android. The packer initializes the author's declarations to generate a signed static patch catalog and stamps the bundle with its engine version. Packing patch jars requires a JVM and executes the author's code.
-
-```bash
-reseam bundle pack staging/ --key reseam.key --out patches.reseam
-```
-
-### `reseam bundle list`
-
-Show a bundle's metadata, signer, and every patch with its compatibility, dependencies, and options. Reads the signed catalog without loading code or requiring trust. `--verbose` adds the engine version and payload filenames; `--json` prints the full inspection response.
-
-```bash
-reseam bundle list patches.reseam
-```
-
-### `reseam publish patches`
-
-Add a release to a `patches.json` index, including the bundle's patch catalog for that version. The command takes the publisher identity and public key from the signed archive, replaces any release with the same version, and refuses to change the index's signer. It reads the signed catalog without loading code or requiring a JVM.
-
-```bash
-reseam publish patches patches.reseam --version v0.1.0 --url https://example.com/patches-v0.1.0.reseam --description-file CHANGELOG.md
-```
-
-### `reseam publish manager`
-
-Add a release to a `manager.json` index, the file Reseam Manager checks for updates. Same shape as `patches.json`; the publisher identity comes from flags.
-
-```bash
-reseam publish manager --name "Reseam Manager" --author Reseam --version 1.0.0 --url https://example.com/manager/releases/v1.0.0
-```
-
-Both `publish` commands accept `--out`, `--description` or `--description-file`, `--homepage`, `--created-at`, and `--prerelease`.
-
-## Selecting patches
-
-A patch is selected by its reference (`<bundle>/<id>`, such as `example-bundle/app.example.hideAds`),
-by its ID alone when no other loaded bundle uses it, or by display name. `bundle list`
-shows IDs and display names. Different patches may share a name: `--enable "Hide Ads"`
-selects the uniquely matching patch for the input package; if several apply, the CLI
-reports their references so you can choose one explicitly. Version compatibility is
-checked separately and does not decide which name match to select.
-
-Options accept the same selectors, for example `--option app.example.hideAds.enabled=true` when
-that patch declares an `enabled` option. Dependencies, results, and SDK selections use
-references.
-
-Full reference for every command lives in [`docs/`](docs/).

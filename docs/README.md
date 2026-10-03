@@ -1,30 +1,22 @@
-# Reseam
+# Writing patches
 
-Reseam applies community-built patches to Android apps on the phone. Patch authors write patches in Kotlin, build them into a signed bundle, and publish it; Reseam Manager downloads the bundle and applies the patches the user picks.
+These pages are published at [reseam.app/docs](https://reseam.app/docs/). Read them in order the first time.
 
-The words used throughout:
+1. [Start a bundle](1_start.md)
+2. [Your first patch](2_first_patch.md)
+3. [How patching works](3_how_patching_works.md)
+4. [Declaring patches](4_patches.md)
+5. [Settings inside the app](5_settings.md)
+6. [Finding code](6_finding_code.md)
+7. [Pointing at instructions](7_points.md)
+8. [Changing code](8_changing_code.md)
+9. [Manifest, resources, and files](9_app_files.md)
+10. [Reading obfuscated objects](10_bindings.md)
+11. [Shipping your own code](11_extensions.md)
+12. [Raw bytecode](12_bytecode.md)
+13. [Bundle projects](13_bundles.md)
+14. [Publishing](14_publishing.md)
 
-- **Patch**: one change to one app that a user can switch on.
-- **Bundle**: the signed file you publish, with every patch you maintain.
-- **Target**: how a patch describes the code it changes without naming it, so it survives obfuscation and updates.
-- **Extension**: Java you ship in the bundle for the app to run.
-- **Settings**: switches inside the patched app.
-- **Engine**: the program that applies a bundle. Reseam Manager embeds it; the `reseam` CLI wraps it.
+Look things up in the [reference](reference.md), [troubleshooting](troubleshooting.md), and [glossary](glossary.md).
 
-Read in order the first time:
-
-1. [Setup](1_setup.md)
-2. [Bundles](2_bundles.md)
-3. [Your first patch](3_first_patch.md)
-4. [Patches](4_patches.md)
-5. [Finding code in the app](5_targets.md)
-6. [Changing methods](6_code.md)
-7. [Manifest, resources, and files](7_runtime.md)
-8. [Reading obfuscated objects](8_bindings.md)
-9. [Shipping your own code](9_extensions.md)
-10. [Raw bytecode](10_dex.md)
-11. [Publishing](11_publish.md)
-
-Look things up afterward in the [API reference](12_reference.md).
-
-Warnings mark mistakes that compile and then fail at patch time or on the next app update.
+Engine internals for contributors are in [internals/](internals/).

@@ -1,80 +1,61 @@
-# Reseam
+<p align="center">
+  <img src="https://reseam.app/logo.svg" alt="Reseam logo" width="96">
+</p>
 
-Reseam is a Rust APK patching engine. Patches are written in Kotlin against the Reseam Patch API, while APK parsing, DEX mutation, serialization, and signing run in Rust on native hosts or WebAssembly in the browser.
+<h1 align="center">Reseam</h1>
 
-## Workspace
+<p align="center">
+  <a href="https://reseam.app">Website</a> ·
+  <a href="https://reseam.app/docs/">Docs</a> ·
+  <a href="https://reseam.app/download/">Download</a>
+</p>
 
-| Crate | Purpose |
-|-------|---------|
-| `reseam-storage` | File-backed bytes, positional IO, and run-scoped temporary storage |
-| `reseam-dex` | DEX parser, mutation, and writer |
-| `reseam-apk` | APK container handling, AXML, resources, and DEX extraction |
-| `reseam-sign` | APK Signature Scheme v2 signing |
-| `reseam-patcher` | Bundle loading, patch execution, and Kotlin host |
-| `reseam-model` | Requests, results, events, and errors shared by the engine and its clients |
-| `reseam-sdk` | Shared application-facing patch service used by clients |
-| `reseam-sdk-native` | BoltFFI bindings of `reseam-sdk` for Android and JVM clients |
-| `reseam-sdk-browser` | WASI host of the shared SDK for browser workers |
-| `reseam-browser-compression` | Streaming DEX compression worker for the browser host |
-| `browser` | `@reseam/browser`: SDK workers, OPFS storage and the CheerpJ Kotlin host |
-| `reseam-cli` | `reseam` command-line interface |
-| `patch-api` | Kotlin patch-author API |
-| `gradle-plugin` | Gradle plugins that build a bundle from its directory layout |
-| `xtask` | Build orchestration tasks (`cargo xtask …`) |
+Reseam applies community-built patches to Android apps. This repository is the engine behind it: the code that reads an app, runs patches on it, and signs the result. Reseam Manager, the `reseam` CLI, and the browser patcher on reseam.app all use it.
 
-## Prerequisites
+APK parsing, DEX editing, and signing are written in Rust. Patches are written in Kotlin. They run on the JVM on desktop, on Android's runtime on phones, and on CheerpJ in the browser.
 
-- Rust, pinned by `rust-toolchain.toml`, plus the Android targets for the SDK's `jniLibs`:
+Docs for patch authors and the CLI are at [reseam.app/docs](https://reseam.app/docs/). Their sources are [`docs/`](docs/) and [`crates/cli/docs/`](crates/cli/docs/).
 
-  ```bash
-  rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
-  ```
+## Layout
 
-- JDK 17 in `JAVA_HOME`.
-- Android SDK in `ANDROID_HOME` with a platform and an NDK. The SDK's native libraries build with the NDK's clang, so put its `toolchains/llvm/prebuilt/<host>/bin` on `PATH`.
-- The BoltFFI CLI, which generates the patch bridge and the SDK bindings. Generated sources are not committed, so every checkout needs it. Install the exact version pinned in [`.boltffi-version`](.boltffi-version), from the workspace root:
-
-  ```bash
-  cargo install boltffi_cli --version "=$(cat .boltffi-version)" --locked
-  ```
-
-Commands below use POSIX shell syntax for environment variables. In PowerShell, set them first (`$env:JAVA_HOME = "C:\\jdk-17"`) and run the command on its own line.
-
-Windows can build the CLI natively with MSVC or GNU LLVM. Releases cross-compile
-Windows x86-64 on Linux with llvm-mingw; the desktop SDK packages both Linux
-x86-64 and Windows x86-64. See [SDK build configuration](sdk/README.md#build) for
-the target JDK and cross-toolchain environment.
+| Path | |
+|---|---|
+| `crates/storage` | file-backed bytes and temporary storage |
+| `crates/dex` | DEX parser, editor, and writer |
+| `crates/apk` | APKs, split sets, APKM/XAPK, manifest, resources |
+| `crates/sign` | APK Signature Scheme v2 signing |
+| `crates/model` | requests, results, events, and errors shared by every host |
+| `crates/patcher` | bundles, patch planning and execution, the Kotlin bridge |
+| `crates/cli` | the `reseam` command |
+| `sdk/` | the application SDK, its BoltFFI bindings (`sdk/native`), and its WASI build (`sdk/browser`) |
+| `sdk-kotlin/` | the `reseam-sdk` Kotlin package for Android and JVM apps |
+| `patch-api/` | the `reseam-patch-sdk` Kotlin API patches are written against |
+| `gradle-plugin/` | the Gradle plugin that builds bundles |
+| `browser/` | `@reseam/browser`, the engine for web pages |
+| `xtask/` | code generation, packaging, and releases (`cargo xtask`) |
 
 ## Build
 
-```bash
-cargo xtask regen patch-api
-cargo xtask runtime
-cargo build --release
-```
-
-This builds the `reseam` CLI plus the embedded patcher. `cargo xtask regen all` also generates the SDK's Kotlin; `cargo xtask pack-sdk` packages its Android and desktop JNI libraries; run it whenever you change a `#[export]` Rust function or a type in `reseam-model`:
+You need the Rust toolchain in `rust-toolchain.toml`, JDK 17 in `JAVA_HOME`, and the BoltFFI CLI at the version in `.boltffi-version`.
 
 ```bash
-cargo xtask regen all
-cargo xtask runtime
-cargo build --release
+cargo xtask regen patch-api   # generate the Kotlin bridge
+cargo xtask runtime           # build the patch runtime jar the engine embeds
+cargo build --release -p reseam-cli
 ```
 
-Regeneration checks the generator version before writing files. CI regenerates everything with the pinned version.
+Building the Android and desktop SDK needs more toolchains; see [`sdk/README.md`](sdk/README.md#build). The browser package has its own steps in [`browser/README.md`](browser/README.md).
 
-The Kotlin side is one Gradle build at the workspace root: `patch-api` publishes `reseam-patch-sdk` for patch authors, `gradle-plugin` publishes the `app.reseam.workspace` plugin bundles build with, `sdk-kotlin` publishes `reseam-sdk` for apps that patch, such as Reseam Manager. See `sdk/README.md`.
+## Checks
 
 ```bash
-cargo xtask regen all
-cargo xtask runtime
-cargo xtask pack-sdk
-./gradlew assemble
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace --no-fail-fast
+./gradlew spotlessCheck checkKotlinAbi
 ```
 
-## Browser
-
-`browser/` is `@reseam/browser`, the SDK on WASI with CheerpJ 4.3 running the Kotlin patches, for web pages to host; `reseam.app/patch` uses it. Its APKs match the CLI's byte for byte outside the signing block. See [browser/README.md](browser/README.md) and [validation.json](browser/validation.json).
+Code style is in [`STYLE.md`](STYLE.md). How the engine and the patch API talk to each other is in [`docs/internals/boltffi.md`](docs/internals/boltffi.md).
 
 ## Release
 
@@ -83,70 +64,8 @@ cargo xtask release <version>
 git push --follow-tags
 ```
 
-One version for the engine, the SDK, and the patch API, set in `Cargo.toml` by that command. CI refuses a tag that does not match it, publishes both SDK packages, and uploads the CLI. Publish the engine artifacts before releasing consumers pinned to that version.
-
-## CLI
-
-Patch an APK:
-
-```bash
-reseam patch app.apk \
-  --bundle build/reseam/my-bundle.reseam \
-  --trust <PUBLIC_KEY_HEX> \
-  --output patched.apk
-```
-
-Measure a real patch run:
-
-```bash
-target/release/reseam perf app.apk \
-  --bundle build/reseam/my-bundle.reseam \
-  --warmup 1 \
-  --iterations 5
-```
-
-Inspect an APK:
-
-```bash
-reseam info app.apk
-```
-
-Manage bundles:
-
-```bash
-reseam bundle keygen --out bundle-signing.key
-reseam bundle pack build/reseam/stage --key bundle-signing.key --out build/reseam/my-bundle.reseam
-reseam bundle list build/reseam/my-bundle.reseam --trust <PUBLIC_KEY_HEX>
-```
-
-Publish a release index:
-
-```bash
-reseam publish patches build/reseam/my-bundle.reseam \
-  --version v0.1.0 \
-  --url https://example.com/releases/my-bundle-v0.1.0.reseam
-```
-
-If `--key` and `--cert` are omitted during patching, Reseam reuses or generates signing material next to the output artifact.
-
-## Bundles
-
-Bundles are built in their own Gradle project with `./gradlew bundle`; see `docs/`. This repository's Gradle build publishes the SDKs and has no `bundle` task.
-
-A `.reseam` bundle is a signed archive built from:
-
-- `manifest.toml`
-- compiled patch JARs
-- extension DEX files
-
-Use `reseam bundle list` to inspect bundle contents before publishing or testing.
-
-## Documentation
-
-- `docs/README.md` contains the patch-author guide.
-- `patch-api/README.md` covers SDK maintenance and regeneration workflow.
-- `docs/boltffi.md` covers how the SDK and the patch API use BoltFFI.
+This sets the version, commits, and tags `v<version>`. CI then publishes the CLI, both Kotlin packages, and `@reseam/browser` at that version.
 
 ## License
 
-GPL-3.0
+GPL-3.0-or-later.

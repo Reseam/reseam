@@ -1,99 +1,41 @@
 ---
 title: Publish
-description: Write or update a patches.json release index.
+description: Add a release to a patches.json or manager.json index.
 ---
 
-# `reseam publish patches`
+# `reseam publish`
 
-Writes a `patches.json` release index from a signed `.reseam` bundle. This is the file Reseam Manager and the Reseam API read to discover releases.
+Writes the index file that tells Reseam Manager where your releases are. It only edits the file; you upload it and the release yourself.
+
+## `reseam publish patches`
 
 ```bash
-reseam publish patches \
-  build/bundle/reseam-patches.reseam \
-  --version v0.1.0 \
-  --url https://reseam.app/releases/reseam-patches-v0.1.0.reseam
+reseam publish patches my-patches.reseam \
+  --version 1.2.0 \
+  --url https://example.com/my-patches-1.2.0.reseam
 ```
 
-## What it does
+Adds the release to `patches.json`, or creates the file. The bundle's name, author, public key, and patch list are read from the signed bundle. A release with the same version is replaced, and the newest release goes first.
 
-1. Opens the bundle archive, reads `manifest.pubkey`, and verifies `manifest.sig` against it.
-2. Reads the signed static patch catalog and records it on the release. Publishing does not require a JVM or execute bundle code.
-3. Reads bundle `name`, `author`, and `description` from `manifest.toml`. Records the public key as hex in the index.
-4. If `--out` already exists, loads it and refuses to continue when the recorded `bundle.public_key` doesn't match the archive's key.
-5. Replaces any existing release with the same `--version`.
-6. Inserts the new release at the top of `releases` and writes the file atomically (temp file, then rename).
+It refuses to change the public key recorded in an existing index, so a bundle signed with a different key can't take over your index by mistake.
 
-## Arguments
+| Flag | |
+|---|---|
+| `--version <version>` | the release version; required |
+| `--url <url>` | where the bundle can be downloaded; required |
+| `--out <path>` | the index file (default `patches.json`) |
+| `--description <text>`, `--description-file <path>` | release notes |
+| `--homepage <url>` | your project's page |
+| `--created-at <time>` | release time in RFC 3339 (default now) |
+| `--prerelease` | mark the release as a prerelease |
 
-| Argument | Purpose |
-|----------|---------|
-| `<bundle>` | Signed `.reseam` bundle to publish. |
-| `--version <VERSION>` | Release version string. Non-empty. |
-| `--url <URL>` | Public download URL for the bundle. |
-| `--out <PATH>` | Index path. Defaults to `patches.json` in the current directory. |
-| `--description <TEXT>` | Release description. |
-| `--description-file <PATH>` | Description loaded from a file. Mutually exclusive with `--description`. |
-| `--homepage <URL>` | Bundle homepage. When omitted, the existing homepage is preserved. |
-| `--created-at <ISO8601>` | Release timestamp. Defaults to the current UTC time. Must be RFC 3339. |
-| `--prerelease` | Mark the release as a prerelease. |
-
-## Index shape
-
-```json
-{
-  "bundle": {
-    "name": "example-bundle",
-    "author": "example",
-    "description": "Example patches",
-    "homepage": "https://reseam.app",
-    "public_key": "1f3c..."
-  },
-  "releases": [
-    {
-      "version": "v0.1.0",
-      "created_at": "2026-04-19T12:00:00Z",
-      "description": "Initial release.",
-      "download_url": "https://reseam.app/releases/example-bundle-v0.1.0.reseam",
-      "prerelease": false,
-      "patches": [
-        {
-          "bundle": "example-bundle",
-          "id": "app.example.hideAds",
-          "name": "Hide ads",
-          "hidden": false,
-          "description": "Removes advertisements.",
-          "enabled_by_default": true,
-          "dependencies": [],
-          "compatibility": {
-            "kind": "packages",
-            "packages": [{ "package": "com.example.app", "versions": [] }]
-          },
-          "options": []
-        }
-      ]
-    }
-  ]
-}
-```
-
-Patch catalogs belong to individual releases because declarations can change between versions. The Reseam API reads this file from whatever URL you configure in `PATCHES_URL` and serves it back under `*.reseam.app` paths.
+The Gradle build wraps this as `./gradlew stageRelease -PreleaseTag=v1.2.0`, which builds the bundle and writes the index into `build/reseam/release/`. See [Publishing](/docs/authoring/publishing/).
 
 ## `reseam publish manager`
 
-Writes `manager.json`, the index Reseam Manager checks for updates and the website reads for downloads. Same shape as `patches.json` without a public key.
-
 ```bash
-reseam publish manager \
-  --name "Reseam Manager" --author Reseam \
-  --version 1.0.0 \
-  --url https://git.reseam.app/reseam/manager/releases/tag/v1.0.0
+reseam publish manager --name "Reseam Manager" --author Reseam \
+  --version 1.0.0 --url https://example.com/manager/v1.0.0
 ```
 
-| Argument | Purpose |
-|----------|---------|
-| `--name <TEXT>` | Publisher name shown to users. |
-| `--author <TEXT>` | Publisher author. |
-| `--summary <TEXT>` | Publisher description. Optional. |
-| `--out <PATH>` | Index path. Defaults to `manager.json`. |
-
-`--version`, `--url`, `--description`, `--description-file`, `--homepage`, `--created-at`, and `--prerelease` behave as for `publish patches`.
+Writes `manager.json`, the index of Reseam Manager releases. It takes the same release flags, plus `--name`, `--author`, and an optional `--summary`. The default output is `manager.json`.

@@ -7,7 +7,7 @@ Formatting and most rules are enforced by tooling. This file covers what tooling
 ```bash
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+cargo test --workspace --no-fail-fast
 ./gradlew spotlessCheck :reseam-patch-sdk:checkKotlinAbi
 ```
 

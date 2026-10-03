@@ -1,6 +1,12 @@
-# @reseam/browser
+<p align="center">
+  <img src="https://reseam.app/logo.svg" alt="Reseam logo" width="96">
+</p>
 
-The Reseam SDK for web pages. Rust inspection, patching and signing run in a WASI worker; CheerpJ 4.3 runs the unchanged Kotlin patch JARs on Java 17 in a second worker, calling into Rust through the generated BoltFFI bindings. 64-bit values cross CheerpJ as one-element `long[]` arrays, because its JavaScript conversion rounds scalar longs through `Number`. The package has no UI; `reseam.app/patch` hosts it.
+<h1 align="center">@reseam/browser</h1>
+
+Reseam in a web page. It inspects, patches, and signs APKs entirely in the browser; nothing is uploaded. The browser patcher at [reseam.app/patch](https://reseam.app/patch/) runs on it.
+
+The Rust engine runs in a WebAssembly worker. Patch bundles run unchanged in a second worker on CheerpJ 4.3 (Java 17), calling into Rust through the same generated bindings the desktop and Android SDKs use. The package has no UI.
 
 ## Build
 
@@ -48,7 +54,7 @@ Requests and results are the SDK models (`src/models.ts`). Failures are `EngineE
 - `mount()` adds files after inspection but cannot replace inspected inputs.
 - Artifacts are OPFS files: keep the session open until they are saved, because `dispose()` deletes them.
 - One `JavaRuntime` can serve every session. `warmup()` starts Java without loading patch code; a cold start takes seconds. A canceled run discards the JVM.
-- `compressionWorkers` (1 to 4, default 2) sets how many workers deflate DEX entries.
+- `compressionWorkers` (1 to 4) sets how many workers compress DEX entries. By default it is 1 or 2, depending on the CPU.
 
 Inputs stay browser `File`s. Scratch files are deleted once no name or descriptor refers to them, and a later session reclaims a crashed tab's storage after taking its Web Lock.
 
@@ -71,7 +77,7 @@ APKSIGNER=/path/to/build-tools/36.0.0/apksigner bun browser/scripts/compare-cli.
   "trust": "signer public key, hex",
   "key": "/path/to/reseam.pk8",
   "cert": "/path/to/reseam.der",
-  "apps": [{ "id": "youtube", "apk": "/path/to/youtube.apk", "splits": [] }]
+  "apps": [{ "id": "example", "apk": "/path/to/app.apk", "splits": [] }]
 }
 ```
 
@@ -79,19 +85,7 @@ Each app may add a `selection`; the default is `recommended`. `OUTPUT_DIR`, `RES
 
 ## Validation
 
-[validation.json](validation.json) holds the run below: recommended patches, default options, the same key and certificate for both hosts, Chrome for Testing 145, Java already started. All 149 APK pairs match the CLI outside the signing block, with identical ZIP entries and valid signatures.
-
-| Input | APKs | CLI | Browser |
-| --- | ---: | ---: | ---: |
-| Reddit 2026.39 (2639041), APKM | 34 | 1.4s | 7.6s |
-| X 12.29.1, APKM | 38 | 1.2s | 9.3s |
-| Telegram 12.7.1, APK | 1 | 0.5s | 4.7s |
-| Instagram 447, APK + splits | 5 | 1.6s | 10.5s |
-| YouTube 21.37.42, APK | 1 | 1.8s | 15.5s |
-| YouTube 21.37.42, APKM | 36 | 2.1s | 17.0s |
-| Reddit 2026.39 (2639031), APKM | 34 | 1.4s | 7.6s |
-
-Firefox-based browsers take about twice as long (YouTube APK: 43s), mostly running patch code in CheerpJ. Matching bytes do not prove on-device behavior; no device run is recorded.
+[`validation.json`](validation.json) records the last comparison run: recommended patches, default options, and the same key for both hosts. All 149 APK outputs matched the CLI outside the signing block, with identical ZIP entries and valid signatures. Matching bytes don't prove the app works on a device; no device run is recorded.
 
 ## CheerpJ license
 
