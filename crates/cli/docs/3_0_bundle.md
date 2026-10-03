@@ -26,7 +26,7 @@ Users trust that public key. It never overwrites an existing file. Keep the key 
 ## `reseam bundle list`
 
 ```bash
-reseam bundle list my-patches.reseam --trust <key>
+reseam bundle list my-patches.reseam
 ```
 
 Shows the bundle's name, author, signer (and whether you trust it), and every patch with its ID, description, apps, dependencies, and options. Internal patches are counted, not listed.
@@ -37,7 +37,7 @@ Shows the bundle's name, author, signer (and whether you trust it), and every pa
 | `--verbose` | also show the engine version and the files inside |
 | `--json` | print everything as JSON |
 
-Listing reads the bundle's signed metadata and never runs its code, so it works without trusting the signer.
+Listing reads the bundle's signed metadata and never runs its code, so `--trust` is optional. Without it, the signer shows as untrusted.
 
 ## `reseam bundle pack`
 
@@ -46,8 +46,6 @@ reseam bundle pack build/reseam/stage --key ~/.reseam/bundle-signing.key --out m
 ```
 
 Packs and signs a staging folder into a `.reseam` file. The Gradle build creates the staging folder and calls this for you. The folder holds `manifest.toml`, the patch `.jar` and extension `.dex` files, and an optional `resources/` folder.
-
-![Inside a .reseam file: the manifest with every patch's metadata and a hash of each file, the public key, the signature, then the patch jars and DEX files.](bundle-anatomy.svg)
 
 Packing loads the patches once to record their metadata, so it needs Java.
 

@@ -6,8 +6,6 @@ description: Write Java that runs inside the patched app, and call it from patch
 
 Anything longer than a few lines is easier to write in Java than to emit instruction by instruction. Put it in an *extension*: a Java module in your bundle. Reseam compiles it into a DEX file and adds it to the app the first time a patch uses one of its classes.
 
-![Build time: an extension module with src/main/java and compile-only stubs goes through d8 into one DEX file in the bundle. Patch time: patch code declares an ExtClass and calls it, and the engine adds the extension DEX to the app on that first use.](extension-flow.svg)
-
 ## Write it
 
 ```text
@@ -51,6 +49,6 @@ Then use them in code blocks with `call(AdBlocker.init, application)`. See [Chan
 > [!WARNING]
 > A declaration must match the Java method exactly, parameter and return types included, or the patch fails. If a class name is wrong or the module is missing from the bundle, the patch log warns that the class `is not defined by the app or any extension in the bundle`, and the app crashes with `NoClassDefFoundError` when the call runs. A stub method the real class lacks crashes the same way, with `NoSuchMethodError`.
 
-Two extensions defining the same class fail the bundle when it loads. `reseam bundle list --verbose` shows which DEX files a bundle contains.
+Two extensions defining the same class fail the bundle when it loads. `reseam bundle list <bundle> --verbose` shows which DEX files a bundle contains.
 
 Next: [Raw bytecode](12_bytecode.md).

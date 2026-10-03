@@ -128,8 +128,8 @@ It starts as zero or null when the method begins.
 
 ## Things to know
 
-- A branch that jumps straight to an instruction skips code added just before it. For code that must run on every path, use `after { }` on a later point, or the method's `after { }`.
-- A replaced body has 16 registers to work with. Code that needs more belongs in an extension.
+- A point's `before { }` also runs when a branch jumps to that instruction. Its `after { }` does not: a branch that jumps straight to the next instruction skips it. For code that must run on every path, use `before { }` on a later point, or the method's `after { }`.
+- Added code that needs more registers than the surrounding instructions can address fails with `Cannot allocate ... registers`. Move that logic into an [extension](11_extensions.md).
 - Reading a field gives a copy. Write it back with `set`, not `assign`.
 - Access is checked: calling a private method of another class fails while patching.
 

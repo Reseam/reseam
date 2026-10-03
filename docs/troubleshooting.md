@@ -32,8 +32,8 @@ A value was created in one code block and used in another. Recreate it in the bl
 **`the method body was replaced under it`**
 A point was used after its method's body was replaced. Use the point before replacing, or don't replace the body.
 
-**`Code exceeded the 16 local registers`**
-A replaced body needs more registers than it has. Move the logic into an [extension](11_extensions.md) and call it.
+**`Cannot allocate ... registers`**
+The code you added needs more registers than the instructions around it can address. Move the logic into an [extension](11_extensions.md) and call it.
 
 **`... is not defined by the app or any extension in the bundle`**
 An `ExtClass` name has a typo, or the extension module isn't in the bundle. `reseam bundle list --verbose` shows the bundle's DEX files.

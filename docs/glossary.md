@@ -32,7 +32,7 @@ description: The words used across these docs.
 
 **Reseam Manager**: the Reseam app for Android, Windows, and Linux.
 
-**Setting**: a switch inside the patched app.
+**Setting**: a value the user can change inside the patched app: a toggle, text, a folder, or a choice.
 
 **Signer**: the key a bundle is signed with. Users trust signers, not bundles.
 

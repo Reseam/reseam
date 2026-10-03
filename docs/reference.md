@@ -1,10 +1,10 @@
 ---
-description: Every public symbol of the patch SDK, by package.
+description: The patch SDK's public API, by package.
 ---
 
 # Reference
 
-Every public symbol of the patch SDK, by package. Wherever a type is a `String`, you can write a descriptor (`Ljava/lang/String;`), a dotted name (`java.lang.String`), or a `Type` constant.
+The patch SDK's public API, by package. Wherever a type is a `String`, you can write a descriptor (`Ljava/lang/String;`), a dotted name (`java.lang.String`), or a `Type` constant.
 
 ## `app.reseam.patch`
 
@@ -127,9 +127,9 @@ Inside `patch { }` (`PatchBuilder`):
 | Scope | Members |
 |---|---|
 | `ManifestScope` | `components()`, `component(name)`, `packageName`, `versionCode`, `versionName`, `minSdkVersion`, `splitName`, `applicationClass`, `setVersionCode`, `setVersionName`, `setMinSdk`, `addPermission`, `setAttributeInt`, `setAttributeString` (`@type/name` and `?attr` become references, enum and flag names their values), `setActivityConfigChanges`, `addIntentFilter`, `addActivityAlias` (appended after the activities, `label` read like `setAttributeString`), `copyIntentFilters` (activities or aliases), `addActivity(name) { XmlElement }`, `document()`, `edit { XmlDocument }`. |
-| `ResourceScope` | `components()`, `component(name)`, `owningComponent`, `setPackageName` (rename with the manifest package so by-name lookups resolve), `id`, `exists`, `getString`, `setString`, `add`, `addString`, `addBool`, `addInteger`, `addColor`, `addDimen`, `addId`, `addRaw`, `getRaw`, `path(type, name)`, `paths(type, name)`, `xml(type, name)`, `editXml(type, name) { }`, `addFile`, `style(name, parent = null) { StyleScope }`, `getArray(name)`, `setArray(name, values)`, `setStringArray(name, values)`, `poolGet`, `poolSet`, `poolAdd`, `poolFindRefs`, `replaceEntry`. |
+| `ResourceScope` | `components()`, `component(name)`, `owningComponent`, `setPackageName` (rename with the manifest package so by-name lookups resolve), `id`, `exists`, `getString`, `setString`, `add`, `addString`, `addBool`, `addInteger`, `addColor`, `addDimen`, `addId`, `addRaw`, `getRaw`, `path(type, name)`, `paths(type, name)`, `xml(type, name)`, `editXml(type, name) { }`, `addFile`, `style(name, parent = null) { StyleScope }`, `getArray(name)`, `setArray(name, values)`, `getArrayValues(name)` and `setArrayValues(name, values)` (raw values, no text conversion), `setStringArray(name, values)`, `poolGet`, `poolSet`, `poolAdd`, `poolFindRefs`, `replaceEntry`. |
 | `StyleScope` | `set(attr, value)`: an `<item>` of the style. `android:name` reads the framework table, an unprefixed name the app's own `attr` entries. |
-| `FileScope` | `components()`, `component(name)`, `list`, `read`, `source`, `signers`, `write`, `writeStored`, `delete`, `copy(bundlePath, apkPath)`, `xml(path)`, `editXml(path) { }`. |
+| `FileScope` | `components()`, `component(name)`, `list`, `read`, `sourceStream()` (the original APK bytes, streamed; close it before the callback returns), `signers`, `write`, `writeStored`, `delete`, `copy(bundlePath, apkPath)`, `xml(path)`, `editXml(path) { }`. |
 | `BytecodeScope` | `classes`, `findClass(name)`, `classesExtending(type)`, `replaceAllStrings(old, new)`, `replaceStringsContaining(substring) { old -> new? }`, `redirectCalls(owner, name, to)`, `redirectCalls(from: MethodRef, to)`. |
 | `PatchLogger` | `info`, `warn`, `debug`. |
 | `XmlDocument` | `root`, `findByTag`, `findByAttribute(name, value)`, `createElement`, `declareNamespace(prefix, uri)`, `adopt(element)`, `close()`; `use { }`. `XmlDocument.compile(text)` compiles XML text into a document backed by no APK entry. |
@@ -208,7 +208,7 @@ Resource file and value helpers:
 | `Method` | Handle to a method. Reads: `info`, `classDef`, `descriptor`, `name`, `owner`, `proto`, `returnType`, `parameterTypes`, `isStatic`, `instructions`, `instructionCount`, `registersSize`, `insSize`, `outsSize`, `dexIndex`, `registerA..D(index)`, `wideLiteral`, `stringRef`, `methodRef`, `fieldRef`, `typeRef`. Searches: `indexOfFirst`, `indexOfFirstReversed`, `indexOfFirstLiteral`, `indexOfFirstLiteralReversed`, `containsLiteral`, `indexOfFirstString`, `findAllIndices`, `indexOfFirstMethodCall`, `indexOfFirstFieldAccess`, `indexOfOpcodeSequence` (`null` matches any one instruction), `indexOfFirstInstruction { }`, `indexOfFirstInstructionReversed { }`. Mutation: `alwaysReturn*`, `setInstructions`, `replaceBody`, `insertInstruction(s)`, `addInstructions(index) { }`, `replaceInstruction`, `removeInstruction(s)`, `replaceString`, `replaceAllStrings`, `replaceLiteral`, `replaceAllLiterals`, `replaceMethodCall`, `ensureOutsSize`, `growLocalRegisters`, `findFreeRegister(s)`, `findContiguousFreeRegisters`, `setAccessFlags`, `clone`, `remove`, `addAnnotation`. |
 | `DexClass` | Handle to a class: `info`, `descriptor`, `superclass`, `interfaces`, `sourceFile`, `isInterface`, `methods`, `directMethods`, `virtualMethods`, `fields`, `staticFields`, `instanceFields`, `superclassChain` (nearest first, across every DEX of the app, ending where the platform starts), `method(name, proto?)`, `field(name)`, `setAccessFlags`, `setSuperclass`, `addInterface`, `definal`, `remove`, `addMethod`, `addField`, `removeField`, `setFieldAccessFlags`, `setStaticFieldValue`, `addAnnotation`, `addFieldAnnotation`. |
 | `FieldInfo.ref` | The `FieldRef` of a field. |
-| `Instruction.*` | `opcodeValue`, `opcode`, `regA`, `regB`, `regC`, `invokeRegisters`, `methodRef`, `fieldRef`, `stringValue`, `typeRef`, `literal`, `referencedRegisters`, `codeUnitSize`. |
+| `Instruction.*` | `opcodeValue`, `opcode`, `regA`, `regB`, `regC`, `invokeRegisters`, `methodRef`, `fieldRef`, `stringValue`, `typeRef`, `literal`, `referencedRegisters`, `invokeArgumentTypes` (what an invoke passes, receiver first), `codeUnitSize`. |
 | `MethodRef.*`, `MethodInfo.*` | `returnType`, `parameterTypes`, `descriptor`; `MethodInfo.isStatic`. |
 | `parseParameterTypes(proto)`, `registerWordCount(type)`, `isReferenceType(type)` | Descriptor helpers. |
 | `Opcode` | Enum of Dalvik opcodes: `value`, `isInvoke`, `isReturn`, `isMoveResult`, `rangeVariant`, `Opcode.of(value)`. |
@@ -222,7 +222,7 @@ Generated from the engine's Rust types. Import the data types below from here. T
 
 | Symbol | Description |
 |---|---|
-| `Instruction` | One instruction. Variants: `Simple`, `Reg1`, `Reg2`, `Reg3`, `RegLiteral`, `RegString`, `RegType`, `RegField`, `Invoke`, `InvokeRange`, `Branch0`, `Branch`, `Branch2`, `FilledArray`, `FilledArrayRange`, `PackedSwitchData`, `SparseSwitchData`, `FillArrayData`, `Raw`. Each holds its payload as `field0`: an `*Insn` record, or the bytes for `Raw`. Read it through the `Instruction.*` properties. |
+| `Instruction` | One instruction. Variants: `Simple`, `Reg1`, `Reg2`, `Reg3`, `RegLiteral`, `RegString`, `RegType`, `RegField`, `Invoke`, `InvokeRange`, `Polymorphic`, `PolymorphicRange`, `Custom`, `CustomRange`, `RegHandle`, `RegProto`, `Branch0`, `Branch`, `Branch2`, `FilledArray`, `FilledArrayRange`, `PackedSwitchData`, `SparseSwitchData`, `FillArrayData`, `Raw`. Each holds its payload as `field0`: an `*Insn` record, or the bytes for `Raw`. Read it through the `Instruction.*` properties. |
 | `MethodRef` | `definingClass`, `name`, `proto`. |
 | `FieldRef` | `definingClass`, `name`, `fieldType`. |
 | `MethodInfo` | `Method.info`: `classDescriptor`, `methodName`, `proto`, `accessFlags`, `dexIndex`, `registerCount`, `insSize`, `outsSize`, `instructionCount`. |

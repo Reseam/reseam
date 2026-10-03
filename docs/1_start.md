@@ -59,7 +59,7 @@ The bundle is written to `build/reseam/example-patches.reseam`.
 List what is inside, then patch an APK you have:
 
 ```bash
-reseam bundle list build/reseam/example-patches.reseam --trust <public key>
+reseam bundle list build/reseam/example-patches.reseam
 
 reseam patch app.apk \
   --bundle build/reseam/example-patches.reseam \

@@ -6,8 +6,6 @@ description: The project layout, the files that configure it, and what the build
 
 A bundle is built from a Gradle project with a fixed layout. The `app.reseam.workspace` plugin sets up every module from the folders it finds, so modules don't need build scripts.
 
-![The bundle project on the left: manifest.toml, settings.gradle.kts, apps/example with a patch module and an extension module, and a shared module. gradlew bundle compiles the patch module to a jar, turns each extension into a DEX file, then reseam bundle pack hashes every file and signs the manifest. The .reseam archive on the right holds the signed manifest, the public key, the signature, the jar, and the DEX files. No sources ship.](bundle-layout.svg)
-
 ## Layout
 
 ```text
@@ -84,6 +82,7 @@ Add a `build.gradle.kts` to a module only to declare dependencies. Extension dep
 
 A ZIP archive with:
 
+- `mimetype`: marks the file as a Reseam bundle;
 - `manifest.toml`: the bundle's name, author, the engine version it was built with, every patch's metadata, and a SHA-256 hash of every other file;
 - `manifest.pubkey` and `manifest.sig`: your public key and the signature over the manifest;
 - the patch jars, extension DEX files, and `resources/`.

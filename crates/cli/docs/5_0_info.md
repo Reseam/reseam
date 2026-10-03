@@ -1,6 +1,6 @@
 ---
 title: Info
-description: Print an app's package, version, and size.
+description: Print an app's package, version, and DEX, class, and method counts.
 ---
 
 # `reseam info`

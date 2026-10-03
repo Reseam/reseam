@@ -6,8 +6,6 @@ description: Edit the manifest, resources, XML layouts, and any file in the APK.
 
 Besides code, a patch can change the rest of the APK. Inside `execute { }`:
 
-![The patch runtime and its members: manifest, resources, files, bytecode, options, and log. manifest, resources, and files take component(name) for one split APK.](runtime-surface.svg)
-
 | | |
 |---|---|
 | `manifest` | `AndroidManifest.xml`: permissions, activities, package, version |

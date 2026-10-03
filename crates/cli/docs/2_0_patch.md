@@ -7,8 +7,6 @@ description: Apply patches from bundles to an APK and sign the result.
 
 Applies patches from one or more bundles to an app and writes a signed APK.
 
-![The patch pipeline: the APK and a signed bundle go in, the engine checks the bundle's signature and the trusted keys, picks patches, and runs them in order. Out comes a signed APK, with the signing key written next to it so later runs reuse it.](patch-pipeline.svg)
-
 ```bash
 reseam patch app.apk --bundle patches.reseam --trust <public key> --output patched.apk
 ```

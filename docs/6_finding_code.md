@@ -6,8 +6,6 @@ description: Describe methods, classes, and fields by what they do, so patches s
 
 App code is renamed with every release, so a patch never refers to a method by its name. It describes the method instead: the text it uses, what it returns, what it calls. That description is a *target*. Reseam searches the app for the one method that fits.
 
-![Two releases of the same app. The method is named xyz() in one and q() in the other, but both load the string ad_impression, return a boolean, and call bindFeedItem. A target declared with strings("ad_impression") and returns(Type.Boolean) matches both.](fingerprint-match.svg)
-
 Declare targets as top-level values. They are searched for the first time a patch uses them, and the result is reused for the rest of that patch.
 
 ## Methods

@@ -26,7 +26,7 @@ showBanner.before { returnVoid() }
 | `opcode(Opcode.IF_EQZ)` | any instruction with this opcode |
 | `where { ... }` | your own check on the instruction |
 
-`then { }` continues a sequence: `point { string("premium") }.then { invokeStatic { } }` matches a string load followed directly by a static call, and points at the call. `then(within = 3) { }` allows up to three instructions in between.
+`then { }` continues a sequence: `point { string("premium") }.then { invokeStatic { } }` matches a string load followed directly by a static call, and points at the call. `then(within = 3) { }` looks at the next three instructions, so up to two can sit in between.
 
 ## Moving around
 

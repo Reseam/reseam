@@ -7,7 +7,7 @@ description: Download the reseam binary or build it from source.
 
 ## Download
 
-Get the latest release from [git.reseam.app/reseam/reseam/releases](https://git.reseam.app/reseam/reseam/releases), or from the [Download](/download/) page. There are two builds:
+Get the latest release from the [Download](/download/) page. There are two builds:
 
 - `reseam-linux-x64` for Linux on x86-64,
 - `reseam-windows-x64.exe` for Windows on x86-64.
