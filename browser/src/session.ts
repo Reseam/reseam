@@ -88,7 +88,7 @@ export class BrowserSession {
       await session.initialize(session.engine, { storagePort: storageLink.port2, storageBuffer: session.storageChannel.buffer, jvmPort: jvmLink.port1, jvmBuffer: session.jvmChannel.buffer, files, runtimeBase, traceNative: options.traceNative, compression }, [storageLink.port2, jvmLink.port1, ...compression.map(slot => slot.port)]);
       session.initializeJvm = () => session.java.connect(jvmLink.port2, session.jvmChannel.buffer);
       return session;
-    } catch (error) { await session.dispose(); throw error; }
+    } catch (error) { await session.dispose().catch(cleanup => options.onLog?.(String(cleanup))); throw error; }
   }
   private removeAbort = () => {};
   private initialize(worker: Worker, data: Record<string, unknown>, transfer: Transferable[]): Promise<void> {
