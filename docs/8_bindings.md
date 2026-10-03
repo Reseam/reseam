@@ -1,3 +1,7 @@
+---
+description: Read values that sit several renamed classes deep.
+---
+
 # Reading obfuscated objects
 
 Some patches hold an object and need a value from it that sits several renamed classes deep: the video URL of a feed post is `post.attributes.videos[0].getUrl()`, with every class on the way obfuscated. A binding describes that path once, structurally; any patch then applies it to a value inside a code block and gets the null-checked chain emitted.

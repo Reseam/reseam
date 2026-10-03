@@ -1,3 +1,7 @@
+---
+description: The file you publish and users install.
+---
+
 # Bundles
 
 A bundle is the file you publish and users install: every patch you maintain, for as many apps as you like, plus the [extension code](9_extensions.md) those patches put into apps and a manifest naming the bundle. It is signed with your key; Reseam Manager and the CLI refuse a bundle whose signature does not match a key the user trusts. It has its own version, independent of the engine and of the apps it patches.
@@ -53,7 +57,7 @@ pluginManagement {
 }
 
 plugins {
-    id("app.reseam.workspace") version "0.5.0"
+    id("app.reseam.workspace") version "0.18.1"
 }
 
 rootProject.name = "my-bundle"

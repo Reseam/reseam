@@ -47,7 +47,7 @@ Requests and results are the SDK models (`src/models.ts`). Failures are `EngineE
 - A session runs one patch. Inspection keeps the opened APK and verified catalogs for it; trust and payload hashes are checked again before patch code loads.
 - `mount()` adds files after inspection but cannot replace inspected inputs.
 - Artifacts are OPFS files: keep the session open until they are saved, because `dispose()` deletes them.
-- One `JavaRuntime` can serve every session. `warmup()` starts Java without loading patch code; a cold start takes seconds. A cancelled run discards the JVM.
+- One `JavaRuntime` can serve every session. `warmup()` starts Java without loading patch code; a cold start takes seconds. A canceled run discards the JVM.
 - `compressionWorkers` (1 to 4, default 2) sets how many workers deflate DEX entries.
 
 Inputs stay browser `File`s. Scratch files are deleted once no name or descriptor refers to them, and a later session reclaims a crashed tab's storage after taking its Web Lock.

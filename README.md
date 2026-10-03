@@ -6,6 +6,7 @@ Reseam is a Rust APK patching engine. Patches are written in Kotlin against the 
 
 | Crate | Purpose |
 |-------|---------|
+| `reseam-storage` | File-backed bytes, positional IO, and run-scoped temporary storage |
 | `reseam-dex` | DEX parser, mutation, and writer |
 | `reseam-apk` | APK container handling, AXML, resources, and DEX extraction |
 | `reseam-sign` | APK Signature Scheme v2 signing |
@@ -14,6 +15,7 @@ Reseam is a Rust APK patching engine. Patches are written in Kotlin against the 
 | `reseam-sdk` | Shared application-facing patch service used by clients |
 | `reseam-sdk-native` | BoltFFI bindings of `reseam-sdk` for Android and JVM clients |
 | `reseam-sdk-browser` | WASI host of the shared SDK for browser workers |
+| `reseam-browser-compression` | Streaming DEX compression worker for the browser host |
 | `browser` | `@reseam/browser`: SDK workers, OPFS storage and the CheerpJ Kotlin host |
 | `reseam-cli` | `reseam` command-line interface |
 | `patch-api` | Kotlin patch-author API |
@@ -22,7 +24,7 @@ Reseam is a Rust APK patching engine. Patches are written in Kotlin against the 
 
 ## Prerequisites
 
-- Rust stable, plus the Android targets for the SDK's `jniLibs`:
+- Rust, pinned by `rust-toolchain.toml`, plus the Android targets for the SDK's `jniLibs`:
 
   ```bash
   rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
@@ -61,7 +63,7 @@ cargo build --release
 
 Regeneration checks the generator version before writing files. CI regenerates everything with the pinned version.
 
-The Kotlin side is one Gradle build at the workspace root: `patch-api` publishes `reseam-patch-sdk` for patch authors, `gradle-plugin` publishes the `app.reseam.workspace` plugin bundles build with, `sdk-kotlin` publishes `reseam-sdk` for managers. See `sdk/README.md`.
+The Kotlin side is one Gradle build at the workspace root: `patch-api` publishes `reseam-patch-sdk` for patch authors, `gradle-plugin` publishes the `app.reseam.workspace` plugin bundles build with, `sdk-kotlin` publishes `reseam-sdk` for apps that patch, such as Reseam Manager. See `sdk/README.md`.
 
 ```bash
 cargo xtask regen all
@@ -77,7 +79,7 @@ cargo xtask pack-sdk
 ## Release
 
 ```bash
-cargo xtask release 0.5.0
+cargo xtask release <version>
 git push --follow-tags
 ```
 
@@ -143,7 +145,7 @@ Use `reseam bundle list` to inspect bundle contents before publishing or testing
 
 - `docs/README.md` contains the patch-author guide.
 - `patch-api/README.md` covers SDK maintenance and regeneration workflow.
-- `docs/bindings.md` covers how the SDK and the patch API use BoltFFI.
+- `docs/boltffi.md` covers how the SDK and the patch API use BoltFFI.
 
 ## License
 

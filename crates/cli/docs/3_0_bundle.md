@@ -58,6 +58,14 @@ The command:
 | `--key <PATH>` | Ed25519 seed from `reseam bundle keygen`. |
 | `--out <PATH>` | Output `.reseam` archive path. |
 
+## `reseam bundle manifest`
+
+Validate a bundle's `manifest.toml` and print its bundle metadata as JSON. The Gradle plugin uses it to read the bundle name.
+
+```bash
+reseam bundle manifest manifest.toml
+```
+
 ## `reseam bundle list`
 
 List every patch in a bundle with its metadata.

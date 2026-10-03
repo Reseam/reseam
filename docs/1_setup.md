@@ -1,3 +1,7 @@
+---
+description: JDK, Android SDK, the reseam CLI, and Git.
+---
+
 # Setup
 
 ## Prerequisites

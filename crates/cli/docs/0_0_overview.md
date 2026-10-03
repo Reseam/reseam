@@ -20,7 +20,7 @@ The binary is named `reseam` and ships from the `reseam-cli` crate.
 - Generates Ed25519 bundle signing seeds.
 - Packs and signs a bundle staging directory into a `.reseam` archive.
 - Lists the patches inside a bundle with their compatibility and options.
-- Writes or updates release indexes: `patches.json` from a signed bundle, `manager.json` for a manager release.
+- Writes or updates release indexes: `patches.json` from a signed bundle, `manager.json` for a Reseam Manager release.
 
 ## Surfaces it talks to
 

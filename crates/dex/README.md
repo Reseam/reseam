@@ -8,7 +8,7 @@ DEX file parser, writer, and mutator. Reads and writes the DEX sections Reseam c
 - **Multi-DEX** support via `MultiDexContainer` for APKs with multiple `classes*.dex` files
 - **Write** modified `DexFile` back to bytes with proper section ordering, string sorting, and checksum/signature computation
 - **Strict parsing options** for MUTF-8 and LEB128 decoding when malformed input should be rejected rather than normalized
-- **Fingerprinting** — pattern-based method matching using `Fingerprint` and `OpcodeMatcher` for locating injection points without hardcoding offsets
+- **Fingerprinting**: find methods by strings, literals, types, access flags, and opcode patterns with `Fingerprint`, without hardcoding offsets
 - **Lookup tables** for fast class/method/field resolution by name
 - **MUTF-8 and LEB128** encoding/decoding
 
@@ -16,10 +16,10 @@ DEX file parser, writer, and mutator. Reads and writes the DEX sections Reseam c
 
 | Module | Purpose |
 |--------|---------|
-| `read` | DEX binary parser — header, IDs, class data, code items, annotations, debug info |
-| `write` | DEX binary writer — section layout, sorting, compaction, instruction encoding |
+| `read` | DEX binary parser: header, IDs, class data, code items, annotations, debug info |
+| `write` | DEX binary writer: section layout, sorting, compaction, instruction encoding |
 | `types` | Data structures for all DEX sections (classes, methods, fields, annotations, etc.) |
-| `file` | `DexFile` API — class ops, interning, fingerprinting, search, lookup tables |
+| `file` | `DexFile` API: class ops, interning, fingerprinting, search, lookup tables |
 | `encoding` | MUTF-8 string encoding and LEB128 integer encoding |
 | `util` | Shared helpers |
 
@@ -30,16 +30,18 @@ use reseam_dex::{parse, write, ParseOptions};
 
 // Round-trip: parse and rewrite
 let bytes = std::fs::read("classes.dex")?;
-let mut dex = parse(&bytes, ParseOptions::default())?;
-let output = write(&mut dex)?;
+let dex = parse(&bytes, ParseOptions::default())?;
+let output = write(&dex)?;
 ```
 
 ```rust
-use reseam_dex::{DexFile, Fingerprint, FingerprintBuilder, InstructionPattern};
+use reseam_dex::{Fingerprint, InstructionPattern};
 
-// Find methods by opcode pattern
-let fingerprint = FingerprintBuilder::new()
-    .opcodes(vec![InstructionPattern::Opcode(0x6e)]) // invoke-virtual
-    .build();
-let matches = dex.find_methods(&fingerprint);
+// Methods that load "rate_prompt_shown" and call invoke-virtual
+let fingerprint = Fingerprint {
+    strings: Some(vec!["rate_prompt_shown".into()]),
+    opcodes: Some(vec![InstructionPattern::OpcodeValue(0x6e)]),
+    ..Fingerprint::default()
+};
+let hits = dex.find_methods_by_fingerprint(&fingerprint)?;
 ```

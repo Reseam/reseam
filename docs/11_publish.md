@@ -1,3 +1,7 @@
+---
+description: Build, apply locally, and release a bundle.
+---
+
 # Publishing
 
 ## Build

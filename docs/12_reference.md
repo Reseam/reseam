@@ -1,3 +1,7 @@
+---
+description: Every public symbol of the patch SDK, by package.
+---
+
 # API reference
 
 Every public symbol of the patch SDK, by package. Types are accepted as descriptors (`Ljava/lang/String;`), dotted names (`java.lang.String`), or `Type` constants everywhere a `type: String` parameter appears.
@@ -246,9 +250,9 @@ Page IDs and titles must be non-blank, and a page cannot reuse an ancestor's ID.
 | `InstructionBuilder`, `buildInstructions { }` | See [Raw bytecode](10_dex.md). |
 | `lowerInvokes(insns, scratch)` | Rewrites invokes the 35c format cannot encode into range form. |
 
-## `app.reseam.patch.native`
+## `app.reseam.patch.types`
 
-Generated from the engine's Rust types. Import the data types below from here. The package's top-level functions are the raw engine calls the other packages wrap; patch code does not call them, and they change with the engine.
+Generated from the engine's Rust types. Import the data types below from here. The raw engine calls that the other packages wrap live in `app.reseam.patch.native`; patch code does not call them, and they change with the engine.
 
 | Symbol | Description |
 |---|---|

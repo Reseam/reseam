@@ -1,6 +1,6 @@
 # Reseam
 
-Reseam applies community-written patches to Android apps on the phone. Patch authors write patches in Kotlin, build them into a signed bundle, and publish it; Reseam Manager downloads the bundle and applies the patches the user picks.
+Reseam applies community-built patches to Android apps on the phone. Patch authors write patches in Kotlin, build them into a signed bundle, and publish it; Reseam Manager downloads the bundle and applies the patches the user picks.
 
 The words used throughout:
 
@@ -25,6 +25,6 @@ Read in order the first time:
 10. [Raw bytecode](10_dex.md)
 11. [Publishing](11_publish.md)
 
-Look things up afterwards in the [API reference](12_reference.md).
+Look things up afterward in the [API reference](12_reference.md).
 
 Warnings mark mistakes that compile and then fail at patch time or on the next app update.

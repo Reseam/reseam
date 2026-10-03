@@ -1,3 +1,7 @@
+---
+description: Write Java and ship it in the bundle.
+---
+
 # Shipping your own code
 
 When a patch needs more than a few instructions, write Java and ship it in the bundle. Reseam compiles it against `android.jar` into a DEX file and links that file into the app the first time a patch refers to one of its classes. These modules are extensions.

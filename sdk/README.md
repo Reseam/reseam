@@ -17,7 +17,7 @@ Calls are synchronous; run them off the main thread. `onEvent` runs on the calli
 
 Store selections and patch metadata with the encode functions. They write the serde JSON schema, which does not change with BoltFFI's wire format.
 
-`sdk/native` is a separate crate because BoltFFI exports the `#[export]` functions of every direct dependency, and this crate depends on the patcher. See [BoltFFI integration](../docs/bindings.md).
+`sdk/native` holds the `#[export]` application surface over this crate. See [BoltFFI integration](../docs/boltffi.md).
 
 ## Build
 
@@ -88,10 +88,10 @@ if either release library is missing.
 The Kotlin packages are built by the Gradle project at the workspace root:
 
 ```bash
-./gradlew publishToMavenLocal -PreseamSdkVersion=0.5.0
+./gradlew publishToMavenLocal -PreseamSdkVersion=<version>
 ```
 
-- `app.reseam:reseam-sdk` for managers (Kotlin Multiplatform, Android and JVM)
+- `app.reseam:reseam-sdk` for apps that patch, such as Reseam Manager (Kotlin Multiplatform, Android and JVM)
 - `app.reseam:reseam-patch-sdk` for patch authors
 
 `reseam-sdk` depends on `reseam-patch-sdk`. Bundles then resolve the host's copy of the patch runtime, whose native calls reach the SDK library the host already loaded.

@@ -1,6 +1,10 @@
+---
+description: How the engine, the application SDK, and the patch API use BoltFFI.
+---
+
 # BoltFFI integration
 
-Reseam uses BoltFFI for two Kotlin surfaces: the application SDK that Manager calls, and the patch API that bundles call from inside the engine's JVM. The CLI version in `.boltffi-version` and the Rust `boltffi*` crates move together.
+Reseam uses BoltFFI for two Kotlin surfaces: the application SDK that Reseam Manager calls, and the patch API that bundles call from inside the engine's JVM. The CLI version in `.boltffi-version` and the Rust `boltffi*` crates move together.
 
 ## Ownership
 
@@ -18,21 +22,21 @@ Reseam uses BoltFFI for two Kotlin surfaces: the application SDK that Manager ca
 ## Application SDK
 
 - `boltffi pack android` builds the SDK for the four Android ABIs and the build host, compiles and links its JNI glue, and writes the Kotlin.
-- Records and enums in `crates/model` are the wire schema. Manager uses the generated Kotlin types directly.
+- Records and enums in `crates/model` are the wire schema. Reseam Manager uses the generated Kotlin types directly.
 - `Result<T, SdkError>` becomes a Kotlin exception carrying a `Problem`.
 - The `patch` closure parameter becomes a Kotlin callback for `RunEvent`.
 - `ApkInspection` is a BoltFFI class, so extracted component files live until Kotlin closes it.
 - Persisted selections and patch metadata go through `encodeSelection`, `encodePatchMetadata`, and their decoders, which serialize with serde. BoltFFI's wire bytes are version-specific and never stored.
 
-Calls are synchronous. The engine keeps a thread-local patch context, and Manager runs calls on `Dispatchers.IO`.
+Calls are synchronous. The engine keeps a thread-local patch context, and Reseam Manager runs calls on `Dispatchers.IO`.
 
 ## Patch bridge
 
-Bundles call the engine through internal functions in `app.reseam.patch.native`. Public value models live in `app.reseam.patch.types`; both come from the patcher's Rust schema, with codecs kept internal. The generator separates these surfaces so author signatures and the Kotlin ABI snapshot never expose JNI implementation types. Deprecated aliases retain source imports for `native.MethodRef` and `native.FieldRef`. Bundle binaries must be rebuilt for the new model namespace.
+Bundles call the engine through internal functions in `app.reseam.patch.native`. Public value models live in `app.reseam.patch.types`; both come from the patcher's Rust schema, with codecs kept internal. The generator separates these surfaces so author signatures and the Kotlin ABI snapshot never expose JNI implementation types. Deprecated aliases in `native` point old imports at the `types` classes.
 
 Each bundle jar carries its own copy of the patch runtime.
 
-The engine loads a bundle in a class loader whose parent is the host's: the app's loader on Android, the system loader on the JVM. When the host ships `reseam-patch-sdk`, as Manager does through `reseam-sdk`, every bundle resolves the host's `Native` class, and the generated loader's `System.loadLibrary` finds the SDK library already loaded. When it does not, as in the CLI, the bundle's own copy is used and the generated loader does nothing. The engine registers the bridge on whichever `Native` class the bundle resolved.
+The engine loads a bundle in a class loader whose parent is the host's: the app's loader on Android, the system loader on the JVM. When the host ships `reseam-patch-sdk`, as Reseam Manager does through `reseam-sdk`, every bundle resolves the host's `Native` class, and the generated loader's `System.loadLibrary` finds the SDK library already loaded. When it does not, as in the CLI, the bundle's own copy is used and the generated loader does nothing. The engine registers the bridge on whichever `Native` class the bundle resolved.
 
 BoltFFI generates JNI entry points as exported symbols for the JVM to resolve by name. That fails for a class loaded outside the library's loader, and for symbols inside the CLI executable. `xtask/src/patch_api.rs` therefore derives a `RegisterNatives` table from the same Binding IR contract that produced the C glue. It also narrows the IR to declarations reachable from the patcher's exports, since dependency crates carry application models the patch API never sees, and configures the generated loader to load the SDK library on Android and nothing on desktop.
 
@@ -42,7 +46,7 @@ Metadata builds omit the generated C bridge so patch-api can regenerate before t
 
 Registration adapters validate the active thread and recorded callback failure before and after each call. Successful checks use a Rust state probe without allocating a message or making another JNI round trip. Failures use BoltFFI's existing error-buffer exception channel; the Kotlin bridge decodes them immediately. XML borrow finalization runs only at the invocation boundary.
 
-Opcode values, widths and bridge conversion shapes come from the DEX instruction catalogue, including polymorphic and custom call operands. Pool origins preserve distinct call sites when instructions are copied between DEX files.
+Opcode values, widths and bridge conversion shapes come from the DEX instruction catalog, including polymorphic and custom call operands. Pool origins preserve distinct call sites when instructions are copied between DEX files.
 
 The generated sources are not committed. `patch-api/build.gradle.kts` compiles `patch-api/generated/app` alongside the handwritten API, and `crates/patcher/build.rs` compiles `patch-api/generated/jni/registration.c`, which includes the unmodified glue.
 
@@ -58,6 +62,6 @@ BoltFFI 0.31 includes the Kotlin direct-record padding fix (PR #889); bridge rec
 
 ## Regeneration
 
-`cargo xtask regen patch-api` needs the pinned BoltFFI CLI and `JAVA_HOME`. `cargo xtask regen sdk` also needs the Android NDK, Rust's Android targets, and the NDK's clang on `PATH`. Run `regen all` after changing an `#[export]` or a type in `crates/model`.
+`cargo xtask regen patch-api` and `cargo xtask regen sdk` need the pinned BoltFFI CLI and `JAVA_HOME`. `cargo xtask pack-sdk` also needs the Android NDK, Rust's Android and Windows targets, llvm-mingw, and a Windows JDK; see [`sdk/README.md`](../sdk/README.md). Run `regen all` after changing an `#[export]` or a type in `crates/model`.
 
-Bundles, the SDK library, and Manager share one FFI ABI per engine version. Rebuild bundles and upgrade Manager together.
+Bundles, the SDK library, and Reseam Manager share one FFI ABI per engine version. Rebuild bundles and upgrade Reseam Manager together.

@@ -1,3 +1,7 @@
+---
+description: Add code to a method once a target is found.
+---
+
 # Changing methods
 
 Once a target is found, a patch adds code to it: when the method starts, before every return, or instead of the body. The code is Kotlin calls describing values; Reseam emits the Dalvik instructions and picks the registers.

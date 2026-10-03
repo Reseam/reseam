@@ -1,3 +1,7 @@
+---
+description: One patch from nothing to a patched APK.
+---
+
 # Your first patch
 
 One patch from nothing to a patched APK: remove a "rate this app" prompt from an imaginary `com.example.app`.

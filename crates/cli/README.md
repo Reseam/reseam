@@ -32,8 +32,10 @@ Options:
 - `--output <FILE>`: output path for single-APK mode
 - `--output-dir <DIR>`: output directory for one or more APK components; mutually exclusive with `--output`
 - `--key <PK8>` and `--cert <DER>`: sign with an existing PKCS#8 key and X.509 certificate, provided together; otherwise Reseam reuses or generates key material next to the output
+- `--preset <PRESET>`: patches to start from, `recommended` (default), `all`, or `none`; `--enable` and `--disable` adjust it
 - `--enable <PATCH>` and `--disable <PATCH>`: toggle patches by `<bundle>/<id>`, by ID, or by an unambiguous display name for the input app, repeatable
 - `--option PATCH.KEY=VALUE`: set a patch option, typed by the patch's declaration
+- `--ignore-versions`: run patches on app versions they were not declared for
 - `--dry-run`: resolve and validate without applying patches or writing output
 
 ### `reseam perf`
@@ -98,9 +100,7 @@ reseam publish manager --name "Reseam Manager" --author Reseam --version 1.0.0 -
 
 Both `publish` commands accept `--out`, `--description` or `--description-file`, `--homepage`, `--created-at`, and `--prerelease`.
 
-## Documentation
-
-Full reference for every command lives in `docs/`.
+## Selecting patches
 
 A patch is selected by its reference (`<bundle>/<id>`, such as `example-bundle/app.example.hideAds`),
 by its ID alone when no other loaded bundle uses it, or by display name. `bundle list`
@@ -112,3 +112,5 @@ checked separately and does not decide which name match to select.
 Options accept the same selectors, for example `--option app.example.hideAds.enabled=true` when
 that patch declares an `enabled` option. Dependencies, results, and SDK selections use
 references.
+
+Full reference for every command lives in [`docs/`](docs/).

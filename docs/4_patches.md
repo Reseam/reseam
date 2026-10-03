@@ -1,3 +1,7 @@
+---
+description: One change to one app that a user can switch on.
+---
+
 # Patches
 
 A patch is one change to one app that a user can switch on: hide ads, unlock a paid feature, remove an update prompt. Reseam applies it by rewriting the APK on the phone; the patched app installs next to the original.
@@ -32,7 +36,7 @@ The patch comes first, its [targets](5_targets.md) below it. Everything the bloc
 
 ## How a patch runs
 
-1. **Load.** The engine opens the bundle and initialises every top-level value in the patch jar, reading metadata off the patches. Nothing has looked at the app. A target is only a description; `.method`, `options[...]` and every scope throw `This API is only available while a patch is executing`.
+1. **Load.** The engine opens the bundle and initializes every top-level value in the patch jar, reading metadata off the patches. Nothing has looked at the app. A target is only a description; `.method`, `options[...]` and every scope throw `This API is only available while a patch is executing`.
 2. **Selection.** A patch is skipped when its package or version does not match the APK, when a dependency was skipped, or when the user left it off.
 3. **Patch time.** `execute { }` runs once with the runtime as receiver. Targets resolve on first use and stay cached for this patch. Code blocks run immediately and emit instructions. `afterDependents { }` runs after every dependent has finished.
 
@@ -70,7 +74,7 @@ A patch can depend on a patch from a bundle someone else publishes. Declare that
 
 ```kotlin
 reseam {
-    bundle(index = "https://api.reseam.app/patches.json", version = "1.4.0")
+    bundle(index = "https://patches.example.com/patches.json", version = "1.4.0")
     bundle(file = file("../other-bundle/build/reseam/other-bundle.reseam"))
 }
 ```
@@ -78,7 +82,7 @@ reseam {
 The build fetches the bundle and generates a reference for each of its patches, in the same package as the original, so the dependency reads like a local one:
 
 ```kotlin
-import app.reseam.patches.universal.removeProtection
+import com.example.other.removeProtection
 
 val hideBanners = patch("Hide banners") {
     compatibleWith(EXAMPLE_APP)

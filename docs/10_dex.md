@@ -1,3 +1,7 @@
+---
+description: Methods, classes, and instructions as data.
+---
+
 # Raw bytecode
 
 Targets and code blocks cover the common cases. Underneath, `app.reseam.patch.dex` exposes methods and classes as handles, instructions as data, and registers as numbers. Reach it through `target.method`, `target.classDef`, `bytecode`, or the custom target constructors.
@@ -15,7 +19,7 @@ method.addInstructions(index) {
 }
 ```
 
-`Method` reads instructions, registers, and references, searches by opcode, string, literal, call, or predicate, and mutates: insert, replace, remove, `replaceBody`, `alwaysReturn`, `growLocalRegisters`. `DexClass` lists methods and fields and can add, remove, or re-flag them. `Instruction` extension properties (`opcode`, `regA`, `methodRef`, `stringValue`, `literal`, ...) read the engine's instruction type. `Instruction`, `MethodRef`, `FieldRef`, and the other records the engine exchanges are generated into `app.reseam.patch.native`; import them from there.
+`Method` reads instructions, registers, and references, searches by opcode, string, literal, call, or predicate, and mutates: insert, replace, remove, `replaceBody`, `alwaysReturn`, `growLocalRegisters`. `DexClass` lists methods and fields and can add, remove, or re-flag them. `Instruction` extension properties (`opcode`, `regA`, `methodRef`, `stringValue`, `literal`, ...) read the engine's instruction type. `Instruction`, `MethodRef`, `FieldRef`, and the other records the engine exchanges are generated into `app.reseam.patch.types`; import them from there.
 
 `literal`, literal queries, and replacements use the value the app reads, with the shifts in `const/high16` and `const-wide/high16` applied. Raw instruction records and the `constHigh16`/`constWideHigh16` builders take the encoded upper 16 bits. A replacement that does not fit the original encoding fails.
 

@@ -1,3 +1,7 @@
+---
+description: Describe code by what it does, so patches survive obfuscation.
+---
+
 # Finding code in the app
 
 App code is obfuscated and renamed every release, so a patch never refers to a method by name. It describes the method: the strings it loads, its return type, what it calls. Reseam finds the one method matching the description. The description is a *target*; a target can be a method, a class, a field, or one instruction.
