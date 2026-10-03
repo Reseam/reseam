@@ -40,6 +40,13 @@ interface ReseamPatch {
      * Runs once after execution succeeds, after dependent finalizers, including for leaf patches.
      */
     fun afterDependents(ctx: PatchRuntime) {}
+
+    /**
+     * Whether [afterDependents] does work. The engine calls it only when this is set, and reports
+     * the patch's result as soon as it executes when it is not.
+     */
+    val finalizes: Boolean
+        get() = true
 }
 
 data class CompatiblePackage(
@@ -188,6 +195,7 @@ class PatchBuilder internal constructor(private val name: String?) : PatchDeclar
             override val compatibleWith = builder.compatibility.toList()
             override val enabled = !builder.hidden && (builder.enabledByDefault ?: !universal)
             override val options = builder.options.toList()
+            override val finalizes = finalize != null
 
             override fun execute(ctx: PatchRuntime) {
                 execute?.invoke(ctx)

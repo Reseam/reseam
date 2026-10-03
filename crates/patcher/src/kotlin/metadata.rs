@@ -69,8 +69,9 @@ pub(super) fn read_patch(
         compatibility: compatibility.into_iter().collect(),
         options,
     };
+    let finalizes = boolean(env, patch, "getFinalizes")?;
     let callback = KotlinCallback::new(env.new_global_ref(&found.object)?, Arc::clone(loader));
-    Ok(Patch::new(spec, move |phase, context| {
+    Ok(Patch::new(spec, finalizes, move |phase, context| {
         callback.invoke(phase, context)
     }))
 }

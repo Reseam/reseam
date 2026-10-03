@@ -41,7 +41,13 @@ enum Phase {
 #[derive(Deserialize)]
 struct Loaded {
     handle: u32,
-    patches: Vec<PatchSpec>,
+    patches: Vec<LoadedPatch>,
+}
+
+#[derive(Deserialize)]
+struct LoadedPatch {
+    spec: PatchSpec,
+    finalizes: bool,
 }
 
 struct Loader {
@@ -78,10 +84,10 @@ pub fn load_patches(
     Ok(loaded
         .patches
         .into_iter()
-        .map(|spec| {
+        .map(|LoadedPatch { spec, finalizes }| {
             let loader = Arc::clone(&loader);
             let reference = spec.reference();
-            Patch::new(spec, move |phase, context| {
+            Patch::new(spec, finalizes, move |phase, context| {
                 let guard = ContextGuard::enter(context, loader.directory.path().to_path_buf())?;
                 let result = call(&Request::Invoke {
                     handle: loader.handle,

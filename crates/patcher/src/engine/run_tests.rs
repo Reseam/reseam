@@ -48,7 +48,7 @@ fn declared(bundle: &str, id: &str, dependencies: &[&str]) -> PatchSpec {
 fn noops(declarations: impl IntoIterator<Item = PatchSpec>) -> Vec<Patch> {
     declarations
         .into_iter()
-        .map(|declaration| Patch::new(declaration, |_, _| Ok(())))
+        .map(|declaration| Patch::new(declaration, false, |_, _| Ok(())))
         .collect()
 }
 
@@ -255,7 +255,7 @@ enum Failure {
 
 fn hooked(declaration: PatchSpec, failure: Failure, events: Arc<Mutex<Vec<String>>>) -> Patch {
     let id = declaration.id.clone();
-    Patch::new(declaration, move |phase, _| {
+    Patch::new(declaration, true, move |phase, _| {
         let name = match phase {
             PatchPhase::Execute => "execute",
             PatchPhase::Finalize => "finalize",

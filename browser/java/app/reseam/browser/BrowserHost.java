@@ -90,7 +90,7 @@ public final class BrowserHost {
                 patches.clear();
                 patches.putAll(canonical);
                 List<Object> specs = new ArrayList<>();
-                for (Map.Entry<String, Object> entry : patches.entrySet()) specs.add(describe(bundle, entry.getKey(), entry.getValue()));
+                for (Map.Entry<String, Object> entry : patches.entrySet()) specs.add(map("spec", describe(bundle, entry.getKey(), entry.getValue()), "finalizes", get(entry.getValue(), "getFinalizes")));
                 description = new Gson().toJson(specs);
             } catch (Exception error) {
                 loader.close();

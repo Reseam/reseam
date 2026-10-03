@@ -12,10 +12,11 @@ use crate::error::Result;
 use crate::log::LogEntry;
 use crate::patch::{Patch, PatchPhase};
 
-/// Runs the selected patches in dependency order, then every applied patch's
-/// `after_dependents` hook, then binds the app entry hook to the final
-/// manifest. A patch that fails or panics does not stop the run; patches
-/// depending on it are skipped.
+/// Runs the selected patches in dependency order, then the `after_dependents`
+/// hook of every applied patch that finalizes, then binds the app entry hook to
+/// the final manifest. A patch that fails or panics does not stop the run;
+/// patches depending on it are skipped. Each patch is reported finished once its
+/// result is final: after execution, or after finalization when it finalizes.
 pub fn apply_patches(
     ctx: &mut PatchContext<'_>,
     patches: &[&Patch],
@@ -61,7 +62,7 @@ pub fn apply_patches(
 
     for &idx in plan.finalizers() {
         let patch = patches[idx];
-        if !run.applied(idx) {
+        if !patch.finalizes() || !run.applied(idx) {
             continue;
         }
         let _span = info_span!("after_dependents", patch = patch.reference()).entered();
@@ -186,7 +187,7 @@ impl<'a> Run<'a> {
             status,
             logs,
         });
-        if !self.applied(idx) {
+        if !self.applied(idx) || !self.patches[idx].finalizes() {
             self.terminal(idx, observer);
         }
     }
