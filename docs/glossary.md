@@ -40,4 +40,4 @@ description: The words used across these docs.
 
 **Target**: a description of a method, class, or field that Reseam searches the app for.
 
-**Universal patch**: a patch with no `compatibleWith`. It works on any app and is never selected by default.
+**Universal patch**: a patch with no `compatibleWith`. It works on any app and is selected by default only when its author calls `enabledByDefault(true)`.

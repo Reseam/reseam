@@ -16,7 +16,7 @@ pub struct CompatiblePackage {
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[boltffi::data]
 pub enum Compatibility {
-    /// Declares no package, so it applies to every app and stays opt-in.
+    /// Declares no package, so it applies to every app and joins presets only when enabled by default.
     Universal,
     Packages {
         packages: Vec<CompatiblePackage>,
@@ -130,16 +130,17 @@ impl PatchSpec {
         }
     }
 
-    /// Whether `preset` selects the patch for an app of `package`. Presets only
-    /// take patches that declare the package, so universal patches stay opt-in.
-    /// Version compatibility is not considered; it is reported separately.
+    /// Whether `preset` selects the patch for an app of `package`. Presets take
+    /// the patches that declare the package, and a universal patch only when its
+    /// author enables it by default. Version compatibility is not considered; it
+    /// is reported separately.
     pub fn in_preset(&self, preset: PatchPreset, package: Option<&str>) -> bool {
         let declared = matches!(self.package_compatibility(package), Ok(Some(_)));
-        declared
-            && !self.hidden
+        let universal = matches!(self.compatibility, Compatibility::Universal);
+        !self.hidden
             && match preset {
-                PatchPreset::Recommended => self.enabled_by_default,
-                PatchPreset::All => true,
+                PatchPreset::Recommended => (declared || universal) && self.enabled_by_default,
+                PatchPreset::All => declared || universal && self.enabled_by_default,
                 PatchPreset::None => false,
             }
     }
@@ -199,7 +200,7 @@ mod tests {
     }
 
     #[test]
-    fn presets_take_only_visible_patches_that_declare_the_package() {
+    fn presets_take_visible_patches_that_declare_the_package_or_opt_in() {
         use PatchPreset::{All, Recommended};
         let declared = |versions: &[&str]| {
             [CompatiblePackage {
@@ -228,6 +229,14 @@ mod tests {
         assert_eq!(presets(&spec(declared(&[]), false, true), app), vec![]);
         assert_eq!(
             presets(&spec(Compatibility::Universal, true, false), app),
+            vec![Recommended, All]
+        );
+        assert_eq!(
+            presets(&spec(Compatibility::Universal, false, false), app),
+            vec![]
+        );
+        assert_eq!(
+            presets(&spec(Compatibility::Universal, true, true), app),
             vec![]
         );
     }

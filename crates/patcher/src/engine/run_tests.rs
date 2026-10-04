@@ -89,22 +89,25 @@ fn selection_presets_and_compatibility() {
     optional.enabled_by_default = false;
     let mut universal = declared("bundle", "universal", &[]);
     universal.compatibility = Compatibility::Universal;
-    let patches = [&own, &pinned, &optional, &universal];
+    universal.enabled_by_default = false;
+    let mut opted_in = declared("bundle", "opted-in", &[]);
+    opted_in.compatibility = Compatibility::Universal;
+    let patches = [&own, &pinned, &optional, &universal, &opted_in];
     for (selection, (package, expected)) in [
-        (PatchSelection::default(), ("com.example", [A, S, S, S])),
+        (PatchSelection::default(), ("com.example", [A, S, S, S, A])),
         (
             PatchSelection {
                 ignore_versions: true,
                 ..Default::default()
             },
-            ("com.example", [A, A, S, S]),
+            ("com.example", [A, A, S, S, A]),
         ),
         (
             PatchSelection {
                 enable: vec!["universal".into()],
                 ..Default::default()
             },
-            ("com.example", [A, S, S, A]),
+            ("com.example", [A, S, S, A, A]),
         ),
         (
             PatchSelection {
@@ -112,16 +115,16 @@ fn selection_presets_and_compatibility() {
                 disable: vec!["own".into()],
                 ..Default::default()
             },
-            ("com.example", [S, S, A, S]),
+            ("com.example", [S, S, A, S, A]),
         ),
         (
             PatchSelection {
                 preset: PatchPreset::None,
                 ..Default::default()
             },
-            ("com.example", [S; 4]),
+            ("com.example", [S; 5]),
         ),
-        (PatchSelection::default(), ("com.other", [S; 4])),
+        (PatchSelection::default(), ("com.other", [S, S, S, S, A])),
     ] {
         assert_eq!(statuses(&patches, &selection, package, "2.0"), expected);
     }
