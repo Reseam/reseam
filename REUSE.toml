@@ -1,5 +1,11 @@
 version = 1
 
+[[annotations]]
+path = ["crates/hermes/vendor/v98/**"]
+precedence = "override"
+SPDX-FileCopyrightText = "Meta Platforms, Inc. and affiliates"
+SPDX-License-Identifier = "MIT"
+
 # ── Project source (default) ────────────────────────────────────────────────
 
 [[annotations]]

@@ -1293,6 +1293,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "reseam-hermes"
+version = "0.18.3"
+dependencies = [
+ "ring",
+ "rustc-hash",
+ "thiserror",
+]
+
+[[package]]
 name = "reseam-model"
 version = "0.18.3"
 dependencies = [

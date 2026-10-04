@@ -4,6 +4,7 @@ exclude = ["vendor/boltffi_macros"]
 members = [
     "crates/storage",
     "crates/dex",
+    "crates/hermes",
     "crates/model",
     "crates/apk",
     "crates/sign",
@@ -62,6 +63,7 @@ large_include_file = "warn"
 reseam-storage = { path = "crates/storage" }
 reseam-model = { path = "crates/model" }
 reseam-dex     = { path = "crates/dex" }
+reseam-hermes  = { path = "crates/hermes" }
 reseam-apk     = { path = "crates/apk" }
 reseam-sign    = { path = "crates/sign" }
 reseam-patcher = { path = "crates/patcher", default-features = false }
