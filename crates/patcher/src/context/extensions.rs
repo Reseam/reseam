@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use reseam_apk::reseam_dex::types::header::Loading;
+use reseam_apk::reseam_dex::write::write_class;
 use reseam_apk::reseam_dex::{DexFile, ParseOptions, parse_file};
 use tracing::debug;
 
@@ -37,7 +38,7 @@ impl ExtensionSet {
             classes: Loading::Deferred,
             ..ParseOptions::default()
         };
-        let dex = parse_file(path, options).map_err(|error| {
+        let mut dex = parse_file(path, options).map_err(|error| {
             PatcherError::Bundle(format!(
                 "failed to parse extension DEX {}: {error}",
                 path.display()
@@ -53,16 +54,31 @@ impl ExtensionSet {
             })?);
         }
         let index = self.files.len();
-        for header in dex.classes().headers() {
+        let mut shared = Vec::new();
+        for (class_idx, header) in dex.classes().headers().enumerate() {
             let descriptor = dex.type_descriptor(header.class_type).into_owned();
-            if let Some(&other) = self.providers.get(&descriptor) {
-                return Err(PatcherError::Bundle(format!(
-                    "class {descriptor} is defined by both {} and {}",
-                    self.files[other].path.display(),
-                    path.display()
-                )));
+            match self.providers.get(&descriptor) {
+                None => {
+                    self.providers.insert(descriptor, index);
+                }
+                Some(&other) if self.defines_same(other, &descriptor, &dex, class_idx, path)? => {
+                    shared.push(header.class_type);
+                }
+                Some(&other) => {
+                    return Err(PatcherError::Bundle(format!(
+                        "class {descriptor} is defined differently by {} and {}",
+                        self.files[other].path.display(),
+                        path.display()
+                    )));
+                }
             }
-            self.providers.insert(descriptor, index);
+        }
+        // Bundles built apart each ship their own copy of shared classes, such as the
+        // java.lang.Record d8 synthesizes; one copy serves every extension that uses it.
+        for class_type in shared {
+            dex.remove_class(class_type).map_err(|error| {
+                PatcherError::Bundle(format!("extension DEX {}: {error}", path.display()))
+            })?;
         }
         self.files.push(ExtensionDex {
             path: path.to_path_buf(),
@@ -73,6 +89,34 @@ impl ExtensionSet {
 
     pub fn is_empty(&self) -> bool {
         self.files.is_empty()
+    }
+
+    /// Whether extension `other` defines `descriptor` exactly as class `class_idx` of `dex`.
+    fn defines_same(
+        &self,
+        other: usize,
+        descriptor: &str,
+        dex: &DexFile,
+        class_idx: usize,
+        path: &Path,
+    ) -> Result<bool> {
+        let provider = &self.files[other];
+        let provider_dex = provider
+            .file
+            .as_ref()
+            .expect("extensions are linked only after every bundle is loaded");
+        let provider_idx = provider_dex
+            .find_class_index(descriptor)
+            .expect("a provider defines the classes it is registered for");
+        let image = |dex: &DexFile, class_idx: usize, path: &Path| {
+            write_class(dex, class_idx).map_err(|error| {
+                PatcherError::Bundle(format!(
+                    "failed to write {descriptor} from {}: {error}",
+                    path.display()
+                ))
+            })
+        };
+        Ok(image(provider_dex, provider_idx, &provider.path)? == image(dex, class_idx, path)?)
     }
 
     fn provider(&self, descriptor: &str) -> Option<usize> {

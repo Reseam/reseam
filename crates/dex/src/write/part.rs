@@ -62,6 +62,16 @@ pub fn split_to_fit(dex: &DexFile) -> Result<Option<Vec<DexPart>>> {
     Ok(Some(parts))
 }
 
+/// The part holding class `class_idx` alone.
+pub(crate) fn of_class(dex: &DexFile, class_idx: usize) -> Result<DexPart> {
+    let mut packer = Packer::new(dex);
+    packer.add_class(class_idx)?;
+    Ok(DexPart {
+        classes: vec![class_idx],
+        pools: packer.pools,
+    })
+}
+
 pub(crate) fn overflows(len: impl Fn(Pool) -> usize) -> bool {
     Pool::ALL
         .into_iter()

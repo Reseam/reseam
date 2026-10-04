@@ -1104,6 +1104,66 @@ fn queries_skip_the_classes_a_bundle_extension_defines() {
     );
 }
 
+const SHARED_CLASS: &str = "Lapp/reseam/test/Shared;";
+
+fn extension_files(dir: &Path, files: &[(&str, &[u8])]) -> Vec<PathBuf> {
+    files
+        .iter()
+        .map(|(name, bytes)| {
+            let path = dir.join(format!("{name}.dex"));
+            fs::write(&path, bytes).unwrap();
+            path
+        })
+        .collect()
+}
+
+#[test]
+fn extensions_share_a_class_they_define_identically() {
+    use reseam_patcher::context::ExtensionSet;
+
+    let dir = tempfile::tempdir().unwrap();
+    let paths = extension_files(
+        dir.path(),
+        &[("a", dex!("shared_class_a")), ("b", dex!("shared_class_b"))],
+    );
+    let (_apk_dir, mut apk) = open_dex_apk(&[dex!("types")]);
+    let mut ctx = PatchContext::new(&mut apk);
+    ctx.set_extensions(ExtensionSet::load(&paths).unwrap());
+    ctx.find_or_link_class("Lapp/reseam/test/Bee;").unwrap();
+    ctx.find_or_link_class("Lapp/reseam/test/A;").unwrap();
+    drop(ctx);
+
+    let definitions = apk
+        .dex()
+        .iter()
+        .filter(|dex| dex.find_class_index(SHARED_CLASS).is_some())
+        .count();
+    assert_eq!(definitions, 1, "both extensions must link the one copy");
+}
+
+#[test]
+fn extensions_defining_a_class_differently_conflict() {
+    use reseam_patcher::context::ExtensionSet;
+
+    let dir = tempfile::tempdir().unwrap();
+    let paths = extension_files(
+        dir.path(),
+        &[
+            ("a", dex!("shared_class_a")),
+            ("conflict", dex!("shared_class_conflict")),
+        ],
+    );
+    let Err(error) = ExtensionSet::load(&paths) else {
+        panic!("differing definitions of {SHARED_CLASS} must not load");
+    };
+    assert!(
+        error
+            .to_string()
+            .contains(&format!("{SHARED_CLASS} is defined differently")),
+        "{error}"
+    );
+}
+
 #[test]
 fn a_new_attribute_binds_the_id_the_inflater_resolves_it_by() {
     const TARGET_PACKAGE: u32 = 0x0101_0021;

@@ -89,6 +89,13 @@ pub fn write(dex: &DexFile) -> Result<Vec<u8>> {
     write_into(dex, None, Vec::new())
 }
 
+/// Class `class_idx` serialized as a DEX of its own. Every id pool of a DEX is
+/// sorted, so two definitions of a class written by the same DEX version yield
+/// the same bytes exactly when they are equivalent, whichever files hold them.
+pub fn write_class(dex: &DexFile, class_idx: usize) -> Result<Vec<u8>> {
+    write_into(dex, Some(&part::of_class(dex, class_idx)?), Vec::new())
+}
+
 /// Serializes into an anonymous temp file instead of memory, optionally only
 /// one [`DexPart`] of the file.
 pub fn write_spooled(dex: &DexFile, part: Option<&DexPart>) -> Result<Spooled> {
