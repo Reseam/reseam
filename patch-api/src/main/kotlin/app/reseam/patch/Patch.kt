@@ -24,7 +24,10 @@ interface ReseamPatch {
     val compatibleWith: List<CompatiblePackage>
         get() = emptyList()
 
-    /** A patch with no declared package works with every app, so it is off unless its author enables it by default. */
+    /**
+     * A patch with no declared package works with every app, so it is off unless its author enables
+     * it by default.
+     */
     val universal: Boolean
         get() = compatibleWith.isEmpty()
 
