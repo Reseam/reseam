@@ -1396,6 +1396,7 @@ public final class app/reseam/patch/settings/GatesKt {
 	public static final fun returnNullWhen (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
 	public static final fun returnTrueWhen (Lapp/reseam/patch/FunctionTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
 	public static final fun returnTrueWhen (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
+	public static final fun skipWhen (Lapp/reseam/patch/FunctionTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
 	public static final fun skipWhen (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
 	public static final fun skipWhen (Lapp/reseam/patch/PointTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
 	public static final fun whenEnabled (Lapp/reseam/patch/CodeScope;Lapp/reseam/patch/settings/ToggleSetting;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/Otherwise;

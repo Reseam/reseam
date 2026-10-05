@@ -73,6 +73,10 @@ private fun MethodTarget.returnBooleanWhen(setting: ToggleSetting, value: Boolea
  * Hermes gates read the toggle once per process, through the `ReseamSettings` React Native module
  * the app's settings host registers.
  */
+/** Returns `undefined` without calling the function when the toggle is on. */
+fun FunctionTarget.skipWhen(setting: ToggleSetting) =
+    wrap(ReseamJsSettings.skipWhen, setting.bound())
+
 fun FunctionTarget.returnNullWhen(setting: ToggleSetting) =
     wrap(ReseamJsSettings.returnNullWhen, setting.bound())
 

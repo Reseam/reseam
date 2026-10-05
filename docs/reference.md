@@ -53,6 +53,7 @@ See [Hermes JavaScript](15_hermes.md) for extension sources and examples. Target
 | `HermesFunctionQuery.strings(vararg values)` | All strings must be referenced by instructions, including property names. |
 | `HermesFunctionQuery.paramCount(count)` | Declared JavaScript parameters, excluding `this`; nonnegative. |
 | `FunctionTarget.wrap(export: JsExport)` | Calls `export(original, ...arguments)` with the same receiver and returns its result. `original` is receiver-bound and retains the unchanged body and captured environment. |
+| `FunctionTarget.skipWhen(setting)` | Returns `undefined` without calling the function when the toggle is on. |
 | `FunctionTarget.returnNullWhen/returnTrueWhen/returnFalseWhen(setting)` | Returns that value when the toggle is on. |
 | `FunctionTarget.wrapWhen(setting, export)` | Wraps with `export` when the toggle is on. |
 | `ExtJsModule(name)` | Declares an extension artifact, such as `discord-emotes`. |

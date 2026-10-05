@@ -27,6 +27,7 @@ object ReseamSettings : ExtClass("app.reseam.runtime.settings.ReseamSettings") {
  * `ReseamSettings` React Native module, which the app's settings host registers.
  */
 internal object ReseamJsSettings : ExtJsModule("settings-js") {
+    val skipWhen = export("skipWhen")
     val returnNullWhen = export("returnNullWhen")
     val returnTrueWhen = export("returnTrueWhen")
     val returnFalseWhen = export("returnFalseWhen")
