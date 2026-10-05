@@ -57,7 +57,9 @@ execute {
 
 Every constraint must match. `name` is exact and case-sensitive; `strings` matches instruction references, including property names; `paramCount` excludes `this`. Zero or several matches fail the patch. Function handles are valid for that patch run only.
 
-`wrap` calls your export as `export(original, ...arguments)` with the function's receiver, and returns your export's result. `original` has the unchanged body and the original captured environment. It is bound to the receiver, so `original(...args)` preserves `this` too.
+`wrap` calls your export as `export(original, ...arguments)` with the function's receiver, and returns your export's result. `original` calls the previous wrap, or the unchanged body for the first wrap, with the original captured environment. It is bound to the receiver, so `original(...args)` preserves `this` too.
+
+Repeated wraps compose in the order patches apply them. The last wrap runs first and receives the previous wrap as `original`; the innermost `original` calls the unchanged app body. Exports from different modules can wrap the same function. Lookups continue to match the original app functions.
 
 ## Before, after, replace
 
@@ -80,7 +82,7 @@ exports.replace = function (original, ...args) {
 
 An export can change arguments, call `original` several times, skip it, or catch exceptions from it. Exceptions it does not catch propagate to the app's caller.
 
-Generators, async functions, class constructors, functions using `new.target` or direct `eval`, repeated wrapping, and environment chains Reseam cannot establish fail explicitly. An ordinary wrapped function cannot be called with `new` afterwards. Edited functions may lose their debug information.
+Generators, async functions, class constructors, functions using `new.target` or direct `eval`, and environment chains Reseam cannot establish fail explicitly. An ordinary wrapped function cannot be called with `new` afterwards. Edited functions may lose their debug information.
 
 ## Another bundle path
 

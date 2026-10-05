@@ -31,15 +31,16 @@ A generated bootstrap initializes modules before calling the app's global code,
 holding their results in a private lexical environment.
 
 `Editor::wrap` replaces a normal app function with a call to a declared export,
-passing a receiver-bound original and every supplied argument. The original body
-remains a borrowed source range, including switch payloads, and retains its
-captured environment and exceptions. Private export storage is carried only
+passing a receiver-bound original and every supplied argument. Later wraps run
+outermost and call the previous wrap through `original`, including wraps from
+different modules. The original body remains a borrowed source range, including
+switch payloads, and retains its captured environment and exceptions. Private export storage is carried only
 through the necessary closure ancestry. Environment analysis merges control-flow
 paths conservatively and refuses ambiguous depths or spilled scopes it cannot
-resolve. Generators, async functions, class constructors, `new.target`, direct
-eval and repeated wrapping fail explicitly. Wrapped ordinary functions cannot
-subsequently be constructed. Exports must be unconditional literal assignments
-of function expressions to the returned exports object.
+resolve. Generators, async functions, class constructors, `new.target` and direct
+eval fail explicitly. Wrapped ordinary functions cannot subsequently be constructed.
+Exports must be unconditional literal assignments of function expressions to the
+returned exports object.
 
 Linking and wrapping roll back their changes on errors. `into_edits` and `resume`
 let a host retain owned edits beside its source mapping without a self-referential

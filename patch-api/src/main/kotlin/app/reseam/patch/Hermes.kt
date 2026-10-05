@@ -76,15 +76,20 @@ private class HermesQuery : HermesFunctionQuery {
 class HermesFunction internal constructor(private val handle: UInt) {
     /**
      * Calls [export] as `export(original, ...arguments)` with the function's receiver, returning
-     * the export's result. `original` invokes the unchanged body, bound to that receiver and closed
-     * over the original outer environment. The export may call it with different arguments, skip it
-     * or transform its result; exceptions propagate normally.
+     * the export's result. `original` invokes the previous wrap, or the unchanged body for the
+     * first wrap, bound to that receiver and closed over the original outer environment. The export
+     * may call it with different arguments, skip it or transform its result; exceptions propagate
+     * normally.
+     *
+     * Wraps compose in application order (patch execution order), including exports from different
+     * modules. The last wrap runs outermost; the innermost `original` calls the unchanged app body.
+     * Lookups continue to match original app functions.
      *
      * The extension links once, when first used. Missing modules and undeclared or non-callable
      * exports fail the patch. Generators, async functions, class constructors, functions using
-     * `new.target` or direct `eval`, repeated wrapping and unprovable environment chains are
-     * refused. Ordinary wrapped functions cannot be called with `new` afterwards. Debug data for
-     * edited functions may be dropped.
+     * `new.target` or direct `eval`, and unprovable environment chains are refused. Ordinary
+     * wrapped functions cannot be called with `new` afterwards. Debug data for edited functions may
+     * be dropped.
      */
     fun wrap(export: JsExport) = hermesWrap(handle, export.module.name, export.name)
 }

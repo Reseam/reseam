@@ -25,8 +25,10 @@ struct ClosureSite {
 impl Editor<'_> {
     /// Replaces calls to `function` with `export(original, ...arguments)`.
     /// The export receives the same receiver. `original` is receiver-bound and
-    /// invokes the unchanged body with the original captured environment.
-    /// Generators, async functions, constructors, globals, repeated wrapping,
+    /// invokes the previous wrap, or the unchanged body for the first wrap,
+    /// with the original captured environment. Later wraps run outermost,
+    /// including exports from different modules, in application order.
+    /// Generators, async functions, constructors, globals,
     /// unknown exports and unprovable environment chains fail explicitly.
     /// Ordinary wrapped functions cannot subsequently be used as constructors.
     pub fn wrap(&mut self, function: FunctionId, module: ModuleId, export: &str) -> Result<()> {
@@ -58,10 +60,8 @@ impl Editor<'_> {
                 "module does not statically export callable {export:?}"
             )));
         }
-        if function == self.file.global_function() || self.edits.hooks.contains_key(&function) {
-            return Err(HermesError::Unsupported(
-                "global or already wrapped function".into(),
-            ));
+        if function == self.file.global_function() {
+            return Err(HermesError::Unsupported("global function".into()));
         }
         let target = self.file.function(function)?;
         if target.header.flags >> 6 != 0
@@ -77,17 +77,19 @@ impl Editor<'_> {
             )));
         }
         let export = self.intern(export, StringKind::Identifier)?;
-        let original = self.append_function(original_function(&target)?);
+        let previous = if self.edits.hooks.contains_key(&function) {
+            self.edits.functions[&function].clone()
+        } else {
+            original_function(&target)?
+        };
+        let original = self.append_function(previous);
         let bridge = self.append_function(bound_original(target.name()));
-        self.edits.hooks.insert(
-            function,
-            Hook {
-                module,
-                export,
-                original,
-                bridge,
-            },
-        );
+        self.edits.hooks.entry(function).or_default().push(Hook {
+            module,
+            export,
+            original,
+            bridge,
+        });
         self.install_hooks()
     }
 
@@ -163,7 +165,8 @@ impl Editor<'_> {
                 changed.insert(id, attach_root(&function, code, depths[&id], &attach)?);
             }
         }
-        for (&id, hook) in &self.edits.hooks {
+        let mut layers = Vec::new();
+        for (&id, hooks) in &self.edits.hooks {
             let depth = *depths.get(&id).ok_or_else(|| {
                 HermesError::Unsupported(format!(
                     "cannot resolve private environment for function {}",
@@ -171,8 +174,17 @@ impl Editor<'_> {
                 ))
             })?;
             let function = self.file.function(id)?;
-            let body = wrapper(&function, hook.original, hook.bridge, depth, hook)?;
-            changed.insert(id, body);
+            for (index, hook) in hooks.iter().enumerate() {
+                let body = wrapper(&function, hook.original, hook.bridge, depth, hook)?;
+                if let Some(next) = hooks.get(index + 1) {
+                    layers.push((next.original, body));
+                } else {
+                    changed.insert(id, body);
+                }
+            }
+        }
+        for (id, body) in layers {
+            self.edits.appended[(id.0 - self.file.function_count()) as usize] = body;
         }
         self.edits.functions = changed;
         Ok(())

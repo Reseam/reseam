@@ -68,7 +68,7 @@ pub struct Edits {
     pub(crate) modules: Vec<FunctionId>,
     pub(crate) module_exports: Vec<Vec<StringId>>,
     pub(crate) string_switches: u32,
-    pub(crate) hooks: BTreeMap<FunctionId, Hook>,
+    pub(crate) hooks: BTreeMap<FunctionId, Vec<Hook>>,
 }
 
 pub(crate) struct AddedString {
