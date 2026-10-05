@@ -57,7 +57,7 @@ See [Hermes JavaScript](15_hermes.md) for extension sources and examples. Target
 | `FunctionTarget.returnNullWhen/returnTrueWhen/returnFalseWhen(setting)` | Returns that value when the toggle is on. |
 | `FunctionTarget.wrapWhen(setting, export)` | Wraps with `export` when the toggle is on. |
 | `FunctionTarget.setArgumentWhen(setting, index, path, value)` | Calls the function with argument `index`'s property at the dotted `path` set to `value` when the toggle is on. |
-| `ExtJsModule(name)` | Declares an extension artifact, such as `discord-emotes`. |
+| `ExtJsModule(name)` | Declares an extension artifact, such as `example-features`. |
 | `ExtJsModule.export(name)` | Declares a callable property of its exports object; returns `JsExport`. Validated on use. |
 
 Generators, async functions, class constructors, `new.target`, direct `eval` and unprovable environment chains fail explicitly. Repeated wraps compose in patch order. Wrapped ordinary functions cannot be constructed with `new`. The module links once and initializes before the app's global code. Exports are private; edited functions may lose debug data.

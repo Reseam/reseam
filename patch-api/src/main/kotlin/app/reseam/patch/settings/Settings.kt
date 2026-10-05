@@ -23,8 +23,8 @@ object ReseamSettings : ExtClass("app.reseam.runtime.settings.ReseamSettings") {
 }
 
 /**
- * The JavaScript the Hermes gates call. It reads [ReseamSettings] through the app's
- * `ReseamSettings` React Native module, which the app's settings host registers.
+ * The JavaScript the Hermes gates call, provided by the patch bundle. It reads [ReseamSettings]
+ * through the `ReseamSettings` React Native module that the app's settings host registers.
  */
 internal object ReseamJsSettings : ExtJsModule("settings-js") {
     val skipWhen = export("skipWhen")

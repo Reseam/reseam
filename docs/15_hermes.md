@@ -4,7 +4,7 @@ description: Link JavaScript extensions into a Hermes bundle and wrap the app's 
 
 # Hermes JavaScript
 
-React Native apps often ship JavaScript as Hermes bytecode in `assets/index.android.bundle`. Reseam opens that bundle in the base APK when a patch first uses it, links your JavaScript into it, and writes the patched bundle stored, without ZIP compression, when the run finishes.
+React Native apps often ship JavaScript as Hermes bytecode in `assets/index.android.bundle`. Reseam opens that bundle in the base APK when a patch first uses it, links your JavaScript into it, and writes the patched bundle stored, without ZIP compression, when the run finishes. A bundle no patch changed is left as it was.
 
 Version 98 is supported. A missing bundle, another file format, or another bytecode version fails the patch.
 
@@ -13,14 +13,14 @@ Version 98 is supported. A missing bundle, another file format, or another bytec
 Put JavaScript in an extension module:
 
 ```text
-apps/discord/extensions/emotes/
+apps/example/extensions/features/
   src/main/js/index.js
 ```
 
 Assign function expressions to `exports` at the top level:
 
 ```javascript
-exports.canUseAnimatedEmojis = function (original, user) {
+exports.isFeatureEnabled = function (original, name) {
     return true;
 };
 ```
@@ -36,25 +36,25 @@ The module initializes once before the app's global code. Strings, regexps, obje
 Declare the module and the exports a patch uses, named after the app functions they wrap:
 
 ```kotlin
-object Emotes : ExtJsModule("discord-emotes") {
-    val canUseAnimatedEmojis = export("canUseAnimatedEmojis")
+object Features : ExtJsModule("example-features") {
+    val isFeatureEnabled = export("isFeatureEnabled")
 }
 ```
 
-The artifact name follows the workspace convention: `<app>-<extension>`, or `<name>` for a shared module.
+The artifact name follows the workspace convention: `<app>-<extension>`, or `<name>` for a shared module. Names contain only ASCII letters, digits, hyphens and underscores.
 
 Declare the app function as a target, like a DEX `method { }`, and wrap it in `execute`:
 
 ```kotlin
-val animatedEmojis = patch("Animated emojis") {
+val allFeatures = patch("All features") {
     execute {
-        canUseAnimatedEmojis.wrap(Emotes.canUseAnimatedEmojis)
+        isFeatureEnabled.wrap(Features.isFeatureEnabled)
     }
 }
 
-private val canUseAnimatedEmojis = function {
-    name("canUseAnimatedEmojis")
-    strings("ANIMATED_EMOJIS")
+private val isFeatureEnabled = function {
+    name("isFeatureEnabled")
+    strings("FEATURE_FLAGS")
     paramCount(1)
 }
 ```
@@ -93,10 +93,10 @@ Generators, async functions, class constructors, functions using `new.target` or
 The [settings](5_settings.md) gates also apply to Hermes targets:
 
 ```kotlin
-isStaff.returnTrueWhen(DiscordSettings.developerMenu)
-canUseAnimatedEmojis.wrapWhen(DiscordSettings.animatedEmojis, Emotes.canUseAnimatedEmojis)
+isStaff.returnTrueWhen(AppSettings.developerMenu)
+isFeatureEnabled.wrapWhen(AppSettings.allFeatures, Features.isFeatureEnabled)
 ```
 
-`skipWhen` returns `undefined`, and `returnNullWhen`, `returnTrueWhen` and `returnFalseWhen` return that value, when the toggle is on; otherwise they call the app function. `wrapWhen` runs your export when the toggle is on and the unchanged function otherwise, so the export itself does not check settings. `setArgumentWhen(setting, index, path, value)` calls the function with one property of an argument replaced, such as `setArgumentWhen(setting, 0, "options.animate", false)`; the objects along the path are copied, not changed. Each toggle is read once per process, through the `ReseamSettings` React Native module that the app's settings host registers.
+`skipWhen` returns `undefined`, and `returnNullWhen`, `returnTrueWhen` and `returnFalseWhen` return that value, when the toggle is on; otherwise they call the app function. `wrapWhen` runs your export when the toggle is on and the unchanged function otherwise, so the export itself does not check settings. `setArgumentWhen(setting, index, path, value)` calls the function with one property of an argument replaced, such as `setArgumentWhen(setting, 0, "options.animate", false)`; the function receives copies of the objects along the path. Each toggle is read once per process, through the `settings-js` extension in your bundle and the `ReseamSettings` React Native module that the app's settings host registers.
 
 See the [reference](reference.md#hermes) for the authoring API.

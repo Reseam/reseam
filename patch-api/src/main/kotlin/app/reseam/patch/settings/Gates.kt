@@ -70,19 +70,24 @@ private fun MethodTarget.returnBooleanWhen(setting: ToggleSetting, value: Boolea
 }
 
 /**
- * Hermes gates read the toggle once per process, through the `ReseamSettings` React Native module
- * the app's settings host registers.
+ * Returns `undefined` without calling the function when the toggle is on.
+ *
+ * Like every Hermes gate, it reads the toggle once per process through the `settings-js` extension,
+ * which the patch bundle provides along with the `ReseamSettings` React Native module its settings
+ * host registers.
  */
-/** Returns `undefined` without calling the function when the toggle is on. */
 fun FunctionTarget.skipWhen(setting: ToggleSetting) =
     wrap(ReseamJsSettings.skipWhen, setting.bound())
 
+/** Returns `null` without calling the function when the toggle is on. */
 fun FunctionTarget.returnNullWhen(setting: ToggleSetting) =
     wrap(ReseamJsSettings.returnNullWhen, setting.bound())
 
+/** Returns `true` without calling the function when the toggle is on. */
 fun FunctionTarget.returnTrueWhen(setting: ToggleSetting) =
     wrap(ReseamJsSettings.returnTrueWhen, setting.bound())
 
+/** Returns `false` without calling the function when the toggle is on. */
 fun FunctionTarget.returnFalseWhen(setting: ToggleSetting) =
     wrap(ReseamJsSettings.returnFalseWhen, setting.bound())
 
@@ -95,8 +100,8 @@ fun FunctionTarget.wrapWhen(setting: ToggleSetting, export: JsExport) =
 
 /**
  * Calls the function with a copy of argument [index] whose property at [path] is [value] when the
- * toggle is on. [path] names nested properties with dots, such as `options.renderReplies`; each
- * object along it is shallow-copied, so the caller's object is not changed.
+ * toggle is on. [path] names nested properties with dots, such as `options.compact`; each object
+ * along it is shallow-copied, so the caller's object is not changed.
  */
 fun FunctionTarget.setArgumentWhen(
     setting: ToggleSetting,
