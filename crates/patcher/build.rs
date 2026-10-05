@@ -17,6 +17,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
     let out = PathBuf::from(env::var("OUT_DIR")?);
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
     let runtime = out.join("runtime.jar");
     if env::var_os("CARGO_FEATURE_KOTLIN").is_some()
         && env::var("CARGO_CFG_TARGET_OS")? != "android"
@@ -26,10 +27,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         } else {
             println!("cargo:rerun-if-env-changed=RESEAM_RUNTIME_JAR");
             let source = env::var_os("RESEAM_RUNTIME_JAR").map_or_else(
-                || {
-                    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                        .join("../../build/runtime/reseam-runtime.jar")
-                },
+                || manifest_dir.join("../../build/runtime/reseam-runtime.jar"),
                 PathBuf::from,
             );
             println!("cargo:rerun-if-changed={}", source.display());
@@ -43,7 +41,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
     // BoltFFI emits exported functions only for the crate it generates bindings
     // for. The patcher is a second binding root inside the SDK and the CLI, so
     // it declares itself the root of its own expansion.
