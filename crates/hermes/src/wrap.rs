@@ -112,15 +112,8 @@ impl Editor<'_> {
             )));
         }
         let plan = self.hook_plan(function)?;
-        if self.edits.roots.contains_key(&function)
-            || plan.roots.keys().any(|id| self.edits.wrapped.contains(id))
-            || plan.roots.contains_key(&function)
-        {
-            return Err(HermesError::Unsupported(
-                "a wrapped body also needs to carry a disconnected nested hook environment".into(),
-            ));
-        }
-        let previous = if self.edits.wrapped.contains(&function) {
+        let rewrap = self.edits.wrapped.contains(&function);
+        let previous = if rewrap {
             self.edits.functions[&function].clone()
         } else {
             original_function(&target)?
@@ -137,6 +130,9 @@ impl Editor<'_> {
         self.append_function(bound_original(target.name()));
         self.edits.functions.insert(function, body);
         self.edits.wrapped.insert(function);
+        if !rewrap {
+            self.edits.relocated.insert(function, original);
+        }
         for (id, root) in plan.roots {
             self.edits
                 .roots
@@ -264,9 +260,16 @@ impl Editor<'_> {
             .iter()
             .map(|(&id, root)| {
                 let function = self.file.function(id)?;
-                let body =
+                let mut body =
                     attach_root(&function, function.instructions()?, root.depth, &root.sites)?;
-                Ok((id, body))
+                // A wrapped function's original body lives on in the function its wrapper calls.
+                Ok(match self.edits.relocated.get(&id) {
+                    Some(&holder) => {
+                        body.header.flags = relocated_flags(body.header.flags);
+                        (holder, body)
+                    }
+                    None => (id, body),
+                })
             })
             .collect()
     }
@@ -581,12 +584,18 @@ fn original_function(function: &Function<'_>) -> Result<EditedFunction> {
         }
     }
     let mut header = function.header.clone();
-    header.flags &= !0x30;
+    header.flags = relocated_flags(header.flags);
     Ok(EditedFunction {
         header,
         body: FunctionBody::Original(function.header.offset as usize..end),
         exceptions,
     })
+}
+
+/// A relocated body is called as an ordinary function by its wrapper, so it
+/// drops the flags that prohibit plain calls or construction.
+fn relocated_flags(flags: u8) -> u8 {
+    flags & !0x30
 }
 
 fn bound_original(name: StringId) -> EditedFunction {

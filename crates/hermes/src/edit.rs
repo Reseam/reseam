@@ -72,6 +72,8 @@ pub struct Edits {
     pub(crate) wrapped: BTreeSet<FunctionId>,
     pub(crate) hook_graph: Option<crate::wrap::HookGraph>,
     pub(crate) roots: BTreeMap<FunctionId, crate::wrap::RootAttachment>,
+    /// Wrapped app functions, each with the appended function now holding its original body.
+    pub(crate) relocated: BTreeMap<FunctionId, FunctionId>,
 }
 
 pub(crate) struct AddedString {
@@ -105,6 +107,7 @@ impl<'a> Editor<'a> {
                 wrapped: BTreeSet::new(),
                 hook_graph: None,
                 roots: BTreeMap::new(),
+                relocated: BTreeMap::new(),
             },
         }
     }
