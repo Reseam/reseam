@@ -257,6 +257,21 @@ impl ApkComponent {
         Ok(true)
     }
 
+    pub(super) fn map_entry(&mut self, name: &str) -> Result<Option<reseam_storage::MappedFile>> {
+        if !self.contains(name) {
+            return Ok(None);
+        }
+        match self.edits.get(name) {
+            Some(EntryEdit::Staged { file, .. }) => Ok(Some(reader::map_spooled(file)?)),
+            None => Ok(Some(reader::map_entry(&mut self.archive, name)?)),
+            _ => {
+                let mut file = reseam_storage::temporary_file()?;
+                self.copy_entry(name, &mut file)?;
+                Ok(Some(reader::map_spooled(&file)?))
+            }
+        }
+    }
+
     pub(super) fn resources_file(&self) -> Result<File> {
         let Resources::Loaded(table) = &self.resources else {
             return Err(invalid("resources", "edited resource table is not loaded"));

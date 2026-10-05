@@ -16,6 +16,7 @@ These pages are published at [reseam.app/docs](https://reseam.app/docs/). Read t
 12. [Raw bytecode](12_bytecode.md)
 13. [Bundle projects](13_bundles.md)
 14. [Publishing](14_publishing.md)
+15. [Hermes JavaScript](15_hermes.md)
 
 Look things up in the [reference](reference.md), [troubleshooting](troubleshooting.md), and [glossary](glossary.md).
 

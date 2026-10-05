@@ -78,6 +78,9 @@ pub enum PatcherError {
     #[error("DEX error: {0}")]
     Dex(#[from] reseam_apk::reseam_dex::DexError),
 
+    #[error("Hermes error: {0}")]
+    Hermes(#[from] reseam_hermes::HermesError),
+
     #[error("APK error: {0}")]
     Apk(#[from] reseam_apk::ApkError),
 

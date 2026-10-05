@@ -19,15 +19,29 @@ impl ApkFile {
         data: Vec<u8>,
         compression: Compression,
     ) -> Result<()> {
+        let file = reader::spool_file(&mut data.as_slice())?;
+        drop(data);
+        self.inject_file_spooled(component, name, file, compression)
+    }
+
+    /// Takes ownership of a completed file as an entry replacement without
+    /// allocating its payload. All format-entry validation is the same as
+    /// `inject_file`. The file and any other handles to it must remain immutable
+    /// after this call; the session may retain read-only mappings of it.
+    pub fn inject_file_spooled(
+        &mut self,
+        component: usize,
+        name: &str,
+        file: std::fs::File,
+        compression: Compression,
+    ) -> Result<()> {
         if component >= self.components.len() {
             return Err(invalid("apk", format!("no component at index {component}")));
         }
         let manifest = (name == crate::entry::MANIFEST_ENTRY)
-            .then(|| crate::AxmlDocument::parse(&data))
+            .then(|| crate::AxmlDocument::parse(&reader::map_spooled(&file)?))
             .transpose()
             .map_err(|error| error.in_entry(name))?;
-        let file = reader::spool_file(&mut data.as_slice())?;
-        drop(data);
         let dex = if dex_ordinal(name).is_some() {
             Some(
                 crate::dex::parse_entry(reader::map_spooled(&file)?, self.options)
@@ -60,6 +74,31 @@ impl ApkFile {
             }
         }
         Ok(())
+    }
+
+    /// Maps the current entry, returning `None` when absent. Stored entries
+    /// in the input APK are mapped directly; compressed or parsed entries are
+    /// streamed to disk first. Mappings stay valid across later staged edits.
+    pub fn map_component_entry(
+        &mut self,
+        component: usize,
+        name: &str,
+    ) -> Result<Option<reseam_storage::MappedFile>> {
+        let changed = self.dex_entries(component, name).any(|index| {
+            self.dex.dex_files[index].is_dirty() || self.dex_origins[index].kind == DexSource::Added
+        });
+        if changed {
+            let mut file = reseam_storage::temporary_file()?;
+            if !self.copy_entry(component, name, &mut file)? {
+                return Ok(None);
+            }
+            return Ok(Some(reader::map_spooled(&file)?));
+        }
+        self.components
+            .get_mut(component)
+            .ok_or_else(|| invalid("apk", format!("no component at index {component}")))?
+            .map_entry(name)
+            .map_err(|error| error.in_entry(name))
     }
 
     /// Deletes an entry and its parsed state. The required manifest cannot be

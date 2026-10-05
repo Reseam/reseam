@@ -12,6 +12,7 @@ Besides code, a patch can change the rest of the APK. Inside `execute { }`:
 | `resources` | the app's resources: strings, colors, styles, layouts, images |
 | `files` | any file in the APK |
 | `bytecode` | every class, for lookups and app-wide replacements |
+| `hermes` | the app's [Hermes JavaScript bundle](15_hermes.md) |
 | `options` | the patch's [options](4_patches.md#options) |
 | `log` | `info`, `warn`, and `debug` messages in the patch log |
 

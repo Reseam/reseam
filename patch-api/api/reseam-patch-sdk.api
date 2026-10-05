@@ -143,6 +143,12 @@ public class app/reseam/patch/ExtClass {
 	public fun toString ()Ljava/lang/String;
 }
 
+public class app/reseam/patch/ExtJsModule {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun export (Ljava/lang/String;)Lapp/reseam/patch/JsExport;
+	public final fun getName ()Ljava/lang/String;
+}
+
 public final class app/reseam/patch/ExtMethod {
 	public final fun getName ()Ljava/lang/String;
 	public final fun getOwner ()Ljava/lang/String;
@@ -215,6 +221,22 @@ public final class app/reseam/patch/FloatOption : app/reseam/patch/Option {
 	public synthetic fun read$app_reseam_reseam_patch_sdk ()Ljava/lang/Object;
 }
 
+public final class app/reseam/patch/HermesFunction {
+	public final fun wrap (Lapp/reseam/patch/JsExport;)V
+}
+
+public abstract interface class app/reseam/patch/HermesFunctionQuery {
+	public abstract fun name (Ljava/lang/String;)V
+	public abstract fun paramCount (I)V
+	public abstract fun strings ([Ljava/lang/String;)V
+}
+
+public final class app/reseam/patch/HermesScope {
+	public final fun bundle (Ljava/lang/String;)Lapp/reseam/patch/HermesScope;
+	public final fun function (Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/HermesFunction;
+	public final fun getVersion ()I
+}
+
 public final class app/reseam/patch/HooksKt {
 	public static final fun after (Lapp/reseam/patch/MethodTarget;Lkotlin/jvm/functions/Function1;)V
 	public static final fun after (Lapp/reseam/patch/PointTarget;Lkotlin/jvm/functions/Function1;)V
@@ -236,6 +258,11 @@ public final class app/reseam/patch/HooksKt {
 
 public final class app/reseam/patch/IntOption : app/reseam/patch/Option {
 	public synthetic fun read$app_reseam_reseam_patch_sdk ()Ljava/lang/Object;
+}
+
+public final class app/reseam/patch/JsExport {
+	public final fun getModule ()Lapp/reseam/patch/ExtJsModule;
+	public final fun getName ()Ljava/lang/String;
 }
 
 public final class app/reseam/patch/ManifestScope {
@@ -432,6 +459,7 @@ public final class app/reseam/patch/PatchRuntime {
 	public final fun explain (Lapp/reseam/patch/Target;)Lapp/reseam/patch/MatchReport;
 	public final fun getBytecode ()Lapp/reseam/patch/BytecodeScope;
 	public final fun getFiles ()Lapp/reseam/patch/FileScope;
+	public final fun getHermes ()Lapp/reseam/patch/HermesScope;
 	public final fun getLog ()Lapp/reseam/patch/PatchLogger;
 	public final fun getManifest ()Lapp/reseam/patch/ManifestScope;
 	public final fun getOptions ()Lapp/reseam/patch/RuntimeOptions;

@@ -13,6 +13,10 @@ import org.gradle.jvm.toolchain.JavaLanguageVersion
 
 internal class ReseamExtensionPlugin : Plugin<Project> {
     override fun apply(project: Project) {
+        if (project.file("src/main/js").isDirectory) {
+            project.pluginManager.apply(ReseamJavascriptPlugin::class.java)
+            return
+        }
         project.reseamArtifact()
         project.pluginManager.apply("java-library")
         project.extensions.configure(JavaPluginExtension::class.java) {

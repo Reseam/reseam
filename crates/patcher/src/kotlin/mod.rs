@@ -13,6 +13,7 @@ mod convert;
 mod files;
 mod handle_table;
 pub(crate) mod handles;
+mod hermes;
 mod instruction_types;
 mod invoke;
 #[cfg(feature = "kotlin")]

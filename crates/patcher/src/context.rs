@@ -5,6 +5,7 @@ mod app_entry;
 mod dex;
 mod extensions;
 mod files;
+mod hermes;
 mod search;
 
 pub use dex::ClassFields;
@@ -56,6 +57,7 @@ pub struct PatchContext<'a> {
     skeleton: Option<CachedSkeleton>,
     method: Option<CachedMethod>,
     extensions: ExtensionSet,
+    hermes: Option<hermes::HermesSession>,
 }
 
 struct CachedSkeleton {
@@ -77,6 +79,7 @@ impl<'a> PatchContext<'a> {
             skeleton: None,
             method: None,
             extensions: ExtensionSet::default(),
+            hermes: None,
         }
     }
 

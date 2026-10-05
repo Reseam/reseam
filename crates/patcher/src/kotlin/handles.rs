@@ -117,6 +117,7 @@ pub(super) fn kotlin_run(
 }
 
 fn reset() {
+    super::hermes::reset();
     #[cfg(feature = "kotlin")]
     KOTLIN_RUN.with(|run| *run.borrow_mut() = None);
     POOL_COPIES.with(|copies| copies.borrow_mut().clear());

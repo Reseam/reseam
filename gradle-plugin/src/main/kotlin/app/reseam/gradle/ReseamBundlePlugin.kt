@@ -38,8 +38,16 @@ internal class ReseamBundlePlugin : Plugin<Project> {
         }
         val extensionDex = project.provider {
             project.subprojects
-                .filter { it.plugins.hasPlugin(ReseamExtensionPlugin::class.java) }
+                .filter {
+                    it.plugins.hasPlugin(ReseamExtensionPlugin::class.java) &&
+                        !it.plugins.hasPlugin(ReseamJavascriptPlugin::class.java)
+                }
                 .map { it.tasks.named("dex", DexTask::class.java) }
+        }
+        val extensionHbc = project.provider {
+            project.subprojects
+                .filter { it.plugins.hasPlugin(ReseamJavascriptPlugin::class.java) }
+                .map { it.tasks.named("hermes98", HermesCompileTask::class.java) }
         }
 
         val globalsDex =
@@ -60,6 +68,13 @@ internal class ReseamBundlePlugin : Plugin<Project> {
                 into(stageDir)
                 from(manifest)
                 from(project.layout.projectDirectory.dir("resources")) { into("resources") }
+                extensionHbc.get().forEach { task ->
+                    dependsOn(task)
+                    from(task.flatMap { it.output }) {
+                        include("*.hbc")
+                        into("resources/hermes/v98")
+                    }
+                }
                 from(patchJars.map { jars -> jars.map { jar -> jar.map { it.archiveFile } } })
                 extensionDex.get().forEach { dexTask ->
                     dependsOn(dexTask)

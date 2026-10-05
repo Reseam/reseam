@@ -1323,6 +1323,7 @@ dependencies = [
  "jni",
  "libloading 0.9.0",
  "reseam-apk",
+ "reseam-hermes",
  "reseam-model",
  "reseam-sign",
  "reseam-storage",

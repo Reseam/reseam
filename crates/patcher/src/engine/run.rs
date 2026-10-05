@@ -80,6 +80,7 @@ pub fn apply_patches(
     }
 
     ctx.bind_app_entry()?;
+    ctx.finish_hermes()?;
     info!("patch application finished");
     Ok(run.into_results())
 }

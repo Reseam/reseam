@@ -26,6 +26,7 @@ class PatchRuntime() {
     val manifest: ManifestScope = ManifestScope()
     val resources: ResourceScope = ResourceScope()
     val bytecode: BytecodeScope = BytecodeScope()
+    val hermes: HermesScope = HermesScope()
     val files: FileScope = FileScope()
     val options: RuntimeOptions = RuntimeOptions()
     val log: PatchLogger = PatchLogger()
