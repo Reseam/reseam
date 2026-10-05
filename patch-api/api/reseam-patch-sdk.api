@@ -1396,6 +1396,7 @@ public final class app/reseam/patch/settings/GatesKt {
 	public static final fun returnNullWhen (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
 	public static final fun returnTrueWhen (Lapp/reseam/patch/FunctionTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
 	public static final fun returnTrueWhen (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
+	public static final fun setArgumentWhen (Lapp/reseam/patch/FunctionTarget;Lapp/reseam/patch/settings/ToggleSetting;ILjava/lang/String;Z)V
 	public static final fun skipWhen (Lapp/reseam/patch/FunctionTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
 	public static final fun skipWhen (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
 	public static final fun skipWhen (Lapp/reseam/patch/PointTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
@@ -2103,6 +2104,17 @@ public final class app/reseam/patch/types/HermesArgument$Export : app/reseam/pat
 	public static synthetic fun copy$default (Lapp/reseam/patch/types/HermesArgument$Export;Lapp/reseam/patch/types/HermesExportRef;ILjava/lang/Object;)Lapp/reseam/patch/types/HermesArgument$Export;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getField0 ()Lapp/reseam/patch/types/HermesExportRef;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/HermesArgument$Int : app/reseam/patch/types/HermesArgument {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lapp/reseam/patch/types/HermesArgument$Int;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/HermesArgument$Int;IILjava/lang/Object;)Lapp/reseam/patch/types/HermesArgument$Int;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()I
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }

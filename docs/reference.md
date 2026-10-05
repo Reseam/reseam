@@ -56,6 +56,7 @@ See [Hermes JavaScript](15_hermes.md) for extension sources and examples. Target
 | `FunctionTarget.skipWhen(setting)` | Returns `undefined` without calling the function when the toggle is on. |
 | `FunctionTarget.returnNullWhen/returnTrueWhen/returnFalseWhen(setting)` | Returns that value when the toggle is on. |
 | `FunctionTarget.wrapWhen(setting, export)` | Wraps with `export` when the toggle is on. |
+| `FunctionTarget.setArgumentWhen(setting, index, path, value)` | Calls the function with argument `index`'s property at the dotted `path` set to `value` when the toggle is on. |
 | `ExtJsModule(name)` | Declares an extension artifact, such as `discord-emotes`. |
 | `ExtJsModule.export(name)` | Declares a callable property of its exports object; returns `JsExport`. Validated on use. |
 

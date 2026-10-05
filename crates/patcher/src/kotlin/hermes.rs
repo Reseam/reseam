@@ -58,6 +58,7 @@ pub fn hermes_find_function(
 #[derive(Debug, Clone)]
 pub enum HermesArgument {
     Bool(bool),
+    Int(i32),
     Text(String),
     Export(HermesExportRef),
 }
@@ -114,6 +115,7 @@ pub fn hermes_wrap(
             .map(|argument| {
                 Ok(match argument {
                     HermesArgument::Bool(value) => Argument::Bool(value),
+                    HermesArgument::Int(value) => Argument::Int(value),
                     HermesArgument::Text(text) => Argument::String(text),
                     HermesArgument::Export(export) => Argument::Export {
                         module: link(&export.module)?,

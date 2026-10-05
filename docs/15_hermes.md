@@ -97,6 +97,6 @@ isStaff.returnTrueWhen(DiscordSettings.developerMenu)
 canUseAnimatedEmojis.wrapWhen(DiscordSettings.animatedEmojis, Emotes.canUseAnimatedEmojis)
 ```
 
-`skipWhen` returns `undefined`, and `returnNullWhen`, `returnTrueWhen` and `returnFalseWhen` return that value, when the toggle is on; otherwise they call the app function. `wrapWhen` runs your export when the toggle is on and the unchanged function otherwise, so the export itself does not check settings. Each toggle is read once per process, through the `ReseamSettings` React Native module that the app's settings host registers.
+`skipWhen` returns `undefined`, and `returnNullWhen`, `returnTrueWhen` and `returnFalseWhen` return that value, when the toggle is on; otherwise they call the app function. `wrapWhen` runs your export when the toggle is on and the unchanged function otherwise, so the export itself does not check settings. `setArgumentWhen(setting, index, path, value)` calls the function with one property of an argument replaced, such as `setArgumentWhen(setting, 0, "options.animate", false)`; the objects along the path are copied, not changed. Each toggle is read once per process, through the `ReseamSettings` React Native module that the app's settings host registers.
 
 See the [reference](reference.md#hermes) for the authoring API.

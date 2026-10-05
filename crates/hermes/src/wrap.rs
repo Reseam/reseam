@@ -12,6 +12,7 @@ use crate::{Function, FunctionId, ModuleId, StringId, StringKind};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Argument {
     Bool(bool),
+    Int(i32),
     String(String),
     /// A callable that a linked module exports.
     Export {
@@ -23,6 +24,7 @@ pub enum Argument {
 #[derive(Clone)]
 pub(crate) enum Bound {
     Bool(bool),
+    Int(i32),
     String(StringId),
     Export { module: ModuleId, name: StringId },
 }
@@ -84,6 +86,7 @@ impl Editor<'_> {
             .map(|argument| {
                 Ok(match argument {
                     Argument::Bool(value) => Bound::Bool(*value),
+                    Argument::Int(value) => Bound::Int(*value),
                     Argument::String(text) => Bound::String(self.intern(text, StringKind::String)?),
                     Argument::Export { module, name } => Bound::Export {
                         module: *module,
@@ -609,6 +612,12 @@ fn load_bound(code: &mut Vec<Instruction>, bound: &[Bound], depth: u8) -> u8 {
         match value {
             Bound::Bool(true) => code.push(instruction("LoadConstTrue", &[12])),
             Bound::Bool(false) => code.push(instruction("LoadConstFalse", &[12])),
+            Bound::Int(value) => {
+                code.push(instruction(
+                    "LoadConstInt",
+                    &[12, u64::from(value.cast_unsigned())],
+                ));
+            }
             Bound::String(text) => {
                 code.push(instruction(
                     "LoadConstStringLongIndex",

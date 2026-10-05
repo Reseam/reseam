@@ -32,6 +32,7 @@ internal object ReseamJsSettings : ExtJsModule("settings-js") {
     val returnTrueWhen = export("returnTrueWhen")
     val returnFalseWhen = export("returnFalseWhen")
     val wrapWhen = export("wrapWhen")
+    val setArgumentWhen = export("setArgumentWhen")
 }
 
 const val SETTINGS_SCHEMA_PATH = "assets/reseam/settings.json"

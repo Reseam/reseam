@@ -93,4 +93,30 @@ fun FunctionTarget.wrapWhen(setting: ToggleSetting, export: JsExport) =
         setting.bound() + HermesArgument.Export(HermesExportRef(export.module.name, export.name)),
     )
 
+/**
+ * Calls the function with a copy of argument [index] whose property at [path] is [value] when the
+ * toggle is on. [path] names nested properties with dots, such as `options.renderReplies`; each
+ * object along it is shallow-copied, so the caller's object is not changed.
+ */
+fun FunctionTarget.setArgumentWhen(
+    setting: ToggleSetting,
+    index: Int,
+    path: String,
+    value: Boolean,
+) {
+    require(index >= 0) { "setArgumentWhen(${setting.key}) needs a nonnegative argument index" }
+    require(path.split('.').none(String::isEmpty)) {
+        "setArgumentWhen(${setting.key}) needs property names separated by dots, got '$path'"
+    }
+    wrap(
+        ReseamJsSettings.setArgumentWhen,
+        setting.bound() +
+            listOf(
+                HermesArgument.Int(index),
+                HermesArgument.Text(path),
+                HermesArgument.Bool(value),
+            ),
+    )
+}
+
 private fun ToggleSetting.bound() = listOf(HermesArgument.Text(key), HermesArgument.Bool(default))
