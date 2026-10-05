@@ -16,6 +16,8 @@ import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import org.gradle.process.ExecOperations
 
@@ -26,7 +28,9 @@ internal abstract class DexTask @Inject constructor(private val exec: ExecOperat
     @get:InputFiles abstract val sources: ConfigurableFileCollection
 
     /** Android libraries the extension ships; their native libraries cannot be carried. */
-    @get:InputFiles abstract val shippedAars: ConfigurableFileCollection
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val shippedAars: ConfigurableFileCollection
 
     /** Classes referenced but not dexed, so d8 can desugar against them. */
     @get:Classpath abstract val libraries: ConfigurableFileCollection

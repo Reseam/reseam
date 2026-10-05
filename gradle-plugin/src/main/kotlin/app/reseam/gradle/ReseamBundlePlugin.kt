@@ -47,7 +47,7 @@ internal class ReseamBundlePlugin : Plugin<Project> {
         val extensionHbc = project.provider {
             project.subprojects
                 .filter { it.plugins.hasPlugin(ReseamJavascriptPlugin::class.java) }
-                .map { it.tasks.named("hermes98", HermesCompileTask::class.java) }
+                .map { it.tasks.named(HermesCompiler.TASK, HermesCompileTask::class.java) }
         }
 
         val globalsDex =
@@ -72,7 +72,7 @@ internal class ReseamBundlePlugin : Plugin<Project> {
                     dependsOn(task)
                     from(task.flatMap { it.output }) {
                         include("*.hbc")
-                        into("resources/hermes/v98")
+                        into("resources/hermes/v${HermesCompiler.BYTECODE_VERSION}")
                     }
                 }
                 from(patchJars.map { jars -> jars.map { jar -> jar.map { it.archiveFile } } })

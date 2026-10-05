@@ -55,6 +55,8 @@ internal class ReseamExtensionPlugin : Plugin<Project> {
                 shippedAars.from(
                     runtime.incoming
                         .artifactView {
+                            // Plain jars have no aar variant; real resolution failures still fail
+                            // the runtime classpath in sources.
                             lenient(true)
                             attributes.attribute(ARTIFACT_TYPE, "aar")
                         }

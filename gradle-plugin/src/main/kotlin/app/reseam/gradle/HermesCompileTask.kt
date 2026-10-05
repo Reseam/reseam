@@ -7,11 +7,10 @@ import java.io.File
 import java.io.OutputStream
 import java.security.DigestInputStream
 import java.security.MessageDigest
+import java.util.HexFormat
 import javax.inject.Inject
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
-import org.gradle.api.Plugin
-import org.gradle.api.Project
 import org.gradle.api.file.ArchiveOperations
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.FileCollection
@@ -26,26 +25,12 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import org.gradle.process.ExecOperations
 
-internal class ReseamJavascriptPlugin : Plugin<Project> {
-    override fun apply(project: Project) {
-        project.reseamArtifact()
-        require(!project.file("src/main/java").isDirectory) {
-            "JavaScript and Java extensions need separate modules"
-        }
-        project.repositories.ivy {
-            url = project.uri("https://registry.npmjs.org")
-            patternLayout { artifact("[organisation]/-/[module]-[revision].[ext]") }
-            metadataSources { artifact() }
-            content { includeModule("hermes-compiler", "hermes-compiler") }
-        }
-        project.tasks.register("hermes98", HermesCompileTask::class.java) {
-            group = "build"
-            description = "Compiles the JavaScript extension to Hermes v98 bytecode."
-            sources.set(project.layout.projectDirectory.dir("src/main/js"))
-            artifact.set(project.reseamArtifact().name)
-            output.set(project.layout.buildDirectory.dir("reseam/hermes/v98"))
-        }
-    }
+/** The pinned Hermes compiler release and the bytecode version it emits. */
+internal object HermesCompiler {
+    const val BYTECODE_VERSION = 98
+    const val PACKAGE = "hermes-compiler:hermes-compiler:250829098.0.19@tgz"
+    const val SHA256 = "839af099f0926b5ebbd738ba54764a3f40e35dfc3aac91babf56f8eb7c69280e"
+    const val TASK = "hermes$BYTECODE_VERSION"
 }
 
 internal abstract class HermesCompileTask
@@ -61,9 +46,7 @@ constructor(
             .fileCollection()
             .from(
                 project.configurations.detachedConfiguration(
-                    project.dependencies.create(
-                        "hermes-compiler:hermes-compiler:250829098.0.19@tgz"
-                    )
+                    project.dependencies.create(HermesCompiler.PACKAGE)
                 )
             )
 
@@ -80,11 +63,8 @@ constructor(
         DigestInputStream(archive.inputStream(), digest).use {
             it.copyTo(OutputStream.nullOutputStream())
         }
-        if (
-            java.util.HexFormat.of().formatHex(digest.digest()) !=
-                "839af099f0926b5ebbd738ba54764a3f40e35dfc3aac91babf56f8eb7c69280e"
-        ) {
-            throw GradleException("Hermes compiler v98 archive checksum does not match")
+        if (HexFormat.of().formatHex(digest.digest()) != HermesCompiler.SHA256) {
+            throw GradleException("Hermes compiler archive checksum does not match")
         }
         val tools = File(temporaryDir, "compiler")
         files.sync {
