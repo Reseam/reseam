@@ -8,6 +8,7 @@
 //! output preserves every byte, including padding, the footer, and any epilogue.
 
 mod assemble;
+mod constant;
 mod edit;
 mod error;
 mod exports;
@@ -19,6 +20,7 @@ mod parse;
 mod wrap;
 mod write;
 
+pub use constant::Constant;
 pub use edit::{Editor, Edits};
 pub use error::{HermesError, Result};
 pub use index::FunctionIndex;

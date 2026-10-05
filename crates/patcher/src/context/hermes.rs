@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use reseam_apk::Compression;
 use reseam_hermes::{
-    Argument, Editor, Edits, FunctionId, FunctionIndex, HermesFile, HermesImage, ModuleId,
+    Argument, Constant, Editor, Edits, FunctionId, FunctionIndex, HermesFile, HermesImage, ModuleId,
 };
 use reseam_storage::Bytes;
 
@@ -98,6 +98,15 @@ impl PatchContext<'_> {
     ) -> Result<()> {
         self.hermes_session()?
             .edit(|editor| Ok(editor.wrap(function, module, export, bound)?))
+    }
+
+    pub(crate) fn hermes_always_return(
+        &mut self,
+        function: FunctionId,
+        value: &Constant,
+    ) -> Result<()> {
+        self.hermes_session()?
+            .edit(|editor| Ok(editor.always_return(function, value)?))
     }
 
     /// Writes the bundle back when a patch changed it.

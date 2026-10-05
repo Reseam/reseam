@@ -4,7 +4,7 @@
 use std::cell::RefCell;
 
 use boltffi::{data, export};
-use reseam_hermes::{Argument, FunctionId, ModuleId};
+use reseam_hermes::{Argument, Constant, FunctionId, ModuleId};
 
 use super::handles::{HandleSpace, bundle_path, with_ctx_result};
 
@@ -49,6 +49,48 @@ pub fn hermes_find_function(
     })
 }
 
+fn function(handle: u32) -> Result<FunctionId, String> {
+    FUNCTIONS.with(|functions| {
+        let functions = functions.borrow();
+        let slot = functions
+            .identities
+            .slot(handle)
+            .ok_or("stale Hermes function handle")?;
+        functions
+            .entries
+            .get(slot)
+            .copied()
+            .ok_or_else(|| "stale Hermes function handle".to_owned())
+    })
+}
+
+/// A value a replaced Hermes function returns.
+#[data]
+#[derive(Debug, Clone)]
+pub enum HermesConstant {
+    Undefined,
+    Null,
+    Bool(bool),
+    Int(i32),
+    Text(String),
+}
+
+#[export]
+pub fn hermes_always_return(handle: u32, value: HermesConstant) -> Result<(), String> {
+    let function = function(handle)?;
+    let value = match value {
+        HermesConstant::Undefined => Constant::Undefined,
+        HermesConstant::Null => Constant::Null,
+        HermesConstant::Bool(value) => Constant::Bool(value),
+        HermesConstant::Int(value) => Constant::Int(value),
+        HermesConstant::Text(text) => Constant::Text(text),
+    };
+    with_ctx_result(|ctx| {
+        ctx.hermes_always_return(function, &value)
+            .map_err(|e| e.to_string())
+    })
+}
+
 /// A value bound into a wrap ahead of `original`.
 #[data]
 #[derive(Debug, Clone)]
@@ -74,18 +116,7 @@ pub fn hermes_wrap(
     export: String,
     bound: Vec<HermesArgument>,
 ) -> Result<(), String> {
-    let function = FUNCTIONS.with(|functions| {
-        let functions = functions.borrow();
-        let slot = functions
-            .identities
-            .slot(handle)
-            .ok_or("stale Hermes function handle")?;
-        functions
-            .entries
-            .get(slot)
-            .copied()
-            .ok_or("stale Hermes function handle")
-    })?;
+    let function = function(handle)?;
     with_ctx_result(|ctx| {
         let mut link = |name: &str| -> Result<ModuleId, String> {
             if name.is_empty()

@@ -99,24 +99,19 @@ impl Editor<'_> {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
-        if function == self.file.global_function() {
-            return Err(HermesError::Unsupported("global function".into()));
-        }
-        let target = self.file.function(function)?;
-        if target.header.flags.kind != FunctionKind::Normal
-            || target.header.flags.prohibit == Prohibit::Call
-            || target
-                .instructions()?
-                .iter()
-                .any(|i| matches!(i.op, Op::GetNewTarget | Op::DirectEval))
+        let target = self.editable(function)?;
+        let plan = self.hook_plan(function)?;
+        if let Some(id) = plan
+            .roots
+            .keys()
+            .find(|id| self.edits.discarded.contains(id) && !self.edits.relocated.contains_key(id))
         {
             return Err(HermesError::Unsupported(format!(
-                "function {} is a generator, async function, constructor or uses new.target/eval",
-                function.0
+                "function {} returns a constant, so the closures this wrap needs no longer exist",
+                id.0
             )));
         }
-        let plan = self.hook_plan(function)?;
-        let rewrap = self.edits.wrapped.contains(&function);
+        let rewrap = self.edits.functions.contains_key(&function);
         let previous = if rewrap {
             self.edits.functions[&function].clone()
         } else {
@@ -133,7 +128,6 @@ impl Editor<'_> {
         self.append_function(previous);
         self.append_function(bound_original(target.name()));
         self.edits.functions.insert(function, body);
-        self.edits.wrapped.insert(function);
         if !rewrap {
             self.edits.relocated.insert(function, original);
         }
@@ -266,6 +260,30 @@ impl Editor<'_> {
                 Ok((self.edits.relocated.get(&id).copied().unwrap_or(id), body))
             })
             .collect()
+    }
+}
+
+impl<'a> Editor<'a> {
+    /// The app function whose body an edit may replace. Generators, async functions and
+    /// constructors keep state or a receiver that a replaced body cannot reproduce.
+    pub(crate) fn editable(&self, function: FunctionId) -> Result<Function<'a>> {
+        if function == self.file.global_function() {
+            return Err(HermesError::Unsupported("global function".into()));
+        }
+        let target = self.file.function(function)?;
+        if target.header.flags.kind != FunctionKind::Normal
+            || target.header.flags.prohibit == Prohibit::Call
+            || target
+                .instructions()?
+                .iter()
+                .any(|i| matches!(i.op, Op::GetNewTarget | Op::DirectEval))
+        {
+            return Err(HermesError::Unsupported(format!(
+                "function {} is a generator, async function, constructor or uses new.target/eval",
+                function.0
+            )));
+        }
+        Ok(target)
     }
 }
 
