@@ -1,19 +1,16 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use std::io::Write;
 
-use crate::edit::Editor;
+use crate::Result;
+use crate::edit::{EditedFunction, Editor};
 use crate::error::invalid;
-use crate::model::{FunctionHeader, FunctionId, Section};
+use crate::model::{
+    ExceptionHandler, FOOTER_SIZE, Field, FunctionHeader, FunctionId, HEADER_SIZE,
+    LARGE_HEADER_SIZE, SMALL_HEADER_SIZE, Section,
+};
 use crate::parse::align;
-use crate::{HermesFile, Result};
-
-impl HermesFile<'_> {
-    /// Streams an unmodified file byte for byte, preserving padding, footer,
-    /// debug information and trailing epilogue. IO errors propagate to callers.
-    pub fn write(&self, output: &mut impl Write) -> Result<()> {
-        output.write_all(self.source)?;
-        Ok(())
-    }
-}
 
 struct PlannedFunction {
     header: FunctionHeader,
@@ -33,11 +30,9 @@ impl Editor<'_> {
         reason = "the layout and streaming passes follow the same ordered file segments"
     )]
     pub fn write(&self, output: &mut impl Write) -> Result<()> {
-        if self.edits.strings.is_empty()
-            && self.edits.appended.is_empty()
-            && self.edits.functions.is_empty()
-        {
-            return self.file.write(output);
+        if self.edits.is_empty() {
+            output.write_all(self.file.source)?;
+            return Ok(());
         }
         let mut finalized = self.rooted_functions()?;
         if let Some(bootstrap) = self.bootstrap() {
@@ -45,12 +40,10 @@ impl Editor<'_> {
         }
         let count = self.file.function_count() as usize + self.edits.appended.len();
         let old_tail = self.file.sections[Section::Sources as usize].end;
-        let old_debug = self.file.header[20] as usize;
-        let mut cursor = 128 + count * 12;
-        for section in 1..15 {
-            cursor = align(cursor)
-                + self.file.sections[section].len()
-                + self.edits.additions[section].len();
+        let old_debug = self.file.field(Field::DebugInfoOffset) as usize;
+        let mut cursor = HEADER_SIZE + count * SMALL_HEADER_SIZE;
+        for section in &Section::ALL[1..] {
+            cursor = align(cursor) + self.section_size(*section);
         }
         let new_tail = cursor;
         let shift = new_tail
@@ -62,7 +55,7 @@ impl Editor<'_> {
         for index in 0..self.file.function_count() {
             let original = self.file.function(FunctionId(index))?;
             let mut header = original.header;
-            let old_large = (header.info_offset != 0).then(|| header.info_offset - 40);
+            let old_large = header.large;
             if let Some(offset) = old_large {
                 patches.insert(
                     offset,
@@ -84,7 +77,7 @@ impl Editor<'_> {
                 let large_offset = old_large
                     .map(|offset| relocate(offset, shift))
                     .transpose()?;
-                let emit_large = large_offset.is_none() && !fits_small(&header);
+                let emit_large = large_offset.is_none() && !header.fits_small();
                 planned.push(PlannedFunction {
                     header,
                     large_offset,
@@ -109,48 +102,30 @@ impl Editor<'_> {
         for (index, function) in planned.iter_mut().enumerate().filter(|(_, f)| f.emit_large) {
             cursor = align(cursor);
             function.large_offset = Some(as_offset(cursor)?);
-            cursor += 40;
+            cursor = align(cursor + LARGE_HEADER_SIZE);
             if let Some(edited) = self.edited_at(index, &finalized)
                 && !edited.exceptions.is_empty()
             {
-                cursor += 4 + edited.exceptions.len() * 12;
+                cursor += ExceptionHandler::table_size(edited.exceptions.len());
             }
         }
         cursor = align(cursor);
         let debug = as_offset(cursor)?;
-        let old_footer = self.file.header[1] as usize - 20;
+        let file_length = self.file.field(Field::FileLength) as usize;
+        let old_footer = file_length - FOOTER_SIZE;
         cursor += old_footer - old_debug;
-        let length = as_offset(cursor + 20)?;
-        let mut header = self.file.source[..128].to_vec();
-        put(&mut header, 32, length);
-        put(&mut header, 36, self.edits.global.0);
-        put(&mut header, 40, count as u32);
-        let fields = [
-            (Section::Kinds, 44, 4),
-            (Section::Hashes, 48, 4),
-            (Section::Strings, 52, 4),
-            (Section::Overflow, 56, 8),
-            (Section::Storage, 60, 1),
-            (Section::BigInts, 64, 8),
-            (Section::BigIntStorage, 68, 1),
-            (Section::Regexps, 72, 8),
-            (Section::RegexpStorage, 76, 1),
-            (Section::Values, 80, 1),
-            (Section::Keys, 84, 1),
-            (Section::Shapes, 88, 8),
-            (Section::Modules, 100, 8),
-            (Section::Sources, 104, 8),
-        ];
-        for (section, offset, stride) in fields {
-            put(
-                &mut header,
-                offset,
-                ((self.file.section(section).len() + self.edits.additions[section as usize].len())
-                    / stride) as u32,
-            );
+        let mut header = self.file.source[..HEADER_SIZE].to_vec();
+        let mut put = |field: Field, value: u32| {
+            header[field as usize..field as usize + 4].copy_from_slice(&value.to_le_bytes());
+        };
+        put(Field::FileLength, as_offset(cursor + FOOTER_SIZE)?);
+        put(Field::GlobalFunction, self.edits.global.0);
+        put(Field::FunctionCount, count as u32);
+        for section in &Section::ALL[1..] {
+            put(section.count(), self.section_count(*section));
         }
-        put(&mut header, 108, debug);
-        put(&mut header, 92, self.edits.string_switches);
+        put(Field::DebugInfoOffset, debug);
+        put(Field::StringSwitchCount, self.edits.string_switches);
         let mut sink = Sink {
             output,
             hash: ring::digest::Context::new(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY),
@@ -158,12 +133,12 @@ impl Editor<'_> {
         };
         sink.bytes(&header)?;
         for function in &planned {
-            sink.bytes(&small_header(&function.header, function.large_offset))?;
+            sink.bytes(&function.header.encode_small(function.large_offset))?;
         }
-        for section in 1..15 {
+        for section in &Section::ALL[1..] {
             sink.align()?;
-            sink.bytes(&self.file.source[self.file.sections[section].clone()])?;
-            sink.bytes(&self.edits.additions[section])?;
+            sink.bytes(self.file.section(*section))?;
+            sink.bytes(&self.edits.additions[*section as usize])?;
         }
         let mut start = old_tail;
         for (offset, bytes) in patches {
@@ -183,32 +158,27 @@ impl Editor<'_> {
         }
         for (index, function) in planned.iter().enumerate().filter(|(_, f)| f.emit_large) {
             sink.align()?;
-            sink.bytes(&large_header(&function.header))?;
+            sink.bytes(&function.header.encode_large())?;
             sink.align()?;
             if let Some(edited) = self.edited_at(index, &finalized)
                 && !edited.exceptions.is_empty()
             {
-                sink.bytes(&(edited.exceptions.len() as u32).to_le_bytes())?;
-                for exception in &edited.exceptions {
-                    for value in exception {
-                        sink.bytes(&value.to_le_bytes())?;
-                    }
-                }
+                sink.bytes(&ExceptionHandler::encode_table(&edited.exceptions))?;
             }
         }
         sink.align()?;
         sink.bytes(&self.file.source[old_debug..old_footer])?;
         let digest = sink.hash.finish();
         output.write_all(digest.as_ref())?;
-        output.write_all(&self.file.source[self.file.header[1] as usize..])?;
+        output.write_all(&self.file.source[file_length..])?;
         Ok(())
     }
 
     fn edited_at<'a>(
         &'a self,
         index: usize,
-        finalized: &'a std::collections::BTreeMap<FunctionId, crate::edit::EditedFunction>,
-    ) -> Option<&'a crate::edit::EditedFunction> {
+        finalized: &'a std::collections::BTreeMap<FunctionId, EditedFunction>,
+    ) -> Option<&'a EditedFunction> {
         if let Some(edited) = finalized.get(&FunctionId(index as u32)) {
             return Some(edited);
         }
@@ -232,77 +202,6 @@ fn relocate(offset: usize, shift: usize) -> Result<u32> {
             .checked_add(shift)
             .ok_or_else(|| invalid(offset, "offset overflow"))?,
     )
-}
-
-fn put(bytes: &mut [u8], offset: usize, value: u32) {
-    bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
-}
-
-fn fits_small(h: &FunctionHeader) -> bool {
-    h.offset < 1 << 25
-        && h.parameters < 32
-        && h.loop_depth < 4
-        && h.size < 1 << 14
-        && h.name < 256
-        && h.number_regs < 32
-        && h.non_pointer_regs < 32
-        && h.frame_size < 256
-        && h.write_cache < 64
-        && h.object_cache < 2
-        && h.private_cache < 2
-        && h.flags & 0x18 == 0
-}
-
-fn small_header(h: &FunctionHeader, large: Option<u32>) -> [u8; 12] {
-    let mut bytes = [0; 12];
-    if let Some(offset) = large {
-        put(&mut bytes, 0, offset & 0x00ff_ffff);
-        put(&mut bytes, 4, (offset >> 24) << 14);
-        bytes[11] = 32;
-    } else {
-        put(
-            &mut bytes,
-            0,
-            h.offset | h.parameters << 25 | h.loop_depth << 30,
-        );
-        put(
-            &mut bytes,
-            4,
-            h.size | h.name << 14 | h.number_regs << 22 | h.non_pointer_regs << 27,
-        );
-        bytes[8] = h.frame_size as u8;
-        bytes[9] = h.read_cache;
-        bytes[10] = h.write_cache | h.object_cache << 6 | h.private_cache << 7;
-        bytes[11] = h.flags & !32;
-    }
-    bytes
-}
-
-fn large_header(h: &FunctionHeader) -> [u8; 37] {
-    let mut bytes = [0; 37];
-    for (index, value) in [
-        h.offset,
-        h.parameters,
-        h.loop_depth,
-        h.size,
-        h.name,
-        h.number_regs,
-        h.non_pointer_regs,
-        h.frame_size,
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        put(&mut bytes, index * 4, value);
-    }
-    bytes[32..].copy_from_slice(&[
-        h.read_cache,
-        h.write_cache,
-        h.object_cache,
-        h.private_cache,
-        h.flags | 32,
-    ]);
-    bytes
 }
 
 struct Sink<'a, W> {

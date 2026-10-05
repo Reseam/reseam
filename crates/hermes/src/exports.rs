@@ -1,7 +1,11 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::opcode::OperandKind;
-use crate::{FunctionId, HermesFile, Result, StringId};
+use crate::model::StringId;
+use crate::opcode::Op;
+use crate::{FunctionId, HermesFile, Result};
 
 #[derive(Clone, Copy)]
 enum Value {
@@ -9,6 +13,8 @@ enum Value {
     Function(FunctionId),
 }
 
+/// The properties a module's global function returns on its exports object:
+/// those every return path assigns a closure to, before any branch.
 pub(crate) fn exports(file: &HermesFile<'_>) -> Result<Vec<StringId>> {
     resolve(file, file.global_function(), &mut BTreeSet::new())
         .map(|fields| fields.into_iter().collect())
@@ -27,43 +33,47 @@ fn resolve(
     let mut returned: Option<BTreeSet<StringId>> = None;
     let mut branched = false;
     for inst in file.function(id)?.instructions()? {
-        let name = inst.definition().name;
         let v = &inst.values;
-        let value = match name {
-            "NewObject" => {
-                let object = objects.len();
+        let register = |operand: usize| registers.get(&(v[operand] as u32)).copied();
+        let value = match inst.op {
+            Op::NewObject => {
                 objects.push(BTreeSet::new());
-                Some(Value::Object(object))
+                Some(Value::Object(objects.len() - 1))
             }
-            "CreateClosure" | "CreateClosureLongIndex" => {
+            Op::CreateClosure | Op::CreateClosureLongIndex => {
                 Some(Value::Function(FunctionId(v[2] as u32)))
             }
-            "Mov" | "MovLong" => registers.get(&(v[1] as u32)).copied(),
-            "Call1" | "Call2" | "Call3" | "Call4" => {
-                if let Some(Value::Function(callee)) = registers.get(&(v[1] as u32)) {
-                    let fields = resolve(file, *callee, visiting)?;
-                    let object = objects.len();
-                    objects.push(fields);
-                    Some(Value::Object(object))
+            Op::Mov | Op::MovLong => register(1),
+            Op::Call1 | Op::Call2 | Op::Call3 | Op::Call4 => {
+                if let Some(Value::Function(callee)) = register(1) {
+                    objects.push(resolve(file, callee, visiting)?);
+                    Some(Value::Object(objects.len() - 1))
                 } else {
                     None
                 }
             }
             _ => None,
         };
-        if (name.starts_with("PutById") || matches!(name, "DefineOwnById" | "DefineOwnByIdLong"))
-            && let Some(Value::Object(object)) = registers.get(&(v[0] as u32))
+        if matches!(
+            inst.op,
+            Op::PutByIdLoose
+                | Op::PutByIdStrict
+                | Op::PutByIdLooseLong
+                | Op::PutByIdStrictLong
+                | Op::DefineOwnById
+                | Op::DefineOwnByIdLong
+        ) && let Some(Value::Object(object)) = register(0)
         {
             let key = StringId(v[3] as u32);
-            if !branched && matches!(registers.get(&(v[1] as u32)), Some(Value::Function(_))) {
-                objects[*object].insert(key);
+            if !branched && matches!(register(1), Some(Value::Function(_))) {
+                objects[object].insert(key);
             } else {
-                objects[*object].remove(&key);
+                objects[object].remove(&key);
             }
         }
-        if name == "Ret" {
-            let fields = if let Some(Value::Object(object)) = registers.get(&(v[0] as u32)) {
-                objects[*object].clone()
+        if inst.op == Op::Ret {
+            let fields = if let Some(Value::Object(object)) = register(0) {
+                objects[object].clone()
             } else {
                 BTreeSet::new()
             };
@@ -73,18 +83,12 @@ fn resolve(
                 returned = Some(fields);
             }
         }
-        branched |= inst
-            .definition()
-            .operands
-            .iter()
-            .any(|o| matches!(o.kind, OperandKind::Addr8 | OperandKind::Addr32));
-        let writes_first = inst.definition().writes_first_register();
-        if writes_first {
-            if let Some(value) = value {
-                registers.insert(v[0] as u32, value);
-            } else {
-                registers.remove(&(v[0] as u32));
-            }
+        branched |= inst.operands().any(|(o, _)| o.kind.is_address());
+        for written in inst.written_registers() {
+            registers.remove(&written);
+        }
+        if let Some(value) = value {
+            registers.insert(v[0] as u32, value);
         }
     }
     visiting.remove(&id);

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use thiserror::Error;
 
 /// A malformed file, unsupported operation, or output failure.

@@ -1,19 +1,23 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use crate::assemble::{assemble, encode, instruction};
+use crate::assemble::{assemble, encode};
 use crate::edit::{EditedFunction, Editor, FunctionBody, Hook};
 use crate::error::{HermesError, Result, invalid};
 use crate::link::generated_function;
-use crate::opcode::{IdKind, Instruction, OperandKind};
-use crate::parse::{read_u32, slice, switch_table};
-use crate::{Function, FunctionId, ModuleId, StringId, StringKind};
+use crate::model::{FunctionKind, Prohibit, StringId, StringKind};
+use crate::opcode::{BUILTIN_APPLY, BUILTIN_APPLYARGUMENTS, IdKind, Instruction, Op, OperandKind};
+use crate::parse::switch_table;
+use crate::{Function, FunctionId, ModuleId};
 
 /// A value a wrap passes to its export ahead of `original`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Argument {
     Bool(bool),
     Int(i32),
-    String(String),
+    Text(String),
     /// A callable that a linked module exports.
     Export {
         module: ModuleId,
@@ -25,7 +29,7 @@ pub enum Argument {
 pub(crate) enum Bound {
     Bool(bool),
     Int(i32),
-    String(StringId),
+    Text(StringId),
     Export { module: ModuleId, name: StringId },
 }
 
@@ -46,10 +50,10 @@ struct ClosureSite {
 }
 
 impl Editor<'_> {
-    /// Replaces calls to `function` with `export(...bound, original, ...arguments)`.
-    /// `bound` values are fixed when the wrap is made, so one export can serve
-    /// several targets. The export receives the same receiver. `original` is receiver-bound and
-    /// invokes the previous wrap, or the unchanged body for the first wrap,
+    /// Replaces the body of `function` with a call to `export(...bound, original, ...arguments)`;
+    /// callers are untouched. `bound` values are fixed when the wrap is made, so one export can
+    /// serve several targets. The export receives the same receiver. `original` is receiver-bound
+    /// and invokes the previous wrap, or the unchanged body for the first wrap,
     /// with the original captured environment. Later wraps run outermost,
     /// including exports from different modules, in application order.
     /// Generators, async functions, constructors, globals,
@@ -87,7 +91,7 @@ impl Editor<'_> {
                 Ok(match argument {
                     Argument::Bool(value) => Bound::Bool(*value),
                     Argument::Int(value) => Bound::Int(*value),
-                    Argument::String(text) => Bound::String(self.intern(text, StringKind::String)?),
+                    Argument::Text(text) => Bound::Text(self.intern(text, StringKind::String)?),
                     Argument::Export { module, name } => Bound::Export {
                         module: *module,
                         name: self.declared_export(*module, name)?,
@@ -99,12 +103,12 @@ impl Editor<'_> {
             return Err(HermesError::Unsupported("global function".into()));
         }
         let target = self.file.function(function)?;
-        if target.header.flags >> 6 != 0
-            || target.header.flags.trailing_zeros() >= 2
+        if target.header.flags.kind != FunctionKind::Normal
+            || target.header.flags.prohibit == Prohibit::Call
             || target
                 .instructions()?
                 .iter()
-                .any(|i| matches!(i.definition().name, "GetNewTarget" | "DirectEval"))
+                .any(|i| matches!(i.op, Op::GetNewTarget | Op::DirectEval))
         {
             return Err(HermesError::Unsupported(format!(
                 "function {} is a generator, async function, constructor or uses new.target/eval",
@@ -150,13 +154,9 @@ impl Editor<'_> {
         let declared = self.edits.module_exports[module.0 as usize]
             .iter()
             .any(|id| {
-                let added = &self.edits.strings[(id.0 - self.file.string_count()) as usize];
-                let value = if added.utf16 {
-                    crate::StringValue::Utf16(&added.value)
-                } else {
-                    crate::StringValue::Latin1(&added.value)
-                };
-                value.equals(export)
+                self.edits.strings[(id.0 - self.file.string_count()) as usize]
+                    .value()
+                    .equals(export)
             });
         if !declared {
             return Err(HermesError::Unsupported(format!(
@@ -260,16 +260,10 @@ impl Editor<'_> {
             .iter()
             .map(|(&id, root)| {
                 let function = self.file.function(id)?;
-                let mut body =
+                let body =
                     attach_root(&function, function.instructions()?, root.depth, &root.sites)?;
                 // A wrapped function's original body lives on in the function its wrapper calls.
-                Ok(match self.edits.relocated.get(&id) {
-                    Some(&holder) => {
-                        body.header.flags = relocated_flags(body.header.flags);
-                        (holder, body)
-                    }
-                    None => (id, body),
-                })
+                Ok((self.edits.relocated.get(&id).copied().unwrap_or(id), body))
             })
             .collect()
     }
@@ -287,7 +281,7 @@ impl HookGraph {
         for id in (0..file.function_count()).map(FunctionId) {
             let function = file.function(id)?;
             for inst in function.instructions()? {
-                for (operand, value) in inst.definition().operands.iter().zip(inst.values) {
+                for (operand, value) in inst.operands() {
                     if operand.id == IdKind::Function {
                         parents
                             .entry(FunctionId(value as u32))
@@ -322,9 +316,7 @@ impl HookGraph {
                 entry.insert(ClosureAnalysis {
                     depth,
                     sites,
-                    top_level: code
-                        .iter()
-                        .any(|i| i.definition().name == "CreateTopLevelEnvironment"),
+                    top_level: code.iter().any(|i| i.op == Op::CreateTopLevelEnvironment),
                 })
             }
         };
@@ -356,10 +348,23 @@ struct HookPlan {
     roots: BTreeMap<FunctionId, RootAttachment>,
 }
 
-fn merge(existing: &mut State, incoming: &State) -> bool {
-    let before = existing.len();
-    existing.retain(|reg, value| incoming.get(reg) == Some(value));
-    existing.len() != before
+/// Merges `state` into the entry state of `next`, queueing it when that changes.
+fn flow(
+    states: &mut BTreeMap<usize, State>,
+    work: &mut VecDeque<usize>,
+    next: usize,
+    state: &State,
+) {
+    if let Some(existing) = states.get_mut(&next) {
+        let before = existing.len();
+        existing.retain(|reg, value| state.get(reg) == Some(value));
+        if existing.len() != before {
+            work.push_back(next);
+        }
+    } else {
+        states.insert(next, state.clone());
+        work.push_back(next);
+    }
 }
 
 fn successors(
@@ -369,11 +374,11 @@ fn successors(
     indices: &BTreeMap<u32, usize>,
 ) -> Result<Vec<usize>> {
     let inst = &code[index];
-    let name = inst.definition().name;
+    let origin = i64::from(inst.offset.expect("analysed instructions are decoded"));
     let mut result = Vec::new();
     let mut add = |relative: i64| -> Result<()> {
-        let target = u32::try_from(i64::from(inst.offset) + relative)
-            .map_err(|_| invalid(inst.offset as usize, "invalid environment-analysis branch"))?;
+        let target = u32::try_from(origin + relative)
+            .map_err(|_| invalid(origin as usize, "invalid environment-analysis branch"))?;
         result.push(
             *indices
                 .get(&target)
@@ -381,7 +386,7 @@ fn successors(
         );
         Ok(())
     };
-    for (operand, &value) in inst.definition().operands.iter().zip(&inst.values) {
+    for (operand, value) in inst.operands() {
         match operand.kind {
             OperandKind::Addr8 => add(i64::from(value as i8))?,
             OperandKind::Addr32 => add(i64::from(value as i32))?,
@@ -389,13 +394,19 @@ fn successors(
         }
     }
     if let Some(table) = switch_table(function, inst)? {
-        for entry in table.bytes.chunks_exact(table.stride) {
-            add(i64::from(read_u32(entry, table.stride - 4)? as i32))?;
+        for (_, target) in table.entries() {
+            add(i64::from(target))?;
         }
     }
     if !matches!(
-        name,
-        "Ret" | "Throw" | "Unreachable" | "Jmp" | "JmpLong" | "UIntSwitchImm" | "StringSwitchImm"
+        inst.op,
+        Op::Ret
+            | Op::Throw
+            | Op::Unreachable
+            | Op::Jmp
+            | Op::JmpLong
+            | Op::UIntSwitchImm
+            | Op::StringSwitchImm
     ) && index + 1 < code.len()
     {
         result.push(index + 1);
@@ -403,10 +414,8 @@ fn successors(
     Ok(result)
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "environment opcodes share a conservative dataflow transfer and merge"
-)]
+/// Tracks which registers hold `undefined` or a known environment depth, merging
+/// control-flow paths conservatively, and reports what each closure captures.
 fn analyse(
     function: &Function<'_>,
     code: &[Instruction],
@@ -418,108 +427,80 @@ fn analyse(
     let indices: BTreeMap<_, _> = code
         .iter()
         .enumerate()
-        .map(|(i, inst)| (inst.offset, i))
+        .map(|(i, inst)| (inst.offset.expect("analysed instructions are decoded"), i))
         .collect();
+    let handlers = function.exception_handlers()?;
     let mut states = BTreeMap::from([(0_usize, State::new())]);
     let mut work = VecDeque::from([0_usize]);
     while let Some(index) = work.pop_front() {
-        let mut state = states[&index].clone();
+        let before = states[&index].clone();
         let inst = &code[index];
+        let offset = inst.offset.expect("analysed instructions are decoded");
         let v = &inst.values;
-        let name = inst.definition().name;
         let shifted = |value: Value, delta: i32| -> Result<Value> {
             match value {
                 Value::Environment(depth) => {
                     let depth = i32::from(depth) + delta;
                     let depth = u16::try_from(depth).map_err(|_| {
-                        invalid(inst.offset as usize, "environment escapes private root")
+                        invalid(offset as usize, "environment escapes private root")
                     })?;
                     Ok(Value::Environment(depth))
                 }
-                Value::Undefined => Err(invalid(
-                    inst.offset as usize,
-                    "undefined environment parent",
-                )),
+                Value::Undefined => Err(invalid(offset as usize, "undefined environment parent")),
             }
         };
-        let value = match name {
-            "LoadConstUndefined" => Some(Value::Undefined),
-            "Mov" | "MovLong" => state.get(&(v[1] as u32)).copied(),
-            "GetParentEnvironment" => Some(shifted(Value::Environment(enclosing), -(v[1] as i32))?),
-            "CreateFunctionEnvironment" => Some(shifted(Value::Environment(enclosing), 1)?),
-            "CreateTopLevelEnvironment" => Some(Value::Environment(1)),
-            "CreateEnvironment" => state
+        let value = match inst.op {
+            Op::LoadConstUndefined => Some(Value::Undefined),
+            Op::Mov | Op::MovLong => before.get(&(v[1] as u32)).copied(),
+            Op::GetParentEnvironment => {
+                Some(shifted(Value::Environment(enclosing), -(v[1] as i32))?)
+            }
+            Op::CreateFunctionEnvironment => Some(shifted(Value::Environment(enclosing), 1)?),
+            Op::CreateTopLevelEnvironment => Some(Value::Environment(1)),
+            Op::CreateEnvironment => before
                 .get(&(v[1] as u32))
                 .copied()
                 .map(|p| shifted(p, 1))
                 .transpose()?,
-            "GetEnvironment" => state
+            Op::GetEnvironment => before
                 .get(&(v[1] as u32))
                 .copied()
                 .map(|p| shifted(p, -(v[2] as i32)))
                 .transpose()?,
             _ => None,
         };
-        let writes_first = inst.definition().writes_first_register();
-        if writes_first {
-            let register = v[0] as u32;
-            if let Some(value) = value {
-                state.insert(register, value);
-            } else {
-                state.remove(&register);
-            }
+        // A throwing instruction may have written any of its registers.
+        let mut thrown = before;
+        for register in inst.written_registers() {
+            thrown.remove(&register);
+        }
+        let mut after = thrown.clone();
+        if let Some(value) = value {
+            after.insert(v[0] as u32, value);
         }
         for next in successors(function, code, index, &indices)? {
-            if let Some(existing) = states.get_mut(&next) {
-                if merge(existing, &state) {
-                    work.push_back(next);
-                }
-            } else {
-                states.insert(next, state.clone());
-                work.push_back(next);
-            }
+            flow(&mut states, &mut work, next, &after);
         }
-        if function.header.flags & 8 != 0 {
-            let count = read_u32(function.source, function.header.info_offset)?;
-            for handler in 0..count as usize {
-                let entry = slice(
-                    function.source,
-                    function.header.info_offset + 4 + handler * 12,
-                    12,
-                )?;
-                if inst.offset >= read_u32(entry, 0)? && inst.offset < read_u32(entry, 4)? {
-                    let next = *indices
-                        .get(&read_u32(entry, 8)?)
-                        .ok_or_else(|| invalid(inst.offset as usize, "invalid exception target"))?;
-                    if let Some(existing) = states.get_mut(&next) {
-                        if merge(existing, &state) {
-                            work.push_back(next);
-                        }
-                    } else {
-                        states.insert(next, state.clone());
-                        work.push_back(next);
-                    }
-                }
-            }
+        for handler in handlers.iter().filter(|h| h.covers(offset)) {
+            let next = *indices
+                .get(&handler.target)
+                .ok_or_else(|| invalid(offset as usize, "invalid exception target"))?;
+            flow(&mut states, &mut work, next, &thrown);
         }
     }
     let mut sites = Vec::new();
     for (index, inst) in code.iter().enumerate() {
-        if !matches!(
-            inst.definition().name,
-            "CreateClosure" | "CreateClosureLongIndex"
-        ) {
+        if !matches!(inst.op, Op::CreateClosure | Op::CreateClosureLongIndex) {
             continue;
         }
         let Some(state) = states.get(&index) else {
             continue;
         };
-        let environment = state.get(&(inst.values[1] as u32)).copied();
         sites.push(ClosureSite {
             target: FunctionId(inst.values[2] as u32),
             instruction: index,
-            environment,
-            offset: inst.offset,
+            environment: state.get(&(inst.values[1] as u32)).copied(),
+            offset: inst.offset.expect("analysed instructions are decoded"),
         });
     }
     Ok(sites)
@@ -534,19 +515,22 @@ fn attach_root(
     let depth = u8::try_from(depth).map_err(|_| {
         HermesError::Unsupported("private environment deeper than 255 scopes".into())
     })?;
-    let mut rewritten = vec![instruction("GetParentEnvironment", &[0, u64::from(depth)])];
+    let mut rewritten = vec![Instruction::new(
+        Op::GetParentEnvironment,
+        &[0, u64::from(depth)],
+    )];
     for (index, mut inst) in code.into_iter().enumerate() {
         for (operand, value) in inst.definition().operands.iter().zip(&mut inst.values) {
-            if matches!(operand.kind, OperandKind::Reg8 | OperandKind::Reg32) {
+            if operand.kind.is_register() {
                 *value += 1;
             }
         }
         if attach.contains(&index) {
             inst.values[1] = 0;
         }
-        if inst.definition().name == "CreateTopLevelEnvironment" {
+        if inst.op == Op::CreateTopLevelEnvironment {
             let mut replacement =
-                instruction("CreateEnvironment", &[inst.values[0], 0, inst.values[1]]);
+                Instruction::new(Op::CreateEnvironment, &[inst.values[0], 0, inst.values[1]]);
             replacement.offset = inst.offset;
             rewritten.push(replacement);
         } else {
@@ -561,54 +545,27 @@ fn attach_root(
 }
 
 fn original_function(function: &Function<'_>) -> Result<EditedFunction> {
-    let mut end = function.header.offset as usize + function.header.size as usize;
+    let mut end = function.body_range().end;
     for inst in function.instructions()? {
         if let Some(table) = switch_table(function, &inst)? {
             end = end.max(table.offset + table.bytes.len());
         }
     }
-    let mut exceptions = Vec::new();
-    if function.header.flags & 8 != 0 {
-        let count = read_u32(function.source, function.header.info_offset)?;
-        for index in 0..count as usize {
-            let entry = slice(
-                function.source,
-                function.header.info_offset + 4 + index * 12,
-                12,
-            )?;
-            exceptions.push([
-                read_u32(entry, 0)?,
-                read_u32(entry, 4)?,
-                read_u32(entry, 8)?,
-            ]);
-        }
-    }
-    let mut header = function.header.clone();
-    header.flags = relocated_flags(header.flags);
-    Ok(EditedFunction {
-        header,
-        body: FunctionBody::Original(function.header.offset as usize..end),
-        exceptions,
-    })
-}
-
-/// A relocated body is called as an ordinary function by its wrapper, so it
-/// drops the flags that prohibit plain calls or construction.
-fn relocated_flags(flags: u8) -> u8 {
-    flags & !0x30
+    Ok(EditedFunction::new(
+        function.header.clone(),
+        FunctionBody::Original(function.body_range().start..end),
+        function.exception_handlers()?,
+    ))
 }
 
 fn bound_original(name: StringId) -> EditedFunction {
     let code = [
-        instruction("GetParentEnvironment", &[0, 0]),
-        instruction("LoadFromEnvironment", &[11, 0, 0]),
-        instruction("LoadFromEnvironment", &[10, 0, 1]),
-        instruction("LoadConstUndefined", &[9]),
-        instruction(
-            "CallBuiltin",
-            &[0, u64::from(crate::opcode::BUILTIN_APPLYARGUMENTS), 4],
-        ),
-        instruction("Ret", &[0]),
+        Instruction::new(Op::GetParentEnvironment, &[0, 0]),
+        Instruction::new(Op::LoadFromEnvironment, &[11, 0, 0]),
+        Instruction::new(Op::LoadFromEnvironment, &[10, 0, 1]),
+        Instruction::new(Op::LoadConstUndefined, &[9]),
+        Instruction::new(Op::CallBuiltin, &[0, u64::from(BUILTIN_APPLYARGUMENTS), 4]),
+        Instruction::new(Op::Ret, &[0]),
     ];
     generated_function(name, 1, 20, encode(&code))
 }
@@ -619,34 +576,37 @@ fn load_bound(code: &mut Vec<Instruction>, bound: &[Bound], depth: u8) -> u8 {
     let mut read_cache = 1_u8;
     for (index, value) in bound.iter().enumerate() {
         match value {
-            Bound::Bool(true) => code.push(instruction("LoadConstTrue", &[12])),
-            Bound::Bool(false) => code.push(instruction("LoadConstFalse", &[12])),
+            Bound::Bool(true) => code.push(Instruction::new(Op::LoadConstTrue, &[12])),
+            Bound::Bool(false) => code.push(Instruction::new(Op::LoadConstFalse, &[12])),
             Bound::Int(value) => {
-                code.push(instruction(
-                    "LoadConstInt",
+                code.push(Instruction::new(
+                    Op::LoadConstInt,
                     &[12, u64::from(value.cast_unsigned())],
                 ));
             }
-            Bound::String(text) => {
-                code.push(instruction(
-                    "LoadConstStringLongIndex",
+            Bound::Text(text) => {
+                code.push(Instruction::new(
+                    Op::LoadConstStringLongIndex,
                     &[12, u64::from(text.0)],
                 ));
             }
             // Each property read needs its own cache slot.
             Bound::Export { module, name } => {
                 code.extend([
-                    instruction("GetParentEnvironment", &[3, u64::from(depth)]),
-                    instruction("LoadFromEnvironmentL", &[3, 3, u64::from(module.0)]),
-                    instruction(
-                        "GetByIdLong",
+                    Instruction::new(Op::GetParentEnvironment, &[3, u64::from(depth)]),
+                    Instruction::new(Op::LoadFromEnvironmentL, &[3, 3, u64::from(module.0)]),
+                    Instruction::new(
+                        Op::GetByIdLong,
                         &[12, 3, u64::from(read_cache), u64::from(name.0)],
                     ),
                 ]);
                 read_cache += 1;
             }
         }
-        code.push(instruction("DefineOwnByIndex", &[7, 12, index as u64]));
+        code.push(Instruction::new(
+            Op::DefineOwnByIndex,
+            &[7, 12, index as u64],
+        ));
     }
     read_cache
 }
@@ -661,88 +621,64 @@ fn wrapper(
     let depth = u8::try_from(depth).map_err(|_| {
         HermesError::Unsupported("private environment deeper than 255 scopes".into())
     })?;
+    let strict = function.header.flags.strict;
     let mut code = vec![
-        instruction("GetParentEnvironment", &[0, 0]),
-        instruction("CreateClosureLongIndex", &[1, 0, u64::from(original.0)]),
-        if function.header.flags & 4 != 0 {
-            instruction("LoadParam", &[2, 0])
+        Instruction::new(Op::GetParentEnvironment, &[0, 0]),
+        Instruction::new(Op::CreateClosureLongIndex, &[1, 0, u64::from(original.0)]),
+        if strict {
+            Instruction::new(Op::LoadParam, &[2, 0])
         } else {
-            instruction("LoadThisNS", &[2])
+            Instruction::new(Op::LoadThisNS, &[2])
         },
-        instruction("GetParentEnvironment", &[3, u64::from(depth)]),
-        instruction("LoadFromEnvironmentL", &[3, 3, u64::from(hook.module.0)]),
-        instruction("GetByIdLong", &[4, 3, 0, u64::from(hook.export.0)]),
-        instruction("CreateFunctionEnvironment", &[5, 2]),
-        instruction("StoreToEnvironment", &[5, 0, 1]),
-        instruction("StoreToEnvironment", &[5, 1, 2]),
-        instruction("CreateClosureLongIndex", &[6, 5, u64::from(bridge.0)]),
-        instruction("NewArray", &[7, 0]),
+        Instruction::new(Op::GetParentEnvironment, &[3, u64::from(depth)]),
+        Instruction::new(Op::LoadFromEnvironmentL, &[3, 3, u64::from(hook.module.0)]),
+        Instruction::new(Op::GetByIdLong, &[4, 3, 0, u64::from(hook.export.0)]),
+        Instruction::new(Op::CreateFunctionEnvironment, &[5, 2]),
+        Instruction::new(Op::StoreToEnvironment, &[5, 0, 1]),
+        Instruction::new(Op::StoreToEnvironment, &[5, 1, 2]),
+        Instruction::new(Op::CreateClosureLongIndex, &[6, 5, u64::from(bridge.0)]),
+        Instruction::new(Op::NewArray, &[7, 0]),
     ];
     let read_cache = load_bound(&mut code, &hook.bound, depth);
     let original_index = hook.bound.len() as u64;
     code.extend([
-        instruction("DefineOwnByIndex", &[7, 6, original_index]),
-        instruction("LoadConstUndefined", &[0]),
-        instruction("GetArgumentsLength", &[8, 0]),
-        instruction("LoadConstZero", &[9]),
-        instruction("LoadConstUInt8", &[11, 1]),
-        instruction("LoadConstUInt8", &[10, original_index + 1]),
+        Instruction::new(Op::DefineOwnByIndex, &[7, 6, original_index]),
+        Instruction::new(Op::LoadConstUndefined, &[0]),
+        Instruction::new(Op::GetArgumentsLength, &[8, 0]),
+        Instruction::new(Op::LoadConstZero, &[9]),
+        Instruction::new(Op::LoadConstUInt8, &[11, 1]),
+        Instruction::new(Op::LoadConstUInt8, &[10, original_index + 1]),
     ]);
     let test = code.len();
-    code.push(instruction("JGreaterEqual", &[0, 9, 8]));
+    code.push(Instruction::new(Op::JGreaterEqualLong, &[0, 9, 8]));
     let loop_start = code.len();
     code.extend([
-        instruction("GetArgumentsPropByValStrict", &[12, 9, 0]),
-        instruction("DefineOwnByVal", &[7, 12, 10, 1]),
-        instruction("Add", &[10, 10, 11]),
-        instruction("Add", &[9, 9, 11]),
-        instruction("JLess", &[0, 9, 8]),
+        Instruction::new(Op::GetArgumentsPropByValStrict, &[12, 9, 0]),
+        Instruction::new(Op::DefineOwnByVal, &[7, 12, 10, 1]),
+        Instruction::new(Op::Add, &[10, 10, 11]),
+        Instruction::new(Op::Add, &[9, 9, 11]),
+        Instruction::new(Op::JLessLong, &[0, 9, 8]),
     ]);
     let loop_branch = code.len() - 1;
     let done = code.len();
     code.extend([
-        instruction("Mov", &[15, 4]),
-        instruction("Mov", &[14, 7]),
-        instruction("Mov", &[13, 2]),
-        instruction(
-            "CallBuiltin",
-            &[0, u64::from(crate::opcode::BUILTIN_APPLY), 4],
-        ),
-        instruction("Ret", &[0]),
+        Instruction::new(Op::Mov, &[15, 4]),
+        Instruction::new(Op::Mov, &[14, 7]),
+        Instruction::new(Op::Mov, &[13, 2]),
+        Instruction::new(Op::CallBuiltin, &[0, u64::from(BUILTIN_APPLY), 4]),
+        Instruction::new(Op::Ret, &[0]),
     ]);
-    let mut offset = 0;
-    for inst in &mut code {
-        inst.offset = offset;
-        offset += inst.definition().size() as u32;
-    }
-    code[test].values[0] = u64::from(code[done].offset - code[test].offset);
-    code[loop_branch].values[0] = u64::from(
-        code[loop_start]
-            .offset
-            .wrapping_sub(code[loop_branch].offset),
-    );
-    // Generated branches use their long forms so their addresses cannot truncate.
-    for index in [test, loop_branch] {
-        let name = format!("{}Long", code[index].definition().name);
-        code[index].opcode = code[index]
-            .version
-            .opcodes()
-            .iter()
-            .position(|o| o.name == name)
-            .expect("long generated branch exists") as u8;
-    }
-    // Reassign positions after choosing the long branch layouts.
-    let mut offset = 0;
-    for inst in &mut code {
-        inst.offset = offset;
-        offset += inst.definition().size() as u32;
-    }
-    code[test].values[0] = u64::from(code[done].offset - code[test].offset);
-    code[loop_branch].values[0] = u64::from(
-        code[loop_start]
-            .offset
-            .wrapping_sub(code[loop_branch].offset),
-    );
+    let positions: Vec<u32> = code
+        .iter()
+        .scan(0, |position, inst| {
+            let start = *position;
+            *position += inst.definition().size() as u32;
+            Some(start)
+        })
+        .collect();
+    let relative = |from: usize, to: usize| u64::from(positions[to].wrapping_sub(positions[from]));
+    code[test].values[0] = relative(test, done);
+    code[loop_branch].values[0] = relative(loop_branch, loop_start);
     let mut result = generated_function(
         function.name(),
         function.header.parameters,
@@ -750,6 +686,6 @@ fn wrapper(
         encode(&code),
     );
     result.header.read_cache = read_cache;
-    result.header.flags = (function.header.flags & 4) | 1;
+    result.header.flags.strict = strict;
     Ok(result)
 }

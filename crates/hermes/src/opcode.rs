@@ -1,9 +1,12 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Opcode metadata generated from the corresponding Hermes release definition.
 
 use crate::error::{Result, invalid};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OperandKind {
+pub(crate) enum OperandKind {
     Reg8,
     Reg32,
     UInt8,
@@ -16,18 +19,26 @@ pub enum OperandKind {
 }
 
 impl OperandKind {
-    pub const fn width(self) -> usize {
+    pub(crate) const fn width(self) -> usize {
         match self {
             Self::Reg8 | Self::UInt8 | Self::Addr8 => 1,
             Self::UInt16 => 2,
             Self::Double => 8,
-            _ => 4,
+            Self::Reg32 | Self::UInt32 | Self::Addr32 | Self::Imm32 => 4,
         }
+    }
+
+    pub(crate) const fn is_register(self) -> bool {
+        matches!(self, Self::Reg8 | Self::Reg32)
+    }
+
+    pub(crate) const fn is_address(self) -> bool {
+        matches!(self, Self::Addr8 | Self::Addr32)
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IdKind {
+pub(crate) enum IdKind {
     None,
     String,
     Function,
@@ -39,39 +50,24 @@ pub enum IdKind {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Operand {
+pub(crate) struct Operand {
     pub kind: OperandKind,
     pub id: IdKind,
 }
 
 #[derive(Debug)]
-pub struct Opcode {
-    pub name: &'static str,
+pub(crate) struct Opcode {
+    pub op: Op,
     pub operands: &'static [Operand],
+    /// Operand positions of the registers the instruction writes.
+    pub writes: &'static [usize],
+    /// Encodings of the same instruction with wider operands, narrowest first.
+    pub wider: &'static [Op],
 }
 
 impl Opcode {
-    pub fn size(&self) -> usize {
+    pub(crate) fn size(&self) -> usize {
         1 + self.operands.iter().map(|o| o.kind.width()).sum::<usize>()
-    }
-
-    pub(crate) fn writes_first_register(&self) -> bool {
-        self.operands
-            .first()
-            .is_some_and(|o| matches!(o.kind, OperandKind::Reg8 | OperandKind::Reg32))
-            && ![
-                "Put",
-                "Store",
-                "Define",
-                "Throw",
-                "Ret",
-                "IteratorClose",
-                "UIntSwitch",
-                "StringSwitch",
-                "Reify",
-            ]
-            .iter()
-            .any(|prefix| self.name.starts_with(prefix))
     }
 }
 
@@ -93,9 +89,21 @@ impl BytecodeVersion {
         }
     }
 
-    pub(crate) const fn opcodes(self) -> &'static [Opcode] {
+    fn opcodes(self) -> &'static [Opcode] {
         match self {
-            Self::V98 => V98,
+            Self::V98 => &V98,
+        }
+    }
+
+    fn opcode(self, op: Op) -> &'static Opcode {
+        match self {
+            Self::V98 => &V98[op as usize],
+        }
+    }
+
+    fn code(self, op: Op) -> u8 {
+        match self {
+            Self::V98 => op as u8,
         }
     }
 }
@@ -103,40 +111,64 @@ impl BytecodeVersion {
 /// A decoded instruction. Integers retain their raw little-endian bits;
 /// signed addresses use two's complement and doubles use IEEE 754 bits.
 #[derive(Debug, Clone)]
-pub struct Instruction {
-    pub(crate) version: BytecodeVersion,
-    pub(crate) offset: u32,
-    pub(crate) opcode: u8,
-    pub(crate) values: Vec<u64>,
+pub(crate) struct Instruction {
+    pub version: BytecodeVersion,
+    /// Byte offset in the original body; `None` for generated instructions.
+    pub offset: Option<u32>,
+    pub op: Op,
+    pub values: Vec<u64>,
 }
 
 impl Instruction {
-    pub fn offset(&self) -> u32 {
-        self.offset
+    pub(crate) fn new(op: Op, values: &[u64]) -> Self {
+        Self {
+            version: BytecodeVersion::V98,
+            offset: None,
+            op,
+            values: values.to_vec(),
+        }
     }
 
-    pub fn operands(&self) -> impl Iterator<Item = (Operand, u64)> {
+    pub(crate) fn definition(&self) -> &'static Opcode {
+        self.version.opcode(self.op)
+    }
+
+    pub(crate) fn code(&self) -> u8 {
+        self.version.code(self.op)
+    }
+
+    pub(crate) fn operands(&self) -> impl Iterator<Item = (Operand, u64)> {
         self.definition()
             .operands
             .iter()
             .copied()
             .zip(self.values.iter().copied())
     }
-    pub fn definition(&self) -> &'static Opcode {
-        &self.version.opcodes()[usize::from(self.opcode)]
+
+    pub(crate) fn written_registers(&self) -> impl Iterator<Item = u32> {
+        self.definition()
+            .writes
+            .iter()
+            .map(|&operand| self.values[operand] as u32)
+    }
+
+    /// This instruction's encodings, narrowest first.
+    pub(crate) fn encodings(&self) -> impl Iterator<Item = &'static Opcode> {
+        let definition = self.definition();
+        std::iter::once(definition)
+            .chain(definition.wider.iter().map(|&op| self.version.opcode(op)))
     }
 }
 
 /// Decodes a function's instruction stream, stopping before appended switch tables.
 /// Unknown opcodes and truncated operands report their byte offsets.
-pub fn decode(version: BytecodeVersion, bytes: &[u8]) -> Result<Vec<Instruction>> {
+pub(crate) fn decode(version: BytecodeVersion, bytes: &[u8]) -> Result<Vec<Instruction>> {
     let mut offset = 0;
     let mut instructions = Vec::new();
     while offset < bytes.len() {
-        let code = bytes[offset];
         let definition = version
             .opcodes()
-            .get(usize::from(code))
+            .get(usize::from(bytes[offset]))
             .ok_or_else(|| invalid(offset, "unknown opcode"))?;
         let end = offset + definition.size();
         let data = bytes
@@ -156,8 +188,8 @@ pub fn decode(version: BytecodeVersion, bytes: &[u8]) -> Result<Vec<Instruction>
             .collect();
         instructions.push(Instruction {
             version,
-            offset: offset as u32,
-            opcode: code,
+            offset: Some(offset as u32),
+            op: definition.op,
             values,
         });
         offset = end;

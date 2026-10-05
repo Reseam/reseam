@@ -4,7 +4,6 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 description = "Borrowed Hermes bytecode parsing, linking, and editing"
-license = "GPL-3.0-or-later"
 
 [dependencies]
 reseam-storage.workspace = true

@@ -116,7 +116,7 @@ pub fn hermes_wrap(
                 Ok(match argument {
                     HermesArgument::Bool(value) => Argument::Bool(value),
                     HermesArgument::Int(value) => Argument::Int(value),
-                    HermesArgument::Text(text) => Argument::String(text),
+                    HermesArgument::Text(text) => Argument::Text(text),
                     HermesArgument::Export(export) => Argument::Export {
                         module: link(&export.module)?,
                         name: export.name,

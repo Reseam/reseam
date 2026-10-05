@@ -1,6 +1,12 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+use crate::Function;
 use crate::error::{HermesError, Result, invalid};
-use crate::model::{Function, FunctionHeader, FunctionId, HermesFile, Section};
-use crate::opcode::Instruction;
+use crate::model::{
+    FOOTER_SIZE, Field, FunctionId, HEADER_SIZE, HermesFile, MAGIC, Section, StringId,
+};
+use crate::opcode::{BytecodeVersion, Instruction, Op};
 
 pub(crate) fn slice(bytes: &[u8], offset: usize, length: usize) -> Result<&[u8]> {
     let end = offset
@@ -24,84 +30,64 @@ impl<'a> HermesFile<'a> {
     /// Parses without copying file data. All structured sections, string
     /// ranges, function bodies, and exception tables are bounds checked.
     /// Unsupported versions and delta-form files return errors.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "validation follows the ordered v98 file layout"
-    )]
     pub fn parse(source: &'a [u8]) -> Result<Self> {
-        if slice(source, 0, 8)? != 0x1f19_03c1_03bc_1fc6_u64.to_le_bytes() {
+        if slice(source, 0, 8)? != MAGIC.to_le_bytes() {
             return Err(HermesError::Magic);
         }
-        let version = read_u32(source, 8)?;
-        let bytecode_version = crate::opcode::BytecodeVersion::parse(version)?;
-        slice(source, 0, 128)?;
-        let mut header = [0; 23];
-        header[0] = version;
-        for (index, field) in header.iter_mut().enumerate().skip(1) {
-            *field = read_u32(source, 28 + index * 4)?;
+        let version = BytecodeVersion::parse(read_u32(source, Field::Version as usize)?)?;
+        slice(source, 0, HEADER_SIZE)?;
+        let header = |field: Field| read_u32(source, field as usize);
+        let length = header(Field::FileLength)? as usize;
+        if length < HEADER_SIZE + FOOTER_SIZE || length > source.len() {
+            return Err(invalid(Field::FileLength as usize, "invalid file length"));
         }
-        let length = header[1] as usize;
-        if length < 148 || length > source.len() {
-            return Err(invalid(32, "invalid file length"));
+        let footer = length - FOOTER_SIZE;
+        let functions = header(Field::FunctionCount)?;
+        if functions == 0 || header(Field::GlobalFunction)? >= functions {
+            return Err(invalid(
+                Field::GlobalFunction as usize,
+                "invalid global function",
+            ));
         }
-        if header[3] == 0 || header[2] >= header[3] {
-            return Err(invalid(36, "invalid global function"));
-        }
-        let sizes = [
-            (header[3], 12),
-            (header[4], 4),
-            (header[5], 4),
-            (header[6], 4),
-            (header[7], 8),
-            (header[8], 1),
-            (header[13], 1),
-            (header[14], 1),
-            (header[15], 8),
-            (header[9], 8),
-            (header[10], 1),
-            (header[11], 8),
-            (header[12], 1),
-            (header[18], 8),
-            (header[19], 8),
-        ];
-        let mut cursor = 128;
+        let mut cursor = HEADER_SIZE;
         let mut sections = std::array::from_fn(|_| 0..0);
-        for (section, (count, stride)) in sections.iter_mut().zip(sizes) {
+        for section in Section::ALL {
             cursor = align(cursor);
-            let size = (count as usize)
-                .checked_mul(stride)
+            let size = (header(section.count())? as usize)
+                .checked_mul(section.stride())
                 .ok_or_else(|| invalid(cursor, "section size overflow"))?;
-            slice(&source[..length - 20], cursor, size)?;
-            *section = cursor..cursor + size;
+            slice(&source[..footer], cursor, size)?;
+            sections[section as usize] = cursor..cursor + size;
             cursor += size;
         }
+        let debug = header(Field::DebugInfoOffset)? as usize;
+        if debug < cursor || debug > footer {
+            return Err(invalid(
+                Field::DebugInfoOffset as usize,
+                "invalid debug info offset",
+            ));
+        }
         let file = Self {
-            version: bytecode_version,
+            version,
             source,
-            header,
             sections,
         };
-        if (file.header[20] as usize) < cursor || file.header[20] as usize > length - 20 {
-            return Err(invalid(108, "invalid debug info offset"));
-        }
+        let kinds = file.sections[Section::Kinds as usize].start;
         let mut count = 0_u64;
         let mut identifiers = 0_u64;
-        for entry in file.section(Section::Kinds).as_chunks::<4>().0 {
-            let value = u32::from_le_bytes(*entry);
-            let run = value & 0x7fff_ffff;
-            if run == 0 {
-                return Err(invalid(file.sections[1].start, "empty string kind run"));
+        for run in file.kind_runs() {
+            if run.count == 0 {
+                return Err(invalid(kinds, "empty string kind run"));
             }
-            count += u64::from(run);
-            if value >> 31 != 0 {
-                identifiers += u64::from(run);
+            count += u64::from(run.count);
+            if run.kind == crate::model::StringKind::Identifier {
+                identifiers += u64::from(run.count);
             }
         }
-        if count != u64::from(header[6]) || identifiers != u64::from(header[5]) {
-            return Err(invalid(
-                file.sections[1].start,
-                "string kind counts disagree",
-            ));
+        if count != u64::from(file.string_count())
+            || identifiers != u64::from(file.field(Field::IdentifierCount))
+        {
+            return Err(invalid(kinds, "string kind counts disagree"));
         }
         for (table, storage) in [
             (Section::BigInts, Section::BigIntStorage),
@@ -119,33 +105,25 @@ impl<'a> HermesFile<'a> {
             slice(file.section(Section::Keys), read_u32(entry, 0)? as usize, 0)?;
         }
         for id in 0..file.string_count() {
-            file.string(crate::StringId(id))?;
+            file.string(StringId(id))?;
         }
-        for id in 0..file.function_count() {
+        for id in 0..functions {
             let function = file.function(FunctionId(id))?;
-            let h = function.header;
-            if h.offset as usize + h.size as usize > file.header[20] as usize {
+            if function.body_range().end > debug {
                 return Err(invalid(
-                    h.offset as usize,
+                    function.header.offset as usize,
                     "function overlaps debug section",
                 ));
             }
-            if h.flags & 8 != 0 {
-                let count = read_u32(source, h.info_offset)? as usize;
-                let table = slice(
-                    source,
-                    h.info_offset + 4,
-                    count
-                        .checked_mul(12)
-                        .ok_or_else(|| invalid(h.info_offset, "exception table overflow"))?,
-                )?;
-                for entry in table.as_chunks::<12>().0 {
-                    let start = read_u32(entry, 0)?;
-                    let end = read_u32(entry, 4)?;
-                    let target = read_u32(entry, 8)?;
-                    if start > end || end > h.size || target >= h.size {
-                        return Err(invalid(h.info_offset, "exception handler outside function"));
-                    }
+            for handler in function.exception_handlers()? {
+                if handler.start > handler.end
+                    || handler.end > function.header.size
+                    || handler.target >= function.header.size
+                {
+                    return Err(invalid(
+                        function.header.offset as usize,
+                        "exception handler outside function",
+                    ));
                 }
             }
         }
@@ -153,86 +131,82 @@ impl<'a> HermesFile<'a> {
     }
 }
 
-pub(crate) fn function_header(bytes: &[u8], offset: usize) -> Result<FunctionHeader> {
-    let small = slice(bytes, offset, 12)?;
-    let w1 = read_u32(small, 0)?;
-    let w2 = read_u32(small, 4)?;
-    if small[11] & 32 != 0 {
-        let large = ((w2 >> 14) & 255) << 24 | (w1 & 0x00ff_ffff);
-        let data = slice(bytes, large as usize, 37)?;
-        Ok(FunctionHeader {
-            offset: read_u32(data, 0)?,
-            parameters: read_u32(data, 4)?,
-            loop_depth: read_u32(data, 8)?,
-            size: read_u32(data, 12)?,
-            name: read_u32(data, 16)?,
-            number_regs: read_u32(data, 20)?,
-            non_pointer_regs: read_u32(data, 24)?,
-            frame_size: read_u32(data, 28)?,
-            read_cache: data[32],
-            write_cache: data[33],
-            object_cache: data[34],
-            private_cache: data[35],
-            flags: data[36],
-            info_offset: align(large as usize + 37),
-        })
-    } else {
-        Ok(FunctionHeader {
-            offset: w1 & 0x01ff_ffff,
-            parameters: (w1 >> 25) & 31,
-            loop_depth: w1 >> 30,
-            size: w2 & 0x3fff,
-            name: (w2 >> 14) & 255,
-            number_regs: (w2 >> 22) & 31,
-            non_pointer_regs: w2 >> 27,
-            frame_size: u32::from(small[8]),
-            read_cache: small[9],
-            write_cache: small[10] & 63,
-            object_cache: small[10] >> 6 & 1,
-            private_cache: small[10] >> 7,
-            flags: small[11],
-            info_offset: 0,
-        })
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SwitchKind {
+    Integer,
+    String,
+}
+
+impl SwitchKind {
+    const fn stride(self) -> usize {
+        match self {
+            Self::Integer => 4,
+            Self::String => 8,
+        }
     }
 }
 
+/// The jump table a switch instruction appends after its function's code.
 pub(crate) struct SwitchTable<'a> {
+    pub kind: SwitchKind,
+    /// The operand holding the table's offset relative to the instruction.
     pub operand: usize,
     pub offset: usize,
-    pub stride: usize,
     pub bytes: &'a [u8],
+}
+
+impl SwitchTable<'_> {
+    /// Each case's string key, for string switches, and relative jump target.
+    pub(crate) fn entries(&self) -> impl Iterator<Item = (Option<StringId>, i32)> {
+        self.bytes.chunks_exact(self.kind.stride()).map(|entry| {
+            let word = |at: usize| {
+                u32::from_le_bytes(
+                    entry[at..at + 4]
+                        .try_into()
+                        .expect("entries hold whole words"),
+                )
+            };
+            match self.kind {
+                SwitchKind::Integer => (None, word(0).cast_signed()),
+                SwitchKind::String => (Some(StringId(word(0))), word(4).cast_signed()),
+            }
+        })
+    }
 }
 
 pub(crate) fn switch_table<'a>(
     function: &Function<'a>,
     inst: &Instruction,
 ) -> Result<Option<SwitchTable<'a>>> {
-    let (operand, count, stride) = match inst.definition().name {
-        "UIntSwitchImm" => (
+    let (kind, operand, count) = match inst.op {
+        Op::UIntSwitchImm => (
+            SwitchKind::Integer,
             1,
             inst.values[4]
                 .checked_sub(inst.values[3])
-                .and_then(|n| n.checked_add(1))
-                .ok_or_else(|| invalid(inst.offset as usize, "invalid switch range"))?,
-            4,
+                .and_then(|n| n.checked_add(1)),
         ),
-        "StringSwitchImm" => (2, inst.values[4], 8),
+        Op::StringSwitchImm => (SwitchKind::String, 2, Some(inst.values[4])),
         _ => return Ok(None),
     };
+    let at = inst
+        .offset
+        .ok_or_else(|| invalid(0, "generated switch has no table"))? as usize;
+    let count = count.ok_or_else(|| invalid(at, "invalid switch range"))?;
     let offset = (function.header.offset as usize)
-        .checked_add(inst.offset as usize)
+        .checked_add(at)
         .and_then(|n| n.checked_add(usize::try_from(inst.values[operand]).ok()?))
         .filter(|&n| n <= usize::MAX - 3)
         .map(align)
-        .ok_or_else(|| invalid(inst.offset as usize, "switch offset overflow"))?;
+        .ok_or_else(|| invalid(at, "switch offset overflow"))?;
     let size = usize::try_from(count)
         .ok()
-        .and_then(|n| n.checked_mul(stride))
+        .and_then(|n| n.checked_mul(kind.stride()))
         .ok_or_else(|| invalid(offset, "switch table overflow"))?;
     Ok(Some(SwitchTable {
+        kind,
         operand,
         offset,
-        stride,
         bytes: slice(function.source, offset, size)?,
     }))
 }

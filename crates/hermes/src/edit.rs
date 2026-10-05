@@ -1,15 +1,39 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
 use crate::error::{Result, invalid};
-use crate::model::{FunctionHeader, Section};
-use crate::{FunctionId, HermesFile, StringId, StringKind};
+use crate::model::{
+    Encoding, ExceptionHandler, FOOTER_SIZE, Field, FunctionHeader, KindRun, Section, StringEntry,
+    StringId, StringKind, StringValue,
+};
+use crate::{FunctionId, HermesFile};
 
 #[derive(Clone)]
 pub(crate) struct EditedFunction {
     pub header: FunctionHeader,
     pub body: FunctionBody,
-    pub exceptions: Vec<[u32; 3]>,
+    pub exceptions: Vec<ExceptionHandler>,
+}
+
+impl EditedFunction {
+    /// Edited functions are written with a new large header and no debug info.
+    pub(crate) fn new(
+        mut header: FunctionHeader,
+        body: FunctionBody,
+        exceptions: Vec<ExceptionHandler>,
+    ) -> Self {
+        header.flags.debug_info = false;
+        header.flags.exception_handler = !exceptions.is_empty();
+        header.large = None;
+        Self {
+            header,
+            body,
+            exceptions,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -58,7 +82,7 @@ pub struct Editor<'a> {
 /// Detached edits for a long-lived owner of the input mapping. Resume them only
 /// against the exact original file. No source data is copied into this state.
 pub struct Edits {
-    pub(crate) base_hash: [u8; 20],
+    pub(crate) base_hash: [u8; FOOTER_SIZE],
     pub(crate) additions: [Vec<u8>; 15],
     pub(crate) functions: BTreeMap<FunctionId, EditedFunction>,
     pub(crate) appended: Vec<EditedFunction>,
@@ -76,20 +100,34 @@ pub struct Edits {
     pub(crate) relocated: BTreeMap<FunctionId, FunctionId>,
 }
 
+impl Edits {
+    /// Whether writing would reproduce the original file.
+    pub fn is_empty(&self) -> bool {
+        self.strings.is_empty() && self.appended.is_empty() && self.functions.is_empty()
+    }
+}
+
 pub(crate) struct AddedString {
-    pub value: Vec<u8>,
-    pub utf16: bool,
+    pub bytes: Vec<u8>,
+    pub encoding: Encoding,
     pub kind: StringKind,
     pub id: StringId,
+}
+
+impl AddedString {
+    pub(crate) fn value(&self) -> StringValue<'_> {
+        StringValue {
+            encoding: self.encoding,
+            bytes: &self.bytes,
+        }
+    }
 }
 
 impl<'a> Editor<'a> {
     pub fn new(file: HermesFile<'a>) -> Self {
         let global = file.global_function();
-        let string_switches = file.header[16];
-        let base_hash = file.source[file.header[1] as usize - 20..file.header[1] as usize]
-            .try_into()
-            .expect("validated footer length");
+        let string_switches = file.field(Field::StringSwitchCount);
+        let base_hash = file.footer();
         Self {
             file,
             edits: Edits {
@@ -112,10 +150,6 @@ impl<'a> Editor<'a> {
         }
     }
 
-    pub fn file(&self) -> &HermesFile<'a> {
-        &self.file
-    }
-
     /// Detaches owned edits so a caller can retain them beside its mapping
     /// without building a self-referential object. Use `resume` to continue.
     pub fn into_edits(self) -> Edits {
@@ -125,7 +159,7 @@ impl<'a> Editor<'a> {
     /// Restores detached state against the original file. A different footer
     /// is an error; callers must keep the underlying mapping unchanged.
     pub fn resume(file: HermesFile<'a>, edits: Edits) -> Result<Self> {
-        if file.source[file.header[1] as usize - 20..file.header[1] as usize] != edits.base_hash {
+        if file.footer() != edits.base_hash {
             return Err(invalid(0, "edits belong to another source file"));
         }
         Ok(Self { file, edits })
@@ -150,12 +184,7 @@ impl<'a> Editor<'a> {
             }
             self.edits.appended.truncate(appended);
             for string in &self.edits.strings[strings..] {
-                let value = if string.utf16 {
-                    crate::StringValue::Utf16(&string.value)
-                } else {
-                    crate::StringValue::Latin1(&string.value)
-                };
-                let key = (value.fingerprint(), string.kind);
+                let key = (string.value().fingerprint(), string.kind);
                 let ids = self
                     .edits
                     .string_index
@@ -181,19 +210,20 @@ impl<'a> Editor<'a> {
     /// subsequently interned as an identifier, preserving original IDs.
     /// The original string index is built once; later calls inspect only matching
     /// fingerprints and verify the text, returning the first matching ID.
-    pub fn intern(&mut self, text: &str, kind: StringKind) -> Result<StringId> {
+    pub(crate) fn intern(&mut self, text: &str, kind: StringKind) -> Result<StringId> {
         self.index_original_strings()?;
         let units: Vec<_> = text.encode_utf16().collect();
-        let utf16 = units.iter().any(|&unit| unit > 127);
-        let value: Vec<_> = if utf16 {
-            units.iter().flat_map(|u| u.to_le_bytes()).collect()
+        let (encoding, bytes): (_, Vec<_>) = if units.iter().any(|&unit| unit > 127) {
+            (
+                Encoding::Utf16,
+                units.iter().flat_map(|u| u.to_le_bytes()).collect(),
+            )
         } else {
-            units.iter().map(|&u| u as u8).collect()
+            (Encoding::Latin1, units.iter().map(|&u| u as u8).collect())
         };
-        let key = if utf16 {
-            crate::StringValue::Utf16(&value)
-        } else {
-            crate::StringValue::Latin1(&value)
+        let key = StringValue {
+            encoding,
+            bytes: &bytes,
         }
         .fingerprint();
         for id in self
@@ -210,16 +240,11 @@ impl<'a> Editor<'a> {
                 continue;
             }
             let string = &self.edits.strings[(id.0 - self.file.string_count()) as usize];
-            let value = if string.utf16 {
-                crate::StringValue::Utf16(&string.value)
-            } else {
-                crate::StringValue::Latin1(&string.value)
-            };
-            if string.kind == kind && value.equals(text) {
+            if string.kind == kind && string.value().equals(text) {
                 return Ok(string.id);
             }
         }
-        self.append_string(value, utf16, units.len() as u32, kind)
+        self.append_string(bytes, encoding, units.len() as u32, kind)
     }
 
     fn index_original_strings(&mut self) -> Result<()> {
@@ -228,17 +253,11 @@ impl<'a> Editor<'a> {
         }
         let mut index = rustc_hash::FxHashMap::<_, Vec<_>>::default();
         let mut id = 0;
-        for entry in self.file.section(Section::Kinds).as_chunks::<4>().0 {
-            let run = u32::from_le_bytes(*entry);
-            let kind = if run >> 31 == 0 {
-                StringKind::String
-            } else {
-                StringKind::Identifier
-            };
-            let end = id + (run & 0x7fff_ffff);
+        for run in self.file.kind_runs() {
+            let end = id + run.count;
             for string in (id..end).map(StringId) {
                 index
-                    .entry((self.file.string(string)?.fingerprint(), kind))
+                    .entry((self.file.string(string)?.fingerprint(), run.kind))
                     .or_default()
                     .push(string);
             }
@@ -254,8 +273,8 @@ impl<'a> Editor<'a> {
 
     pub(crate) fn append_string(
         &mut self,
-        value: Vec<u8>,
-        utf16: bool,
+        bytes: Vec<u8>,
+        encoding: Encoding,
         length: u32,
         kind: StringKind,
     ) -> Result<StringId> {
@@ -265,70 +284,58 @@ impl<'a> Editor<'a> {
                 .checked_add(self.edits.strings.len() as u32)
                 .ok_or_else(|| invalid(0, "too many strings"))?,
         );
+        let base = self.file.field(Field::StringStorageSize) as usize;
         let storage = &mut self.edits.additions[Section::Storage as usize];
-        if utf16 && (self.file.header[8] as usize + storage.len()) & 1 != 0 {
+        if encoding == Encoding::Utf16 && !(base + storage.len()).is_multiple_of(2) {
             storage.push(0);
         }
-        let offset = self.file.header[8] as usize + storage.len();
-        let offset =
-            u32::try_from(offset).map_err(|_| invalid(0, "string storage exceeds four GiB"))?;
-        let entry = if offset < 1 << 23 && length < 255 {
-            offset << 1 | length << 24 | u32::from(utf16)
+        let offset = u32::try_from(base + storage.len())
+            .map_err(|_| invalid(0, "string storage exceeds four GiB"))?;
+        let entry = if let Some(entry) = StringEntry::inline(offset, length, encoding) {
+            entry
         } else {
-            let overflow = self.file.header[7] as usize
-                + self.edits.additions[Section::Overflow as usize].len() / 8;
-            if overflow >= 1 << 23 {
-                return Err(invalid(0, "overflow string table exceeds 23 bits"));
-            }
+            let index = self.file.field(Field::OverflowStringCount) as usize
+                + self.edits.additions[Section::Overflow as usize].len()
+                    / Section::Overflow.stride();
+            let index = u32::try_from(index)
+                .ok()
+                .filter(|&index| index < StringEntry::OFFSET_LIMIT)
+                .ok_or_else(|| invalid(0, "overflow string table exceeds 23 bits"))?;
             let table = &mut self.edits.additions[Section::Overflow as usize];
             table.extend_from_slice(&offset.to_le_bytes());
             table.extend_from_slice(&length.to_le_bytes());
-            (overflow as u32) << 1 | 255 << 24 | u32::from(utf16)
+            StringEntry::Overflow { index, encoding }
         };
-        self.edits.additions[Section::Strings as usize].extend_from_slice(&entry.to_le_bytes());
-        let run = 1 | if kind == StringKind::Identifier {
-            1 << 31
-        } else {
-            0
-        };
-        self.edits.additions[Section::Kinds as usize].extend_from_slice(&u32::to_le_bytes(run));
-        if kind == StringKind::Identifier {
-            let units: Vec<_> = if utf16 {
-                value
-                    .as_chunks::<2>()
-                    .0
-                    .iter()
-                    .map(|b| u16::from_le_bytes([b[0], b[1]]))
-                    .collect()
-            } else {
-                value.iter().map(|&b| u16::from(b)).collect()
-            };
-            let hash = units.iter().fold(0_u32, |hash, &unit| {
-                let hash = hash.wrapping_add(u32::from(unit));
-                let hash = hash.wrapping_add(hash << 10);
-                hash ^ (hash >> 6)
-            });
-            self.edits.additions[Section::Hashes as usize].extend_from_slice(&hash.to_le_bytes());
-        }
-        self.edits.additions[Section::Storage as usize].extend_from_slice(&value);
-        let key = if utf16 {
-            crate::StringValue::Utf16(&value)
-        } else {
-            crate::StringValue::Latin1(&value)
-        }
-        .fingerprint();
-        self.edits
-            .string_index
-            .entry((key, kind))
-            .or_default()
-            .push(id);
-        self.edits.strings.push(AddedString {
-            value,
-            utf16,
+        self.edits.additions[Section::Strings as usize]
+            .extend_from_slice(&entry.encode().to_le_bytes());
+        self.edits.additions[Section::Kinds as usize]
+            .extend_from_slice(&KindRun { kind, count: 1 }.encode().to_le_bytes());
+        let added = AddedString {
+            bytes,
+            encoding,
             kind,
             id,
-        });
+        };
+        if kind == StringKind::Identifier {
+            self.edits.additions[Section::Hashes as usize]
+                .extend_from_slice(&added.value().identifier_hash().to_le_bytes());
+        }
+        self.edits.additions[Section::Storage as usize].extend_from_slice(&added.bytes);
+        self.edits
+            .string_index
+            .entry((added.value().fingerprint(), kind))
+            .or_default()
+            .push(id);
+        self.edits.strings.push(added);
         Ok(id)
+    }
+
+    pub(crate) fn section_size(&self, section: Section) -> usize {
+        self.file.section(section).len() + self.edits.additions[section as usize].len()
+    }
+
+    pub(crate) fn section_count(&self, section: Section) -> u32 {
+        (self.section_size(section) / section.stride()) as u32
     }
 
     pub(crate) fn next_function(&self) -> FunctionId {

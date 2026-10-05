@@ -1,16 +1,20 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use rustc_hash::FxHashMap;
 
 use crate::error::{HermesError, Result, invalid};
+use crate::model::{Encoding, FOOTER_SIZE, StringId, StringValue};
 use crate::opcode::IdKind;
-use crate::parse::{read_u32, switch_table};
-use crate::{FunctionId, HermesFile, StringId, StringValue};
+use crate::parse::switch_table;
+use crate::{FunctionId, HermesFile};
 
 /// An immutable search index of the original app functions. Build it once and
 /// retain it alongside the source. Names and referenced strings use inverted
 /// postings; only one function's instructions are decoded at a time. Edits and
 /// linked modules do not change app identities or the indexed original bodies.
 pub struct FunctionIndex {
-    base_hash: [u8; 20],
+    base_hash: [u8; FOOTER_SIZE],
     texts: FxHashMap<u64, Vec<StringId>>,
     names: FxHashMap<StringId, Vec<FunctionId>>,
     strings: FxHashMap<StringId, Vec<FunctionId>>,
@@ -23,9 +27,7 @@ impl FunctionIndex {
     /// IDs fail construction; file bytes and decoded instructions are not kept.
     pub fn build(file: &HermesFile<'_>) -> Result<Self> {
         let mut index = Self {
-            base_hash: file.source[file.header[1] as usize - 20..file.header[1] as usize]
-                .try_into()
-                .expect("validated footer length"),
+            base_hash: file.footer(),
             texts: FxHashMap::default(),
             names: FxHashMap::default(),
             strings: FxHashMap::default(),
@@ -39,19 +41,12 @@ impl FunctionIndex {
             for instruction in function.instructions()? {
                 referenced.extend(
                     instruction
-                        .definition()
-                        .operands
-                        .iter()
-                        .zip(&instruction.values)
+                        .operands()
                         .filter(|(operand, _)| operand.id == IdKind::String)
-                        .map(|(_, value)| StringId(*value as u32)),
+                        .map(|(_, value)| StringId(value as u32)),
                 );
-                if let Some(table) = switch_table(&function, &instruction)?
-                    && table.stride == 8
-                {
-                    for entry in table.bytes.chunks_exact(table.stride) {
-                        referenced.push(StringId(read_u32(entry, 0)?));
-                    }
+                if let Some(table) = switch_table(&function, &instruction)? {
+                    referenced.extend(table.entries().filter_map(|(key, _)| key));
                 }
             }
             referenced.sort_unstable();
@@ -85,7 +80,11 @@ impl FunctionIndex {
         postings: &FxHashMap<StringId, Vec<FunctionId>>,
     ) -> Result<Vec<FunctionId>> {
         let units: Vec<_> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
-        let fingerprint = StringValue::Utf16(&units).fingerprint();
+        let fingerprint = StringValue {
+            encoding: Encoding::Utf16,
+            bytes: &units,
+        }
+        .fingerprint();
         let mut candidates = Vec::new();
         for &id in self.texts.get(&fingerprint).into_iter().flatten() {
             if file.string(id)?.equals(text)
@@ -110,7 +109,7 @@ impl FunctionIndex {
         strings: &[&str],
         parameters: Option<u32>,
     ) -> Result<FunctionId> {
-        if file.source[file.header[1] as usize - 20..file.header[1] as usize] != self.base_hash {
+        if file.footer() != self.base_hash {
             return Err(invalid(0, "function index belongs to another source file"));
         }
         let mut constraints = Vec::with_capacity(strings.len() + usize::from(name.is_some()));
