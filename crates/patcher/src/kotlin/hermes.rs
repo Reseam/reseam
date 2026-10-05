@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use std::cell::RefCell;
 
 use boltffi::{data, export};
@@ -8,13 +11,7 @@ use super::handles::{HandleSpace, bundle_path, with_ctx_result};
 #[derive(Default)]
 struct Functions {
     identities: HandleSpace,
-    entries: Vec<FunctionHandle>,
-}
-
-#[derive(Clone)]
-struct FunctionHandle {
-    path: String,
-    id: FunctionId,
+    entries: Vec<FunctionId>,
 }
 
 thread_local! { static FUNCTIONS: RefCell<Functions> = RefCell::default(); }
@@ -24,13 +21,12 @@ pub(super) fn reset() {
 }
 
 #[export]
-pub fn hermes_version(path: String) -> Result<u32, String> {
-    with_ctx_result(|ctx| ctx.hermes_version(&path).map_err(|e| e.to_string()))
+pub fn hermes_version() -> Result<u32, String> {
+    with_ctx_result(|ctx| ctx.hermes_version().map_err(|e| e.to_string()))
 }
 
 #[export]
 pub fn hermes_find_function(
-    path: String,
     name: Option<String>,
     strings: Vec<String>,
     parameters: Option<u32>,
@@ -38,7 +34,7 @@ pub fn hermes_find_function(
     with_ctx_result(|ctx| {
         let strings: Vec<_> = strings.iter().map(String::as_str).collect();
         let id = ctx
-            .hermes_find(&path, name.as_deref(), &strings, parameters)
+            .hermes_find(name.as_deref(), &strings, parameters)
             .map_err(|e| e.to_string())?;
         FUNCTIONS.with(|functions| {
             let mut functions = functions.borrow_mut();
@@ -47,7 +43,7 @@ pub fn hermes_find_function(
                 .identities
                 .allocate(slot)
                 .map_err(|e| e.to_string())?;
-            functions.entries.push(FunctionHandle { path, id });
+            functions.entries.push(id);
             Ok(handle)
         })
     })
@@ -87,7 +83,7 @@ pub fn hermes_wrap(
         functions
             .entries
             .get(slot)
-            .cloned()
+            .copied()
             .ok_or("stale Hermes function handle")
     })?;
     with_ctx_result(|ctx| {
@@ -102,12 +98,9 @@ pub fn hermes_wrap(
                         .into(),
                 );
             }
-            let version = ctx
-                .hermes_version(&function.path)
-                .map_err(|e| e.to_string())?;
+            let version = ctx.hermes_version().map_err(|e| e.to_string())?;
             let path = bundle_path(&format!("resources/hermes/v{version}/{name}.hbc"));
-            ctx.hermes_link(&function.path, &path)
-                .map_err(|e| e.to_string())
+            ctx.hermes_link(&path).map_err(|e| e.to_string())
         };
         let module = link(&module)?;
         let bound = bound
@@ -124,7 +117,7 @@ pub fn hermes_wrap(
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
-        ctx.hermes_wrap(&function.path, function.id, module, &export, &bound)
+        ctx.hermes_wrap(function, module, &export, &bound)
             .map_err(|e| e.to_string())
     })
 }

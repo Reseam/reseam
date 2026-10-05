@@ -1,11 +1,12 @@
+// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package app.reseam.patch
 
 import app.reseam.patch.native.hermesFindFunction
 import app.reseam.patch.native.hermesVersion
 import app.reseam.patch.native.hermesWrap
 import app.reseam.patch.types.HermesArgument
-
-internal const val HERMES_BUNDLE = "assets/index.android.bundle"
 
 /**
  * The base APK's Hermes bytecode in `assets/index.android.bundle`, opened on first use and written
@@ -18,7 +19,7 @@ internal const val HERMES_BUNDLE = "assets/index.android.bundle"
 class HermesScope internal constructor() {
     /** Opens the bundle and returns its bytecode version. */
     val version: Int
-        get() = hermesVersion(HERMES_BUNDLE).toInt()
+        get() = hermesVersion().toInt()
 }
 
 /**
@@ -26,9 +27,9 @@ class HermesScope internal constructor() {
  * ambiguous matches fail with the query and match count. Extension functions are excluded.
  *
  * ```kotlin
- * private val canUseAnimatedEmojis = function {
- *     name("canUseAnimatedEmojis")
- *     strings("ANIMATED_EMOJIS")
+ * private val isFeatureEnabled = function {
+ *     name("isFeatureEnabled")
+ *     strings("FEATURE_FLAGS")
  *     paramCount(1)
  * }
  * ```
@@ -82,7 +83,7 @@ class FunctionTarget internal constructor(debugName: String?, private val query:
 
     override fun resolve(runtime: PatchRuntime): Resolution<UInt> =
         Resolution(
-            hermesFindFunction(HERMES_BUNDLE, query.name, query.strings, query.parameters),
+            hermesFindFunction(query.name, query.strings, query.parameters),
             wrapped(label, query.toString()),
         )
 
@@ -112,25 +113,17 @@ class FunctionTarget internal constructor(debugName: String?, private val query:
 
 /**
  * A JavaScript extension's artifact name, matching its workspace module: for
- * `apps/discord/extensions/emotes`, use `discord-emotes`. Sources live in `src/main/js` and assign
- * callable properties to `exports`. Keep export assignments unconditional.
+ * `apps/example/extensions/features`, use `example-features`. Names contain only ASCII letters,
+ * digits, hyphens and underscores; others fail when first used. Sources live in `src/main/js` and
+ * assign callable properties to `exports`. Keep export assignments unconditional.
  *
  * ```kotlin
- * object Emotes : ExtJsModule("discord-emotes") {
- *     val canUseAnimatedEmojis = export("canUseAnimatedEmojis")
+ * object Features : ExtJsModule("example-features") {
+ *     val isFeatureEnabled = export("isFeatureEnabled")
  * }
  * ```
  */
 open class ExtJsModule(val name: String) {
-    init {
-        require(
-            name.isNotEmpty() &&
-                name.all { it.isLetterOrDigit() && it.code < 128 || it == '-' || it == '_' }
-        ) {
-            "invalid Hermes module name: $name"
-        }
-    }
-
     /** Declares an exact property name on the extension's exports object. Validated on use. */
     fun export(name: String): JsExport = JsExport(this, name)
 }
