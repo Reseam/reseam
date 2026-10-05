@@ -8,6 +8,7 @@ package app.reseam.patch.settings
 import app.reseam.patch.ActiveRuntime
 import app.reseam.patch.CompatiblePackage
 import app.reseam.patch.ExtClass
+import app.reseam.patch.ExtJsModule
 import app.reseam.patch.PatchDeclaration
 import app.reseam.patch.PatchRuntime
 import app.reseam.patch.ReseamPatch
@@ -19,6 +20,17 @@ import kotlin.properties.ReadOnlyProperty
 object ReseamSettings : ExtClass("app.reseam.runtime.settings.ReseamSettings") {
     val getBoolean = static("getBoolean", Type.String, Type.Boolean, returns = Type.Boolean)
     val getString = static("getString", Type.String, Type.String, returns = Type.String)
+}
+
+/**
+ * The JavaScript the Hermes gates call. It reads [ReseamSettings] through the app's
+ * `ReseamSettings` React Native module, which the app's settings host registers.
+ */
+internal object ReseamJsSettings : ExtJsModule("settings-js") {
+    val returnNullWhen = export("returnNullWhen")
+    val returnTrueWhen = export("returnTrueWhen")
+    val returnFalseWhen = export("returnFalseWhen")
+    val wrapWhen = export("wrapWhen")
 }
 
 const val SETTINGS_SCHEMA_PATH = "assets/reseam/settings.json"

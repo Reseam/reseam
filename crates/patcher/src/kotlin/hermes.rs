@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
-use boltffi::export;
-use reseam_hermes::FunctionId;
+use boltffi::{data, export};
+use reseam_hermes::{Argument, FunctionId, ModuleId};
 
 use super::handles::{HandleSpace, bundle_path, with_ctx_result};
 
@@ -53,17 +53,30 @@ pub fn hermes_find_function(
     })
 }
 
+/// A value bound into a wrap ahead of `original`.
+#[data]
+#[derive(Debug, Clone)]
+pub enum HermesArgument {
+    Bool(bool),
+    Text(String),
+    Export(HermesExportRef),
+}
+
+/// A callable export of a Hermes extension module.
+#[data]
+#[derive(Debug, Clone)]
+pub struct HermesExportRef {
+    pub module: String,
+    pub name: String,
+}
+
 #[export]
-pub fn hermes_wrap(handle: u32, module: String, export: String) -> Result<(), String> {
-    if module.is_empty()
-        || !module
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
-    {
-        return Err(
-            "Hermes module names contain only letters, digits, hyphens and underscores".into(),
-        );
-    }
+pub fn hermes_wrap(
+    handle: u32,
+    module: String,
+    export: String,
+    bound: Vec<HermesArgument>,
+) -> Result<(), String> {
     let function = FUNCTIONS.with(|functions| {
         let functions = functions.borrow();
         let slot = functions
@@ -77,11 +90,39 @@ pub fn hermes_wrap(handle: u32, module: String, export: String) -> Result<(), St
             .ok_or("stale Hermes function handle")
     })?;
     with_ctx_result(|ctx| {
-        let version = ctx
-            .hermes_version(&function.path)
-            .map_err(|e| e.to_string())?;
-        let module = bundle_path(&format!("resources/hermes/v{version}/{module}.hbc"));
-        ctx.hermes_wrap(&function.path, function.id, &module, &export)
+        let mut link = |name: &str| -> Result<ModuleId, String> {
+            if name.is_empty()
+                || !name
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+            {
+                return Err(
+                    "Hermes module names contain only letters, digits, hyphens and underscores"
+                        .into(),
+                );
+            }
+            let version = ctx
+                .hermes_version(&function.path)
+                .map_err(|e| e.to_string())?;
+            let path = bundle_path(&format!("resources/hermes/v{version}/{name}.hbc"));
+            ctx.hermes_link(&function.path, &path)
+                .map_err(|e| e.to_string())
+        };
+        let module = link(&module)?;
+        let bound = bound
+            .into_iter()
+            .map(|argument| {
+                Ok(match argument {
+                    HermesArgument::Bool(value) => Argument::Bool(value),
+                    HermesArgument::Text(text) => Argument::String(text),
+                    HermesArgument::Export(export) => Argument::Export {
+                        module: link(&export.module)?,
+                        name: export.name,
+                    },
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        ctx.hermes_wrap(&function.path, function.id, module, &export, &bound)
             .map_err(|e| e.to_string())
     })
 }

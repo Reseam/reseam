@@ -23,3 +23,4 @@ pub use link::ModuleId;
 pub use model::HermesImage;
 pub use model::{Function, FunctionId, HermesFile, StringId, StringKind, StringValue};
 pub use opcode::BytecodeVersion;
+pub use wrap::Argument;

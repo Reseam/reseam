@@ -221,7 +221,7 @@ public final class app/reseam/patch/FloatOption : app/reseam/patch/Option {
 	public synthetic fun read$app_reseam_reseam_patch_sdk ()Ljava/lang/Object;
 }
 
-public final class app/reseam/patch/HermesFunction {
+public final class app/reseam/patch/FunctionTarget : app/reseam/patch/Target {
 	public final fun wrap (Lapp/reseam/patch/JsExport;)V
 }
 
@@ -231,9 +231,12 @@ public abstract interface class app/reseam/patch/HermesFunctionQuery {
 	public abstract fun strings ([Ljava/lang/String;)V
 }
 
+public final class app/reseam/patch/HermesKt {
+	public static final fun function (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/FunctionTarget;
+	public static synthetic fun function$default (Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/FunctionTarget;
+}
+
 public final class app/reseam/patch/HermesScope {
-	public final fun bundle (Ljava/lang/String;)Lapp/reseam/patch/HermesScope;
-	public final fun function (Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/HermesFunction;
 	public final fun getVersion ()I
 }
 
@@ -1387,12 +1390,16 @@ public final class app/reseam/patch/settings/GatesKt {
 	public static final fun after (Lapp/reseam/patch/PointTarget;Lapp/reseam/patch/settings/ToggleSetting;Lkotlin/jvm/functions/Function1;)V
 	public static final fun before (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;Lkotlin/jvm/functions/Function1;)V
 	public static final fun before (Lapp/reseam/patch/PointTarget;Lapp/reseam/patch/settings/ToggleSetting;Lkotlin/jvm/functions/Function1;)V
+	public static final fun returnFalseWhen (Lapp/reseam/patch/FunctionTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
 	public static final fun returnFalseWhen (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
+	public static final fun returnNullWhen (Lapp/reseam/patch/FunctionTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
 	public static final fun returnNullWhen (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
+	public static final fun returnTrueWhen (Lapp/reseam/patch/FunctionTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
 	public static final fun returnTrueWhen (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
 	public static final fun skipWhen (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
 	public static final fun skipWhen (Lapp/reseam/patch/PointTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
 	public static final fun whenEnabled (Lapp/reseam/patch/CodeScope;Lapp/reseam/patch/settings/ToggleSetting;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/Otherwise;
+	public static final fun wrapWhen (Lapp/reseam/patch/FunctionTarget;Lapp/reseam/patch/settings/ToggleSetting;Lapp/reseam/patch/JsExport;)V
 }
 
 public final class app/reseam/patch/settings/ReseamSettings : app/reseam/patch/ExtClass {
@@ -2068,6 +2075,63 @@ public final class app/reseam/patch/types/HandleRef$Method : app/reseam/patch/ty
 	public final fun getField0 ()Lapp/reseam/patch/types/MethodHandleRef;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public abstract class app/reseam/patch/types/HermesArgument {
+	public static final field Companion Lapp/reseam/patch/types/HermesArgument$Companion;
+}
+
+public final class app/reseam/patch/types/HermesArgument$Bool : app/reseam/patch/types/HermesArgument {
+	public fun <init> (Z)V
+	public final fun component1 ()Z
+	public final fun copy (Z)Lapp/reseam/patch/types/HermesArgument$Bool;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/HermesArgument$Bool;ZILjava/lang/Object;)Lapp/reseam/patch/types/HermesArgument$Bool;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/HermesArgument$Companion {
+}
+
+public final class app/reseam/patch/types/HermesArgument$Export : app/reseam/patch/types/HermesArgument {
+	public fun <init> (Lapp/reseam/patch/types/HermesExportRef;)V
+	public final fun component1 ()Lapp/reseam/patch/types/HermesExportRef;
+	public final fun copy (Lapp/reseam/patch/types/HermesExportRef;)Lapp/reseam/patch/types/HermesArgument$Export;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/HermesArgument$Export;Lapp/reseam/patch/types/HermesExportRef;ILjava/lang/Object;)Lapp/reseam/patch/types/HermesArgument$Export;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Lapp/reseam/patch/types/HermesExportRef;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/HermesArgument$Text : app/reseam/patch/types/HermesArgument {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lapp/reseam/patch/types/HermesArgument$Text;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/HermesArgument$Text;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/types/HermesArgument$Text;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/HermesExportRef {
+	public static final field Companion Lapp/reseam/patch/types/HermesExportRef$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/types/HermesExportRef;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/HermesExportRef;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/types/HermesExportRef;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getModule ()Ljava/lang/String;
+	public final fun getName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/HermesExportRef$Companion {
 }
 
 public abstract class app/reseam/patch/types/Instruction {

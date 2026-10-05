@@ -44,6 +44,7 @@ impl FunctionBody {
 pub(crate) struct Hook {
     pub module: crate::ModuleId,
     pub export: StringId,
+    pub bound: Vec<crate::wrap::Bound>,
 }
 
 /// Owns edits over a borrowed file. Original function and string identities

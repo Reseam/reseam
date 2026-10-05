@@ -4,7 +4,7 @@ description: Link JavaScript extensions into a Hermes bundle and wrap the app's 
 
 # Hermes JavaScript
 
-React Native apps often ship JavaScript as Hermes bytecode in `assets/index.android.bundle`. Inside `execute { }`, `hermes` opens that bundle in the base APK. Reseam links your JavaScript into it and writes the patched bundle when the run finishes.
+React Native apps often ship JavaScript as Hermes bytecode in `assets/index.android.bundle`. Reseam opens that bundle in the base APK when a patch first uses it, links your JavaScript into it, and writes the patched bundle stored, without ZIP compression, when the run finishes.
 
 Version 98 is supported. A missing bundle, another file format, or another bytecode version fails the patch.
 
@@ -20,7 +20,7 @@ apps/discord/extensions/emotes/
 Assign function expressions to `exports` at the top level:
 
 ```javascript
-exports.allow = function (original, ...args) {
+exports.canUseAnimatedEmojis = function (original, user) {
     return true;
 };
 ```
@@ -33,29 +33,33 @@ The module initializes once before the app's global code. Strings, regexps, obje
 
 ## Find and wrap
 
-Declare the module and the exports a patch uses:
+Declare the module and the exports a patch uses, named after the app functions they wrap:
 
 ```kotlin
 object Emotes : ExtJsModule("discord-emotes") {
-    val allow = export("allow")
+    val canUseAnimatedEmojis = export("canUseAnimatedEmojis")
 }
 ```
 
 The artifact name follows the workspace convention: `<app>-<extension>`, or `<name>` for a shared module.
 
-Then find a function inside `execute`:
+Declare the app function as a target, like a DEX `method { }`, and wrap it in `execute`:
 
 ```kotlin
-execute {
-    hermes.function {
-        name("canUseAnimatedEmojis")
-        strings("ANIMATED_EMOJIS")
-        paramCount(1)
-    }.wrap(Emotes.allow)
+val animatedEmojis = patch("Animated emojis") {
+    execute {
+        canUseAnimatedEmojis.wrap(Emotes.canUseAnimatedEmojis)
+    }
+}
+
+private val canUseAnimatedEmojis = function {
+    name("canUseAnimatedEmojis")
+    strings("ANIMATED_EMOJIS")
+    paramCount(1)
 }
 ```
 
-Every constraint must match. `name` is exact and case-sensitive; `strings` matches instruction references, including property names; `paramCount` excludes `this`. Zero or several matches fail the patch. Function handles are valid for that patch run only.
+Every constraint must match. `name` is exact and case-sensitive; `strings` matches instruction references, including property names; `paramCount` excludes `this`. Zero or several matches fail the patch. A target resolves when a patch first uses it.
 
 `wrap` calls your export as `export(original, ...arguments)` with the function's receiver, and returns your export's result. `original` calls the previous wrap, or the unchanged body for the first wrap, with the original captured environment. It is bound to the receiver, so `original(...args)` preserves `this` too.
 
@@ -84,13 +88,15 @@ An export can change arguments, call `original` several times, skip it, or catch
 
 Generators, async functions, class constructors, functions using `new.target` or direct `eval`, and environment chains Reseam cannot establish fail explicitly. An ordinary wrapped function cannot be called with `new` afterwards. Edited functions may lose their debug information.
 
-## Another bundle path
+## Gate on a setting
+
+The [settings](5_settings.md) gates also apply to Hermes targets:
 
 ```kotlin
-val code = hermes.bundle("assets/application.hbc")
-val version = code.version
+isStaff.returnTrueWhen(DiscordSettings.developerMenu)
+canUseAnimatedEmojis.wrapWhen(DiscordSettings.animatedEmojis, Emotes.canUseAnimatedEmojis)
 ```
 
-A run can open one Hermes bundle. Choose the path before using the default scope. The engine writes it stored, without ZIP compression.
+`returnNullWhen`, `returnTrueWhen` and `returnFalseWhen` return that value when the toggle is on and call the app function otherwise. `wrapWhen` runs your export when the toggle is on and the unchanged function otherwise, so the export itself does not check settings. Each toggle is read once per process, through the `ReseamSettings` React Native module that the app's settings host registers.
 
 See the [reference](reference.md#hermes) for the authoring API.

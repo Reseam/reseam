@@ -6,6 +6,8 @@
 package app.reseam.patch.settings
 
 import app.reseam.patch.CodeScope
+import app.reseam.patch.FunctionTarget
+import app.reseam.patch.JsExport
 import app.reseam.patch.MethodTarget
 import app.reseam.patch.Otherwise
 import app.reseam.patch.PointTarget
@@ -13,6 +15,8 @@ import app.reseam.patch.Type
 import app.reseam.patch.after
 import app.reseam.patch.before
 import app.reseam.patch.skipWhen
+import app.reseam.patch.types.HermesArgument
+import app.reseam.patch.types.HermesExportRef
 
 /** Runs `block` in the app when the toggle is on. */
 fun CodeScope.whenEnabled(setting: ToggleSetting, block: CodeScope.() -> Unit): Otherwise =
@@ -64,3 +68,25 @@ private fun MethodTarget.returnBooleanWhen(setting: ToggleSetting, value: Boolea
     }
     before(setting) { if (value) returnTrue() else returnFalse() }
 }
+
+/**
+ * Hermes gates read the toggle once per process, through the `ReseamSettings` React Native module
+ * the app's settings host registers.
+ */
+fun FunctionTarget.returnNullWhen(setting: ToggleSetting) =
+    wrap(ReseamJsSettings.returnNullWhen, setting.bound())
+
+fun FunctionTarget.returnTrueWhen(setting: ToggleSetting) =
+    wrap(ReseamJsSettings.returnTrueWhen, setting.bound())
+
+fun FunctionTarget.returnFalseWhen(setting: ToggleSetting) =
+    wrap(ReseamJsSettings.returnFalseWhen, setting.bound())
+
+/** Wraps the function with [export] when the toggle is on, as [FunctionTarget.wrap] does. */
+fun FunctionTarget.wrapWhen(setting: ToggleSetting, export: JsExport) =
+    wrap(
+        ReseamJsSettings.wrapWhen,
+        setting.bound() + HermesArgument.Export(HermesExportRef(export.module.name, export.name)),
+    )
+
+private fun ToggleSetting.bound() = listOf(HermesArgument.Text(key), HermesArgument.Bool(default))

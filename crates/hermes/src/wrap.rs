@@ -6,7 +6,26 @@ use crate::error::{HermesError, Result, invalid};
 use crate::link::generated_function;
 use crate::opcode::{IdKind, Instruction, OperandKind};
 use crate::parse::{read_u32, slice, switch_table};
-use crate::{Function, FunctionId, ModuleId, StringKind};
+use crate::{Function, FunctionId, ModuleId, StringId, StringKind};
+
+/// A value a wrap passes to its export ahead of `original`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Argument {
+    Bool(bool),
+    String(String),
+    /// A callable that a linked module exports.
+    Export {
+        module: ModuleId,
+        name: String,
+    },
+}
+
+#[derive(Clone)]
+pub(crate) enum Bound {
+    Bool(bool),
+    String(StringId),
+    Export { module: ModuleId, name: StringId },
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Value {
@@ -25,8 +44,9 @@ struct ClosureSite {
 }
 
 impl Editor<'_> {
-    /// Replaces calls to `function` with `export(original, ...arguments)`.
-    /// The export receives the same receiver. `original` is receiver-bound and
+    /// Replaces calls to `function` with `export(...bound, original, ...arguments)`.
+    /// `bound` values are fixed when the wrap is made, so one export can serve
+    /// several targets. The export receives the same receiver. `original` is receiver-bound and
     /// invokes the previous wrap, or the unchanged body for the first wrap,
     /// with the original captured environment. Later wraps run outermost,
     /// including exports from different modules, in application order.
@@ -35,8 +55,14 @@ impl Editor<'_> {
     /// Ordinary wrapped functions cannot subsequently be used as constructors.
     /// Closure ancestry and environment analysis are retained across calls.
     /// Each call adds one layer; shared ancestor bodies are assembled at write time.
-    pub fn wrap(&mut self, function: FunctionId, module: ModuleId, export: &str) -> Result<()> {
-        self.transaction(|editor| editor.wrap_function(function, module, export))
+    pub fn wrap(
+        &mut self,
+        function: FunctionId,
+        module: ModuleId,
+        export: &str,
+        bound: &[Argument],
+    ) -> Result<()> {
+        self.transaction(|editor| editor.wrap_function(function, module, export, bound))
     }
 
     fn wrap_function(
@@ -44,26 +70,28 @@ impl Editor<'_> {
         function: FunctionId,
         module: ModuleId,
         export: &str,
+        bound: &[Argument],
     ) -> Result<()> {
-        if module.0 as usize >= self.edits.modules.len() {
-            return Err(invalid(0, "module belongs to another editor"));
-        }
-        let declared = self.edits.module_exports[module.0 as usize]
-            .iter()
-            .any(|id| {
-                let added = &self.edits.strings[(id.0 - self.file.string_count()) as usize];
-                let value = if added.utf16 {
-                    crate::StringValue::Utf16(&added.value)
-                } else {
-                    crate::StringValue::Latin1(&added.value)
-                };
-                value.equals(export)
-            });
-        if !declared {
+        if bound.len() >= usize::from(u8::MAX) {
             return Err(HermesError::Unsupported(format!(
-                "module does not statically export callable {export:?}"
+                "{} bound arguments; at most 254 are supported",
+                bound.len()
             )));
         }
+        let export = self.declared_export(module, export)?;
+        let bound = bound
+            .iter()
+            .map(|argument| {
+                Ok(match argument {
+                    Argument::Bool(value) => Bound::Bool(*value),
+                    Argument::String(text) => Bound::String(self.intern(text, StringKind::String)?),
+                    Argument::Export { module, name } => Bound::Export {
+                        module: *module,
+                        name: self.declared_export(*module, name)?,
+                    },
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
         if function == self.file.global_function() {
             return Err(HermesError::Unsupported("global function".into()));
         }
@@ -89,7 +117,6 @@ impl Editor<'_> {
                 "a wrapped body also needs to carry a disconnected nested hook environment".into(),
             ));
         }
-        let export = self.intern(export, StringKind::Identifier)?;
         let previous = if self.edits.wrapped.contains(&function) {
             self.edits.functions[&function].clone()
         } else {
@@ -97,7 +124,11 @@ impl Editor<'_> {
         };
         let original = self.next_function();
         let bridge = FunctionId(original.0 + 1);
-        let hook = Hook { module, export };
+        let hook = Hook {
+            module,
+            export,
+            bound,
+        };
         let body = wrapper(&target, original, bridge, plan.depth, &hook)?;
         self.append_function(previous);
         self.append_function(bound_original(target.name()));
@@ -111,6 +142,29 @@ impl Editor<'_> {
                 .or_insert(root);
         }
         Ok(())
+    }
+
+    fn declared_export(&mut self, module: ModuleId, export: &str) -> Result<StringId> {
+        if module.0 as usize >= self.edits.modules.len() {
+            return Err(invalid(0, "module belongs to another editor"));
+        }
+        let declared = self.edits.module_exports[module.0 as usize]
+            .iter()
+            .any(|id| {
+                let added = &self.edits.strings[(id.0 - self.file.string_count()) as usize];
+                let value = if added.utf16 {
+                    crate::StringValue::Utf16(&added.value)
+                } else {
+                    crate::StringValue::Latin1(&added.value)
+                };
+                value.equals(export)
+            });
+        if !declared {
+            return Err(HermesError::Unsupported(format!(
+                "module does not statically export callable {export:?}"
+            )));
+        }
+        self.intern(export, StringKind::Identifier)
     }
 
     fn hook_plan(&mut self, target: FunctionId) -> Result<HookPlan> {
@@ -532,7 +586,7 @@ fn original_function(function: &Function<'_>) -> Result<EditedFunction> {
     })
 }
 
-fn bound_original(name: crate::StringId) -> EditedFunction {
+fn bound_original(name: StringId) -> EditedFunction {
     let code = [
         instruction("GetParentEnvironment", &[0, 0]),
         instruction("LoadFromEnvironment", &[11, 0, 0]),
@@ -545,6 +599,38 @@ fn bound_original(name: crate::StringId) -> EditedFunction {
         instruction("Ret", &[0]),
     ];
     generated_function(name, 1, 20, encode(&code))
+}
+
+/// Appends `bound` to the argument array in r7, using r12 and r3 as scratch.
+/// Returns the read cache slots the wrapper uses; slot 0 belongs to the hook export.
+fn load_bound(code: &mut Vec<Instruction>, bound: &[Bound], depth: u8) -> u8 {
+    let mut read_cache = 1_u8;
+    for (index, value) in bound.iter().enumerate() {
+        match value {
+            Bound::Bool(true) => code.push(instruction("LoadConstTrue", &[12])),
+            Bound::Bool(false) => code.push(instruction("LoadConstFalse", &[12])),
+            Bound::String(text) => {
+                code.push(instruction(
+                    "LoadConstStringLongIndex",
+                    &[12, u64::from(text.0)],
+                ));
+            }
+            // Each property read needs its own cache slot.
+            Bound::Export { module, name } => {
+                code.extend([
+                    instruction("GetParentEnvironment", &[3, u64::from(depth)]),
+                    instruction("LoadFromEnvironmentL", &[3, 3, u64::from(module.0)]),
+                    instruction(
+                        "GetByIdLong",
+                        &[12, 3, u64::from(read_cache), u64::from(name.0)],
+                    ),
+                ]);
+                read_cache += 1;
+            }
+        }
+        code.push(instruction("DefineOwnByIndex", &[7, 12, index as u64]));
+    }
+    read_cache
 }
 
 fn wrapper(
@@ -573,19 +659,24 @@ fn wrapper(
         instruction("StoreToEnvironment", &[5, 1, 2]),
         instruction("CreateClosureLongIndex", &[6, 5, u64::from(bridge.0)]),
         instruction("NewArray", &[7, 0]),
-        instruction("DefineOwnByIndex", &[7, 6, 0]),
+    ];
+    let read_cache = load_bound(&mut code, &hook.bound, depth);
+    let original_index = hook.bound.len() as u64;
+    code.extend([
+        instruction("DefineOwnByIndex", &[7, 6, original_index]),
         instruction("LoadConstUndefined", &[0]),
         instruction("GetArgumentsLength", &[8, 0]),
         instruction("LoadConstZero", &[9]),
         instruction("LoadConstUInt8", &[11, 1]),
-    ];
+        instruction("LoadConstUInt8", &[10, original_index + 1]),
+    ]);
     let test = code.len();
     code.push(instruction("JGreaterEqual", &[0, 9, 8]));
     let loop_start = code.len();
     code.extend([
         instruction("GetArgumentsPropByValStrict", &[12, 9, 0]),
-        instruction("Add", &[10, 9, 11]),
         instruction("DefineOwnByVal", &[7, 12, 10, 1]),
+        instruction("Add", &[10, 10, 11]),
         instruction("Add", &[9, 9, 11]),
         instruction("JLess", &[0, 9, 8]),
     ]);
@@ -640,7 +731,7 @@ fn wrapper(
         24,
         encode(&code),
     );
-    result.header.read_cache = 1;
+    result.header.read_cache = read_cache;
     result.header.flags = (function.header.flags & 4) | 1;
     Ok(result)
 }

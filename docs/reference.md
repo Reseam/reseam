@@ -42,22 +42,23 @@ Inside `patch { }` (`PatchBuilder`):
 
 ### Hermes
 
-See [Hermes JavaScript](15_hermes.md) for extension sources and examples. Functions are found inside `execute { }`; handles last for that patch run.
+See [Hermes JavaScript](15_hermes.md) for extension sources and examples. Targets resolve against the base APK's `assets/index.android.bundle` when first used.
 
-| Symbol | Description |
+| API | Meaning |
 |---|---|
-| `hermes: HermesScope` | The base APK's `assets/index.android.bundle`, opened lazily. Supports v98. |
+| `hermes: HermesScope` | The base APK's Hermes bundle, opened lazily. Supports v98. |
 | `HermesScope.version` | Opens the bundle and returns its bytecode version. |
-| `HermesScope.bundle(path)` | Selects another path in the base APK. One bundle per run. |
-| `HermesScope.function { HermesFunctionQuery }` | Exactly one app function matching all constraints; missing and ambiguous matches fail. |
+| `function(debugName?) { HermesFunctionQuery }` | Exactly one app function matching all constraints; missing and ambiguous matches fail. |
 | `HermesFunctionQuery.name(value)` | Exact function name. |
 | `HermesFunctionQuery.strings(vararg values)` | All strings must be referenced by instructions, including property names. |
 | `HermesFunctionQuery.paramCount(count)` | Declared JavaScript parameters, excluding `this`; nonnegative. |
-| `HermesFunction.wrap(export: JsExport)` | Calls `export(original, ...arguments)` with the same receiver and returns its result. `original` is receiver-bound and retains the unchanged body and captured environment. |
+| `FunctionTarget.wrap(export: JsExport)` | Calls `export(original, ...arguments)` with the same receiver and returns its result. `original` is receiver-bound and retains the unchanged body and captured environment. |
+| `FunctionTarget.returnNullWhen/returnTrueWhen/returnFalseWhen(setting)` | Returns that value when the toggle is on. |
+| `FunctionTarget.wrapWhen(setting, export)` | Wraps with `export` when the toggle is on. |
 | `ExtJsModule(name)` | Declares an extension artifact, such as `discord-emotes`. |
 | `ExtJsModule.export(name)` | Declares a callable property of its exports object; returns `JsExport`. Validated on use. |
 
-Generators, async functions, class constructors, `new.target`, direct `eval`, repeated wrapping and unprovable environment chains fail explicitly. Wrapped ordinary functions cannot be constructed with `new`. The module links once and initializes before the app's global code. Exports are private; edited functions may lose debug data.
+Generators, async functions, class constructors, `new.target`, direct `eval` and unprovable environment chains fail explicitly. Repeated wraps compose in patch order. Wrapped ordinary functions cannot be constructed with `new`. The module links once and initializes before the app's global code. Exports are private; edited functions may lose debug data.
 
 ### Options
 

@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use reseam_apk::Compression;
-use reseam_hermes::{Editor, Edits, FunctionId, FunctionIndex, HermesFile, HermesImage, ModuleId};
+use reseam_hermes::{
+    Argument, Editor, Edits, FunctionId, FunctionIndex, HermesFile, HermesImage, ModuleId,
+};
 use reseam_storage::Bytes;
 
 use super::PatchContext;
@@ -78,28 +80,32 @@ impl PatchContext<'_> {
             .find_function(&session.image.file(), name, strings, parameters)?)
     }
 
+    pub(crate) fn hermes_link(&mut self, path: &str, module: &Path) -> Result<ModuleId> {
+        let session = self.hermes_session(path)?;
+        if let Some(&id) = session.modules.get(module) {
+            return Ok(id);
+        }
+        let file = std::fs::File::open(module).map_err(|e| {
+            PatcherError::Bundle(format!("Hermes extension {}: {e}", module.display()))
+        })?;
+        // SAFETY: bundle payloads are validated immutable snapshots retained for the run.
+        let source = unsafe { reseam_storage::map_file(&file)? };
+        let module_file = HermesFile::parse(&source)?;
+        let id = session.edit(|editor| Ok(editor.link(&module_file)?))?;
+        session.modules.insert(module.to_owned(), id);
+        Ok(id)
+    }
+
     pub(crate) fn hermes_wrap(
         &mut self,
         path: &str,
         function: FunctionId,
-        module: &Path,
+        module: ModuleId,
         export: &str,
+        bound: &[Argument],
     ) -> Result<()> {
-        let session = self.hermes_session(path)?;
-        let module_id = if let Some(&id) = session.modules.get(module) {
-            id
-        } else {
-            let file = std::fs::File::open(module).map_err(|e| {
-                PatcherError::Bundle(format!("Hermes extension {}: {e}", module.display()))
-            })?;
-            // SAFETY: bundle payloads are validated immutable snapshots retained for the run.
-            let source = unsafe { reseam_storage::map_file(&file)? };
-            let module_file = HermesFile::parse(&source)?;
-            let id = session.edit(|editor| Ok(editor.link(&module_file)?))?;
-            session.modules.insert(module.to_owned(), id);
-            id
-        };
-        session.edit(|editor| Ok(editor.wrap(function, module_id, export)?))
+        self.hermes_session(path)?
+            .edit(|editor| Ok(editor.wrap(function, module, export, bound)?))
     }
 
     pub(crate) fn finish_hermes(&mut self) -> Result<()> {
