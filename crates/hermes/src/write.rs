@@ -26,6 +26,8 @@ impl Editor<'_> {
     /// debug information, and recomputes the SHA-1 footer. Untouched body and
     /// metadata regions are copied directly from the borrowed input. Original
     /// string/function IDs and trailing epilogues remain stable.
+    /// Shared closure ancestors and the module initializer are assembled here,
+    /// followed by one complete layout and relocation pass per write.
     #[expect(
         clippy::too_many_lines,
         reason = "the layout and streaming passes follow the same ordered file segments"
@@ -36,6 +38,10 @@ impl Editor<'_> {
             && self.edits.functions.is_empty()
         {
             return self.file.write(output);
+        }
+        let mut finalized = self.rooted_functions()?;
+        if let Some(bootstrap) = self.bootstrap() {
+            finalized.insert(self.edits.global, bootstrap);
         }
         let count = self.file.function_count() as usize + self.edits.appended.len();
         let old_tail = self.file.sections[Section::Sources as usize].end;
@@ -63,7 +69,7 @@ impl Editor<'_> {
                     relocate(header.offset as usize, shift)?.to_le_bytes(),
                 );
             }
-            if let Some(edited) = self.edits.functions.get(&FunctionId(index)) {
+            if let Some(edited) = self.edited_at(index as usize, &finalized) {
                 header = edited.header.clone();
                 cursor = edited.body.place(cursor);
                 header.offset = as_offset(cursor)?;
@@ -86,7 +92,10 @@ impl Editor<'_> {
                 });
             }
         }
-        for edited in &self.edits.appended {
+        for index in self.file.function_count() as usize..count {
+            let edited = self
+                .edited_at(index, &finalized)
+                .expect("appended function exists");
             cursor = edited.body.place(cursor);
             let mut header = edited.header.clone();
             header.offset = as_offset(cursor)?;
@@ -101,7 +110,7 @@ impl Editor<'_> {
             cursor = align(cursor);
             function.large_offset = Some(as_offset(cursor)?);
             cursor += 40;
-            if let Some(edited) = self.edited_at(index)
+            if let Some(edited) = self.edited_at(index, &finalized)
                 && !edited.exceptions.is_empty()
             {
                 cursor += 4 + edited.exceptions.len() * 12;
@@ -167,7 +176,7 @@ impl Editor<'_> {
         }
         sink.bytes(&self.file.source[start..old_debug])?;
         for index in 0..count {
-            if let Some(edited) = self.edited_at(index) {
+            if let Some(edited) = self.edited_at(index, &finalized) {
                 sink.pad_to(edited.body.place(sink.position))?;
                 sink.bytes(edited.body.bytes(&self.file))?;
             }
@@ -176,7 +185,7 @@ impl Editor<'_> {
             sink.align()?;
             sink.bytes(&large_header(&function.header))?;
             sink.align()?;
-            if let Some(edited) = self.edited_at(index)
+            if let Some(edited) = self.edited_at(index, &finalized)
                 && !edited.exceptions.is_empty()
             {
                 sink.bytes(&(edited.exceptions.len() as u32).to_le_bytes())?;
@@ -195,7 +204,14 @@ impl Editor<'_> {
         Ok(())
     }
 
-    fn edited_at(&self, index: usize) -> Option<&crate::edit::EditedFunction> {
+    fn edited_at<'a>(
+        &'a self,
+        index: usize,
+        finalized: &'a std::collections::BTreeMap<FunctionId, crate::edit::EditedFunction>,
+    ) -> Option<&'a crate::edit::EditedFunction> {
+        if let Some(edited) = finalized.get(&FunctionId(index as u32)) {
+            return Some(edited);
+        }
         if index < self.file.function_count() as usize {
             self.edits.functions.get(&FunctionId(index as u32))
         } else {

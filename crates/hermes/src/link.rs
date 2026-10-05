@@ -30,6 +30,7 @@ impl Editor<'_> {
     /// declarations and incompatible static-builtin assumptions are refused.
     /// Every function, string, bigint, regexp, literal and shape reference is
     /// remapped. Module debug information is dropped; exceptions are retained.
+    /// The shared module initializer is assembled once when the file is written.
     pub fn link(&mut self, module: &HermesFile<'_>) -> Result<ModuleId> {
         self.transaction(|editor| editor.link_module(module))
     }
@@ -187,6 +188,17 @@ impl Editor<'_> {
         if self.edits.modules.len() > u16::MAX as usize {
             return Err(invalid(0, "too many extension modules"));
         }
+        if self.edits.global == self.file.global_function() {
+            let name = self.intern("reseamBootstrap", StringKind::String)?;
+            self.edits.global = self.append_function(generated_function(name, 1, 16, Vec::new()));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn bootstrap(&self) -> Option<EditedFunction> {
+        if self.edits.modules.is_empty() {
+            return None;
+        }
         let mut code = vec![
             instruction(
                 "CreateTopLevelEnvironment",
@@ -210,15 +222,12 @@ impl Editor<'_> {
             instruction("Call1", &[3, 3, 2]),
             instruction("Ret", &[3]),
         ]);
-        let name = self.intern("reseamBootstrap", StringKind::String)?;
-        let bootstrap = generated_function(name, 1, 16, encode(&code));
-        if self.edits.global == self.file.global_function() {
-            self.edits.global = self.append_function(bootstrap);
-        } else {
-            self.edits.appended[(self.edits.global.0 - self.file.function_count()) as usize] =
-                bootstrap;
-        }
-        Ok(())
+        let name = StringId(
+            self.edits.appended[(self.edits.global.0 - self.file.function_count()) as usize]
+                .header
+                .name,
+        );
+        Some(generated_function(name, 1, 16, encode(&code)))
     }
 }
 

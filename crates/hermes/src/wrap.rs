@@ -16,10 +16,12 @@ enum Value {
 
 type State = BTreeMap<u32, Value>;
 
+#[derive(Clone)]
 struct ClosureSite {
     target: FunctionId,
     instruction: usize,
-    environment: Value,
+    environment: Option<Value>,
+    offset: u32,
 }
 
 impl Editor<'_> {
@@ -31,6 +33,8 @@ impl Editor<'_> {
     /// Generators, async functions, constructors, globals,
     /// unknown exports and unprovable environment chains fail explicitly.
     /// Ordinary wrapped functions cannot subsequently be used as constructors.
+    /// Closure ancestry and environment analysis are retained across calls.
+    /// Each call adds one layer; shared ancestor bodies are assembled at write time.
     pub fn wrap(&mut self, function: FunctionId, module: ModuleId, export: &str) -> Result<()> {
         self.transaction(|editor| editor.wrap_function(function, module, export))
     }
@@ -76,42 +80,55 @@ impl Editor<'_> {
                 function.0
             )));
         }
+        let plan = self.hook_plan(function)?;
+        if self.edits.roots.contains_key(&function)
+            || plan.roots.keys().any(|id| self.edits.wrapped.contains(id))
+            || plan.roots.contains_key(&function)
+        {
+            return Err(HermesError::Unsupported(
+                "a wrapped body also needs to carry a disconnected nested hook environment".into(),
+            ));
+        }
         let export = self.intern(export, StringKind::Identifier)?;
-        let previous = if self.edits.hooks.contains_key(&function) {
+        let previous = if self.edits.wrapped.contains(&function) {
             self.edits.functions[&function].clone()
         } else {
             original_function(&target)?
         };
-        let original = self.append_function(previous);
-        let bridge = self.append_function(bound_original(target.name()));
-        self.edits.hooks.entry(function).or_default().push(Hook {
-            module,
-            export,
-            original,
-            bridge,
-        });
-        self.install_hooks()
+        let original = self.next_function();
+        let bridge = FunctionId(original.0 + 1);
+        let hook = Hook { module, export };
+        let body = wrapper(&target, original, bridge, plan.depth, &hook)?;
+        self.append_function(previous);
+        self.append_function(bound_original(target.name()));
+        self.edits.functions.insert(function, body);
+        self.edits.wrapped.insert(function);
+        for (id, root) in plan.roots {
+            self.edits
+                .roots
+                .entry(id)
+                .and_modify(|existing| existing.sites.extend(&root.sites))
+                .or_insert(root);
+        }
+        Ok(())
     }
 
-    fn install_hooks(&mut self) -> Result<()> {
-        let mut parents = BTreeMap::<FunctionId, BTreeSet<FunctionId>>::new();
-        for id in 0..self.file.function_count() {
-            let function = self.file.function(FunctionId(id))?;
-            for inst in function.instructions()? {
-                for (operand, value) in inst.definition().operands.iter().zip(inst.values) {
-                    if operand.id == IdKind::Function {
-                        parents
-                            .entry(FunctionId(value as u32))
-                            .or_default()
-                            .insert(function.id);
-                    }
-                }
-            }
+    fn hook_plan(&mut self, target: FunctionId) -> Result<HookPlan> {
+        if self.edits.hook_graph.is_none() {
+            self.edits.hook_graph = Some(HookGraph::build(&self.file)?);
         }
-        let mut needed: BTreeSet<_> = self.edits.hooks.keys().copied().collect();
-        let mut pending: VecDeque<_> = needed.iter().copied().collect();
+        let graph = self
+            .edits
+            .hook_graph
+            .as_mut()
+            .expect("hook graph initialized");
+        if let Some(plan) = graph.plans.get(&target) {
+            return Ok(plan.clone());
+        }
+        let mut needed = BTreeSet::from([target]);
+        let mut pending = VecDeque::from([target]);
         while let Some(id) = pending.pop_front() {
-            if let Some(creators) = parents.get(&id) {
+            if let Some(creators) = graph.parents.get(&id) {
                 for &creator in creators {
                     if needed.insert(creator) {
                         pending.push_back(creator);
@@ -126,22 +143,31 @@ impl Editor<'_> {
         }
         let mut depths = BTreeMap::from([(self.file.global_function(), 0_u16)]);
         let mut work = VecDeque::from([self.file.global_function()]);
-        let mut changed = BTreeMap::new();
+        let mut roots = BTreeMap::new();
         while let Some(id) = work.pop_front() {
-            let function = self.file.function(id)?;
-            let code = function.instructions()?;
-            let sites = analyse(&function, &code, depths[&id], &needed)?;
+            let depth = depths[&id];
+            let analysis = graph.analysis(&self.file, id, depth)?;
             let mut attach = BTreeSet::new();
-            for site in sites.iter().filter(|site| needed.contains(&site.target)) {
-                let depth = match site.environment {
-                    Value::Undefined => {
+            for site in needed
+                .iter()
+                .filter_map(|id| analysis.sites.get(id))
+                .flatten()
+            {
+                let child_depth = match site.environment {
+                    Some(Value::Undefined) => {
                         attach.insert(site.instruction);
                         0
                     }
-                    Value::Environment(depth) => depth,
+                    Some(Value::Environment(depth)) => depth,
+                    None => {
+                        return Err(HermesError::Unsupported(format!(
+                            "cannot prove closure environment at function {}, byte {}",
+                            id.0, site.offset
+                        )));
+                    }
                 };
-                if let Some(previous) = depths.insert(site.target, depth) {
-                    if previous != depth {
+                if let Some(previous) = depths.insert(site.target, child_depth) {
+                    if previous != child_depth {
                         return Err(HermesError::Unsupported(format!(
                             "function {} has closures at different environment depths",
                             site.target.0
@@ -151,44 +177,123 @@ impl Editor<'_> {
                     work.push_back(site.target);
                 }
             }
-            if !attach.is_empty()
-                || code
-                    .iter()
-                    .any(|i| i.definition().name == "CreateTopLevelEnvironment")
-            {
-                if self.edits.hooks.contains_key(&id) {
-                    return Err(HermesError::Unsupported(
-                        "a wrapped body also needs to carry a disconnected nested hook environment"
-                            .into(),
-                    ));
-                }
-                changed.insert(id, attach_root(&function, code, depths[&id], &attach)?);
+            if !attach.is_empty() || analysis.top_level {
+                u8::try_from(depth).map_err(|_| {
+                    HermesError::Unsupported("private environment deeper than 255 scopes".into())
+                })?;
+                roots.insert(
+                    id,
+                    RootAttachment {
+                        depth,
+                        sites: attach,
+                    },
+                );
             }
         }
-        let mut layers = Vec::new();
-        for (&id, hooks) in &self.edits.hooks {
-            let depth = *depths.get(&id).ok_or_else(|| {
-                HermesError::Unsupported(format!(
-                    "cannot resolve private environment for function {}",
-                    id.0
-                ))
-            })?;
-            let function = self.file.function(id)?;
-            for (index, hook) in hooks.iter().enumerate() {
-                let body = wrapper(&function, hook.original, hook.bridge, depth, hook)?;
-                if let Some(next) = hooks.get(index + 1) {
-                    layers.push((next.original, body));
-                } else {
-                    changed.insert(id, body);
-                }
-            }
-        }
-        for (id, body) in layers {
-            self.edits.appended[(id.0 - self.file.function_count()) as usize] = body;
-        }
-        self.edits.functions = changed;
-        Ok(())
+        let depth = *depths.get(&target).ok_or_else(|| {
+            HermesError::Unsupported(format!(
+                "cannot resolve private environment for function {}",
+                target.0
+            ))
+        })?;
+        let plan = HookPlan { depth, roots };
+        graph.plans.insert(target, plan.clone());
+        Ok(plan)
     }
+
+    pub(crate) fn rooted_functions(&self) -> Result<BTreeMap<FunctionId, EditedFunction>> {
+        self.edits
+            .roots
+            .iter()
+            .map(|(&id, root)| {
+                let function = self.file.function(id)?;
+                let body =
+                    attach_root(&function, function.instructions()?, root.depth, &root.sites)?;
+                Ok((id, body))
+            })
+            .collect()
+    }
+}
+
+pub(crate) struct HookGraph {
+    parents: BTreeMap<FunctionId, BTreeSet<FunctionId>>,
+    analyses: BTreeMap<FunctionId, ClosureAnalysis>,
+    plans: BTreeMap<FunctionId, HookPlan>,
+}
+
+impl HookGraph {
+    fn build(file: &crate::HermesFile<'_>) -> Result<Self> {
+        let mut parents = BTreeMap::<FunctionId, BTreeSet<FunctionId>>::new();
+        for id in (0..file.function_count()).map(FunctionId) {
+            let function = file.function(id)?;
+            for inst in function.instructions()? {
+                for (operand, value) in inst.definition().operands.iter().zip(inst.values) {
+                    if operand.id == IdKind::Function {
+                        parents
+                            .entry(FunctionId(value as u32))
+                            .or_default()
+                            .insert(id);
+                    }
+                }
+            }
+        }
+        Ok(Self {
+            parents,
+            analyses: BTreeMap::new(),
+            plans: BTreeMap::new(),
+        })
+    }
+
+    fn analysis(
+        &mut self,
+        file: &crate::HermesFile<'_>,
+        id: FunctionId,
+        depth: u16,
+    ) -> Result<&ClosureAnalysis> {
+        let analysis = match self.analyses.entry(id) {
+            std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                let function = file.function(id)?;
+                let code = function.instructions()?;
+                let mut sites = BTreeMap::<_, Vec<_>>::new();
+                for site in analyse(&function, &code, depth)? {
+                    sites.entry(site.target).or_default().push(site);
+                }
+                entry.insert(ClosureAnalysis {
+                    depth,
+                    sites,
+                    top_level: code
+                        .iter()
+                        .any(|i| i.definition().name == "CreateTopLevelEnvironment"),
+                })
+            }
+        };
+        if analysis.depth != depth {
+            return Err(HermesError::Unsupported(format!(
+                "function {} has closures at different environment depths",
+                id.0
+            )));
+        }
+        Ok(analysis)
+    }
+}
+
+struct ClosureAnalysis {
+    depth: u16,
+    sites: BTreeMap<FunctionId, Vec<ClosureSite>>,
+    top_level: bool,
+}
+
+#[derive(Clone)]
+pub(crate) struct RootAttachment {
+    depth: u16,
+    sites: BTreeSet<usize>,
+}
+
+#[derive(Clone)]
+struct HookPlan {
+    depth: u16,
+    roots: BTreeMap<FunctionId, RootAttachment>,
 }
 
 fn merge(existing: &mut State, incoming: &State) -> bool {
@@ -246,7 +351,6 @@ fn analyse(
     function: &Function<'_>,
     code: &[Instruction],
     enclosing: u16,
-    needed: &BTreeSet<FunctionId>,
 ) -> Result<Vec<ClosureSite>> {
     if code.is_empty() {
         return Ok(Vec::new());
@@ -347,25 +451,15 @@ fn analyse(
         ) {
             continue;
         }
-        if !needed.contains(&FunctionId(inst.values[2] as u32)) {
-            continue;
-        }
         let Some(state) = states.get(&index) else {
             continue;
         };
-        let environment = state
-            .get(&(inst.values[1] as u32))
-            .copied()
-            .ok_or_else(|| {
-                HermesError::Unsupported(format!(
-                    "cannot prove closure environment at function {}, byte {}",
-                    function.id.0, inst.offset
-                ))
-            })?;
+        let environment = state.get(&(inst.values[1] as u32)).copied();
         sites.push(ClosureSite {
             target: FunctionId(inst.values[2] as u32),
             instruction: index,
             environment,
+            offset: inst.offset,
         });
     }
     Ok(sites)

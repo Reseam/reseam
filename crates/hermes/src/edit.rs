@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
 use crate::error::{Result, invalid};
@@ -44,12 +44,11 @@ impl FunctionBody {
 pub(crate) struct Hook {
     pub module: crate::ModuleId,
     pub export: StringId,
-    pub original: FunctionId,
-    pub bridge: FunctionId,
 }
 
 /// Owns edits over a borrowed file. Original function and string identities
-/// remain stable. Only additions and changed bodies allocate storage.
+/// remain stable. Only additions, changed bodies and indices allocate storage.
+/// Indices and closure analysis are built lazily and retained in detached edits.
 pub struct Editor<'a> {
     pub(crate) file: HermesFile<'a>,
     pub(crate) edits: Edits,
@@ -64,11 +63,14 @@ pub struct Edits {
     pub(crate) appended: Vec<EditedFunction>,
     pub(crate) strings: Vec<AddedString>,
     pub(crate) string_index: rustc_hash::FxHashMap<(u64, StringKind), Vec<StringId>>,
+    original_strings_indexed: bool,
     pub(crate) global: FunctionId,
     pub(crate) modules: Vec<FunctionId>,
     pub(crate) module_exports: Vec<Vec<StringId>>,
     pub(crate) string_switches: u32,
-    pub(crate) hooks: BTreeMap<FunctionId, Vec<Hook>>,
+    pub(crate) wrapped: BTreeSet<FunctionId>,
+    pub(crate) hook_graph: Option<crate::wrap::HookGraph>,
+    pub(crate) roots: BTreeMap<FunctionId, crate::wrap::RootAttachment>,
 }
 
 pub(crate) struct AddedString {
@@ -94,11 +96,14 @@ impl<'a> Editor<'a> {
                 appended: Vec::new(),
                 strings: Vec::new(),
                 string_index: rustc_hash::FxHashMap::default(),
+                original_strings_indexed: false,
                 global,
                 modules: Vec::new(),
                 module_exports: Vec::new(),
                 string_switches,
-                hooks: BTreeMap::new(),
+                wrapped: BTreeSet::new(),
+                hook_graph: None,
+                roots: BTreeMap::new(),
             },
         }
     }
@@ -122,13 +127,13 @@ impl<'a> Editor<'a> {
         Ok(Self { file, edits })
     }
 
+    // Fallible work may append data and populate immutable analysis caches.
+    // Replacements and root attachments are published only after it succeeds.
     pub(crate) fn transaction<T>(
         &mut self,
         operation: impl FnOnce(&mut Self) -> Result<T>,
     ) -> Result<T> {
         let lengths = self.edits.additions.each_ref().map(Vec::len);
-        let functions = self.edits.functions.clone();
-        let hooks = self.edits.hooks.clone();
         let appended = self.edits.appended.len();
         let strings = self.edits.strings.len();
         let modules = self.edits.modules.len();
@@ -139,15 +144,25 @@ impl<'a> Editor<'a> {
             for (bytes, length) in self.edits.additions.iter_mut().zip(lengths) {
                 bytes.truncate(length);
             }
-            self.edits.functions = functions;
-            self.edits.hooks = hooks;
             self.edits.appended.truncate(appended);
+            for string in &self.edits.strings[strings..] {
+                let value = if string.utf16 {
+                    crate::StringValue::Utf16(&string.value)
+                } else {
+                    crate::StringValue::Latin1(&string.value)
+                };
+                let key = (value.fingerprint(), string.kind);
+                let ids = self
+                    .edits
+                    .string_index
+                    .get_mut(&key)
+                    .expect("appended strings are indexed");
+                ids.retain(|id| *id != string.id);
+                if ids.is_empty() {
+                    self.edits.string_index.remove(&key);
+                }
+            }
             self.edits.strings.truncate(strings);
-            let count = self.file.string_count() + strings as u32;
-            self.edits.string_index.retain(|_, ids| {
-                ids.retain(|id| id.0 < count);
-                !ids.is_empty()
-            });
             self.edits.modules.truncate(modules);
             self.edits.module_exports.truncate(modules);
             self.edits.global = global;
@@ -160,25 +175,10 @@ impl<'a> Editor<'a> {
     /// the v98 hash, and strings requiring UTF-16 or overflow entries use them.
     /// A string previously used only as a value remains a separate entry when
     /// subsequently interned as an identifier, preserving original IDs.
+    /// The original string index is built once; later calls inspect only matching
+    /// fingerprints and verify the text, returning the first matching ID.
     pub fn intern(&mut self, text: &str, kind: StringKind) -> Result<StringId> {
-        let mut index = 0;
-        for entry in self.file.section(Section::Kinds).as_chunks::<4>().0 {
-            let run = u32::from_le_bytes(*entry);
-            let entry_kind = if run >> 31 == 0 {
-                StringKind::String
-            } else {
-                StringKind::Identifier
-            };
-            let end = index + (run & 0x7fff_ffff);
-            if entry_kind == kind {
-                for string in index..end {
-                    if self.file.string(StringId(string))?.equals(text) {
-                        return Ok(StringId(string));
-                    }
-                }
-            }
-            index = end;
-        }
+        self.index_original_strings()?;
         let units: Vec<_> = text.encode_utf16().collect();
         let utf16 = units.iter().any(|&unit| unit > 127);
         let value: Vec<_> = if utf16 {
@@ -199,6 +199,12 @@ impl<'a> Editor<'a> {
             .into_iter()
             .flatten()
         {
+            if id.0 < self.file.string_count() {
+                if self.file.string(*id)?.equals(text) {
+                    return Ok(*id);
+                }
+                continue;
+            }
             let string = &self.edits.strings[(id.0 - self.file.string_count()) as usize];
             let value = if string.utf16 {
                 crate::StringValue::Utf16(&string.value)
@@ -210,6 +216,36 @@ impl<'a> Editor<'a> {
             }
         }
         self.append_string(value, utf16, units.len() as u32, kind)
+    }
+
+    fn index_original_strings(&mut self) -> Result<()> {
+        if self.edits.original_strings_indexed {
+            return Ok(());
+        }
+        let mut index = rustc_hash::FxHashMap::<_, Vec<_>>::default();
+        let mut id = 0;
+        for entry in self.file.section(Section::Kinds).as_chunks::<4>().0 {
+            let run = u32::from_le_bytes(*entry);
+            let kind = if run >> 31 == 0 {
+                StringKind::String
+            } else {
+                StringKind::Identifier
+            };
+            let end = id + (run & 0x7fff_ffff);
+            for string in (id..end).map(StringId) {
+                index
+                    .entry((self.file.string(string)?.fingerprint(), kind))
+                    .or_default()
+                    .push(string);
+            }
+            id = end;
+        }
+        for (key, ids) in &self.edits.string_index {
+            index.entry(*key).or_default().extend_from_slice(ids);
+        }
+        self.edits.string_index = index;
+        self.edits.original_strings_indexed = true;
+        Ok(())
     }
 
     pub(crate) fn append_string(
