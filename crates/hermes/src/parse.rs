@@ -1,5 +1,6 @@
 use crate::error::{HermesError, Result, invalid};
-use crate::model::{FunctionHeader, FunctionId, HermesFile, Section};
+use crate::model::{Function, FunctionHeader, FunctionId, HermesFile, Section};
+use crate::opcode::Instruction;
 
 pub(crate) fn slice(bytes: &[u8], offset: usize, length: usize) -> Result<&[u8]> {
     let end = offset
@@ -32,9 +33,7 @@ impl<'a> HermesFile<'a> {
             return Err(HermesError::Magic);
         }
         let version = read_u32(source, 8)?;
-        if version != 98 {
-            return Err(HermesError::Version(version));
-        }
+        let bytecode_version = crate::opcode::BytecodeVersion::parse(version)?;
         slice(source, 0, 128)?;
         let mut header = [0; 23];
         header[0] = version;
@@ -77,6 +76,7 @@ impl<'a> HermesFile<'a> {
             cursor += size;
         }
         let file = Self {
+            version: bytecode_version,
             source,
             header,
             sections,
@@ -102,6 +102,21 @@ impl<'a> HermesFile<'a> {
                 file.sections[1].start,
                 "string kind counts disagree",
             ));
+        }
+        for (table, storage) in [
+            (Section::BigInts, Section::BigIntStorage),
+            (Section::Regexps, Section::RegexpStorage),
+        ] {
+            for entry in file.section(table).as_chunks::<8>().0 {
+                slice(
+                    file.section(storage),
+                    read_u32(entry, 0)? as usize,
+                    read_u32(entry, 4)? as usize,
+                )?;
+            }
+        }
+        for entry in file.section(Section::Shapes).as_chunks::<8>().0 {
+            slice(file.section(Section::Keys), read_u32(entry, 0)? as usize, 0)?;
         }
         for id in 0..file.string_count() {
             file.string(crate::StringId(id))?;
@@ -179,4 +194,45 @@ pub(crate) fn function_header(bytes: &[u8], offset: usize) -> Result<FunctionHea
             info_offset: 0,
         })
     }
+}
+
+pub(crate) struct SwitchTable<'a> {
+    pub operand: usize,
+    pub offset: usize,
+    pub stride: usize,
+    pub bytes: &'a [u8],
+}
+
+pub(crate) fn switch_table<'a>(
+    function: &Function<'a>,
+    inst: &Instruction,
+) -> Result<Option<SwitchTable<'a>>> {
+    let (operand, count, stride) = match inst.definition().name {
+        "UIntSwitchImm" => (
+            1,
+            inst.values[4]
+                .checked_sub(inst.values[3])
+                .and_then(|n| n.checked_add(1))
+                .ok_or_else(|| invalid(inst.offset as usize, "invalid switch range"))?,
+            4,
+        ),
+        "StringSwitchImm" => (2, inst.values[4], 8),
+        _ => return Ok(None),
+    };
+    let offset = (function.header.offset as usize)
+        .checked_add(inst.offset as usize)
+        .and_then(|n| n.checked_add(usize::try_from(inst.values[operand]).ok()?))
+        .filter(|&n| n <= usize::MAX - 3)
+        .map(align)
+        .ok_or_else(|| invalid(inst.offset as usize, "switch offset overflow"))?;
+    let size = usize::try_from(count)
+        .ok()
+        .and_then(|n| n.checked_mul(stride))
+        .ok_or_else(|| invalid(offset, "switch table overflow"))?;
+    Ok(Some(SwitchTable {
+        operand,
+        offset,
+        stride,
+        bytes: slice(function.source, offset, size)?,
+    }))
 }

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::assemble::{assemble, encode, instruction};
-use crate::edit::{EditedFunction, Editor};
+use crate::edit::{EditedFunction, Editor, FunctionBody};
 use crate::error::{HermesError, Result, invalid};
 use crate::model::{FunctionHeader, Section};
 use crate::opcode::IdKind;
@@ -30,11 +30,15 @@ impl Editor<'_> {
     /// declarations and incompatible static-builtin assumptions are refused.
     /// Every function, string, bigint, regexp, literal and shape reference is
     /// remapped. Module debug information is dropped; exceptions are retained.
+    pub fn link(&mut self, module: &HermesFile<'_>) -> Result<ModuleId> {
+        self.transaction(|editor| editor.link_module(module))
+    }
+
     #[expect(
         clippy::too_many_lines,
         reason = "linking visits each versioned file segment in order"
     )]
-    pub fn link(&mut self, module: &HermesFile<'_>) -> Result<ModuleId> {
+    fn link_module(&mut self, module: &HermesFile<'_>) -> Result<ModuleId> {
         if module.header[18] != 0 || module.header[17] != 0 {
             return Err(HermesError::Unsupported(
                 "extensions must be standalone execution bytecode, not CommonJS segments".into(),
@@ -89,18 +93,18 @@ impl Editor<'_> {
             bigint_base: (self.section_size(Section::BigInts) / 8) as u32,
             regexp_base: (self.section_size(Section::Regexps) / 8) as u32,
             shape_base: (self.section_size(Section::Shapes) / 8) as u32,
-            switch_base: self.string_switches,
+            switch_base: self.edits.string_switches,
             values: value_offsets,
         };
-        self.additions[Section::Values as usize].extend(values);
-        self.additions[Section::Keys as usize].extend(keys);
+        self.edits.additions[Section::Values as usize].extend(values);
+        self.edits.additions[Section::Keys as usize].extend(keys);
         for entry in module.section(Section::Shapes).as_chunks::<8>().0 {
             let old_offset = read_u32(entry, 0)?;
             let offset = key_offsets
                 .get(&old_offset)
                 .ok_or_else(|| invalid(old_offset as usize, "shape starts outside key buffer"))?;
-            self.additions[Section::Shapes as usize].extend_from_slice(&offset.to_le_bytes());
-            self.additions[Section::Shapes as usize].extend_from_slice(&entry[4..]);
+            self.edits.additions[Section::Shapes as usize].extend_from_slice(&offset.to_le_bytes());
+            self.edits.additions[Section::Shapes as usize].extend_from_slice(&entry[4..]);
         }
         for (table, storage) in [
             (Section::BigInts, Section::BigIntStorage),
@@ -111,10 +115,10 @@ impl Editor<'_> {
                 let offset = read_u32(entry, 0)?
                     .checked_add(base)
                     .ok_or_else(|| invalid(0, "literal storage offset overflow"))?;
-                self.additions[table as usize].extend_from_slice(&offset.to_le_bytes());
-                self.additions[table as usize].extend_from_slice(&entry[4..]);
+                self.edits.additions[table as usize].extend_from_slice(&offset.to_le_bytes());
+                self.edits.additions[table as usize].extend_from_slice(&entry[4..]);
             }
-            self.additions[storage as usize].extend_from_slice(module.section(storage));
+            self.edits.additions[storage as usize].extend_from_slice(module.section(storage));
         }
         for id in 0..module.function_count() {
             let function = module.function(FunctionId(id))?;
@@ -155,32 +159,43 @@ impl Editor<'_> {
             edited.header.name = remapping.strings[function.header.name as usize];
             self.append_function(edited);
         }
-        self.string_switches = self
+        self.edits.string_switches = self
+            .edits
             .string_switches
             .checked_add(module.header[16])
             .ok_or_else(|| invalid(0, "too many string switches"))?;
-        let module_id = ModuleId(self.modules.len() as u32);
-        self.modules.push(FunctionId(
+        let module_id = ModuleId(self.edits.modules.len() as u32);
+        self.edits.modules.push(FunctionId(
             remapping.function_base + module.global_function().0,
         ));
+        let exports = crate::exports::exports(module)?;
+        self.edits.module_exports.push(
+            exports
+                .into_iter()
+                .map(|id| StringId(remapping.strings[id.0 as usize]))
+                .collect(),
+        );
         self.refresh_bootstrap()?;
         Ok(module_id)
     }
 
     fn section_size(&self, section: Section) -> usize {
-        self.file.section(section).len() + self.additions[section as usize].len()
+        self.file.section(section).len() + self.edits.additions[section as usize].len()
     }
 
     pub(crate) fn refresh_bootstrap(&mut self) -> Result<()> {
-        if self.modules.len() > u16::MAX as usize {
+        if self.edits.modules.len() > u16::MAX as usize {
             return Err(invalid(0, "too many extension modules"));
         }
         let mut code = vec![
-            instruction("CreateTopLevelEnvironment", &[0, self.modules.len() as u64]),
+            instruction(
+                "CreateTopLevelEnvironment",
+                &[0, self.edits.modules.len() as u64],
+            ),
             instruction("LoadConstUndefined", &[1]),
             instruction("LoadParam", &[2, 0]),
         ];
-        for (slot, function) in self.modules.iter().enumerate() {
+        for (slot, function) in self.edits.modules.iter().enumerate() {
             code.extend([
                 instruction("CreateClosureLongIndex", &[3, 1, u64::from(function.0)]),
                 instruction("Call1", &[3, 3, 1]),
@@ -196,7 +211,13 @@ impl Editor<'_> {
             instruction("Ret", &[3]),
         ]);
         let name = self.intern("reseamBootstrap", StringKind::String)?;
-        self.global = self.append_function(generated_function(name, 1, 16, encode(&code)));
+        let bootstrap = generated_function(name, 1, 16, encode(&code));
+        if self.edits.global == self.file.global_function() {
+            self.edits.global = self.append_function(bootstrap);
+        } else {
+            self.edits.appended[(self.edits.global.0 - self.file.function_count()) as usize] =
+                bootstrap;
+        }
         Ok(())
     }
 }
@@ -224,7 +245,7 @@ pub(crate) fn generated_function(
             flags: 5,
             info_offset: 0,
         },
-        body,
+        body: FunctionBody::Owned(body),
         exceptions: Vec::new(),
     }
 }

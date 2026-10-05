@@ -31,16 +31,20 @@ impl Editor<'_> {
         reason = "the layout and streaming passes follow the same ordered file segments"
     )]
     pub fn write(&self, output: &mut impl Write) -> Result<()> {
-        if self.strings.is_empty() && self.appended.is_empty() && self.functions.is_empty() {
+        if self.edits.strings.is_empty()
+            && self.edits.appended.is_empty()
+            && self.edits.functions.is_empty()
+        {
             return self.file.write(output);
         }
-        let count = self.file.function_count() as usize + self.appended.len();
+        let count = self.file.function_count() as usize + self.edits.appended.len();
         let old_tail = self.file.sections[Section::Sources as usize].end;
         let old_debug = self.file.header[20] as usize;
         let mut cursor = 128 + count * 12;
         for section in 1..15 {
-            cursor =
-                align(cursor) + self.file.sections[section].len() + self.additions[section].len();
+            cursor = align(cursor)
+                + self.file.sections[section].len()
+                + self.edits.additions[section].len();
         }
         let new_tail = cursor;
         let shift = new_tail
@@ -59,9 +63,9 @@ impl Editor<'_> {
                     relocate(header.offset as usize, shift)?.to_le_bytes(),
                 );
             }
-            if let Some(edited) = self.functions.get(&FunctionId(index)) {
+            if let Some(edited) = self.edits.functions.get(&FunctionId(index)) {
                 header = edited.header.clone();
-                cursor = align(cursor);
+                cursor = edited.body.place(cursor);
                 header.offset = as_offset(cursor)?;
                 cursor += edited.body.len();
                 planned.push(PlannedFunction {
@@ -82,8 +86,8 @@ impl Editor<'_> {
                 });
             }
         }
-        for edited in &self.appended {
-            cursor = align(cursor);
+        for edited in &self.edits.appended {
+            cursor = edited.body.place(cursor);
             let mut header = edited.header.clone();
             header.offset = as_offset(cursor)?;
             cursor += edited.body.len();
@@ -110,7 +114,7 @@ impl Editor<'_> {
         let length = as_offset(cursor + 20)?;
         let mut header = self.file.source[..128].to_vec();
         put(&mut header, 32, length);
-        put(&mut header, 36, self.global.0);
+        put(&mut header, 36, self.edits.global.0);
         put(&mut header, 40, count as u32);
         let fields = [
             (Section::Kinds, 44, 4),
@@ -132,12 +136,12 @@ impl Editor<'_> {
             put(
                 &mut header,
                 offset,
-                ((self.file.section(section).len() + self.additions[section as usize].len())
+                ((self.file.section(section).len() + self.edits.additions[section as usize].len())
                     / stride) as u32,
             );
         }
         put(&mut header, 108, debug);
-        put(&mut header, 92, self.string_switches);
+        put(&mut header, 92, self.edits.string_switches);
         let mut sink = Sink {
             output,
             hash: ring::digest::Context::new(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY),
@@ -150,7 +154,7 @@ impl Editor<'_> {
         for section in 1..15 {
             sink.align()?;
             sink.bytes(&self.file.source[self.file.sections[section].clone()])?;
-            sink.bytes(&self.additions[section])?;
+            sink.bytes(&self.edits.additions[section])?;
         }
         let mut start = old_tail;
         for (offset, bytes) in patches {
@@ -164,8 +168,8 @@ impl Editor<'_> {
         sink.bytes(&self.file.source[start..old_debug])?;
         for index in 0..count {
             if let Some(edited) = self.edited_at(index) {
-                sink.align()?;
-                sink.bytes(&edited.body)?;
+                sink.pad_to(edited.body.place(sink.position))?;
+                sink.bytes(edited.body.bytes(&self.file))?;
             }
         }
         for (index, function) in planned.iter().enumerate().filter(|(_, f)| f.emit_large) {
@@ -193,9 +197,10 @@ impl Editor<'_> {
 
     fn edited_at(&self, index: usize) -> Option<&crate::edit::EditedFunction> {
         if index < self.file.function_count() as usize {
-            self.functions.get(&FunctionId(index as u32))
+            self.edits.functions.get(&FunctionId(index as u32))
         } else {
-            self.appended
+            self.edits
+                .appended
                 .get(index - self.file.function_count() as usize)
         }
     }
@@ -298,7 +303,10 @@ impl<W: Write> Sink<'_, W> {
         Ok(())
     }
     fn align(&mut self) -> Result<()> {
-        let count = align(self.position) - self.position;
+        self.pad_to(align(self.position))
+    }
+    fn pad_to(&mut self, position: usize) -> Result<()> {
+        let count = position - self.position;
         self.bytes(&[0; 3][..count])
     }
 }

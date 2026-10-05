@@ -1,17 +1,20 @@
 use std::collections::BTreeMap;
 
 use crate::Function;
-use crate::edit::EditedFunction;
+use crate::edit::{EditedFunction, FunctionBody};
 use crate::error::{Result, invalid};
-use crate::opcode::{Instruction, OperandKind, V98};
-use crate::parse::{align, read_u32, slice};
+use crate::opcode::{BytecodeVersion, Instruction, OperandKind};
+use crate::parse::{align, read_u32, slice, switch_table};
 
 pub(crate) fn instruction(name: &str, values: &[u64]) -> Instruction {
-    let opcode = V98
+    let version = BytecodeVersion::V98;
+    let opcode = version
+        .opcodes()
         .iter()
         .position(|opcode| opcode.name == name)
         .expect("internal opcode names exist in the generated table") as u8;
     Instruction {
+        version,
         offset: u32::MAX,
         opcode,
         values: values.to_vec(),
@@ -39,7 +42,9 @@ fn promote(inst: &mut Instruction) -> Result<()> {
                 *value = u64::from(i32::from(*value as i8) as u32);
             }
         }
-        inst.opcode = V98
+        inst.opcode = inst
+            .version
+            .opcodes()
             .iter()
             .position(|o| o.name == name)
             .ok_or_else(|| invalid(inst.offset as usize, "no long jump variant"))?
@@ -62,7 +67,9 @@ fn promote(inst: &mut Instruction) -> Result<()> {
         .strip_suffix("Short")
         .unwrap_or(definition.name);
     let names = [format!("{base}Long"), format!("{base}LongIndex")];
-    let code = V98
+    let code = inst
+        .version
+        .opcodes()
         .iter()
         .enumerate()
         .find(|(_, opcode)| names.iter().any(|n| n == opcode.name) && fits(opcode))
@@ -89,10 +96,6 @@ pub(crate) fn encode(instructions: &[Instruction]) -> Vec<u8> {
 
 /// Promotes narrow operands and relocates branch targets, switch tables and
 /// exception handlers together. New instructions use offset `u32::MAX`.
-#[expect(
-    clippy::too_many_lines,
-    reason = "branches, switch payloads and exceptions share one relocation map"
-)]
 pub(crate) fn assemble(
     function: &Function<'_>,
     mut instructions: Vec<Instruction>,
@@ -131,39 +134,17 @@ pub(crate) fn assemble(
                 *value = u64::from(target.wrapping_sub(position));
             }
         }
-        if matches!(definition.name, "UIntSwitchImm" | "StringSwitchImm") {
-            let (offset_operand, count, stride) = if definition.name == "UIntSwitchImm" {
-                (
-                    1,
-                    inst.values[4]
-                        .checked_sub(inst.values[3])
-                        .and_then(|n| n.checked_add(1))
-                        .ok_or_else(|| invalid(inst.offset as usize, "invalid switch range"))?,
-                    4,
-                )
-            } else {
-                (2, inst.values[4], 8)
-            };
-            let old_table = align(
-                function.header.offset as usize
-                    + inst.offset as usize
-                    + inst.values[offset_operand] as usize,
-            );
-            let size = usize::try_from(count)
-                .ok()
-                .and_then(|n| n.checked_mul(stride))
-                .ok_or_else(|| invalid(old_table, "switch table overflow"))?;
-            let table = slice(function.source, old_table, size)?;
+        if let Some(table) = switch_table(function, inst)? {
             let new_table = align(code_size as usize + payload.len());
             payload.resize(new_table - code_size as usize, 0);
-            inst.values[offset_operand] = new_table as u64 - u64::from(position);
-            for entry in table.chunks_exact(stride) {
-                let target_offset = if stride == 8 {
+            inst.values[table.operand] = new_table as u64 - u64::from(position);
+            for entry in table.bytes.chunks_exact(table.stride) {
+                let target_offset = if table.stride == 8 {
                     let id = read_u32(entry, 0)?;
                     let remapped = if let Some(strings) = strings {
                         *strings
                             .get(id as usize)
-                            .ok_or_else(|| invalid(old_table, "switch string ID out of range"))?
+                            .ok_or_else(|| invalid(table.offset, "switch string ID out of range"))?
                     } else {
                         id
                     };
@@ -202,7 +183,7 @@ pub(crate) fn assemble(
     header.flags &= !0x30;
     Ok(EditedFunction {
         header,
-        body,
+        body: FunctionBody::Owned(body),
         exceptions,
     })
 }

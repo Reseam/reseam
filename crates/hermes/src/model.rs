@@ -1,3 +1,4 @@
+use std::hash::Hasher;
 use std::ops::Range;
 
 use crate::error::{Result, invalid};
@@ -6,7 +7,7 @@ use crate::parse::{read_u32, slice};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FunctionId(pub u32);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StringId(pub u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -24,6 +25,22 @@ pub enum StringValue<'a> {
 }
 
 impl StringValue<'_> {
+    pub(crate) fn fingerprint(self) -> u64 {
+        let mut hash = rustc_hash::FxHasher::default();
+        match self {
+            Self::Latin1(bytes) => {
+                for &byte in bytes {
+                    hash.write_u16(u16::from(byte));
+                }
+            }
+            Self::Utf16(bytes) => {
+                for unit in bytes.as_chunks::<2>().0 {
+                    hash.write_u16(u16::from_le_bytes(*unit));
+                }
+            }
+        }
+        hash.finish()
+    }
     /// Converts to Unicode text. Latin-1 strings always convert; unpaired
     /// UTF-16 surrogates return an error rather than being replaced.
     pub fn text(self) -> Result<String> {
@@ -73,8 +90,9 @@ pub(crate) struct FunctionHeader {
     pub info_offset: usize,
 }
 
-/// A function view. Parameter count includes the implicit `this` parameter.
+/// A borrowed function view. Parameter count excludes the implicit `this`.
 pub struct Function<'a> {
+    pub(crate) version: crate::opcode::BytecodeVersion,
     pub(crate) header: FunctionHeader,
     pub(crate) source: &'a [u8],
     pub id: FunctionId,
@@ -95,7 +113,7 @@ impl<'a> Function<'a> {
             [self.header.offset as usize..self.header.offset as usize + self.header.size as usize]
     }
     pub fn instructions(&self) -> Result<Vec<crate::opcode::Instruction>> {
-        crate::opcode::decode(self.body())
+        crate::opcode::decode(self.version, self.body())
     }
 }
 
@@ -122,6 +140,7 @@ pub(crate) enum Section {
 /// A validated, borrowed execution-form HBC file. Construction accepts only
 /// version 98. Trailing epilogues and all original padding are preserved.
 pub struct HermesFile<'a> {
+    pub(crate) version: crate::opcode::BytecodeVersion,
     pub(crate) source: &'a [u8],
     pub(crate) header: [u32; 23],
     pub(crate) sections: [Range<usize>; 15],
@@ -129,7 +148,10 @@ pub struct HermesFile<'a> {
 
 impl<'a> HermesFile<'a> {
     pub fn version(&self) -> u32 {
-        self.header[0]
+        self.version as u32
+    }
+    pub fn bytecode_version(&self) -> crate::opcode::BytecodeVersion {
+        self.version
     }
     pub fn function_count(&self) -> u32 {
         self.header[3]
@@ -161,6 +183,7 @@ impl<'a> HermesFile<'a> {
             ));
         }
         Ok(Function {
+            version: self.version,
             header,
             source: self.source,
             id,
@@ -184,7 +207,9 @@ impl<'a> HermesFile<'a> {
         let data = slice(
             self.section(Section::Storage),
             offset as usize,
-            length as usize * if utf16 { 2 } else { 1 },
+            (length as usize)
+                .checked_mul(if utf16 { 2 } else { 1 })
+                .ok_or_else(|| invalid(offset as usize, "string length overflow"))?,
         )?;
         Ok(if utf16 {
             StringValue::Utf16(data)
@@ -239,6 +264,13 @@ impl<'a> HermesFile<'a> {
                     {
                         if operand.id == crate::opcode::IdKind::String {
                             referenced.push(self.string(StringId(*value as u32))?);
+                        }
+                    }
+                    if let Some(table) = crate::parse::switch_table(&function, &instruction)?
+                        && table.stride == 8
+                    {
+                        for entry in table.bytes.chunks_exact(table.stride) {
+                            referenced.push(self.string(StringId(read_u32(entry, 0)?))?);
                         }
                     }
                 }

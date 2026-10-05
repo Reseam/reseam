@@ -10,6 +10,7 @@ struct Definition {
 
 fn main() {
     println!("cargo:rerun-if-changed=vendor/v98/BytecodeList.def");
+    println!("cargo:rerun-if-changed=vendor/v98/Builtins.def");
     let source = std::fs::read_to_string("vendor/v98/BytecodeList.def")
         .expect("vendored v98 opcode definition exists");
     let mut definitions: Vec<Definition> = Vec::new();
@@ -78,6 +79,31 @@ fn main() {
         output.push_str("] },\n");
     }
     output.push_str("];\n");
+    let builtins = std::fs::read_to_string("vendor/v98/Builtins.def")
+        .expect("vendored v98 builtin definition exists");
+    let mut index = 0_u8;
+    for line in builtins.lines().map(str::trim) {
+        if [
+            "NORMAL_METHOD(",
+            "BUILTIN_METHOD(",
+            "PRIVATE_BUILTIN(",
+            "JS_BUILTIN(",
+        ]
+        .iter()
+        .any(|prefix| line.starts_with(prefix))
+        {
+            let args = arguments(line);
+            if line == "PRIVATE_BUILTIN(apply)" || line == "PRIVATE_BUILTIN(applyArguments)" {
+                writeln!(
+                    output,
+                    "pub(crate) const BUILTIN_{}: u8 = {index};",
+                    args[0].to_uppercase()
+                )
+                .expect("writing a string succeeds");
+            }
+            index += 1;
+        }
+    }
     let path = PathBuf::from(std::env::var_os("OUT_DIR").expect("Cargo sets OUT_DIR"));
     std::fs::write(path.join("opcodes.rs"), output).expect("generated opcode table is writable");
 }
