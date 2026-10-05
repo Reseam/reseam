@@ -19,13 +19,13 @@ private val deferredSingle =
         .single()
 
 private object PointObserver : ExtClass("com.example.PointObserver") {
-    val take = static("take", Type.Int)
-    val replacement = static("replacement", Type.Int)
-    val wrong = static("wrong", Type.String)
-    val instance = method("instance", Type.Int)
-    val concealed = static("concealed", Type.Int)
-    val absent = static("absent", Type.Int)
-    val consume = static("consume", Type.Object, Type.Long, Type.Int)
+    val take by static(Type.Int)
+    val replacement by static(Type.Int)
+    val wrong by static(Type.String)
+    val instance by method(Type.Int)
+    val concealed by static(Type.Int)
+    val absent by static(Type.Int)
+    val consume by static(Type.Object, Type.Long, Type.Int)
 }
 
 val pointQueries =

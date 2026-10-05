@@ -37,7 +37,7 @@ Declare the module and the exports a patch uses, named after the app functions t
 
 ```kotlin
 object Features : ExtJsModule("example-features") {
-    val isFeatureEnabled = export("isFeatureEnabled")
+    val isFeatureEnabled by export()
 }
 ```
 

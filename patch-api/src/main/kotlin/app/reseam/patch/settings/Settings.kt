@@ -18,8 +18,8 @@ import kotlin.properties.ReadOnlyProperty
 
 /** The runtime class patched apps read settings through; linked from the bundle on first use. */
 object ReseamSettings : ExtClass("app.reseam.runtime.settings.ReseamSettings") {
-    val getBoolean = static("getBoolean", Type.String, Type.Boolean, returns = Type.Boolean)
-    val getString = static("getString", Type.String, Type.String, returns = Type.String)
+    val getBoolean by static(Type.String, Type.Boolean, returns = Type.Boolean)
+    val getString by static(Type.String, Type.String, returns = Type.String)
 }
 
 /**
@@ -27,12 +27,12 @@ object ReseamSettings : ExtClass("app.reseam.runtime.settings.ReseamSettings") {
  * through the `ReseamSettings` React Native module that the app's settings host registers.
  */
 internal object ReseamJsSettings : ExtJsModule("settings-js") {
-    val skipWhen = export("skipWhen")
-    val returnNullWhen = export("returnNullWhen")
-    val returnTrueWhen = export("returnTrueWhen")
-    val returnFalseWhen = export("returnFalseWhen")
-    val wrapWhen = export("wrapWhen")
-    val setArgumentWhen = export("setArgumentWhen")
+    val skipWhen by export()
+    val returnNullWhen by export()
+    val returnTrueWhen by export()
+    val returnFalseWhen by export()
+    val wrapWhen by export()
+    val setArgumentWhen by export()
 }
 
 const val SETTINGS_SCHEMA_PATH = "assets/reseam/settings.json"

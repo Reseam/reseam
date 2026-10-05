@@ -39,12 +39,12 @@ Declare the classes and methods your patches call:
 
 ```kotlin
 object AdBlocker : ExtClass("app.example.ext.AdBlocker") {
-    val init = static("init", Type.Context)
-    val onFeedLoad = static("onFeedLoad", Type.List)
+    val init by static(Type.Context)
+    val onFeedLoad by static(Type.List)
 }
 ```
 
-Then use them in code blocks with `call(AdBlocker.init, application)`. See [Changing code](8_changing_code.md#calling-your-own-code).
+Each member is named after its property. Pass `name = "..."` when the Java name differs. Then use them in code blocks with `call(AdBlocker.init, application)`. See [Changing code](8_changing_code.md#calling-your-own-code).
 
 > [!WARNING]
 > A declaration must match the Java method exactly, parameter and return types included, or the patch fails. If a class name is wrong or the module is missing from the bundle, the patch log warns that the class `is not defined by the app or any extension in the bundle`, and the app crashes with `NoClassDefFoundError` when the call runs. A stub method the real class lacks crashes the same way, with `NoSuchMethodError`.

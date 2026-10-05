@@ -58,7 +58,7 @@ See [Hermes JavaScript](15_hermes.md) for extension sources and examples. Target
 | `FunctionTarget.wrapWhen(setting, export)` | Wraps with `export` when the toggle is on. |
 | `FunctionTarget.setArgumentWhen(setting, index, path, value)` | Calls the function with argument `index`'s property at the dotted `path` set to `value` when the toggle is on. |
 | `ExtJsModule(name)` | Declares an extension artifact, such as `example-features`. |
-| `ExtJsModule.export(name)` | Declares a callable property of its exports object; returns `JsExport`. Validated on use. |
+| `ExtJsModule.export(name = null)` | Property delegate for a callable property of its exports object, named after the property unless `name` is given. Validated on use. |
 
 Generators, async functions, class constructors, `new.target`, direct `eval` and unprovable environment chains fail explicitly. Repeated wraps compose in patch order. Wrapped ordinary functions cannot be constructed with `new`. The module links once and initializes before the app's global code. Exports are private; edited functions may lose debug data.
 
@@ -139,7 +139,7 @@ Generators, async functions, class constructors, `new.target`, direct `eval` and
 
 | Symbol | Description |
 |---|---|
-| `ExtClass(name)` | A class an extension ships: `descriptor`, `target`, `static(name, vararg params, returns = Type.Void)`, `method(name, vararg params, returns = Type.Void)`, `field(name, type)`. |
+| `ExtClass(name)` | A class an extension ships: `descriptor`, `target`, and property delegates named after the property unless `name` is given: `static(vararg params, returns = Type.Void, name = null)`, `method(vararg params, returns = Type.Void, name = null)`, `field(type, name = null)`. |
 | `ExtMethod` | `owner`, `name`, `proto`, `isStatic`, `ref`, `target`, `implement { CodeScope }`. |
 
 ### Runtime

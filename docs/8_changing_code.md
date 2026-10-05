@@ -87,7 +87,7 @@ For anything longer than a few lines, write Java in an [extension](11_extensions
 
 ```kotlin
 object AdBlocker : ExtClass("app.example.ext.AdBlocker") {
-    val onFeedLoad = static("onFeedLoad", Type.List)
+    val onFeedLoad by static(Type.List)
 }
 
 loadFeed.before { call(AdBlocker.onFeedLoad, thisObject.field(feedItems)) }

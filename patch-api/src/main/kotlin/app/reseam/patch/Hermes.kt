@@ -119,13 +119,17 @@ class FunctionTarget internal constructor(debugName: String?, private val query:
  *
  * ```kotlin
  * object Features : ExtJsModule("example-features") {
- *     val isFeatureEnabled = export("isFeatureEnabled")
+ *     val isFeatureEnabled by export()
  * }
  * ```
  */
 open class ExtJsModule(val name: String) {
-    /** Declares an exact property name on the extension's exports object. Validated on use. */
-    fun export(name: String): JsExport = JsExport(this, name)
+    /**
+     * Declares a callable property of the extension's exports object, named after the property, or
+     * [name]. Validated on use.
+     */
+    fun export(name: String? = null): MemberDelegate<JsExport> =
+        MemberDelegate(name) { JsExport(this, it) }
 }
 
 /** A declared callable JavaScript export; it does not load or execute the module by itself. */

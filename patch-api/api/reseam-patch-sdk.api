@@ -133,19 +133,21 @@ public final class app/reseam/patch/CompatiblePackage {
 
 public class app/reseam/patch/ExtClass {
 	public fun <init> (Ljava/lang/String;)V
-	public final fun field (Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/FieldTarget;
+	public final fun field (Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/MemberDelegate;
+	public static synthetic fun field$default (Lapp/reseam/patch/ExtClass;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/MemberDelegate;
 	public final fun getDescriptor ()Ljava/lang/String;
 	public final fun getTarget ()Lapp/reseam/patch/ClassTarget;
-	public final fun method (Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/ExtMethod;
-	public static synthetic fun method$default (Lapp/reseam/patch/ExtClass;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/ExtMethod;
-	public final fun static (Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/ExtMethod;
-	public static synthetic fun static$default (Lapp/reseam/patch/ExtClass;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/ExtMethod;
+	public final fun method ([Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/MemberDelegate;
+	public static synthetic fun method$default (Lapp/reseam/patch/ExtClass;[Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/MemberDelegate;
+	public final fun static ([Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/MemberDelegate;
+	public static synthetic fun static$default (Lapp/reseam/patch/ExtClass;[Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/MemberDelegate;
 	public fun toString ()Ljava/lang/String;
 }
 
 public class app/reseam/patch/ExtJsModule {
 	public fun <init> (Ljava/lang/String;)V
-	public final fun export (Ljava/lang/String;)Lapp/reseam/patch/JsExport;
+	public final fun export (Ljava/lang/String;)Lapp/reseam/patch/MemberDelegate;
+	public static synthetic fun export$default (Lapp/reseam/patch/ExtJsModule;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/MemberDelegate;
 	public final fun getName ()Ljava/lang/String;
 }
 
@@ -301,6 +303,11 @@ public abstract interface class app/reseam/patch/MatchReport {
 	public abstract fun getNearMisses ()Ljava/util/List;
 	public abstract fun getReasons ()Ljava/util/List;
 	public abstract fun getWinner ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/MemberDelegate : kotlin/properties/PropertyDelegateProvider {
+	public synthetic fun provideDelegate (Ljava/lang/Object;Lkotlin/reflect/KProperty;)Ljava/lang/Object;
+	public fun provideDelegate (Ljava/lang/Object;Lkotlin/reflect/KProperty;)Lkotlin/properties/ReadOnlyProperty;
 }
 
 public final class app/reseam/patch/MethodLocal {
@@ -2128,6 +2135,54 @@ public final class app/reseam/patch/types/HermesArgument$Text : app/reseam/patch
 	public final fun getField0 ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public abstract class app/reseam/patch/types/HermesConstant {
+	public static final field Companion Lapp/reseam/patch/types/HermesConstant$Companion;
+}
+
+public final class app/reseam/patch/types/HermesConstant$Bool : app/reseam/patch/types/HermesConstant {
+	public fun <init> (Z)V
+	public final fun component1 ()Z
+	public final fun copy (Z)Lapp/reseam/patch/types/HermesConstant$Bool;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/HermesConstant$Bool;ZILjava/lang/Object;)Lapp/reseam/patch/types/HermesConstant$Bool;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/HermesConstant$Companion {
+}
+
+public final class app/reseam/patch/types/HermesConstant$Int : app/reseam/patch/types/HermesConstant {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lapp/reseam/patch/types/HermesConstant$Int;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/HermesConstant$Int;IILjava/lang/Object;)Lapp/reseam/patch/types/HermesConstant$Int;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/HermesConstant$Null : app/reseam/patch/types/HermesConstant {
+	public static final field INSTANCE Lapp/reseam/patch/types/HermesConstant$Null;
+}
+
+public final class app/reseam/patch/types/HermesConstant$Text : app/reseam/patch/types/HermesConstant {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lapp/reseam/patch/types/HermesConstant$Text;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/HermesConstant$Text;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/types/HermesConstant$Text;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getField0 ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/HermesConstant$Undefined : app/reseam/patch/types/HermesConstant {
+	public static final field INSTANCE Lapp/reseam/patch/types/HermesConstant$Undefined;
 }
 
 public final class app/reseam/patch/types/HermesExportRef {

@@ -385,7 +385,7 @@ val replaceFallsThrough =
     }
 
 private object GhostExtension : ExtClass("app.reseam.test.GhostExtension") {
-    val run = static("run", Type.Boolean, returns = Type.Boolean)
+    val run by static(Type.Boolean, returns = Type.Boolean)
 }
 
 val extMethodMissing =

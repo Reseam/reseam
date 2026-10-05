@@ -7,6 +7,9 @@ package app.reseam.patch
 
 import app.reseam.patch.types.FieldRef
 import app.reseam.patch.types.MethodRef
+import kotlin.properties.PropertyDelegateProvider
+import kotlin.properties.ReadOnlyProperty
+import kotlin.reflect.KProperty
 
 /**
  * Code a patch adds to a method. Values are [ValueRef]s; the engine assigns registers and picks
@@ -141,22 +144,54 @@ interface ValueRef {
 }
 
 /**
- * A class the bundle ships as an extension. Declaring one names its methods once; the engine links
+ * A class the bundle ships as an extension. Declaring one names its members once; the engine links
  * the extension into the app the first time a patch refers to it.
+ *
+ * ```kotlin
+ * object AdBlocker : ExtClass("app.example.ext.AdBlocker") {
+ *     val isAd by static(Type.Object, returns = Type.Boolean)
+ * }
+ * ```
  */
 open class ExtClass(name: String) {
     val descriptor: String = descriptor(name)
     val target: ClassTarget by lazy { klass(descriptor) }
 
-    fun static(name: String, vararg params: String, returns: String = Type.Void): ExtMethod =
-        ExtMethod(descriptor, name, proto(returns, *params), isStatic = true)
+    /** Declares a static method named after the property, or [name]. */
+    fun static(
+        vararg params: String,
+        returns: String = Type.Void,
+        name: String? = null,
+    ): MemberDelegate<ExtMethod> =
+        MemberDelegate(name) { ExtMethod(descriptor, it, proto(returns, *params), isStatic = true) }
 
-    fun method(name: String, vararg params: String, returns: String = Type.Void): ExtMethod =
-        ExtMethod(descriptor, name, proto(returns, *params), isStatic = false)
+    /** Declares an instance method named after the property, or [name]. */
+    fun method(
+        vararg params: String,
+        returns: String = Type.Void,
+        name: String? = null,
+    ): MemberDelegate<ExtMethod> =
+        MemberDelegate(name) {
+            ExtMethod(descriptor, it, proto(returns, *params), isStatic = false)
+        }
 
-    fun field(name: String, type: String): FieldTarget = field(descriptor, name, type)
+    /** Declares a field named after the property, or [name]. */
+    fun field(type: String, name: String? = null): MemberDelegate<FieldTarget> =
+        MemberDelegate(name) { field(descriptor, it, type) }
 
     override fun toString() = descriptor
+}
+
+/** Declares an extension member named after its property unless a name is given. */
+class MemberDelegate<T>
+internal constructor(
+    private val name: String?,
+    private val create: (name: String) -> T,
+) : PropertyDelegateProvider<Any?, ReadOnlyProperty<Any?, T>> {
+    override fun provideDelegate(thisRef: Any?, property: KProperty<*>): ReadOnlyProperty<Any?, T> {
+        val member = create(name ?: property.name)
+        return ReadOnlyProperty { _, _ -> member }
+    }
 }
 
 class ExtMethod
