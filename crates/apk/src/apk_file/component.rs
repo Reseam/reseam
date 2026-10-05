@@ -258,17 +258,17 @@ impl ApkComponent {
     }
 
     pub(super) fn map_entry(&mut self, name: &str) -> Result<Option<reseam_storage::MappedFile>> {
-        if !self.contains(name) {
-            return Ok(None);
-        }
         match self.edits.get(name) {
             Some(EntryEdit::Staged { file, .. }) => Ok(Some(reader::map_spooled(file)?)),
-            None => Ok(Some(reader::map_entry(&mut self.archive, name)?)),
-            _ => {
+            Some(EntryEdit::Manifest | EntryEdit::Resources | EntryEdit::Dex) => {
                 let mut file = reseam_storage::temporary_file()?;
                 self.copy_entry(name, &mut file)?;
                 Ok(Some(reader::map_spooled(&file)?))
             }
+            None if reader::contains(&self.archive, name) => {
+                Ok(Some(reader::map_entry(&mut self.archive, name)?))
+            }
+            Some(EntryEdit::Deleted) | None => Ok(None),
         }
     }
 
