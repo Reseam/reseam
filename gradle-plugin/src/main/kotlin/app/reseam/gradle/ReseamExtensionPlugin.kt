@@ -33,8 +33,12 @@ internal class ReseamExtensionPlugin : Plugin<Project> {
             to.attribute(ARTIFACT_TYPE, "jar")
         }
         listOf("compileClasspath", "runtimeClasspath").forEach {
-            project.configurations.getByName(it).attributes.attribute(ARTIFACT_TYPE, "jar")
+            project.configurations.getByName(it).attributes {
+                attribute(ARTIFACT_TYPE, "jar")
+                attribute(BUILD_TYPE, "release")
+            }
         }
+        val runtime = project.configurations.getByName("runtimeClasspath")
         val sourceSets = project.extensions.getByType(SourceSetContainer::class.java)
         val stubs = sourceSets.create("stubs")
         val main = sourceSets.getByName("main")
@@ -47,9 +51,14 @@ internal class ReseamExtensionPlugin : Plugin<Project> {
             project.tasks.register("dex", DexTask::class.java) {
                 group = "build"
                 description = "Compiles the extension and its dependencies to DEX."
-                sources.from(
-                    main.output.classesDirs,
-                    project.configurations.getByName("runtimeClasspath"),
+                sources.from(main.output.classesDirs, runtime)
+                shippedAars.from(
+                    runtime.incoming
+                        .artifactView {
+                            lenient(true)
+                            attributes.attribute(ARTIFACT_TYPE, "aar")
+                        }
+                        .files
                 )
                 libraries.from(platform)
                 output.set(project.layout.buildDirectory.dir("reseam/dex"))

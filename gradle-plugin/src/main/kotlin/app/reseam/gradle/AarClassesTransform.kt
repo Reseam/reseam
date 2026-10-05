@@ -4,7 +4,6 @@
 package app.reseam.gradle
 
 import java.util.zip.ZipFile
-import org.gradle.api.GradleException
 import org.gradle.api.artifacts.transform.InputArtifact
 import org.gradle.api.artifacts.transform.TransformAction
 import org.gradle.api.artifacts.transform.TransformOutputs
@@ -17,6 +16,10 @@ import org.gradle.api.file.FileSystemLocation
 import org.gradle.api.provider.Provider
 
 internal val ARTIFACT_TYPE: Attribute<String> = Attribute.of("artifactType", String::class.java)
+
+/** Android libraries publish one variant per build type; extensions build against release. */
+internal val BUILD_TYPE: Attribute<String> =
+    Attribute.of("com.android.build.api.attributes.BuildTypeAttr", String::class.java)
 
 internal class AarElementsCompatibility : AttributeCompatibilityRule<LibraryElements> {
     override fun execute(details: CompatibilityCheckDetails<LibraryElements>) {
@@ -34,14 +37,8 @@ internal abstract class AarClassesTransform : TransformAction<TransformParameter
     override fun transform(outputs: TransformOutputs) {
         val aar = input.get().asFile
         ZipFile(aar).use { zip ->
-            val entries = zip.entries().asSequence().filter { !it.isDirectory }.toList()
-            if (entries.any { it.name.startsWith("jni/") }) {
-                throw GradleException(
-                    "${aar.name} ships native libraries, which an extension cannot carry"
-                )
-            }
             for (entry in
-                entries.filter {
+                zip.entries().asSequence().filter {
                     it.name == "classes.jar" ||
                         (it.name.startsWith("libs/") && it.name.endsWith(".jar"))
                 }) {

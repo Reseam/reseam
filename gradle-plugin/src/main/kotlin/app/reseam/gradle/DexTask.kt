@@ -4,8 +4,10 @@
 package app.reseam.gradle
 
 import java.io.File
+import java.util.zip.ZipFile
 import javax.inject.Inject
 import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
 import org.gradle.api.Project
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
@@ -23,6 +25,9 @@ internal abstract class DexTask @Inject constructor(private val exec: ExecOperat
 
     @get:InputFiles abstract val sources: ConfigurableFileCollection
 
+    /** Android libraries the extension ships; their native libraries cannot be carried. */
+    @get:InputFiles abstract val shippedAars: ConfigurableFileCollection
+
     /** Classes referenced but not dexed, so d8 can desugar against them. */
     @get:Classpath abstract val libraries: ConfigurableFileCollection
 
@@ -32,6 +37,14 @@ internal abstract class DexTask @Inject constructor(private val exec: ExecOperat
 
     @TaskAction
     fun run() {
+        shippedAars.files.forEach { aar ->
+            ZipFile(aar).use { zip ->
+                if (zip.entries().asSequence().any { it.name.startsWith("jni/") })
+                    throw GradleException(
+                        "${aar.name} ships native libraries, which an extension cannot carry"
+                    )
+            }
+        }
         val outDir = output.get().asFile.also(::recreate)
         val files =
             sources.asFileTree.files.filter { it.extension == "class" } +

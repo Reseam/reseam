@@ -31,7 +31,7 @@ dependencies {
 ```
 
 - `implementation`: shipped inside your extension. Android libraries (`.aar`) work too, but only their classes are used, and libraries with native code are refused.
-- `compileOnly`: expected to be there already, in the app or in another module of your bundle. Use it for libraries the app already contains.
+- `compileOnly`: expected to be there already, in the app or in another module of your bundle. Use it for libraries the app already contains, including Android libraries with native code.
 
 ## Call it
 
