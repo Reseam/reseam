@@ -146,6 +146,45 @@ pub struct HermesFile<'a> {
     pub(crate) sections: [Range<usize>; 15],
 }
 
+/// Owns immutable source storage and its validated layout for repeated borrowed
+/// views. Mapped storage remains file-backed and is released with this owner;
+/// constructing views neither copies nor reparses the source. As with
+/// `HermesFile`, the underlying file must not change while it is retained.
+pub struct HermesImage {
+    source: reseam_storage::Bytes,
+    version: crate::opcode::BytecodeVersion,
+    header: [u32; 23],
+    sections: [Range<usize>; 15],
+}
+
+impl HermesImage {
+    /// Validates the source once, returning the same format errors as
+    /// `HermesFile::parse`. No bytecode or string storage is copied.
+    pub fn parse(source: reseam_storage::Bytes) -> Result<Self> {
+        let file = HermesFile::parse(&source)?;
+        let version = file.version;
+        let header = file.header;
+        let sections = file.sections;
+        Ok(Self {
+            source,
+            version,
+            header,
+            sections,
+        })
+    }
+
+    /// Borrows the validated file for inspection, editing or streamed writing.
+    /// The view cannot outlive the owner of its source storage.
+    pub fn file(&self) -> HermesFile<'_> {
+        HermesFile {
+            source: &self.source,
+            version: self.version,
+            header: self.header,
+            sections: self.sections.clone(),
+        }
+    }
+}
+
 impl<'a> HermesFile<'a> {
     pub fn version(&self) -> u32 {
         self.version as u32
@@ -232,63 +271,15 @@ impl<'a> HermesFile<'a> {
 
     /// Returns the unique function matching all supplied constraints. `strings`
     /// matches strings referenced by any instruction, including property names.
-    /// Zero and multiple matches are errors. Parameters exclude `this`.
+    /// Zero and multiple matches are errors. Parameters exclude `this`. This
+    /// convenience method builds an index; retain `FunctionIndex` for repeated
+    /// queries against the same source.
     pub fn find_function(
         &self,
         name: Option<&str>,
         strings: &[&str],
         parameters: Option<u32>,
     ) -> Result<FunctionId> {
-        let mut matches = Vec::new();
-        for index in 0..self.function_count() {
-            let id = FunctionId(index);
-            let function = self.function(id)?;
-            if parameters.is_some_and(|p| p != function.parameter_count()) {
-                continue;
-            }
-            if let Some(name) = name
-                && !self.string(function.name())?.equals(name)
-            {
-                continue;
-            }
-            let found = if strings.is_empty() {
-                true
-            } else {
-                let mut referenced = Vec::new();
-                for instruction in function.instructions()? {
-                    for (operand, value) in instruction
-                        .definition()
-                        .operands
-                        .iter()
-                        .zip(instruction.values.iter())
-                    {
-                        if operand.id == crate::opcode::IdKind::String {
-                            referenced.push(self.string(StringId(*value as u32))?);
-                        }
-                    }
-                    if let Some(table) = crate::parse::switch_table(&function, &instruction)?
-                        && table.stride == 8
-                    {
-                        for entry in table.bytes.chunks_exact(table.stride) {
-                            referenced.push(self.string(StringId(read_u32(entry, 0)?))?);
-                        }
-                    }
-                }
-                strings
-                    .iter()
-                    .all(|text| referenced.iter().any(|s| s.equals(text)))
-            };
-            if found {
-                matches.push(id);
-            }
-        }
-        if let [id] = matches[..] {
-            Ok(id)
-        } else {
-            Err(crate::HermesError::Match {
-                query: format!("name={name:?}, strings={strings:?}, parameters={parameters:?}"),
-                count: matches.len(),
-            })
-        }
+        crate::FunctionIndex::build(self)?.find_function(self, name, strings, parameters)
     }
 }

@@ -6,7 +6,10 @@ bytecode version 98, from Hermes tag `250829098.0.0-stable`.
 `HermesFile::parse` borrows the caller's bytes; keep the input mapping alive and
 unchanged. Function bodies and structured sections stay in that mapping. Function
 lookup combines names, referenced strings, and JavaScript parameter counts (which
-exclude `this`), and reports both missing and ambiguous matches.
+exclude `this`), and reports both missing and ambiguous matches. `HermesImage`
+retains immutable mapped storage and its validated layout, lending borrowed views
+without reparsing. Build `FunctionIndex` once for repeated lookups; its name and
+string-reference postings keep app searches independent of later edits.
 
 `Editor` owns additions over the parsed file. Interning preserves existing IDs and
 supports identifier hashes, string kind runs, UTF-16, and overflow table entries.

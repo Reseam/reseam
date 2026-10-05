@@ -7,6 +7,7 @@ description = "Borrowed Hermes bytecode parsing, linking, and editing"
 license = "GPL-3.0-or-later"
 
 [dependencies]
+reseam-storage.workspace = true
 thiserror.workspace = true
 ring.workspace = true
 rustc-hash.workspace = true

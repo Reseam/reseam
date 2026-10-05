@@ -8,6 +8,7 @@ mod assemble;
 mod edit;
 mod error;
 mod exports;
+mod index;
 mod link;
 mod model;
 pub mod opcode;
@@ -17,6 +18,8 @@ mod write;
 
 pub use edit::{Editor, Edits};
 pub use error::{HermesError, Result};
+pub use index::FunctionIndex;
 pub use link::ModuleId;
+pub use model::HermesImage;
 pub use model::{Function, FunctionId, HermesFile, StringId, StringKind, StringValue};
 pub use opcode::BytecodeVersion;

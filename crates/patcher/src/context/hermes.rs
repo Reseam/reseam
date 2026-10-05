@@ -1,24 +1,26 @@
 use std::collections::BTreeMap;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use reseam_apk::Compression;
-use reseam_hermes::{Editor, Edits, FunctionId, HermesFile, ModuleId};
-use reseam_storage::MappedFile;
+use reseam_hermes::{Editor, Edits, FunctionId, FunctionIndex, HermesFile, HermesImage, ModuleId};
+use reseam_storage::Bytes;
 
 use super::PatchContext;
 use crate::error::{PatcherError, Result};
 
 pub(super) struct HermesSession {
     path: String,
-    source: MappedFile,
+    image: HermesImage,
+    index: FunctionIndex,
     edits: Option<Edits>,
     modules: BTreeMap<PathBuf, ModuleId>,
 }
 
 impl HermesSession {
     fn edit<T>(&mut self, action: impl FnOnce(&mut Editor<'_>) -> Result<T>) -> Result<T> {
-        let file = HermesFile::parse(&self.source)?;
+        let file = self.image.file();
         let mut editor = if let Some(edits) = self.edits.take() {
             Editor::resume(file, edits)?
         } else {
@@ -37,11 +39,13 @@ impl PatchContext<'_> {
                 .apk
                 .map_component_entry(0, path)?
                 .ok_or_else(|| PatcherError::NotFound(format!("base APK Hermes bundle {path}")))?;
-            HermesFile::parse(&source)
+            let image = HermesImage::parse(Bytes::from_mmap(Arc::new(source)))
                 .map_err(|e| PatcherError::InvalidFile(format!("base APK {path}: {e}")))?;
+            let index = FunctionIndex::build(&image.file())?;
             self.hermes = Some(HermesSession {
                 path: path.into(),
-                source,
+                image,
+                index,
                 edits: None,
                 modules: BTreeMap::new(),
             });
@@ -58,7 +62,7 @@ impl PatchContext<'_> {
 
     pub(crate) fn hermes_version(&mut self, path: &str) -> Result<u32> {
         let session = self.hermes_session(path)?;
-        Ok(HermesFile::parse(&session.source)?.version())
+        Ok(session.image.file().version())
     }
 
     pub(crate) fn hermes_find(
@@ -69,7 +73,9 @@ impl PatchContext<'_> {
         parameters: Option<u32>,
     ) -> Result<FunctionId> {
         let session = self.hermes_session(path)?;
-        Ok(HermesFile::parse(&session.source)?.find_function(name, strings, parameters)?)
+        Ok(session
+            .index
+            .find_function(&session.image.file(), name, strings, parameters)?)
     }
 
     pub(crate) fn hermes_wrap(
