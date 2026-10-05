@@ -3,10 +3,12 @@
 
 package app.reseam.patch
 
+import app.reseam.patch.native.hermesAlwaysReturn
 import app.reseam.patch.native.hermesFindFunction
 import app.reseam.patch.native.hermesVersion
 import app.reseam.patch.native.hermesWrap
 import app.reseam.patch.types.HermesArgument
+import app.reseam.patch.types.HermesConstant
 
 /**
  * The base APK's Hermes bytecode in `assets/index.android.bundle`, opened on first use and written
@@ -87,29 +89,47 @@ class FunctionTarget internal constructor(debugName: String?, private val query:
             wrapped(label, query.toString()),
         )
 
-    /**
-     * Calls [export] as `export(original, ...arguments)` with the function's receiver, returning
-     * the export's result. `original` invokes the previous wrap, or the unchanged body for the
-     * first wrap, bound to that receiver and closed over the original outer environment. The export
-     * may call it with different arguments, skip it or transform its result; exceptions propagate
-     * normally.
-     *
-     * Wraps compose in application order (patch execution order), including exports from different
-     * modules. The last wrap runs outermost; the innermost `original` calls the unchanged app body.
-     * Lookups continue to match original app functions.
-     *
-     * The extension links once, when first used. Missing modules and undeclared or non-callable
-     * exports fail the patch. Generators, async functions, class constructors, functions using
-     * `new.target` or direct `eval`, and unprovable environment chains are refused. Ordinary
-     * wrapped functions cannot be called with `new` afterwards. Debug data for edited functions may
-     * be dropped.
-     */
-    fun wrap(export: JsExport) = wrap(export, emptyList())
-
     /** Like [wrap], passing [bound] to [export] ahead of `original`. */
-    internal fun wrap(export: JsExport, bound: List<HermesArgument>) =
+    internal fun wrapBound(export: JsExport, bound: List<HermesArgument>) =
         hermesWrap(resolved, export.module.name, export.name, bound)
+
+    internal fun returnConstant(value: HermesConstant) = hermesAlwaysReturn(resolved, value)
 }
+
+/**
+ * Calls [export] as `export(original, ...arguments)` with the function's receiver, returning the
+ * export's result. `original` invokes the previous wrap, or the unchanged body for the first wrap,
+ * bound to that receiver and closed over the original outer environment. The export may call it
+ * with different arguments, skip it or transform its result; exceptions propagate normally.
+ *
+ * Wraps compose in application order (patch execution order), including exports from different
+ * modules. The last wrap runs outermost; the innermost `original` calls the unchanged app body.
+ * Lookups continue to match original app functions.
+ *
+ * The extension links once, when first used. Missing modules and undeclared or non-callable exports
+ * fail the patch. Generators, async functions, class constructors, functions using `new.target` or
+ * direct `eval`, and unprovable environment chains are refused. Ordinary wrapped functions cannot
+ * be called with `new` afterwards. Debug data for edited functions may be dropped.
+ */
+fun FunctionTarget.wrap(export: JsExport) = wrapBound(export, emptyList())
+
+/**
+ * Replaces the function's body with `return undefined`. Earlier wraps of the function no longer
+ * run; later wraps receive the constant body as `original`.
+ */
+fun FunctionTarget.alwaysReturn() = returnConstant(HermesConstant.Undefined)
+
+/** Replaces the function's body with `return null`. */
+fun FunctionTarget.alwaysReturnNull() = returnConstant(HermesConstant.Null)
+
+/** Replaces the function's body with `return value`. */
+fun FunctionTarget.alwaysReturn(value: Boolean) = returnConstant(HermesConstant.Bool(value))
+
+/** Replaces the function's body with `return value`. */
+fun FunctionTarget.alwaysReturn(value: Int) = returnConstant(HermesConstant.Int(value))
+
+/** Replaces the function's body with `return value`. */
+fun FunctionTarget.alwaysReturn(value: String) = returnConstant(HermesConstant.Text(value))
 
 /**
  * A JavaScript extension's artifact name, matching its workspace module: for

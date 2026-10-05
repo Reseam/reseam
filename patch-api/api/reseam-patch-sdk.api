@@ -224,7 +224,6 @@ public final class app/reseam/patch/FloatOption : app/reseam/patch/Option {
 }
 
 public final class app/reseam/patch/FunctionTarget : app/reseam/patch/Target {
-	public final fun wrap (Lapp/reseam/patch/JsExport;)V
 }
 
 public abstract interface class app/reseam/patch/HermesFunctionQuery {
@@ -234,8 +233,14 @@ public abstract interface class app/reseam/patch/HermesFunctionQuery {
 }
 
 public final class app/reseam/patch/HermesKt {
+	public static final fun alwaysReturn (Lapp/reseam/patch/FunctionTarget;)V
+	public static final fun alwaysReturn (Lapp/reseam/patch/FunctionTarget;I)V
+	public static final fun alwaysReturn (Lapp/reseam/patch/FunctionTarget;Ljava/lang/String;)V
+	public static final fun alwaysReturn (Lapp/reseam/patch/FunctionTarget;Z)V
+	public static final fun alwaysReturnNull (Lapp/reseam/patch/FunctionTarget;)V
 	public static final fun function (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/FunctionTarget;
 	public static synthetic fun function$default (Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/FunctionTarget;
+	public static final fun wrap (Lapp/reseam/patch/FunctionTarget;Lapp/reseam/patch/JsExport;)V
 }
 
 public final class app/reseam/patch/HermesScope {
@@ -1392,23 +1397,31 @@ public final class app/reseam/patch/settings/FolderSetting : app/reseam/patch/se
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 }
 
+public final class app/reseam/patch/settings/GateScope {
+	public final fun after (Lapp/reseam/patch/MethodTarget;Lkotlin/jvm/functions/Function1;)V
+	public final fun after (Lapp/reseam/patch/PointTarget;Lkotlin/jvm/functions/Function1;)V
+	public final fun alwaysReturn (Lapp/reseam/patch/FunctionTarget;)V
+	public final fun alwaysReturn (Lapp/reseam/patch/FunctionTarget;I)V
+	public final fun alwaysReturn (Lapp/reseam/patch/FunctionTarget;Ljava/lang/String;)V
+	public final fun alwaysReturn (Lapp/reseam/patch/FunctionTarget;Z)V
+	public final fun alwaysReturn (Lapp/reseam/patch/MethodTarget;)V
+	public final fun alwaysReturn (Lapp/reseam/patch/MethodTarget;I)V
+	public final fun alwaysReturn (Lapp/reseam/patch/MethodTarget;J)V
+	public final fun alwaysReturn (Lapp/reseam/patch/MethodTarget;Ljava/lang/String;)V
+	public final fun alwaysReturn (Lapp/reseam/patch/MethodTarget;Z)V
+	public final fun alwaysReturnNull (Lapp/reseam/patch/FunctionTarget;)V
+	public final fun alwaysReturnNull (Lapp/reseam/patch/MethodTarget;)V
+	public final fun before (Lapp/reseam/patch/MethodTarget;Lkotlin/jvm/functions/Function1;)V
+	public final fun before (Lapp/reseam/patch/PointTarget;Lkotlin/jvm/functions/Function1;)V
+	public final fun getSetting ()Lapp/reseam/patch/settings/ToggleSetting;
+	public final fun setArgument (Lapp/reseam/patch/FunctionTarget;ILjava/lang/String;Z)V
+	public final fun skip (Lapp/reseam/patch/PointTarget;)V
+	public final fun wrap (Lapp/reseam/patch/FunctionTarget;Lapp/reseam/patch/JsExport;)V
+}
+
 public final class app/reseam/patch/settings/GatesKt {
-	public static final fun after (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;Lkotlin/jvm/functions/Function1;)V
-	public static final fun after (Lapp/reseam/patch/PointTarget;Lapp/reseam/patch/settings/ToggleSetting;Lkotlin/jvm/functions/Function1;)V
-	public static final fun before (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;Lkotlin/jvm/functions/Function1;)V
-	public static final fun before (Lapp/reseam/patch/PointTarget;Lapp/reseam/patch/settings/ToggleSetting;Lkotlin/jvm/functions/Function1;)V
-	public static final fun returnFalseWhen (Lapp/reseam/patch/FunctionTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
-	public static final fun returnFalseWhen (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
-	public static final fun returnNullWhen (Lapp/reseam/patch/FunctionTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
-	public static final fun returnNullWhen (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
-	public static final fun returnTrueWhen (Lapp/reseam/patch/FunctionTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
-	public static final fun returnTrueWhen (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
-	public static final fun setArgumentWhen (Lapp/reseam/patch/FunctionTarget;Lapp/reseam/patch/settings/ToggleSetting;ILjava/lang/String;Z)V
-	public static final fun skipWhen (Lapp/reseam/patch/FunctionTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
-	public static final fun skipWhen (Lapp/reseam/patch/MethodTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
-	public static final fun skipWhen (Lapp/reseam/patch/PointTarget;Lapp/reseam/patch/settings/ToggleSetting;)V
+	public static final fun gate (Lapp/reseam/patch/settings/ToggleSetting;Lkotlin/jvm/functions/Function1;)V
 	public static final fun whenEnabled (Lapp/reseam/patch/CodeScope;Lapp/reseam/patch/settings/ToggleSetting;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/Otherwise;
-	public static final fun wrapWhen (Lapp/reseam/patch/FunctionTarget;Lapp/reseam/patch/settings/ToggleSetting;Lapp/reseam/patch/JsExport;)V
 }
 
 public final class app/reseam/patch/settings/ReseamSettings : app/reseam/patch/ExtClass {

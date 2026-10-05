@@ -29,8 +29,7 @@ object ReseamSettings : ExtClass("app.reseam.runtime.settings.ReseamSettings") {
 internal object ReseamJsSettings : ExtJsModule("settings-js") {
     val skipWhen by export()
     val returnNullWhen by export()
-    val returnTrueWhen by export()
-    val returnFalseWhen by export()
+    val returnWhen by export()
     val wrapWhen by export()
     val setArgumentWhen by export()
 }

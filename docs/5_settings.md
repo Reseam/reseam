@@ -55,12 +55,14 @@ val hideAds = patch("Hide ads") {
     settings(appSettings, section("Ads", AppSettings.hideAds))
 
     execute {
-        showAd.skipWhen(AppSettings.hideAds)
+        gate(AppSettings.hideAds) {
+            showAd.alwaysReturn()
+        }
     }
 }
 ```
 
-`settings(host, section(...))` adds the section to the screen and makes the host a dependency. Only settings from patches that actually run appear. `skipWhen` is a gate: the method returns early whenever the toggle is on. See [Gates](8_changing_code.md#gates) for the others.
+`settings(host, section(...))` adds the section to the screen and makes the host a dependency. Only settings from patches that actually run appear. Inside `gate`, the method returns early whenever the toggle is on. See [Gates](8_changing_code.md#gates).
 
 When a setting depends on an option, register it from a block. It runs after `execute`, so it can read options:
 

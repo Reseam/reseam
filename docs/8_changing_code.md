@@ -69,17 +69,18 @@ whenTrue(call(isCurrentUser, param(0))) {
 A gate checks a [setting](5_settings.md) while the app runs:
 
 ```kotlin
-sendTypingEvent.returnFalseWhen(AppSettings.hideTyping)
-showAd.skipWhen(AppSettings.hideAds)
-
-isPremium.before(AppSettings.unlockFeatures) { returnTrue() }
+gate(AppSettings.hideAds) {
+    showAd.alwaysReturn()
+    adSlot.alwaysReturnNull()
+    loadFeed.after { thisObject.set(adCount, int(0)) }
+}
 
 whenEnabled(AppSettings.fasterDownloads) {
     thisObject.set(maxParallelDownloads, int(8))
 }
 ```
 
-`skipWhen` returns early from a method that returns nothing. `returnTrueWhen`, `returnFalseWhen`, and `returnNullWhen` return a constant. `before(setting) { }` and `after(setting) { }` only run their block while the setting is on. On a point, `skipWhen(setting)` skips that one call.
+Hooks written inside `gate(setting) { }` only take effect while the setting is on: `before { }`, `after { }`, and `alwaysReturn…`, on methods and points. On a point, `skip()` skips that one call. Inside a code block, `whenEnabled` branches on a setting.
 
 ## Calling your own code
 

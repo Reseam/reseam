@@ -53,10 +53,7 @@ See [Hermes JavaScript](15_hermes.md) for extension sources and examples. Target
 | `HermesFunctionQuery.strings(vararg values)` | All strings must be referenced by instructions, including property names. |
 | `HermesFunctionQuery.paramCount(count)` | Declared JavaScript parameters, excluding `this`; nonnegative. |
 | `FunctionTarget.wrap(export: JsExport)` | Calls `export(original, ...arguments)` with the same receiver and returns its result. `original` is receiver-bound and retains the unchanged body and captured environment. |
-| `FunctionTarget.skipWhen(setting)` | Returns `undefined` without calling the function when the toggle is on. |
-| `FunctionTarget.returnNullWhen/returnTrueWhen/returnFalseWhen(setting)` | Returns that value when the toggle is on. |
-| `FunctionTarget.wrapWhen(setting, export)` | Wraps with `export` when the toggle is on. |
-| `FunctionTarget.setArgumentWhen(setting, index, path, value)` | Calls the function with argument `index`'s property at the dotted `path` set to `value` when the toggle is on. |
+| `FunctionTarget.alwaysReturn()`, `alwaysReturnNull()`, `alwaysReturn(Boolean / Int / String)` | Replaces the body with a constant result. Earlier wraps no longer run; later wraps receive it as `original`. |
 | `ExtJsModule(name)` | Declares an extension artifact, such as `example-features`. |
 | `ExtJsModule.export(name = null)` | Property delegate for a callable property of its exports object, named after the property unless `name` is given. Validated on use. |
 
@@ -218,10 +215,8 @@ Resource file and value helpers:
 | `ReseamSettings` | The runtime `ExtClass`: `getBoolean`, `getString`. |
 | `SETTINGS_SCHEMA_PATH` | `assets/reseam/settings.json`. |
 | `CodeScope.whenEnabled(toggle) { }` | Branch on a toggle at runtime; returns `Otherwise`. |
-| `PointTarget.skipWhen(toggle)` | Skips the call at the point when the toggle is on. |
-| `MethodTarget.before(toggle) { }`, `.after(toggle) { }` | Gated emission. Same on `PointTarget`. |
-| `MethodTarget.skipWhen(toggle)` | Return early from a void method. |
-| `MethodTarget.returnTrueWhen`, `returnFalseWhen`, `returnNullWhen` | Gated constant returns. |
+| `gate(toggle) { GateScope }` | Hooks inside take effect only while the toggle is on. |
+| `GateScope` | `MethodTarget` and `PointTarget` `before { }`, `after { }`; `MethodTarget.alwaysReturn()`, `alwaysReturnNull()`, `alwaysReturn(Boolean / Int / Long / String)`; `PointTarget.skip()`; `FunctionTarget.wrap(export)`, `alwaysReturn()`, `alwaysReturnNull()`, `alwaysReturn(Boolean / Int / String)`, `setArgument(index, path, value)`. |
 
 ## `app.reseam.patch.dex`
 

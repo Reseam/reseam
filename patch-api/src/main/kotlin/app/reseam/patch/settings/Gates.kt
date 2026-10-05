@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-@file:Suppress("unused")
-
 package app.reseam.patch.settings
 
 import app.reseam.patch.CodeScope
@@ -22,106 +20,123 @@ import app.reseam.patch.types.HermesExportRef
 fun CodeScope.whenEnabled(setting: ToggleSetting, block: CodeScope.() -> Unit): Otherwise =
     whenTrue(call(ReseamSettings.getBoolean, string(setting.key), bool(setting.default)), block)
 
-fun MethodTarget.before(gate: ToggleSetting, block: CodeScope.() -> Unit) = before {
-    whenEnabled(gate, block)
-}
-
-fun MethodTarget.after(gate: ToggleSetting, block: CodeScope.() -> Unit) = after {
-    whenEnabled(gate, block)
-}
-
-fun PointTarget.before(gate: ToggleSetting, block: CodeScope.() -> Unit) = before {
-    whenEnabled(gate, block)
-}
-
-fun PointTarget.after(gate: ToggleSetting, block: CodeScope.() -> Unit) = after {
-    whenEnabled(gate, block)
-}
-
-/** Returns immediately when the toggle is on; the method must be void. */
-fun MethodTarget.skipWhen(setting: ToggleSetting) {
-    require(returnType == Type.Void) {
-        "skipWhen(${setting.key}) needs a void method, got $returnType in $descriptor"
-    }
-    before(setting) { returnVoid() }
-}
-
-/** Skips the call at the point when the toggle is on; the call's result must be unused. */
-fun PointTarget.skipWhen(setting: ToggleSetting) = skipWhen {
-    call(ReseamSettings.getBoolean, string(setting.key), bool(setting.default))
-}
-
-fun MethodTarget.returnNullWhen(setting: ToggleSetting) {
-    require(returnType.startsWith("L") || returnType.startsWith("[")) {
-        "returnNullWhen(${setting.key}) needs an object method, got $returnType in $descriptor"
-    }
-    before(setting) { returnNull() }
-}
-
-fun MethodTarget.returnTrueWhen(setting: ToggleSetting) = returnBooleanWhen(setting, true)
-
-fun MethodTarget.returnFalseWhen(setting: ToggleSetting) = returnBooleanWhen(setting, false)
-
-private fun MethodTarget.returnBooleanWhen(setting: ToggleSetting, value: Boolean) {
-    require(returnType == Type.Boolean) {
-        "return${value}When(${setting.key}) needs a boolean method, got $returnType in $descriptor"
-    }
-    before(setting) { if (value) returnTrue() else returnFalse() }
-}
-
 /**
- * Returns `undefined` without calling the function when the toggle is on.
+ * Applies the hooks written in [block] only while [setting] is on. Hermes hooks read it once per
+ * process through the `settings-js` extension, which the patch bundle provides along with the
+ * `ReseamSettings` React Native module its settings host registers.
  *
- * Like every Hermes gate, it reads the toggle once per process through the `settings-js` extension,
- * which the patch bundle provides along with the `ReseamSettings` React Native module its settings
- * host registers.
+ * ```kotlin
+ * gate(AppSettings.hideAds) {
+ *     loadAds.alwaysReturnNull()
+ *     isFeatureEnabled.wrap(Features.isFeatureEnabled)
+ * }
+ * ```
  */
-fun FunctionTarget.skipWhen(setting: ToggleSetting) =
-    wrap(ReseamJsSettings.skipWhen, setting.bound())
+fun gate(setting: ToggleSetting, block: GateScope.() -> Unit) = GateScope(setting).block()
 
-/** Returns `null` without calling the function when the toggle is on. */
-fun FunctionTarget.returnNullWhen(setting: ToggleSetting) =
-    wrap(ReseamJsSettings.returnNullWhen, setting.bound())
+/** Hooks that run only while a [gate]'s setting is on. Each mirrors the ungated hook. */
+class GateScope internal constructor(val setting: ToggleSetting) {
+    fun MethodTarget.before(block: CodeScope.() -> Unit) = beforeOn(setting, block)
 
-/** Returns `true` without calling the function when the toggle is on. */
-fun FunctionTarget.returnTrueWhen(setting: ToggleSetting) =
-    wrap(ReseamJsSettings.returnTrueWhen, setting.bound())
+    fun MethodTarget.after(block: CodeScope.() -> Unit) = afterOn(setting, block)
 
-/** Returns `false` without calling the function when the toggle is on. */
-fun FunctionTarget.returnFalseWhen(setting: ToggleSetting) =
-    wrap(ReseamJsSettings.returnFalseWhen, setting.bound())
+    fun PointTarget.before(block: CodeScope.() -> Unit) = beforeOn(setting, block)
 
-/** Wraps the function with [export] when the toggle is on, as [FunctionTarget.wrap] does. */
-fun FunctionTarget.wrapWhen(setting: ToggleSetting, export: JsExport) =
-    wrap(
-        ReseamJsSettings.wrapWhen,
-        setting.bound() + HermesArgument.Export(HermesExportRef(export.module.name, export.name)),
-    )
+    fun PointTarget.after(block: CodeScope.() -> Unit) = afterOn(setting, block)
 
-/**
- * Calls the function with a copy of argument [index] whose property at [path] is [value] when the
- * toggle is on. [path] names nested properties with dots, such as `options.compact`; each object
- * along it is shallow-copied, so the caller's object is not changed.
- */
-fun FunctionTarget.setArgumentWhen(
-    setting: ToggleSetting,
-    index: Int,
-    path: String,
-    value: Boolean,
-) {
-    require(index >= 0) { "setArgumentWhen(${setting.key}) needs a nonnegative argument index" }
-    require(path.split('.').none(String::isEmpty)) {
-        "setArgumentWhen(${setting.key}) needs property names separated by dots, got '$path'"
+    /** Skips the call at the point; the call's result must be unused. */
+    fun PointTarget.skip() = skipWhen {
+        call(ReseamSettings.getBoolean, string(setting.key), bool(setting.default))
     }
-    wrap(
-        ReseamJsSettings.setArgumentWhen,
-        setting.bound() +
-            listOf(
-                HermesArgument.Int(index),
-                HermesArgument.Text(path),
-                HermesArgument.Bool(value),
-            ),
-    )
+
+    fun MethodTarget.alwaysReturn() = returnOn(setting, Type.Void) { returnVoid() }
+
+    fun MethodTarget.alwaysReturnNull() {
+        require(returnType.startsWith("L") || returnType.startsWith("[")) {
+            "the ${setting.key} gate returns null, but $descriptor returns $returnType"
+        }
+        beforeOn(setting) { returnNull() }
+    }
+
+    fun MethodTarget.alwaysReturn(value: Boolean) =
+        returnOn(setting, Type.Boolean) { if (value) returnTrue() else returnFalse() }
+
+    fun MethodTarget.alwaysReturn(value: Int) =
+        returnOn(setting, Type.Int) { returnValue(int(value)) }
+
+    fun MethodTarget.alwaysReturn(value: Long) =
+        returnOn(setting, Type.Long) { returnValue(long(value)) }
+
+    fun MethodTarget.alwaysReturn(value: String) =
+        returnOn(setting, Type.String) { returnValue(string(value)) }
+
+    fun FunctionTarget.wrap(export: JsExport) =
+        wrapBound(
+            ReseamJsSettings.wrapWhen,
+            bound() + HermesArgument.Export(HermesExportRef(export.module.name, export.name)),
+        )
+
+    fun FunctionTarget.alwaysReturn() = wrapBound(ReseamJsSettings.skipWhen, bound())
+
+    fun FunctionTarget.alwaysReturnNull() = wrapBound(ReseamJsSettings.returnNullWhen, bound())
+
+    fun FunctionTarget.alwaysReturn(value: Boolean) = returnValue(HermesArgument.Bool(value))
+
+    fun FunctionTarget.alwaysReturn(value: Int) = returnValue(HermesArgument.Int(value))
+
+    fun FunctionTarget.alwaysReturn(value: String) = returnValue(HermesArgument.Text(value))
+
+    /**
+     * Calls the function with a copy of argument [index] whose property at [path] is [value].
+     * [path] names nested properties with dots, such as `options.compact`; each object along it is
+     * shallow-copied, so the caller's object is not changed.
+     */
+    fun FunctionTarget.setArgument(index: Int, path: String, value: Boolean) {
+        require(index >= 0) { "setArgument needs a nonnegative argument index, got $index" }
+        require(path.split('.').none(String::isEmpty)) {
+            "setArgument needs property names separated by dots, got '$path'"
+        }
+        wrapBound(
+            ReseamJsSettings.setArgumentWhen,
+            bound() +
+                listOf(
+                    HermesArgument.Int(index),
+                    HermesArgument.Text(path),
+                    HermesArgument.Bool(value),
+                ),
+        )
+    }
+
+    private fun FunctionTarget.returnValue(value: HermesArgument) =
+        wrapBound(ReseamJsSettings.returnWhen, bound() + value)
+
+    private fun bound() =
+        listOf(HermesArgument.Text(setting.key), HermesArgument.Bool(setting.default))
 }
 
-private fun ToggleSetting.bound() = listOf(HermesArgument.Text(key), HermesArgument.Bool(default))
+private fun MethodTarget.beforeOn(setting: ToggleSetting, block: CodeScope.() -> Unit) = before {
+    whenEnabled(setting, block)
+}
+
+private fun MethodTarget.afterOn(setting: ToggleSetting, block: CodeScope.() -> Unit) = after {
+    whenEnabled(setting, block)
+}
+
+private fun PointTarget.beforeOn(setting: ToggleSetting, block: CodeScope.() -> Unit) = before {
+    whenEnabled(setting, block)
+}
+
+private fun PointTarget.afterOn(setting: ToggleSetting, block: CodeScope.() -> Unit) = after {
+    whenEnabled(setting, block)
+}
+
+private fun MethodTarget.returnOn(
+    setting: ToggleSetting,
+    type: String,
+    block: CodeScope.() -> Unit,
+) {
+    require(returnType == type) {
+        "the ${setting.key} gate returns $type, but $descriptor returns $returnType"
+    }
+    beforeOn(setting, block)
+}

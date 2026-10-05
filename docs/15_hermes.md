@@ -90,13 +90,18 @@ Generators, async functions, class constructors, functions using `new.target` or
 
 ## Gate on a setting
 
-The [settings](5_settings.md) gates also apply to Hermes targets:
+`alwaysReturn()`, `alwaysReturnNull()` and `alwaysReturn(value)` replace a function's body with a constant result, as they do for DEX methods.
+
+[Gates](8_changing_code.md#gates) apply to Hermes targets too:
 
 ```kotlin
-isStaff.returnTrueWhen(AppSettings.developerMenu)
-isFeatureEnabled.wrapWhen(AppSettings.allFeatures, Features.isFeatureEnabled)
+gate(AppSettings.allFeatures) {
+    isStaff.alwaysReturn(true)
+    isFeatureEnabled.wrap(Features.isFeatureEnabled)
+    renderRow.setArgument(0, "options.animate", false)
+}
 ```
 
-`skipWhen` returns `undefined`, and `returnNullWhen`, `returnTrueWhen` and `returnFalseWhen` return that value, when the toggle is on; otherwise they call the app function. `wrapWhen` runs your export when the toggle is on and the unchanged function otherwise, so the export itself does not check settings. `setArgumentWhen(setting, index, path, value)` calls the function with one property of an argument replaced, such as `setArgumentWhen(setting, 0, "options.animate", false)`; the function receives copies of the objects along the path. Each toggle is read once per process, through the `settings-js` extension in your bundle and the `ReseamSettings` React Native module that the app's settings host registers.
+While the toggle is off, the unchanged function runs, so an export never checks settings itself. `setArgument(index, path, value)` calls the function with one property of an argument replaced; the function receives copies of the objects along the path. Each toggle is read once per process, through the `settings-js` extension in your bundle and the `ReseamSettings` React Native module that the app's settings host registers.
 
 See the [reference](reference.md#hermes) for the authoring API.
