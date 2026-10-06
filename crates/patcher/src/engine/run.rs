@@ -12,6 +12,34 @@ use crate::error::Result;
 use crate::log::LogEntry;
 use crate::patch::{Patch, PatchPhase};
 
+/// How a run's output reaches the device, which decides what a patch may change.
+#[derive(Debug, Clone, Copy)]
+pub enum Delivery<'a> {
+    /// The output installs as an app of its own.
+    Install,
+    /// The output replaces the installed app's files, and the system keeps the
+    /// manifest it read from the installed app. A patch that edits the manifest
+    /// finishes unmountable, and the patches that need it are skipped. The run
+    /// still holds that patch's edits, so the caller builds again from the
+    /// original APK with it listed in `unmountable`, which keeps it from running.
+    Mount { unmountable: &'a [String] },
+}
+
+impl Delivery<'_> {
+    /// Whether the manifest changed since `revision` in a build that cannot apply it.
+    fn forbids_manifest_edit(self, revision: u64, ctx: &PatchContext<'_>) -> bool {
+        matches!(self, Self::Mount { .. }) && ctx.apk().manifest_revision() != revision
+    }
+}
+
+const CHANGES_MANIFEST: &str = "changes the manifest, which a mount does not apply";
+
+fn unmountable_status() -> PatchStatus {
+    PatchStatus::Unmountable {
+        reason: CHANGES_MANIFEST.to_owned(),
+    }
+}
+
 /// Runs the selected patches in dependency order, then the `after_dependents`
 /// hook of every applied patch that finalizes, then binds the app entry hook to
 /// the final manifest. A patch that fails or panics does not stop the run;
@@ -21,6 +49,7 @@ pub fn apply_patches(
     ctx: &mut PatchContext<'_>,
     patches: &[&Patch],
     selection: &PatchSelection,
+    delivery: Delivery<'_>,
     mut observer: impl FnMut(ProgressEvent),
 ) -> Result<Vec<PatchResult>> {
     #[cfg(feature = "bridge")]
@@ -28,19 +57,24 @@ pub fn apply_patches(
     info!(patch_count = patches.len(), "starting patch application");
     let package = ctx.apk().package_name().map(Cow::into_owned);
     let version = ctx.apk().version_name().map(Cow::into_owned);
-    let plan = ResolvedPlan::resolve(patches, selection, package.as_deref(), version.as_deref())?;
+    let unmountable = match delivery {
+        Delivery::Install => &[][..],
+        Delivery::Mount { unmountable } => unmountable,
+    };
+    let plan = ResolvedPlan::resolve(
+        patches,
+        selection,
+        unmountable,
+        package.as_deref(),
+        version.as_deref(),
+    )?;
     let mut run = Run::new(patches, &plan);
 
     for &idx in plan.order() {
         let patch = &patches[idx];
         let _span = info_span!("patch", patch = patch.reference()).entered();
-        if let Some(reason) = run.skip_reason(idx, package.as_deref(), version.as_deref()) {
-            run.finish(
-                idx,
-                PatchStatus::Skipped { reason },
-                Vec::new(),
-                &mut observer,
-            );
+        if let Some(status) = run.blocked(idx, package.as_deref(), version.as_deref()) {
+            run.finish(idx, status, Vec::new(), &mut observer);
             continue;
         }
 
@@ -48,12 +82,14 @@ pub fn apply_patches(
         observer(ProgressEvent::Started {
             patch: patch.reference().to_owned(),
         });
+        let manifest = ctx.apk().manifest_revision();
         let outcome = guarded(|| patch.invoke(PatchPhase::Execute, ctx));
         let logs = ctx.take_log_entries();
         for log in &logs {
             observer(ProgressEvent::Log(log.clone()));
         }
         let status = match outcome {
+            Ok(()) if delivery.forbids_manifest_edit(manifest, ctx) => unmountable_status(),
             Ok(()) => PatchStatus::Applied,
             Err(reason) => PatchStatus::Failed { reason },
         };
@@ -67,14 +103,24 @@ pub fn apply_patches(
         }
         let _span = info_span!("after_dependents", patch = patch.reference()).entered();
         ctx.begin_patch(patch.reference(), plan.options(idx).clone());
+        let manifest = ctx.apk().manifest_revision();
         let outcome = guarded(|| patch.invoke(PatchPhase::Finalize, ctx));
         let logs = ctx.take_log_entries();
         for log in &logs {
             observer(ProgressEvent::Log(log.clone()));
         }
         run.append_logs(idx, logs);
-        if let Err(reason) = outcome {
-            run.fail(idx, format!("after_dependents: {reason}"));
+        match outcome {
+            Ok(()) if delivery.forbids_manifest_edit(manifest, ctx) => {
+                run.set_status(idx, unmountable_status());
+            }
+            Ok(()) => {}
+            Err(reason) => run.set_status(
+                idx,
+                PatchStatus::Failed {
+                    reason: format!("after_dependents: {reason}"),
+                },
+            ),
         }
         run.terminal(idx, &mut observer);
     }
@@ -94,13 +140,12 @@ pub fn validate_patches(
     package: Option<&str>,
     version: Option<&str>,
 ) -> Result<Vec<PatchResult>> {
-    let plan = ResolvedPlan::resolve(patches, selection, package, version)?;
+    let plan = ResolvedPlan::resolve(patches, selection, &[], package, version)?;
     let mut run = Run::new(patches, &plan);
     for &idx in plan.order() {
-        let status = match run.skip_reason(idx, package, version) {
-            Some(reason) => PatchStatus::Skipped { reason },
-            None => PatchStatus::Applied,
-        };
+        let status = run
+            .blocked(idx, package, version)
+            .unwrap_or(PatchStatus::Applied);
         run.finish(idx, status, Vec::new(), &mut |_| {});
     }
     Ok(run.into_results())
@@ -121,20 +166,25 @@ impl<'a> Run<'a> {
         }
     }
 
-    fn skip_reason(
+    /// Why the patch cannot run, as its final status, or `None` when it can.
+    fn blocked(
         &self,
         idx: usize,
         package: Option<&str>,
         version: Option<&str>,
-    ) -> Option<String> {
+    ) -> Option<PatchStatus> {
+        let skipped = |reason: String| Some(PatchStatus::Skipped { reason });
+        if self.plan.is_unmountable(idx) {
+            return Some(unmountable_status());
+        }
         if !self.plan.is_desired(idx) {
-            return Some("not selected".to_owned());
+            return skipped("not selected".to_owned());
         }
         if self.plan.is_disabled(idx) {
-            return Some("disabled explicitly".to_owned());
+            return skipped("disabled explicitly".to_owned());
         }
         if let Some(reason) = self.plan.unavailable(idx) {
-            return Some(reason.to_owned());
+            return skipped(reason.to_owned());
         }
         let spec = self.patches[idx].spec();
         if let Some(reason) = if self.plan.ignores_versions() {
@@ -142,22 +192,26 @@ impl<'a> Run<'a> {
         } else {
             spec.incompatibility(package, version)
         } {
-            return Some(reason);
+            return skipped(reason);
         }
         for &dependency in self.plan.dependencies(idx) {
-            let detail = match self.results[dependency]
+            let name = self.patches[dependency].reference();
+            match self.results[dependency]
                 .as_ref()
                 .map(|result| &result.status)
             {
-                Some(PatchStatus::Applied) => continue,
-                Some(PatchStatus::Skipped { reason }) => format!("skipped: {reason}"),
-                Some(PatchStatus::Failed { reason }) => format!("failed: {reason}"),
-                None => "was not executed".to_owned(),
-            };
-            return Some(format!(
-                "dependency '{}' {detail}",
-                self.patches[dependency].reference()
-            ));
+                Some(PatchStatus::Applied) => {}
+                Some(PatchStatus::Skipped { reason }) => {
+                    return skipped(format!("dependency '{name}' skipped: {reason}"));
+                }
+                Some(PatchStatus::Unmountable { .. }) => {
+                    return skipped(format!("dependency '{name}' {CHANGES_MANIFEST}"));
+                }
+                Some(PatchStatus::Failed { reason }) => {
+                    return skipped(format!("dependency '{name}' failed: {reason}"));
+                }
+                None => return skipped(format!("dependency '{name}' was not executed")),
+            }
         }
         None
     }
@@ -203,8 +257,8 @@ impl<'a> Run<'a> {
         self.result_mut(idx).logs.extend(logs);
     }
 
-    fn fail(&mut self, idx: usize, reason: String) {
-        self.result_mut(idx).status = PatchStatus::Failed { reason };
+    fn set_status(&mut self, idx: usize, status: PatchStatus) {
+        self.result_mut(idx).status = status;
     }
 
     fn terminal(&mut self, idx: usize, observer: &mut impl FnMut(ProgressEvent)) {

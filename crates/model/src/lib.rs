@@ -24,7 +24,7 @@ pub use metrics::{
 };
 pub use options::{OptionDeclaration, OptionType, OptionValue};
 pub use patch::{Compatibility, CompatiblePackage, PatchPreset, PatchSpec, is_slug};
-pub use request::{PatchSelection, Trust};
+pub use request::{InstallMethod, PatchSelection, Trust};
 pub use sdk::{
     ApkMetadata, BundleMetadata, InspectRequest, InspectResponse, PatchArtifact, PatchMetadata,
     PatchOutcome, PatchOutput, PatchRequest, RunEvent, SigningKeyFiles,

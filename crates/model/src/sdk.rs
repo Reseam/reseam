@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::{
-    ContainerFormat, LogEntry, PatchMetrics, PatchPreset, PatchResult, PatchSelection, PatchSpec,
-    PatchStatus, Problem, ProgressEvent, Trust,
+    ContainerFormat, InstallMethod, LogEntry, PatchMetrics, PatchPreset, PatchResult,
+    PatchSelection, PatchSpec, PatchStatus, Problem, ProgressEvent, Trust,
 };
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -105,6 +105,9 @@ pub struct PatchRequest {
     #[serde(default)]
     #[boltffi::default(false)]
     pub dry_run: bool,
+    #[serde(default)]
+    #[boltffi::default(InstallMethod::Install)]
+    pub install_method: InstallMethod,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -190,10 +193,22 @@ pub struct PatchOutcome {
 #[serde(tag = "type", rename_all = "snake_case")]
 #[boltffi::data]
 pub enum RunEvent {
-    Info { message: String },
-    PatchStarted { patch: String },
+    Info {
+        message: String,
+    },
+    PatchStarted {
+        patch: String,
+    },
     PatchLog(LogEntry),
-    PatchFinished { patch: String, status: PatchStatus },
+    PatchFinished {
+        patch: String,
+        status: PatchStatus,
+    },
+    /// A mount build found patches that change the manifest. The run starts
+    /// over from the original APK and leaves out every patch in `unmountable`.
+    Restarted {
+        unmountable: Vec<String>,
+    },
 }
 
 impl From<ProgressEvent> for RunEvent {

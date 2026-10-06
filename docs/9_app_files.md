@@ -31,6 +31,12 @@ manifest.edit {
 
 `edit { }` opens the manifest as an XML document for anything the helpers don't cover.
 
+## Mount builds
+
+On a rooted phone, a build can be mounted over the app installed from the store instead of installed as its own app. The app keeps its signature, its data, and Google sign-in. Android keeps reading the manifest of the installed app, so a mount build leaves out every patch that edits the manifest, and the patches that depend on it. Code, resources, and other files apply as usual.
+
+Reach for code and resource changes where they do the job, so the patch works both ways. A patch whose purpose is the manifest, such as a package rename, is left out of mount builds.
+
 ## Resources
 
 ```kotlin

@@ -30,8 +30,16 @@ impl PatchResult {
 #[boltffi::data]
 pub enum PatchStatus {
     Applied,
-    Skipped { reason: String },
-    Failed { reason: String },
+    Skipped {
+        reason: String,
+    },
+    /// Left out of a mount build because the patch changes the manifest.
+    Unmountable {
+        reason: String,
+    },
+    Failed {
+        reason: String,
+    },
 }
 
 #[derive(Debug, Clone)]

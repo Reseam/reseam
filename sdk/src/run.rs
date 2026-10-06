@@ -4,15 +4,15 @@
 use crate::error::Result;
 use reseam_apk::ApkFile;
 use reseam_patcher::context::{ExtensionSet, PatchContext};
-use reseam_patcher::engine::{self, PatchResult, PatchStatus};
+use reseam_patcher::engine::{self, Delivery, PatchResult, PatchStatus};
 use reseam_patcher::{Patch, PatchSpec};
 
 use crate::TrustStore;
 use crate::error::Problem;
-use crate::inspect::{PreparedInspection, load_bundles, open_apk};
+use crate::inspect::{OpenedApk, PreparedInspection, load_bundles, open_apk};
 use crate::metrics::{ApplyDiagnostics, PatchPhase, PatchProfiler};
 use crate::output::write_signed;
-use crate::{PatchArtifact, PatchOutcome, PatchRequest, RunEvent};
+use crate::{InstallMethod, PatchArtifact, PatchOutcome, PatchRequest, RunEvent};
 use std::path::{Path, PathBuf};
 
 /// Runs the request end to end: open, load, apply, write, sign. A dry run
@@ -77,15 +77,7 @@ fn run(
                     "prepared inspection has no APK",
                 ));
         }
-        open_apk(
-            Path::new(&request.apk_path),
-            &request
-                .split_paths
-                .iter()
-                .map(PathBuf::from)
-                .collect::<Vec<_>>(),
-            ApkFile::patch_options(),
-        )
+        open_input(request)
     })?;
     report_container(&opened, emit);
     let output = request.output.resolve(opened.apk.components().len())?;
@@ -135,13 +127,15 @@ fn run(
         .iter()
         .flat_map(|bundle| bundle.extension_dex().iter().cloned())
         .collect();
-    let mut ctx = PatchContext::new(&mut opened.apk);
-    ctx.set_extensions(ExtensionSet::load(&extension_paths)?);
-    let results = profiler.measure(PatchPhase::ApplyPatches, || {
-        engine::apply_patches(&mut ctx, &patches, &selection, |event| emit(event.into()))
-    })?;
-    profiler.set_apply_diagnostics(apply_diagnostics(&ctx));
-    drop(ctx);
+    let results = apply(
+        request,
+        &mut opened,
+        &patches,
+        &selection,
+        &extension_paths,
+        emit,
+        profiler,
+    )?;
 
     ensure_none_failed(&results)?;
 
@@ -169,7 +163,66 @@ fn run(
     Ok((results, output))
 }
 
-fn report_container(opened: &crate::inspect::OpenedApk, emit: &mut impl FnMut(RunEvent)) {
+/// Applies the selection to `opened`. A mount build that finds patches editing
+/// the manifest reopens the original input into `opened` and applies again
+/// without them, since the APK still holds their edits.
+fn apply(
+    request: &PatchRequest,
+    opened: &mut OpenedApk,
+    patches: &[&Patch],
+    selection: &reseam_model::PatchSelection,
+    extension_paths: &[PathBuf],
+    emit: &mut impl FnMut(RunEvent),
+    profiler: &mut PatchProfiler,
+) -> Result<Vec<PatchResult>> {
+    let mut unmountable = Vec::new();
+    loop {
+        let delivery = match request.install_method {
+            InstallMethod::Install => Delivery::Install,
+            InstallMethod::Mount => Delivery::Mount {
+                unmountable: &unmountable,
+            },
+        };
+        let mut ctx = PatchContext::new(&mut opened.apk);
+        ctx.set_extensions(ExtensionSet::load(extension_paths)?);
+        let results = profiler.measure(PatchPhase::ApplyPatches, || {
+            engine::apply_patches(&mut ctx, patches, selection, delivery, |event| {
+                emit(event.into());
+            })
+        })?;
+        profiler.set_apply_diagnostics(apply_diagnostics(&ctx));
+        drop(ctx);
+
+        let found: Vec<String> = results
+            .iter()
+            .filter(|result| matches!(result.status, PatchStatus::Unmountable { .. }))
+            .map(|result| result.patch.clone())
+            .filter(|patch| !unmountable.contains(patch))
+            .collect();
+        if found.is_empty() {
+            return Ok(results);
+        }
+        unmountable.extend(found);
+        emit(RunEvent::Restarted {
+            unmountable: unmountable.clone(),
+        });
+        *opened = profiler.measure(PatchPhase::OpenApk, || open_input(request))?;
+    }
+}
+
+fn open_input(request: &PatchRequest) -> Result<OpenedApk> {
+    open_apk(
+        Path::new(&request.apk_path),
+        &request
+            .split_paths
+            .iter()
+            .map(PathBuf::from)
+            .collect::<Vec<_>>(),
+        ApkFile::patch_options(),
+    )
+}
+
+fn report_container(opened: &OpenedApk, emit: &mut impl FnMut(RunEvent)) {
     if let Some(bundle) = &opened.bundle {
         let splits = opened.apk.components().len() - 1;
         emit(info(format!(

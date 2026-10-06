@@ -21,6 +21,7 @@ The types come from [`crates/model`](../crates/model/).
 | `encodeSelection`, `encodePatchMetadata` | Store a selection or patch list as JSON, with matching `decode` functions. |
 
 - **Trust.** A request lists the bundle signers it accepts in `trust.keys`. The SDK trusts no one on its own. `inspect` reads bundles from any signer and marks each one `trusted` or not; `patch` refuses untrusted ones.
+- **Mount builds.** `installMethod = MOUNT` builds output to mount over the installed app. Patches that edit the manifest finish `Unmountable`; when a run finds one, the SDK sends `RunEvent.Restarted` and patches again from the original input without it.
 - **Errors.** Failures are `SdkError` with a typed `Problem`, such as `UntrustedBundle`, `EngineTooOld`, or `PatchesFailed`.
 - **Threads.** Calls are synchronous; run them off the main thread. `onEvent` runs on the calling thread and must not call back into the SDK.
 - **Lifetimes.** `ApkInspection` component paths are valid until it is closed. A `PreparedInspection` needs the same input paths, in the same order, when you call `patch`, and the inputs must not change before then. `patch` consumes it, even on failure.

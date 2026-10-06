@@ -17,7 +17,7 @@ pub use reseam_model::{
     ApkMetadata, BundleMetadata, InspectRequest, InspectResponse, PatchArtifact, PatchMetadata,
     PatchOutcome, PatchOutput, PatchRequest, RunEvent, SigningKeyFiles,
 };
-pub use reseam_model::{OptionValue, PatchPreset, PatchSelection, Trust};
+pub use reseam_model::{InstallMethod, OptionValue, PatchPreset, PatchSelection, Trust};
 
 pub use metrics::{ApplyDiagnostics, PatchMetrics, PatchPhase, PatchPhaseMetrics};
 #[cfg(target_os = "android")]

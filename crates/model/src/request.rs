@@ -22,6 +22,20 @@ pub struct PatchSelection {
     pub ignore_versions: bool,
 }
 
+/// How the patched app reaches the device.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[boltffi::data]
+pub enum InstallMethod {
+    /// The output is installed as an app of its own.
+    #[default]
+    Install,
+    /// The output replaces the files of the installed app in place. The system
+    /// keeps the manifest it read from the installed app, so a mount build
+    /// leaves out every patch that changes the manifest.
+    Mount,
+}
+
 /// Ed25519 signer keys trusted by the caller, as 64-character hexadecimal strings.
 /// Empty means no bundle is trusted. Validation happens before loading code.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

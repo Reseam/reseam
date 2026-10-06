@@ -20,15 +20,20 @@ pub(crate) struct ResolvedPlan {
     selected: Vec<bool>,
     desired: Vec<bool>,
     disabled: Vec<bool>,
+    unmountable: Vec<bool>,
     unavailable: Vec<Option<String>>,
     options: Vec<PatchOptions>,
     ignore_versions: bool,
 }
 
 impl ResolvedPlan {
+    /// `unmountable` names patches an earlier mount build found changing the
+    /// manifest. They stay selected so the run can report them, but neither
+    /// they, the patches that need them, nor dependencies only those need will run.
     pub fn resolve(
         patches: &[&Patch],
         selection: &PatchSelection,
+        unmountable: &[String],
         package: Option<&str>,
         version: Option<&str>,
     ) -> Result<Self> {
@@ -74,12 +79,23 @@ impl ResolvedPlan {
             disabled[idx] = true;
         }
 
+        let mut excluded = vec![false; patches.len()];
+        for patch in unmountable {
+            excluded[lookup(patch)?] = true;
+        }
+        let mut needs_excluded = excluded.clone();
+        for &idx in &order {
+            needs_excluded[idx] |= dependencies[idx]
+                .iter()
+                .any(|&dependency| needs_excluded[dependency]);
+        }
+
         // A dependency is desired only while an applicable, enabled patch
         // needs it. Selection roots remain desired so validation can report
         // why they cannot run, but incompatibility or explicit disabling
         // stops their dependency chain from propagating further.
         let can_propagate = |idx: usize| {
-            if disabled[idx] || unavailable[idx].is_some() {
+            if disabled[idx] || needs_excluded[idx] || unavailable[idx].is_some() {
                 return false;
             }
             let spec = patches[idx].spec();
@@ -118,6 +134,7 @@ impl ResolvedPlan {
             selected,
             desired,
             disabled,
+            unmountable: excluded,
             unavailable,
             options,
             ignore_versions: selection.ignore_versions,
@@ -154,6 +171,10 @@ impl ResolvedPlan {
 
     pub fn is_disabled(&self, idx: usize) -> bool {
         self.disabled[idx]
+    }
+
+    pub fn is_unmountable(&self, idx: usize) -> bool {
+        self.unmountable[idx]
     }
 
     pub fn unavailable(&self, idx: usize) -> Option<&str> {

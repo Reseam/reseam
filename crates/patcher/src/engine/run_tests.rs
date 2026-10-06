@@ -11,6 +11,7 @@ use crate::patch::{Compatibility, CompatiblePackage, PatchPreset, PatchSpec};
 enum Status {
     Applied,
     Skipped,
+    Unmountable,
     Failed,
 }
 
@@ -21,6 +22,7 @@ impl From<&PatchStatus> for Status {
         match status {
             PatchStatus::Applied => Self::Applied,
             PatchStatus::Skipped { .. } => Self::Skipped,
+            PatchStatus::Unmountable { .. } => Self::Unmountable,
             PatchStatus::Failed { .. } => Self::Failed,
         }
     }
@@ -303,6 +305,7 @@ fn finalization_orders_hooks_and_emits_one_terminal_result() {
             &mut PatchContext::new(&mut apk),
             &[&consumer, &dependency, &leaf],
             &PatchSelection::default(),
+            Delivery::Install,
             |event| {
                 if let ProgressEvent::Finished { patch, status } = event {
                     events.lock().unwrap().push(format!("finished:{patch}"));

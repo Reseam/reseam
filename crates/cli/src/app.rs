@@ -64,6 +64,9 @@ pub struct PatchRequestArgs {
     /// Run patches on app versions they were not declared for.
     #[arg(long)]
     pub ignore_versions: bool,
+    /// Build output to mount over the installed app, leaving out patches that change the manifest.
+    #[arg(long)]
+    pub mount: bool,
 }
 
 #[derive(Args)]

@@ -242,7 +242,14 @@ fn kotlin_bundle_executes_against_runtime_api() {
         ..Default::default()
     };
 
-    let results = engine::apply_patches(&mut ctx, &patches, &selection, |_| {}).unwrap();
+    let results = engine::apply_patches(
+        &mut ctx,
+        &patches,
+        &selection,
+        engine::Delivery::Install,
+        |_| {},
+    )
+    .unwrap();
 
     let statuses = results
         .iter()
@@ -384,6 +391,7 @@ fn kotlin_patch_selection_respects_dependencies_and_required_options() {
             &mut PatchContext::new(&mut apk),
             &patches,
             &selection,
+            engine::Delivery::Install,
             |_| {},
         );
         match expected {
@@ -526,6 +534,7 @@ fn kotlin_patch_failure(patch: &str, id: &str) -> PatchStatus {
         &mut PatchContext::new(&mut apk),
         &patches,
         &selection,
+        engine::Delivery::Install,
         |_| {},
     )
     .unwrap();
@@ -890,6 +899,7 @@ fn same_named_patches_keep_independent_identity_options_dependencies_and_setting
         &mut PatchContext::new(&mut apk),
         &patches,
         &selection,
+        engine::Delivery::Install,
         |_| {},
     )
     .unwrap();
@@ -937,6 +947,7 @@ fn run_one_patch(ctx: &mut PatchContext<'_>, patches: &[&Patch], name: &str, id:
             enable: [name.to_string()].into(),
             ..Default::default()
         },
+        engine::Delivery::Install,
         |_| {},
     )
     .unwrap();
@@ -1058,6 +1069,7 @@ fn app_entry_fails_the_patch_when_the_manifest_names_no_application() {
             enable: ["app-entry-hook".to_string()].into(),
             ..Default::default()
         },
+        engine::Delivery::Install,
         |_| {},
     )
     .unwrap();
@@ -1671,6 +1683,7 @@ fn settings_pages_merge_selected_contributions_and_keep_nested_ancestors() {
             &mut PatchContext::new(&mut apk),
             &patches,
             &selection,
+            engine::Delivery::Install,
             |_| {},
         )
         .unwrap();

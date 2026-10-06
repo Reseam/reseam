@@ -79,6 +79,14 @@ impl ApkFile {
         &mut self.components[0]
     }
 
+    /// The sum of every component's manifest revision.
+    pub fn manifest_revision(&self) -> u64 {
+        self.components
+            .iter()
+            .map(ApkComponent::manifest_revision)
+            .sum()
+    }
+
     pub fn package_name(&self) -> Option<Cow<'_, str>> {
         self.base().manifest().package_name()
     }

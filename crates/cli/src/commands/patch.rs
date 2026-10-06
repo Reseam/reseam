@@ -10,7 +10,8 @@ use reseam_patcher::error::PatcherError;
 use reseam_patcher::log::LogLevel;
 use reseam_patcher::options::{OptionDeclaration, OptionType, OptionValue};
 use reseam_sdk::{
-    HostError, PatchOutput, PatchRequest, RunEvent, SigningKeyFiles, patch_with_selection,
+    HostError, InstallMethod, PatchOutput, PatchRequest, RunEvent, SigningKeyFiles,
+    patch_with_selection,
 };
 use tracing::{debug, error, info, warn};
 
@@ -58,6 +59,7 @@ pub fn run_patch(command: &PatchCommand) -> Result<()> {
         applied = count(|result| applied(result) && result.chosen()),
         dependencies = count(|result| applied(result) && !result.chosen()),
         skipped = count(|result| matches!(result.status, PatchStatus::Skipped { .. })),
+        unmountable = count(|result| matches!(result.status, PatchStatus::Unmountable { .. })),
         failed = count(|result| matches!(result.status, PatchStatus::Failed { .. })),
         "patch run finished"
     );
@@ -85,8 +87,15 @@ fn log_event(event: RunEvent, hidden: &HashSet<String>) {
             PatchStatus::Applied if hidden.contains(&patch) => debug!(patch, "patch applied"),
             PatchStatus::Applied => info!(patch, "patch applied"),
             PatchStatus::Skipped { reason } => warn!(patch, reason, "patch skipped"),
+            PatchStatus::Unmountable { reason } => info!(patch, reason, "patch left out of mount"),
             PatchStatus::Failed { reason } => error!(patch, reason, "patch failed"),
         },
+        RunEvent::Restarted { unmountable } => {
+            info!(
+                ?unmountable,
+                "patching again from the original APK without unmountable patches"
+            );
+        }
         RunEvent::PatchLog(entry) => match entry.level {
             LogLevel::Debug => debug!(patch = entry.patch, "{}", entry.message),
             LogLevel::Info => info!(patch = entry.patch, "{}", entry.message),
@@ -128,6 +137,11 @@ pub(crate) fn request(args: &PatchRequestArgs, output: PatchOutput) -> Result<Pa
                 cert: cert.display().to_string(),
             }),
         dry_run: args.dry_run,
+        install_method: if args.mount {
+            InstallMethod::Mount
+        } else {
+            InstallMethod::Install
+        },
     })
 }
 

@@ -37,6 +37,7 @@ pub struct ApkComponent {
     path: PathBuf,
     archive: Archive,
     manifest: AxmlDocument,
+    manifest_revision: u64,
     resources: Resources,
     edits: BTreeMap<EntryName, EntryEdit>,
 }
@@ -77,6 +78,7 @@ impl ApkComponent {
             path: path.to_path_buf(),
             archive,
             manifest,
+            manifest_revision: 0,
             resources,
             edits: BTreeMap::new(),
         };
@@ -107,7 +109,14 @@ impl ApkComponent {
     pub fn manifest_mut(&mut self) -> &mut AxmlDocument {
         self.edits
             .insert(MANIFEST_ENTRY.into(), EntryEdit::Manifest);
+        self.manifest_revision += 1;
         &mut self.manifest
+    }
+
+    /// Advances each time the manifest is granted for mutation, so a caller can
+    /// tell whether anything edited it between two readings.
+    pub fn manifest_revision(&self) -> u64 {
+        self.manifest_revision
     }
 
     pub fn has_resources(&self) -> bool {

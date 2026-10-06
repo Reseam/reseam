@@ -11,7 +11,7 @@ use crate::error::Problem;
 use crate::inspect::open_apk;
 use crate::metrics::PatchProfiler;
 use crate::output::write_signed;
-use crate::{PatchArtifact, PatchOutput, PatchRequest, inspect_apk, patch};
+use crate::{InstallMethod, PatchArtifact, PatchOutput, PatchRequest, inspect_apk, patch};
 
 fn zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
     let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
@@ -187,6 +187,7 @@ fn check_prepared_trust(inspection_request: &crate::InspectRequest, output: &Pat
                     },
                     signing: None,
                     dry_run: false,
+                    install_method: InstallMethod::Install,
                 },
                 |_| {},
             )
@@ -344,6 +345,7 @@ fn incompatible_inputs_and_output_fail_before_loading_patches() {
             },
             signing: None,
             dry_run: true,
+            install_method: InstallMethod::Install,
         },
         |_| {},
     )

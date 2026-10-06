@@ -62,6 +62,10 @@ Pass extra splits with `--split`, or give an `.apkm` or `.xapk` file directly. X
 
 `--output <file>` sets the file for a single APK. `--output-dir <dir>` sets the folder and works for either. The output is only written if no selected patch failed. `--dry-run` checks everything without patching or writing.
 
+## Mount builds
+
+`--mount` builds output to bind-mount over the app installed on a rooted phone, which keeps its signature and data. Android keeps the installed app's manifest, so patches that edit the manifest are left out, and the patches that need them are skipped. When patching finds such a patch, the CLI patches again from the original APK without it.
+
 ## Signing
 
 Without `--key` and `--cert`, the CLI signs with the key next to the output: `<name>.pk8` and `<name>.der` beside a single APK, or `reseam.pk8` and `reseam.der` inside the output folder. If they don't exist yet, it creates them.
@@ -88,4 +92,5 @@ reseam patch app.apk --bundle patches.reseam --trust <key> \
 | `--output <file>` | output file, for a single APK |
 | `--output-dir <dir>` | output folder |
 | `--key <pk8>`, `--cert <der>` | signing key and certificate, together |
+| `--mount` | build for mounting over the installed app; leaves out patches that edit the manifest |
 | `--dry-run` | check without patching or writing |
