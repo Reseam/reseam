@@ -1,5 +1,5 @@
-// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! Paths crossing the application boundary are UTF-8 strings; the engine validates
 //! paths, signer keys, selections, and option values before executing patches.

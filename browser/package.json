@@ -2,7 +2,7 @@
   "name": "@reseam/browser",
   "version": "0.17.1",
   "description": "Reseam patching in web pages: the WASI engine and the CheerpJ patch runtime in workers",
-  "license": "GPL-3.0-or-later",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "exports": {
     ".": {

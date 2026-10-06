@@ -68,4 +68,4 @@ This sets the version, commits, and tags `v<version>`. CI then publishes the CLI
 
 ## License
 
-GPL-3.0-or-later.
+AGPL-3.0-or-later, with additional terms under section 7 in [NOTICE](NOTICE). Vendored code keeps its own license; see `REUSE.toml`.

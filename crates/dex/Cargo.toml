@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 description = "A high-performance DEX file parser, writer, and mutator"
-license = "GPL-3.0"
+license = "AGPL-3.0-or-later"
 readme = "README.md"
 
 [dependencies]

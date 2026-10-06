@@ -1,5 +1,5 @@
-// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
+// SPDX-License-Identifier: AGPL-3.0-or-later
 export interface NativeMethod { name: string; export: string; parameters: string[]; bufferLengths: Record<string, number>; returns: string }
 export type EngineExports = { memory: WebAssembly.Memory } & Record<string, WebAssembly.ExportValue>;
 export function fn(exports: EngineExports, name: string): (...args: (number | bigint)[]) => number | bigint {

@@ -1,5 +1,5 @@
-// SPDX-FileCopyrightText: 2026 AunAli K. <hello@auna.li>
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { WASI, ConsoleStdout, File as MemoryFile } from '@bjorn3/browser_wasi_shim';
 import { Channel, encode } from './channel';
 import { DiskFile, DiskDescriptor, StorageClient } from './storage';
