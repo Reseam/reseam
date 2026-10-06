@@ -41,8 +41,15 @@ internal class ReseamWorkspacePlugin : Plugin<Settings> {
                     )] = "${app.name}-${extension.name}"
             }
         }
+        // A shared folder is an extension, patches for several apps in `patch/`, or both.
         for (shared in directories(File(root, "shared"))) {
-            extensions[include(settings, ":shared:${shared.name}", shared)] = shared.name
+            val patch = File(shared, "patch").takeIf { it.isDirectory }
+            if (patch == null || File(shared, "src").isDirectory) {
+                extensions[include(settings, ":shared:${shared.name}", shared)] = shared.name
+            }
+            patch?.let {
+                patches[include(settings, ":shared:${shared.name}:patch", it)] = shared.name
+            }
         }
 
         require(

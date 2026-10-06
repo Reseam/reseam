@@ -15,10 +15,11 @@ my-patches/
   apps/<app>/patch/                  Kotlin patches for one app
   apps/<app>/extensions/<name>/      Java code added to that app
   shared/<name>/                     Java code used by several apps
+  shared/<name>/patch/               Kotlin used by several apps' patches (optional)
   resources/                         files patches copy into apps (optional)
 ```
 
-Each app's patches compile to one `<app>-patches.jar`. Each extension compiles to a DEX file.
+Each app's patches compile to one `<app>-patches.jar`, and a shared `patch/` folder to `<name>-patches.jar`. Each extension compiles to a DEX file.
 
 ## `manifest.toml`
 

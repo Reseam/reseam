@@ -17,7 +17,7 @@ apps/example/extensions/ads/
 - `src/main/java` is your code. It compiles against Android's `android.jar`.
 - `src/stubs/java` holds stand-ins for app classes you need to compile against. Stubs are never shipped; the real classes come from the app.
 
-Code used by several apps goes in `shared/<name>/` instead of under an app.
+Code used by several apps goes in `shared/<name>/` instead of under an app. The Kotlin that hooks it in can sit next to it, in `shared/<name>/patch/`, and app patch modules depend on that with `compileOnly(project(":shared:<name>:patch"))`.
 
 ## Dependencies
 
