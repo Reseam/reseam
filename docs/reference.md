@@ -213,6 +213,8 @@ Resource file and value helpers:
 | `settingsHost(appId) { }` | An internal patch installing the settings runtime: `compatibleWith`, `dependsOn`, `settings(vararg sections)` for the host's own sections, `install { PatchRuntime }`. |
 | `SettingsHost` | A `ReseamPatch` with `appId`; `register(patch, sections)` collects contributions. `PatchBuilder.settings` registers them during execution. |
 | `ReseamSettings` | The runtime `ExtClass`: `getBoolean`, `getString`. |
+| `ReseamSettingsScreen` | The runtime screen `ExtClass`: `open` shows the settings over the app's current screen; `startActivity(Context, Intent)` opens them for an intent with `SETTINGS_OPEN_ACTION` and starts any other intent. |
+| `SETTINGS_OPEN_ACTION` | `app.reseam.settings.OPEN`. |
 | `SETTINGS_SCHEMA_PATH` | `assets/reseam/settings.json`. |
 | `CodeScope.whenEnabled(toggle) { }` | Branch on a toggle at runtime; returns `Otherwise`. |
 | `gate(toggle) { GateScope }` | Hooks inside take effect only while the toggle is on. |

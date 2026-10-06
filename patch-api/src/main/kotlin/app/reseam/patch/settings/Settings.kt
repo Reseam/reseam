@@ -23,6 +23,24 @@ object ReseamSettings : ExtClass("app.reseam.runtime.settings.ReseamSettings") {
 }
 
 /**
+ * The runtime's settings screen, shown over the app's current screen with no activity of its own,
+ * so a build that opens it also works mounted over the installed app.
+ */
+object ReseamSettingsScreen : ExtClass("app.reseam.runtime.settings.ReseamSettingsScreen") {
+    /** Opens the settings. Callable from any thread once [ReseamSettings] is initialized. */
+    val open by static()
+
+    /**
+     * Starts an intent, or opens the settings when its action is [SETTINGS_OPEN_ACTION]. Redirect
+     * the `startActivity` call of a settings row the app builds from an intent to this.
+     */
+    val startActivity by static("android.content.Context", "android.content.Intent")
+}
+
+/** The intent action [ReseamSettingsScreen.startActivity] opens the settings for. */
+const val SETTINGS_OPEN_ACTION = "app.reseam.settings.OPEN"
+
+/**
  * The JavaScript the Hermes gates call, provided by the patch bundle. It reads [ReseamSettings]
  * through the `ReseamSettings` React Native module that the app's settings host registers.
  */

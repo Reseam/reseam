@@ -38,14 +38,15 @@ val appSettings = settingsHost("example") {
 
     install {
         appEntry { call(SettingsEntry.init, application) }
-        manifest.addActivity("app.example.ext.SettingsActivity") {
-            this["android:label"] = "Reseam Settings"
-        }
     }
 }
 ```
 
-`install` runs after every patch that added settings, once the host has written them to `assets/reseam/settings.json`. Your activity, written in an [extension](11_extensions.md), calls `ReseamSettings.init(this)` and builds its content with `ReseamSettingsScreen.build(this)`. Forward `onActivityResult` to `ReseamSettingsScreen.onActivityResult` so folder pickers work. How users reach the activity is up to you, for example a row in the app's own settings.
+`install` runs after every patch that added settings, once the host has written them to `assets/reseam/settings.json`. `SettingsEntry.init`, in an [extension](11_extensions.md), calls `ReseamSettings.init(context)` when the app starts.
+
+`ReseamSettingsScreen.open()` shows the settings over the app's current screen, from any thread. How users get there is up to you, for example a row in the app's own settings that calls it. From a patch, call `ReseamSettingsScreen.open` like any extension method. When the app builds the row from an intent, such as an androidx `Preference` with an `<intent>`, give the intent the action `SETTINGS_OPEN_ACTION` and redirect the call that starts it to `ReseamSettingsScreen.startActivity`.
+
+The settings need no activity of their own. A host that leaves the manifest alone keeps every patch that uses settings in [mount builds](9_app_files.md#mount-builds).
 
 ## Register a patch's settings
 

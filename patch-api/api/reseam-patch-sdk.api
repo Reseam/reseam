@@ -1430,6 +1430,12 @@ public final class app/reseam/patch/settings/ReseamSettings : app/reseam/patch/E
 	public final fun getGetString ()Lapp/reseam/patch/ExtMethod;
 }
 
+public final class app/reseam/patch/settings/ReseamSettingsScreen : app/reseam/patch/ExtClass {
+	public static final field INSTANCE Lapp/reseam/patch/settings/ReseamSettingsScreen;
+	public final fun getOpen ()Lapp/reseam/patch/ExtMethod;
+	public final fun getStartActivity ()Lapp/reseam/patch/ExtMethod;
+}
+
 public abstract class app/reseam/patch/settings/Setting {
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getDefault ()Ljava/lang/Object;
@@ -1467,6 +1473,7 @@ public final class app/reseam/patch/settings/SettingsHostBuilder : app/reseam/pa
 }
 
 public final class app/reseam/patch/settings/SettingsKt {
+	public static final field SETTINGS_OPEN_ACTION Ljava/lang/String;
 	public static final field SETTINGS_SCHEMA_PATH Ljava/lang/String;
 	public static final fun choice (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;)Lapp/reseam/patch/settings/SettingDelegate;
 	public static synthetic fun choice$default (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/settings/SettingDelegate;
