@@ -17,19 +17,21 @@ impl ApkFile {
         Self::open_split(path, &[] as &[&Path], opts)
     }
 
-    /// Opens a base APK and its splits. The base must have a package name and
-    /// no split identity. Splits must have unique nonempty names and match its
-    /// package and version code; invalid sets fail before any DEX is loaded.
+    /// Opens an APK set given in any order: the component without a split
+    /// identity is the base, and it must have a package name. Splits must have
+    /// unique nonempty names and match its package and version code; invalid
+    /// sets fail before any DEX is loaded.
     #[instrument(level = "info", skip_all)]
     pub fn open_split(
         base: impl AsRef<Path>,
         splits: &[impl AsRef<Path>],
         opts: ParseOptions,
     ) -> Result<Self> {
-        let components = std::iter::once(base.as_ref())
+        let mut components: Vec<_> = std::iter::once(base.as_ref())
             .chain(splits.iter().map(AsRef::as_ref))
             .map(|path| ApkComponent::open(path, opts.classes))
             .collect::<Result<_>>()?;
+        components.sort_by_key(|component| component.manifest().split_name().is_some());
         Self::from_components(components, opts)
     }
 
@@ -93,7 +95,7 @@ pub(crate) fn validate_components(components: &[ApkComponent]) -> Result<()> {
     if base.split_name().is_some() {
         return Err(invalid(
             "apk set",
-            "no base APK: first component is a split",
+            "no base APK: every component is a split",
         ));
     }
     let package = base
