@@ -137,6 +137,19 @@ fn publish(
             patches,
         },
     );
+    // Clients read patches only from the newest stable release and the newest prerelease; older
+    // lists would grow the index by the whole catalog on every release.
+    let (mut stable_listed, mut prerelease_listed) = (false, false);
+    for entry in &mut releases {
+        let listed = if entry.prerelease {
+            &mut prerelease_listed
+        } else {
+            &mut stable_listed
+        };
+        if std::mem::replace(listed, true) {
+            entry.patches = None;
+        }
+    }
 
     write_index_atomically(
         out,
@@ -176,15 +189,37 @@ fn write_index_atomically(path: &Path, value: &Index) -> Result<()> {
     Ok(())
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
-    use std::os::unix::fs::PermissionsExt;
+    use super::*;
 
-    use super::run_publish_manager;
-    use crate::app::{PublishManagerCommand, ReleaseArgs};
+    fn release(version: &str, notes: &str) -> ReleaseArgs {
+        ReleaseArgs {
+            version: version.into(),
+            url: format!("https://example.com/{version}"),
+            description: Some(notes.into()),
+            description_file: None,
+            homepage: None,
+            created_at: Some("2026-10-01T00:00:00Z".into()),
+            prerelease: false,
+        }
+    }
 
+    fn publisher() -> Publisher {
+        Publisher {
+            name: "example-patches".into(),
+            author: "Example".into(),
+            description: String::new(),
+            homepage: None,
+            public_key: Some("00".repeat(32)),
+        }
+    }
+
+    #[cfg(unix)]
     #[test]
     fn release_indices_use_regular_file_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
         let dir = tempfile::tempdir().unwrap();
         let reference = dir.path().join("regular-file");
         std::fs::write(&reference, b"").unwrap();
@@ -193,15 +228,7 @@ mod tests {
             author: "Reseam".into(),
             summary: String::new(),
             out: dir.path().join("manager.json"),
-            release: ReleaseArgs {
-                version: "1.0.0".into(),
-                url: "https://example.com/manager.apk".into(),
-                description: None,
-                description_file: None,
-                homepage: None,
-                created_at: Some("2026-10-01T00:00:00Z".into()),
-                prerelease: false,
-            },
+            release: release("1.0.0", ""),
         };
         run_publish_manager(&command).unwrap();
         assert_eq!(
@@ -211,6 +238,46 @@ mod tests {
                 .mode()
                 & 0o777,
             std::fs::metadata(reference).unwrap().permissions().mode() & 0o777
+        );
+    }
+
+    #[test]
+    fn only_the_newest_stable_release_and_prerelease_keep_their_patches() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("patches.json");
+        for (version, prerelease) in [
+            ("1.0.0", false),
+            ("1.1.0-beta", true),
+            ("1.1.0", false),
+            ("1.2.0-beta", true),
+        ] {
+            let release = ReleaseArgs {
+                prerelease,
+                ..release(version, version)
+            };
+            publish(&out, publisher(), &release, Some(Vec::new())).unwrap();
+        }
+
+        let index: Index = serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+        let releases: Vec<_> = index
+            .releases
+            .iter()
+            .map(|entry| {
+                (
+                    entry.version.as_str(),
+                    entry.description.as_str(),
+                    entry.patches.is_some(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            releases,
+            [
+                ("1.2.0-beta", "1.2.0-beta", true),
+                ("1.1.0", "1.1.0", true),
+                ("1.1.0-beta", "1.1.0-beta", false),
+                ("1.0.0", "1.0.0", false),
+            ]
         );
     }
 }

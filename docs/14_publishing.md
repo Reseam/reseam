@@ -28,11 +28,15 @@ The template's `.github/workflows/release.yml` publishes a GitHub release whenev
    git push origin v0.1.0
    ```
 
-The workflow downloads the CLI that matches your plugin version, builds and signs the bundle, writes `patches.json`, and attaches both to the release. Your users then add:
+The workflow downloads the CLI that matches your plugin version and the `patches.json` of your latest release, builds and signs the bundle, adds the release to `patches.json`, and attaches both to the release. Your users then add:
 
 ```text
 https://github.com/<owner>/<repo>/releases/latest/download/patches.json
 ```
+
+## Release notes
+
+Write a release's notes in `release-notes/<tag>.md`, for example `release-notes/v0.2.0.md`, and commit the file before pushing the tag. The workflow adds the notes to `patches.json` and to the GitHub release. Without the file, the release in `patches.json` has empty notes and GitHub generates the release's description.
 
 ## Release by hand
 
@@ -43,7 +47,7 @@ reseam publish patches build/reseam/my-patches.reseam \
   --url https://example.com/my-patches-0.1.0.reseam
 ```
 
-This adds the release to `patches.json` in the current folder, or creates it. Upload both files, the bundle to the URL you gave. Each release keeps its own URL; don't overwrite an old bundle file. See [`reseam publish`](/docs/cli/publish/) for every flag.
+This adds the release to `patches.json` in the current folder, or creates it. Keep that file between releases: it is your release history. Pass `--description-file release-notes/v0.1.0.md` to add notes. Upload both files, the bundle to the URL you gave. Each release keeps its own URL; don't overwrite an old bundle file. See [`reseam publish`](/docs/cli/publish/) for every flag.
 
 ## Your key
 
