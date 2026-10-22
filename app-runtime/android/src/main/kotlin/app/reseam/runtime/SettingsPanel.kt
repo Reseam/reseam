@@ -80,7 +80,8 @@ internal class SettingsPanel : Application.ActivityLifecycleCallbacks, Component
 
     override fun onConfigurationChanged(configuration: Configuration) {
         val current = (state as? PanelState.Visible)?.session ?: return
-        val darkChanged = current.ui.theme.dark != Theme.of(current.bundle.brand).dark
+        val darkChanged =
+            current.ui.theme.dark != Theme.of(current.bundle.brand, current.dialog.context).dark
         if (darkChanged || current.locales != Reseam.context.resources.configuration.locales) {
             current.theme()
         }
