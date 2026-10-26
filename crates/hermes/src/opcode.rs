@@ -73,46 +73,10 @@ impl Opcode {
 
 include!(concat!(env!("OUT_DIR"), "/opcodes.rs"));
 
-/// Execution bytecode formats understood by this crate. Each version selects
-/// its own generated opcode and operand definitions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u32)]
-pub enum BytecodeVersion {
-    V98 = 98,
-}
-
-impl BytecodeVersion {
-    pub(crate) fn parse(version: u32) -> Result<Self> {
-        match version {
-            98 => Ok(Self::V98),
-            other => Err(crate::HermesError::Version(other)),
-        }
-    }
-
-    fn opcodes(self) -> &'static [Opcode] {
-        match self {
-            Self::V98 => &V98,
-        }
-    }
-
-    fn opcode(self, op: Op) -> &'static Opcode {
-        match self {
-            Self::V98 => &V98[op as usize],
-        }
-    }
-
-    fn code(self, op: Op) -> u8 {
-        match self {
-            Self::V98 => op as u8,
-        }
-    }
-}
-
 /// A decoded instruction. Integers retain their raw little-endian bits;
 /// signed addresses use two's complement and doubles use IEEE 754 bits.
 #[derive(Debug, Clone)]
 pub(crate) struct Instruction {
-    pub version: BytecodeVersion,
     /// Byte offset in the original body; `None` for generated instructions.
     pub offset: Option<u32>,
     pub op: Op,
@@ -122,7 +86,6 @@ pub(crate) struct Instruction {
 impl Instruction {
     pub(crate) fn new(op: Op, values: &[u64]) -> Self {
         Self {
-            version: BytecodeVersion::V98,
             offset: None,
             op,
             values: values.to_vec(),
@@ -130,11 +93,11 @@ impl Instruction {
     }
 
     pub(crate) fn definition(&self) -> &'static Opcode {
-        self.version.opcode(self.op)
+        &OPCODES[self.op as usize]
     }
 
     pub(crate) fn code(&self) -> u8 {
-        self.version.code(self.op)
+        self.op as u8
     }
 
     pub(crate) fn operands(&self) -> impl Iterator<Item = (Operand, u64)> {
@@ -155,19 +118,17 @@ impl Instruction {
     /// This instruction's encodings, narrowest first.
     pub(crate) fn encodings(&self) -> impl Iterator<Item = &'static Opcode> {
         let definition = self.definition();
-        std::iter::once(definition)
-            .chain(definition.wider.iter().map(|&op| self.version.opcode(op)))
+        std::iter::once(definition).chain(definition.wider.iter().map(|&op| &OPCODES[op as usize]))
     }
 }
 
 /// Decodes a function's instruction stream, stopping before appended switch tables.
 /// Unknown opcodes and truncated operands report their byte offsets.
-pub(crate) fn decode(version: BytecodeVersion, bytes: &[u8]) -> Result<Vec<Instruction>> {
+pub(crate) fn decode(bytes: &[u8]) -> Result<Vec<Instruction>> {
     let mut offset = 0;
     let mut instructions = Vec::new();
     while offset < bytes.len() {
-        let definition = version
-            .opcodes()
+        let definition = OPCODES
             .get(usize::from(bytes[offset]))
             .ok_or_else(|| invalid(offset, "unknown opcode"))?;
         let end = offset + definition.size();
@@ -187,7 +148,6 @@ pub(crate) fn decode(version: BytecodeVersion, bytes: &[u8]) -> Result<Vec<Instr
             })
             .collect();
         instructions.push(Instruction {
-            version,
             offset: Some(offset as u32),
             op: definition.op,
             values,

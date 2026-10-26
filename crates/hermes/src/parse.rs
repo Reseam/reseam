@@ -5,8 +5,7 @@ use crate::bytes::{align, read_u32, slice};
 use crate::error::{HermesError, Result, invalid};
 use crate::file::HermesFile;
 use crate::function::FunctionId;
-use crate::layout::{FOOTER_SIZE, Field, HEADER_SIZE, MAGIC, Section};
-use crate::opcode::BytecodeVersion;
+use crate::layout::{FOOTER_SIZE, Field, HEADER_SIZE, MAGIC, Section, VERSION};
 use crate::string::StringId;
 
 impl<'a> HermesFile<'a> {
@@ -17,7 +16,10 @@ impl<'a> HermesFile<'a> {
         if slice(source, 0, 8)? != MAGIC.to_le_bytes() {
             return Err(HermesError::Magic);
         }
-        let version = BytecodeVersion::parse(read_u32(source, Field::Version as usize)?)?;
+        let version = read_u32(source, Field::Version as usize)?;
+        if version != VERSION {
+            return Err(HermesError::Version(version));
+        }
         slice(source, 0, HEADER_SIZE)?;
         let header = |field: Field| read_u32(source, field as usize);
         let length = header(Field::FileLength)? as usize;
@@ -50,11 +52,7 @@ impl<'a> HermesFile<'a> {
                 "invalid debug info offset",
             ));
         }
-        let file = Self {
-            version,
-            source,
-            sections,
-        };
+        let file = Self { source, sections };
         let kinds = file.sections[Section::Kinds as usize].start;
         let mut count = 0_u64;
         let mut identifiers = 0_u64;

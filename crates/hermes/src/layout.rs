@@ -4,6 +4,8 @@
 use crate::function::SMALL_HEADER_SIZE;
 
 pub(crate) const MAGIC: u64 = 0x1f19_03c1_03bc_1fc6;
+/// The only bytecode version the opcode table describes.
+pub(crate) const VERSION: u32 = 98;
 pub(crate) const HEADER_SIZE: usize = 128;
 pub(crate) const FOOTER_SIZE: usize = 20;
 

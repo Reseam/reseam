@@ -7,13 +7,11 @@ use crate::bytes::{read_u32, slice};
 use crate::error::{Result, invalid};
 use crate::function::{Function, FunctionHeader, FunctionId, SMALL_HEADER_SIZE};
 use crate::layout::{FOOTER_SIZE, Field, OPTIONS_OFFSET, Section};
-use crate::opcode::BytecodeVersion;
 use crate::string::{KindRun, StringEntry, StringId, StringValue};
 
 /// A validated, borrowed execution-form HBC file. Construction accepts only
 /// version 98. Trailing epilogues and all original padding are preserved.
 pub struct HermesFile<'a> {
-    pub(crate) version: BytecodeVersion,
     pub(crate) source: &'a [u8],
     pub(crate) sections: [Range<usize>; 15],
 }
@@ -24,7 +22,6 @@ pub struct HermesFile<'a> {
 /// `HermesFile`, the underlying file must not change while it is retained.
 pub struct HermesImage {
     source: reseam_storage::Bytes,
-    version: BytecodeVersion,
     sections: [Range<usize>; 15],
 }
 
@@ -33,13 +30,8 @@ impl HermesImage {
     /// `HermesFile::parse`. No bytecode or string storage is copied.
     pub fn parse(source: reseam_storage::Bytes) -> Result<Self> {
         let file = HermesFile::parse(&source)?;
-        let version = file.version;
         let sections = file.sections;
-        Ok(Self {
-            source,
-            version,
-            sections,
-        })
+        Ok(Self { source, sections })
     }
 
     /// Borrows the validated file for inspection, editing or streamed writing.
@@ -47,7 +39,6 @@ impl HermesImage {
     pub fn file(&self) -> HermesFile<'_> {
         HermesFile {
             source: &self.source,
-            version: self.version,
             sections: self.sections.clone(),
         }
     }
@@ -55,7 +46,7 @@ impl HermesImage {
 
 impl<'a> HermesFile<'a> {
     pub fn version(&self) -> u32 {
-        self.version as u32
+        self.field(Field::Version)
     }
 
     pub(crate) fn field(&self, field: Field) -> u32 {
@@ -114,7 +105,6 @@ impl<'a> HermesFile<'a> {
             ));
         }
         Ok(Function {
-            version: self.version,
             header,
             source: self.source,
         })

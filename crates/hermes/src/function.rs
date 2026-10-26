@@ -5,7 +5,6 @@ use std::ops::Range;
 
 use crate::bytes::{align, read_u32, slice};
 use crate::error::{Result, invalid};
-use crate::opcode::BytecodeVersion;
 use crate::string::StringId;
 
 mod flags;
@@ -47,7 +46,6 @@ impl ExceptionHandler {
 
 /// A borrowed function view. Parameter count excludes the implicit `this`.
 pub(crate) struct Function<'a> {
-    pub version: BytecodeVersion,
     pub header: FunctionHeader,
     pub source: &'a [u8],
 }
@@ -67,7 +65,7 @@ impl Function<'_> {
     }
 
     pub(crate) fn instructions(&self) -> Result<Vec<crate::opcode::Instruction>> {
-        crate::opcode::decode(self.version, &self.source[self.body_range()])
+        crate::opcode::decode(&self.source[self.body_range()])
     }
 
     pub(crate) fn exception_handlers(&self) -> Result<Vec<ExceptionHandler>> {
