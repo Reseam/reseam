@@ -5,7 +5,7 @@ pub mod certificates;
 mod credentials;
 mod error;
 mod key;
-pub mod signing_block;
+mod signing_block;
 pub mod v2;
 
 pub use certificates::signer_certificates;

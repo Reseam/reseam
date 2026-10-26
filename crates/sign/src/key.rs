@@ -97,7 +97,7 @@ impl SigningKey {
         crate::credentials::save(self, key_path, cert_path)
     }
 
-    pub fn sign(&self, data: &[u8]) -> Result<Vec<u8>> {
+    pub(crate) fn sign(&self, data: &[u8]) -> Result<Vec<u8>> {
         rcgen::SigningKey::sign(&self.key_pair, data)
             .map_err(|source| crypto("signing payload", source))
     }
@@ -108,10 +108,6 @@ impl SigningKey {
 
     pub fn certificate_der(&self) -> &[u8] {
         &self.certificate_der
-    }
-
-    pub fn public_key_bytes(&self) -> &[u8] {
-        self.key_pair.public_key_raw()
     }
 
     pub fn public_key_der(&self) -> &[u8] {

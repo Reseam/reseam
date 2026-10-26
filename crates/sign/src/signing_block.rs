@@ -13,45 +13,17 @@ const EOCD_MIN_LEN: usize = 22;
 pub(crate) const EOCD_CD_OFFSET_FIELD: Range<usize> = 16..20;
 pub(crate) const BLOCK_OVERHEAD: usize = 32;
 
-pub const BLOCK_ID_V2: u32 = 0x7109_871a;
-pub const BLOCK_ID_V3: u32 = 0xf053_68c0;
+pub(crate) const BLOCK_ID_V2: u32 = 0x7109_871a;
+pub(crate) const BLOCK_ID_V3: u32 = 0xf053_68c0;
 
-pub struct ApkSections<'a> {
-    pub(crate) contents: &'a [u8],
-    pub(crate) central_dir: &'a [u8],
-    pub(crate) eocd: &'a [u8],
-}
-
-pub struct Eocd {
-    pub(crate) offset: usize,
-    pub(crate) cd_offset: u32,
-    pub(crate) cd_size: u32,
-}
-
-impl<'a> ApkSections<'a> {
-    pub fn contents(&self) -> &'a [u8] {
-        self.contents
-    }
-    pub fn central_directory(&self) -> &'a [u8] {
-        self.central_dir
-    }
-    pub fn eocd(&self) -> &'a [u8] {
-        self.eocd
-    }
+struct Eocd {
+    offset: usize,
+    cd_offset: u32,
+    cd_size: u32,
 }
 
 impl Eocd {
-    pub fn offset(&self) -> usize {
-        self.offset
-    }
-    pub fn central_directory_offset(&self) -> u32 {
-        self.cd_offset
-    }
-    pub fn central_directory_size(&self) -> u32 {
-        self.cd_size
-    }
-
-    pub(crate) fn central_directory(&self, base: u64) -> Result<Range<u64>> {
+    fn central_directory(&self, base: u64) -> Result<Range<u64>> {
         let start = u64::from(self.cd_offset);
         let end = base + self.offset as u64;
         let available = end
@@ -65,8 +37,8 @@ impl Eocd {
 }
 
 /// Locates the terminal ZIP32 EOCD, including its optional comment.
-/// The returned offsets describe the record; section bounds are checked by `split_apk`.
-pub fn find_eocd(data: &[u8]) -> Result<Eocd> {
+/// The returned offsets describe the record; section bounds are checked by its users.
+fn find_eocd(data: &[u8]) -> Result<Eocd> {
     if data.len() < EOCD_MIN_LEN {
         return Err(invalid("apk", "file too small for ZIP"));
     }
@@ -89,23 +61,10 @@ pub fn find_eocd(data: &[u8]) -> Result<Eocd> {
     Err(invalid("apk", "EOCD not found"))
 }
 
-/// Splits an APK into its ZIP sections, leaving any existing signing block out.
-pub fn split_apk(data: &[u8]) -> Result<ApkSections<'_>> {
-    let eocd = find_eocd(data)?;
-    let central_dir = eocd.central_directory(0)?;
-    let cd_offset = central_dir.start as usize;
-    let contents_end = signing_block_start(data, cd_offset)?.unwrap_or(cd_offset);
-    Ok(ApkSections {
-        contents: &data[..contents_end],
-        central_dir: &data[central_dir.start as usize..central_dir.end as usize],
-        eocd: &data[eocd.offset..],
-    })
-}
-
 /// The APK Signing Block, when the archive carries one. The slice runs from
 /// the block's leading size field through its trailing magic, ready for
 /// [`find_pair`]; `None` means the archive is unsigned or JAR-signed only.
-pub fn block(data: &[u8]) -> Result<Option<&[u8]>> {
+pub(crate) fn block(data: &[u8]) -> Result<Option<&[u8]>> {
     let cd_offset = find_eocd(data)?.central_directory(0)?.start as usize;
     Ok(signing_block_start(data, cd_offset)?.map(|start| &data[start..cd_offset]))
 }
@@ -113,7 +72,7 @@ pub fn block(data: &[u8]) -> Result<Option<&[u8]>> {
 /// Finds the first pair with `id`, returning absence only for a missing ID.
 /// Invalid block sizes or pair lengths encountered before the match are errors.
 /// As on Android, pairs following the first match are not interpreted.
-pub fn find_pair(block: &[u8], id: u32) -> Result<Option<&[u8]>> {
+pub(crate) fn find_pair(block: &[u8], id: u32) -> Result<Option<&[u8]>> {
     if signing_block_start(block, block.len())? != Some(0) {
         return Err(invalid("signing block", "invalid block envelope"));
     }

@@ -14,31 +14,6 @@ use crate::error::{Result, invalid, io_at};
 use crate::key::SigningKey;
 use crate::signing_block::{self, read_at};
 
-/// Returns a signed copy, preserving ZIP contents and replacing any signing block.
-/// Prefer `sign_file_in_place` for file-backed APKs to avoid allocating a complete copy.
-#[instrument(level = "info", skip_all, fields(apk_size = apk.len()))]
-pub fn sign(apk: &[u8], key: &SigningKey) -> Result<Vec<u8>> {
-    let sections = signing_block::split_apk(apk)?;
-    let metadata = signed_metadata(
-        sections.contents.len() as u64,
-        sections.eocd,
-        digest::chunk_digests(sections.contents),
-        digest::chunk_digests(sections.central_dir),
-        key,
-    )?;
-    let mut output = Vec::with_capacity(
-        sections.contents.len()
-            + metadata.block.len()
-            + sections.central_dir.len()
-            + metadata.eocd.len(),
-    );
-    output.extend_from_slice(sections.contents);
-    output.extend_from_slice(&metadata.block);
-    output.extend_from_slice(sections.central_dir);
-    output.extend_from_slice(&metadata.eocd);
-    Ok(output)
-}
-
 /// Signs or re-signs an APK in place using bounded buffers and parallel chunk hashing.
 /// Entry bytes and the central directory are preserved; the old signing block is replaced.
 /// The file must be opened for reading and writing and used exclusively until completion.
