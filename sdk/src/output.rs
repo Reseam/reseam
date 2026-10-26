@@ -13,7 +13,26 @@ use tracing::info;
 
 use crate::error::{HostError, Result, file_error};
 use crate::metrics::{PatchPhase, PatchProfiler};
-use crate::{PatchArtifact, SigningKeyFiles};
+use crate::{PatchArtifact, PatchOutput, Problem, SigningKeyFiles};
+
+/// Resolves automatic output using the input component count.
+/// Explicit file output requires exactly one component; directories are preserved.
+pub(crate) fn resolve_output(output: &PatchOutput, components: usize) -> Result<PatchArtifact> {
+    Ok(match output {
+        PatchOutput::Auto { path } if components == 1 => PatchArtifact::SingleFile {
+            path: format!("{path}.apk"),
+        },
+        PatchOutput::Auto { path } | PatchOutput::SplitDir { path } => {
+            PatchArtifact::SplitDir { path: path.clone() }
+        }
+        PatchOutput::SingleFile { path } => {
+            if components != 1 {
+                return Err(Problem::SingleFileComponents { components }.into());
+            }
+            PatchArtifact::SingleFile { path: path.clone() }
+        }
+    })
+}
 
 /// Unsigned output staged beside its destinations, waiting to be signed.
 pub(crate) struct StagedOutput {

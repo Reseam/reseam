@@ -15,7 +15,6 @@ pub mod patch;
 
 pub use crate::patch::{
     ApkVersion, Compatibility, CompatiblePackage, Patch, PatchPhase, PatchPreset, PatchSpec,
-    is_slug,
 };
 pub use reseam_apk;
 pub use reseam_apk::reseam_dex;

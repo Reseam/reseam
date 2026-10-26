@@ -52,8 +52,6 @@ impl PatchProfiler {
             // The wire field is retained for hosts; this is the process high-water
             // mark observed at phase end, not an interval peak.
             peak_rss_bytes: memory.process_peak,
-            heap_live_bytes: None,
-            heap_peak_bytes: None,
         });
         result
     }
@@ -64,7 +62,6 @@ impl PatchProfiler {
             total_duration_ms: duration_ms(self.started_at.elapsed()),
             final_rss_bytes: memory.rss,
             peak_rss_bytes: memory.process_peak,
-            final_heap_live_bytes: None,
             final_rss_anon_bytes: memory.anonymous,
             final_rss_file_bytes: memory.file_backed,
             phases: self.phases,

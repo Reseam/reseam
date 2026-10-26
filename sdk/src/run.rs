@@ -13,7 +13,7 @@ use crate::error::Problem;
 use crate::inspect::{OpenedApk, PreparedInspection, TrustedArchive, open_apk, open_bundles};
 use crate::memory::release_process_memory;
 use crate::metrics::{ApplyDiagnostics, PatchPhase, PatchProfiler};
-use crate::output::stage_unsigned;
+use crate::output::{resolve_output, stage_unsigned};
 use crate::{InstallMethod, PatchArtifact, PatchOutcome, PatchRequest, RunEvent};
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -84,7 +84,7 @@ fn run(
         open_input(request)
     })?;
     report_container(&opened, emit);
-    let output = request.output.resolve(opened.apk.components().len())?;
+    let output = resolve_output(&request.output, opened.apk.components().len())?;
 
     emit(info("Loading bundles".to_string()));
     let archives = match prepared {
@@ -172,7 +172,7 @@ fn run(
         // on whole APK files.
         release_process_memory();
         profiler.measure(PatchPhase::RewriteOutput, || {
-            applied.rewrite_output(&mut staged.written(), |event| emit(event.into()))
+            applied.rewrite_output(&mut staged.written(), &mut *emit)
         })?;
     }
     staged.sign_and_publish(profiler)?;
@@ -221,9 +221,7 @@ fn apply<'b>(
     let mut ctx = PatchContext::new(&mut opened.apk);
     ctx.set_extensions(ExtensionSet::load(&extension_paths)?);
     let applied = profiler.measure(PatchPhase::ApplyPatches, || {
-        engine::apply_patches(&mut ctx, &specs, plan, &patches, |event| {
-            emit(event.into());
-        })
+        engine::apply_patches(&mut ctx, &specs, plan, &patches, &mut *emit)
     })?;
     profiler.set_apply_diagnostics(apply_diagnostics(&ctx));
     Ok(applied)

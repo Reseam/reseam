@@ -72,11 +72,11 @@ fn finalization_orders_hooks_and_emits_one_terminal_result() {
             plan,
             &patches,
             |event| match event {
-                ProgressEvent::Finished { patch, status } => {
+                RunEvent::PatchFinished { patch, status } => {
                     events.lock().unwrap().push(format!("finished:{patch}"));
                     finished.push((patch, Status::from(&status)));
                 }
-                ProgressEvent::Reverted { patches } => {
+                RunEvent::PatchesReverted { patches } => {
                     finished.retain(|(patch, _)| !patches.contains(patch));
                 }
                 _ => {}

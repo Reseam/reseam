@@ -222,7 +222,7 @@ fn option_target<'a>(
 }
 
 fn parse_option(declaration: &OptionDeclaration, raw: &str) -> Result<OptionValue> {
-    let value = match declaration.option_type {
+    Ok(match declaration.option_type {
         OptionType::String => OptionValue::Text(raw.to_owned()),
         OptionType::Bool => OptionValue::Bool(raw.parse().context("expected bool")?),
         OptionType::Int => OptionValue::Int(raw.parse().context("expected int")?),
@@ -235,7 +235,5 @@ fn parse_option(declaration: &OptionDeclaration, raw: &str) -> Result<OptionValu
                 .collect(),
         ),
         OptionType::Path => OptionValue::Path(raw.to_owned()),
-    };
-    declaration.validate(&value)?;
-    Ok(value)
+    })
 }

@@ -127,9 +127,13 @@ impl ResolvedPlan {
                 } else if let Some(reason) = &unavailable[idx] {
                     Some(reason.clone())
                 } else if selection.ignore_versions {
-                    spec.package_incompatibility(package)
+                    spec.compatibility
+                        .package_incompatibility(package)
+                        .map(|reason| reason.to_string())
                 } else {
-                    spec.incompatibility(package, version)
+                    spec.compatibility
+                        .incompatibility(package, version)
+                        .map(|reason| reason.to_string())
                 };
                 match reason {
                     Some(reason) => Some(PatchStatus::Skipped { reason }),

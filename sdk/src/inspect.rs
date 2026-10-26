@@ -303,7 +303,7 @@ fn patch_metadata(spec: &PatchSpec, apk: Option<&ApkMetadata>) -> PatchMetadata 
     let package = apk.and_then(|apk| apk.package_name.as_deref());
     PatchMetadata {
         spec: spec.clone(),
-        incompatibility: spec.incompatibility(
+        incompatibility: spec.compatibility.incompatibility(
             package,
             ApkVersion {
                 name: apk.and_then(|apk| apk.version_name.as_deref()),

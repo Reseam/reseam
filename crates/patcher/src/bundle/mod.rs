@@ -19,7 +19,7 @@ use reseam_storage::ScratchDir;
 use serde::{Deserialize, Serialize};
 
 use crate::error::PatcherError;
-use crate::patch::{Patch, PatchSpec, is_slug};
+use crate::patch::{Patch, PatchSpec};
 
 pub use archive::BundleArchive;
 pub(crate) use pack::copy_hashed;
@@ -263,4 +263,15 @@ fn check_name(name: &str) -> crate::error::Result<()> {
             "bundle name '{name}' must be lowercase letters, digits, and hyphens"
         )))
     }
+}
+
+/// A nonempty slug: lowercase letters or digits separated by single hyphens.
+pub(crate) fn is_slug(value: &str) -> bool {
+    !value.is_empty()
+        && !value.starts_with('-')
+        && !value.ends_with('-')
+        && !value.contains("--")
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
 }

@@ -10,7 +10,7 @@ use reseam_apk::{ApkFile, ContainerFormat, ScratchDir};
 use crate::error::Problem;
 use crate::inspect::open_apk;
 use crate::metrics::PatchProfiler;
-use crate::output::stage_unsigned;
+use crate::output::{resolve_output, stage_unsigned};
 use crate::{InstallMethod, PatchArtifact, PatchOutput, PatchRequest, inspect_apk, patch};
 
 fn zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
@@ -283,10 +283,12 @@ fn containers_and_plain_apks_use_the_same_output_pipeline() {
             );
             let destination = tmp.path().join(format!("output-{count}-{extension}"));
             let opened = open_apk(&input, &[], ApkFile::patch_options()).unwrap();
-            let output = PatchOutput::Auto {
-                path: destination.display().to_string(),
-            }
-            .resolve(opened.apk.components().len())
+            let output = resolve_output(
+                &PatchOutput::Auto {
+                    path: destination.display().to_string(),
+                },
+                opened.apk.components().len(),
+            )
             .unwrap();
             let extracted = opened.apk.base().path().to_path_buf();
             stage_unsigned(opened.apk, &output, None, &mut PatchProfiler::new())
@@ -312,10 +314,12 @@ fn containers_and_plain_apks_use_the_same_output_pipeline() {
     let opened = open_apk(&input, &[], ApkFile::patch_options()).unwrap();
     assert!(opened.bundle.is_none());
     let destination = tmp.path().join("chosen-directory");
-    let output = PatchOutput::SplitDir {
-        path: destination.display().to_string(),
-    }
-    .resolve(1)
+    let output = resolve_output(
+        &PatchOutput::SplitDir {
+            path: destination.display().to_string(),
+        },
+        1,
+    )
     .unwrap();
     stage_unsigned(opened.apk, &output, None, &mut PatchProfiler::new())
         .and_then(|staged| staged.sign_and_publish(&mut PatchProfiler::new()))
@@ -487,5 +491,33 @@ fn invalid_artifact_targets_preserve_outputs_and_signing_identity() {
             .is_err()
         );
         assert_eq!(std::fs::read(destination).unwrap(), original_key);
+    }
+}
+
+#[test]
+fn output_selection_honors_component_counts_and_explicit_destinations() {
+    let path = "out/com.example.app.reseamed";
+    let file = |path: &str| Some(PatchArtifact::SingleFile { path: path.into() });
+    let directory = || Some(PatchArtifact::SplitDir { path: path.into() });
+    for (kind, expected) in [
+        ("auto", [file(&format!("{path}.apk")), directory()]),
+        ("split_dir", [directory(), directory()]),
+        ("single_file", [file(path), None]),
+    ] {
+        let output: PatchOutput =
+            serde_json::from_value(serde_json::json!({"kind": kind, "path": path})).unwrap();
+        for (count, expected) in [1, 2].into_iter().zip(expected) {
+            let actual = resolve_output(&output, count);
+            if let Some(expected) = expected {
+                assert_eq!(actual.unwrap(), expected);
+            } else {
+                assert!(matches!(
+                    actual,
+                    Err(crate::HostError::Problem(
+                        Problem::SingleFileComponents { .. }
+                    ))
+                ));
+            }
+        }
     }
 }
