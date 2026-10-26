@@ -4,7 +4,8 @@
 use std::fs::File;
 
 use crate::Result;
-use crate::zip::writer::{Encoding, Writer};
+use crate::zip::Compression;
+use crate::zip::writer::Writer;
 
 /// Writes `source` as the single deflated entry `name` of a ZIP at
 /// `destination`. Native DEX workers and the browser's compression workers
@@ -15,7 +16,7 @@ pub fn compress_dex_entry(
     name: &str,
     level: u32,
 ) -> Result<File> {
-    let mut archive = Writer::new(destination);
-    archive.write_file(name, source, Encoding::Deflated { level })?;
+    let mut archive = Writer::new(destination, level);
+    archive.write(name, source, Compression::Deflated)?;
     archive.finish()
 }

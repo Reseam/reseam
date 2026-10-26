@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::{ApkFile, ComponentIndex, Compression, dex_set};
+use super::{ApkFile, ComponentIndex, dex_set};
 use crate::entry::dex_ordinal;
 use crate::error::{Result, invalid};
+use crate::zip::Compression;
 use crate::zip::reader;
 use std::io::Write;
 

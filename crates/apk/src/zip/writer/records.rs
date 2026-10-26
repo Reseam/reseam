@@ -4,6 +4,7 @@
 //! ZIP records as APK writers emit them: no ZIP64, no data descriptors.
 
 use crate::error::{Result, invalid};
+use crate::zip::Compression;
 
 const LOCAL_HEADER: u32 = 0x0403_4b50;
 const CENTRAL_HEADER: u32 = 0x0201_4b50;
@@ -13,15 +14,11 @@ const ALIGNMENT_FIELD: u16 = 0xa11e;
 const UTF8_NAME: u16 = 1 << 11;
 /// Unix, ZIP 2.0.
 const MADE_BY_UNIX: u16 = 0x0314;
+const REGULAR_FILE: u32 = 0o100_000;
+const DEFAULT_MODE: u32 = 0o644;
 pub(super) const LOCAL_HEADER_LEN: u64 = 30;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Method {
-    Stored,
-    Deflated,
-}
-
-impl Method {
+impl Compression {
     pub(super) fn of(method: zip::CompressionMethod) -> Result<Self> {
         match method {
             zip::CompressionMethod::Stored => Ok(Self::Stored),
@@ -66,7 +63,7 @@ impl DosTime {
 /// The fields a local header and its central directory record share.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct EntryHeader {
-    pub method: Method,
+    pub method: Compression,
     pub modified: DosTime,
     pub crc: u32,
     pub compressed: u32,
@@ -75,6 +72,36 @@ pub(super) struct EntryHeader {
 }
 
 impl EntryHeader {
+    /// A new regular file, timestamped with [`DosTime::EPOCH`].
+    pub(super) fn new(method: Compression, crc: u32, compressed: u32, size: u32) -> Self {
+        Self {
+            method,
+            modified: DosTime::EPOCH,
+            crc,
+            compressed,
+            size,
+            unix_mode: DEFAULT_MODE | REGULAR_FILE,
+        }
+    }
+
+    /// The header of an entry copied as an archive holds it.
+    pub(super) fn of(entry: &zip::read::ZipFile<'_, impl std::io::Read>) -> Result<Self> {
+        let (compressed, size) = Self::sizes(entry.compressed_size(), entry.size())?;
+        Ok(Self {
+            method: Compression::of(entry.compression())?,
+            modified: entry
+                .last_modified()
+                .map_or(DosTime::EPOCH, |time| DosTime {
+                    time: time.timepart(),
+                    date: time.datepart(),
+                }),
+            crc: entry.crc32(),
+            compressed,
+            size,
+            unix_mode: entry.unix_mode().unwrap_or(DEFAULT_MODE) | REGULAR_FILE,
+        })
+    }
+
     pub(super) fn sizes(compressed: u64, size: u64) -> Result<(u32, u32)> {
         Ok((zip32(compressed, "entry size")?, zip32(size, "entry size")?))
     }

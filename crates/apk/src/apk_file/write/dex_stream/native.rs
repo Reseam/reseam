@@ -1,44 +1,20 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::fs::File;
-use std::io::Read;
-#[cfg(not(target_os = "wasi"))]
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
-#[cfg(not(target_os = "wasi"))]
 use std::sync::{Arc, Mutex};
-#[cfg(not(target_os = "wasi"))]
 use std::thread::Scope;
 
-use reseam_dex::WriteLayout;
-#[cfg(not(target_os = "wasi"))]
 use tracing::debug;
 
-use super::component::Compression;
-use super::dex_set::DexSet;
-use super::write::DexJob;
-use crate::error::Result;
-#[cfg(not(target_os = "wasi"))]
-use crate::error::invalid;
-#[cfg(not(target_os = "wasi"))]
+use super::{DexEntry, WrittenDex, stored_entry};
+use crate::apk_file::dex_set::DexSet;
+use crate::apk_file::write::DexJob;
+use crate::error::{Result, invalid};
 use crate::zip::COPY_BUFFER;
+use crate::zip::Compression;
 
-/// A rewritten DEX ready to be added to its APK, with where each of its
-/// members' pools and classes landed.
-pub(super) struct WrittenDex {
-    pub entry: DexEntry,
-    pub layouts: Vec<WriteLayout>,
-}
-
-pub(super) enum DexEntry {
-    /// A single-entry ZIP holding the deflated DEX.
-    Deflated(File),
-    /// The serialized DEX and its CRC-32.
-    Stored { file: File, crc: u32 },
-}
-
-#[cfg(not(target_os = "wasi"))]
-pub(super) struct DexEntryStream<'a> {
+pub(in crate::apk_file) struct DexEntryStream<'a> {
     _lifetime: std::marker::PhantomData<&'a ()>,
     pending: SyncSender<usize>,
     receivers: Vec<Receiver<Result<WrittenDex>>>,
@@ -47,7 +23,6 @@ pub(super) struct DexEntryStream<'a> {
     job_count: usize,
 }
 
-#[cfg(not(target_os = "wasi"))]
 impl DexEntryStream<'_> {
     pub fn start<'scope, 'env>(
         scope: &'scope Scope<'scope, 'env>,
@@ -121,26 +96,6 @@ impl DexEntryStream<'_> {
     }
 }
 
-/// The entry for a stored job, which needs no compression worker. `buffer`
-/// carries the bytes being checksummed.
-fn stored_entry(spooled: reseam_dex::Spooled, buffer: &mut [u8]) -> Result<DexEntry> {
-    let mut crc = flate2::Crc::new();
-    let mut reader = spooled.reader();
-    loop {
-        let read = reader.read(buffer)?;
-        if read == 0 {
-            break;
-        }
-        crc.update(&buffer[..read]);
-    }
-    drop(reader);
-    Ok(DexEntry::Stored {
-        file: spooled.into_file(),
-        crc: crc.sum(),
-    })
-}
-
-#[cfg(not(target_os = "wasi"))]
 fn write_dex(dex: &DexSet, job: &DexJob, level: u32, buffer: &mut [u8]) -> Result<WrittenDex> {
     let started = std::time::Instant::now();
     let (spooled, layouts) = dex.serialize(&job.members)?;
@@ -165,9 +120,3 @@ fn write_dex(dex: &DexSet, job: &DexJob, level: u32, buffer: &mut [u8]) -> Resul
     );
     Ok(WrittenDex { entry, layouts })
 }
-
-#[cfg(target_os = "wasi")]
-#[path = "dex_browser.rs"]
-mod browser;
-#[cfg(target_os = "wasi")]
-pub(super) use browser::DexEntryStream;

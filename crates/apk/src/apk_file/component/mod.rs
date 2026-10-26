@@ -14,13 +14,23 @@ use crate::axml::AxmlDocument;
 use crate::entry::{EntryName, MANIFEST_ENTRY, RESOURCES_ENTRY};
 use crate::error::{Result, invalid};
 use crate::resources::ResourceTable;
+use crate::zip::Compression;
 use crate::zip::reader::{self, Archive};
 
-mod edits;
+mod entries;
 mod undo;
 
-pub use edits::Compression;
-pub(super) use edits::EntryEdit;
+/// How an entry differs from the archive the component was opened from.
+pub(in crate::apk_file) enum EntryEdit {
+    Staged {
+        file: File,
+        compression: Compression,
+    },
+    Manifest,
+    Resources,
+    Dex,
+    Deleted,
+}
 
 pub struct ApkComponent {
     name: String,

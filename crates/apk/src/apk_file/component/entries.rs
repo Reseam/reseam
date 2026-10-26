@@ -8,39 +8,13 @@ use std::sync::Arc;
 
 use reseam_storage::Bytes;
 
-use super::{ApkComponent, Resources};
+use super::{ApkComponent, EntryEdit, Resources};
 use crate::axml::AxmlDocument;
 use crate::entry::{EntryName, MANIFEST_ENTRY, RESOURCES_ENTRY, dex_ordinal, is_native_library};
 use crate::error::{Result, invalid};
 use crate::resources::ResourceTable;
+use crate::zip::Compression;
 use crate::zip::reader::{self, Archive};
-use crate::zip::writer::Encoding;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Compression {
-    Deflated,
-    Stored,
-}
-
-impl Compression {
-    pub(crate) fn encoding(self) -> Encoding {
-        match self {
-            Self::Deflated => Encoding::DEFLATED,
-            Self::Stored => Encoding::Stored,
-        }
-    }
-}
-
-pub(in crate::apk_file) enum EntryEdit {
-    Staged {
-        file: File,
-        compression: Compression,
-    },
-    Manifest,
-    Resources,
-    Dex,
-    Deleted,
-}
 
 impl ApkComponent {
     /// Current entry names, in archive order followed by new entries in name

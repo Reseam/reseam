@@ -17,8 +17,7 @@ mod string_pool;
 mod zip;
 
 pub use apk_file::{
-    ApkComponent, ApkFile, ApkWriteOptions, ApplicationIcon, Compression, DexSet, IconLayer,
-    SignaturePolicy,
+    ApkComponent, ApkFile, ApkWriteOptions, ApplicationIcon, DexSet, IconLayer, SignaturePolicy,
 };
 pub use axml::AxmlDocument;
 pub use container::{ContainerBundle, ContainerFormat};
@@ -26,3 +25,4 @@ pub use error::{ApkError, Result};
 pub use res_value::ResValue;
 pub use resources::{ResourceScope, ResourceTable};
 pub use string_pool::{StringEncoding, StringPool};
+pub use zip::Compression;

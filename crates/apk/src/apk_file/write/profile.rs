@@ -4,9 +4,9 @@
 use reseam_dex::WriteLayout;
 use tracing::warn;
 
-use super::dex_set::{DexIndex, DexSource};
-use super::write::DexJob;
-use super::{ApkFile, ComponentIndex};
+use super::DexJob;
+use crate::apk_file::dex_set::{DexIndex, DexSource};
+use crate::apk_file::{ApkFile, ComponentIndex};
 use crate::art_profile::{BaselineProfile, DexProfile, PROFILE_ENTRY};
 use crate::error::Result;
 use crate::zip::reader;

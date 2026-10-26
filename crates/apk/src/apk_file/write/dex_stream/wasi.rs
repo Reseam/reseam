@@ -8,9 +8,12 @@ use std::thread::Scope;
 
 use reseam_dex::WriteLayout;
 
-use super::{Compression, DexEntry, DexJob, DexSet, WrittenDex, stored_entry};
+use super::{DexEntry, WrittenDex, stored_entry};
+use crate::apk_file::dex_set::DexSet;
+use crate::apk_file::write::DexJob;
 use crate::error::{Result, invalid};
 use crate::zip::COPY_BUFFER;
+use crate::zip::Compression;
 
 #[link(wasm_import_module = "reseam_compression")]
 unsafe extern "C" {

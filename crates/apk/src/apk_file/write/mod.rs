@@ -1,25 +1,26 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+mod dex_stream;
 mod jobs;
 mod layout;
+mod profile;
+mod publish;
 
-use std::collections::HashSet;
 use std::fs::File;
-use std::io;
 use std::num::NonZeroUsize;
-use std::path::{Path, PathBuf};
 
-use tracing::{debug, info, instrument};
+use tracing::{debug, info};
 
-use super::baseline_profile::ProfileRewrite;
 use super::component::EntryEdit;
-use super::dex_workers::{DexEntry, DexEntryStream};
 use super::{ApkFile, ComponentIndex};
 use crate::error::{Result, invalid};
-use crate::zip::writer::{Encoding, Writer};
+use crate::zip::Compression;
+use crate::zip::writer::{DEFAULT_LEVEL, Writer};
+use dex_stream::{DexEntry, DexEntryStream};
 pub(super) use jobs::{DexJob, DexMember};
 use layout::{EntrySource, PlannedEntry, plan};
+use profile::ProfileRewrite;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ApkWriteOptions {
@@ -57,97 +58,6 @@ impl Default for ApkWriteOptions {
 }
 
 impl ApkFile {
-    /// Writes complete component APKs under their input file names. Output is
-    /// staged in temporary files before publication. Duplicate output names and
-    /// paths pointing to the input are errors. Dirty state is retained, so the
-    /// session can be written repeatedly.
-    /// Edited v041 containers retain their physical entry and logical member
-    /// order, including any pool-sized parts required by overflow.
-    #[instrument(level = "info", skip_all)]
-    pub fn write_to(
-        &self,
-        output_dir: impl AsRef<Path>,
-        options: ApkWriteOptions,
-    ) -> Result<Vec<PathBuf>> {
-        let output_dir = output_dir.as_ref();
-        std::fs::create_dir_all(output_dir)?;
-        let names = self.output_names()?;
-        let paths: Vec<_> = names.iter().map(|name| output_dir.join(name)).collect();
-        for path in &paths {
-            if path.exists() {
-                let destination = reseam_storage::canonicalize(path)?;
-                for component in &self.components {
-                    if destination == reseam_storage::canonicalize(component.path())? {
-                        return Err(invalid(
-                            "apk output",
-                            format!("{} is an input APK", path.display()),
-                        ));
-                    }
-                }
-            }
-        }
-        let staging = paths
-            .iter()
-            .map(|_| tempfile::NamedTempFile::new_in(output_dir))
-            .collect::<io::Result<Vec<_>>>()?;
-        self.write_components(
-            options,
-            staging
-                .iter()
-                .map(tempfile::NamedTempFile::reopen)
-                .collect::<io::Result<_>>()?,
-        )?;
-        for (file, path) in staging.into_iter().zip(&paths) {
-            file.persist(path).map_err(|error| error.error)?;
-        }
-        Ok(paths)
-    }
-
-    /// Writes each component into an unlinked file in `dir`. The caller owns
-    /// publication; the returned files are positioned at the end of the ZIP.
-    #[instrument(level = "info", skip_all)]
-    pub fn write_unsigned_files(
-        &self,
-        options: ApkWriteOptions,
-        dir: &Path,
-    ) -> Result<Vec<(String, File)>> {
-        let names = self.output_names()?;
-        let files = self.write_components(
-            options,
-            names
-                .iter()
-                .map(|_| tempfile::tempfile_in(dir))
-                .collect::<io::Result<_>>()?,
-        )?;
-        Ok(names.into_iter().zip(files).collect())
-    }
-
-    fn output_names(&self) -> Result<Vec<String>> {
-        let mut used = HashSet::new();
-        self.components
-            .iter()
-            .map(|component| {
-                let name = component
-                    .path()
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .ok_or_else(|| {
-                        invalid(
-                            "apk output",
-                            format!("{} has no UTF-8 file name", component.path().display()),
-                        )
-                    })?;
-                if !used.insert(name) {
-                    return Err(invalid(
-                        "apk output",
-                        format!("duplicate output file name {name}"),
-                    ));
-                }
-                Ok(name.to_string())
-            })
-            .collect()
-    }
-
     /// Writes each component into its output, in component order. Components
     /// without rewritten DEX go first, so their copying overlaps serialization.
     fn write_components(&self, options: ApkWriteOptions, outputs: Vec<File>) -> Result<Vec<File>> {
@@ -175,7 +85,7 @@ impl ApkFile {
                     ComponentIndex(index),
                     &jobs,
                     options.signatures,
-                    profile.is_some(),
+                    profile.as_ref(),
                 )
             })
             .collect();
@@ -227,7 +137,7 @@ impl ApkFile {
         debug!(component = component.name(), "writing APK component");
         let mut source = component.archive().clone();
         let source_file = File::open(component.path())?;
-        let mut writer = Writer::new(output);
+        let mut writer = Writer::new(output, DEFAULT_LEVEL);
         for entry in plan {
             let result = match entry.source {
                 EntrySource::Archive(index) => {
@@ -247,17 +157,17 @@ impl ApkFile {
                     Ok(())
                 }),
                 EntrySource::Edit(EntryEdit::Staged { file, compression }) => {
-                    writer.write_file(entry.name.as_str(), file, compression.encoding())
+                    writer.write(entry.name.as_str(), file, *compression)
                 }
-                EntrySource::Edit(EntryEdit::Manifest) => writer.write_bytes(
+                EntrySource::Edit(EntryEdit::Manifest) => writer.write(
                     entry.name.as_str(),
-                    &component.manifest().serialize()?,
-                    Encoding::DEFLATED,
+                    component.manifest().serialize()?.as_slice(),
+                    Compression::Deflated,
                 ),
-                EntrySource::Edit(EntryEdit::Resources) => writer.write_file(
+                EntrySource::Edit(EntryEdit::Resources) => writer.write(
                     entry.name.as_str(),
                     &component.resources_file()?,
-                    Encoding::Stored,
+                    Compression::Stored,
                 ),
                 EntrySource::Edit(EntryEdit::Deleted | EntryEdit::Dex) => {
                     Err(invalid("apk write", "entry has no planned source"))
@@ -268,7 +178,7 @@ impl ApkFile {
         if let Some(profile) = profile {
             for (name, bytes) in profile.finish().to_entries()? {
                 writer
-                    .write_bytes(name, &bytes, Encoding::Stored)
+                    .write(name, bytes.as_slice(), Compression::Stored)
                     .map_err(|error| error.in_entry(name))?;
             }
         }
