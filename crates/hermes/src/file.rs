@@ -6,7 +6,7 @@ use std::ops::Range;
 use crate::bytes::{read_u32, slice};
 use crate::error::{Result, invalid};
 use crate::function::{Function, FunctionHeader, FunctionId, SMALL_HEADER_SIZE};
-use crate::layout::{FOOTER_SIZE, Field, OPTIONS_OFFSET, Section};
+use crate::layout::{Field, OPTIONS_OFFSET, Section};
 use crate::string::{KindRun, StringEntry, StringId, StringKind, StringValue};
 
 /// A validated, borrowed execution-form HBC file. Construction accepts only
@@ -16,27 +16,21 @@ pub struct HermesFile<'a> {
     pub(crate) sections: [Range<usize>; 15],
 }
 
-/// Owns immutable source storage and its validated layout for repeated borrowed
-/// views. Mapped storage remains file-backed and is released with this owner;
-/// constructing views neither copies nor reparses the source. As with
-/// `HermesFile`, the underlying file must not change while it is retained.
-pub struct HermesImage {
+/// Owns the source storage and its validated layout, lending views without copying or reparsing.
+/// The underlying file must not change while it is retained.
+pub(crate) struct HermesImage {
     source: reseam_storage::Bytes,
     sections: [Range<usize>; 15],
 }
 
 impl HermesImage {
-    /// Validates the source once, returning the same format errors as
-    /// `HermesFile::parse`. No bytecode or string storage is copied.
-    pub fn parse(source: reseam_storage::Bytes) -> Result<Self> {
+    pub(crate) fn parse(source: reseam_storage::Bytes) -> Result<Self> {
         let file = HermesFile::parse(&source)?;
         let sections = file.sections;
         Ok(Self { source, sections })
     }
 
-    /// Borrows the validated file for inspection, editing or streamed writing.
-    /// The view cannot outlive the owner of its source storage.
-    pub fn file(&self) -> HermesFile<'_> {
+    pub(crate) fn file(&self) -> HermesFile<'_> {
         HermesFile {
             source: &self.source,
             sections: self.sections.clone(),
@@ -67,14 +61,6 @@ impl<'a> HermesFile<'a> {
 
     pub(crate) fn global_function(&self) -> FunctionId {
         FunctionId(self.field(Field::GlobalFunction))
-    }
-
-    /// The SHA-1 footer, which identifies the file's contents.
-    pub(crate) fn footer(&self) -> [u8; FOOTER_SIZE] {
-        let end = self.field(Field::FileLength) as usize;
-        self.source[end - FOOTER_SIZE..end]
-            .try_into()
-            .expect("parsing checked the footer bounds")
     }
 
     pub(crate) fn section(&self, section: Section) -> &'a [u8] {

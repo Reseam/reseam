@@ -4,11 +4,10 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::dataflow::{Registers, register_states};
-use crate::edit::Editor;
 use crate::error::{HermesError, Result, invalid};
 use crate::function::Function;
 use crate::opcode::{Instruction, Op};
-use crate::{FunctionId, FunctionIndex};
+use crate::{FunctionId, FunctionIndex, HermesFile};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Value {
@@ -24,16 +23,23 @@ struct ClosureSite {
     offset: u32,
 }
 
-impl Editor<'_> {
+/// Closure environment analyses and hook plans, kept across hooks.
+#[derive(Default)]
+pub(crate) struct Closures {
+    analyses: BTreeMap<FunctionId, ClosureAnalysis>,
+    plans: BTreeMap<FunctionId, HookPlan>,
+}
+
+impl Closures {
     /// Where the private environment of linked modules sits for `target`, and the app closures
     /// that must carry it there.
-    pub(crate) fn hook_plan(
+    pub(crate) fn plan(
         &mut self,
+        file: &HermesFile<'_>,
         index: &FunctionIndex,
         target: FunctionId,
     ) -> Result<HookPlan> {
-        let graph = self.edits.hook_graph.get_or_insert_with(HookGraph::default);
-        if let Some(plan) = graph.plans.get(&target) {
+        if let Some(plan) = self.plans.get(&target) {
             return Ok(plan.clone());
         }
         let mut needed = BTreeSet::from([target]);
@@ -45,17 +51,17 @@ impl Editor<'_> {
                 }
             }
         }
-        if !needed.contains(&self.file.global_function()) {
+        if !needed.contains(&file.global_function()) {
             return Err(HermesError::Unsupported(
                 "hooked functions are not reachable from app global closures".into(),
             ));
         }
-        let mut depths = BTreeMap::from([(self.file.global_function(), 0_u16)]);
-        let mut work = VecDeque::from([self.file.global_function()]);
+        let mut depths = BTreeMap::from([(file.global_function(), 0_u16)]);
+        let mut work = VecDeque::from([file.global_function()]);
         let mut roots = BTreeMap::new();
         while let Some(id) = work.pop_front() {
             let depth = depths[&id];
-            let analysis = graph.analysis(&self.file, id, depth)?;
+            let analysis = self.analysis(file, id, depth)?;
             let mut attach = BTreeSet::new();
             for site in needed
                 .iter()
@@ -104,22 +110,13 @@ impl Editor<'_> {
             ))
         })?;
         let plan = HookPlan { depth, roots };
-        graph.plans.insert(target, plan.clone());
+        self.plans.insert(target, plan.clone());
         Ok(plan)
     }
-}
 
-/// Closure environment analyses and hook plans, kept across hooks.
-#[derive(Default)]
-pub(crate) struct HookGraph {
-    analyses: BTreeMap<FunctionId, ClosureAnalysis>,
-    plans: BTreeMap<FunctionId, HookPlan>,
-}
-
-impl HookGraph {
     fn analysis(
         &mut self,
-        file: &crate::HermesFile<'_>,
+        file: &HermesFile<'_>,
         id: FunctionId,
         depth: u16,
     ) -> Result<&ClosureAnalysis> {

@@ -3,10 +3,10 @@
 
 use crate::assemble::assemble;
 use crate::bytes::read_u32;
-use crate::edit::Editor;
+use crate::edit::{Edits, LinkNames, LinkedImport, LinkedModule, ModuleId};
 use crate::error::{HermesError, Result, invalid};
 use crate::layout::{Field, STATIC_BUILTINS, Section};
-use crate::metro::MetroModuleId;
+use crate::metro::MetroModules;
 use crate::opcode::{IdKind, Op};
 use crate::string::{StringId, StringKind};
 use crate::{FunctionId, FunctionIndex, HermesFile};
@@ -16,12 +16,8 @@ mod literals;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use bootstrap::bootstrap;
 use literals::{Literals, at, checked_id, literal_count};
-
-/// Identity of a module linked into this editor. Its exports remain in a
-/// private environment and are initialized before the app's global code.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ModuleId(pub(crate) u32);
 
 /// An app module a linked module imports: its specifier, and an app function the Metro module's
 /// factory creates, or the factory itself.
@@ -29,31 +25,6 @@ pub struct ModuleId(pub(crate) u32);
 pub struct Import {
     pub specifier: String,
     pub function: FunctionId,
-}
-
-/// A linked module: its global function, what each import resolves to, and its exports.
-pub(crate) struct LinkedModule {
-    pub global: FunctionId,
-    pub imports: Vec<LinkedImport>,
-    pub exports: Vec<StringId>,
-}
-
-/// An import as `link` receives it: `{ id, esModule, keys }` under the specifier, enough to read
-/// the Metro module lazily, the first time the module's exports are read.
-pub(crate) struct LinkedImport {
-    pub specifier: StringId,
-    pub id: MetroModuleId,
-    pub es_module: bool,
-    pub keys: Vec<StringId>,
-}
-
-/// The property names of a linked module's interface and of each import record.
-#[derive(Clone, Copy)]
-pub(crate) struct LinkNames {
-    pub link: StringId,
-    pub id: StringId,
-    pub es_module: StringId,
-    pub keys: StringId,
 }
 
 /// Where a linked module's IDs start in the merged file, by kind.
@@ -65,39 +36,20 @@ struct Bases {
     switch: u32,
 }
 
-impl Editor<'_> {
-    /// Links a compiled v98 JavaScript module and returns its stable identity.
-    /// The module evaluates to `{ imports, link }` and keeps declarations in its
-    /// own lexical scope (normally an IIFE); see [`imports`](crate::imports).
-    /// `imports` resolves each declared specifier, exactly once. Before the
-    /// app's global code runs, `link` is called with an object mapping each
-    /// specifier to its Metro module ID, and returns the exports object; its
-    /// exports are the keys every return path of `link` declares. CJS segments,
-    /// global variable declarations and incompatible static-builtin
-    /// assumptions are refused. Every function, string, bigint, regexp, literal
-    /// and shape reference is remapped. Module debug information is dropped;
-    /// exceptions are retained. The shared module initializer is assembled
-    /// once when the file is written.
-    pub fn link(
-        &mut self,
-        index: &FunctionIndex,
-        module: &HermesFile<'_>,
-        imports: &[Import],
-    ) -> Result<ModuleId> {
-        index.check(&self.file)?;
-        self.transaction(|editor| editor.link_module(index, module, imports))
-    }
+/// Links modules into one file: its edits, and what the app's Metro modules export.
+pub(crate) struct Linker<'e> {
+    pub file: HermesFile<'e>,
+    pub index: &'e FunctionIndex,
+    pub metro: &'e mut MetroModules,
+    pub edits: &'e mut Edits,
+}
 
+impl Linker<'_> {
     #[expect(
         clippy::too_many_lines,
-        reason = "linking visits each versioned file segment in order"
+        reason = "linking visits each file segment in order"
     )]
-    fn link_module(
-        &mut self,
-        index: &FunctionIndex,
-        module: &HermesFile<'_>,
-        imports: &[Import],
-    ) -> Result<ModuleId> {
+    pub(crate) fn link(&mut self, module: &HermesFile<'_>, imports: &[Import]) -> Result<ModuleId> {
         if module.field(Field::CjsModuleCount) != 0 || module.field(Field::SegmentId) != 0 {
             return Err(HermesError::Unsupported(
                 "extensions must be standalone execution bytecode; CommonJS segments are unsupported".into(),
@@ -140,9 +92,11 @@ impl Editor<'_> {
                     import.specifier
                 )));
             }
-            let (id, shape) = self.metro_shape(index, import.function)?;
+            let (id, shape) = self.metro.module(&self.file, self.index, import.function)?;
             resolved.push(LinkedImport {
-                specifier: self.intern(&import.specifier, StringKind::String)?,
+                specifier: self
+                    .edits
+                    .intern(&self.file, &import.specifier, StringKind::String)?,
                 id,
                 es_module: shape.es_module,
                 keys: shape.keys.into_iter().collect(),
@@ -153,46 +107,53 @@ impl Editor<'_> {
             let value = module.string(id)?;
             let length = value.bytes.len() / value.encoding.unit_size();
             strings.push(
-                self.append_string(value.bytes.to_vec(), value.encoding, length as u32, kind)?
+                self.edits
+                    .append_string(
+                        &self.file,
+                        value.bytes.to_vec(),
+                        value.encoding,
+                        length as u32,
+                        kind,
+                    )?
                     .0,
             );
         }
         let bases = Bases {
-            function: self.next_function().0,
-            bigint: self.section_count(Section::BigInts),
-            regexp: self.section_count(Section::Regexps),
-            shape: self.section_count(Section::Shapes),
-            switch: self.edits.string_switches,
+            function: self.edits.function_count(&self.file),
+            bigint: self.edits.section_count(&self.file, Section::BigInts),
+            regexp: self.edits.section_count(&self.file, Section::Regexps),
+            shape: self.edits.section_count(&self.file, Section::Shapes),
+            switch: self.edits.string_switches(),
         };
         let shapes = module.section(Section::Shapes).as_chunks::<8>().0;
         let mut values = Literals::new(
             module.section(Section::Values),
             &strings,
-            self.section_size(Section::Values) as u32,
+            self.edits.section_size(&self.file, Section::Values) as u32,
         );
         let mut keys = Literals::new(
             module.section(Section::Keys),
             &strings,
-            self.section_size(Section::Keys) as u32,
+            self.edits.section_size(&self.file, Section::Keys) as u32,
         );
         for entry in shapes {
             let offset = keys.relocate(read_u32(entry, 0)?, read_u32(entry, 4)?)?;
-            self.edits.additions[Section::Shapes as usize].extend_from_slice(&offset.to_le_bytes());
-            self.edits.additions[Section::Shapes as usize].extend_from_slice(&entry[4..]);
+            self.edits.append(Section::Shapes, &offset.to_le_bytes());
+            self.edits.append(Section::Shapes, &entry[4..]);
         }
         for (table, storage) in [
             (Section::BigInts, Section::BigIntStorage),
             (Section::Regexps, Section::RegexpStorage),
         ] {
-            let base = self.section_size(storage) as u32;
+            let base = self.edits.section_size(&self.file, storage) as u32;
             for entry in module.section(table).as_chunks::<8>().0 {
                 let offset = read_u32(entry, 0)?
                     .checked_add(base)
                     .ok_or_else(|| invalid(0, "literal storage offset overflow"))?;
-                self.edits.additions[table as usize].extend_from_slice(&offset.to_le_bytes());
-                self.edits.additions[table as usize].extend_from_slice(&entry[4..]);
+                self.edits.append(table, &offset.to_le_bytes());
+                self.edits.append(table, &entry[4..]);
             }
-            self.edits.additions[storage as usize].extend_from_slice(module.section(storage));
+            self.edits.append(storage, module.section(storage));
         }
         for id in 0..module.function_count() {
             let function = module.function(FunctionId(id))?;
@@ -233,32 +194,34 @@ impl Editor<'_> {
             }
             let mut edited = assemble(&function, instructions, Some(&strings))?;
             edited.header.name = strings[function.header.name as usize];
-            self.append_function(edited);
+            self.edits.append_function(&self.file, edited);
         }
-        self.edits.additions[Section::Values as usize].extend(values.output);
-        self.edits.additions[Section::Keys as usize].extend(keys.output);
-        self.edits.string_switches = self
-            .edits
-            .string_switches
-            .checked_add(module.field(Field::StringSwitchCount))
-            .ok_or_else(|| invalid(0, "too many string switches"))?;
-        let module_id = ModuleId(self.edits.modules.len() as u32);
-        self.edits.link_names = Some(LinkNames {
-            link: self.intern("link", StringKind::String)?,
-            id: self.intern("id", StringKind::String)?,
-            es_module: self.intern("esModule", StringKind::String)?,
-            keys: self.intern("keys", StringKind::String)?,
-        });
-        self.edits.modules.push(LinkedModule {
-            global: FunctionId(bases.function + module.global_function().0),
-            imports: resolved,
-            exports: interface
-                .exports
-                .into_iter()
-                .map(|id| StringId(strings[id.0 as usize]))
-                .collect(),
-        });
-        self.refresh_bootstrap()?;
-        Ok(module_id)
+        self.edits.append(Section::Values, &values.output);
+        self.edits.append(Section::Keys, &keys.output);
+        self.edits
+            .add_string_switches(module.field(Field::StringSwitchCount))?;
+        let names = LinkNames {
+            link: self.string("link")?,
+            id: self.string("id")?,
+            es_module: self.string("esModule")?,
+            keys: self.string("keys")?,
+        };
+        self.add_bootstrap()?;
+        Ok(self.edits.add_module(
+            LinkedModule {
+                global: FunctionId(bases.function + module.global_function().0),
+                imports: resolved,
+                exports: interface
+                    .exports
+                    .into_iter()
+                    .map(|id| StringId(strings[id.0 as usize]))
+                    .collect(),
+            },
+            names,
+        ))
+    }
+
+    fn string(&mut self, text: &str) -> Result<StringId> {
+        self.edits.intern(&self.file, text, StringKind::String)
     }
 }

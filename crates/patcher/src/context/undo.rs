@@ -32,7 +32,7 @@ impl PatchContext<'_> {
         self.journal.open(savepoint);
         self.apk.open_savepoint(savepoint);
         if let Some(session) = &mut self.hermes {
-            session.open_savepoint(savepoint);
+            session.editor.open_savepoint(savepoint);
         }
     }
 
@@ -41,7 +41,7 @@ impl PatchContext<'_> {
         self.journal.release(savepoint);
         self.apk.release_savepoint(savepoint);
         if let Some(session) = &mut self.hermes {
-            session.release_savepoint(savepoint);
+            session.editor.release_savepoint(savepoint);
         }
     }
 
@@ -51,7 +51,7 @@ impl PatchContext<'_> {
     pub fn rollback_to(&mut self, savepoint: Savepoint) {
         let mut removed: HashMap<usize, _> = self.apk.rollback_to(savepoint).into_iter().collect();
         if let Some(session) = &mut self.hermes {
-            session.rollback_to(savepoint);
+            session.editor.rollback_to(savepoint);
         }
         for undo in self.journal.rollback(savepoint) {
             match undo {

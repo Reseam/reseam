@@ -13,6 +13,7 @@ mod closure;
 mod code;
 mod dataflow;
 mod edit;
+mod editor;
 mod error;
 mod file;
 #[cfg(test)]
@@ -32,10 +33,13 @@ mod switch;
 mod write;
 
 pub use code::{BlockId, Code, Condition, HookKind, Operand, Place, SlotId, Statement};
-pub use edit::{Editor, Edits};
+pub use edit::ModuleId;
+pub use editor::Editor;
 pub use error::{HermesError, Result};
-pub use file::{HermesFile, HermesImage};
+pub use file::HermesFile;
 pub use function::FunctionId;
-pub use index::FunctionIndex;
 pub use interface::imports;
-pub use link::{Import, ModuleId};
+pub use link::Import;
+
+use file::HermesImage;
+use index::FunctionIndex;

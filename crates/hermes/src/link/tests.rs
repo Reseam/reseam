@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 
 use super::*;
 use crate::FunctionId;
-use crate::fixtures::{HOST, LITERALS, image, written};
+use crate::fixtures::{HOST, LITERALS, host, image, written};
 use crate::literal::{Literal, read_literals};
 use crate::opcode::Instruction;
 
@@ -58,15 +58,11 @@ fn run_starts(buffer: &[u8]) -> BTreeSet<u64> {
 
 #[test]
 fn linked_literals_read_back_the_values_and_keys_of_the_module() {
-    let host = image(HOST);
     let module = image(LITERALS);
     let module_file = module.file();
-    let host_functions = host.file().function_count();
-    let index = FunctionIndex::build(&host.file()).expect("host indexes");
-    let mut editor = Editor::new(host.file());
-    editor
-        .link(&index, &module_file, &[])
-        .expect("module links");
+    let host_functions = image(HOST).file().function_count();
+    let mut editor = host();
+    editor.link(&module_file, &[]).expect("module links");
     let linked = image(&written(&editor));
     let linked_file = linked.file();
 

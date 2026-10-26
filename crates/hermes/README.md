@@ -3,17 +3,12 @@
 Borrowed Hermes execution-bytecode parsing and streamed writing. Currently supports
 bytecode version 98, from Hermes tag `250829098.0.0-stable`.
 
-`HermesFile::parse` borrows the caller's bytes; keep the input mapping alive and
-unchanged. Function bodies and structured sections stay in that mapping. Function
-lookup combines names, referenced strings, and JavaScript parameter counts (which
-exclude `this`), and reports both missing and ambiguous matches. `HermesImage`
-retains immutable mapped storage and its validated layout, lending borrowed views
-without reparsing. Build `FunctionIndex` once for repeated lookups and wraps; it
-decodes each function once, in parallel, and its name, string-reference and
-function-reference postings keep app searches and closure ancestry independent of
-later edits.
+`Editor` owns the app's file storage, keep it unchanged while the editor lives. It
+indexes the functions once, in parallel, and finds one by name, referenced strings
+and parameter count (which excludes `this`), reporting missing and ambiguous matches.
+`HermesFile::parse` borrows a module's bytes for `Editor::link` and `imports`.
 
-`Editor` owns additions over the parsed file. Interning preserves existing IDs and
+The editor keeps its additions apart from the file. Interning preserves existing IDs and
 supports identifier hashes, string kind runs, UTF-16, and overflow table entries.
 Writing copies untouched data directly to `Write`, relocates function bodies and
 large headers, promotes small headers when offsets exceed their bit fields, moves
@@ -56,7 +51,6 @@ the exports of the Metro module whose factory creates it, read through `__r` on 
 Factories and their module IDs come from the `__d(factory, id, dependencies)` calls in the
 global code, through the same conservative register analysis the wrap uses for environments.
 
-Linking and wrapping roll back their changes on errors. `into_edits` and `resume`
-let a host retain owned edits beside its source mapping without a self-referential
-model. Resume requires the original file footer, and the mapping must stay
-immutable. Interned additions are indexed without allocating copies of app strings.
+Linking and hooking roll back their changes on errors, and savepoints roll back
+whole patches. Interned additions are indexed without allocating copies of app
+strings.

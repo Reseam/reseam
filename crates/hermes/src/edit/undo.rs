@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::{EditedFunction, Edits};
+use super::{EditedFunction, Edits, LinkNames};
 use crate::FunctionId;
+use crate::closure::RootAttachment;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub(super) enum Part {
@@ -16,7 +17,7 @@ pub(super) enum Part {
 pub(super) enum Undo {
     Marks(Marks),
     Function(FunctionId, Option<EditedFunction>),
-    Root(FunctionId, Option<crate::closure::RootAttachment>),
+    Root(FunctionId, Option<RootAttachment>),
     Relocated(FunctionId, Option<FunctionId>),
     Discarded(FunctionId, bool),
 }
@@ -28,26 +29,26 @@ pub(super) struct Marks {
     appended: usize,
     strings: usize,
     modules: usize,
-    global: FunctionId,
+    bootstrap: Option<FunctionId>,
     string_switches: u32,
-    link_names: Option<crate::link::LinkNames>,
+    link_names: Option<LinkNames>,
 }
 
 impl Edits {
     /// Starts keeping what each edit replaces, so [`Self::rollback_to`] can
     /// return to this point.
-    pub fn open_savepoint(&mut self, savepoint: reseam_journal::Savepoint) {
+    pub(crate) fn open_savepoint(&mut self, savepoint: reseam_journal::Savepoint) {
         self.journal.open(savepoint);
     }
 
     /// Keeps the edits made since `savepoint` as part of the savepoint around it.
-    pub fn release_savepoint(&mut self, savepoint: reseam_journal::Savepoint) {
+    pub(crate) fn release_savepoint(&mut self, savepoint: reseam_journal::Savepoint) {
         self.journal.release(savepoint);
     }
 
     /// Undoes every edit made since `savepoint` was opened and closes it, with
     /// every savepoint opened after it.
-    pub fn rollback_to(&mut self, savepoint: reseam_journal::Savepoint) {
+    pub(crate) fn rollback_to(&mut self, savepoint: reseam_journal::Savepoint) {
         for undo in self.journal.rollback(savepoint) {
             match undo {
                 Undo::Marks(marks) => self.restore(marks),
@@ -85,7 +86,7 @@ impl Edits {
             appended: self.appended.len(),
             strings: self.strings.len(),
             modules: self.modules.len(),
-            global: self.global,
+            bootstrap: self.bootstrap,
             string_switches: self.string_switches,
             link_names: self.link_names,
         }
@@ -109,12 +110,13 @@ impl Edits {
         }
         self.strings.truncate(marks.strings);
         self.modules.truncate(marks.modules);
-        self.global = marks.global;
+        self.bootstrap = marks.bootstrap;
         self.string_switches = marks.string_switches;
         self.link_names = marks.link_names;
     }
 
-    pub(crate) fn set_function(&mut self, id: FunctionId, body: EditedFunction) {
+    /// Gives app function `id` a new body.
+    pub(crate) fn replace(&mut self, id: FunctionId, body: EditedFunction) {
         let previous = self.functions.insert(id, body);
         self.journal
             .record(Part::Function(id), || Undo::Function(id, previous));
@@ -132,7 +134,7 @@ impl Edits {
             .record(Part::Discarded(id), || Undo::Discarded(id, discarded));
     }
 
-    pub(crate) fn attach_root(&mut self, id: FunctionId, root: crate::closure::RootAttachment) {
+    pub(crate) fn attach_root(&mut self, id: FunctionId, root: RootAttachment) {
         self.journal.record(Part::Root(id), || {
             Undo::Root(id, self.roots.get(&id).cloned())
         });

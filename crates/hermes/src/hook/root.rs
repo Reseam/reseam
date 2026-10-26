@@ -3,29 +3,30 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::HermesFile;
 use crate::assemble::assemble;
 use crate::closure::environment_depth;
-use crate::edit::{EditedFunction, Editor};
+use crate::edit::{EditedFunction, Edits};
 use crate::error::Result;
 use crate::function::{Function, FunctionId};
 use crate::opcode::{Instruction, Op};
 
-impl Editor<'_> {
-    /// The app functions that hold the linked modules' private environment, rewritten to carry
-    /// it to the closures that need it.
-    pub(crate) fn rooted_functions(&self) -> Result<BTreeMap<FunctionId, EditedFunction>> {
-        self.edits
-            .roots
-            .iter()
-            .map(|(&id, root)| {
-                let function = self.file.function(id)?;
-                let body =
-                    attach_root(&function, function.instructions()?, root.depth, &root.sites)?;
-                // A hooked function's original body lives on in the function its hook calls.
-                Ok((self.edits.relocated.get(&id).copied().unwrap_or(id), body))
-            })
-            .collect()
-    }
+/// The app functions that hold the linked modules' private environment, rewritten to carry it
+/// to the closures that need it.
+pub(crate) fn rooted_functions(
+    file: &HermesFile<'_>,
+    edits: &Edits,
+) -> Result<BTreeMap<FunctionId, EditedFunction>> {
+    edits
+        .roots()
+        .iter()
+        .map(|(&id, root)| {
+            let function = file.function(id)?;
+            let body = attach_root(&function, function.instructions()?, root.depth, &root.sites)?;
+            // A hooked function's original body lives on in the function its hook calls.
+            Ok((edits.relocated(id).unwrap_or(id), body))
+        })
+        .collect()
 }
 
 fn attach_root(

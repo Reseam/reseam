@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::code::{BlockId, Code, Condition, HookKind, Operand, Place, SlotId, Statement};
-use crate::fixtures::{BUNDLED, HOST, function, image, written};
-use crate::{Editor, FunctionIndex};
+use crate::fixtures::{BUNDLED, function, host, image, written};
 
 /// Code that reads every kind of operand, branches and calls an export.
 fn exercising(module: crate::ModuleId, kind: HookKind) -> Code {
@@ -57,59 +56,46 @@ fn exercising(module: crate::ModuleId, kind: HookKind) -> Code {
 fn rollback_returns_the_bundle_to_each_savepoint() {
     use reseam_journal::Savepoint;
 
-    let host = image(HOST);
     let module = image(BUNDLED);
-    let index = FunctionIndex::build(&host.file()).expect("host indexes");
-    let greet = function(&host, &index, "greet");
-    let mut editor = Editor::new(host.file());
+    let mut editor = host();
+    let greet = function(&editor, "greet");
     let original = written(&editor);
 
     let outer = Savepoint::FIRST;
-    editor.edits.open_savepoint(outer);
-    let id = editor
-        .link(&index, &module.file(), &[])
-        .expect("module links");
+    editor.open_savepoint(outer);
+    let id = editor.link(&module.file(), &[]).expect("module links");
     editor
-        .hook(
-            &index,
-            greet,
-            HookKind::Before,
-            &exercising(id, HookKind::Before),
-        )
+        .hook(greet, HookKind::Before, &exercising(id, HookKind::Before))
         .expect("hook applies");
     let after_outer = written(&editor);
 
     let inner = outer.next();
-    editor.edits.open_savepoint(inner);
+    editor.open_savepoint(inner);
     for kind in [HookKind::After, HookKind::Replace] {
         editor
-            .hook(&index, greet, kind, &exercising(id, kind))
+            .hook(greet, kind, &exercising(id, kind))
             .expect("hook applies");
     }
     editor
-        .link(&index, &module.file(), &[])
+        .link(&module.file(), &[])
         .expect("module links again");
 
-    editor.edits.rollback_to(inner);
+    editor.rollback_to(inner);
     assert_eq!(written(&editor), after_outer);
-    editor.edits.rollback_to(outer);
+    editor.rollback_to(outer);
     assert_eq!(written(&editor), original);
-    assert!(editor.edits.is_empty());
+    assert!(!editor.is_edited());
 }
 
 #[test]
 fn hooked_functions_jump_only_to_their_own_instructions() {
-    let host = image(HOST);
     let module = image(BUNDLED);
-    let index = FunctionIndex::build(&host.file()).expect("host indexes");
-    let greet = function(&host, &index, "greet");
-    let mut editor = Editor::new(host.file());
-    let id = editor
-        .link(&index, &module.file(), &[])
-        .expect("module links");
+    let mut editor = host();
+    let greet = function(&editor, "greet");
+    let id = editor.link(&module.file(), &[]).expect("module links");
     for kind in [HookKind::Before, HookKind::After, HookKind::Replace] {
         editor
-            .hook(&index, greet, kind, &exercising(id, kind))
+            .hook(greet, kind, &exercising(id, kind))
             .unwrap_or_else(|error| panic!("{kind:?} hook applies: {error}"));
     }
     let hooked = image(&written(&editor));

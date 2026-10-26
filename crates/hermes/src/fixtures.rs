@@ -5,7 +5,7 @@
 
 use reseam_storage::Bytes;
 
-use crate::{Editor, FunctionId, FunctionIndex, HermesImage};
+use crate::{Editor, FunctionId, HermesImage};
 
 /// An app bundle whose global code defines Metro modules.
 pub(crate) const HOST: &[u8] = include_bytes!("../fixtures/host.hbc");
@@ -18,14 +18,17 @@ pub(crate) fn image(bytes: &[u8]) -> HermesImage {
     HermesImage::parse(Bytes::from_slice(bytes)).expect("fixture parses")
 }
 
+pub(crate) fn host() -> Editor {
+    Editor::new(Bytes::from_slice(HOST)).expect("host fixture parses")
+}
+
 /// The host function named `name`.
-pub(crate) fn function(host: &HermesImage, index: &FunctionIndex, name: &str) -> FunctionId {
-    index
-        .find_function(&host.file(), Some(name), &[], None)
+pub(crate) fn function(host: &Editor, name: &str) -> FunctionId {
+    host.find_function(Some(name), &[], None)
         .expect("fixture function exists")
 }
 
-pub(crate) fn written(editor: &Editor<'_>) -> Vec<u8> {
+pub(crate) fn written(editor: &Editor) -> Vec<u8> {
     let mut output = Vec::new();
     editor.write(&mut output).expect("file writes");
     output

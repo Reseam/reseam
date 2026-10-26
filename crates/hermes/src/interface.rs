@@ -209,8 +209,8 @@ impl Frame {
 
 #[cfg(test)]
 mod tests {
-    use crate::fixtures::{BUNDLED, HOST, LITERALS, function, image};
-    use crate::{Code, Editor, FunctionIndex, HermesError, HookKind, Operand, SlotId, Statement};
+    use crate::fixtures::{BUNDLED, LITERALS, function, host, image};
+    use crate::{Code, HermesError, HookKind, Operand, SlotId, Statement};
 
     fn calling(module: crate::ModuleId, export: &str) -> Code {
         Code {
@@ -225,26 +225,22 @@ mod tests {
 
     #[test]
     fn hooks_reach_the_exports_link_returns() {
-        let host = image(HOST);
-        let index = FunctionIndex::build(&host.file()).expect("host indexes");
-        let greet = function(&host, &index, "greet");
+        let greet = function(&host(), "greet");
         let modules: [(&[u8], &[&str]); 2] = [
             (LITERALS, &["rows", "render"]),
             (BUNDLED, &["isEnabled", "withProperty"]),
         ];
         for (bytes, exports) in modules {
             let module = image(bytes);
-            let mut editor = Editor::new(host.file());
-            let id = editor
-                .link(&index, &module.file(), &[])
-                .expect("module links");
+            let mut editor = host();
+            let id = editor.link(&module.file(), &[]).expect("module links");
             for export in exports {
                 editor
-                    .hook(&index, greet, HookKind::Before, &calling(id, export))
+                    .hook(greet, HookKind::Before, &calling(id, export))
                     .unwrap_or_else(|error| panic!("{export} is exported: {error}"));
             }
             assert!(matches!(
-                editor.hook(&index, greet, HookKind::Before, &calling(id, "missing")),
+                editor.hook(greet, HookKind::Before, &calling(id, "missing")),
                 Err(HermesError::Unsupported(_))
             ));
         }

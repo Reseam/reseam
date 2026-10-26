@@ -1,14 +1,17 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use super::declared_export;
+use crate::HermesFile;
 use crate::code::{Code, Condition, HookKind, Operand, Place, SlotId, Statement};
-use crate::edit::Editor;
+use crate::edit::Edits;
 use crate::error::{HermesError, Result};
 use crate::string::{StringId, StringKind};
 
 /// Checks a hook's code and resolves its names to the file's strings.
 pub(super) struct Resolver<'e, 'a> {
-    pub(super) editor: &'e mut Editor<'a>,
+    pub(super) file: &'e HermesFile<'a>,
+    pub(super) edits: &'e mut Edits,
     pub(super) kind: HookKind,
     pub(super) slots: u32,
     pub(super) calls_exports: bool,
@@ -57,7 +60,7 @@ impl Resolver<'_, '_> {
                 Statement::Call {
                     into: *into,
                     module: *module,
-                    export: self.editor.declared_export(*module, export)?,
+                    export: declared_export(self.file, self.edits, *module, export)?,
                     arguments: arguments
                         .iter()
                         .map(|argument| self.operand(argument))
@@ -115,7 +118,9 @@ impl Resolver<'_, '_> {
             Operand::Null => Operand::Null,
             Operand::Bool(value) => Operand::Bool(*value),
             Operand::Int(value) => Operand::Int(*value),
-            Operand::Text(text) => Operand::Text(self.editor.intern(text, StringKind::String)?),
+            Operand::Text(text) => {
+                Operand::Text(self.edits.intern(self.file, text, StringKind::String)?)
+            }
         })
     }
 

@@ -4,8 +4,7 @@
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 
-use crate::error::{HermesError, Result, invalid};
-use crate::layout::FOOTER_SIZE;
+use crate::error::{HermesError, Result};
 use crate::opcode::IdKind;
 use crate::string::{StringId, fingerprint};
 use crate::switch::switch_table;
@@ -16,8 +15,7 @@ use crate::{FunctionId, HermesFile};
 /// functions use inverted postings; each function is decoded once, in parallel,
 /// and its instructions are not kept. Edits and linked modules do not change app
 /// identities or the indexed original bodies.
-pub struct FunctionIndex {
-    base_hash: [u8; FOOTER_SIZE],
+pub(crate) struct FunctionIndex {
     texts: FxHashMap<u64, Vec<StringId>>,
     names: FxHashMap<StringId, Vec<FunctionId>>,
     strings: FxHashMap<StringId, Vec<FunctionId>>,
@@ -67,13 +65,12 @@ impl FunctionIndex {
     /// Indexes names, declared parameter counts, instruction string references
     /// (including string-switch keys) and function references. Invalid
     /// instructions or IDs fail construction; file bytes are not kept.
-    pub fn build(file: &HermesFile<'_>) -> Result<Self> {
+    pub(crate) fn build(file: &HermesFile<'_>) -> Result<Self> {
         let scans = (0..file.function_count())
             .into_par_iter()
             .map(|id| Scan::read(file, FunctionId(id)))
             .collect::<Result<Vec<_>>>()?;
         let mut index = Self {
-            base_hash: file.footer(),
             texts: FxHashMap::default(),
             names: FxHashMap::default(),
             strings: FxHashMap::default(),
@@ -118,15 +115,6 @@ impl FunctionIndex {
         self.creators.get(&function).map_or(&[], Vec::as_slice)
     }
 
-    /// Fails unless this index was built from `file`.
-    pub(crate) fn check(&self, file: &HermesFile<'_>) -> Result<()> {
-        if file.footer() == self.base_hash {
-            Ok(())
-        } else {
-            Err(invalid(0, "function index belongs to another source file"))
-        }
-    }
-
     fn candidates(
         &self,
         file: &HermesFile<'_>,
@@ -151,18 +139,14 @@ impl FunctionIndex {
         Ok(candidates)
     }
 
-    /// Returns exactly one original app function matching every constraint.
-    /// Matching is exact and case-sensitive; parameter counts exclude `this`.
-    /// Zero or multiple matches report the query and count. A different source
-    /// footer is an error. Queries decode no bytecode and allocate no file data.
-    pub fn find_function(
+    /// The one original app function matching every constraint. Queries decode no bytecode.
+    pub(crate) fn find_function(
         &self,
         file: &HermesFile<'_>,
         name: Option<&str>,
         strings: &[&str],
         parameters: Option<u32>,
     ) -> Result<FunctionId> {
-        self.check(file)?;
         let mut constraints = Vec::with_capacity(strings.len() + usize::from(name.is_some()));
         if let Some(name) = name {
             constraints.push(self.candidates(file, name, &self.names)?);
