@@ -45,7 +45,7 @@ The binary is `target/release/reseam`. Cross-compiling for Windows from Linux is
 
 ## Logs
 
-Logs go to stderr. By default you see progress, the result of each patch, and errors. Set `RUST_LOG` for more:
+Logs go to stderr. By default you see progress, the result of each patch, warnings, and errors. Set `RUST_LOG` for more:
 
 ```bash
 RUST_LOG=debug reseam patch app.apk --bundle patches.reseam --trust <key>

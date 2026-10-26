@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::collections::HashSet;
-use std::path::Path;
 
 use anyhow::Result;
 use reseam_model::{Compatibility, InspectRequest, PatchMetadata};
@@ -11,7 +10,10 @@ use reseam_sdk::inspect;
 use tracing::info;
 
 use super::create_parent;
-use crate::app::{BundleKeygenCommand, BundleListCommand, BundlePackCommand, BundlePubkeyCommand};
+use crate::app::{
+    BundleKeygenCommand, BundleListCommand, BundleManifestCommand, BundlePackCommand,
+    BundlePubkeyCommand,
+};
 
 pub fn run_bundle_list(command: &BundleListCommand) -> Result<()> {
     let response = inspect(&InspectRequest {
@@ -174,7 +176,7 @@ pub fn run_bundle_pack(command: &BundlePackCommand) -> Result<()> {
     Ok(())
 }
 
-pub fn run_bundle_manifest(path: &Path) -> Result<()> {
-    println!("{}", serde_json::to_string(&manifest_info(path)?)?);
+pub fn run_bundle_manifest(command: &BundleManifestCommand) -> Result<()> {
+    println!("{}", serde_json::to_string(&manifest_info(&command.path)?)?);
     Ok(())
 }

@@ -35,7 +35,7 @@ fn main() -> Result<()> {
             BundleCommands::Keygen(command) => run_bundle_keygen(&command),
             BundleCommands::Pubkey(command) => run_bundle_pubkey(&command),
             BundleCommands::Pack(command) => run_bundle_pack(&command),
-            BundleCommands::Manifest { path } => run_bundle_manifest(&path),
+            BundleCommands::Manifest(command) => run_bundle_manifest(&command),
             BundleCommands::List(command) => run_bundle_list(&command),
         },
         Commands::Release { command } => match command {
