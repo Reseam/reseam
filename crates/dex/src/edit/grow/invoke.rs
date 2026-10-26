@@ -1,10 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::{
-    Allocation, DexFile, Instruction, InstructionExpansion, RegisterKind, Result, invalid, kind,
-    move_register,
-};
+use super::allocation::Allocation;
+use super::widen::move_register;
+use crate::DexFile;
+use crate::edit::relocate::InstructionExpansion;
+use crate::error::{Result, invalid};
+use crate::instruction::Instruction;
+use crate::instruction::operands::RegisterKind;
 
 pub(super) fn lower_invoke(
     expansion: &mut InstructionExpansion,
@@ -148,7 +151,7 @@ fn prototype_arguments(
         prototype
             .parameters
             .into_iter()
-            .map(|param| kind(&dex.type_descriptor(param))),
+            .map(|param| RegisterKind::of(&dex.type_descriptor(param))),
     );
     arguments
 }
@@ -166,7 +169,7 @@ fn invoke_arguments(insn: &Instruction, words: usize, dex: &DexFile) -> Result<V
             let element = descriptor.strip_prefix('[').ok_or_else(|| {
                 invalid("register growth", "filled-new-array type is not an array")
             })?;
-            vec![kind(element); words]
+            vec![RegisterKind::of(element); words]
         }
         InvokePolymorphic { proto, .. } | InvokePolymorphicRange { proto, .. } => {
             prototype_arguments(dex, dex.proto(*proto), Receiver::Present)

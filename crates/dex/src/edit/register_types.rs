@@ -19,6 +19,8 @@ pub(crate) struct RegisterTypes {
 }
 
 impl RegisterTypes {
+    /// The type bits of each queried `(instruction, register)` on entry to
+    /// that instruction, joined over every path that reaches it.
     pub fn new(
         code: &CodeItem,
         incoming: &[RegisterKind],
@@ -26,99 +28,20 @@ impl RegisterTypes {
     ) -> Result<Self> {
         let graph = ControlFlow::new(code)
             .ok_or_else(|| invalid("register types", "invalid control flow"))?;
-        let count = code.instructions.len();
         let mut queried = queries
             .iter()
             .map(|&site| (site, UNDEFINED))
             .collect::<rustc_hash::FxHashMap<_, _>>();
-        if count == 0 {
+        if code.instructions.is_empty() {
             return Ok(Self { queried });
         }
-        let base = code
-            .registers_size
-            .checked_sub(code.ins_size)
-            .ok_or_else(|| invalid("register types", "parameters exceed frame"))?;
-        let mut entry = vec![UNDEFINED; code.registers_size as usize];
-        let mut register = base as usize;
-        for &kind in incoming {
-            write(&mut entry, register, kind)?;
-            register += kind.words() as usize;
-        }
-        if register != entry.len() {
-            return Err(invalid(
-                "register types",
-                "parameter width does not match ins_size",
-            ));
-        }
-        let (starts, block_of) = block_layout(&graph, count);
-        let mut before = vec![None; starts.len() - 1];
-        before[0] = Some(entry);
-        let mut queue = std::collections::VecDeque::from([0]);
-        let mut queued = vec![false; before.len()];
-        queued[0] = true;
-        while let Some(block) = queue.pop_front() {
-            queued[block] = false;
-            let mut state = before[block]
-                .as_ref()
-                .expect("queued blocks have an entry frame")
-                .clone();
-            for index in starts[block]..starts[block + 1] {
-                for &handler in graph.handlers(index) {
-                    propagate(
-                        block_of[handler as usize],
-                        &state,
-                        &mut before,
-                        &mut queue,
-                        &mut queued,
-                    );
-                }
-                transfer(&code.instructions[index], &mut state)?;
-                if index + 1 == starts[block + 1] {
-                    for &next in graph.successors(index) {
-                        propagate(
-                            block_of[next as usize],
-                            &state,
-                            &mut before,
-                            &mut queue,
-                            &mut queued,
-                        );
-                    }
-                }
-            }
-        }
+        let blocks = Blocks::new(&graph, code.instructions.len());
+        let before = blocks.fixpoint(code, &graph, entry_frame(code, incoming)?)?;
         let mut sites = queries.to_vec();
         sites.sort_unstable();
-        for (block, bounds) in starts.windows(2).enumerate() {
-            let Some(mut state) = before[block].take() else {
-                continue;
-            };
-            let first = sites.partition_point(|&(index, _)| index < bounds[0]);
-            let last = sites.partition_point(|&(index, _)| index < bounds[1]);
-            let mut requested = sites[first..last].iter().peekable();
-            if requested.peek().is_none() {
-                continue;
-            }
-            for (index, instruction) in code
-                .instructions
-                .iter()
-                .enumerate()
-                .take(bounds[1])
-                .skip(bounds[0])
-            {
-                while let Some(&&(site, register)) = requested.peek() {
-                    if site != index {
-                        break;
-                    }
-                    queried.insert(
-                        (site, register),
-                        state.get(register as usize).copied().unwrap_or(UNDEFINED),
-                    );
-                    requested.next();
-                }
-                if requested.peek().is_none() {
-                    break;
-                }
-                transfer(instruction, &mut state)?;
+        for (block, state) in before.into_iter().enumerate() {
+            if let Some(state) = state {
+                blocks.answer(code, block, state, &sites, &mut queried)?;
             }
         }
         Ok(Self { queried })
@@ -143,34 +66,129 @@ impl RegisterTypes {
     }
 }
 
-fn block_layout(graph: &ControlFlow, count: usize) -> (Vec<usize>, Vec<usize>) {
-    let mut leaders = vec![false; count];
-    leaders[0] = true;
-    for index in 0..count {
-        let normal = graph.successors(index);
-        if normal != [index as u32 + 1] {
-            for &target in normal {
-                leaders[target as usize] = true;
+/// The frame on entry: undefined locals, then the incoming arguments.
+fn entry_frame(code: &CodeItem, incoming: &[RegisterKind]) -> Result<Vec<u8>> {
+    let base = code
+        .registers_size
+        .checked_sub(code.ins_size)
+        .ok_or_else(|| invalid("register types", "parameters exceed frame"))?;
+    let mut entry = vec![UNDEFINED; usize::from(code.registers_size)];
+    let mut register = usize::from(base);
+    for &kind in incoming {
+        write(&mut entry, register, kind)?;
+        register += usize::from(kind.words());
+    }
+    if register != entry.len() {
+        return Err(invalid(
+            "register types",
+            "parameter width does not match ins_size",
+        ));
+    }
+    Ok(entry)
+}
+
+/// Basic blocks: where each starts, then the end of the body, and the block
+/// of each instruction.
+struct Blocks {
+    starts: Vec<usize>,
+    block_of: Vec<usize>,
+}
+
+impl Blocks {
+    fn new(graph: &ControlFlow, count: usize) -> Self {
+        let mut leaders = vec![false; count];
+        leaders[0] = true;
+        for index in 0..count {
+            let normal = graph.successors(index);
+            if normal != [index as u32 + 1] {
+                for &target in normal {
+                    leaders[target as usize] = true;
+                }
+                if index + 1 < count {
+                    leaders[index + 1] = true;
+                }
             }
-            if index + 1 < count {
-                leaders[index + 1] = true;
+            for &handler in graph.handlers(index) {
+                leaders[handler as usize] = true;
             }
         }
-        for &handler in graph.handlers(index) {
-            leaders[handler as usize] = true;
+        let mut starts: Vec<_> = leaders
+            .iter()
+            .enumerate()
+            .filter_map(|(index, &leader)| leader.then_some(index))
+            .collect();
+        starts.push(count);
+        let mut block_of = vec![0; count];
+        for (block, bounds) in starts.windows(2).enumerate() {
+            block_of[bounds[0]..bounds[1]].fill(block);
         }
+        Self { starts, block_of }
     }
-    let mut starts: Vec<_> = leaders
-        .iter()
-        .enumerate()
-        .filter_map(|(index, &leader)| leader.then_some(index))
-        .collect();
-    starts.push(count);
-    let mut block_of = vec![0; count];
-    for (block, bounds) in starts.windows(2).enumerate() {
-        block_of[bounds[0]..bounds[1]].fill(block);
+
+    /// The frame on entry to each block, `None` for unreachable ones.
+    fn fixpoint(
+        &self,
+        code: &CodeItem,
+        graph: &ControlFlow,
+        entry: Vec<u8>,
+    ) -> Result<Vec<Option<Vec<u8>>>> {
+        let mut before = vec![None; self.starts.len() - 1];
+        before[0] = Some(entry);
+        let mut queue = std::collections::VecDeque::from([0]);
+        let mut queued = vec![false; before.len()];
+        queued[0] = true;
+        while let Some(block) = queue.pop_front() {
+            queued[block] = false;
+            let mut state = before[block]
+                .clone()
+                .expect("queued blocks have an entry frame");
+            let end = self.starts[block + 1];
+            for index in self.starts[block]..end {
+                for &handler in graph.handlers(index) {
+                    let target = self.block_of[handler as usize];
+                    propagate(target, &state, &mut before, &mut queue, &mut queued);
+                }
+                transfer(&code.instructions[index], &mut state)?;
+            }
+            for &next in graph.successors(end - 1) {
+                let target = self.block_of[next as usize];
+                propagate(target, &state, &mut before, &mut queue, &mut queued);
+            }
+        }
+        Ok(before)
     }
-    (starts, block_of)
+
+    /// Records the queried registers of `block`, stepping its frame forward
+    /// to each queried instruction.
+    fn answer(
+        &self,
+        code: &CodeItem,
+        block: usize,
+        mut state: Vec<u8>,
+        sites: &[(usize, u16)],
+        queried: &mut rustc_hash::FxHashMap<(usize, u16), u8>,
+    ) -> Result<()> {
+        let (start, end) = (self.starts[block], self.starts[block + 1]);
+        let first = sites.partition_point(|&(index, _)| index < start);
+        let last = sites.partition_point(|&(index, _)| index < end);
+        let mut requested = sites[first..last].iter().peekable();
+        for index in start..end {
+            while let Some(&(site, register)) = requested.next_if(|&&(site, _)| site == index) {
+                queried.insert(
+                    (site, register),
+                    state
+                        .get(usize::from(register))
+                        .copied()
+                        .unwrap_or(UNDEFINED),
+                );
+            }
+            if requested.peek().is_none() {
+                break;
+            }
+            transfer(&code.instructions[index], &mut state)?;
+        }
+        Ok(())
+    }
 }
 
 fn propagate(

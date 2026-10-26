@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::{Allocation, Instruction};
+use super::allocation::Allocation;
+use crate::instruction::Instruction;
+use crate::instruction::operands::RegisterKind;
 
+/// The encoding of `insn` that reaches its operands once they shift.
 pub(super) fn widen(insn: &Instruction, allocation: &Allocation<'_>) -> Instruction {
     use Instruction::{
         Const4, Const16, Move, Move16, MoveFrom16, MoveObject, MoveObject16, MoveObjectFrom16,
@@ -83,4 +86,50 @@ pub(super) fn widen(insn: &Instruction, allocation: &Allocation<'_>) -> Instruct
         DivDouble2Addr => DivDouble,
         RemDouble2Addr => RemDouble,
     )
+}
+
+/// The smallest encoding of a 16-bit move, which widening and staging can leave behind.
+pub(super) fn narrowed(instruction: Instruction) -> Instruction {
+    match instruction {
+        Instruction::Move16 { dest, src } => move_register(dest, src, RegisterKind::Value),
+        Instruction::MoveObject16 { dest, src } => move_register(dest, src, RegisterKind::Object),
+        Instruction::MoveWide16 { dest, src } => move_register(dest, src, RegisterKind::Wide),
+        instruction => instruction,
+    }
+}
+
+pub(super) fn move_register(dest: u16, src: u16, kind: RegisterKind) -> Instruction {
+    use Instruction::{
+        Move, Move16, MoveFrom16, MoveObject, MoveObject16, MoveObjectFrom16, MoveWide, MoveWide16,
+        MoveWideFrom16,
+    };
+    match kind {
+        RegisterKind::Wide if dest <= 15 && src <= 15 => MoveWide {
+            dest: dest as u8,
+            src: src as u8,
+        },
+        RegisterKind::Wide if dest <= 255 => MoveWideFrom16 {
+            dest: dest as u8,
+            src,
+        },
+        RegisterKind::Wide => MoveWide16 { dest, src },
+        RegisterKind::Object if dest <= 15 && src <= 15 => MoveObject {
+            dest: dest as u8,
+            src: src as u8,
+        },
+        RegisterKind::Object if dest <= 255 => MoveObjectFrom16 {
+            dest: dest as u8,
+            src,
+        },
+        RegisterKind::Object => MoveObject16 { dest, src },
+        _ if dest <= 15 && src <= 15 => Move {
+            dest: dest as u8,
+            src: src as u8,
+        },
+        _ if dest <= 255 => MoveFrom16 {
+            dest: dest as u8,
+            src,
+        },
+        _ => Move16 { dest, src },
+    }
 }

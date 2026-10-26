@@ -19,6 +19,15 @@ impl RegisterKind {
     pub fn words(self) -> u16 {
         if self == Self::Wide { 2 } else { 1 }
     }
+
+    /// The kind of a value of the type a descriptor names.
+    pub(crate) fn of(descriptor: &str) -> Self {
+        match descriptor.as_bytes().first() {
+            Some(b'J' | b'D') => Self::Wide,
+            Some(b'L' | b'[') => Self::Object,
+            _ => Self::Value,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

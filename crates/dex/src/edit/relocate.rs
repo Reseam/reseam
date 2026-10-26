@@ -2,17 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 mod layout;
+mod metadata;
 
-use layout::{
-    RewriteLayout, branch_destinations, emit_entries, relocated_payloads, stabilized_layout,
-};
+use layout::{Rewrite, RewriteLayout};
+use metadata::Metadata;
 use std::collections::BTreeMap;
 
 use crate::error::{Result, invalid};
 use crate::instruction::Instruction;
 use crate::instruction::branch::Addresses;
 use crate::model::code::CodeItem;
-use crate::model::debug::{DebugBytecode, DebugInfo};
 
 /// A branch authored in a partial instruction block can target another boundary
 /// of that block, or retain its displacement into the surrounding method.
@@ -79,6 +78,8 @@ pub(super) struct RewriteEntry {
     pub instruction: Option<Instruction>,
     pub after: Vec<Instruction>,
     pub target: BoundaryTarget,
+    /// The condition reaches its target through a goto/32 it jumps over.
+    pub long_condition: bool,
 }
 
 impl From<InstructionExpansion> for RewriteEntry {
@@ -88,6 +89,7 @@ impl From<InstructionExpansion> for RewriteEntry {
             instruction: Some(value.instruction),
             after: value.after,
             target: BoundaryTarget::Prefix,
+            long_condition: false,
         }
     }
 }
@@ -147,6 +149,7 @@ impl CodeItem {
                 instruction: Some(instruction),
                 after: Vec::new(),
                 target: BoundaryTarget::Prefix,
+                long_condition: false,
             })
             .collect();
         let mapping = self.relocate_with_offsets(expansions, Vec::new(), targets, &original)?;
@@ -175,134 +178,26 @@ impl CodeItem {
 
     fn relocate_with_offsets(
         &mut self,
-        mut expansions: Vec<RewriteEntry>,
+        expansions: Vec<RewriteEntry>,
         tail: Vec<Instruction>,
         targets: &BTreeMap<usize, BranchDestination>,
         original: &Addresses,
     ) -> Result<InstructionMap> {
-        let branch_targets = branch_destinations(&expansions, targets, original)?;
-        let mut long_condition = vec![false; expansions.len()];
-        let layout =
-            stabilized_layout(&mut expansions, &branch_targets, &mut long_condition, &tail)?;
-        let relocate = |address| {
-            original
-                .binary_search(&address)
-                .map(|index| layout.starts[index])
-                .map_err(|_| {
-                    invalid(
-                        "instruction rewrite",
-                        format!("metadata address {address} is not an instruction boundary (code ends at {})", original.last().expect("offsets include the end boundary")),
-                    )
-                })
-        };
-        let payload_targets = relocated_payloads(&expansions, original, &layout)?;
-        let instructions = emit_entries(
-            expansions,
-            tail,
-            original,
-            &layout,
-            &branch_targets,
-            &long_condition,
-            payload_targets,
-        )?;
-        let mut tries = self.tries.clone();
-        for protected in &mut tries {
-            let old_end = protected
-                .start_addr
-                .checked_add(u32::from(protected.insn_count))
-                .ok_or_else(|| invalid("instruction rewrite", "try range overflow"))?;
-            let end = relocate(old_end)?;
-            protected.start_addr = relocate(protected.start_addr)?;
-            protected.insn_count = u16::try_from(end - protected.start_addr).map_err(|_| {
-                invalid(
-                    "instruction rewrite",
-                    "expanded try range exceeds 65535 code units",
-                )
-            })?;
-        }
-        let mut handlers = self.catch_handlers.clone();
-        for handler in &mut handlers {
-            for catch in &mut handler.typed_catches {
-                catch.addr = relocate(catch.addr)?;
-            }
-            handler.catch_all_addr = handler.catch_all_addr.map(relocate).transpose()?;
-        }
-        let debug_info = self
-            .debug_info
-            .as_ref()
-            .map(|metadata| {
-                let mut metadata = metadata.clone();
-                let debug = metadata.resolve_mut()?;
-                *debug = relocate_debug(debug, &|address| {
-                    relocate_debug_address(original, &layout, address)
-                })?;
-                Ok::<_, crate::DexError>(metadata)
-            })
-            .transpose()?;
+        let mut rewrite = Rewrite::new(expansions, tail, targets, original)?;
+        let layout = rewrite.stabilize()?;
+        let metadata = Metadata::relocated(self, original, &layout)?;
+        let instructions = rewrite.emit(&layout)?;
         self.instructions = instructions;
         self.outs_size = self.compute_outs_size();
-        self.tries = tries;
-        self.catch_handlers = handlers;
-        self.debug_info = debug_info;
+        self.tries = metadata.tries;
+        self.catch_handlers = metadata.handlers;
+        self.debug_info = metadata.debug_info;
         Ok(InstructionMap {
             starts: layout.entries,
             instructions: layout.instruction_indices,
             ends: layout.ends,
         })
     }
-}
-
-fn relocate_debug_address(
-    original: &Addresses,
-    layout: &RewriteLayout,
-    address: u32,
-) -> Result<u32> {
-    let index = original.partition_point(|&boundary| boundary <= address) - 1;
-    let old_start = original[index];
-    let new_start = if address == old_start {
-        layout.starts[index]
-    } else {
-        layout.bodies.get(index).copied().unwrap_or(layout.end)
-    };
-    let within = address - old_start;
-    let within = if let Some(&next) = layout.starts.get(index + 1) {
-        within.min(next.saturating_sub(new_start))
-    } else {
-        within
-    };
-    new_start
-        .checked_add(within)
-        .ok_or_else(|| invalid("debug relocation", "address overflow"))
-}
-
-fn relocate_debug(debug: &DebugInfo, relocate: &impl Fn(u32) -> Result<u32>) -> Result<DebugInfo> {
-    let mut debug = debug.clone();
-    let mut old_address = 0u32;
-    let mut new_address = relocate(0)?;
-    for bytecode in &mut debug.bytecodes {
-        let advance = match bytecode {
-            DebugBytecode::AdvancePc { advance } => advance,
-            DebugBytecode::SpecialAdvance { pc_advance, .. } => pc_advance,
-            _ => continue,
-        };
-        old_address = old_address
-            .checked_add(*advance)
-            .ok_or_else(|| invalid("debug relocation", "address overflow"))?;
-        let address = relocate(old_address)?;
-        *advance = address
-            .checked_sub(new_address)
-            .ok_or_else(|| invalid("debug relocation", "address moved backwards"))?;
-        new_address = address;
-    }
-    if relocate(0)? != 0 {
-        debug.bytecodes.insert(
-            0,
-            DebugBytecode::AdvancePc {
-                advance: relocate(0)?,
-            },
-        );
-    }
-    Ok(debug)
 }
 
 fn units(instructions: &[Instruction]) -> u32 {

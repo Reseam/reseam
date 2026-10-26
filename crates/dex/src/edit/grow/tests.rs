@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::*;
+use crate::instruction::Instruction;
 use crate::{CatchHandler, DexHeader, DexVersion, TryItem};
 
 fn dex() -> DexFile {
