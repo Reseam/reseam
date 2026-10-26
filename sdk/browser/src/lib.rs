@@ -23,7 +23,6 @@ unsafe extern "C" {
     fn reseam_buffer_alloc(length: u32, width: u32) -> *mut Buffer;
 }
 
-#[cfg(target_os = "wasi")]
 #[link(wasm_import_module = "reseam_host")]
 unsafe extern "C" {
     fn event(ptr: *const u8, length: usize);
