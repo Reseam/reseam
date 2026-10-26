@@ -6,6 +6,7 @@ use super::encoded_value::write_encoded_array;
 use super::plan::WritePlan;
 use super::sink::DexSink;
 use crate::error::Result;
+use crate::model::Pool;
 use crate::model::encoded_value::EncodedValue;
 use crate::model::map::{MapItem, TYPE_ENCODED_ARRAY_ITEM};
 
@@ -35,7 +36,7 @@ pub(crate) fn write_encoded_arrays<S: DexSink>(
             encoded_array_count += 1;
         }
     }
-    let mut call_site_data_offsets: Vec<u32> = Vec::with_capacity(plan.call_site_count());
+    let mut call_site_data_offsets: Vec<u32> = Vec::with_capacity(plan.count(Pool::CallSite));
     for cs in plan.call_sites() {
         let cs = cs?;
         let off = w.pos();

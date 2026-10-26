@@ -4,7 +4,7 @@
 use super::{ClassTable, DexFile, FileTable, HiddenApiData, IdTable, StringPool};
 use crate::model::method_handle::{CallSiteItem, MethodHandle};
 use crate::model::{
-    FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx,
+    FieldId, FieldIdx, MethodId, MethodIdx, PerPool, Pool, ProtoIdx, Prototype, StringIdx, TypeIdx,
 };
 
 impl DexFile {
@@ -78,5 +78,28 @@ impl DexFile {
 
     pub fn method_id(&self, idx: MethodIdx) -> MethodId {
         self.methods.get(idx.0 as usize)
+    }
+
+    pub(crate) fn pool_len(&self, pool: Pool) -> usize {
+        match pool {
+            Pool::String => self.strings.len(),
+            Pool::Type => self.types.len(),
+            Pool::Proto => self.prototypes.len(),
+            Pool::Field => self.fields.len(),
+            Pool::Method => self.methods.len(),
+            Pool::CallSite => self.call_sites.len(),
+            Pool::MethodHandle => self.method_handles.len(),
+        }
+    }
+
+    /// Drops the entries appended to each pool since it held `lens[pool]`.
+    pub(super) fn truncate_pools(&mut self, lens: &PerPool<usize>) {
+        self.strings.truncate(lens[Pool::String]);
+        self.types.truncate(lens[Pool::Type]);
+        self.prototypes.truncate(lens[Pool::Proto]);
+        self.fields.truncate(lens[Pool::Field]);
+        self.methods.truncate(lens[Pool::Method]);
+        self.call_sites.truncate(lens[Pool::CallSite]);
+        self.method_handles.truncate(lens[Pool::MethodHandle]);
     }
 }

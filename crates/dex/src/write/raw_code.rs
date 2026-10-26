@@ -12,7 +12,7 @@ use crate::read::debug::walk_debug_info;
 pub(crate) fn copy_code_item(
     buf: &[u8],
     code_off: u32,
-    remap: Option<&Remap<'_>>,
+    remap: Option<&Remap>,
     opts: ParseOptions,
     out: &mut Vec<u8>,
 ) -> Result<bool> {
@@ -105,7 +105,7 @@ pub(crate) fn copy_code_item(
     Ok(true)
 }
 
-fn remap_operands(opcode: u8, remap: &Remap<'_>, insn: &mut [u8]) -> Result<bool> {
+fn remap_operands(opcode: u8, remap: &Remap, insn: &mut [u8]) -> Result<bool> {
     for operand in index_operands(opcode) {
         let at = operand.at;
         if matches!(operand.width, crate::instruction::stream::IndexWidth::U32) {
@@ -125,7 +125,7 @@ fn remap_operands(opcode: u8, remap: &Remap<'_>, insn: &mut [u8]) -> Result<bool
 pub(crate) fn copy_debug_info(
     buf: &[u8],
     off: u32,
-    remap: Option<&Remap<'_>>,
+    remap: Option<&Remap>,
     opts: ParseOptions,
     out: &mut Vec<u8>,
 ) -> Result<()> {
@@ -153,7 +153,7 @@ fn remap_instruction_stream(
     buf: &[u8],
     insns_start: usize,
     insns_size: usize,
-    remap: &Remap<'_>,
+    remap: &Remap,
     out: &mut [u8],
 ) -> Result<bool> {
     let mut widened = false;

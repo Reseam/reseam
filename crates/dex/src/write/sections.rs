@@ -6,6 +6,7 @@ use super::plan::WritePlan;
 use super::sink::DexSink;
 use super::{annotations, class_data, code, encoded_arrays, finalize, hidden_api, type_lists};
 use crate::error::Result;
+use crate::model::Pool;
 use crate::model::map::{MapItem, TYPE_HEADER_ITEM, TYPE_MAP_LIST, TYPE_STRING_DATA_ITEM};
 
 impl<S: DexSink> DexWriter<S> {
@@ -43,16 +44,16 @@ impl<S: DexSink> DexWriter<S> {
 
         let string_data_start = self.pos();
         self.string_data_offsets.clear();
-        for i in 0..plan.string_count() {
+        for i in 0..plan.count(Pool::String) {
             let off = self.pos();
             self.string_data_offsets.push(off);
             self.write(&plan.string_item(i));
         }
         dex.release_pages();
-        if plan.string_count() > 0 {
+        if plan.count(Pool::String) > 0 {
             self.map_entries.push(MapItem {
                 type_code: TYPE_STRING_DATA_ITEM,
-                size: plan.string_count() as u32,
+                size: plan.count(Pool::String) as u32,
                 offset: string_data_start,
             });
         }

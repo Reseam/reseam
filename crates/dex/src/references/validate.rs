@@ -36,7 +36,7 @@ impl<F: Fn(Pool, u32) -> Result<()>> RefSink for ReferenceValidator<F> {
 }
 
 pub(crate) fn check_index(dex: &DexFile, pool: Pool, index: u32) -> Result<()> {
-    let count = pool_len(dex, pool);
+    let count = dex.pool_len(pool);
     if index as usize >= count {
         return Err(crate::error::invalid(
             "pool reference",
@@ -131,18 +131,6 @@ pub(crate) fn validate_skeleton(dex: &DexFile, skeleton: &crate::ClassSkeleton) 
         validator.add(Pool::Method, method.method.0);
     }
     validator.finish()
-}
-
-pub(crate) fn pool_len(dex: &DexFile, pool: Pool) -> usize {
-    match pool {
-        Pool::String => dex.strings.len(),
-        Pool::Type => dex.types.len(),
-        Pool::Proto => dex.prototypes.len(),
-        Pool::Field => dex.fields.len(),
-        Pool::Method => dex.methods.len(),
-        Pool::CallSite => dex.call_sites.len(),
-        Pool::MethodHandle => dex.method_handles.len(),
-    }
 }
 
 /// Checks that the part's pools hold every class-level reference of its

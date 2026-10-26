@@ -6,6 +6,7 @@ use super::finalize::IdOffsets;
 use super::plan::WritePlan;
 use super::sink::DexSink;
 use crate::error::Result;
+use crate::model::Pool;
 use crate::model::map::{
     MapItem, TYPE_CALL_SITE_ID_ITEM, TYPE_CLASS_DEF_ITEM, TYPE_FIELD_ID_ITEM,
     TYPE_METHOD_HANDLE_ITEM, TYPE_METHOD_ID_ITEM, TYPE_PROTO_ID_ITEM, TYPE_STRING_ID_ITEM,
@@ -15,7 +16,7 @@ use crate::model::map::{
 impl<S: DexSink> DexWriter<S> {
     pub(super) fn write_ids(&mut self, plan: &WritePlan<'_>) -> Result<IdOffsets> {
         let string_ids_off = self.pos();
-        let string_count = plan.string_count() as u32;
+        let string_count = plan.count(Pool::String) as u32;
         for _ in 0..string_count {
             self.write_u32(0);
         }
@@ -28,7 +29,7 @@ impl<S: DexSink> DexWriter<S> {
         }
 
         let type_ids_off = self.pos();
-        let type_count = plan.type_count() as u32;
+        let type_count = plan.count(Pool::Type) as u32;
         for desc_idx in plan.types() {
             self.write_u32(desc_idx.0);
         }
@@ -41,7 +42,7 @@ impl<S: DexSink> DexWriter<S> {
         }
 
         let proto_ids_off = self.pos();
-        let proto_count = plan.proto_count() as u32;
+        let proto_count = plan.count(Pool::Proto) as u32;
         for _ in 0..proto_count {
             self.write_u32(0);
             self.write_u32(0);
@@ -56,7 +57,7 @@ impl<S: DexSink> DexWriter<S> {
         }
 
         let field_ids_off = self.pos();
-        let field_count = plan.field_count() as u32;
+        let field_count = plan.count(Pool::Field) as u32;
         for f in plan.fields() {
             self.write_u16(f.class.0 as u16);
             self.write_u16(f.type_.0 as u16);
@@ -71,7 +72,7 @@ impl<S: DexSink> DexWriter<S> {
         }
 
         let method_ids_off = self.pos();
-        let method_count = plan.method_count() as u32;
+        let method_count = plan.count(Pool::Method) as u32;
         for m in plan.methods() {
             self.write_u16(m.class.0 as u16);
             self.write_u16(u16::try_from(m.proto.0).map_err(|_| {
@@ -113,22 +114,22 @@ impl<S: DexSink> DexWriter<S> {
     }
 
     fn write_optional_ids(&mut self, plan: &WritePlan<'_>) -> Result<Option<u32>> {
-        let call_sites_off = if plan.call_site_count() == 0 {
+        let call_sites_off = if plan.count(Pool::CallSite) == 0 {
             None
         } else {
             let off = self.pos();
-            for _ in 0..plan.call_site_count() {
+            for _ in 0..plan.count(Pool::CallSite) {
                 self.write_u32(0);
             }
             self.map_entries.push(MapItem {
                 type_code: TYPE_CALL_SITE_ID_ITEM,
-                size: plan.call_site_count() as u32,
+                size: plan.count(Pool::CallSite) as u32,
                 offset: off,
             });
             Some(off)
         };
 
-        if plan.method_handle_count() != 0 {
+        if plan.count(Pool::MethodHandle) != 0 {
             let off = self.pos();
             for mh in plan.method_handles() {
                 let mh = mh?;
@@ -156,7 +157,7 @@ impl<S: DexSink> DexWriter<S> {
             }
             self.map_entries.push(MapItem {
                 type_code: TYPE_METHOD_HANDLE_ITEM,
-                size: plan.method_handle_count() as u32,
+                size: plan.count(Pool::MethodHandle) as u32,
                 offset: off,
             });
         }

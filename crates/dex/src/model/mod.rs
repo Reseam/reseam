@@ -15,8 +15,8 @@ pub(crate) mod map;
 pub(crate) mod metadata;
 pub(crate) mod method_handle;
 
-pub(crate) use ids::Pool;
 pub use ids::{
     CallSiteIdx, FieldId, FieldIdx, MethodHandleIdx, MethodId, MethodIdx, ProtoIdx, Prototype,
     StringIdx, TypeIdx, TypeList,
 };
+pub(crate) use ids::{PerPool, Pool};

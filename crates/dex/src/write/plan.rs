@@ -5,8 +5,6 @@ mod class;
 mod pools;
 mod written;
 
-pub(crate) use pools::PoolOrder;
-
 use std::borrow::Cow;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
@@ -14,13 +12,13 @@ use std::collections::BinaryHeap;
 use rustc_hash::FxHashMap;
 
 use super::part::DexPart;
-use super::remap::{Remap, RemapTables};
+use super::remap::Remap;
 use crate::error::{Result, invalid};
 use crate::file::DexFile;
-use crate::model::TypeList;
 use crate::model::annotation::AnnotationsDirectory;
 use crate::model::class::{ClassDef, ClassHeader};
 use crate::model::encoded_value::EncodedValue;
+use crate::model::{PerPool, TypeList};
 use crate::read::annotation::read_annotations_directory;
 use crate::read::class::RawClassDef;
 
@@ -33,8 +31,8 @@ pub(crate) struct WritePlan<'a> {
     pub dex: &'a DexFile,
     pub options: crate::options::WriteOptions,
     /// `None` when every pool is written whole and already in DEX sort order.
-    pub order: Option<PoolOrder>,
-    pub remap: Option<RemapTables>,
+    pub order: Option<PerPool<Vec<u32>>>,
+    pub remap: Option<Remap>,
     pub classes: Vec<WriteClass<'a>>,
     /// Source class-table index for each output class, including class-indexed metadata.
     pub class_order: Vec<usize>,
@@ -50,7 +48,7 @@ impl<'a> WritePlan<'a> {
         if let Some(part) = part {
             crate::references::validate_part(dex, part)?;
         }
-        let (order, remap) = pools::order_pools(dex, part);
+        let (order, remap) = pools::order_pools(dex, part).unzip();
 
         let mut plan = Self {
             dex,
@@ -162,8 +160,8 @@ impl<'a> WritePlan<'a> {
         Ok(order)
     }
 
-    pub(crate) fn remap(&self) -> Option<Remap<'_>> {
-        self.remap.as_ref().map(RemapTables::as_remap)
+    pub(crate) fn remap(&self) -> Option<&Remap> {
+        self.remap.as_ref()
     }
 
     pub(crate) fn raw_bytes(&self) -> &'a [u8] {

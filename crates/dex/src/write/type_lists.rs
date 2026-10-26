@@ -6,6 +6,7 @@ use super::intern::StreamInterner;
 use super::plan::WritePlan;
 use super::sink::DexSink;
 use crate::error::Result;
+use crate::model::Pool;
 use crate::model::map::{MapItem, TYPE_TYPE_LIST};
 
 pub(crate) fn write_type_lists<S: DexSink>(
@@ -17,7 +18,7 @@ pub(crate) fn write_type_lists<S: DexSink>(
     let mut lists = StreamInterner::default();
     let mut encoded = Vec::new();
 
-    let mut proto_param_offsets: Vec<u32> = Vec::with_capacity(plan.proto_count());
+    let mut proto_param_offsets: Vec<u32> = Vec::with_capacity(plan.count(Pool::Proto));
     for proto in plan.prototypes() {
         proto_param_offsets.push(intern_type_list(
             w,

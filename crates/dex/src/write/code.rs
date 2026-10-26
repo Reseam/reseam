@@ -52,11 +52,11 @@ pub(crate) fn write_code_and_debug<S: DexSink>(
     for class in &plan.classes {
         let layout = match class {
             WriteClass::Resident(class) => match &class.class_data {
-                Some(data) => Some(emitter.write_resident(w, data, remap.as_ref())?),
+                Some(data) => Some(emitter.write_resident(w, data, remap)?),
                 None => None,
             },
             WriteClass::Raw(raw) if raw.class_data_off != 0 => {
-                Some(emitter.write_deferred(w, plan, raw.class_data_off, remap.as_ref())?)
+                Some(emitter.write_deferred(w, plan, raw.class_data_off, remap)?)
             }
             WriteClass::Raw(_) => None,
         };
@@ -102,7 +102,7 @@ impl CodeEmitter {
         &mut self,
         w: &mut DexWriter<S>,
         data: &ClassData,
-        remap: Option<&Remap<'_>>,
+        remap: Option<&Remap>,
     ) -> Result<ClassLayout> {
         let mut layout = ClassLayout {
             static_fields: data.static_fields.clone(),
@@ -161,7 +161,7 @@ impl CodeEmitter {
         w: &mut DexWriter<S>,
         plan: &WritePlan<'_>,
         offset: u32,
-        remap: Option<&Remap<'_>>,
+        remap: Option<&Remap>,
     ) -> Result<ClassLayout> {
         let buf = plan.raw_bytes();
         let opts = plan.dex.parse_options;
@@ -226,7 +226,7 @@ impl CodeEmitter {
         w: &mut DexWriter<S>,
         source: &crate::DexBytes,
         code_off: u32,
-        remap: Option<&Remap<'_>>,
+        remap: Option<&Remap>,
         opts: ParseOptions,
     ) -> Result<u32> {
         let buf = source.as_bytes();

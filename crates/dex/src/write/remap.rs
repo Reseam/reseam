@@ -7,54 +7,26 @@ use crate::model::code::CodeItem;
 use crate::model::debug::{DebugBytecode, DebugInfo};
 use crate::model::encoded_value::EncodedValue;
 use crate::model::method_handle::{CallSiteItem, MethodHandle, MethodHandleMember};
-use crate::model::{FieldIdx, MethodHandleIdx, MethodIdx, Pool, ProtoIdx, StringIdx, TypeIdx};
+use crate::model::{
+    FieldIdx, MethodHandleIdx, MethodIdx, PerPool, Pool, ProtoIdx, StringIdx, TypeIdx,
+};
 
-pub(crate) struct RemapTables {
-    pub string: Vec<u32>,
-    pub type_: Vec<u32>,
-    pub proto: Vec<u32>,
-    pub field: Vec<u32>,
-    pub method: Vec<u32>,
-    pub call_site: Vec<u32>,
-    pub method_handle: Vec<u32>,
-}
+/// Where each source pool index lands in the written pools; `u32::MAX` marks
+/// an entry the output leaves out.
+pub(crate) struct Remap(PerPool<Vec<u32>>);
 
-impl RemapTables {
-    pub(crate) fn as_remap(&self) -> Remap<'_> {
-        Remap {
-            string: &self.string,
-            type_: &self.type_,
-            proto: &self.proto,
-            field: &self.field,
-            method: &self.method,
-            call_site: &self.call_site,
-            method_handle: &self.method_handle,
-        }
+impl Remap {
+    pub(crate) fn new(tables: PerPool<Vec<u32>>) -> Self {
+        Self(tables)
     }
-}
 
-pub(crate) struct Remap<'a> {
-    pub(crate) string: &'a [u32],
-    pub(crate) type_: &'a [u32],
-    pub(crate) proto: &'a [u32],
-    pub(crate) field: &'a [u32],
-    pub(crate) method: &'a [u32],
-    pub(crate) call_site: &'a [u32],
-    pub(crate) method_handle: &'a [u32],
-}
+    pub(crate) fn into_tables(self) -> PerPool<Vec<u32>> {
+        self.0
+    }
 
-impl Remap<'_> {
+    /// The written index of a source index the output must hold.
     pub(crate) fn index(&self, pool: Pool, idx: u32) -> crate::Result<u32> {
-        let table = match pool {
-            Pool::String => self.string,
-            Pool::Type => self.type_,
-            Pool::Proto => self.proto,
-            Pool::Field => self.field,
-            Pool::Method => self.method,
-            Pool::CallSite => self.call_site,
-            Pool::MethodHandle => self.method_handle,
-        };
-        table
+        self.0[pool]
             .get(idx as usize)
             .copied()
             .filter(|&mapped| mapped != u32::MAX)
@@ -66,28 +38,32 @@ impl Remap<'_> {
             })
     }
 
+    fn map(&self, pool: Pool, idx: u32) -> u32 {
+        self.0[pool][idx as usize]
+    }
+
     pub(crate) fn remap_string(&self, idx: StringIdx) -> StringIdx {
-        StringIdx(self.string[idx.0 as usize])
+        StringIdx(self.map(Pool::String, idx.0))
     }
 
     pub(crate) fn remap_type(&self, idx: TypeIdx) -> TypeIdx {
-        TypeIdx(self.type_[idx.0 as usize])
+        TypeIdx(self.map(Pool::Type, idx.0))
     }
 
     pub(crate) fn remap_proto(&self, idx: ProtoIdx) -> ProtoIdx {
-        ProtoIdx(self.proto[idx.0 as usize])
+        ProtoIdx(self.map(Pool::Proto, idx.0))
     }
 
     pub(crate) fn remap_field(&self, idx: FieldIdx) -> FieldIdx {
-        FieldIdx(self.field[idx.0 as usize])
+        FieldIdx(self.map(Pool::Field, idx.0))
     }
 
     pub(crate) fn remap_method(&self, idx: MethodIdx) -> MethodIdx {
-        MethodIdx(self.method[idx.0 as usize])
+        MethodIdx(self.map(Pool::Method, idx.0))
     }
 
     pub(crate) fn remap_method_handle_idx(&self, idx: MethodHandleIdx) -> MethodHandleIdx {
-        MethodHandleIdx(self.method_handle[idx.0 as usize])
+        MethodHandleIdx(self.map(Pool::MethodHandle, idx.0))
     }
 
     pub(crate) fn remap_opt_string(&self, idx: Option<StringIdx>) -> Option<StringIdx> {
@@ -253,15 +229,7 @@ impl Remap<'_> {
     }
 
     fn remap_instruction(&self, insn: &mut Instruction) {
-        insn.map_indices(|pool, index| match pool {
-            Pool::String => self.string[index as usize],
-            Pool::Type => self.type_[index as usize],
-            Pool::Field => self.field[index as usize],
-            Pool::Method => self.method[index as usize],
-            Pool::Proto => self.proto[index as usize],
-            Pool::CallSite => self.call_site[index as usize],
-            Pool::MethodHandle => self.method_handle[index as usize],
-        });
+        insn.map_indices(|pool, index| self.map(pool, index));
     }
 
     pub(crate) fn remap_call_site(&self, cs: &mut CallSiteItem) -> crate::Result<()> {

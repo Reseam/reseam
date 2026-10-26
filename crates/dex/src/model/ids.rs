@@ -67,3 +67,27 @@ impl Pool {
         Pool::MethodHandle,
     ];
 }
+
+/// One value for each id pool.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct PerPool<T>([T; 7]);
+
+impl<T> PerPool<T> {
+    pub(crate) fn from_fn(mut value: impl FnMut(Pool) -> T) -> Self {
+        Self(Pool::ALL.map(&mut value))
+    }
+}
+
+impl<T> std::ops::Index<Pool> for PerPool<T> {
+    type Output = T;
+
+    fn index(&self, pool: Pool) -> &T {
+        &self.0[pool as usize]
+    }
+}
+
+impl<T> std::ops::IndexMut<Pool> for PerPool<T> {
+    fn index_mut(&mut self, pool: Pool) -> &mut T {
+        &mut self.0[pool as usize]
+    }
+}

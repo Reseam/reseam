@@ -8,6 +8,7 @@ pub use self::part::{DexPart, split_to_fit};
 pub use self::sink::{DexSink, SpoolSink, Spooled};
 use crate::error::Result;
 use crate::file::DexFile;
+use crate::model::Pool;
 use crate::model::encoded_value::EncodedValue;
 use crate::model::header::DexVersion;
 use crate::model::map::MapItem;
@@ -94,20 +95,13 @@ fn validate_link_policy(plan: &plan::WritePlan<'_>) -> Result<()> {
 }
 
 fn validate_index_limits(plan: &plan::WritePlan<'_>) -> Result<()> {
-    let checks: &[(&str, usize)] = &[
-        ("type_ids", plan.type_count()),
-        ("proto_ids", plan.proto_count()),
-        ("field_ids", plan.field_count()),
-        ("method_ids", plan.method_count()),
-        ("call_site_ids", plan.call_site_count()),
-        ("method_handle_ids", plan.method_handle_count()),
-    ];
-    for &(name, count) in checks {
+    for pool in Pool::ALL.into_iter().filter(|&pool| pool != Pool::String) {
+        let count = plan.count(pool);
         if count > MAX_POOL_SIZE {
             return Err(crate::error::invalid(
                 "dex",
                 format!(
-                    "{name} count {count} exceeds maximum {MAX_POOL_SIZE} — \
+                    "{pool:?} id count {count} exceeds maximum {MAX_POOL_SIZE}; \
                      split into multiple DEX files"
                 ),
             ));
