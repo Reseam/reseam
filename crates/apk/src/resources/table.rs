@@ -211,15 +211,6 @@ impl ResourceTable {
         Ok(Some(package.resource_id(type_id, entry_index)?))
     }
 
-    /// Add or replace a default-configuration string resource.
-    ///
-    /// Returns its ID, or `None` when the package cannot provide the type.
-    /// Fails if an existing entry that may have this name is malformed.
-    pub fn add_string_resource(&mut self, name: &str, value: &str) -> Result<Option<u32>> {
-        let index = self.add_global_string(value);
-        self.add_resource("string", name, ResValue::string(index))
-    }
-
     /// Registers `apk_path` as the file behind `type_name/entry_name` in the
     /// configuration `qualifiers` names (`""`, `xxhdpi`, `night-v26`). aapt
     /// writes a file resource as a string entry holding the path the file was

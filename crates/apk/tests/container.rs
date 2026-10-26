@@ -85,14 +85,13 @@ fn containers_classify_extract_and_transfer_their_lifetime_to_a_session() {
             entries.push(Entry { name: case.metadata_name, data: case.metadata, compression });
             let input = dir.path().join(format!("app.{}", case.extension));
             write_container(&input, &entries);
-            assert_eq!(ContainerBundle::sniff(&input).expect("sniff"), Some(case.format));
             let bundle = ContainerBundle::open(&input).expect("extract").expect("container");
-            assert_eq!(bundle.package(), "com.example.test");
-            assert_eq!(bundle.base_entry(), "base.apk");
-            assert_eq!(bundle.split_entries(), ["config.en.apk"]);
-            let extracted = bundle.base_path().to_path_buf();
+            assert_eq!(bundle.format(), case.format);
             let mut apk = bundle.into_apk(ApkFile::patch_options()).expect("session");
+            let extracted = apk.components()[0].path().to_path_buf();
             assert!(extracted.is_file());
+            assert_eq!(apk.components()[0].manifest().package_name().as_deref(), Some("com.example.test"));
+            assert_eq!(apk.components().len(), 2);
             assert_eq!(apk.components()[1].name(), "config.en");
             apk.inject_file(1, "assets/data.txt", b"patched split".to_vec(), Compression::Deflated).expect("patch");
             let paths = apk.write_to(dir.path().join("out"), ApkWriteOptions::default()).expect("write");
@@ -119,7 +118,6 @@ fn an_apk_manifest_takes_precedence_over_embedded_metadata_and_extension() {
                 ("embedded.apk", b"asset"),
             ],
         );
-        assert_eq!(ContainerBundle::sniff(&path).expect("sniff"), None);
         assert!(ContainerBundle::open(&path).expect("open").is_none());
     }
 }

@@ -97,7 +97,8 @@ fn index_cases() -> Vec<Case> {
                     let replacement = table.add_global_string("Changed");
                     table.replace_entry_string(hello | 2, replacement)?;
                     table.set_string_value_by_id(hello, "Greeting")?;
-                    table.add_string_resource("added", "Added")?;
+                    let added = ResValue::string(table.add_global_string("Added"));
+                    table.add_resource("string", "added", added)?;
                     Ok(())
                 }),
                 read: Box::new(move |table| {
@@ -145,7 +146,8 @@ fn extended_case() -> Case {
     Case {
         input: extended_resource_table(),
         edit: Box::new(|table| {
-            table.add_string_resource("new", "Added")?;
+            let added = ResValue::string(table.add_global_string("Added"));
+            table.add_resource("string", "new", added)?;
             table.set_package_name("com.changed")
         }),
         read: Box::new(|table| {

@@ -122,16 +122,6 @@ impl AxmlDocument {
         }
     }
 
-    /// Removes a bound attribute, retaining the roles of all remaining attributes.
-    pub fn remove_attribute(&mut self, index: usize, res_id: u32) -> bool {
-        self.edit_attributes(index, |document, attributes| {
-            let count = attributes.len();
-            attributes.retain(|attr| document.resource_id_for(attr.name) != Some(res_id));
-            attributes.len() != count
-        })
-        .unwrap_or(false)
-    }
-
     pub fn add_attribute(&mut self, index: usize, attr: AxmlAttribute) -> bool {
         self.edit_attributes(index, |document, attributes| {
             document.insert_attribute(attributes, attr);
@@ -260,18 +250,10 @@ impl AxmlDocument {
         Ok(())
     }
 
-    /// Returns namespace and name indices, binding prefixed names to resource ids.
-    /// `android:` uses the framework table; other prefixes use `resources`.
-    /// Fails for unresolved prefixed names. Unqualified names have no resource id.
-    pub fn bind_attribute_name(
-        &mut self,
-        name: &str,
-        resources: Option<&ResourceTable>,
-    ) -> Result<(Option<u32>, u32)> {
-        self.bind_attribute_name_at(self.root().unwrap_or(0), name, resources)
-    }
-
-    /// Binds an attribute against namespaces active at the target element.
+    /// Returns namespace and name indices, binding prefixed names to resource ids
+    /// against the namespaces active at element `index`. `android:` uses the
+    /// framework table; other prefixes use `resources`. Fails for unresolved
+    /// prefixed names. Unqualified names have no resource id.
     pub fn bind_attribute_name_at(
         &mut self,
         index: usize,
@@ -293,27 +275,6 @@ impl AxmlDocument {
                 )
             })?;
         self.bind_local_name(name, namespace, local, resources)
-    }
-
-    /// [`Self::bind_attribute_name`] with a namespace URI; `None` is unqualified.
-    pub fn bind_attribute(
-        &mut self,
-        uri: Option<&str>,
-        local: &str,
-        resources: Option<&ResourceTable>,
-    ) -> Result<(Option<u32>, u32)> {
-        let Some(uri) = uri else {
-            return Ok((None, self.intern_string(local)));
-        };
-        let namespace = self.namespace_index(uri).ok_or_else(|| {
-            invalid(
-                "axml attribute",
-                format!(
-                    "attribute {local}: the document declares no namespace {uri}; declare it with declareNamespace(prefix, \"{uri}\")"
-                ),
-            )
-        })?;
-        self.bind_local_name(local, namespace, local, resources)
     }
 
     fn bind_local_name(
@@ -411,16 +372,6 @@ impl AxmlDocument {
         match self.find_end_element(parent) {
             Some(end) => {
                 self.insert_element(end, name, attributes);
-                true
-            }
-            None => false,
-        }
-    }
-
-    pub fn remove_element(&mut self, start: usize) -> bool {
-        match self.find_end_element(start) {
-            Some(end) => {
-                self.elements.drain(start..=end);
                 true
             }
             None => false,

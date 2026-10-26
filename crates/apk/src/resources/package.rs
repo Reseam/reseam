@@ -96,9 +96,6 @@ impl ResPackage {
     pub fn types(&self) -> &[ResType] {
         &self.types
     }
-    pub fn type_specs(&self) -> &[TypeSpec] {
-        &self.type_specs
-    }
     pub fn type_strings(&self) -> &StringPool {
         &self.type_strings
     }

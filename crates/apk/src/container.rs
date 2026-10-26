@@ -58,24 +58,11 @@ struct XapkSplitFile {
 /// deletes the extracted files.
 pub struct ContainerBundle {
     format: ContainerFormat,
-    package: String,
-    base_entry: String,
-    split_entries: Vec<String>,
-    base_path: PathBuf,
-    split_paths: Vec<PathBuf>,
     components: Vec<ApkComponent>,
     scratch: ScratchDir,
 }
 
 impl ContainerBundle {
-    /// Cheaply answers whether a path is a supported container, without
-    /// extracting anything: by the container metadata when recognizable,
-    /// else by the file extension. An APK's own manifest takes precedence.
-    pub fn sniff(path: &Path) -> Result<Option<ContainerFormat>> {
-        let mut archive = reader::open_archive(path)?;
-        detect_format(&mut archive, path)
-    }
-
     /// Opens and materializes a container; `None` when `path` is not one.
     #[instrument(level = "info", skip_all, fields(path = %path.display()))]
     pub fn open(path: &Path) -> Result<Option<Self>> {
@@ -100,40 +87,8 @@ impl ContainerBundle {
         }
         let scratch = ScratchDir::new("apk-container")?;
         let components = classify(&archive, metadata.as_ref(), &apk_entries, &scratch)?;
-        let base_entry = components[0]
-            .path()
-            .file_name()
-            .expect("extracted filename")
-            .to_string_lossy()
-            .into_owned();
-        let split_entries: Vec<_> = components[1..]
-            .iter()
-            .map(|component| {
-                component
-                    .path()
-                    .file_name()
-                    .expect("extracted filename")
-                    .to_string_lossy()
-                    .into_owned()
-            })
-            .collect();
-        let package = components[0]
-            .manifest()
-            .package_name()
-            .expect("validated package")
-            .into_owned();
-        let base_path = scratch.path().join(&base_entry);
-        let split_paths = split_entries
-            .iter()
-            .map(|name| scratch.path().join(name))
-            .collect();
         Ok(Some(Self {
             format,
-            package,
-            base_entry,
-            split_entries,
-            base_path,
-            split_paths,
             components,
             scratch,
         }))
@@ -150,30 +105,6 @@ impl ContainerBundle {
 
     pub fn format(&self) -> ContainerFormat {
         self.format
-    }
-
-    /// Package name from the validated base manifest.
-    pub fn package(&self) -> &str {
-        &self.package
-    }
-
-    /// The container entry naming the base APK, also its extracted file name.
-    pub fn base_entry(&self) -> &str {
-        &self.base_entry
-    }
-
-    pub fn split_entries(&self) -> &[String] {
-        &self.split_entries
-    }
-
-    /// The extracted base APK.
-    pub fn base_path(&self) -> &Path {
-        &self.base_path
-    }
-
-    /// The extracted split APKs, sorted by entry name.
-    pub fn split_paths(&self) -> &[PathBuf] {
-        &self.split_paths
     }
 }
 
@@ -337,14 +268,4 @@ fn extract_entry(archive: &mut Archive, name: &str, dir: &Path) -> Result<PathBu
         ));
     }
     Ok(path)
-}
-
-impl std::fmt::Debug for ContainerBundle {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ContainerBundle")
-            .field("format", &self.format)
-            .field("base", &self.base_path)
-            .field("splits", &self.split_paths)
-            .finish_non_exhaustive()
-    }
 }

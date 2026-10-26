@@ -244,7 +244,11 @@ fn binary_xml_edits_retain_metadata_and_relocate_special_attribute_indices() -> 
         &edited[chunk(&edited, 12..edited.len(), 0x104)],
         &original[chunk(&original, 12..original.len(), 0x104)]
     );
-    assert!(doc.remove_attribute(root, axml::android_attr_res_id("id").expect("ID")));
+    let id = axml::android_attr_res_id("id").expect("ID");
+    doc.edit_attributes(root, |document, attributes| {
+        attributes.retain(|attribute| document.resource_id_for(attribute.name) != Some(id));
+    })
+    .expect("root element");
     let removed = doc.serialize()?;
     let start = chunk(&removed, 12..removed.len(), 0x102).start;
     assert_eq!(u16_at(&removed, start + header + 14), 0);

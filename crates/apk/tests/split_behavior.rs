@@ -11,7 +11,9 @@ mod manifest;
 mod session;
 use dex_fixture::{dex_bytes, minimal_dex_bytes, spooled_bytes};
 use manifest::manifest_bytes;
-use reseam_apk::{ApkFile as Apk, ApkWriteOptions as WriteOptions, Compression, ResourceTable};
+use reseam_apk::{
+    ApkFile as Apk, ApkWriteOptions as WriteOptions, Compression, ResValue, ResourceTable,
+};
 use reseam_dex::{DexFile, DexHeader, DexVersion, Loading, ParseOptions};
 use session::*;
 use std::fs::File;
@@ -126,15 +128,15 @@ fn replacing_format_entries_replaces_their_parsed_state_before_further_edits() -
         ]);
         apk.dex_mut(0).expect("DEX").intern_string("discarded");
         apk.base_mut().manifest_mut().set_version_name("discarded");
-        apk.base_mut()
-            .resources_mut()?
-            .expect("table")
-            .add_string_resource("greeting", "discarded")?;
+        let resources = apk.base_mut().resources_mut()?.expect("table");
+        let discarded = ResValue::string(resources.add_global_string("discarded"));
+        resources.add_resource("string", "greeting", discarded)?;
         let mut dex = DexFile::new(DexHeader::new(DexVersion::V035));
         dex.intern_string("replacement");
         let mut table =
             ResourceTable::parse(reseam_apk::Bytes::from_vec(mutable_resource_table_bytes()))?;
-        table.add_string_resource("greeting", "replacement")?;
+        let replacement = ResValue::string(table.add_global_string("replacement"));
+        table.add_resource("string", "greeting", replacement)?;
         for (name, bytes) in [
             ("AndroidManifest.xml", manifest_bytes("replacement", None)),
             ("classes.dex", dex_bytes(&dex)),
@@ -332,14 +334,7 @@ fn dex_containers_preserve_all_members_through_loading_and_editing() -> TestResu
                 if component == 1 { &entries } else { &[] },
                 options,
             );
-            let input = dir.path().join(if component == 0 {
-                "base.apk"
-            } else {
-                "split.apk"
-            });
-            let (extracted, names) = reseam_apk::extract_dex(&input, options)?;
-            assert_eq!(names, ["classes.dex", "classes.dex"]);
-            assert_eq!(extracted.len(), 2);
+            assert_eq!(apk.dex().len(), 2);
             let paths = apk.write_to(dir.path().join("unchanged"), WriteOptions::default())?;
             let mut unchanged = Apk::open_split(&paths[0], &paths[1..], options)?;
             assert_eq!(

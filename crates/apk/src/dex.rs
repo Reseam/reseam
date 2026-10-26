@@ -1,11 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::path::Path;
 use std::sync::Arc;
 
 use rayon::prelude::*;
-use reseam_dex::{DexFile, MultiDexContainer, ParseOptions};
+use reseam_dex::{DexFile, ParseOptions};
 use reseam_storage::Bytes;
 
 use crate::entry::EntryName;
@@ -39,19 +38,4 @@ pub(crate) fn parse_entry(
         member.release_pages();
     }
     Ok(members)
-}
-
-/// Loads logical DEX files in entry and container-member order, using shared
-/// file-backed storage. Each name identifies the physical ZIP entry, so v041
-/// containers repeat their entry name for every member. Invalid members fail
-/// extraction rather than returning a partial container.
-pub fn extract_dex(path: &Path, opts: ParseOptions) -> Result<(MultiDexContainer, Vec<String>)> {
-    let archive = reader::open_archive(path)?;
-    let mut container = MultiDexContainer::default();
-    let mut names = Vec::new();
-    for (name, dex) in load_dex(&archive, opts)? {
-        names.push(name.to_string());
-        container.add_dex(dex);
-    }
-    Ok((container, names))
 }
