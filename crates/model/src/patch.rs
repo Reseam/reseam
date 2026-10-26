@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 /// A bulk selection clients offer next to toggling patches one by one.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 #[boltffi::data]
 pub enum PatchPreset {
@@ -32,6 +33,7 @@ impl std::str::FromStr for PatchPreset {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct PatchSpec {
     pub bundle: String,

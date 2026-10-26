@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct PatchOutcome {
     pub output: PatchArtifact,
@@ -14,6 +15,7 @@ pub struct PatchOutcome {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[boltffi::data]
 pub enum RunEvent {
@@ -36,6 +38,7 @@ pub enum RunEvent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[boltffi::data]
 pub enum PatchArtifact {
@@ -52,6 +55,7 @@ impl PatchArtifact {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct PatchResult {
     /// `<bundle>/<id>`.
@@ -73,6 +77,7 @@ impl PatchResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[boltffi::data]
 pub enum PatchStatus {

@@ -5,6 +5,7 @@ use crate::{ContainerFormat, Incompatibility, PatchPreset, PatchSpec, Problem, T
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct ApkMetadata {
     #[boltffi::default(None)]
@@ -26,6 +27,7 @@ pub struct ApkMetadata {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct BundleMetadata {
     pub file_name: String,
@@ -47,6 +49,7 @@ pub struct BundleMetadata {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct PatchMetadata {
     #[serde(flatten)]
@@ -59,6 +62,7 @@ pub struct PatchMetadata {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct InspectRequest {
     #[serde(default)]
@@ -76,6 +80,7 @@ pub struct InspectRequest {
 /// Patches come from signed catalogs without loading code or requiring trust.
 /// Problems with unreadable bundles are reported in `bundles`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct InspectResponse {
     #[boltffi::default(None)]

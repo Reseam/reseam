@@ -7,6 +7,7 @@ use thiserror::Error;
 
 /// The category of a failure reported across the host boundary.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Error, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[boltffi::data]
 pub enum Problem {
@@ -54,6 +55,7 @@ impl Problem {
 
 /// A typed failure: the problem category and full diagnostic error chain.
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct SdkError {
     pub problem: Problem,

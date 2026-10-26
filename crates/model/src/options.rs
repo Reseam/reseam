@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 #[boltffi::data]
 pub enum OptionType {
@@ -17,6 +18,7 @@ pub enum OptionType {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct OptionDeclaration {
     pub key: String,
@@ -29,13 +31,15 @@ pub struct OptionDeclaration {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
 #[boltffi::data]
 pub enum OptionValue {
     #[serde(rename = "string")]
     Text(String),
     Bool(bool),
-    Int(i64),
+    /// A Java long; values beyond 2^53 cross JSON hosts as `bigint`.
+    Int(#[cfg_attr(feature = "typescript", ts(type = "number | bigint"))] i64),
     Float(f64),
     #[serde(rename = "string_list")]
     TextList(Vec<String>),

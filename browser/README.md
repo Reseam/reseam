@@ -41,14 +41,14 @@ import { BrowserSession, JavaRuntime } from '@reseam/browser';
 const java = new JavaRuntime({ runtimeBase });
 void java.warmup();
 const session = await BrowserSession.open(files, { javaRuntime: java, signal, onEvent });
-const inspection = await session.inspect({ apk_path, split_paths, bundle_paths });
+const inspection = await session.inspect({ apk_path, split_paths, bundle_paths, trust });
 await session.mount(signingFilesAndOptionFiles);
 const outcome = await session.patch(request);
 const artifacts = await session.artifacts();
 await session.dispose();
 ```
 
-Requests and results are the SDK models (`src/models.ts`). Failures are `EngineError`s carrying the SDK `Problem`.
+Requests and results are the SDK models in `src/models.ts`, generated from `crates/model` by `cargo xtask regen browser`. Failures are `EngineError`s carrying the SDK `Problem`.
 
 - A session runs one patch. Inspection keeps the opened APK and verified catalogs for it; trust and payload hashes are checked again before patch code loads.
 - `mount()` adds files after inspection but cannot replace inspected inputs.

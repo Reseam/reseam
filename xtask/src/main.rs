@@ -8,6 +8,7 @@ use std::path::PathBuf;
 mod boltffi;
 mod browser;
 mod framework;
+mod models;
 mod patch_api;
 mod paths;
 mod run;
@@ -50,18 +51,25 @@ enum Cmd {
 enum RegenTarget {
     PatchApi,
     Sdk,
+    /// The browser package's TypeScript models.
+    Browser,
     All,
 }
 
 fn main() -> Result<()> {
     match Cli::parse().cmd {
         Cmd::Regen { target } => {
-            boltffi::check_version()?;
+            if !matches!(target, RegenTarget::Browser) {
+                boltffi::check_version()?;
+            }
             if matches!(target, RegenTarget::PatchApi | RegenTarget::All) {
                 patch_api::regen()?;
             }
             if matches!(target, RegenTarget::Sdk | RegenTarget::All) {
                 sdk::regen()?;
+            }
+            if matches!(target, RegenTarget::Browser | RegenTarget::All) {
+                models::regen()?;
             }
         }
         Cmd::Runtime => runtime()?,

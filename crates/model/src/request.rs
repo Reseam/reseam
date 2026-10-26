@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct PatchRequest {
     pub apk_path: String,
@@ -39,6 +40,7 @@ pub struct PatchRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct SigningKeyFiles {
     pub key: String,
@@ -46,6 +48,7 @@ pub struct SigningKeyFiles {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[boltffi::data]
 pub enum PatchOutput {
@@ -75,6 +78,7 @@ impl PatchOutput {
 /// What the caller asked for: the patches `preset` selects for the APK's
 /// package, plus `enable`, minus `disable`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[serde(default)]
 #[boltffi::data]
 pub struct PatchSelection {
@@ -91,6 +95,7 @@ pub struct PatchSelection {
 
 /// How the patched app reaches the device.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 #[boltffi::data]
 pub enum InstallMethod {
@@ -106,6 +111,7 @@ pub enum InstallMethod {
 /// Ed25519 signer keys trusted by the caller, as 64-character hexadecimal strings.
 /// Empty means no bundle is trusted. Validation happens before loading code.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct Trust {
     #[serde(default)]

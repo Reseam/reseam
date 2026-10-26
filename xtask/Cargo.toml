@@ -21,6 +21,9 @@ boltffi_backend = { workspace = true }
 boltffi_bindgen = { workspace = true }
 boltffi_binding = { workspace = true }
 reseam-apk = { path = "../crates/apk" }
+reseam-model = { path = "../crates/model", features = ["typescript"] }
+ts-rs = "12.0.1"
+dprint-plugin-typescript = "0.95"
 memmap2 = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }

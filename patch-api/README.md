@@ -26,7 +26,7 @@ Handwritten code lives in `src/main/kotlin/app/reseam/patch/`. Everything under 
 
    ```bash
    cargo xtask regen patch-api   # this package only
-   cargo xtask regen all         # this package and the app SDK
+   cargo xtask regen all         # this package, the app SDK and the browser models
    ```
 
 3. Wrap the generated call in handwritten Kotlin. Patches call the wrapper, never `native` directly.

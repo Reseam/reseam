@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct CompatiblePackage {
     pub package: String,
@@ -29,6 +30,7 @@ pub struct ApkVersion<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[boltffi::data]
 pub enum Compatibility {
@@ -41,6 +43,7 @@ pub enum Compatibility {
 
 /// Why a patch does not apply to an APK.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[boltffi::data]
 pub enum Incompatibility {

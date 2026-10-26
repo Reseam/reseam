@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct MaterializationStats {
     pub total_classes: u64,
@@ -16,6 +17,7 @@ pub struct MaterializationStats {
 /// contributors rather than guessed at. All figures are lower bounds (they
 /// exclude `Vec` capacity slack and allocator overhead).
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct MemoryBreakdown {
     pub raw_buffer_bytes: u64,
@@ -31,6 +33,7 @@ pub struct MemoryBreakdown {
 /// Java-heap usage in bytes of the in-process patch JVM. Part of this process's RSS, so
 /// it must be subtracted to attribute memory to the native side.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct JvmHeapStats {
     pub used: u64,
@@ -39,6 +42,7 @@ pub struct JvmHeapStats {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 #[boltffi::data]
 pub enum PatchPhase {
@@ -68,6 +72,7 @@ impl PatchPhase {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct PatchPhaseMetrics {
     pub phase: PatchPhase,
@@ -79,6 +84,7 @@ pub struct PatchPhaseMetrics {
 /// Memory sampled immediately after patch application, attributing process RSS
 /// to materialized DEX IR, the in-process JVM, and other allocations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct ApplyDiagnostics {
     pub rss_bytes: Option<u64>,
@@ -87,6 +93,7 @@ pub struct ApplyDiagnostics {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct PatchMetrics {
     pub total_duration_ms: u64,

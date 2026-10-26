@@ -9,6 +9,11 @@ description = "Shared Reseam application and patch metadata"
 boltffi = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
+ts-rs = { version = "12.0.1", optional = true }
+
+[features]
+# Derives the TypeScript declarations `cargo xtask regen browser` writes.
+typescript = ["dep:ts-rs"]
 
 [dev-dependencies]
 serde_json = { workspace = true }

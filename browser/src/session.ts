@@ -4,7 +4,7 @@ import { Channel } from './channel';
 import { loadRuntime } from './runtime';
 import type { CompressionConnection } from './compression';
 import { JavaRuntime } from './java';
-import type { InspectRequest, Inspection, Outcome, PatchRequest, Problem, RunEvent } from './models';
+import type { InspectRequest, InspectResponse, PatchOutcome, PatchRequest, Problem, RunEvent } from './models';
 
 export interface MountedFile { name: string; file: File; directory?: 'input' | 'identity' }
 export interface Artifact { name: string; file: File }
@@ -131,8 +131,8 @@ export class BrowserSession {
     const id = this.next++;
     return new Promise((resolve, reject) => { this.pending.set(id, { resolve, reject }); worker.postMessage({ type, id, ...data }, transfer); });
   }
-  inspect(request: InspectRequest): Promise<Inspection> { return this.request('inspect', request); }
-  patch(request: PatchRequest): Promise<Outcome> { return this.request('patch', request); }
+  inspect(request: InspectRequest): Promise<InspectResponse> { return this.request('inspect', request); }
+  patch(request: PatchRequest): Promise<PatchOutcome> { return this.request('patch', request); }
   private async request<T>(operation: 'inspect' | 'patch', request: InspectRequest | PatchRequest): Promise<T> {
     if (this.disposed) throw new Error('Browser patch session is closed');
     if (this.running) throw new Error('A browser operation is already running');
