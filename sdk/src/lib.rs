@@ -4,17 +4,23 @@
 //! Host-facing API for inspecting APKs and bundles and running typed patch requests.
 //! The request, response and error types are in `reseam-model`.
 
+mod apk;
+mod apply;
+mod bundles;
 mod error;
-mod inspect;
+mod inputs;
+mod inspection;
 mod install;
 mod memory;
 mod metrics;
 mod output;
+mod publish;
 mod run;
 mod trust;
 
+pub use apk::ApkInspection;
 pub use error::HostError;
-pub use inspect::{ApkInspection, PreparedInspection, inspect};
+pub use inspection::{PreparedInspection, inspect};
 pub use install::dex_metadata;
 #[cfg(target_os = "android")]
 pub use reseam_patcher::kotlin::android_host::install_class_loader;
