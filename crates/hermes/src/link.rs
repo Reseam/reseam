@@ -150,22 +150,13 @@ impl Editor<'_> {
             });
         }
         let mut strings = Vec::with_capacity(module.string_count() as usize);
-        let mut id = 0;
-        for run in module.kind_runs() {
-            for _ in 0..run.count {
-                let value = module.string(StringId(id))?;
-                let length = value.bytes.len() / value.encoding.unit_size();
-                strings.push(
-                    self.append_string(
-                        value.bytes.to_vec(),
-                        value.encoding,
-                        length as u32,
-                        run.kind,
-                    )?
+        for (id, kind) in module.strings() {
+            let value = module.string(id)?;
+            let length = value.bytes.len() / value.encoding.unit_size();
+            strings.push(
+                self.append_string(value.bytes.to_vec(), value.encoding, length as u32, kind)?
                     .0,
-                );
-                id += 1;
-            }
+            );
         }
         let bases = Bases {
             function: self.next_function().0,

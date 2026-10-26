@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, VecDeque};
 
 use crate::error::{Result, invalid};
 use crate::function::Function;
-use crate::opcode::{Instruction, Op, OperandKind};
+use crate::opcode::{Instruction, Op};
 use crate::switch::switch_table;
 
 /// Values known to be held by registers, by register number.
@@ -58,6 +58,26 @@ pub(crate) fn register_states<V: Copy + Eq>(
     Ok(states)
 }
 
+/// Follows register values through `code` in order, ignoring control flow. `step` sees each
+/// instruction with the values known before it and gives the value it leaves in its first operand
+/// register; every other register the instruction writes becomes unknown.
+pub(crate) fn straight_line<V>(
+    code: &[Instruction],
+    mut step: impl FnMut(&Instruction, &Registers<V>) -> Result<Option<V>>,
+) -> Result<()> {
+    let mut registers = Registers::new();
+    for inst in code {
+        let value = step(inst, &registers)?;
+        for written in inst.written_registers() {
+            registers.remove(&written);
+        }
+        if let Some(value) = value {
+            registers.insert(inst.values[0] as u32, value);
+        }
+    }
+    Ok(())
+}
+
 /// Merges `state` into the entry state of `next`, queueing it when that changes.
 fn flow<V: Copy + Eq>(
     states: &mut BTreeMap<usize, Registers<V>>,
@@ -96,12 +116,8 @@ fn successors(
         );
         Ok(())
     };
-    for (operand, value) in inst.operands() {
-        match operand.kind {
-            OperandKind::Addr8 => add(i64::from(value as i8))?,
-            OperandKind::Addr32 => add(i64::from(value as i32))?,
-            _ => {}
-        }
+    for (_, relative) in inst.jumps() {
+        add(relative)?;
     }
     if let Some(table) = switch_table(function, inst)? {
         for (_, target) in table.entries() {

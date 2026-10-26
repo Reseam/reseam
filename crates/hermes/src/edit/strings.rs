@@ -4,7 +4,9 @@
 use super::Editor;
 use crate::error::{Result, invalid};
 use crate::layout::{Field, Section};
-use crate::string::{Encoding, KindRun, StringEntry, StringId, StringKind, StringValue};
+use crate::string::{
+    Encoding, KindRun, StringEntry, StringId, StringKind, StringValue, fingerprint,
+};
 
 pub(crate) struct AddedString {
     pub bytes: Vec<u8>,
@@ -40,11 +42,7 @@ impl Editor<'_> {
         } else {
             (Encoding::Latin1, units.iter().map(|&u| u as u8).collect())
         };
-        let key = StringValue {
-            encoding,
-            bytes: &bytes,
-        }
-        .fingerprint();
+        let key = fingerprint(units.iter().copied());
         for id in self
             .edits
             .string_index
@@ -71,16 +69,11 @@ impl Editor<'_> {
             return Ok(());
         }
         let mut index = rustc_hash::FxHashMap::<_, Vec<_>>::default();
-        let mut id = 0;
-        for run in self.file.kind_runs() {
-            let end = id + run.count;
-            for string in (id..end).map(StringId) {
-                index
-                    .entry((self.file.string(string)?.fingerprint(), run.kind))
-                    .or_default()
-                    .push(string);
-            }
-            id = end;
+        for (id, kind) in self.file.strings() {
+            index
+                .entry((self.file.string(id)?.fingerprint(), kind))
+                .or_default()
+                .push(id);
         }
         for (key, ids) in &self.edits.string_index {
             index.entry(*key).or_default().extend_from_slice(ids);

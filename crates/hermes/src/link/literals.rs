@@ -85,14 +85,13 @@ impl<'a> Literals<'a> {
                     self.output.push(kind.tag() | run.len() as u8);
                 }
                 for literal in run {
-                    match literal.kind {
-                        Literal::ShortString | Literal::LongString => {
-                            let id = self.strings.get(literal.string_id()? as usize).ok_or_else(
-                                || invalid(offset as usize, "literal string ID out of range"),
-                            )?;
-                            self.output.extend_from_slice(&id.to_le_bytes());
-                        }
-                        _ => self.output.extend_from_slice(literal.bytes),
+                    if let Some(id) = literal.string() {
+                        let id = self.strings.get(id.0 as usize).ok_or_else(|| {
+                            invalid(offset as usize, "literal string ID out of range")
+                        })?;
+                        self.output.extend_from_slice(&id.to_le_bytes());
+                    } else {
+                        self.output.extend_from_slice(literal.bytes);
                     }
                 }
             }

@@ -11,14 +11,6 @@ use crate::function::Function;
 use crate::opcode::{Instruction, Opcode, OperandKind};
 use crate::switch::switch_table;
 
-fn signed(value: u64, kind: OperandKind) -> i64 {
-    match kind {
-        OperandKind::Addr8 => i64::from(value as i8),
-        OperandKind::Addr32 | OperandKind::Imm32 => i64::from(value as i32),
-        _ => value as i64,
-    }
-}
-
 /// Moves `inst` to its narrowest encoding that holds its operands. Relocated
 /// branches always take 32-bit addresses, since their distances change.
 fn promote(inst: &mut Instruction) -> Result<()> {
@@ -88,14 +80,12 @@ pub(crate) fn assemble(
     let mut position = 0_u32;
     for inst in &mut instructions {
         let definition = inst.definition();
-        for (operand, value) in definition.operands.iter().zip(&mut inst.values) {
-            if operand.kind.is_address() {
-                let origin = inst
-                    .offset
-                    .ok_or_else(|| invalid(0, "generated branch lacks a target"))?;
-                let target = moved(i64::from(origin) + signed(*value, operand.kind))?;
-                *value = u64::from(target.wrapping_sub(position));
-            }
+        for (operand, relative) in inst.jumps().collect::<Vec<_>>() {
+            let origin = inst
+                .offset
+                .ok_or_else(|| invalid(0, "generated branch lacks a target"))?;
+            let target = moved(i64::from(origin) + relative)?;
+            inst.values[operand] = u64::from(target.wrapping_sub(position));
         }
         if let Some(table) = switch_table(function, inst)? {
             let origin = i64::from(

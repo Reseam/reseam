@@ -20,14 +20,14 @@ fn values(file: &HermesFile<'_>, buffer: Section, offset: u64, count: u32) -> Ve
     read_literals(file.section(buffer), offset as usize, count as usize)
         .expect("fixture literals decode")
         .into_iter()
-        .map(|literal| match literal.kind {
-            Literal::ShortString | Literal::LongString => Value::Text(
-                file.string(StringId(literal.string_id().expect("string literal")))
+        .map(|literal| match literal.string() {
+            Some(id) => Value::Text(
+                file.string(id)
                     .expect("literal string exists")
                     .units()
                     .collect(),
             ),
-            kind => Value::Other(kind, literal.bytes.to_vec()),
+            None => Value::Other(literal.kind, literal.bytes.to_vec()),
         })
         .collect()
 }

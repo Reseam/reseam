@@ -64,25 +64,18 @@ pub(crate) struct LiteralValue<'a> {
 }
 
 impl LiteralValue<'_> {
-    pub(crate) fn string_id(&self) -> Result<u32> {
-        match self.kind {
-            Literal::ShortString => Ok(u32::from(u16::from_le_bytes([
-                self.bytes[0],
-                self.bytes[1],
-            ]))),
-            Literal::LongString => read_u32(self.bytes, 0),
-            _ => Err(invalid(0, "literal is not a string")),
-        }
-    }
-
     /// The string this literal holds, if it is a string.
-    pub(crate) fn string(&self) -> Result<Option<StringId>> {
+    pub(crate) fn string(&self) -> Option<StringId> {
         match self.kind {
-            Literal::ShortString | Literal::LongString => {
-                self.string_id().map(|id| Some(StringId(id)))
-            }
-            _ => Ok(None),
+            Literal::ShortString => Some(u32::from(u16::from_le_bytes(
+                self.bytes.try_into().expect("short strings hold two bytes"),
+            ))),
+            Literal::LongString => Some(u32::from_le_bytes(
+                self.bytes.try_into().expect("long strings hold four bytes"),
+            )),
+            _ => None,
         }
+        .map(StringId)
     }
 }
 

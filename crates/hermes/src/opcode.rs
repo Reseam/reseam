@@ -4,6 +4,7 @@
 //! Opcode metadata generated from the corresponding Hermes release definition.
 
 use crate::error::{Result, invalid};
+use crate::string::StringId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OperandKind {
@@ -30,10 +31,6 @@ impl OperandKind {
 
     pub(crate) const fn is_register(self) -> bool {
         matches!(self, Self::Reg8 | Self::Reg32)
-    }
-
-    pub(crate) const fn is_address(self) -> bool {
-        matches!(self, Self::Addr8 | Self::Addr32)
     }
 }
 
@@ -113,6 +110,33 @@ impl Instruction {
             .writes
             .iter()
             .map(|&operand| self.values[operand] as u32)
+    }
+
+    /// Each address operand's position and the branch offset it holds, relative to this
+    /// instruction.
+    pub(crate) fn jumps(&self) -> impl Iterator<Item = (usize, i64)> {
+        self.operands()
+            .enumerate()
+            .filter_map(|(position, (operand, value))| match operand.kind {
+                OperandKind::Addr8 => Some((position, i64::from(value as i8))),
+                OperandKind::Addr32 => Some((position, i64::from(value as i32))),
+                _ => None,
+            })
+    }
+
+    /// The property a by-name store writes: `object[key] = value` with the object in the first
+    /// register, the value in the second and the key's string fourth.
+    pub(crate) fn stored_property(&self) -> Option<StringId> {
+        matches!(
+            self.op,
+            Op::PutByIdLoose
+                | Op::PutByIdStrict
+                | Op::PutByIdLooseLong
+                | Op::PutByIdStrictLong
+                | Op::DefineOwnById
+                | Op::DefineOwnByIdLong
+        )
+        .then(|| StringId(self.values[3] as u32))
     }
 
     /// This instruction's encodings, narrowest first.

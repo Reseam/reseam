@@ -7,7 +7,7 @@ use crate::bytes::{read_u32, slice};
 use crate::error::{Result, invalid};
 use crate::function::{Function, FunctionHeader, FunctionId, SMALL_HEADER_SIZE};
 use crate::layout::{FOOTER_SIZE, Field, OPTIONS_OFFSET, Section};
-use crate::string::{KindRun, StringEntry, StringId, StringValue};
+use crate::string::{KindRun, StringEntry, StringId, StringKind, StringValue};
 
 /// A validated, borrowed execution-form HBC file. Construction accepts only
 /// version 98. Trailing epilogues and all original padding are preserved.
@@ -87,6 +87,14 @@ impl<'a> HermesFile<'a> {
             .0
             .iter()
             .map(|entry| KindRun::decode(u32::from_le_bytes(*entry)))
+    }
+
+    /// Each string's identity and kind, in table order.
+    pub(crate) fn strings(&self) -> impl Iterator<Item = (StringId, StringKind)> + use<'a> {
+        self.kind_runs()
+            .flat_map(|run| std::iter::repeat_n(run.kind, run.count as usize))
+            .zip(0..)
+            .map(|(kind, id)| (StringId(id), kind))
     }
 
     pub(crate) fn function(&self, id: FunctionId) -> Result<Function<'a>> {

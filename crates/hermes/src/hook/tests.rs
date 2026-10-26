@@ -125,14 +125,7 @@ fn hooked_functions_jump_only_to_their_own_instructions() {
             .collect();
         let end = function.body_range().len() as i64;
         for inst in &code {
-            for (operand, value) in inst.operands() {
-                if !operand.kind.is_address() {
-                    continue;
-                }
-                let relative = match operand.kind.width() {
-                    1 => i64::from(value as u8 as i8),
-                    _ => i64::from(value as u32 as i32),
-                };
+            for (_, relative) in inst.jumps() {
                 let target = i64::from(inst.offset.expect("decoded")) + relative;
                 assert!(
                     starts.contains(&target) || target == end,

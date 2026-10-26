@@ -3,6 +3,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::dataflow::{Registers, straight_line};
 use crate::error::{HermesError, Result};
 use crate::layout::Section;
 use crate::literal::{LiteralValue, read_literals, shape_keys};
@@ -79,35 +80,29 @@ fn returned(
         return Ok(Properties::new());
     }
     let mut frame = Frame::default();
-    for inst in file.function(id)?.instructions()? {
-        let value = frame.value(file, &inst, visiting)?;
-        frame.effect(&inst);
-        frame.branched |= inst.operands().any(|(o, _)| o.kind.is_address());
-        for written in inst.written_registers() {
-            frame.registers.remove(&written);
-        }
-        if let Some(value) = value {
-            frame.registers.insert(inst.values[0] as u32, value);
-        }
-    }
+    straight_line(&file.function(id)?.instructions()?, |inst, registers| {
+        let value = frame.value(file, inst, registers, visiting)?;
+        frame.effect(inst, registers);
+        frame.branched |= inst.jumps().next().is_some();
+        Ok(value)
+    })?;
     visiting.remove(&id);
     Ok(frame.result.unwrap_or_default())
 }
 
-/// What one function's analysis knows at an instruction.
+/// What one function's analysis knows besides its registers.
 #[derive(Default)]
 struct Frame {
-    registers: BTreeMap<u32, Value>,
     objects: Vec<Object>,
     result: Option<Properties>,
     branched: bool,
 }
 
-impl Frame {
-    fn register(&self, inst: &Instruction, operand: usize) -> Option<Value> {
-        self.registers.get(&(inst.values[operand] as u32)).cloned()
-    }
+fn register(registers: &Registers<Value>, inst: &Instruction, operand: usize) -> Option<Value> {
+    registers.get(&(inst.values[operand] as u32)).cloned()
+}
 
+impl Frame {
     fn object(&mut self, object: Object) -> Value {
         self.objects.push(object);
         Value::Object(self.objects.len() - 1)
@@ -118,16 +113,17 @@ impl Frame {
         &mut self,
         file: &HermesFile<'_>,
         inst: &Instruction,
+        registers: &Registers<Value>,
         visiting: &mut BTreeSet<FunctionId>,
     ) -> Result<Option<Value>> {
         let v = &inst.values;
         Ok(match inst.op {
             Op::NewObject => Some(self.object(Object::default())),
             Op::NewObjectWithBuffer | Op::NewObjectWithBufferLong => {
-                let slots = shape_keys(file, v[1] as u32)?
+                let slots: Vec<_> = shape_keys(file, v[1] as u32)?
                     .iter()
                     .map(LiteralValue::string)
-                    .collect::<Result<Vec<_>>>()?;
+                    .collect();
                 let properties = slots.iter().flatten().map(|&key| (key, None)).collect();
                 Some(self.object(Object { slots, properties }))
             }
@@ -137,7 +133,7 @@ impl Frame {
                     .iter()
                     .map(|literal| {
                         literal
-                            .string()?
+                            .string()
                             .map(|id| file.string(id)?.text())
                             .transpose()
                     })
@@ -147,8 +143,8 @@ impl Frame {
             Op::CreateClosure | Op::CreateClosureLongIndex => {
                 Some(Value::Function(FunctionId(v[2] as u32)))
             }
-            Op::Mov | Op::MovLong => self.register(inst, 1),
-            Op::Call1 | Op::Call2 | Op::Call3 | Op::Call4 => match self.register(inst, 1) {
+            Op::Mov | Op::MovLong => register(registers, inst, 1),
+            Op::Call1 | Op::Call2 | Op::Call3 | Op::Call4 => match register(registers, inst, 1) {
                 Some(Value::Function(callee)) => {
                     let properties = returned(file, callee, visiting)?;
                     Some(self.object(Object {
@@ -163,36 +159,33 @@ impl Frame {
     }
 
     /// Records what `inst` assigns to a known object, or returns.
-    fn effect(&mut self, inst: &Instruction) {
-        let v = &inst.values;
+    fn effect(&mut self, inst: &Instruction, registers: &Registers<Value>) {
+        let object = || match register(registers, inst, 0) {
+            Some(Value::Object(object)) => Some(object),
+            _ => None,
+        };
+        if let Some(key) = inst.stored_property() {
+            if !self.branched
+                && let Some(object) = object()
+            {
+                self.objects[object]
+                    .properties
+                    .insert(key, register(registers, inst, 1));
+            }
+            return;
+        }
         match inst.op {
             Op::PutOwnBySlotIdx | Op::PutOwnBySlotIdxLong => {
-                if let Some(Value::Object(object)) = self.register(inst, 0) {
-                    let value = self.register(inst, 1);
+                if let Some(object) = object() {
                     let object = &mut self.objects[object];
-                    if let Some(&Some(key)) = object.slots.get(v[2] as usize) {
-                        object.properties.insert(key, value);
+                    if let Some(&Some(key)) = object.slots.get(inst.values[2] as usize) {
+                        object.properties.insert(key, register(registers, inst, 1));
                     }
                 }
             }
-            Op::PutByIdLoose
-            | Op::PutByIdStrict
-            | Op::PutByIdLooseLong
-            | Op::PutByIdStrictLong
-            | Op::DefineOwnById
-            | Op::DefineOwnByIdLong
-                if !self.branched =>
-            {
-                if let Some(Value::Object(object)) = self.register(inst, 0) {
-                    let value = self.register(inst, 1);
-                    self.objects[object]
-                        .properties
-                        .insert(StringId(v[3] as u32), value);
-                }
-            }
             Op::Ret => {
-                let properties: Properties = match self.register(inst, 0) {
-                    Some(Value::Object(object)) => self.objects[object]
+                let properties: Properties = object().map_or_else(Properties::new, |object| {
+                    self.objects[object]
                         .properties
                         .iter()
                         .map(|(&key, value)| {
@@ -201,9 +194,8 @@ impl Frame {
                                 .filter(|value| !matches!(value, Value::Object(_)));
                             (key, value)
                         })
-                        .collect(),
-                    _ => Properties::new(),
-                };
+                        .collect()
+                });
                 if let Some(result) = &mut self.result {
                     result.retain(|key, _| properties.contains_key(key));
                 } else {

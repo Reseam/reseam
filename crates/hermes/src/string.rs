@@ -120,6 +120,15 @@ impl StringEntry {
     }
 }
 
+/// Hashes code units, so equal text has one fingerprint in either encoding.
+pub(crate) fn fingerprint(units: impl IntoIterator<Item = u16>) -> u64 {
+    let mut hash = rustc_hash::FxHasher::default();
+    for unit in units {
+        hash.write_u16(unit);
+    }
+    hash.finish()
+}
+
 /// Borrowed string storage. UTF-16 may contain unpaired surrogates, so values
 /// are compared by code unit.
 #[derive(Debug, Clone, Copy)]
@@ -140,13 +149,8 @@ impl StringValue<'_> {
             .chain(utf16.iter().map(|unit| u16::from_le_bytes(*unit)))
     }
 
-    /// Hashes code units, so equal text has one fingerprint in either encoding.
     pub(crate) fn fingerprint(self) -> u64 {
-        let mut hash = rustc_hash::FxHasher::default();
-        for unit in self.units() {
-            hash.write_u16(unit);
-        }
-        hash.finish()
+        fingerprint(self.units())
     }
 
     pub(crate) fn equals(self, text: &str) -> bool {

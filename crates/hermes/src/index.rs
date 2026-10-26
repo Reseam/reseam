@@ -7,7 +7,7 @@ use rustc_hash::FxHashMap;
 use crate::error::{HermesError, Result, invalid};
 use crate::layout::FOOTER_SIZE;
 use crate::opcode::IdKind;
-use crate::string::{Encoding, StringId, StringValue};
+use crate::string::{StringId, fingerprint};
 use crate::switch::switch_table;
 use crate::{FunctionId, HermesFile};
 
@@ -133,14 +133,13 @@ impl FunctionIndex {
         text: &str,
         postings: &FxHashMap<StringId, Vec<FunctionId>>,
     ) -> Result<Vec<FunctionId>> {
-        let units: Vec<_> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
-        let fingerprint = StringValue {
-            encoding: Encoding::Utf16,
-            bytes: &units,
-        }
-        .fingerprint();
         let mut candidates = Vec::new();
-        for &id in self.texts.get(&fingerprint).into_iter().flatten() {
+        for &id in self
+            .texts
+            .get(&fingerprint(text.encode_utf16()))
+            .into_iter()
+            .flatten()
+        {
             if file.string(id)?.equals(text)
                 && let Some(functions) = postings.get(&id)
             {

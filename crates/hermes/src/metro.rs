@@ -3,10 +3,10 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use crate::dataflow::register_states;
+use crate::dataflow::{register_states, straight_line};
 use crate::edit::Editor;
 use crate::error::{HermesError, Result, invalid};
-use crate::literal::shape_keys;
+use crate::literal::{LiteralValue, shape_keys};
 use crate::opcode::Op;
 use crate::string::StringId;
 use crate::{FunctionId, FunctionIndex, HermesFile};
@@ -190,42 +190,15 @@ impl Editor<'_> {
 }
 
 fn shape(file: &HermesFile<'_>, factory: FunctionId) -> Result<ModuleShape> {
-    let mut registers = BTreeMap::<u32, Shaped>::new();
     let mut objects = Vec::<BTreeSet<StringId>>::new();
     let mut exports = BTreeSet::new();
     let mut replaced = None;
     let mut es_module = false;
-    for inst in file.function(factory)?.instructions()? {
+    let code = file.function(factory)?.instructions()?;
+    straight_line(&code, |inst, registers| {
         let v = &inst.values;
         let register = |operand: usize| registers.get(&(v[operand] as u32)).copied();
-        let value = match inst.op {
-            Op::LoadParam if v[1] == MODULE_PARAMETER => Some(Shaped::Module),
-            Op::LoadParam if v[1] == EXPORTS_PARAMETER => Some(Shaped::Exports),
-            Op::NewObject => {
-                objects.push(BTreeSet::new());
-                Some(Shaped::Object(objects.len() - 1))
-            }
-            Op::NewObjectWithBuffer | Op::NewObjectWithBufferLong => {
-                let keys = shape_keys(file, v[1] as u32)?
-                    .iter()
-                    .filter_map(|key| key.string().transpose())
-                    .collect::<Result<_>>()?;
-                objects.push(keys);
-                Some(Shaped::Object(objects.len() - 1))
-            }
-            Op::LoadConstString | Op::LoadConstStringLongIndex => {
-                Some(Shaped::Text(StringId(v[1] as u32)))
-            }
-            Op::Mov | Op::MovLong => register(1),
-            _ => None,
-        };
-        let assigned = match inst.op {
-            Op::PutByIdLoose
-            | Op::PutByIdStrict
-            | Op::PutByIdLooseLong
-            | Op::PutByIdStrictLong
-            | Op::DefineOwnById
-            | Op::DefineOwnByIdLong => Some(StringId(v[3] as u32)),
+        let assigned = inst.stored_property().or_else(|| match inst.op {
             Op::DefineOwnGetterSetterByVal
             | Op::PutByValLoose
             | Op::PutByValStrict
@@ -234,7 +207,7 @@ fn shape(file: &HermesFile<'_>, factory: FunctionId) -> Result<ModuleShape> {
                 _ => None,
             },
             _ => None,
-        };
+        });
         // Babel marks an ES module with `Object.defineProperty(exports, "__esModule", ...)`.
         if inst.op == Op::Call4
             && let (Some(Shaped::Exports), Some(Shaped::Text(key))) = (register(3), register(4))
@@ -260,13 +233,29 @@ fn shape(file: &HermesFile<'_>, factory: FunctionId) -> Result<ModuleShape> {
                 _ => {}
             }
         }
-        for written in inst.written_registers() {
-            registers.remove(&written);
-        }
-        if let Some(value) = value {
-            registers.insert(v[0] as u32, value);
-        }
-    }
+        Ok(match inst.op {
+            Op::LoadParam if v[1] == MODULE_PARAMETER => Some(Shaped::Module),
+            Op::LoadParam if v[1] == EXPORTS_PARAMETER => Some(Shaped::Exports),
+            Op::NewObject => {
+                objects.push(BTreeSet::new());
+                Some(Shaped::Object(objects.len() - 1))
+            }
+            Op::NewObjectWithBuffer | Op::NewObjectWithBufferLong => {
+                objects.push(
+                    shape_keys(file, v[1] as u32)?
+                        .iter()
+                        .filter_map(LiteralValue::string)
+                        .collect(),
+                );
+                Some(Shaped::Object(objects.len() - 1))
+            }
+            Op::LoadConstString | Op::LoadConstStringLongIndex => {
+                Some(Shaped::Text(StringId(v[1] as u32)))
+            }
+            Op::Mov | Op::MovLong => register(1),
+            _ => None,
+        })
+    })?;
     Ok(ModuleShape {
         es_module,
         keys: replaced.map_or(exports, |object| std::mem::take(&mut objects[object])),
