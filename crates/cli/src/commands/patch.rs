@@ -1,18 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::cell::RefCell;
 use std::collections::HashSet;
 
 use anyhow::{Context, Result, anyhow, ensure};
 use reseam_model::{
-    InstallMethod, PatchOutcome, PatchOutput, PatchRequest, RunEvent, SigningKeyFiles,
+    InspectRequest, InstallMethod, LogLevel, OptionDeclaration, OptionType, OptionValue,
+    PatchMetadata, PatchOutcome, PatchOutput, PatchRequest, PatchResult, PatchSelection,
+    PatchStatus, RunEvent, SigningKeyFiles,
 };
-use reseam_patcher::engine::{PatchIndex, PatchResult, PatchSelection, PatchStatus};
-use reseam_patcher::error::PatcherError;
-use reseam_patcher::log::LogLevel;
-use reseam_patcher::options::{OptionDeclaration, OptionType, OptionValue};
-use reseam_sdk::{HostError, patch_with_selection};
+use reseam_sdk::{HostError, PreparedInspection};
 use tracing::{debug, error, info, warn};
 
 use crate::app::{PatchCommand, PatchRequestArgs};
@@ -40,8 +37,13 @@ pub fn run_patch(command: &PatchCommand) -> Result<()> {
         }
     };
 
-    let request = request(&command.request, output);
-    let outcome = run(&request, &command.request.option, log_event).map_err(|error| {
+    let dry_run = command.request.dry_run;
+    let outcome = run(
+        request(&command.request, output),
+        &command.request.option,
+        log_event,
+    )
+    .map_err(|error| {
         if error.downcast_ref::<HostError>().is_some_and(|error| {
             matches!(
                 error,
@@ -63,7 +65,7 @@ pub fn run_patch(command: &PatchCommand) -> Result<()> {
         failed = count(|result| matches!(result.status, PatchStatus::Failed { .. })),
         "patch run finished"
     );
-    if request.dry_run {
+    if dry_run {
         info!("dry run: validation completed without applying patches");
     } else {
         info!(path = %outcome.output.path().display(), "patched output ready");
@@ -142,77 +144,75 @@ pub(crate) fn request(args: &PatchRequestArgs, output: PatchOutput) -> PatchRequ
     }
 }
 
-/// `emit` also gets the references of the run's hidden patches.
+/// Inspects the request's inputs, sets `options` (`PATCH.KEY=VALUE`) on the
+/// patches they name, and runs it. `emit` also gets the references of the
+/// run's hidden patches.
 pub(crate) fn run(
-    request: &PatchRequest,
+    request: PatchRequest,
     options: &[String],
     mut emit: impl FnMut(RunEvent, &HashSet<String>),
 ) -> Result<PatchOutcome> {
-    let hidden = RefCell::new(HashSet::new());
-    Ok(patch_with_selection(
-        request,
-        |specs, package| {
-            hidden.replace(
-                specs
-                    .iter()
-                    .filter(|spec| spec.hidden)
-                    .map(|spec| spec.reference())
-                    .collect(),
-            );
-            selection(options, request.selection.clone(), specs, package)
-                .map_err(|error| HostError::Selection(error.into()))
-        },
-        |event| emit(event, &hidden.borrow()),
-    )?)
+    let prepared = PreparedInspection::open(&InspectRequest {
+        apk_path: Some(request.apk_path.clone()),
+        split_paths: request.split_paths.clone(),
+        bundle_paths: request.bundle_paths.clone(),
+        trust: request.trust.clone(),
+    })?;
+    let hidden: HashSet<String> = prepared
+        .metadata()
+        .patches
+        .iter()
+        .filter(|patch| patch.spec.hidden)
+        .map(|patch| patch.spec.reference())
+        .collect();
+    let request = PatchRequest {
+        selection: with_options(request.selection, options, &prepared)?,
+        ..request
+    };
+    Ok(prepared.patch(&request, |event| emit(event, &hidden))?)
 }
 
-fn selection(
-    options: &[String],
+fn with_options(
     mut selection: PatchSelection,
-    specs: &[&reseam_patcher::PatchSpec],
-    package: Option<&str>,
+    options: &[String],
+    prepared: &PreparedInspection,
 ) -> Result<PatchSelection> {
-    if options.is_empty() {
-        return Ok(selection);
-    }
-    let index = PatchIndex::new(specs)?;
     for raw in options {
         let invalid = || anyhow!("invalid option '{raw}': expected PATCH.KEY=VALUE");
         let (lhs, value) = raw.split_once('=').ok_or_else(invalid)?;
-        let (patch_index, key) = option_target(&index, lhs, package)?;
-        let spec = specs[patch_index];
-        let patch = spec.reference();
-        let declaration = spec
+        let (patch, key) = option_target(prepared, lhs)?;
+        let reference = patch.spec.reference();
+        let declaration = patch
+            .spec
             .options
             .iter()
             .find(|declaration| declaration.key == key)
-            .with_context(|| format!("unknown option '{key}' for patch '{patch}'"))?;
+            .with_context(|| format!("unknown option '{key}' for patch '{reference}'"))?;
         let value =
             parse_option(declaration, value).with_context(|| format!("invalid --option {raw}"))?;
         selection
             .options
-            .entry(patch)
+            .entry(reference)
             .or_default()
             .insert(key.to_owned(), value);
     }
     Ok(selection)
 }
 
-fn option_target<'a>(
-    index: &PatchIndex<'_>,
+/// Splits `PATCH.KEY` at the last dot that leaves a known patch, since patch
+/// IDs and names contain dots themselves.
+fn option_target<'p, 'a>(
+    prepared: &'p PreparedInspection,
     lhs: &'a str,
-    package: Option<&str>,
-) -> Result<(usize, &'a str)> {
+) -> Result<(&'p PatchMetadata, &'a str)> {
     for (separator, _) in lhs.rmatch_indices('.') {
         let (selector, key) = (&lhs[..separator], &lhs[separator + 1..]);
         ensure!(
             !selector.is_empty() && !key.is_empty(),
             "invalid option '{lhs}': expected PATCH.KEY"
         );
-        match index.resolve(selector, package) {
-            Ok(patch) => return Ok((patch, key)),
-            Err(PatcherError::UnknownPatch(_)) => {}
-            Err(error) => return Err(error.into()),
+        if let Some(patch) = prepared.resolve_patch(selector)? {
+            return Ok((patch, key));
         }
     }
     Err(anyhow!(

@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::error::Result;
-use reseam_apk::ApkFile;
 use reseam_patcher::bundle::PatchBundle;
 use reseam_patcher::context::{ExtensionSet, PatchContext};
 use reseam_patcher::engine::{self, AppliedRun, Delivery, PatchResult, PatchStatus, ResolvedPlan};
 use reseam_patcher::{ApkVersion, Patch, PatchSpec};
 
-use crate::inspect::{OpenedApk, PreparedInspection, TrustedArchive, open_apk, open_bundles};
+use crate::inspect::{Inputs, OpenedApk, OpenedBundle, TrustedArchive, trusted_archives};
 use crate::memory::release_process_memory;
 use crate::metrics::PatchProfiler;
 use crate::output::{resolve_output, stage_unsigned};
@@ -19,7 +18,6 @@ use reseam_model::{
 };
 use std::borrow::Cow;
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
 
 /// Runs the request end to end: open, load, apply, write, sign. A dry run
 /// stops after validation and reports what would run without publishing artifacts.
@@ -30,32 +28,29 @@ use std::path::{Path, PathBuf};
 /// Signing and publication failures preserve previous outputs; if filesystem
 /// errors also prevent rollback, the error identifies the retained recovery directory.
 pub fn patch(request: &PatchRequest, emit: impl FnMut(RunEvent)) -> Result<PatchOutcome> {
-    patch_with_selection(request, |_, _| Ok(request.selection.clone()), emit)
+    let inputs = Inputs::open(
+        Some(&request.apk_path),
+        &request.split_paths,
+        &request.bundle_paths,
+    )?;
+    run(request, inputs, emit)
 }
 
-/// Resolves host selection syntax against the specifications and package already
-/// loaded by this run, then validates or applies the returned selection.
-///
-/// The resolver runs once after trusted bundle loading. Its specifications are in
-/// execution-list order and valid only during the call. Errors stop the run before
-/// editing or publication. Shares [patch]'s output and callback contracts.
-pub fn patch_with_selection(
+/// Runs `request` on the inputs opened for it.
+pub(crate) fn run(
     request: &PatchRequest,
-    resolve: impl FnOnce(&[&PatchSpec], Option<&str>) -> Result<reseam_model::PatchSelection>,
-    emit: impl FnMut(RunEvent),
-) -> Result<PatchOutcome> {
-    patch_with_inputs(request, None, resolve, emit)
-}
-
-pub(crate) fn patch_with_inputs(
-    request: &PatchRequest,
-    prepared: Option<PreparedInspection>,
-    resolve: impl FnOnce(&[&PatchSpec], Option<&str>) -> Result<reseam_model::PatchSelection>,
+    inputs: Inputs,
     mut emit: impl FnMut(RunEvent),
 ) -> Result<PatchOutcome> {
     let trust = TrustStore::new(&request.trust)?;
-    let mut profiler = PatchProfiler::new();
-    let result = run(request, &trust, prepared, resolve, &mut emit, &mut profiler);
+    let Inputs {
+        apk,
+        opening,
+        bundles,
+    } = inputs;
+    let opened = apk.expect("patch inputs are opened with the request's APK");
+    let mut profiler = PatchProfiler::new(opening);
+    let result = execute(request, &trust, opened, bundles, &mut emit, &mut profiler);
     release_process_memory();
     let (results, output) = result?;
     Ok(PatchOutcome {
@@ -65,41 +60,20 @@ pub(crate) fn patch_with_inputs(
     })
 }
 
-fn run(
+fn execute(
     request: &PatchRequest,
     trust: &TrustStore,
-    mut prepared: Option<PreparedInspection>,
-    resolve: impl FnOnce(&[&PatchSpec], Option<&str>) -> Result<reseam_model::PatchSelection>,
+    mut opened: OpenedApk,
+    bundles: Vec<OpenedBundle>,
     emit: &mut impl FnMut(RunEvent),
     profiler: &mut PatchProfiler,
 ) -> Result<(Vec<PatchResult>, PatchArtifact)> {
     emit(info(format!("Opening APK {}", request.apk_path)));
-    let mut opened = profiler.measure(PatchPhase::OpenApk, || {
-        if let Some(prepared) = prepared.as_mut() {
-            return prepared
-                .opened
-                .take()
-                .ok_or(crate::HostError::InvalidRequest(
-                    "prepared inspection has no APK",
-                ));
-        }
-        open_input(request)
-    })?;
     report_container(&opened, emit);
     let output = resolve_output(&request.output, opened.apk.components().len())?;
 
     emit(info("Loading bundles".to_string()));
-    let archives = match prepared {
-        Some(prepared) => prepared.trusted_archives(trust)?,
-        None => open_bundles(
-            &request
-                .bundle_paths
-                .iter()
-                .map(PathBuf::from)
-                .collect::<Vec<_>>(),
-            trust,
-        )?,
-    };
+    let archives = trusted_archives(bundles, trust)?;
     let package = opened.apk.package_name().map(Cow::into_owned);
     let version_name = opened.apk.version_name().map(Cow::into_owned);
     let version = ApkVersion {
@@ -107,10 +81,9 @@ fn run(
         code: opened.apk.version_code(),
     };
     let specs: Vec<&PatchSpec> = archives.iter().flat_map(TrustedArchive::catalog).collect();
-    let selection = resolve(&specs, package.as_deref())?;
     let plan = ResolvedPlan::resolve(
         &specs,
-        &selection,
+        &request.selection,
         delivery(request.install_method),
         package.as_deref(),
         version,
@@ -227,18 +200,6 @@ fn apply<'b>(
     })?;
     profiler.set_apply_diagnostics(apply_diagnostics(&ctx));
     Ok(applied)
-}
-
-fn open_input(request: &PatchRequest) -> Result<OpenedApk> {
-    open_apk(
-        Path::new(&request.apk_path),
-        &request
-            .split_paths
-            .iter()
-            .map(PathBuf::from)
-            .collect::<Vec<_>>(),
-        ApkFile::patch_options(),
-    )
 }
 
 fn report_container(opened: &OpenedApk, emit: &mut impl FnMut(RunEvent)) {

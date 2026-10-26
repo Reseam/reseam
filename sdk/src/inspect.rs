@@ -8,12 +8,15 @@ use crate::error::{HostError, Result, classify};
 use reseam_apk::reseam_dex::ParseOptions;
 use reseam_apk::{ApkFile, ContainerBundle, ContainerFormat};
 use reseam_patcher::bundle::{BundleArchive, PatchBundle};
+use reseam_patcher::engine::PatchIndex;
+use reseam_patcher::error::PatcherError;
 use reseam_patcher::{ApkVersion, PatchPreset, PatchSpec};
 
+use crate::metrics::measure;
 use crate::trust::TrustStore;
 use reseam_model::{
     ApkMetadata, BundleMetadata, InspectRequest, InspectResponse, PatchMetadata, PatchOutcome,
-    PatchRequest, Problem, RunEvent,
+    PatchPhase, PatchPhaseMetrics, PatchRequest, Problem, RunEvent,
 };
 
 pub(crate) fn apk_metadata(opened: &mut OpenedApk) -> Result<ApkMetadata> {
@@ -51,43 +54,74 @@ pub fn inspect(request: &InspectRequest) -> Result<InspectResponse> {
     Ok(PreparedInspection::open(request)?.metadata)
 }
 
+/// The APK and bundles of one request, each opened once.
+pub(crate) struct Inputs {
+    pub(crate) apk: Option<OpenedApk>,
+    /// Opening the APK, the first phase of a run that patches it.
+    pub(crate) opening: PatchPhaseMetrics,
+    pub(crate) bundles: Vec<OpenedBundle>,
+}
+
+/// A bundle whose signed catalog is read, or why it could not be.
+pub(crate) struct OpenedBundle {
+    path: PathBuf,
+    archive: Result<BundleArchive>,
+}
+
+impl Inputs {
+    /// Fails when the APK cannot be opened; a bundle that cannot is kept with its error.
+    pub(crate) fn open(
+        apk_path: Option<&str>,
+        split_paths: &[String],
+        bundle_paths: &[String],
+    ) -> Result<Self> {
+        let splits: Vec<PathBuf> = split_paths.iter().map(PathBuf::from).collect();
+        let (apk, opening) = measure(PatchPhase::OpenApk, || {
+            apk_path
+                .map(|path| open_apk(Path::new(path), &splits, ApkFile::patch_options()))
+                .transpose()
+        })?;
+        let bundles = bundle_paths
+            .iter()
+            .map(|path| {
+                let path = PathBuf::from(path);
+                let archive = BundleArchive::open(&path).map_err(|source| HostError::Bundle {
+                    path: path.clone(),
+                    source,
+                });
+                OpenedBundle { path, archive }
+            })
+            .collect();
+        Ok(Self {
+            apk,
+            opening,
+            bundles,
+        })
+    }
+}
+
 /// Retains the opened APK and verified catalogs between inspection and one patch
 /// run. Input files must remain unchanged until this object is consumed or dropped,
 /// as with [`ApkInspection`]. Inspection never loads executable bundle payloads.
 pub struct PreparedInspection {
     request: InspectRequest,
-    pub(crate) opened: Option<OpenedApk>,
-    archives: Vec<(PathBuf, Result<BundleArchive>)>,
+    inputs: Inputs,
     metadata: InspectResponse,
 }
 
 impl PreparedInspection {
     pub fn open(request: &InspectRequest) -> Result<Self> {
         let trust = TrustStore::new(&request.trust)?;
-        let splits = request
-            .split_paths
-            .iter()
-            .map(PathBuf::from)
-            .collect::<Vec<_>>();
-        let mut opened = request
-            .apk_path
-            .as_deref()
-            .map(|path| open_apk(Path::new(path), &splits, ApkFile::patch_options()))
-            .transpose()?;
-        let apk = opened.as_mut().map(apk_metadata).transpose()?;
-        let mut bundles = Vec::with_capacity(request.bundle_paths.len());
+        let mut inputs = Inputs::open(
+            request.apk_path.as_deref(),
+            &request.split_paths,
+            &request.bundle_paths,
+        )?;
+        let apk = inputs.apk.as_mut().map(apk_metadata).transpose()?;
+        let mut bundles = Vec::with_capacity(inputs.bundles.len());
         let mut patches = Vec::new();
-        let archives: Vec<_> = request
-            .bundle_paths
-            .iter()
-            .map(|path| {
-                let path = PathBuf::from(path);
-                let archive = open_bundle(&path);
-                (path, archive)
-            })
-            .collect();
-        for (path, result) in &archives {
-            let archive = match result {
+        for OpenedBundle { path, archive } in &inputs.bundles {
+            let archive = match archive {
                 Ok(archive) => archive,
                 Err(error) => {
                     bundles.push(unreadable_bundle(path, error));
@@ -104,8 +138,7 @@ impl PreparedInspection {
         }
         Ok(Self {
             request: request.clone(),
-            opened,
-            archives,
+            inputs,
             metadata: InspectResponse {
                 apk,
                 bundles,
@@ -118,20 +151,32 @@ impl PreparedInspection {
         &self.metadata
     }
 
+    /// The patch `selector` names, resolved as a [`PatchSelection`](reseam_model::PatchSelection)
+    /// resolves it for the inspected package: a reference `<bundle>/<id>`, or an ID
+    /// or display name that identifies one patch. `None` when no patch has that name.
+    pub fn resolve_patch(&self, selector: &str) -> Result<Option<&PatchMetadata>> {
+        let specs: Vec<&PatchSpec> = self
+            .metadata
+            .patches
+            .iter()
+            .map(|patch| &patch.spec)
+            .collect();
+        let package = self
+            .metadata
+            .apk
+            .as_ref()
+            .and_then(|apk| apk.package_name.as_deref());
+        match PatchIndex::new(&specs)?.resolve(selector, package) {
+            Ok(index) => Ok(Some(&self.metadata.patches[index])),
+            Err(PatcherError::UnknownPatch(_)) => Ok(None),
+            Err(error) => Err(error.into()),
+        }
+    }
+
     /// Consumes the inspected inputs. Paths and their ordering must match inspection;
     /// selection, signer approvals, signing identity and destination may change.
     /// Trust is checked again and every payload hash is verified before execution.
     pub fn patch(self, request: &PatchRequest, emit: impl FnMut(RunEvent)) -> Result<PatchOutcome> {
-        self.check_request(request)?;
-        crate::run::patch_with_inputs(
-            request,
-            Some(self),
-            |_, _| Ok(request.selection.clone()),
-            emit,
-        )
-    }
-
-    fn check_request(&self, request: &PatchRequest) -> Result<()> {
         if self.request.apk_path.as_deref() != Some(request.apk_path.as_str())
             || self.request.split_paths != request.split_paths
             || self.request.bundle_paths != request.bundle_paths
@@ -140,18 +185,22 @@ impl PreparedInspection {
                 "patch inputs differ from the prepared inspection",
             ));
         }
-        Ok(())
+        crate::run::run(request, self.inputs, emit)
     }
+}
 
-    pub(crate) fn trusted_archives(self, trust: &TrustStore) -> Result<Vec<TrustedArchive>> {
-        if self.archives.is_empty() {
-            return Err(HostError::InvalidRequest("at least one bundle is required"));
-        }
-        self.archives
-            .into_iter()
-            .map(|(path, archive)| TrustedArchive::new(path, archive?, trust))
-            .collect()
+/// Bundles signed by a key in `trust`; anything else is an error.
+pub(crate) fn trusted_archives(
+    bundles: Vec<OpenedBundle>,
+    trust: &TrustStore,
+) -> Result<Vec<TrustedArchive>> {
+    if bundles.is_empty() {
+        return Err(HostError::InvalidRequest("at least one bundle is required"));
     }
+    bundles
+        .into_iter()
+        .map(|bundle| TrustedArchive::new(bundle.path, bundle.archive?, trust))
+        .collect()
 }
 
 /// A bundle signed by a trusted key whose catalog is read and whose code is not loaded yet.
@@ -249,24 +298,6 @@ pub(crate) fn open_apk(
         apk,
         bundle: format,
         input: apk_path.to_owned(),
-    })
-}
-
-/// Opens bundles signed by a key in `trust`; anything else is an error.
-pub(crate) fn open_bundles(paths: &[PathBuf], trust: &TrustStore) -> Result<Vec<TrustedArchive>> {
-    if paths.is_empty() {
-        return Err(HostError::InvalidRequest("at least one bundle is required"));
-    }
-    paths
-        .iter()
-        .map(|path| TrustedArchive::new(path.clone(), open_bundle(path)?, trust))
-        .collect()
-}
-
-fn open_bundle(path: &Path) -> Result<BundleArchive> {
-    BundleArchive::open(path).map_err(|source| HostError::Bundle {
-        path: path.to_owned(),
-        source,
     })
 }
 

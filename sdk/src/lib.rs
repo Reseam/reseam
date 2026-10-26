@@ -18,7 +18,7 @@ pub use inspect::{ApkInspection, PreparedInspection, inspect};
 pub use install::dex_metadata;
 #[cfg(target_os = "android")]
 pub use reseam_patcher::kotlin::android_host::install_class_loader;
-pub use run::{patch, patch_with_selection};
+pub use run::patch;
 
 #[cfg(test)]
 mod tests;

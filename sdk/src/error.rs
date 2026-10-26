@@ -35,8 +35,6 @@ pub enum HostError {
     },
     #[error("{0}")]
     InvalidRequest(&'static str),
-    #[error("failed to resolve patch selection: {0}")]
-    Selection(#[source] Box<dyn std::error::Error + Send + Sync>),
     #[error("{operation} {}: {source}", path.display())]
     File {
         operation: &'static str,
