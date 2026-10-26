@@ -4,13 +4,14 @@
 use crate::FunctionId;
 use crate::assemble::encode;
 use crate::closure::environment_depth;
-use crate::code::{Code, Condition, HookKind, Operand, Place, Statement};
-use crate::edit::EditedFunction;
-use crate::edit::generated_function;
+use crate::code::{Code, HookKind};
+use crate::edit::{EditedFunction, generated_function};
 use crate::error::{Result, Unsupported, unsupported};
 use crate::function::Function;
 use crate::opcode::{BUILTIN_APPLY, Instruction, Op};
 use crate::string::StringId;
+
+mod statement;
 
 /// A hook ready to compile: its code with names resolved to the file's strings, and how many
 /// slots it keeps.
@@ -28,15 +29,16 @@ pub(crate) struct Links {
     pub modules: Option<u16>,
 }
 
-const ENVIRONMENT: u8 = 0;
+// Registers are operand values, each checked to fit the byte a register operand holds.
+const ENVIRONMENT: u64 = 0;
 /// Holds `undefined` for the lazily created `arguments` object.
-const LAZY_ARGUMENTS: u8 = 1;
-const RECEIVER: u8 = 2;
-const ARGUMENTS: u8 = 3;
-const RESULT: u8 = 4;
-const MODULES: u8 = 5;
-const ORIGINAL: u8 = 6;
-const UNDEFINED: u8 = 7;
+const LAZY_ARGUMENTS: u64 = 1;
+const RECEIVER: u64 = 2;
+const ARGUMENTS: u64 = 3;
+const RESULT: u64 = 4;
+const MODULES: u64 = 5;
+const ORIGINAL: u64 = 6;
+const UNDEFINED: u64 = 7;
 const FIRST_SLOT: u32 = 8;
 /// A call's outgoing registers sit below the frame's last eight: `this` at `frame - 8`, then
 /// each argument below it.
@@ -68,10 +70,10 @@ pub(crate) fn compile(
     match layer.kind {
         HookKind::Before => {
             emitter.call_original();
-            emitter.emit(Op::Ret, &[u64::from(RESULT)]);
+            emitter.emit(Op::Ret, &[RESULT]);
         }
-        HookKind::After => emitter.emit(Op::Ret, &[u64::from(RESULT)]),
-        HookKind::Replace => emitter.emit(Op::Ret, &[u64::from(UNDEFINED)]),
+        HookKind::After => emitter.emit(Op::Ret, &[RESULT]),
+        HookKind::Replace => emitter.emit(Op::Ret, &[UNDEFINED]),
     }
     let read_cache = emitter.read_cache;
     let (body, frame) = emitter.finish()?;
@@ -117,19 +119,21 @@ impl Emitter<'_> {
     }
 
     /// Emits a jump whose first operand, its offset, is resolved when the code is finished.
-    fn jump(&mut self, op: Op, label: Label, registers: &[u8]) {
+    fn jump(&mut self, op: Op, label: Label, registers: &[u64]) {
         let values: Vec<u64> = std::iter::once(0)
-            .chain(registers.iter().map(|&r| u64::from(r)))
+            .chain(registers.iter().copied())
             .collect();
         self.jumps.push((self.code.len(), label));
         self.emit(op, &values);
     }
 
-    fn register(&self, index: u32) -> Result<u8> {
-        u8::try_from(index).map_err(|_| unsupported(self.function, Unsupported::Registers))
+    fn register(&self, index: u32) -> Result<u64> {
+        u8::try_from(index)
+            .map(u64::from)
+            .map_err(|_| unsupported(self.function, Unsupported::Registers))
     }
 
-    fn temp(&mut self) -> Result<u8> {
+    fn temp(&mut self) -> Result<u64> {
         let temp = self.register(self.temps)?;
         self.temps += 1;
         self.top = self.top.max(self.temps);
@@ -145,65 +149,44 @@ impl Emitter<'_> {
     }
 
     fn prologue(&mut self, strict: bool) -> Result<()> {
-        self.emit(Op::GetParentEnvironment, &[u64::from(ENVIRONMENT), 0]);
-        self.emit(Op::LoadConstUndefined, &[u64::from(LAZY_ARGUMENTS)]);
-        self.emit(Op::LoadConstUndefined, &[u64::from(UNDEFINED)]);
-        self.emit(Op::LoadConstUndefined, &[u64::from(RESULT)]);
+        self.emit(Op::GetParentEnvironment, &[ENVIRONMENT, 0]);
+        self.emit(Op::LoadConstUndefined, &[LAZY_ARGUMENTS]);
+        self.emit(Op::LoadConstUndefined, &[UNDEFINED]);
+        self.emit(Op::LoadConstUndefined, &[RESULT]);
         if strict {
-            self.emit(Op::LoadParam, &[u64::from(RECEIVER), 0]);
+            self.emit(Op::LoadParam, &[RECEIVER, 0]);
         } else {
-            self.emit(Op::LoadThisNS, &[u64::from(RECEIVER)]);
+            self.emit(Op::LoadThisNS, &[RECEIVER]);
         }
         for slot in 0..self.layer.slots {
             self.emit(Op::LoadConstUndefined, &[u64::from(FIRST_SLOT + slot)]);
         }
         if let Some(original) = self.links.original {
+            let original = u64::from(original.0);
             self.emit(
                 Op::CreateClosureLongIndex,
-                &[
-                    u64::from(ORIGINAL),
-                    u64::from(ENVIRONMENT),
-                    u64::from(original.0),
-                ],
+                &[ORIGINAL, ENVIRONMENT, original],
             );
         }
         if let Some(depth) = self.links.modules {
-            self.emit(
-                Op::GetParentEnvironment,
-                &[
-                    u64::from(MODULES),
-                    u64::from(environment_depth(self.function, depth)?),
-                ],
-            );
+            let depth = u64::from(environment_depth(self.function, depth)?);
+            self.emit(Op::GetParentEnvironment, &[MODULES, depth]);
         }
         // The arguments as an array, so assignments change what the original receives.
-        self.emit(Op::NewArray, &[u64::from(ARGUMENTS), 0]);
+        self.emit(Op::NewArray, &[ARGUMENTS, 0]);
         let (count, index, value, one) = (self.temp()?, self.temp()?, self.temp()?, self.temp()?);
-        self.emit(
-            Op::GetArgumentsLength,
-            &[u64::from(count), u64::from(LAZY_ARGUMENTS)],
-        );
-        self.emit(Op::LoadConstZero, &[u64::from(index)]);
-        self.emit(Op::LoadConstUInt8, &[u64::from(one), 1]);
+        self.emit(Op::GetArgumentsLength, &[count, LAZY_ARGUMENTS]);
+        self.emit(Op::LoadConstZero, &[index]);
+        self.emit(Op::LoadConstUInt8, &[one, 1]);
         let (test, done) = (self.label(), self.label());
         self.place(test);
         self.jump(Op::JGreaterEqualLong, done, &[index, count]);
         self.emit(
             Op::GetArgumentsPropByValStrict,
-            &[
-                u64::from(value),
-                u64::from(index),
-                u64::from(LAZY_ARGUMENTS),
-            ],
+            &[value, index, LAZY_ARGUMENTS],
         );
-        self.emit(
-            Op::DefineOwnByVal,
-            &[u64::from(ARGUMENTS), u64::from(value), u64::from(index), 1],
-        );
-        self.emit(
-            Op::Add,
-            &[u64::from(index), u64::from(index), u64::from(one)],
-        );
+        self.emit(Op::DefineOwnByVal, &[ARGUMENTS, value, index, 1]);
+        self.emit(Op::Add, &[index, index, one]);
         self.jump(Op::JmpLong, test, &[]);
         self.place(done);
         self.temps = FIRST_SLOT + self.layer.slots;
@@ -216,176 +199,12 @@ impl Emitter<'_> {
 
     /// Calls `function` with the array `arguments` and receiver `this`. The outgoing registers
     /// depend on the frame size, so [`Self::finish`] fills them in.
-    fn apply(&mut self, into: u8, function: u8, arguments: u8, this: u8) {
+    fn apply(&mut self, into: u64, function: u64, arguments: u64, this: u64) {
         self.calls.push(self.code.len());
-        self.emit(Op::Mov, &[0, u64::from(function)]);
-        self.emit(Op::Mov, &[0, u64::from(arguments)]);
-        self.emit(Op::Mov, &[0, u64::from(this)]);
-        self.emit(
-            Op::CallBuiltin,
-            &[u64::from(into), u64::from(BUILTIN_APPLY), 4],
-        );
-    }
-
-    fn block(&mut self, id: u32) -> Result<()> {
-        let layer = self.layer;
-        for statement in &layer.code.blocks[id as usize] {
-            self.temps = FIRST_SLOT + layer.slots;
-            match statement {
-                Statement::Call {
-                    into,
-                    module,
-                    export,
-                    arguments,
-                } => self.call(
-                    self.register(FIRST_SLOT + into.0)?,
-                    module.0,
-                    *export,
-                    arguments,
-                )?,
-                Statement::Assign { place, value } => {
-                    let value = self.load(value)?;
-                    match place {
-                        Place::Param(index) => self.emit(
-                            Op::DefineOwnByIndexL,
-                            &[u64::from(ARGUMENTS), u64::from(value), u64::from(*index)],
-                        ),
-                        Place::Result => self.emit(Op::Mov, &[u64::from(RESULT), u64::from(value)]),
-                        Place::Slot(slot) => {
-                            let slot = self.register(FIRST_SLOT + slot.0)?;
-                            self.emit(Op::Mov, &[u64::from(slot), u64::from(value)]);
-                        }
-                    }
-                }
-                Statement::Return(value) => {
-                    let value = self.load(value)?;
-                    self.emit(Op::Ret, &[u64::from(value)]);
-                }
-                Statement::Branch {
-                    condition,
-                    then,
-                    otherwise,
-                } => {
-                    let (otherwise_label, end) = (self.label(), self.label());
-                    self.test(condition, otherwise_label)?;
-                    self.block(then.0)?;
-                    self.jump(Op::JmpLong, end, &[]);
-                    self.place(otherwise_label);
-                    self.block(otherwise.0)?;
-                    self.place(end);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// Jumps to `otherwise` unless `condition` holds.
-    fn test(&mut self, condition: &Condition<StringId>, otherwise: Label) -> Result<()> {
-        match condition {
-            Condition::True(value) => {
-                let value = self.load(value)?;
-                self.jump(Op::JmpFalseLong, otherwise, &[value]);
-            }
-            Condition::False(value) => {
-                let value = self.load(value)?;
-                self.jump(Op::JmpTrueLong, otherwise, &[value]);
-            }
-            Condition::Null(value) | Condition::NotNull(value) => {
-                let value = self.load(value)?;
-                let null = self.temp()?;
-                self.emit(Op::LoadConstNull, &[u64::from(null)]);
-                let op = if matches!(condition, Condition::Null(_)) {
-                    Op::JNotEqualLong
-                } else {
-                    Op::JEqualLong
-                };
-                self.jump(op, otherwise, &[value, null]);
-            }
-            Condition::Equal(left, right) | Condition::NotEqual(left, right) => {
-                let (left, right) = (self.load(left)?, self.load(right)?);
-                let op = if matches!(condition, Condition::Equal(..)) {
-                    Op::JStrictNotEqualLong
-                } else {
-                    Op::JStrictEqualLong
-                };
-                self.jump(op, otherwise, &[left, right]);
-            }
-        }
-        Ok(())
-    }
-
-    /// Calls the export `name` of the module in environment slot `module`, with `this` undefined.
-    fn call(
-        &mut self,
-        into: u8,
-        module: u32,
-        name: StringId,
-        arguments: &[Operand<StringId>],
-    ) -> Result<()> {
-        let function = self.temp()?;
-        self.emit(
-            Op::LoadFromEnvironmentL,
-            &[u64::from(function), u64::from(MODULES), u64::from(module)],
-        );
-        let cache = self.cache()?;
-        self.emit(
-            Op::GetByIdLong,
-            &[
-                u64::from(function),
-                u64::from(function),
-                cache,
-                u64::from(name.0),
-            ],
-        );
-        let array = self.temp()?;
-        self.emit(Op::NewArray, &[u64::from(array), 0]);
-        for (position, argument) in arguments.iter().enumerate() {
-            let value = self.load(argument)?;
-            self.emit(
-                Op::DefineOwnByIndexL,
-                &[u64::from(array), u64::from(value), position as u64],
-            );
-        }
-        self.apply(into, function, array, UNDEFINED);
-        Ok(())
-    }
-
-    /// The register holding `value`, loading it into a scratch register when it has none.
-    fn load(&mut self, value: &Operand<StringId>) -> Result<u8> {
-        let constant = |emitter: &mut Self, op: Op, operand: Option<u64>| -> Result<u8> {
-            let register = emitter.temp()?;
-            let mut values = vec![u64::from(register)];
-            values.extend(operand);
-            emitter.emit(op, &values);
-            Ok(register)
-        };
-        match value {
-            Operand::Receiver => Ok(RECEIVER),
-            Operand::Result => Ok(RESULT),
-            Operand::Undefined => Ok(UNDEFINED),
-            Operand::Slot(slot) => self.register(FIRST_SLOT + slot.0),
-            Operand::Param(index) => {
-                let value = self.temp()?;
-                let key = self.temp()?;
-                self.emit(Op::LoadConstInt, &[u64::from(key), u64::from(*index)]);
-                self.emit(
-                    Op::GetByVal,
-                    &[u64::from(value), u64::from(ARGUMENTS), u64::from(key)],
-                );
-                Ok(value)
-            }
-            Operand::Null => constant(self, Op::LoadConstNull, None),
-            Operand::Bool(true) => constant(self, Op::LoadConstTrue, None),
-            Operand::Bool(false) => constant(self, Op::LoadConstFalse, None),
-            Operand::Int(value) => constant(
-                self,
-                Op::LoadConstInt,
-                Some(u64::from(value.cast_unsigned())),
-            ),
-            Operand::Text(text) => {
-                constant(self, Op::LoadConstStringLongIndex, Some(u64::from(text.0)))
-            }
-        }
+        self.emit(Op::Mov, &[0, function]);
+        self.emit(Op::Mov, &[0, arguments]);
+        self.emit(Op::Mov, &[0, this]);
+        self.emit(Op::CallBuiltin, &[into, u64::from(BUILTIN_APPLY), 4]);
     }
 
     /// Resolves jumps and outgoing registers; returns the body and its frame size.
