@@ -7,13 +7,13 @@ mod undo;
 
 use std::sync::OnceLock;
 
-use super::ref_index::ClassRefs;
 use crate::DexBytes;
 use crate::error::Result;
+use crate::model::class::{ClassDef, ClassHeader};
+use crate::model::{TypeIdx, TypeList};
 use crate::read::class::{RECORD_SIZE, RawClassDef};
 use crate::read::type_list::{read_type_list, validate_type_list};
-use crate::types::class::{ClassDef, ClassHeader};
-use crate::types::{TypeIdx, TypeList};
+use crate::search::index::ClassRefs;
 use by_type::TypeIndex;
 pub(crate) use undo::Undone;
 use undo::{ClassKey, ClassUndo, Prior};

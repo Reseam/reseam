@@ -3,10 +3,10 @@
 
 use crate::encoding::leb128::{read_sleb128, read_uleb128, read_uleb128p1};
 use crate::error::{Result, require_len};
+use crate::model::debug::{DebugBytecode, DebugInfo};
+use crate::model::metadata::MetadataItem;
+use crate::model::{Pool, StringIdx, TypeIdx};
 use crate::options::ParseOptions;
-use crate::types::debug::{DebugBytecode, DebugInfo};
-use crate::types::metadata::MetadataItem;
-use crate::types::{Pool, StringIdx, TypeIdx};
 
 pub(crate) enum DebugEvent {
     LineStart(u32),

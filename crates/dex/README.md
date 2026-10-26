@@ -16,10 +16,13 @@ Reads, edits, and writes Android DEX files. The rest of the Reseam engine uses i
 
 | Module | Contents |
 |---|---|
+| `model` | data types for every DEX section and id |
+| `instruction` | the `Instruction` set, its catalogue, operands, branches, and the raw instruction stream |
 | `read` | the parser: header, IDs, class data, code, annotations, debug info |
-| `write` | the writer: section layout, sorting, compaction, instruction encoding |
-| `types` | data types for every DEX section |
-| `file` | `DexFile`: class edits, interning, search, lookup tables |
+| `file` | `DexFile`: file-backed tables, interning, class edits, undo |
+| `search` | the reference index, method scans, and opcode patterns |
+| `edit` | method body edits: relocation, control flow, liveness, register growth |
+| `write` | the writer: section layout, pool ordering, splitting, compaction |
 | `encoding` | MUTF-8 and LEB128 |
 
 ## Example

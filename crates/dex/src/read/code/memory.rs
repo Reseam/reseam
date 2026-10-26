@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use crate::instruction::Instruction;
+use crate::model::TypeIdx;
 use crate::read::u16_at;
-use crate::types::TypeIdx;
-use crate::types::instruction::Instruction;
 
 pub fn decode_35c_type(buf: &[u8], off: usize) -> crate::Result<Instruction> {
     let unit0 = u16_at(buf, off);

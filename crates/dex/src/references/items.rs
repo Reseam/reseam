@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::RefSink;
-use crate::types::Pool;
-use crate::types::annotation::{AnnotationItem, AnnotationsDirectory};
-use crate::types::debug::{DebugBytecode, DebugInfo};
-use crate::types::encoded_value::EncodedValue;
-use crate::types::instruction::Instruction;
-use crate::types::method_handle::CallSiteItem;
+use crate::instruction::Instruction;
+use crate::model::Pool;
+use crate::model::annotation::{AnnotationItem, AnnotationsDirectory};
+use crate::model::debug::{DebugBytecode, DebugInfo};
+use crate::model::encoded_value::EncodedValue;
+use crate::model::method_handle::CallSiteItem;
 
 pub(crate) fn call_site(sink: &mut impl RefSink, call_site: &CallSiteItem) {
     sink.add(Pool::MethodHandle, call_site.bootstrap_method.0);

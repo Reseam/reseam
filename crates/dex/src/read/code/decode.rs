@@ -1,15 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::refs::instruction_stream;
-use crate::error::{Result, malformed, require_len};
-use crate::types::instruction::Instruction;
-use crate::types::instruction_encoding::opcodes::{
-    AGET, CONST_METHOD_HANDLE, CONST_METHOD_TYPE, FILL_ARRAY_DATA_PAYLOAD, IF_LEZ,
-    INVOKE_CUSTOM_RANGE, INVOKE_INTERFACE, INVOKE_INTERFACE_RANGE, INVOKE_POLYMORPHIC,
-    INVOKE_VIRTUAL, INVOKE_VIRTUAL_RANGE, NEG_INT, NOP, PACKED_SWITCH_PAYLOAD,
-    SPARSE_SWITCH_PAYLOAD, SPUT_SHORT, USHR_INT_LIT8,
+use crate::error::{Result, malformed};
+use crate::instruction::Instruction;
+use crate::instruction::opcodes::{
+    AGET, CONST_METHOD_HANDLE, CONST_METHOD_TYPE, IF_LEZ, INVOKE_CUSTOM_RANGE, INVOKE_INTERFACE,
+    INVOKE_INTERFACE_RANGE, INVOKE_POLYMORPHIC, INVOKE_VIRTUAL, INVOKE_VIRTUAL_RANGE, NEG_INT, NOP,
+    SPUT_SHORT, USHR_INT_LIT8,
 };
+use crate::instruction::stream::instruction_stream;
 
 use super::invoke::{decode_3rc_invoke, decode_35c_invoke, decode_invoke_polymorphic};
 
@@ -25,39 +24,6 @@ pub(super) fn nibbles(unit: u16) -> (u8, u8) {
 
 pub(super) fn hi8(unit: u16) -> u8 {
     (unit >> 8) as u8
-}
-
-pub(super) use crate::types::instruction_encoding::opcode_units;
-
-/// Counts the instructions in a code item by walking opcode lengths, without
-/// decoding operands or building instructions.
-pub fn count_instructions(buf: &[u8], start: usize, insns_size: usize) -> Result<u32> {
-    instruction_stream(buf, start, insns_size)?.try_fold(0, |count, frame| frame.map(|_| count + 1))
-}
-
-pub(super) fn payload_units(buf: &[u8], unit_off: usize, unit0: u16) -> Result<usize> {
-    use crate::read::{u16_at, u32_at};
-    Ok(match unit0 {
-        PACKED_SWITCH_PAYLOAD => {
-            require_len(buf, unit_off, 4, "packed-switch payload")?;
-            4 + u16_at(buf, unit_off + 2) as usize * 2
-        }
-        SPARSE_SWITCH_PAYLOAD => {
-            require_len(buf, unit_off, 4, "sparse-switch payload")?;
-            2 + u16_at(buf, unit_off + 2) as usize * 4
-        }
-        FILL_ARRAY_DATA_PAYLOAD => {
-            require_len(buf, unit_off, 8, "fill-array-data payload")?;
-            let data_bytes = (u32_at(buf, unit_off + 4) as usize)
-                .checked_mul(u16_at(buf, unit_off + 2) as usize)
-                .and_then(|bytes| bytes.checked_add(8))
-                .ok_or_else(|| {
-                    malformed("fill-array-data payload", unit_off, "payload size overflow")
-                })?;
-            data_bytes.div_ceil(2)
-        }
-        _ => 1,
-    })
 }
 
 pub fn decode_instructions(

@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 
 use super::DexFile;
-use crate::types::{
+use crate::model::{
     FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx,
 };
 

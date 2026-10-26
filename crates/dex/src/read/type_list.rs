@@ -3,7 +3,7 @@
 
 use super::{read_u32, u16_at, u32_at};
 use crate::error::Result;
-use crate::types::{TypeIdx, TypeList};
+use crate::model::{TypeIdx, TypeList};
 
 pub(crate) fn read_type_list(buf: &[u8], off: usize) -> TypeList {
     let size = u32_at(buf, off) as usize;

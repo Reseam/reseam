@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::error::Result;
-use crate::types::instruction::Instruction;
-use crate::types::instruction_encoding::opcodes::{
+use crate::instruction::Instruction;
+use crate::instruction::opcodes::{
     AGET, CMP_L_FLOAT, CMP_LONG, CONST_METHOD_TYPE, FILLED_NEW_ARRAY, FILLED_NEW_ARRAY_RANGE,
     INVOKE_CUSTOM_RANGE, INVOKE_INTERFACE_RANGE, INVOKE_POLYMORPHIC, INVOKE_VIRTUAL, NEG_INT, NOP,
     SPUT_SHORT, USHR_INT_LIT8,

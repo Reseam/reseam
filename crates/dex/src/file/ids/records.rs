@@ -6,9 +6,9 @@ use std::hash::{Hash, Hasher};
 
 use super::IdRecord;
 use crate::error::Result;
+use crate::model::{FieldId, MethodId, ProtoIdx, Prototype, StringIdx, TypeIdx, TypeList};
 use crate::read::type_list::{read_type_list, validate_type_list};
 use crate::read::{u16_at, u32_at};
-use crate::types::{FieldId, MethodId, ProtoIdx, Prototype, StringIdx, TypeIdx, TypeList};
 
 fn check(buf: &[u8], off: usize, size: usize) -> Result<()> {
     crate::error::require_len(buf, off, size, "id table entry")

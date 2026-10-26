@@ -148,8 +148,8 @@ impl<'a> IntoIterator for &'a mut MultiDexContainer {
 /// Lower bound on heap held by materialized IR (ignores Vec overhead,
 /// tries, and debug info). Uses live type sizes so it tracks layout changes.
 pub fn estimated_ir_bytes(stats: &MaterializationStats) -> u64 {
-    use crate::types::class::{ClassData, EncodedMethod};
-    use crate::types::instruction::Instruction;
+    use crate::instruction::Instruction;
+    use crate::model::class::{ClassData, EncodedMethod};
     use std::mem::size_of;
 
     stats.instructions * size_of::<Instruction>() as u64

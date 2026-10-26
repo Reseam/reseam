@@ -4,7 +4,7 @@
 use super::DexWriter;
 use super::code::{ClassLayout, MethodLayout};
 use super::sink::DexSink;
-use crate::types::class::EncodedField;
+use crate::model::class::EncodedField;
 
 pub(crate) fn write_class_data_items<S: DexSink>(
     w: &mut DexWriter<S>,
@@ -24,8 +24,8 @@ pub(crate) fn write_class_data_items<S: DexSink>(
         }
     }
     if class_data_item_count > 0 {
-        w.map_entries.push(crate::types::map::MapItem {
-            type_code: crate::types::map::TYPE_CLASS_DATA_ITEM,
+        w.map_entries.push(crate::model::map::MapItem {
+            type_code: crate::model::map::TYPE_CLASS_DATA_ITEM,
             size: class_data_item_count,
             offset: class_data_start,
         });

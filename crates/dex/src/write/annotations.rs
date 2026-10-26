@@ -79,8 +79,8 @@ pub(crate) fn write_annotations<S: DexSink>(
     }
 
     if items.len() > 0 {
-        w.map_entries.push(crate::types::map::MapItem {
-            type_code: crate::types::map::TYPE_ANNOTATION_ITEM,
+        w.map_entries.push(crate::model::map::MapItem {
+            type_code: crate::model::map::TYPE_ANNOTATION_ITEM,
             size: items.len() as u32,
             offset: ann_items_start,
         });
@@ -101,8 +101,8 @@ pub(crate) fn write_annotations<S: DexSink>(
             }
             annotation_ref_list_offsets.push(ref_list_off);
         }
-        w.map_entries.push(crate::types::map::MapItem {
-            type_code: crate::types::map::TYPE_ANNOTATION_SET_REF_LIST,
+        w.map_entries.push(crate::model::map::MapItem {
+            type_code: crate::model::map::TYPE_ANNOTATION_SET_REF_LIST,
             size: annotation_ref_lists.len() as u32,
             offset: annotation_set_ref_first_off,
         });
@@ -131,8 +131,8 @@ fn write_sets<S: DexSink>(w: &mut DexWriter<S>, sets: &ByteInterner) -> Result<V
             }
             annotation_set_offsets.push(set_off);
         }
-        w.map_entries.push(crate::types::map::MapItem {
-            type_code: crate::types::map::TYPE_ANNOTATION_SET_ITEM,
+        w.map_entries.push(crate::model::map::MapItem {
+            type_code: crate::model::map::TYPE_ANNOTATION_SET_ITEM,
             size: sets.len() as u32,
             offset: annotation_set_first_off,
         });
@@ -178,8 +178,8 @@ fn write_directories<S: DexSink>(
                 class_ann_datas.push(0);
             }
         }
-        w.map_entries.push(crate::types::map::MapItem {
-            type_code: crate::types::map::TYPE_ANNOTATIONS_DIRECTORY_ITEM,
+        w.map_entries.push(crate::model::map::MapItem {
+            type_code: crate::model::map::TYPE_ANNOTATIONS_DIRECTORY_ITEM,
             size: annotation_dir_count,
             offset: annotation_dir_first_off,
         });
@@ -190,7 +190,7 @@ fn write_directories<S: DexSink>(
     class_ann_datas
 }
 
-fn serialize_annotation_item(out: &mut Vec<u8>, item: &crate::types::annotation::AnnotationItem) {
+fn serialize_annotation_item(out: &mut Vec<u8>, item: &crate::model::annotation::AnnotationItem) {
     out.clear();
     out.push(item.visibility.to_u8());
     write_uleb128(out, item.type_.0);
@@ -203,7 +203,7 @@ fn serialize_annotation_item(out: &mut Vec<u8>, item: &crate::types::annotation:
 
 fn intern_annotation_set<S: DexSink>(
     w: &mut DexWriter<S>,
-    annotations: &[crate::types::annotation::AnnotationItem],
+    annotations: &[crate::model::annotation::AnnotationItem],
     items: &mut StreamInterner,
     sets: &mut ByteInterner,
     encoded: &mut Vec<u8>,

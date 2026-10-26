@@ -3,13 +3,13 @@
 
 use super::encoded_value::read_encoded_annotation_with_opts;
 use crate::error::{Result, invalid_annotation_visibility};
-use crate::options::ParseOptions;
-use crate::read::{read_u8, read_u32};
-use crate::types::annotation::{
+use crate::model::annotation::{
     AnnotationElement, AnnotationItem, AnnotationVisibility, AnnotationsDirectory,
 };
-use crate::types::metadata::MetadataItem;
-use crate::types::{FieldIdx, MethodIdx};
+use crate::model::metadata::MetadataItem;
+use crate::model::{FieldIdx, MethodIdx};
+use crate::options::ParseOptions;
+use crate::read::{read_u8, read_u32};
 
 pub fn read_annotations_directory(
     buf: &[u8],

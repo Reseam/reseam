@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::error::{Result, malformed, require_len};
-use crate::read::{i32_at, u16_at, u32_at};
-use crate::types::instruction::Instruction;
-use crate::types::instruction_encoding::opcodes::{
+use crate::instruction::Instruction;
+use crate::instruction::opcodes::{
     ARRAY_LENGTH, CHECK_CAST, CMP_G_DOUBLE, CMP_G_FLOAT, CMP_L_DOUBLE, CMP_L_FLOAT, CMP_LONG,
     CONST, CONST_CLASS, CONST_HIGH16, CONST_METHOD_HANDLE, CONST_METHOD_TYPE, CONST_STRING,
     CONST_STRING_JUMBO, CONST_WIDE, CONST_WIDE_HIGH16, CONST_WIDE16, CONST_WIDE32, CONST4, CONST16,
@@ -16,6 +15,7 @@ use crate::types::instruction_encoding::opcodes::{
     NOP, PACKED_SWITCH, PACKED_SWITCH_PAYLOAD, RETURN, RETURN_OBJECT, RETURN_VOID, RETURN_WIDE,
     SPARSE_SWITCH, SPARSE_SWITCH_PAYLOAD, THROW,
 };
+use crate::read::{i32_at, u16_at, u32_at};
 
 use super::super::arithmetic::decode_23x;
 use super::super::memory::decode_35c_type;
@@ -138,19 +138,19 @@ pub(super) fn decode_opcode(buf: &[u8], unit_off: usize, opcode: u8) -> Result<I
 
         CONST_STRING => Instruction::ConstString {
             dest: hi8(unit0),
-            string: crate::types::StringIdx(u32::from(u16_at(buf, unit_off + 2))),
+            string: crate::model::StringIdx(u32::from(u16_at(buf, unit_off + 2))),
         },
         CONST_CLASS => Instruction::ConstClass {
             dest: hi8(unit0),
-            type_: crate::types::TypeIdx(u32::from(u16_at(buf, unit_off + 2))),
+            type_: crate::model::TypeIdx(u32::from(u16_at(buf, unit_off + 2))),
         },
         CONST_METHOD_HANDLE => Instruction::ConstMethodHandle {
             dest: hi8(unit0),
-            method_handle: crate::types::MethodHandleIdx(u32::from(u16_at(buf, unit_off + 2))),
+            method_handle: crate::model::MethodHandleIdx(u32::from(u16_at(buf, unit_off + 2))),
         },
         CONST_METHOD_TYPE => Instruction::ConstMethodType {
             dest: hi8(unit0),
-            proto: crate::types::ProtoIdx(u32::from(u16_at(buf, unit_off + 2))),
+            proto: crate::model::ProtoIdx(u32::from(u16_at(buf, unit_off + 2))),
         },
 
         CONST_STRING_JUMBO => {
@@ -158,7 +158,7 @@ pub(super) fn decode_opcode(buf: &[u8], unit_off: usize, opcode: u8) -> Result<I
             let hi = u32::from(u16_at(buf, unit_off + 4));
             Instruction::ConstStringJumbo {
                 dest: hi8(unit0),
-                string: crate::types::StringIdx(hi << 16 | lo),
+                string: crate::model::StringIdx(hi << 16 | lo),
             }
         }
 
@@ -167,7 +167,7 @@ pub(super) fn decode_opcode(buf: &[u8], unit_off: usize, opcode: u8) -> Result<I
 
         CHECK_CAST => Instruction::CheckCast {
             ref_: hi8(unit0),
-            type_: crate::types::TypeIdx(u32::from(u16_at(buf, unit_off + 2))),
+            type_: crate::model::TypeIdx(u32::from(u16_at(buf, unit_off + 2))),
         },
 
         INSTANCE_OF => {
@@ -175,13 +175,13 @@ pub(super) fn decode_opcode(buf: &[u8], unit_off: usize, opcode: u8) -> Result<I
             Instruction::InstanceOf {
                 dest: a,
                 ref_: b,
-                type_: crate::types::TypeIdx(u32::from(u16_at(buf, unit_off + 2))),
+                type_: crate::model::TypeIdx(u32::from(u16_at(buf, unit_off + 2))),
             }
         }
 
         NEW_INSTANCE => Instruction::NewInstance {
             dest: hi8(unit0),
-            type_: crate::types::TypeIdx(u32::from(u16_at(buf, unit_off + 2))),
+            type_: crate::model::TypeIdx(u32::from(u16_at(buf, unit_off + 2))),
         },
 
         NEW_ARRAY => {
@@ -189,13 +189,13 @@ pub(super) fn decode_opcode(buf: &[u8], unit_off: usize, opcode: u8) -> Result<I
             Instruction::NewArray {
                 dest: a,
                 size: b,
-                type_: crate::types::TypeIdx(u32::from(u16_at(buf, unit_off + 2))),
+                type_: crate::model::TypeIdx(u32::from(u16_at(buf, unit_off + 2))),
             }
         }
 
         FILLED_NEW_ARRAY => decode_35c_type(buf, unit_off)?,
         FILLED_NEW_ARRAY_RANGE => Instruction::FilledNewArrayRange {
-            type_: crate::types::TypeIdx(u32::from(u16_at(buf, unit_off + 2))),
+            type_: crate::model::TypeIdx(u32::from(u16_at(buf, unit_off + 2))),
             first_reg: u16_at(buf, unit_off + 4),
             count: hi8(unit0),
         },
@@ -276,9 +276,10 @@ fn decode_nop_or_payload(buf: &[u8], unit_off: usize, unit0: u16) -> Result<Inst
             for i in 0..size {
                 targets.push(i32_at(buf, unit_off + 8 + i * 4));
             }
-            Instruction::PackedSwitchPayload(Box::new(
-                crate::types::instruction::PackedSwitchData { first_key, targets },
-            ))
+            Instruction::PackedSwitchPayload(Box::new(crate::instruction::PackedSwitchData {
+                first_key,
+                targets,
+            }))
         }
         SPARSE_SWITCH_PAYLOAD => {
             let size = u16_at(buf, unit_off + 2) as usize;
@@ -294,9 +295,9 @@ fn decode_nop_or_payload(buf: &[u8], unit_off: usize, unit0: u16) -> Result<Inst
                 let target = i32_at(buf, unit_off + 4 + size * 4 + i * 4);
                 keys_and_targets.push((key, target));
             }
-            Instruction::SparseSwitchPayload(Box::new(
-                crate::types::instruction::SparseSwitchData { keys_and_targets },
-            ))
+            Instruction::SparseSwitchPayload(Box::new(crate::instruction::SparseSwitchData {
+                keys_and_targets,
+            }))
         }
         FILL_ARRAY_DATA_PAYLOAD => {
             let element_width = u16_at(buf, unit_off + 2);
@@ -310,12 +311,10 @@ fn decode_nop_or_payload(buf: &[u8], unit_off: usize, unit0: u16) -> Result<Inst
             })?;
             require_len(buf, unit_off, 8 + data_bytes, "fill-array-data payload")?;
             let data = buf[unit_off + 8..unit_off + 8 + data_bytes].to_vec();
-            Instruction::FillArrayDataPayload(Box::new(
-                crate::types::instruction::FillArrayPayloadData {
-                    element_width,
-                    data,
-                },
-            ))
+            Instruction::FillArrayDataPayload(Box::new(crate::instruction::FillArrayPayloadData {
+                element_width,
+                data,
+            }))
         }
         _ => Instruction::Nop,
     };

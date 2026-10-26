@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::error::{Result, invalid};
-use crate::types::instruction::Instruction;
-use crate::types::instruction_encoding::opcodes::{
+use crate::instruction::Instruction;
+use crate::instruction::opcodes::{
     FILL_ARRAY_DATA_PAYLOAD, PACKED_SWITCH_PAYLOAD, SPARSE_SWITCH_PAYLOAD,
 };
 

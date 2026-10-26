@@ -5,9 +5,9 @@ use super::class::read_class_skeleton_at;
 use crate::DexBytes;
 use crate::encoding::leb128::read_uleb128;
 use crate::error::Result;
+use crate::model::TypeIdx;
+use crate::model::hidden_api::{ClassHiddenApiFlags, HiddenApiFlags};
 use crate::options::ParseOptions;
-use crate::types::TypeIdx;
-use crate::types::hidden_api::{ClassHiddenApiFlags, HiddenApiFlags};
 
 /// Where one class's member flags start, and the class data listing its members.
 #[derive(Debug, Clone, Copy)]

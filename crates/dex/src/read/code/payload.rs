@@ -3,10 +3,10 @@
 
 use crate::encoding::leb128::{read_sleb128, read_uleb128};
 use crate::error::{Result, invalid_offset, require_len};
+use crate::model::TypeIdx;
+use crate::model::code::{CatchHandler, TryItem, TypedCatch};
 use crate::options::ParseOptions;
 use crate::read::{u16_at, u32_at};
-use crate::types::TypeIdx;
-use crate::types::code::{CatchHandler, TryItem, TypedCatch};
 
 pub(crate) enum HandlerEvent {
     Count(u32),

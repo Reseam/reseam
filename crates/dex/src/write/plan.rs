@@ -14,15 +14,15 @@ use std::collections::BinaryHeap;
 use rustc_hash::FxHashMap;
 
 use super::part::DexPart;
-use super::sort::{Remap, RemapTables};
+use super::remap::{Remap, RemapTables};
 use crate::error::{Result, invalid};
 use crate::file::DexFile;
+use crate::model::TypeList;
+use crate::model::annotation::AnnotationsDirectory;
+use crate::model::class::{ClassDef, ClassHeader};
+use crate::model::encoded_value::EncodedValue;
 use crate::read::annotation::read_annotations_directory;
 use crate::read::class::RawClassDef;
-use crate::types::TypeList;
-use crate::types::annotation::AnnotationsDirectory;
-use crate::types::class::{ClassDef, ClassHeader};
-use crate::types::encoded_value::EncodedValue;
 
 pub(crate) enum WriteClass<'a> {
     Resident(&'a ClassDef),

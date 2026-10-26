@@ -4,7 +4,7 @@
 use reseam_journal::Savepoint;
 
 use super::{ClassSlot, ClassTable};
-use crate::types::class::ClassDef;
+use crate::model::class::ClassDef;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(super) enum ClassKey {

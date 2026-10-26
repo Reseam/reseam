@@ -5,18 +5,18 @@ use super::RefSink;
 use super::items::{annotations_dir, debug_info, encoded_value, instruction};
 use crate::DexFile;
 use crate::error::{Result, require_len};
+use crate::instruction::stream::{index_operands, walk_instructions};
+use crate::model::Pool;
+use crate::model::class::ClassDef;
+use crate::model::code::CodeItem;
 use crate::options::ParseOptions;
 use crate::read::annotation::read_annotations_directory;
 use crate::read::class::RawClassDef;
 use crate::read::class::read_class_skeleton_at;
 use crate::read::code::payload::{HandlerEvent, walk_handler_list};
-use crate::read::code::{index_operands, walk_instructions};
 use crate::read::debug::read_debug_info;
 use crate::read::encoded_value::read_encoded_array_with_opts;
 use crate::read::type_list::read_type_list;
-use crate::types::Pool;
-use crate::types::class::ClassDef;
-use crate::types::code::CodeItem;
 
 /// Whether a class walk also visits the bodies of its methods.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -139,7 +139,7 @@ fn raw_code_item(
     walk_instructions(buf, base + 16, insns_size, |insn| {
         for operand in index_operands(insn.opcode) {
             let at = insn.offset() + operand.at;
-            let idx = if matches!(operand.width, crate::read::code::refs::IndexWidth::U32) {
+            let idx = if matches!(operand.width, crate::instruction::stream::IndexWidth::U32) {
                 word(at)
             } else {
                 u32::from(u16::from_le_bytes([buf[at], buf[at + 1]]))

@@ -48,10 +48,9 @@ pub fn parse_container_with_bytes(raw: DexBytes, opts: ParseOptions) -> Result<V
 
     let mut magic = [0u8; 8];
     magic.copy_from_slice(&buf[..8]);
-    let version = crate::types::header::DexVersion::from_magic(magic);
+    let version = crate::model::header::DexVersion::from_magic(magic);
 
-    let is_container =
-        version.is_some_and(super::super::types::header::DexVersion::is_container_format);
+    let is_container = version.is_some_and(crate::model::header::DexVersion::is_container_format);
     if !is_container {
         let dex = parse_single_with_raw(raw, opts, None)?;
         return Ok(vec![dex]);

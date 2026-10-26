@@ -4,9 +4,9 @@
 use super::{Bodies, RefSink, call_site, class, raw_class};
 use crate::DexFile;
 use crate::error::Result;
+use crate::model::Pool;
+use crate::model::class::ClassDef;
 use crate::read::type_list::read_type_list;
-use crate::types::Pool;
-use crate::types::class::ClassDef;
 
 pub(crate) struct ReferenceValidator<F> {
     check: F,
@@ -70,10 +70,10 @@ pub(crate) fn validate_pools(dex: &DexFile) -> Result<()> {
     }
     for handle in dex.method_handles.iter() {
         match handle?.member {
-            crate::types::method_handle::MethodHandleMember::Field(field) => {
+            crate::model::method_handle::MethodHandleMember::Field(field) => {
                 validator.add(Pool::Field, field.0);
             }
-            crate::types::method_handle::MethodHandleMember::Method(method) => {
+            crate::model::method_handle::MethodHandleMember::Method(method) => {
                 validator.add(Pool::Method, method.0);
             }
         }

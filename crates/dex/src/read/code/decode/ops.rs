@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::error::{Result, invalid};
-use crate::read::u16_at;
-use crate::types::instruction::Instruction;
-use crate::types::instruction_encoding::opcodes::{
+use crate::instruction::Instruction;
+use crate::instruction::opcodes::{
     ADD_DOUBLE, ADD_DOUBLE2_ADDR, ADD_FLOAT, ADD_FLOAT2_ADDR, ADD_INT, ADD_INT_LIT8, ADD_INT_LIT16,
     ADD_INT2_ADDR, ADD_LONG, ADD_LONG2_ADDR, AND_INT, AND_INT_LIT8, AND_INT_LIT16, AND_INT2_ADDR,
     AND_LONG, AND_LONG2_ADDR, DIV_DOUBLE, DIV_DOUBLE2_ADDR, DIV_FLOAT, DIV_FLOAT2_ADDR, DIV_INT,
@@ -21,6 +20,7 @@ use crate::types::instruction_encoding::opcodes::{
     SUB_INT2_ADDR, SUB_LONG, SUB_LONG2_ADDR, USHR_INT, USHR_INT_LIT8, USHR_INT2_ADDR, USHR_LONG,
     USHR_LONG2_ADDR, XOR_INT, XOR_INT_LIT8, XOR_INT_LIT16, XOR_INT2_ADDR, XOR_LONG, XOR_LONG2_ADDR,
 };
+use crate::read::u16_at;
 
 use super::super::arithmetic::decode_23x;
 use super::{hi8, nibbles};

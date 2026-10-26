@@ -3,7 +3,7 @@
 
 use super::plan::WritePlan;
 use crate::error::Result;
-use crate::types::class::NO_INDEX;
+use crate::model::class::NO_INDEX;
 use sha1::Digest;
 use zlib_rs::adler32::{adler32, adler32_combine};
 

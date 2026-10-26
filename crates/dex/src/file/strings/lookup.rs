@@ -5,8 +5,8 @@ use std::cmp::Ordering;
 
 use super::{StringPool, hash_str};
 use crate::encoding::mutf8::encode_mutf8;
-use crate::types::StringIdx;
-use crate::util::sort::{ascii_order, mutf8_compare, mutf8_units};
+use crate::encoding::mutf8::{ascii_order, mutf8_compare, mutf8_units};
+use crate::model::StringIdx;
 
 impl StringPool {
     pub fn find(&self, s: &str) -> Option<StringIdx> {

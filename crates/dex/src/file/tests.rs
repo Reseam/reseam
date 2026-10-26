@@ -5,7 +5,7 @@ mod metadata;
 mod rollback;
 
 use super::*;
-use crate::types::access_flags::AccessFlags;
+use crate::model::access_flags::AccessFlags;
 
 fn write(dex: &DexFile) -> crate::Result<Vec<u8>> {
     read(&crate::write_spooled(dex, None)?.0)
@@ -105,7 +105,7 @@ fn write_rejects_cyclic_and_duplicate_class_definitions() {
 
 #[test]
 fn write_keeps_hidden_api_flags_with_reordered_classes() {
-    use crate::types::class::EncodedField;
+    use crate::model::class::EncodedField;
     use crate::{ClassHiddenApiFlags, HiddenApiData, HiddenApiFlags};
 
     let mut dex = DexFile::new(DexHeader::new(crate::DexVersion::V035));

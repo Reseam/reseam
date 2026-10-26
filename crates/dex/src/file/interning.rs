@@ -3,7 +3,7 @@
 
 use super::DexFile;
 use crate::error::{Result, invalid_descriptor};
-use crate::types::{
+use crate::model::{
     FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx, TypeList,
 };
 
@@ -30,7 +30,7 @@ impl DexFile {
     }
 
     pub fn intern_proto(&mut self, descriptor: &str) -> Result<ProtoIdx> {
-        use crate::util::descriptor::{parse_method_descriptor, shorty_from_parts};
+        use crate::model::descriptor::{parse_method_descriptor, shorty_from_parts};
 
         let (param_strs, ret_str) = parse_method_descriptor(descriptor)
             .ok_or_else(|| invalid_descriptor("method descriptor", descriptor))?;
@@ -104,7 +104,7 @@ impl DexFile {
     }
 
     pub(crate) fn validate_type_descriptor(kind: &'static str, descriptor: &str) -> Result<()> {
-        if crate::util::descriptor::is_type_descriptor(descriptor) {
+        if crate::model::descriptor::is_type_descriptor(descriptor) {
             return Ok(());
         }
 

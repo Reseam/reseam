@@ -3,7 +3,7 @@
 
 use crate::encoding::leb128::{write_sleb128, write_uleb128};
 use crate::error::Result;
-use crate::types::code::CodeItem;
+use crate::model::code::CodeItem;
 use crate::write::DexWriter;
 use crate::write::instruction_writer::encode_instructions;
 use crate::write::sink::DexSink;

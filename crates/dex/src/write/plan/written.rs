@@ -5,8 +5,8 @@ use std::borrow::Cow;
 
 use super::WritePlan;
 use crate::error::Result;
-use crate::types::method_handle::{CallSiteItem, MethodHandle};
-use crate::types::{FieldId, MethodId, Prototype, StringIdx, TypeIdx};
+use crate::model::method_handle::{CallSiteItem, MethodHandle};
+use crate::model::{FieldId, MethodId, Prototype, StringIdx, TypeIdx};
 
 impl WritePlan<'_> {
     pub(crate) fn string_count(&self) -> usize {
@@ -140,9 +140,9 @@ impl WritePlan<'_> {
         }
     }
 
-    pub(super) fn map_proto(&self, idx: crate::types::ProtoIdx) -> crate::types::ProtoIdx {
+    pub(super) fn map_proto(&self, idx: crate::model::ProtoIdx) -> crate::model::ProtoIdx {
         match &self.remap {
-            Some(r) => crate::types::ProtoIdx(r.proto[idx.0 as usize]),
+            Some(r) => crate::model::ProtoIdx(r.proto[idx.0 as usize]),
             None => idx,
         }
     }

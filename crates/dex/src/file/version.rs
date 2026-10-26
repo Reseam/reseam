@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::DexFile;
-use crate::types::header::DexVersion;
-use crate::types::instruction::Instruction;
+use crate::instruction::Instruction;
+use crate::model::header::DexVersion;
 
 impl DexFile {
     pub fn version(&self) -> DexVersion {

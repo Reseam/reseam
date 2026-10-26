@@ -4,8 +4,8 @@
 use super::*;
 
 fn metadata_fixture() -> DexFile {
-    use crate::types::debug::{DebugBytecode, DebugInfo};
-    use crate::types::metadata::Metadata;
+    use crate::model::debug::{DebugBytecode, DebugInfo};
+    use crate::model::metadata::Metadata;
     let mut dex = DexFile::new(DexHeader::new(crate::DexVersion::V035));
     let class = dex
         .create_class("LMetadata;", AccessFlags::PUBLIC, None)

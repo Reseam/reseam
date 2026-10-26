@@ -5,7 +5,7 @@ mod items;
 mod validate;
 mod walk;
 
-use crate::types::Pool;
+use crate::model::Pool;
 
 pub(crate) use items::{annotations_dir, call_site, debug_info, encoded_value, instruction};
 pub(crate) use validate::{

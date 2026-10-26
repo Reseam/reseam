@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::sort::Remap;
+use super::remap::Remap;
 use crate::encoding::leb128::{write_sleb128, write_uleb128, write_uleb128p1};
 use crate::error::{Result, require_len};
+use crate::instruction::stream::{index_operands, walk_instructions};
 use crate::options::ParseOptions;
 use crate::read::code::payload::{HandlerEvent, handler_index, walk_handler_list};
-use crate::read::code::{index_operands, walk_instructions};
 use crate::read::debug::walk_debug_info;
 
 pub(crate) fn copy_code_item(
@@ -74,7 +74,7 @@ pub(crate) fn copy_code_item(
                 if let Some(remap) = remap {
                     write_uleb128(
                         out,
-                        remap.index(crate::types::Pool::Type, catch.exception_type.0)?,
+                        remap.index(crate::model::Pool::Type, catch.exception_type.0)?,
                     );
                     write_uleb128(out, catch.addr);
                 }
@@ -108,7 +108,7 @@ pub(crate) fn copy_code_item(
 fn remap_operands(opcode: u8, remap: &Remap<'_>, insn: &mut [u8]) -> Result<bool> {
     for operand in index_operands(opcode) {
         let at = operand.at;
-        if matches!(operand.width, crate::read::code::refs::IndexWidth::U32) {
+        if matches!(operand.width, crate::instruction::stream::IndexWidth::U32) {
             let old = crate::read::u32_at(insn, at);
             insn[at..at + 4].copy_from_slice(&remap.index(operand.pool, old)?.to_le_bytes());
             continue;

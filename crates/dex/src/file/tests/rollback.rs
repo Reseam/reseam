@@ -4,6 +4,7 @@
 use reseam_journal::Savepoint;
 
 use super::*;
+use crate::{RefKey, RefQuery};
 
 #[test]
 fn rollback_returns_a_dex_to_each_savepoint() {

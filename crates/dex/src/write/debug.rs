@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::encoding::leb128::{write_sleb128, write_uleb128, write_uleb128p1};
-use crate::types::debug::{DebugBytecode, DebugInfo};
+use crate::model::debug::{DebugBytecode, DebugInfo};
 
 pub fn write_debug_info(buf: &mut Vec<u8>, info: &DebugInfo) {
     write_uleb128(buf, info.line_start);

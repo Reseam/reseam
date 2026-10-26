@@ -7,11 +7,11 @@ use std::collections::BTreeMap;
 use super::ClassTable;
 use crate::DexBytes;
 use crate::error::{Result, invalid, require_len};
+use crate::model::TypeIdx;
+use crate::model::hidden_api::ClassHiddenApiFlags;
 use crate::options::ParseOptions;
 use crate::read::hidden_api::{FlagClass, FlagSource, read_class_flags};
 use crate::read::read_u32;
-use crate::types::TypeIdx;
-use crate::types::hidden_api::ClassHiddenApiFlags;
 
 /// Hidden-API member flags keyed by their class and member identities.
 /// Source records remain file-backed; each lookup decodes at most one class.

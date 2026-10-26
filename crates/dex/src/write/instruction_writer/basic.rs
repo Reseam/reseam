@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::error::{Result, invalid};
-use crate::types::instruction::Instruction;
+use crate::instruction::Instruction;
 
 use super::{pack_12x, pack_aa_op, validate_u4_register};
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::encoding::leb128::write_uleb128;
-use crate::types::encoded_value::{EncodedAnnotation, EncodedValue};
+use crate::model::encoded_value::{EncodedAnnotation, EncodedValue};
 
 pub fn write_encoded_value(buf: &mut Vec<u8>, value: &EncodedValue) {
     let tag = value.kind() as u8;

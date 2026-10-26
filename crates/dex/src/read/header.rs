@@ -5,9 +5,9 @@ use crate::error::{
     Result, checksum_mismatch, invalid, invalid_magic, require_len, signature_mismatch, slice,
     truncated, unsupported,
 };
+use crate::model::header::{DexHeader, DexVersion};
 use crate::options::ParseOptions;
 use crate::read::u32_at;
-use crate::types::header::{DexHeader, DexVersion};
 
 pub fn read_header_at(buf: &[u8], header_off: usize, opts: ParseOptions) -> Result<DexHeader> {
     require_len(buf, header_off, 112, "dex header")?;

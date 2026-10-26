@@ -8,10 +8,10 @@ pub use self::part::{DexPart, split_to_fit};
 pub use self::sink::{DexSink, SpoolSink, Spooled};
 use crate::error::Result;
 use crate::file::DexFile;
+use crate::model::encoded_value::EncodedValue;
+use crate::model::header::DexVersion;
+use crate::model::map::MapItem;
 use crate::options::{LinkPolicy, MAX_POOL_SIZE, WriteOptions};
-use crate::types::encoded_value::EncodedValue;
-use crate::types::header::DexVersion;
-use crate::types::map::MapItem;
 
 pub(crate) mod annotations;
 pub(crate) mod class_data;
@@ -20,15 +20,18 @@ pub(crate) mod debug;
 pub(crate) mod encoded_arrays;
 pub(crate) mod encoded_value;
 pub(crate) mod finalize;
+mod hidden_api;
+mod ids;
 pub(crate) mod instruction_writer;
 pub(crate) mod intern;
 pub(crate) mod layout;
-pub(crate) mod orchestration;
 pub(crate) mod part;
 pub(crate) mod plan;
 pub(crate) mod raw_code;
+pub(crate) mod remap;
+pub(crate) mod sections;
 pub(crate) mod sink;
-pub(crate) mod sort;
+mod type_lists;
 
 pub(crate) fn is_default_value(v: &EncodedValue) -> bool {
     matches!(

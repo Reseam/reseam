@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::DexBytes;
-use crate::types::metadata::{Metadata, MetadataItem};
+use crate::model::metadata::{Metadata, MetadataItem};
 
 /// Entries an id pool other than strings can hold: its indices are 16-bit.
 pub const MAX_POOL_SIZE: usize = 1 << 16;

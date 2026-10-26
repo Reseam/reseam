@@ -3,13 +3,13 @@
 
 use crate::DexBytes;
 use crate::error::{Result, invalid, invalid_call_site, invalid_method_handle_type, require_array};
-use crate::options::ParseOptions;
-use crate::read::{read_u16, read_u32};
-use crate::types::encoded_value::EncodedValue;
-use crate::types::method_handle::{
+use crate::model::encoded_value::EncodedValue;
+use crate::model::method_handle::{
     CallSiteItem, MethodHandle, MethodHandleMember, MethodHandleType,
 };
-use crate::types::{FieldIdx, MethodIdx};
+use crate::model::{FieldIdx, MethodIdx};
+use crate::options::ParseOptions;
+use crate::read::{read_u16, read_u32};
 use std::borrow::Cow;
 
 /// A record whose encoded representation may reference variable-size data.

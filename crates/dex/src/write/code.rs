@@ -5,17 +5,17 @@ use super::DexWriter;
 use super::intern::ByteInterner;
 use super::plan::{WriteClass, WritePlan};
 use super::raw_code::{copy_code_item, copy_debug_info};
+use super::remap::Remap;
 use super::sink::DexSink;
-use super::sort::Remap;
 use crate::error::Result;
+use crate::model::MethodIdx;
+use crate::model::access_flags::AccessFlags;
+use crate::model::class::{ClassData, EncodedField};
+use crate::model::code::CodeItem;
+use crate::model::map::{MapItem, TYPE_CODE_ITEM, TYPE_DEBUG_INFO_ITEM};
 use crate::options::ParseOptions;
 use crate::read::class::read_class_skeleton_at;
 use crate::read::code::read_code_item;
-use crate::types::MethodIdx;
-use crate::types::access_flags::AccessFlags;
-use crate::types::class::{ClassData, EncodedField};
-use crate::types::code::CodeItem;
-use crate::types::map::{MapItem, TYPE_CODE_ITEM, TYPE_DEBUG_INFO_ITEM};
 
 mod item;
 
@@ -130,7 +130,7 @@ impl CodeEmitter {
                                 code.debug_info = None;
                             }
                             remap.remap_code(&mut code)?;
-                            super::sort::fixup_code(&mut code)?;
+                            super::remap::fixup_code(&mut code)?;
                             self.write_code(w, &code)?
                         } else {
                             self.write_code(w, code)?
@@ -258,7 +258,7 @@ impl CodeEmitter {
         }
         if let Some(remap) = remap {
             remap.remap_code(&mut code)?;
-            super::sort::fixup_code(&mut code)?;
+            super::remap::fixup_code(&mut code)?;
         }
         self.write_code(w, &code)
     }

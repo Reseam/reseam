@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-mod class_access;
 mod class_ops;
 mod classes;
 pub mod container;
@@ -12,10 +11,8 @@ mod interning;
 mod items;
 pub use items::{FileRecord, FileTable};
 mod lookup;
-mod pattern;
 mod pools;
-mod ref_index;
-mod scan;
+mod static_values;
 mod strings;
 #[cfg(test)]
 mod tests;
@@ -24,22 +21,15 @@ mod undo;
 mod version;
 
 use crate::DexBytes;
+use crate::search::index::{PoolKeys, RefIndex};
 pub use classes::ClassTable;
 pub use ids::{IdRecord, IdTable};
-use ref_index::RefIndex;
-pub use ref_index::{RefKey, RefQuery};
 pub use strings::StringPool;
 
+use crate::model::header::DexHeader;
+use crate::model::method_handle::{CallSiteItem, MethodHandle};
+use crate::model::{FieldId, MethodId, Prototype, StringIdx};
 use crate::options::ParseOptions;
-use crate::types::header::DexHeader;
-use crate::types::method_handle::{CallSiteItem, MethodHandle};
-use crate::types::{FieldId, MethodId, Prototype, StringIdx};
-
-pub use pattern::{InstructionPattern, OpcodeMatcher};
-pub use scan::{
-    InstructionHit, InstructionSite, MemberCounts, MethodHit, MethodSummary, MethodView,
-    summarize_resident,
-};
 
 /// A DEX file whose tables are views over the mapped file. Nothing is decoded
 /// until it is read, and only what a patch mutates becomes resident.
@@ -150,5 +140,28 @@ impl DexFile {
             tracing::debug!(file_size = self.header.file_size, "dex marked dirty");
         }
         self.dirty = true;
+    }
+
+    pub(crate) fn ref_index(&self) -> crate::error::Result<&RefIndex> {
+        if let Some(index) = self.ref_index.get() {
+            return Ok(index);
+        }
+        let keys = PoolKeys::new(self.methods.len(), self.fields.len(), self.strings.len());
+        let index = RefIndex::build(&self.classes, keys, self.parse_options)?;
+        self.release_pages();
+        Ok(self.ref_index.get_or_init(|| index))
+    }
+
+    /// Drops the search caches: the reference index, the cached references of
+    /// resident classes and remembered type lookups. The next search builds
+    /// them again.
+    pub fn release_search_caches(&mut self) {
+        self.ref_index.take();
+        self.classes.release_refs();
+        self.type_lookups.clear();
+    }
+
+    pub fn ref_index_heap_bytes(&self) -> u64 {
+        self.ref_index.get().map_or(0, RefIndex::heap_bytes)
     }
 }

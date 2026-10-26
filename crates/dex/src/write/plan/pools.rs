@@ -5,9 +5,9 @@ use std::cmp::Ordering;
 
 use super::DexPart;
 use crate::file::DexFile;
+use crate::model::{FieldId, MethodId, Pool, StringIdx, TypeIdx};
 use crate::references::pool_len;
-use crate::types::{FieldId, MethodId, Pool, StringIdx, TypeIdx};
-use crate::write::sort::RemapTables;
+use crate::write::remap::RemapTables;
 
 pub(crate) struct PoolOrder {
     pub string: Vec<u32>,
@@ -60,7 +60,7 @@ pub(super) fn order_pools(
     });
     let proto_remap = protos.as_deref().map(|o| remap_of(o, dex.prototypes.len()));
     let map_proto =
-        |i: crate::types::ProtoIdx| proto_remap.as_ref().map_or(i.0, |r| r[i.0 as usize]);
+        |i: crate::model::ProtoIdx| proto_remap.as_ref().map_or(i.0, |r| r[i.0 as usize]);
 
     let fields =
         (compact || !dex.fields.is_sorted() || type_remap.is_some() || string_remap.is_some())

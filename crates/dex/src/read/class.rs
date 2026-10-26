@@ -6,13 +6,13 @@ use super::encoded_value::read_encoded_array_with_opts;
 use super::type_list::{read_type_list, validate_type_list};
 use crate::encoding::leb128::read_uleb128;
 use crate::error::Result;
-use crate::options::ParseOptions;
-use crate::types::access_flags::AccessFlags;
-use crate::types::class::{
+use crate::model::access_flags::AccessFlags;
+use crate::model::class::{
     ClassData, ClassDef, ClassHeader, EncodedField, EncodedMethod, NO_INDEX,
 };
-use crate::types::{FieldIdx, MethodIdx};
-use crate::types::{StringIdx, TypeIdx};
+use crate::model::{FieldIdx, MethodIdx};
+use crate::model::{StringIdx, TypeIdx};
+use crate::options::ParseOptions;
 
 /// Decodes one `class_def_item` record into a resident [`ClassDef`].
 pub fn read_class_def(
@@ -27,11 +27,11 @@ pub fn read_class_def(
         validate_type_list(buf, off)?;
         read_type_list(buf, off)
     } else {
-        crate::types::TypeList::new()
+        crate::model::TypeList::new()
     };
     let annotations = (raw.annotations_off != 0)
         .then(|| {
-            crate::types::metadata::Metadata::from_source(
+            crate::model::metadata::Metadata::from_source(
                 source,
                 raw.annotations_off,
                 opts,
@@ -171,9 +171,9 @@ impl ClassSkeleton {
     pub fn method(
         &self,
         method_pos: usize,
-        kind: crate::types::class::MethodKind,
+        kind: crate::model::class::MethodKind,
     ) -> Option<&MethodHeader> {
-        if kind == crate::types::class::MethodKind::Virtual {
+        if kind == crate::model::class::MethodKind::Virtual {
             self.virtual_methods.get(method_pos)
         } else {
             self.direct_methods.get(method_pos)

@@ -12,12 +12,12 @@ mod lookup;
 
 use crate::DexBytes;
 use crate::encoding::leb128::{read_uleb128, write_uleb128};
+use crate::encoding::mutf8::{ascii_order, mutf8_compare, mutf8_units};
 use crate::encoding::mutf8::{decode_mutf8_lossy, encode_mutf8, utf16_len, utf16_units};
 use crate::error::{Result, invalid, invalid_mutf8};
+use crate::model::StringIdx;
 use crate::options::ParseOptions;
 use crate::read::u32_at;
-use crate::types::StringIdx;
-use crate::util::sort::{ascii_order, mutf8_compare, mutf8_units};
 
 /// The string table left in the file: raw entries are read through the
 /// `string_ids` table on access, and only strings added after parse are owned.

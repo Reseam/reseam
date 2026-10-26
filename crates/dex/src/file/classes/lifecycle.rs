@@ -5,10 +5,10 @@ use rayon::prelude::*;
 
 use super::{ClassKey, ClassSlot, ClassTable, ClassUndo, Prior};
 use crate::error::{Result, index_out_of_bounds};
+use crate::model::class::ClassDef;
 use crate::options::ParseOptions;
 use crate::read::class::read_class_def;
 use crate::read::class::{RECORD_SIZE, RawClassDef};
-use crate::types::class::ClassDef;
 
 impl ClassTable {
     /// Decodes the class from the file if needed and returns it mutably.

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::{ClassTable, DexFile, FileTable, HiddenApiData, IdTable, StringPool};
-use crate::types::method_handle::{CallSiteItem, MethodHandle};
-use crate::types::{
+use crate::model::method_handle::{CallSiteItem, MethodHandle};
+use crate::model::{
     FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx,
 };
 

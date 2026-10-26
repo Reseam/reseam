@@ -3,7 +3,7 @@
 
 use super::plan::WritePlan;
 use crate::file::DexFile;
-use crate::types::{MethodIdx, TypeIdx};
+use crate::model::{MethodIdx, TypeIdx};
 
 /// Where the types, methods and classes of a source [`DexFile`] landed in one
 /// written DEX. Source indices are those of the in-memory pools, which keep

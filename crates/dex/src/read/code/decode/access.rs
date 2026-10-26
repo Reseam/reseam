@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::error::{Result, invalid};
-use crate::read::u16_at;
-use crate::types::instruction::Instruction;
-use crate::types::instruction_encoding::opcodes::{
+use crate::instruction::Instruction;
+use crate::instruction::opcodes::{
     AGET, AGET_BOOLEAN, AGET_BYTE, AGET_CHAR, AGET_OBJECT, AGET_SHORT, AGET_WIDE, APUT,
     APUT_BOOLEAN, APUT_BYTE, APUT_CHAR, APUT_OBJECT, APUT_SHORT, APUT_WIDE, IGET, IGET_BOOLEAN,
     IGET_BYTE, IGET_CHAR, IGET_OBJECT, IGET_SHORT, IGET_WIDE, IPUT, IPUT_BOOLEAN, IPUT_BYTE,
@@ -12,6 +11,7 @@ use crate::types::instruction_encoding::opcodes::{
     SGET_OBJECT, SGET_SHORT, SGET_WIDE, SPUT, SPUT_BOOLEAN, SPUT_BYTE, SPUT_CHAR, SPUT_OBJECT,
     SPUT_SHORT, SPUT_WIDE,
 };
+use crate::read::u16_at;
 
 use super::super::arithmetic::decode_23x;
 use super::{hi8, nibbles};
@@ -120,7 +120,7 @@ fn decode_instance_field_access(
     opcode: u8,
 ) -> Result<Instruction> {
     let (a, b) = nibbles(unit0);
-    let field = crate::types::FieldIdx(u32::from(u16_at(buf, unit_off + 2)));
+    let field = crate::model::FieldIdx(u32::from(u16_at(buf, unit_off + 2)));
 
     Ok(match u16::from(opcode) {
         IGET => Instruction::Iget {
@@ -209,7 +209,7 @@ fn decode_static_field_access(
     opcode: u8,
 ) -> Result<Instruction> {
     let register = hi8(unit0);
-    let field = crate::types::FieldIdx(u32::from(u16_at(buf, unit_off + 2)));
+    let field = crate::model::FieldIdx(u32::from(u16_at(buf, unit_off + 2)));
 
     Ok(match u16::from(opcode) {
         SGET => Instruction::Sget {

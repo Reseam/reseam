@@ -20,31 +20,56 @@
 //! std::io::copy(&mut rewritten.reader(), &mut output)?;
 //! ```
 
+mod edit;
 mod encoding;
 mod error;
 mod file;
+mod instruction;
+mod model;
 mod options;
 mod read;
 mod references;
-mod types;
-mod util;
+mod search;
 mod write;
 
+pub use edit::grow::grow_registers;
+pub use edit::liveness::{
+    find_contiguous_free_registers, find_free_register, find_free_registers, reaching_definitions,
+};
+pub use edit::relocate::{BranchDestination, InstructionExpansion, InstructionMap};
 pub use encoding::mutf8::decode_mutf8;
 pub use error::{DexError, Result};
 pub use file::container::{
     MaterializationStats, MemoryBreakdown, MultiDexContainer, estimated_ir_bytes,
 };
-pub use file::{
-    ClassTable, DexFile, FileRecord, FileTable, HiddenApiData, IdTable, InstructionHit,
-    InstructionPattern, InstructionSite, MemberCounts, MethodHit, MethodSummary, MethodView,
-    OpcodeMatcher, RefKey, RefQuery, StringPool, summarize_resident,
+pub use file::{ClassTable, DexFile, FileRecord, FileTable, HiddenApiData, IdTable, StringPool};
+pub use instruction::branch::branch_offset;
+pub use instruction::{
+    FillArrayPayloadData, Instruction, PackedSwitchData, RegList, SparseSwitchData,
+};
+pub use model::access_flags::AccessFlags;
+pub use model::annotation::{
+    AnnotationElement, AnnotationItem, AnnotationVisibility, AnnotationsDirectory,
+};
+pub use model::class::{ClassData, ClassDef, ClassHeader, EncodedField, EncodedMethod, MethodKind};
+pub use model::code::{CatchHandler, CodeItem, TryItem, TypedCatch};
+pub use model::debug::{DebugBytecode, DebugInfo};
+pub use model::descriptor::{is_type_descriptor, parse_method_descriptor};
+pub use model::encoded_value::{EncodedAnnotation, EncodedAnnotationElement, EncodedValue};
+pub use model::header::{DexHeader, DexVersion};
+pub use model::hidden_api::{ClassHiddenApiFlags, HiddenApiFlags};
+pub use model::map::MapItem;
+pub use model::metadata::Metadata;
+pub use model::method_handle::{CallSiteItem, MethodHandle, MethodHandleMember, MethodHandleType};
+pub use model::{
+    CallSiteIdx, FieldId, FieldIdx, MethodHandleIdx, MethodId, MethodIdx, ProtoIdx, Prototype,
+    StringIdx, TypeIdx,
 };
 pub use options::{
     LinkPolicy, Loading, MAX_POOL_SIZE, MetadataPolicy, ParseOptions, Validation, Verification,
     WriteOptions,
 };
-pub use read::class::{ClassSkeleton, MethodHeader};
+pub use read::class::{ClassSkeleton, MemberCounts, MethodHeader};
 pub use read::decode_instructions;
 pub use read::parse;
 pub use read::parse::parse_container_with_bytes;
@@ -53,34 +78,10 @@ pub use read::parse_container;
 pub use read::parse_file;
 pub use read::parse_owned;
 pub use reseam_storage::Bytes as DexBytes;
-pub use types::access_flags::AccessFlags;
-pub use types::annotation::{
-    AnnotationElement, AnnotationItem, AnnotationVisibility, AnnotationsDirectory,
-};
-pub use types::class::{ClassData, ClassDef, ClassHeader, EncodedField, EncodedMethod, MethodKind};
-pub use types::code::{CatchHandler, CodeItem, TryItem, TypedCatch};
-pub use types::code_rewrite::{
-    BranchDestination, InstructionExpansion, InstructionMap, branch_offset,
-};
-pub use types::debug::{DebugBytecode, DebugInfo};
-pub use types::encoded_value::{EncodedAnnotation, EncodedAnnotationElement, EncodedValue};
-pub use types::header::{DexHeader, DexVersion};
-pub use types::hidden_api::{ClassHiddenApiFlags, HiddenApiFlags};
-pub use types::instruction::{
-    FillArrayPayloadData, Instruction, PackedSwitchData, RegList, SparseSwitchData,
-};
-pub use types::map::MapItem;
-pub use types::metadata::Metadata;
-pub use types::method_handle::{CallSiteItem, MethodHandle, MethodHandleMember, MethodHandleType};
-pub use types::register_allocation::grow_registers;
-pub use types::register_analysis::{
-    find_contiguous_free_registers, find_free_register, find_free_registers, reaching_definitions,
-};
-pub use types::{
-    CallSiteIdx, FieldId, FieldIdx, MethodHandleIdx, MethodId, MethodIdx, ProtoIdx, Prototype,
-    StringIdx, TypeIdx,
-};
-pub use util::descriptor::{is_type_descriptor, parse_method_descriptor};
+pub use search::index::{RefKey, RefQuery};
+pub use search::inspect::{MethodSummary, summarize_resident};
+pub use search::pattern::{InstructionPattern, OpcodeMatcher};
+pub use search::view::{InstructionHit, InstructionSite, MethodHit, MethodView};
 pub use write::{
     DexPart, Spooled, WriteLayout, encode_instructions, split_to_fit, write_class,
     write_container_spooled, write_spooled,
