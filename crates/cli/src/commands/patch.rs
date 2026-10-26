@@ -5,14 +5,14 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 
 use anyhow::{Context, Result, anyhow, ensure};
+use reseam_model::{
+    InstallMethod, PatchOutcome, PatchOutput, PatchRequest, RunEvent, SigningKeyFiles,
+};
 use reseam_patcher::engine::{PatchIndex, PatchResult, PatchSelection, PatchStatus};
 use reseam_patcher::error::PatcherError;
 use reseam_patcher::log::LogLevel;
 use reseam_patcher::options::{OptionDeclaration, OptionType, OptionValue};
-use reseam_sdk::{
-    HostError, InstallMethod, PatchOutput, PatchRequest, RunEvent, SigningKeyFiles,
-    patch_with_selection,
-};
+use reseam_sdk::{HostError, patch_with_selection};
 use tracing::{debug, error, info, warn};
 
 use crate::app::{PatchCommand, PatchRequestArgs};
@@ -40,7 +40,7 @@ pub fn run_patch(command: &PatchCommand) -> Result<()> {
         }
     };
 
-    let request = request(&command.request, output)?;
+    let request = request(&command.request, output);
     let outcome = run(&request, &command.request.option, log_event).map_err(|error| {
         if error.downcast_ref::<HostError>().is_some_and(|error| {
             matches!(
@@ -101,8 +101,7 @@ fn log_event(event: RunEvent, hidden: &HashSet<String>) {
     }
 }
 
-pub(crate) fn request(args: &PatchRequestArgs, output: PatchOutput) -> Result<PatchRequest> {
-    let trust = args.trust.store()?;
+pub(crate) fn request(args: &PatchRequestArgs, output: PatchOutput) -> PatchRequest {
     let selection = PatchSelection {
         preset: args.preset,
         enable: args.enable.clone(),
@@ -110,7 +109,7 @@ pub(crate) fn request(args: &PatchRequestArgs, output: PatchOutput) -> Result<Pa
         ignore_versions: args.ignore_versions,
         ..Default::default()
     };
-    Ok(PatchRequest {
+    PatchRequest {
         apk_path: args.apk.display().to_string(),
         split_paths: args
             .split
@@ -122,7 +121,7 @@ pub(crate) fn request(args: &PatchRequestArgs, output: PatchOutput) -> Result<Pa
             .iter()
             .map(|path| path.display().to_string())
             .collect(),
-        trust: (&trust).into(),
+        trust: args.trust.trust(),
         selection,
         output,
         signing: args
@@ -140,7 +139,7 @@ pub(crate) fn request(args: &PatchRequestArgs, output: PatchOutput) -> Result<Pa
             InstallMethod::Install
         },
         leave_out_failed: args.leave_out_failed,
-    })
+    }
 }
 
 /// `emit` also gets the references of the run's hidden patches.
@@ -148,7 +147,7 @@ pub(crate) fn run(
     request: &PatchRequest,
     options: &[String],
     mut emit: impl FnMut(RunEvent, &HashSet<String>),
-) -> Result<reseam_sdk::PatchOutcome> {
+) -> Result<PatchOutcome> {
     let hidden = RefCell::new(HashSet::new());
     Ok(patch_with_selection(
         request,

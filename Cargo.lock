@@ -1592,6 +1592,7 @@ dependencies = [
 name = "reseam-sdk-browser"
 version = "0.32.0"
 dependencies = [
+ "reseam-model",
  "reseam-sdk",
  "serde",
  "serde_json",

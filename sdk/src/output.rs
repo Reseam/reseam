@@ -12,8 +12,8 @@ use tempfile::TempDir;
 use tracing::info;
 
 use crate::error::{HostError, Result, file_error};
-use crate::metrics::{PatchPhase, PatchProfiler};
-use crate::{PatchArtifact, PatchOutput, Problem, SigningKeyFiles};
+use crate::metrics::PatchProfiler;
+use reseam_model::{PatchArtifact, PatchOutput, PatchPhase, Problem, SigningKeyFiles};
 
 /// Resolves automatic output using the input component count.
 /// Explicit file output requires exactly one component; directories are preserved.

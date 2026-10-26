@@ -7,11 +7,15 @@ use std::path::Path;
 use ed25519_dalek::{Signer, SigningKey};
 use reseam_apk::{ApkFile, ContainerFormat, ScratchDir};
 
-use crate::error::Problem;
 use crate::inspect::open_apk;
 use crate::metrics::PatchProfiler;
 use crate::output::{resolve_output, stage_unsigned};
-use crate::{InstallMethod, PatchArtifact, PatchOutput, PatchRequest, inspect_apk, patch};
+use crate::{ApkInspection, patch};
+use reseam_model::Problem;
+use reseam_model::{
+    ApkMetadata, InspectRequest, InstallMethod, PatchArtifact, PatchOutput, PatchPreset,
+    PatchRequest, PatchSelection, SigningKeyFiles, Trust,
+};
 
 fn zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
     let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
@@ -29,6 +33,10 @@ fn apk(split: &str) -> Vec<u8> {
         r#"<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.test" android:versionCode="1" {split}><application android:label="Example" /></manifest>"#
     ), None).unwrap();
     zip(&[("AndroidManifest.xml", &manifest)])
+}
+
+fn apk_metadata(path: &Path, splits: &[std::path::PathBuf]) -> crate::error::Result<ApkMetadata> {
+    ApkInspection::open(path, splits)?.metadata()
 }
 
 fn catalog_manifest() -> String {
@@ -97,27 +105,28 @@ fn inspection_reads_signed_catalogs_without_loading_even_trusted_code() {
     write_bundle(manifest.as_bytes());
     let input = tmp.path().join("app.apk");
     std::fs::write(&input, apk("")).unwrap();
-    let inspection_request = crate::InspectRequest {
+    let inspection_request = InspectRequest {
         apk_path: Some(input.display().to_string()),
         split_paths: Vec::new(),
         bundle_paths: vec![path.display().to_string()],
-        trust: crate::Trust {
+        trust: Trust {
             keys: vec![public_key.clone()],
         },
     };
     check_prepared_trust(&inspection_request, &tmp.path().join("prepared.apk"));
     for trusted in [false, true] {
-        let trust = crate::TrustStore::from_hex(if trusted {
-            std::slice::from_ref(&public_key)
-        } else {
-            &[]
-        })
-        .unwrap();
-        let response = crate::inspect(&crate::InspectRequest {
+        let trust = Trust {
+            keys: if trusted {
+                vec![public_key.clone()]
+            } else {
+                Vec::new()
+            },
+        };
+        let response = crate::inspect(&InspectRequest {
             apk_path: Some(input.display().to_string()),
             split_paths: Vec::new(),
             bundle_paths: vec![path.display().to_string()],
-            trust: (&trust).into(),
+            trust: trust.clone(),
         })
         .unwrap();
         assert_eq!(response.bundles[0].trusted, trusted);
@@ -134,12 +143,12 @@ fn inspection_reads_signed_catalogs_without_loading_even_trusted_code() {
                 .as_str(),
             Some("fast")
         );
-        assert_eq!(
-            patch.presets,
-            [crate::PatchPreset::Recommended, crate::PatchPreset::All]
-        );
+        assert_eq!(patch.presets, [PatchPreset::Recommended, PatchPreset::All]);
         assert!(patch.incompatibility.is_some());
-        let opened = crate::inspect::open_bundles(std::slice::from_ref(&path), &trust);
+        let opened = crate::inspect::open_bundles(
+            std::slice::from_ref(&path),
+            &crate::trust::TrustStore::new(&trust).unwrap(),
+        );
         if trusted {
             assert!(opened.is_ok());
         } else {
@@ -154,18 +163,18 @@ fn inspection_reads_signed_catalogs_without_loading_even_trusted_code() {
             .replace("Static metadata", "Tampered metadata")
             .as_bytes(),
     );
-    let response = crate::inspect(&crate::InspectRequest {
+    let response = crate::inspect(&InspectRequest {
         apk_path: None,
         split_paths: Vec::new(),
         bundle_paths: vec![path.display().to_string()],
-        trust: reseam_model::Trust::default(),
+        trust: Trust::default(),
     })
     .unwrap();
     assert!(response.bundles[0].problem.is_some());
     assert!(response.patches.is_empty());
 }
 
-fn check_prepared_trust(inspection_request: &crate::InspectRequest, output: &Path) {
+fn check_prepared_trust(inspection_request: &InspectRequest, output: &Path) {
     for approved in [false, true] {
         let prepared = crate::PreparedInspection::open(inspection_request).unwrap();
         let error = prepared
@@ -174,14 +183,14 @@ fn check_prepared_trust(inspection_request: &crate::InspectRequest, output: &Pat
                     apk_path: inspection_request.apk_path.clone().unwrap(),
                     split_paths: Vec::new(),
                     bundle_paths: inspection_request.bundle_paths.clone(),
-                    trust: crate::Trust {
+                    trust: Trust {
                         keys: if approved {
                             inspection_request.trust.keys.clone()
                         } else {
                             Vec::new()
                         },
                     },
-                    selection: crate::PatchSelection::default(),
+                    selection: PatchSelection::default(),
                     output: PatchOutput::SingleFile {
                         path: output.display().to_string(),
                     },
@@ -235,7 +244,7 @@ fn an_unreadable_resource_table_is_an_unreadable_apk() {
     ] {
         let input = tmp.path().join(name);
         std::fs::write(&input, bytes).unwrap();
-        let error = inspect_apk(&input, &[]).unwrap_err();
+        let error = apk_metadata(&input, &[]).unwrap_err();
         assert_eq!(
             crate::error::classify(&error),
             Problem::unreadable_apk(&input),
@@ -270,7 +279,7 @@ fn containers_and_plain_apks_use_the_same_output_pipeline() {
             }
             let input = tmp.path().join(format!("input-{count}.{extension}"));
             std::fs::write(&input, zip(&entries)).unwrap();
-            let metadata = inspect_apk(&input, &[]).unwrap();
+            let metadata = apk_metadata(&input, &[]).unwrap();
             assert_eq!(metadata.application_label.as_deref(), Some("Example"));
             assert_eq!(metadata.component_count, count);
             assert_eq!(
@@ -298,12 +307,13 @@ fn containers_and_plain_apks_use_the_same_output_pipeline() {
             match output {
                 PatchArtifact::SingleFile { path } => {
                     let path = Path::new(&path);
-                    assert_eq!(inspect_apk(path, &[]).unwrap().component_count, 1);
+                    assert_eq!(apk_metadata(path, &[]).unwrap().component_count, 1);
                 }
                 PatchArtifact::SplitDir { path } => {
                     let path = Path::new(&path);
                     let metadata =
-                        inspect_apk(&path.join("base.apk"), &[path.join("config.en.apk")]).unwrap();
+                        apk_metadata(&path.join("base.apk"), &[path.join("config.en.apk")])
+                            .unwrap();
                     assert_eq!(metadata.component_count, 2);
                 }
             }
@@ -341,14 +351,14 @@ fn incompatible_inputs_and_output_fail_before_loading_patches() {
     .unwrap();
     let extra = tmp.path().join("extra.apk");
     std::fs::write(&extra, apk(r#"split="config.fr""#)).unwrap();
-    assert!(inspect_apk(&input, &[extra]).is_err());
+    assert!(apk_metadata(&input, &[extra]).is_err());
     let error = patch(
         &PatchRequest {
             apk_path: input.display().to_string(),
             split_paths: Vec::new(),
             bundle_paths: Vec::new(),
-            trust: reseam_model::Trust::default(),
-            selection: crate::PatchSelection::default(),
+            trust: Trust::default(),
+            selection: PatchSelection::default(),
             output: PatchOutput::SingleFile {
                 path: tmp.path().join("out.apk").display().to_string(),
             },
@@ -370,7 +380,8 @@ fn incompatible_inputs_and_output_fail_before_loading_patches() {
 
 #[test]
 fn host_failures_retain_problem_categories_and_sources() {
-    use crate::{HostError, sdk_error};
+    use crate::HostError;
+    use reseam_model::SdkError;
     use reseam_patcher::error::PatcherError;
     let older = || PatcherError::BundleTooOld {
         bundle: "example".into(),
@@ -411,7 +422,7 @@ fn host_failures_retain_problem_categories_and_sources() {
             Problem::Other,
         ),
     ] {
-        let failure = sdk_error(&error);
+        let failure = SdkError::from(error);
         assert_eq!(failure.problem, expected);
     }
 }
@@ -476,7 +487,7 @@ fn invalid_artifact_targets_preserve_outputs_and_signing_identity() {
         let output = PatchArtifact::SingleFile {
             path: destination.display().to_string(),
         };
-        let signing = crate::SigningKeyFiles {
+        let signing = SigningKeyFiles {
             key: alias.display().to_string(),
             cert: cert.display().to_string(),
         };

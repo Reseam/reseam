@@ -7,8 +7,9 @@ use std::path::Path;
 
 use anyhow::{Context, Result, ensure};
 use ed25519_dalek::{SecretKey, SigningKey};
+use reseam_model::{InspectRequest, PatchMetadata};
 use reseam_patcher::Compatibility;
-use reseam_sdk::{InspectRequest, PatchMetadata, inspect};
+use reseam_sdk::inspect;
 use ring::rand::{SecureRandom, SystemRandom};
 use tracing::info;
 
@@ -20,7 +21,7 @@ pub fn run_bundle_list(command: &BundleListCommand) -> Result<()> {
         apk_path: None,
         split_paths: Vec::new(),
         bundle_paths: vec![command.bundle.display().to_string()],
-        trust: (&command.trust.store()?).into(),
+        trust: command.trust.trust(),
     })?;
     if command.json {
         println!("{}", serde_json::to_string_pretty(&response)?);

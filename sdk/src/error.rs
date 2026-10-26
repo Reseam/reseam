@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-pub use reseam_model::{Problem, SdkError};
+use reseam_model::{Problem, SdkError};
 use reseam_patcher::error::PatcherError;
 use thiserror::Error;
 
@@ -71,8 +71,8 @@ pub(crate) fn file_error(
     }
 }
 
-/// Converts a source chain to the stable problem and diagnostic text used by Kotlin.
-pub fn sdk_error(error: &(dyn std::error::Error + 'static)) -> SdkError {
+/// Converts a source chain to the stable problem and diagnostic text hosts receive.
+fn sdk_error(error: &(dyn std::error::Error + 'static)) -> SdkError {
     let chain: Vec<_> = std::iter::successors(Some(error), |cause| cause.source()).collect();
     SdkError {
         problem: classify(error),

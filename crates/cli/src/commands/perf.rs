@@ -4,7 +4,9 @@
 use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, ensure};
-use reseam_sdk::{ApplyDiagnostics, PatchMetrics, PatchOutput, PatchPhase, PatchPhaseMetrics};
+use reseam_model::{
+    ApplyDiagnostics, PatchMetrics, PatchOutput, PatchPhase, PatchPhaseMetrics, PatchRequest,
+};
 use reseam_storage::ScratchDir;
 use serde::{Deserialize, Serialize};
 
@@ -36,7 +38,7 @@ impl IterationOutcome {
 
 #[derive(Serialize, Deserialize)]
 struct WorkerRequest {
-    request: reseam_sdk::PatchRequest,
+    request: PatchRequest,
     options: Vec<String>,
 }
 
@@ -61,7 +63,7 @@ fn measure(command: &PerfCommand) -> Result<IterationOutcome> {
         path: scratch.path().join("patched").display().to_string(),
     };
     let message = WorkerRequest {
-        request: request(&command.request, output)?,
+        request: request(&command.request, output),
         options: command.request.option.clone(),
     };
     let mut child = Command::new(std::env::current_exe()?)

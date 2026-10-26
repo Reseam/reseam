@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use anyhow::Result;
-use reseam_sdk::inspect_apk;
+use reseam_sdk::ApkInspection;
 
 use crate::app::InfoCommand;
 
 pub fn run_info(command: &InfoCommand) -> Result<()> {
-    let apk = inspect_apk(&command.apk, &[])?;
+    let apk = ApkInspection::open(&command.apk, &[])?.metadata()?;
 
     println!("APK: {}", command.apk.display());
     if let Some(label) = apk.application_label {

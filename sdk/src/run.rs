@@ -8,13 +8,15 @@ use reseam_patcher::context::{ExtensionSet, PatchContext};
 use reseam_patcher::engine::{self, AppliedRun, Delivery, PatchResult, PatchStatus, ResolvedPlan};
 use reseam_patcher::{ApkVersion, Patch, PatchSpec};
 
-use crate::TrustStore;
-use crate::error::Problem;
 use crate::inspect::{OpenedApk, PreparedInspection, TrustedArchive, open_apk, open_bundles};
 use crate::memory::release_process_memory;
-use crate::metrics::{ApplyDiagnostics, PatchPhase, PatchProfiler};
+use crate::metrics::PatchProfiler;
 use crate::output::{resolve_output, stage_unsigned};
-use crate::{InstallMethod, PatchArtifact, PatchOutcome, PatchRequest, RunEvent};
+use crate::trust::TrustStore;
+use reseam_model::{
+    ApplyDiagnostics, InstallMethod, PatchArtifact, PatchOutcome, PatchPhase, PatchRequest,
+    Problem, RunEvent,
+};
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -51,7 +53,7 @@ pub(crate) fn patch_with_inputs(
     resolve: impl FnOnce(&[&PatchSpec], Option<&str>) -> Result<reseam_model::PatchSelection>,
     mut emit: impl FnMut(RunEvent),
 ) -> Result<PatchOutcome> {
-    let trust = TrustStore::from_hex(&request.trust.keys)?;
+    let trust = TrustStore::new(&request.trust)?;
     let mut profiler = PatchProfiler::new();
     let result = run(request, &trust, prepared, resolve, &mut emit, &mut profiler);
     release_process_memory();

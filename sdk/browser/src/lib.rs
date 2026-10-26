@@ -3,8 +3,7 @@
 
 #![cfg(target_os = "wasi")]
 
-use reseam_sdk::SdkError;
-use reseam_sdk::{InspectRequest, PatchRequest};
+use reseam_model::{InspectRequest, PatchRequest, RunEvent, SdkError};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -65,8 +64,8 @@ fn dispatch(state: &mut BrowserState, bytes: &[u8]) -> Result<serde_json::Value,
     match request {
         Request::Inspect(request) => {
             state.prepared = None;
-            let prepared = reseam_sdk::PreparedInspection::open(&request)
-                .map_err(|error| reseam_sdk::sdk_error(&error))?;
+            let prepared =
+                reseam_sdk::PreparedInspection::open(&request).map_err(SdkError::from)?;
             let value = serde_json::to_value(prepared.metadata())
                 .map_err(|error| SdkError::other(error.to_string()))?;
             state.prepared = Some(prepared);
@@ -76,14 +75,14 @@ fn dispatch(state: &mut BrowserState, bytes: &[u8]) -> Result<serde_json::Value,
             Some(prepared) => prepared.patch(&request, |event| emit(&event)),
             None => reseam_sdk::patch(&request, |event| emit(&event)),
         }
-        .map_err(|error| reseam_sdk::sdk_error(&error))
+        .map_err(SdkError::from)
         .and_then(|value| {
             serde_json::to_value(value).map_err(|error| SdkError::other(error.to_string()))
         }),
     }
 }
 
-fn emit(event: &reseam_sdk::RunEvent) {
+fn emit(event: &RunEvent) {
     let bytes = serde_json::to_vec(event)
         .expect("run events contain only JSON-serializable text and status");
     // SAFETY: the host copies this borrowed event before returning.

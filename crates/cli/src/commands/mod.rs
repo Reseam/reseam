@@ -10,7 +10,7 @@ mod release;
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use reseam_sdk::TrustStore;
+use reseam_model::Trust;
 
 use crate::app::TrustArgs;
 
@@ -32,7 +32,9 @@ fn create_parent(path: &Path) -> Result<()> {
 }
 
 impl TrustArgs {
-    fn store(&self) -> Result<TrustStore> {
-        TrustStore::from_hex(&self.trust).context("invalid --trust")
+    fn trust(&self) -> Trust {
+        Trust {
+            keys: self.trust.clone(),
+        }
     }
 }

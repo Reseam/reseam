@@ -10,19 +10,11 @@ use reseam_apk::{ApkFile, ContainerBundle, ContainerFormat};
 use reseam_patcher::bundle::{BundleArchive, PatchBundle};
 use reseam_patcher::{ApkVersion, PatchPreset, PatchSpec};
 
-use crate::error::Problem;
 use crate::trust::TrustStore;
-use crate::{ApkMetadata, BundleMetadata, InspectRequest, InspectResponse, PatchMetadata};
-
-/// Reads app and bytecode metadata with the same input tolerance as patching.
-/// Unreadable manifests, resources, or DEX data are reported as APK failures.
-pub fn inspect_apk(apk_path: &Path, split_paths: &[PathBuf]) -> Result<ApkMetadata> {
-    // Same tolerance as patching: a repacked APK (stale DEX checksums and
-    // signatures) is still an APK, and inspection exists to read it, not to
-    // certify it.
-    let mut opened = open_apk(apk_path, split_paths, ApkFile::patch_options())?;
-    apk_metadata(&mut opened)
-}
+use reseam_model::{
+    ApkMetadata, BundleMetadata, InspectRequest, InspectResponse, PatchMetadata, PatchOutcome,
+    PatchRequest, Problem, RunEvent,
+};
 
 pub(crate) fn apk_metadata(opened: &mut OpenedApk) -> Result<ApkMetadata> {
     let application_label = opened
@@ -71,7 +63,7 @@ pub struct PreparedInspection {
 
 impl PreparedInspection {
     pub fn open(request: &InspectRequest) -> Result<Self> {
-        let trust = TrustStore::from_hex(&request.trust.keys)?;
+        let trust = TrustStore::new(&request.trust)?;
         let splits = request
             .split_paths
             .iter()
@@ -129,11 +121,7 @@ impl PreparedInspection {
     /// Consumes the inspected inputs. Paths and their ordering must match inspection;
     /// selection, signer approvals, signing identity and destination may change.
     /// Trust is checked again and every payload hash is verified before execution.
-    pub fn patch(
-        self,
-        request: &crate::PatchRequest,
-        emit: impl FnMut(crate::RunEvent),
-    ) -> Result<crate::PatchOutcome> {
+    pub fn patch(self, request: &PatchRequest, emit: impl FnMut(RunEvent)) -> Result<PatchOutcome> {
         self.check_request(request)?;
         crate::run::patch_with_inputs(
             request,
@@ -143,7 +131,7 @@ impl PreparedInspection {
         )
     }
 
-    fn check_request(&self, request: &crate::PatchRequest) -> Result<()> {
+    fn check_request(&self, request: &PatchRequest) -> Result<()> {
         if self.request.apk_path.as_deref() != Some(request.apk_path.as_str())
             || self.request.split_paths != request.split_paths
             || self.request.bundle_paths != request.bundle_paths
@@ -328,6 +316,9 @@ pub struct ApkInspection {
 impl ApkInspection {
     /// Opens an APK or container, returning an error for unreadable input.
     pub fn open(path: &Path, split_paths: &[PathBuf]) -> Result<Self> {
+        // Same tolerance as patching: a repacked APK (stale DEX checksums and
+        // signatures) is still an APK, and inspection exists to read it, not to
+        // certify it.
         Ok(Self {
             opened: open_apk(path, split_paths, ApkFile::patch_options())?,
         })
@@ -351,7 +342,7 @@ impl ApkInspection {
     }
 
     /// Resolves a bitmap or adaptive icon, or none when no icon can be resolved.
-    pub fn application_icon(&mut self) -> Result<Option<reseam_apk::ApplicationIcon>> {
+    pub fn application_icon(&mut self) -> Result<Option<reseam_model::ApplicationIcon>> {
         self.opened
             .apk
             .application_icon()

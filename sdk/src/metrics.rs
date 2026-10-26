@@ -3,7 +3,7 @@
 
 use std::time::{Duration, Instant};
 
-pub use reseam_model::{ApplyDiagnostics, PatchMetrics, PatchPhase, PatchPhaseMetrics};
+use reseam_model::{ApplyDiagnostics, PatchMetrics, PatchPhase, PatchPhaseMetrics};
 
 #[derive(Default)]
 struct MemorySample {
