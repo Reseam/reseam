@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use boltffi::export;
-use reseam_apk::reseam_dex::types::code_rewrite::InstructionExpansion;
+use reseam_apk::reseam_dex::InstructionExpansion;
 use reseam_apk::reseam_dex::{AccessFlags, CodeItem, Instruction as DexInsn};
 
 use crate::kotlin::convert::kotlin_to_dex;
@@ -81,7 +81,7 @@ pub fn replace_body(
 }
 
 pub(super) fn edit_mapping(
-    mapping: reseam_apk::reseam_dex::types::code_rewrite::InstructionMap,
+    mapping: reseam_apk::reseam_dex::InstructionMap,
 ) -> Result<MethodEdit, String> {
     fn indices(values: &[usize]) -> Result<Vec<u32>, String> {
         values

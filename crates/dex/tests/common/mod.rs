@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use reseam_dex::types::access_flags::AccessFlags;
-use reseam_dex::types::annotation::{AnnotationItem, AnnotationVisibility, AnnotationsDirectory};
-use reseam_dex::types::class::{EncodedField, EncodedMethod};
-use reseam_dex::types::debug::{DebugBytecode, DebugInfo};
-use reseam_dex::types::metadata::Metadata;
+use reseam_dex::AccessFlags;
+use reseam_dex::Metadata;
+use reseam_dex::{AnnotationItem, AnnotationVisibility, AnnotationsDirectory};
 use reseam_dex::{CodeItem, DexFile, DexHeader, DexVersion, EncodedValue, Instruction};
+use reseam_dex::{DebugBytecode, DebugInfo};
+use reseam_dex::{EncodedField, EncodedMethod};
 
 pub fn write(dex: &DexFile) -> reseam_dex::Result<Vec<u8>> {
     let (spooled, _) = reseam_dex::write_spooled(dex, None)?;

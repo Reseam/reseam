@@ -123,7 +123,7 @@ impl DexEntryStream<'_> {
 fn serialize_dex(
     dex_files: &[DexFile],
     members: &[DexMember],
-) -> Result<(reseam_dex::write::Spooled, Vec<WriteLayout>)> {
+) -> Result<(reseam_dex::Spooled, Vec<WriteLayout>)> {
     let written = match members {
         [member] => {
             let (spooled, layout) =
@@ -144,7 +144,7 @@ fn serialize_dex(
 
 /// The entry for a stored job, which needs no compression worker. `buffer`
 /// carries the bytes being checksummed.
-fn stored_entry(spooled: reseam_dex::write::Spooled, buffer: &mut [u8]) -> Result<DexEntry> {
+fn stored_entry(spooled: reseam_dex::Spooled, buffer: &mut [u8]) -> Result<DexEntry> {
     let mut crc = flate2::Crc::new();
     let mut reader = spooled.reader();
     loop {

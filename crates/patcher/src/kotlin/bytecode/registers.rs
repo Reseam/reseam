@@ -55,13 +55,7 @@ pub fn grow_local_registers(
         let incoming = incoming_types(dex, id, flags);
         let indices = logged(
             "grow method registers",
-            dex::types::register_allocation::grow_registers(
-                &mut code,
-                additional_locals,
-                &incoming,
-                &protected,
-                dex,
-            ),
+            dex::grow_registers(&mut code, additional_locals, &incoming, &protected, dex),
         );
         logged("restore method code", method_mut(dex, loc))?
             .expect("frame growth leaves the method slot in place")

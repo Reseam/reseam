@@ -121,7 +121,7 @@ fn decode_utf8(data: &[u8], offset: usize) -> Result<Cow<'_, str>> {
     let text = match std::str::from_utf8(bytes) {
         Ok(s) => Cow::Borrowed(s),
         Err(_) => Cow::Owned(
-            reseam_dex::encoding::mutf8::decode_mutf8(bytes)
+            reseam_dex::decode_mutf8(bytes)
                 .map_err(|_| invalid("utf8 string", "invalid UTF-8/MUTF-8"))?,
         ),
     };

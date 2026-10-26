@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result, bail, ensure};
 use reseam_apk::ResourceTable;
-use reseam_apk::reseam_dex::file::DexBytes;
+use reseam_apk::reseam_dex::DexBytes;
 use reseam_apk::resources::{EntryValue, MapEntry};
 use sha2::{Digest, Sha256};
 

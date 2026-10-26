@@ -5,8 +5,8 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::path::PathBuf;
 
-use reseam_apk::reseam_dex::types::header::Loading;
-use reseam_apk::reseam_dex::write::write_class;
+use reseam_apk::reseam_dex::Loading;
+use reseam_apk::reseam_dex::write_class;
 use reseam_apk::reseam_dex::{DexFile, ParseOptions, parse_file};
 use tracing::debug;
 

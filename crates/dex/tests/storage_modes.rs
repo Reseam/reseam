@@ -44,7 +44,7 @@ fn truncated_files_fail_validation() -> TestResult {
 
 #[test]
 fn edits_relocate_debug_and_handlers_and_roll_back_invalid_targets() -> TestResult {
-    use reseam_dex::types::debug::DebugBytecode;
+    use reseam_dex::DebugBytecode;
     use reseam_dex::{CatchHandler, Instruction, TryItem};
     let mut dex = common::dex();
     let code = common::body(&mut dex);
@@ -105,16 +105,14 @@ fn edits_relocate_debug_and_handlers_and_roll_back_invalid_targets() -> TestResu
     assert_eq!(code.tries()[0].insn_count, 4);
     assert_eq!(code.catch_handlers()[0].catch_all_addr, Some(4));
     // ART debug programs may describe a position within an instruction's code units.
-    code.set_debug_info(Some(reseam_dex::types::metadata::Metadata::new(
-        reseam_dex::DebugInfo {
-            line_start: 42,
-            parameter_names: Vec::new(),
-            bytecodes: vec![
-                DebugBytecode::AdvancePc { advance: 1 },
-                DebugBytecode::EndSequence,
-            ],
-        },
-    )));
+    code.set_debug_info(Some(reseam_dex::Metadata::new(reseam_dex::DebugInfo {
+        line_start: 42,
+        parameter_names: Vec::new(),
+        bytecodes: vec![
+            DebugBytecode::AdvancePc { advance: 1 },
+            DebugBytecode::EndSequence,
+        ],
+    })));
     code.insert_instructions(0, &[Instruction::Nop])?;
     let bytes = common::write(&dex)?;
     reseam_dex::parse(&bytes, ParseOptions::default())?;
@@ -232,8 +230,8 @@ fn invalid_descriptors_leave_type_and_string_pools_unchanged() {
 
 #[test]
 fn call_sites_and_method_handles_survive_deferred_reads_appends_and_remapping() -> TestResult {
-    use reseam_dex::types::method_handle::{MethodHandleMember, MethodHandleType};
     use reseam_dex::{CallSiteItem, EncodedValue, Instruction, MethodHandle};
+    use reseam_dex::{MethodHandleMember, MethodHandleType};
     let mut dex = common::dex();
     let bootstrap = dex.intern_method("Lexample/Bootstrap;", "bootstrap", "()V")?;
     let handle = dex.method_handles_mut().push(MethodHandle {

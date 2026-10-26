@@ -7,7 +7,7 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use reseam_dex::types::header::Loading;
+use reseam_dex::Loading;
 use reseam_storage::Bytes;
 
 use crate::axml::AxmlDocument;

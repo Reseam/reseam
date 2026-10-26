@@ -15,7 +15,7 @@ use crate::entry::MANIFEST_ENTRY;
 use crate::error::{Result, invalid};
 use crate::zip::reader::{self, Archive};
 use crate::{ApkComponent, ApkFile};
-use reseam_dex::{ParseOptions, types::header::Loading};
+use reseam_dex::{Loading, ParseOptions};
 use reseam_storage::ScratchDir;
 
 const INFO_JSON: &str = "info.json";

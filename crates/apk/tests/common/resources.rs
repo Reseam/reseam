@@ -6,7 +6,7 @@ use reseam_apk::resources::{
     EntryValue, MapEntry, ResEntry, ResPackage, ResType, ResourceTable, TypeSpec,
 };
 use reseam_apk::{ResValue, ResourceScope, StringPool};
-use reseam_dex::file::DexBytes;
+use reseam_dex::DexBytes;
 
 pub fn make_test_axml(encoding: reseam_apk::StringEncoding) -> AxmlDocument {
     let strings = [

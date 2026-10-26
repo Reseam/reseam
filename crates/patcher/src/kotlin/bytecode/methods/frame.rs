@@ -31,13 +31,7 @@ pub(super) fn prepare_flag_frame(
         let types = super::super::registers::incoming_types(dex, method, previous);
         let mut mapping = super::super::mutation::edit_mapping(logged(
             "grow receiver frame",
-            reseam_apk::reseam_dex::types::register_allocation::grow_registers(
-                code,
-                growth,
-                &types,
-                &[],
-                dex,
-            ),
+            reseam_apk::reseam_dex::grow_registers(code, growth, &types, &[], dex),
         )?)?;
         mapping.register_shift = growth;
         Some(mapping)
