@@ -4,8 +4,10 @@
 use std::collections::BTreeMap;
 use std::io::Read;
 
-use super::write::{METADATA_MAGIC, METADATA_V002, PROFILE_MAGIC, PROFILE_V010};
-use super::{BaselineProfile, DexMetadata, DexProfile, MethodFlags};
+use super::{
+    BaselineProfile, DexMetadata, DexProfile, METADATA_MAGIC, METADATA_V002, MethodFlags,
+    PROFILE_MAGIC, PROFILE_V010,
+};
 use crate::buf::{read_u16_le, read_u32_le, slice};
 use crate::error::{Result, invalid, malformed};
 

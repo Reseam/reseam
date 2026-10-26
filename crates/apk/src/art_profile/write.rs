@@ -4,17 +4,11 @@
 use std::io::Write;
 
 use super::{
-    BaselineProfile, DexMetadata, DexProfile, EMBEDDED_ENTRY, METADATA_ENTRY, MethodFlags,
-    PROFILE_ENTRY,
+    BaselineProfile, DexMetadata, DexProfile, EMBEDDED_ENTRY, METADATA_ENTRY, METADATA_MAGIC,
+    METADATA_V002, MethodFlags, PROFILE_ENTRY, PROFILE_MAGIC, PROFILE_V010, PROFILE_V015,
 };
 use crate::buf::{write_u16, write_u32};
 use crate::error::{Result, invalid};
-
-pub(super) const PROFILE_MAGIC: [u8; 4] = *b"pro\0";
-pub(super) const PROFILE_V010: [u8; 4] = *b"010\0";
-const PROFILE_V015: [u8; 4] = *b"015\0";
-pub(super) const METADATA_MAGIC: [u8; 4] = *b"prm\0";
-pub(super) const METADATA_V002: [u8; 4] = *b"002\0";
 
 const SECTION_DEX_FILES: u32 = 0;
 const SECTION_CLASSES: u32 = 2;

@@ -23,11 +23,11 @@ const OUTPUT_BUFFER: usize = 64 << 10;
 /// zlib's default level, for entries other than rewritten DEX.
 pub(crate) const DEFAULT_LEVEL: u32 = 6;
 
-/// An APK being written. Entry data moves between files in the kernel where
-/// the platform allows; the central directory keeps one name and a few
-/// fields per entry.
-pub(crate) struct Writer {
-    out: Output,
+/// A ZIP being written: an APK, or a single-entry archive. Entry data moves
+/// between files in the kernel where the platform allows; the central
+/// directory keeps one name and a few fields per entry.
+pub(crate) struct Writer<W: Write + Seek> {
+    out: Output<W>,
     level: u32,
     buffer: Box<[u8]>,
     entries: Vec<Entry>,
@@ -40,9 +40,9 @@ struct Entry {
     offset: u32,
 }
 
-impl Writer {
+impl<W: Write + Seek> Writer<W> {
     /// A writer deflating the entries it is given uncompressed at `level`.
-    pub(crate) fn new(output: File, level: u32) -> Self {
+    pub(crate) fn new(output: W, level: u32) -> Self {
         Self {
             out: Output {
                 file: BufWriter::with_capacity(OUTPUT_BUFFER, output),
@@ -133,7 +133,7 @@ impl Writer {
         Ok(crc)
     }
 
-    pub(crate) fn finish(mut self) -> Result<File> {
+    pub(crate) fn finish(mut self) -> Result<W> {
         let start = self.out.position;
         for entry in &self.entries {
             self.header.clear();

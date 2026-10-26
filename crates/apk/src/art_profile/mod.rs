@@ -21,6 +21,14 @@ pub(crate) const EMBEDDED_ENTRY: &str = "assets/art-profile/baseline.prof";
 /// The entries [`BaselineProfile::to_entries`] writes.
 pub(crate) const ENTRIES: [&str; 3] = [PROFILE_ENTRY, METADATA_ENTRY, EMBEDDED_ENTRY];
 
+const PROFILE_MAGIC: [u8; 4] = *b"pro\0";
+/// The version AGP writes `baseline.prof` in, and ART reads from Android 9 to 11.
+const PROFILE_V010: [u8; 4] = *b"010\0";
+/// The version ART reads from Android 12.
+const PROFILE_V015: [u8; 4] = *b"015\0";
+const METADATA_MAGIC: [u8; 4] = *b"prm\0";
+const METADATA_V002: [u8; 4] = *b"002\0";
+
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub(crate) struct MethodFlags: u16 {
