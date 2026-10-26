@@ -1,7 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-pub(super) fn opcode_metadata() -> (String, String) {
+use std::fs;
+use std::path::Path;
+
+use anyhow::Result;
+
+/// Writes the Kotlin opcode enum and width table from the DEX instruction catalogue.
+pub fn write(directory: &Path) -> Result<()> {
     struct Opcode {
         name: &'static str,
         value: u16,
@@ -95,8 +101,10 @@ pub(super) fn opcode_metadata() -> (String, String) {
     let widths = format!(
         "// Generated from the DEX instruction catalogue. Do not edit.\npackage app.reseam.patch.dex\n\ninternal object OpcodeWidths {{\n    fun units(opcode: Int): Int =\n        when (opcode) {{\n{widths}\n            else -> error(\"unsupported opcode: $opcode\")\n        }}\n    fun invokes(opcode: Int): Boolean = when (opcode) {{ {invokes} -> true; else -> false }}\n    fun returns(opcode: Int): Boolean = when (opcode) {{ {returns} -> true; else -> false }}\n}}\n"
     );
-    let enumeration = opcode_enum(&entries);
-    (widths, enumeration)
+    fs::create_dir_all(directory)?;
+    fs::write(directory.join("OpcodeWidths.kt"), widths)?;
+    fs::write(directory.join("Opcode.kt"), opcode_enum(&entries))?;
+    Ok(())
 }
 
 fn opcode_enum(entries: &str) -> String {

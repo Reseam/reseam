@@ -7,12 +7,11 @@ use std::path::PathBuf;
 
 mod boltffi;
 mod framework;
-mod opcodes;
 mod patch_api;
 mod paths;
-mod release;
 mod run;
 mod sdk;
+mod version;
 
 #[derive(Parser)]
 #[command(name = "xtask", about = "Reseam build orchestration tasks")]
@@ -67,8 +66,8 @@ fn main() -> Result<()> {
             boltffi::check_version()?;
             sdk::pack()?;
         }
-        Cmd::Release { version } => release::release(&version)?,
-        Cmd::CheckTag { tag } => release::check_tag(&tag)?,
+        Cmd::Release { version } => version::tag(&version)?,
+        Cmd::CheckTag { tag } => version::check_tag(&tag)?,
         Cmd::FrameworkAttributes { android_jar } => framework::generate(&android_jar)?,
     }
     Ok(())

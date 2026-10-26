@@ -18,7 +18,7 @@ use crate::run::run;
     clippy::print_stdout,
     reason = "The release command reports the created tag"
 )]
-pub fn release(version: &str) -> Result<()> {
+pub fn tag(version: &str) -> Result<()> {
     let version = Version::parse(version)
         .context("version must be valid SemVer")?
         .to_string();
