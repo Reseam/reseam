@@ -6,8 +6,6 @@ use reseam_apk::reseam_dex::{
     summarize_resident,
 };
 
-use reseam_apk::reseam_dex::MethodKind;
-
 use crate::error::Result;
 
 use super::{CachedMethod, CachedSkeleton, ClassLocation, MethodLocation, PatchContext};
@@ -42,10 +40,7 @@ impl PatchContext<'_> {
             let method = class
                 .class_data
                 .as_ref()
-                .and_then(|data| match location.kind {
-                    MethodKind::Direct => data.direct_methods.get(location.method_idx),
-                    MethodKind::Virtual => data.virtual_methods.get(location.method_idx),
-                });
+                .and_then(|data| data.methods(location.kind).get(location.method_idx));
             return Ok(method.map(|method| (dex, method)));
         }
         if self
@@ -90,12 +85,10 @@ impl PatchContext<'_> {
             .resident(location.class_idx)
             .and_then(|c| c.class_data.as_deref())
         {
-            let list = if location.kind == MethodKind::Virtual {
-                &data.virtual_methods
-            } else {
-                &data.direct_methods
-            };
-            return Ok(list.get(location.method_idx).map(summarize_resident));
+            return Ok(data
+                .methods(location.kind)
+                .get(location.method_idx)
+                .map(summarize_resident));
         }
         let class = ClassLocation {
             dex_idx: location.dex_idx,
@@ -119,7 +112,8 @@ impl PatchContext<'_> {
             .as_ref()
             .expect("class skeleton was read above")
             .skeleton
-            .method(location.method_idx, location.kind)
+            .methods(location.kind)
+            .get(location.method_idx)
         else {
             return Ok(None);
         };

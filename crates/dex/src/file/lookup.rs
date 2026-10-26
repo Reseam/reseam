@@ -5,8 +5,9 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 
 use super::DexFile;
+use crate::model::descriptor::parse_method_descriptor;
 use crate::model::{
-    FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx,
+    FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx, TypeList,
 };
 
 impl DexFile {
@@ -35,6 +36,21 @@ impl DexFile {
                 let string_idx = self.strings().find(descriptor)?;
                 self.types.find(&string_idx).map(|i| TypeIdx(i as u32))
             })
+    }
+
+    /// The prototype a method descriptor such as `(I)V` names, if the pools hold it.
+    pub fn find_proto(&self, descriptor: &str) -> Option<ProtoIdx> {
+        let (parameters, return_type) = parse_method_descriptor(descriptor)?;
+        let parameters = parameters
+            .iter()
+            .map(|parameter| self.find_type_idx(parameter))
+            .collect::<Option<TypeList>>()?;
+        self.find_proto_idx(self.find_type_idx(return_type)?, &parameters)
+    }
+
+    /// The id of method `name` with prototype `proto` of class `class`, if the pools hold it.
+    pub fn find_method(&self, class: TypeIdx, name: &str, proto: &str) -> Option<MethodIdx> {
+        self.find_method_idx(class, self.strings.find(name)?, self.find_proto(proto)?)
     }
 
     pub(crate) fn find_proto_idx(&self, ret: TypeIdx, params: &[TypeIdx]) -> Option<ProtoIdx> {

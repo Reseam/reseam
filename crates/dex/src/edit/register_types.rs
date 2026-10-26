@@ -244,7 +244,10 @@ fn transfer(instruction: &Instruction, state: &mut [u8]) -> Result<()> {
     let mut result = Ok(());
     instruction.visit_operands(|operand| {
         if operand.access != Access::Read && result.is_ok() {
-            result = write(state, operand.register as usize, operand.kind);
+            result = operand
+                .kind
+                .ok_or_else(|| invalid("register types", "untyped register write"))
+                .and_then(|kind| write(state, operand.register as usize, kind));
             if result.is_ok() {
                 if let Some(source) = source {
                     state[operand.register as usize] = source;
@@ -268,7 +271,6 @@ fn write(state: &mut [u8], register: usize, kind: RegisterKind) -> Result<()> {
             words[0] = WIDE;
             words[1] = HIGH;
         }
-        RegisterKind::Unknown => return Err(invalid("register types", "untyped register write")),
     }
     Ok(())
 }

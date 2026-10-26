@@ -3,7 +3,9 @@
 
 use super::{FieldIdx, MethodHandleIdx, MethodIdx, ProtoIdx, StringIdx, TypeIdx};
 
-#[derive(Debug, Clone, PartialEq)]
+/// A value as the DEX encodes it. Values compare by encoding, so floats are
+/// equal exactly when their bits are: a NaN equals itself and -0.0 is not 0.0.
+#[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum EncodedValue {
     Byte(i8),
@@ -26,13 +28,42 @@ pub enum EncodedValue {
     Boolean(bool),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+impl PartialEq for EncodedValue {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Float(left), Self::Float(right)) => left.to_bits() == right.to_bits(),
+            (Self::Double(left), Self::Double(right)) => left.to_bits() == right.to_bits(),
+            (Self::Byte(left), Self::Byte(right)) => left == right,
+            (Self::Short(left), Self::Short(right)) => left == right,
+            (Self::Char(left), Self::Char(right)) => left == right,
+            (Self::Int(left), Self::Int(right)) => left == right,
+            (Self::Long(left), Self::Long(right)) => left == right,
+            (Self::MethodType(left), Self::MethodType(right)) => left == right,
+            (Self::MethodHandle(left), Self::MethodHandle(right)) => left == right,
+            (Self::String(left), Self::String(right)) => left == right,
+            (Self::Type(left), Self::Type(right)) => left == right,
+            (Self::Field(left), Self::Field(right)) | (Self::Enum(left), Self::Enum(right)) => {
+                left == right
+            }
+            (Self::Method(left), Self::Method(right)) => left == right,
+            (Self::Array(left), Self::Array(right)) => left == right,
+            (Self::Annotation(left), Self::Annotation(right)) => left == right,
+            (Self::Boolean(left), Self::Boolean(right)) => left == right,
+            (Self::Null, Self::Null) => true,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for EncodedValue {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncodedAnnotation {
     pub type_: TypeIdx,
     pub elements: Vec<EncodedAnnotationElement>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncodedAnnotationElement {
     pub name: StringIdx,
     pub value: EncodedValue,

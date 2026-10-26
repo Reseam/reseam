@@ -7,7 +7,7 @@ use boltffi::export;
 use dex::BranchDestination;
 use reseam_apk::reseam_dex::{self as dex, CodeItem, DexFile};
 
-use crate::kotlin::convert::{dex_to_kotlin, kotlin_to_dex};
+use crate::kotlin::convert::{dex_to_kotlin, kotlin_to_dex, lower_invocation, scratch_words};
 use crate::kotlin::types::{Instruction, ScratchSpan};
 
 pub(super) struct Assembly {
@@ -79,11 +79,10 @@ pub(super) fn assemble(
     for (index, instruction) in instructions.into_iter().enumerate() {
         offsets.push(address);
         let authored_branch = branch_offset(&instruction);
-        let lowered = crate::kotlin::invoke::lower_instruction(
+        let lowered = lower_invocation(
             instruction,
-            scratch_by_instruction.remove(&index).unwrap_or_default(),
-        )
-        .map_err(invalid)?;
+            &scratch_by_instruction.remove(&index).unwrap_or_default(),
+        )?;
         let primary = lowered
             .last()
             .expect("lowering preserves each original instruction");
@@ -179,6 +178,24 @@ impl Assembly {
             })
             .collect()
     }
+}
+
+/// Scratch words each instruction needs to be lowered; zero for all but wide invokes.
+#[export]
+pub fn invoke_scratch_words(instructions: Vec<Instruction>) -> Result<Vec<u32>, String> {
+    instructions
+        .iter()
+        .map(|instruction| scratch_words(instruction).map(u32::from))
+        .collect::<dex::Result<_>>()
+        .map_err(|error| error.to_string())
+}
+
+#[export]
+pub fn lower_instruction(
+    instruction: Instruction,
+    scratch: Vec<u16>,
+) -> Result<Vec<Instruction>, String> {
+    lower_invocation(instruction, &scratch).map_err(|error| error.to_string())
 }
 
 #[export]

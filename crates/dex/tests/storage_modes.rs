@@ -134,7 +134,7 @@ fn prototype_identities_survive_global_pool_overflow_and_part_compaction() -> Te
     let prototype = dex.intern_proto(&descriptor)?;
     assert!(prototype.0 > u32::from(u16::MAX));
     let method = dex.intern_method("Lexample/Activity;", "nativeCall", &descriptor)?;
-    dex.class_mut(0)?.add_direct_method(EncodedMethod {
+    dex.class_mut(0)?.add_method(EncodedMethod {
         method,
         access_flags: AccessFlags::PUBLIC | AccessFlags::STATIC | AccessFlags::NATIVE,
         code: None,
@@ -234,43 +234,44 @@ fn call_sites_and_method_handles_survive_deferred_reads_appends_and_remapping() 
     use reseam_dex::{MethodHandleMember, MethodHandleType};
     let mut dex = common::dex();
     let bootstrap = dex.intern_method("Lexample/Bootstrap;", "bootstrap", "()V")?;
-    let handle = dex.method_handles_mut().push(MethodHandle {
-        handle_type: MethodHandleType::InvokeStatic,
-        member: MethodHandleMember::Method(bootstrap),
-    });
+    let handle = dex.intern_method_handle(
+        MethodHandle {
+            handle_type: MethodHandleType::InvokeStatic,
+            member: MethodHandleMember::Method(bootstrap),
+        },
+        None,
+    )?;
     let site = CallSiteItem {
-        bootstrap_method: reseam_dex::MethodHandleIdx(handle as u32),
+        bootstrap_method: handle,
         method_name: dex.intern_string("dynamicCall"),
         method_type: dex.intern_proto("()V")?,
         extra_arguments: vec![EncodedValue::String(dex.intern_string("argument"))],
     };
-    let index = dex.call_sites_mut().push(site);
+    let index = dex.intern_call_site(site, None)?;
     common::body(&mut dex).set_instructions(vec![
         Instruction::InvokeCustom {
-            call_site: reseam_dex::CallSiteIdx(index as u32),
+            call_site: index,
             args: reseam_dex::RegList::default(),
         },
         Instruction::ReturnVoid,
     ]);
     let input = common::write(&dex)?;
     let mut parsed = common::parse_with_loading(&input, Loading::Deferred)?;
-    assert!(parsed.call_sites().get(1).is_err());
-    let mut appended = parsed.call_sites().get(0)?.into_owned();
+    assert!(parsed.call_site(reseam_dex::CallSiteIdx(1)).is_err());
+    let mut appended = parsed.call_site(reseam_dex::CallSiteIdx(0))?.into_owned();
     appended.method_name = parsed.intern_string("!appendedCall");
-    parsed.call_sites_mut().push(appended);
+    parsed.intern_call_site(appended, None)?;
     let bytes = common::write(&parsed)?;
     let result = reseam_dex::parse(&bytes, ParseOptions::default())?;
     assert_eq!(result.call_sites().len(), 2);
     for (index, name) in [(0, "dynamicCall"), (1, "!appendedCall")] {
-        let site = result.call_sites().get(index)?;
+        let site = result.call_site(reseam_dex::CallSiteIdx(index))?;
         assert_eq!(result.strings().get(site.method_name), name);
         let EncodedValue::String(argument) = site.extra_arguments[0] else {
             panic!("string argument");
         };
         assert_eq!(result.strings().get(argument), "argument");
-        let handle = result
-            .method_handles()
-            .get(site.bootstrap_method.0 as usize)?;
+        let handle = result.method_handle(site.bootstrap_method)?;
         let MethodHandleMember::Method(target) = handle.member else {
             panic!("bootstrap method");
         };
@@ -393,7 +394,7 @@ fn cached_reference_search_tracks_resident_edits_and_class_removal() -> TestResu
     )?;
     let string = dex.intern_string("dashboard opened");
     let method = dex.intern_method("Lexample/Dashboard;", "report", "()V")?;
-    dex.class_mut(class)?.add_direct_method(EncodedMethod {
+    dex.class_mut(class)?.add_method(EncodedMethod {
         method,
         access_flags: AccessFlags::PUBLIC | AccessFlags::STATIC,
         code: Some(std::sync::Arc::new(CodeItem::new(

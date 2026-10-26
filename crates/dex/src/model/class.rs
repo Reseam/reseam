@@ -15,6 +15,21 @@ pub enum MethodKind {
     Virtual,
 }
 
+impl MethodKind {
+    /// Class data lists direct methods before virtual ones.
+    pub const ALL: [MethodKind; 2] = [MethodKind::Direct, MethodKind::Virtual];
+
+    /// The list a method with these flags belongs in: static, private and
+    /// constructor methods are direct, every other method is virtual.
+    pub fn of(flags: AccessFlags) -> Self {
+        if flags.intersects(AccessFlags::STATIC | AccessFlags::PRIVATE | AccessFlags::CONSTRUCTOR) {
+            Self::Direct
+        } else {
+            Self::Virtual
+        }
+    }
+}
+
 pub const NO_INDEX: u32 = u32::MAX;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -36,7 +51,7 @@ impl ClassDef {
             for m in data
                 .direct_methods
                 .iter_mut()
-                .chain(data.virtual_methods.iter_mut())
+                .chain(&mut data.virtual_methods)
             {
                 m.access_flags &= !AccessFlags::FINAL;
             }
@@ -47,12 +62,12 @@ impl ClassDef {
         self.class_data.get_or_insert_with(Default::default)
     }
 
-    pub fn add_direct_method(&mut self, method: EncodedMethod) {
-        self.ensure_class_data().direct_methods.push(method);
-    }
-
-    pub fn add_virtual_method(&mut self, method: EncodedMethod) {
-        self.ensure_class_data().virtual_methods.push(method);
+    /// Appends a method to the list its flags select, returning where it went.
+    pub fn add_method(&mut self, method: EncodedMethod) -> (MethodKind, usize) {
+        let kind = MethodKind::of(method.access_flags);
+        let methods = self.ensure_class_data().methods_mut(kind);
+        methods.push(method);
+        (kind, methods.len() - 1)
     }
 
     pub fn add_static_field(&mut self, field: EncodedField) {
@@ -70,6 +85,32 @@ pub struct ClassData {
     pub instance_fields: Vec<EncodedField>,
     pub direct_methods: Vec<EncodedMethod>,
     pub virtual_methods: Vec<EncodedMethod>,
+}
+
+impl ClassData {
+    pub fn methods(&self, kind: MethodKind) -> &[EncodedMethod] {
+        match kind {
+            MethodKind::Direct => &self.direct_methods,
+            MethodKind::Virtual => &self.virtual_methods,
+        }
+    }
+
+    pub fn methods_mut(&mut self, kind: MethodKind) -> &mut Vec<EncodedMethod> {
+        match kind {
+            MethodKind::Direct => &mut self.direct_methods,
+            MethodKind::Virtual => &mut self.virtual_methods,
+        }
+    }
+
+    /// Where the class declares `method`.
+    pub fn find_method(&self, method: MethodIdx) -> Option<(MethodKind, usize)> {
+        MethodKind::ALL.into_iter().find_map(|kind| {
+            self.methods(kind)
+                .iter()
+                .position(|encoded| encoded.method == method)
+                .map(|position| (kind, position))
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

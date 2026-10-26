@@ -1,10 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::{ClassTable, DexFile, FileTable, HiddenApiData, IdTable, StringPool};
+use std::borrow::Cow;
+
+use super::{ClassTable, DexFile, HiddenApiData, IdTable, StringPool};
+use crate::error::Result;
 use crate::model::method_handle::{CallSiteItem, MethodHandle};
 use crate::model::{
-    FieldId, FieldIdx, MethodId, MethodIdx, PerPool, Pool, ProtoIdx, Prototype, StringIdx, TypeIdx,
+    CallSiteIdx, FieldId, FieldIdx, MethodHandleIdx, MethodId, MethodIdx, PerPool, Pool, ProtoIdx,
+    Prototype, StringIdx, TypeIdx,
 };
 
 impl DexFile {
@@ -40,24 +44,22 @@ impl DexFile {
         &mut self.classes
     }
 
-    pub fn call_sites(&self) -> &FileTable<CallSiteItem> {
-        &self.call_sites
+    pub fn call_sites(&self) -> impl ExactSizeIterator<Item = Result<Cow<'_, CallSiteItem>>> {
+        self.call_sites.iter()
     }
 
-    /// Marks the DEX changed before granting mutation.
-    pub fn call_sites_mut(&mut self) -> &mut FileTable<CallSiteItem> {
-        self.touch();
-        &mut self.call_sites
+    pub fn call_site(&self, idx: CallSiteIdx) -> Result<Cow<'_, CallSiteItem>> {
+        self.call_sites.get(idx.0 as usize)
     }
 
-    pub fn method_handles(&self) -> &FileTable<MethodHandle> {
-        &self.method_handles
+    pub fn method_handles(&self) -> impl ExactSizeIterator<Item = Result<MethodHandle>> {
+        self.method_handles
+            .iter()
+            .map(|handle| handle.map(Cow::into_owned))
     }
 
-    /// Marks the DEX changed before granting mutation.
-    pub fn method_handles_mut(&mut self) -> &mut FileTable<MethodHandle> {
-        self.touch();
-        &mut self.method_handles
+    pub fn method_handle(&self, idx: MethodHandleIdx) -> Result<MethodHandle> {
+        self.method_handles.get(idx.0 as usize).map(Cow::into_owned)
     }
 
     pub fn hidden_api(&self) -> Option<&HiddenApiData> {

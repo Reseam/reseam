@@ -9,7 +9,7 @@ pub use hidden_api::HiddenApiData;
 mod ids;
 mod interning;
 mod items;
-pub use items::{FileRecord, FileTable};
+pub(crate) use items::FileTable;
 mod lookup;
 mod pools;
 mod sorted_index;

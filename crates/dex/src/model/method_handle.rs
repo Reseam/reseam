@@ -67,7 +67,7 @@ pub enum MethodHandleMember {
     Method(MethodIdx),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallSiteItem {
     pub bootstrap_method: MethodHandleIdx,
     pub method_name: StringIdx,

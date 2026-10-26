@@ -165,7 +165,7 @@ fn displaced_queries(code: &CodeItem, base: u16, additional: u16) -> Result<Vec<
         instruction.visit_operands(|operand| {
             if operand
                 .register
-                .checked_add(operand.kind.words())
+                .checked_add(operand.kind.map_or(1, RegisterKind::words))
                 .is_none_or(|end| end > code.registers_size)
             {
                 result = Err(invalid("register growth", "operand outside frame"));
@@ -181,7 +181,7 @@ fn displaced_queries(code: &CodeItem, base: u16, additional: u16) -> Result<Vec<
             } else {
                 operand.register
             };
-            if operand.kind == RegisterKind::Unknown && register > operand.max {
+            if operand.kind.is_none() && register > operand.max {
                 queries.push((index, operand.register));
             }
         });

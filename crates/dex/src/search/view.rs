@@ -5,6 +5,7 @@ use crate::error::Result;
 use crate::instruction::Instruction;
 use crate::instruction::stream::{RawInstruction, walk_instructions};
 use crate::model::access_flags::AccessFlags;
+use crate::model::class::MethodKind;
 use crate::model::{FieldIdx, MethodIdx, StringIdx, TypeIdx};
 use crate::read::read_u32;
 
@@ -70,7 +71,7 @@ pub struct MethodView<'a> {
     pub class_type: TypeIdx,
     /// Position within the class's direct- or virtual-method list.
     pub method_pos: usize,
-    pub kind: crate::model::class::MethodKind,
+    pub kind: MethodKind,
     pub(super) code: Code<'a>,
 }
 
@@ -151,21 +152,21 @@ pub struct MethodHit {
     pub class_type: TypeIdx,
     pub method: MethodIdx,
     pub method_pos: usize,
-    pub kind: crate::model::class::MethodKind,
+    pub kind: MethodKind,
 }
 
 #[derive(Debug, Clone)]
 pub struct InstructionHit {
     pub class_idx: usize,
     pub method_pos: usize,
-    pub kind: crate::model::class::MethodKind,
+    pub kind: MethodKind,
     pub insn_idx: usize,
 }
 
 pub struct InstructionSite<'a> {
     pub class_idx: usize,
     pub method_pos: usize,
-    pub kind: crate::model::class::MethodKind,
+    pub kind: MethodKind,
     pub insn_idx: usize,
     pub instruction: InstructionRef<'a>,
 }

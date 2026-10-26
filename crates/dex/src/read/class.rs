@@ -8,7 +8,7 @@ use crate::encoding::leb128::read_uleb128;
 use crate::error::Result;
 use crate::model::access_flags::AccessFlags;
 use crate::model::class::{
-    ClassData, ClassDef, ClassHeader, EncodedField, EncodedMethod, NO_INDEX,
+    ClassData, ClassDef, ClassHeader, EncodedField, EncodedMethod, MethodKind, NO_INDEX,
 };
 use crate::model::{FieldIdx, MethodIdx};
 use crate::model::{StringIdx, TypeIdx};
@@ -82,6 +82,15 @@ pub struct MemberCounts {
     pub virtual_methods: u32,
     pub static_fields: u32,
     pub instance_fields: u32,
+}
+
+impl MemberCounts {
+    pub fn methods(&self, kind: MethodKind) -> u32 {
+        match kind {
+            MethodKind::Direct => self.direct_methods,
+            MethodKind::Virtual => self.virtual_methods,
+        }
+    }
 }
 
 pub(crate) struct ClassDataCursor<'a> {
@@ -168,15 +177,10 @@ pub struct ClassSkeleton {
 }
 
 impl ClassSkeleton {
-    pub fn method(
-        &self,
-        method_pos: usize,
-        kind: crate::model::class::MethodKind,
-    ) -> Option<&MethodHeader> {
-        if kind == crate::model::class::MethodKind::Virtual {
-            self.virtual_methods.get(method_pos)
-        } else {
-            self.direct_methods.get(method_pos)
+    pub fn methods(&self, kind: MethodKind) -> &[MethodHeader] {
+        match kind {
+            MethodKind::Direct => &self.direct_methods,
+            MethodKind::Virtual => &self.virtual_methods,
         }
     }
 }

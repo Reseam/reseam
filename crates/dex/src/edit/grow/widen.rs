@@ -122,14 +122,14 @@ pub(super) fn move_register(dest: u16, src: u16, kind: RegisterKind) -> Instruct
             src,
         },
         RegisterKind::Object => MoveObject16 { dest, src },
-        _ if dest <= 15 && src <= 15 => Move {
+        RegisterKind::Value if dest <= 15 && src <= 15 => Move {
             dest: dest as u8,
             src: src as u8,
         },
-        _ if dest <= 255 => MoveFrom16 {
+        RegisterKind::Value if dest <= 255 => MoveFrom16 {
             dest: dest as u8,
             src,
         },
-        _ => Move16 { dest, src },
+        RegisterKind::Value => Move16 { dest, src },
     }
 }

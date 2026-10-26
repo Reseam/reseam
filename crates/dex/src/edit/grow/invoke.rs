@@ -4,99 +4,68 @@
 use super::allocation::Allocation;
 use super::widen::move_register;
 use crate::DexFile;
+use crate::edit::invoke::{
+    Invocation, InvokeEncoding, InvokeForm, Receiver, argument_kinds, array_kinds,
+};
 use crate::edit::relocate::InstructionExpansion;
 use crate::error::{Result, invalid};
 use crate::instruction::Instruction;
-use crate::instruction::operands::RegisterKind;
+use crate::instruction::operands::{InstructionArguments, RegisterKind};
 
+/// Re-encodes an invoke or filled-new-array for its shifted arguments,
+/// staging them through scratch registers when they no longer form a range.
 pub(super) fn lower_invoke(
     expansion: &mut InstructionExpansion,
     allocation: &mut Allocation<'_>,
     dex: &DexFile,
 ) -> Result<()> {
     let insn = &expansion.instruction;
-    let registers: Vec<u16> = match insn.arguments() {
-        crate::instruction::operands::InstructionArguments::List(args) => {
-            args.iter().map(|&register| u16::from(register)).collect()
-        }
-        crate::instruction::operands::InstructionArguments::Range { first, count } => {
+    let (form, registers): (_, Vec<u16>) = match insn.arguments() {
+        InstructionArguments::List(args) => (
+            InvokeForm::Compact,
+            args.iter()
+                .map(|&register| allocation.shift(u16::from(register)))
+                .collect(),
+        ),
+        InstructionArguments::Range { first, count } => (
+            InvokeForm::Range,
             (u32::from(first)..u32::from(first) + u32::from(count))
                 .map(|register| {
                     u16::try_from(register)
+                        .map(|register| allocation.shift(register))
                         .map_err(|_| invalid("register growth", "invoke range exceeds frame"))
                 })
-                .collect::<Result<_>>()?
-        }
-        crate::instruction::operands::InstructionArguments::None => {
+                .collect::<Result<_>>()?,
+        ),
+        InstructionArguments::None => {
             return Err(invalid(
                 "register growth",
                 "instruction has no invoke arguments",
             ));
         }
     };
-    let shifted: Vec<u16> = registers.iter().map(|reg| allocation.shift(*reg)).collect();
-    let arguments = invoke_arguments(insn, registers.len(), dex)?;
-    if arguments
-        .iter()
-        .map(|kind| kind.words() as usize)
-        .sum::<usize>()
-        != registers.len()
-    {
-        return Err(invalid(
-            "register growth",
-            "invoke argument count does not match prototype",
-        ));
-    }
-    let mut word = 0;
-    for kind in &arguments {
-        if *kind == RegisterKind::Wide && shifted[word + 1] != shifted[word] + 1 {
-            return Err(invalid(
-                "register growth",
-                "wide invoke argument crosses the local/parameter boundary",
-            ));
-        }
-        word += kind.words() as usize;
-    }
-    let encoding = if shifted.len() <= 5 && shifted.iter().all(|reg| *reg <= 15) {
-        InvokeEncoding::Compact
-    } else {
-        InvokeEncoding::Range
-    };
-    let consecutive = shifted.windows(2).all(|pair| pair[1] == pair[0] + 1);
-    let first = if matches!(encoding, InvokeEncoding::Compact) || consecutive {
-        shifted.first().copied().unwrap_or(0)
-    } else {
-        let words = shifted.len() as u16;
-        let scratch = match allocation.dead_scratch(words, u16::MAX) {
+    let kinds = invoke_kinds(insn, registers.len(), dex)?;
+    let invocation = Invocation::new(form, &registers, &kinds)?;
+    let scratch = match invocation.scratch_words() {
+        0 => None,
+        words => Some(match allocation.dead_scratch(words, u16::MAX) {
             Some(register) => register,
             None => allocation.arguments.reserve(words)?,
-        };
-        let mut word = 0;
-        for kind in arguments {
-            expansion
-                .before
-                .push(move_register(scratch + word as u16, shifted[word], kind));
-            word += kind.words() as usize;
-        }
-        scratch
+        }),
     };
-    let count = u8::try_from(shifted.len())
-        .map_err(|_| invalid("register growth", "invoke exceeds 255 words"))?;
-    expansion.instruction = invoke_encoding(insn, &shifted, first, count, encoding)?;
+    let (moves, encoding) = invocation.lower(scratch)?;
+    expansion.before.extend(
+        moves
+            .iter()
+            .map(|argument| move_register(argument.dest, argument.src, argument.kind)),
+    );
+    expansion.instruction = invoke_encoding(insn, &registers, encoding)?;
     Ok(())
-}
-
-#[derive(Clone, Copy)]
-enum InvokeEncoding {
-    Compact,
-    Range,
 }
 
 fn invoke_encoding(
     insn: &Instruction,
     shifted: &[u16],
-    first: u16,
-    count: u8,
     encoding: InvokeEncoding,
 ) -> Result<Instruction> {
     macro_rules! encode {
@@ -110,7 +79,7 @@ fn invoke_encoding(
                             shifted.iter().map(|reg| *reg as u8),
                         )?,
                     },
-                    InvokeEncoding::Range => Instruction::$range {
+                    InvokeEncoding::Range { first, count } => Instruction::$range {
                         $($field,)*
                         first_reg: first,
                         count,
@@ -132,51 +101,24 @@ fn invoke_encoding(
     )
 }
 
-#[derive(Clone, Copy)]
-enum Receiver {
-    Absent,
-    Present,
-}
-
-fn prototype_arguments(
-    dex: &DexFile,
-    prototype: crate::Prototype,
-    receiver: Receiver,
-) -> Vec<RegisterKind> {
-    let mut arguments = Vec::new();
-    if matches!(receiver, Receiver::Present) {
-        arguments.push(RegisterKind::Object);
-    }
-    arguments.extend(
-        prototype
-            .parameters
-            .into_iter()
-            .map(|param| RegisterKind::of(&dex.type_descriptor(param))),
-    );
-    arguments
-}
-
-fn invoke_arguments(insn: &Instruction, words: usize, dex: &DexFile) -> Result<Vec<RegisterKind>> {
+fn invoke_kinds(insn: &Instruction, words: usize, dex: &DexFile) -> Result<Vec<RegisterKind>> {
     use Instruction::{
         FilledNewArray, FilledNewArrayRange, InvokeCustom, InvokeCustomRange, InvokeDirect,
         InvokeDirectRange, InvokeInterface, InvokeInterfaceRange, InvokePolymorphic,
         InvokePolymorphicRange, InvokeStatic, InvokeStaticRange, InvokeSuper, InvokeSuperRange,
         InvokeVirtual, InvokeVirtualRange,
     };
-    let arguments = match insn {
+    let prototype =
+        |proto, receiver| argument_kinds(&dex.proto_descriptor(&dex.proto(proto)), receiver);
+    match insn {
         FilledNewArray { type_, .. } | FilledNewArrayRange { type_, .. } => {
-            let descriptor = dex.type_descriptor(*type_);
-            let element = descriptor.strip_prefix('[').ok_or_else(|| {
-                invalid("register growth", "filled-new-array type is not an array")
-            })?;
-            vec![RegisterKind::of(element); words]
+            array_kinds(&dex.type_descriptor(*type_), words)
         }
         InvokePolymorphic { proto, .. } | InvokePolymorphicRange { proto, .. } => {
-            prototype_arguments(dex, dex.proto(*proto), Receiver::Present)
+            prototype(*proto, Receiver::Present)
         }
         InvokeCustom { call_site, .. } | InvokeCustomRange { call_site, .. } => {
-            let call_site = dex.call_sites.get(call_site.0 as usize)?;
-            prototype_arguments(dex, dex.proto(call_site.method_type), Receiver::Absent)
+            prototype(dex.call_site(*call_site)?.method_type, Receiver::Absent)
         }
         InvokeVirtual { method, .. }
         | InvokeVirtualRange { method, .. }
@@ -185,17 +127,12 @@ fn invoke_arguments(insn: &Instruction, words: usize, dex: &DexFile) -> Result<V
         | InvokeDirect { method, .. }
         | InvokeDirectRange { method, .. }
         | InvokeInterface { method, .. }
-        | InvokeInterfaceRange { method, .. } => prototype_arguments(
-            dex,
-            dex.proto(dex.method_id(*method).proto),
-            Receiver::Present,
-        ),
-        InvokeStatic { method, .. } | InvokeStaticRange { method, .. } => prototype_arguments(
-            dex,
-            dex.proto(dex.method_id(*method).proto),
-            Receiver::Absent,
-        ),
-        _ => return Err(invalid("register growth", "instruction is not an invoke")),
-    };
-    Ok(arguments)
+        | InvokeInterfaceRange { method, .. } => {
+            prototype(dex.method_id(*method).proto, Receiver::Present)
+        }
+        InvokeStatic { method, .. } | InvokeStaticRange { method, .. } => {
+            prototype(dex.method_id(*method).proto, Receiver::Absent)
+        }
+        _ => Err(invalid("register growth", "instruction is not an invoke")),
+    }
 }

@@ -89,7 +89,7 @@ impl Allocation<'_> {
         let index = self.index;
         map_operands(&mut expansion.instruction, |operand| {
             let register = self.shift(operand.register);
-            if operand.kind == RegisterKind::Wide
+            if operand.kind == Some(RegisterKind::Wide)
                 && self.shift(operand.register + 1) != register + 1
             {
                 return Err(invalid(
@@ -100,12 +100,11 @@ impl Allocation<'_> {
             if register <= operand.max {
                 return Ok(register);
             }
-            let kind = if operand.kind == RegisterKind::Unknown {
-                types
+            let kind = match operand.kind {
+                Some(kind) => kind,
+                None => types
                     .expect("displaced untyped operands were collected")
-                    .kind(index, operand.register)?
-            } else {
-                operand.kind
+                    .kind(index, operand.register)?,
             };
             let scratch = self.scratch(kind.words(), operand.max)?;
             if operand.access != Access::Write {

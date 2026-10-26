@@ -7,7 +7,7 @@ use super::view::{Code, MethodView};
 use crate::error::Result;
 use crate::file::DexFile;
 use crate::model::TypeIdx;
-use crate::model::class::{ClassData, EncodedMethod};
+use crate::model::class::{ClassData, EncodedMethod, MethodKind};
 use crate::options::ParseOptions;
 use crate::read::class::ClassDataCursor;
 use crate::read::code::read_code_item;
@@ -55,23 +55,11 @@ impl DexFile {
 
         let mut cursor = ClassDataCursor::new(buf, offset as usize, opts)?;
         cursor.skip_fields()?;
-        for (kind, count) in [
-            (
-                crate::model::class::MethodKind::Direct,
-                cursor.counts.direct_methods,
-            ),
-            (
-                crate::model::class::MethodKind::Virtual,
-                cursor.counts.virtual_methods,
-            ),
-        ] {
-            let slot_base = if kind == crate::model::class::MethodKind::Virtual {
-                cursor.counts.direct_methods as usize
-            } else {
-                0
-            };
+        let counts = cursor.counts;
+        let mut slot_base = 0;
+        for kind in MethodKind::ALL {
             let mut method_pos = 0;
-            let result = cursor.methods(count, |header| {
+            let result = cursor.methods(counts.methods(kind), |header| {
                 crate::references::check_index(self, crate::model::Pool::Method, header.method.0)?;
                 let position = method_pos;
                 method_pos += 1;
@@ -102,6 +90,7 @@ impl DexFile {
             if let ControlFlow::Break(value) = result {
                 return Ok(ControlFlow::Break(value));
             }
+            slot_base += counts.methods(kind) as usize;
         }
 
         Ok(ControlFlow::Continue(()))
@@ -115,19 +104,9 @@ fn scan_resolved_class<T>(
     methods: Option<&[Slot]>,
     visit: &mut impl FnMut(&MethodView<'_>) -> Result<ControlFlow<T>>,
 ) -> Result<ControlFlow<T>> {
-    let lists = [
-        (
-            crate::model::class::MethodKind::Direct,
-            data.direct_methods.as_slice(),
-        ),
-        (
-            crate::model::class::MethodKind::Virtual,
-            data.virtual_methods.as_slice(),
-        ),
-    ];
     let mut slot = 0usize;
-    for (kind, list) in lists {
-        for (method_pos, method) in list.iter().enumerate() {
+    for kind in MethodKind::ALL {
+        for (method_pos, method) in data.methods(kind).iter().enumerate() {
             let listed = methods.is_none_or(|methods| {
                 Slot::try_from(slot).is_ok_and(|slot| methods.binary_search(&slot).is_ok())
             });
@@ -160,23 +139,18 @@ pub(super) fn decode_one_method(
     source: &crate::DexBytes,
     offset: u32,
     method_pos: usize,
-    kind: crate::model::class::MethodKind,
+    kind: MethodKind,
     opts: ParseOptions,
 ) -> Result<Option<EncodedMethod>> {
     let mut cursor = ClassDataCursor::new(source.as_bytes(), offset as usize, opts)?;
     cursor.skip_fields()?;
-    if kind == crate::model::class::MethodKind::Virtual {
+    if kind == MethodKind::Virtual {
         let _: ControlFlow<()> = cursor.methods::<()>(cursor.counts.direct_methods, |_| {
             Ok(ControlFlow::Continue(()))
         })?;
     }
-    let count = if kind == crate::model::class::MethodKind::Virtual {
-        cursor.counts.virtual_methods
-    } else {
-        cursor.counts.direct_methods
-    };
     let mut position = 0;
-    let result = cursor.methods(count, |header| {
+    let result = cursor.methods(cursor.counts.methods(kind), |header| {
         let selected = position == method_pos;
         position += 1;
         if !selected {

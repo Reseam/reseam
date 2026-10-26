@@ -22,7 +22,7 @@ pub(super) fn prepare_flag_frame(
     let proto = dex.proto_descriptor(&dex.proto(dex.method_id(method).proto));
     let incoming = logged(
         "change method frame",
-        crate::kotlin::invoke::incoming_words(&proto, flags),
+        super::super::registers::incoming_words(&proto, flags),
     )?;
     let growth = incoming.saturating_sub(code.registers_size());
     let mapping = if growth == 0 {

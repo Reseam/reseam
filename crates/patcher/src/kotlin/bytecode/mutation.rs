@@ -59,7 +59,7 @@ pub fn replace_body(
         let proto = dex.proto_descriptor(&dex.proto(dex.method_id(id).proto));
         let incoming = logged(
             "replacement frame",
-            crate::kotlin::invoke::incoming_words(&proto, flags),
+            super::registers::incoming_words(&proto, flags),
         )?;
         let code = logged(
             "replace body",

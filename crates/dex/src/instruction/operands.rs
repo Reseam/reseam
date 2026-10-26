@@ -7,12 +7,13 @@ use super::Instruction;
 use super::catalogue::instruction_catalogue;
 use crate::error::{Result, invalid};
 
+/// What a register holds: a 32-bit value, an object reference, or the low
+/// word of a wide value whose high word is the next register.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum RegisterKind {
+pub enum RegisterKind {
     Value,
     Object,
     Wide,
-    Unknown,
 }
 
 impl RegisterKind {
@@ -21,7 +22,7 @@ impl RegisterKind {
     }
 
     /// The kind of a value of the type a descriptor names.
-    pub(crate) fn of(descriptor: &str) -> Self {
+    pub fn of(descriptor: &str) -> Self {
         match descriptor.as_bytes().first() {
             Some(b'J' | b'D') => Self::Wide,
             Some(b'L' | b'[') => Self::Object,
@@ -40,7 +41,8 @@ pub(crate) enum Access {
 
 pub(crate) struct Operand {
     pub register: u16,
-    pub kind: RegisterKind,
+    /// `None` where the instruction accepts more than one kind.
+    pub kind: Option<RegisterKind>,
     pub access: Access,
     pub max: u16,
 }
@@ -63,6 +65,15 @@ fn mapped(operand: Operand, map: &mut impl FnMut(Operand) -> Result<u16>) -> Res
     Ok(register)
 }
 
+macro_rules! register_kind {
+    (Unknown) => {
+        None
+    };
+    ($kind:ident) => {
+        Some(RegisterKind::$kind)
+    };
+}
+
 macro_rules! visit_arguments {
     (none, $insn:ident, $visit:ident) => {};
     (list, $insn:ident, $visit:ident) => {
@@ -70,7 +81,7 @@ macro_rules! visit_arguments {
             for register in args {
                 $visit(Operand {
                     register: u16::from(*register),
-                    kind: RegisterKind::Unknown,
+                    kind: None,
                     access: Access::Read,
                     max: 15,
                 });
@@ -83,7 +94,7 @@ macro_rules! visit_arguments {
                 if let Ok(register) = u16::try_from(register) {
                     $visit(Operand {
                         register,
-                        kind: RegisterKind::Unknown,
+                        kind: None,
                         access: Access::Read,
                         max: u16::MAX,
                     });
@@ -130,7 +141,7 @@ macro_rules! register_arm {
                 *register = mapped(
                     Operand {
                         register: u16::from(*register),
-                        kind: RegisterKind::Unknown,
+                        kind: None,
                         access: Access::Read,
                         max: 15,
                     },
@@ -148,7 +159,7 @@ macro_rules! register_arm {
             *first_reg = mapped(
                 Operand {
                     register: *first_reg,
-                    kind: RegisterKind::Unknown,
+                    kind: None,
                     access: Access::Read,
                     max: u16::MAX,
                 },
@@ -163,7 +174,7 @@ macro_rules! define_operands {
         impl Instruction {
             pub(crate) fn visit_operands(&self, mut visit: impl FnMut(Operand)) {
                 match self { $(Self::$variant { $($register,)* .. } => {
-                    $(visit(Operand { register: u16::from(*$register), kind: RegisterKind::$kind, access: Access::$access, max: $max });)*
+                    $(visit(Operand { register: u16::from(*$register), kind: register_kind!($kind), access: Access::$access, max: $max });)*
                     visit_arguments!($args, self, visit);
                 },)* }
             }
@@ -183,7 +194,7 @@ macro_rules! define_operands {
 
         pub(crate) fn map_operands(insn: &mut Instruction, mut map: impl FnMut(Operand) -> Result<u16>) -> Result<()> {
             match insn { $(Instruction::$variant { $($register,)* .. } => {
-                $(*$register = mapped(Operand { register: u16::from(*$register), kind: RegisterKind::$kind, access: Access::$access, max: $max }, &mut map)? as $reg_type;)*
+                $(*$register = mapped(Operand { register: u16::from(*$register), kind: register_kind!($kind), access: Access::$access, max: $max }, &mut map)? as $reg_type;)*
                 register_arm!($args, insn, $variant, map);
             },)* }
             Ok(())
@@ -206,7 +217,7 @@ impl Instruction {
     pub fn visit_read_registers(&self, mut visit: impl FnMut(u16)) {
         self.visit_operands(|operand| {
             if operand.access != Access::Write {
-                for word in 0..operand.kind.words() {
+                for word in 0..operand.kind.map_or(1, RegisterKind::words) {
                     if let Some(register) = operand.register.checked_add(word) {
                         visit(register);
                     }
@@ -219,7 +230,7 @@ impl Instruction {
     pub fn visit_written_registers(&self, mut visit: impl FnMut(u16)) {
         self.visit_operands(|operand| {
             if operand.access.writes_value() {
-                for word in 0..operand.kind.words() {
+                for word in 0..operand.kind.map_or(1, RegisterKind::words) {
                     if let Some(register) = operand.register.checked_add(word) {
                         visit(register);
                     }

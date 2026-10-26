@@ -87,15 +87,18 @@ pub(crate) fn duplicate_call_site(
     source: crate::context::MethodLocation,
 ) {
     let dex = context.dex_file_mut(0).unwrap();
-    let site = dex.call_sites().get(0).unwrap().into_owned();
-    let duplicate = dex.call_sites_mut().push(site);
+    let site = dex
+        .call_site(reseam_apk::reseam_dex::CallSiteIdx(0))
+        .unwrap()
+        .into_owned();
+    let duplicate = dex.intern_call_site(site, Some(&[])).unwrap();
     crate::context::code_mut(dex, source)
         .unwrap()
         .unwrap()
         .insert_instructions(
             4,
             &[reseam_apk::reseam_dex::Instruction::InvokeCustom {
-                call_site: reseam_apk::reseam_dex::CallSiteIdx(duplicate as u32),
+                call_site: duplicate,
                 args: reseam_apk::reseam_dex::RegList::default(),
             }],
         )

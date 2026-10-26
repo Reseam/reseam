@@ -7,7 +7,7 @@ use crate::file::DexFile;
 use crate::instruction::stream::count_instructions;
 use crate::model::MethodIdx;
 use crate::model::access_flags::AccessFlags;
-use crate::model::class::{ClassData, EncodedField, EncodedMethod};
+use crate::model::class::{ClassData, EncodedField, EncodedMethod, MethodKind};
 use crate::read::class::{
     ClassDataCursor, ClassSkeleton, MemberCounts, MethodHeader, read_class_skeleton_at,
 };
@@ -160,15 +160,10 @@ impl DexFile {
         &self,
         class_idx: usize,
         method_pos: usize,
-        kind: crate::model::class::MethodKind,
+        kind: MethodKind,
     ) -> Result<Option<EncodedMethod>> {
         if let Some(data) = self.resident_class_data(class_idx) {
-            let list = if kind == crate::model::class::MethodKind::Virtual {
-                &data.virtual_methods
-            } else {
-                &data.direct_methods
-            };
-            return Ok(list.get(method_pos).cloned());
+            return Ok(data.methods(kind).get(method_pos).cloned());
         }
 
         let Some(offset) = self.classes.class_data_offset(class_idx) else {

@@ -34,6 +34,9 @@ mod write;
 
 pub use edit::body::EarlyReturn;
 pub use edit::grow::grow_registers;
+pub use edit::invoke::{
+    ArgumentMove, Invocation, InvokeEncoding, InvokeForm, Receiver, argument_kinds, array_kinds,
+};
 pub use edit::liveness::{
     find_contiguous_free_registers, find_free_register, find_free_registers, reaching_definitions,
 };
@@ -43,7 +46,8 @@ pub use error::{DexError, Result};
 pub use file::container::{
     MaterializationStats, MemoryBreakdown, MultiDexContainer, estimated_ir_bytes,
 };
-pub use file::{ClassTable, DexFile, FileRecord, FileTable, HiddenApiData, IdTable, StringPool};
+pub use file::{ClassTable, DexFile, HiddenApiData, IdTable, StringPool};
+pub use instruction::operands::RegisterKind;
 pub use instruction::{
     FillArrayPayloadData, Instruction, PackedSwitchData, RegList, SparseSwitchData,
 };

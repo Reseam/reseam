@@ -12,6 +12,23 @@ use crate::kotlin::types::{MethodEdit, RegisterWriters};
 
 use super::logged;
 
+/// The register words a method with prototype `proto` and these flags is entered with.
+pub(super) fn incoming_words(proto: &str, flags: AccessFlags) -> dex::Result<u16> {
+    let receiver = if flags.contains(AccessFlags::STATIC) {
+        dex::Receiver::Absent
+    } else {
+        dex::Receiver::Present
+    };
+    let words: u32 = dex::argument_kinds(proto, receiver)?
+        .into_iter()
+        .map(|kind| u32::from(kind.words()))
+        .sum();
+    u16::try_from(words).map_err(|_| dex::DexError::Invalid {
+        section: "invoke",
+        reason: "incoming register words exceed 65535".into(),
+    })
+}
+
 pub(super) fn incoming_types(
     dex: &dex::DexFile,
     method: dex::MethodIdx,

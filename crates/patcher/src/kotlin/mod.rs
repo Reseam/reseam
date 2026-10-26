@@ -16,7 +16,6 @@ pub(crate) mod handles;
 mod hermes;
 mod identity;
 mod instruction_types;
-mod invoke;
 #[cfg(feature = "kotlin")]
 pub(crate) mod jvm;
 mod link;

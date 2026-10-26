@@ -4,6 +4,7 @@
 pub(crate) mod body;
 pub(crate) mod flow;
 pub(crate) mod grow;
+pub(crate) mod invoke;
 pub(crate) mod liveness;
 pub(crate) mod register_types;
 pub(crate) mod relocate;

@@ -72,7 +72,7 @@ pub fn dex() -> DexFile {
             DebugBytecode::EndSequence,
         ],
     })));
-    class.add_direct_method(EncodedMethod {
+    class.add_method(EncodedMethod {
         method: direct,
         access_flags: AccessFlags::PUBLIC | AccessFlags::STATIC,
         code: Some(std::sync::Arc::new(code.clone())),
@@ -84,7 +84,7 @@ pub fn dex() -> DexFile {
     virtual_code
         .replace_instructions(1, &[Instruction::ReturnObject { src: 0 }])
         .expect("return edit");
-    class.add_virtual_method(EncodedMethod {
+    class.add_method(EncodedMethod {
         method: virtual_method,
         access_flags: AccessFlags::PUBLIC,
         code: Some(std::sync::Arc::new(virtual_code)),

@@ -16,7 +16,7 @@ fn metadata_fixture() -> DexFile {
     )));
     dex.class_mut(class)
         .unwrap()
-        .add_direct_method(crate::EncodedMethod {
+        .add_method(crate::EncodedMethod {
             method,
             access_flags: AccessFlags::STATIC,
             code: Some(std::sync::Arc::new(crate::CodeItem {
