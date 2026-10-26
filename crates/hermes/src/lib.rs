@@ -20,6 +20,7 @@ mod file;
 mod fixtures;
 mod function;
 mod hook;
+mod id;
 mod index;
 mod interface;
 mod layout;
@@ -37,7 +38,7 @@ pub use edit::ModuleId;
 pub use editor::Editor;
 pub use error::{HermesError, LinkError, Result, Unsupported};
 pub use file::HermesFile;
-pub use function::FunctionId;
+pub use id::FunctionId;
 pub use interface::imports;
 pub use link::Import;
 

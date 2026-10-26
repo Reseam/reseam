@@ -3,12 +3,13 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::FunctionId;
 use crate::HermesFile;
 use crate::assemble::assemble;
 use crate::closure::environment_depth;
 use crate::edit::{EditedFunction, Edits};
 use crate::error::Result;
-use crate::function::{Function, FunctionId};
+use crate::function::Function;
 use crate::opcode::{Instruction, Op};
 
 /// The app functions that hold the linked modules' private environment, rewritten to carry it

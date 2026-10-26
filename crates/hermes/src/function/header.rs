@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::flags::FunctionFlags;
-use crate::bytes::{read_u32, slice};
+use crate::bytes::slice;
 use crate::error::{Result, invalid};
 
 pub(crate) const SMALL_HEADER_SIZE: usize = 12;
@@ -10,6 +10,7 @@ pub(crate) const LARGE_HEADER_SIZE: usize = 37;
 
 /// A bit field of the small function header: `width` bits at `shift` in the
 /// little-endian word at byte `word`.
+#[derive(Clone, Copy)]
 struct BitField {
     word: usize,
     shift: u32,
@@ -45,23 +46,30 @@ impl BitField {
     }
 }
 
-/// `SmallFuncHeader` fields (`FUNC_HEADER_FIELDS`). The flags occupy the last byte.
-const OFFSET: BitField = BitField::new(0, 0, 25);
-const PARAMETERS: BitField = BitField::new(0, 25, 5);
-const LOOP_DEPTH: BitField = BitField::new(0, 30, 2);
-const SIZE: BitField = BitField::new(4, 0, 14);
-const NAME: BitField = BitField::new(4, 14, 8);
-const NUMBER_REGS: BitField = BitField::new(4, 22, 5);
-const NON_POINTER_REGS: BitField = BitField::new(4, 27, 5);
-const FRAME_SIZE: BitField = BitField::new(8, 0, 8);
-const READ_CACHE: BitField = BitField::new(8, 8, 8);
-const WRITE_CACHE: BitField = BitField::new(8, 16, 6);
-const OBJECT_CACHE: BitField = BitField::new(8, 22, 1);
-const PRIVATE_CACHE: BitField = BitField::new(8, 23, 1);
+/// `SmallFuncHeader` fields (`FUNC_HEADER_FIELDS`), in [`FunctionHeader::fields`] order. The
+/// flags occupy the last byte.
+const SMALL: [BitField; FIELDS] = [
+    BitField::new(0, 0, 25),
+    BitField::new(0, 25, 5),
+    BitField::new(0, 30, 2),
+    BitField::new(4, 0, 14),
+    BitField::new(4, 14, 8),
+    BitField::new(4, 22, 5),
+    BitField::new(4, 27, 5),
+    BitField::new(8, 0, 8),
+    BitField::new(8, 8, 8),
+    BitField::new(8, 16, 6),
+    BitField::new(8, 22, 1),
+    BitField::new(8, 23, 1),
+];
+const FIELDS: usize = 12;
+/// The large header stores the first fields as words, the rest as bytes.
+const WORDS: usize = 8;
 const FLAGS: usize = 11;
-/// An overflowed small header splits its large header's offset between these fields.
-const LARGE_LOW: BitField = OFFSET;
-const LARGE_HIGH: BitField = NAME;
+/// An overflowed small header splits its large header's offset between the offset and name
+/// fields.
+const LARGE_LOW: BitField = SMALL[0];
+const LARGE_HIGH: BitField = SMALL[4];
 
 #[derive(Debug, Clone)]
 pub(crate) struct FunctionHeader {
@@ -101,57 +109,80 @@ impl FunctionHeader {
                 "small function header with exception or debug info",
             ));
         }
-        Ok(Self {
-            offset: OFFSET.get(small),
-            parameters: PARAMETERS.get(small),
-            loop_depth: LOOP_DEPTH.get(small),
-            size: SIZE.get(small),
-            name: NAME.get(small),
-            number_regs: NUMBER_REGS.get(small),
-            non_pointer_regs: NON_POINTER_REGS.get(small),
-            frame_size: FRAME_SIZE.get(small),
-            read_cache: READ_CACHE.get(small) as u8,
-            write_cache: WRITE_CACHE.get(small) as u8,
-            object_cache: OBJECT_CACHE.get(small) as u8,
-            private_cache: PRIVATE_CACHE.get(small) as u8,
-            flags,
-            large: None,
-        })
+        Ok(Self::new(SMALL.map(|field| field.get(small)), flags, None))
     }
 
     fn decode_large(source: &[u8], large: usize) -> Result<Self> {
         let data = slice(source, large, LARGE_HEADER_SIZE)?;
-        let word = |index: usize| read_u32(data, index * 4);
-        Ok(Self {
-            offset: word(0)?,
-            parameters: word(1)?,
-            loop_depth: word(2)?,
-            size: word(3)?,
-            name: word(4)?,
-            number_regs: word(5)?,
-            non_pointer_regs: word(6)?,
-            frame_size: word(7)?,
-            read_cache: data[32],
-            write_cache: data[33],
-            object_cache: data[34],
-            private_cache: data[35],
-            flags: FunctionFlags::decode(data[36], large + 36)?,
-            large: Some(large),
-        })
+        let fields = std::array::from_fn(|index| match index.checked_sub(WORDS) {
+            Some(byte) => u32::from(data[WORDS * 4 + byte]),
+            None => u32::from_le_bytes(
+                data[index * 4..index * 4 + 4]
+                    .try_into()
+                    .expect("large header words are in bounds"),
+            ),
+        });
+        let flags =
+            FunctionFlags::decode(data[LARGE_HEADER_SIZE - 1], large + LARGE_HEADER_SIZE - 1)?;
+        Ok(Self::new(fields, flags, Some(large)))
+    }
+
+    fn new(fields: [u32; FIELDS], flags: FunctionFlags, large: Option<usize>) -> Self {
+        let [
+            offset,
+            parameters,
+            loop_depth,
+            size,
+            name,
+            number_regs,
+            non_pointer_regs,
+            frame_size,
+            read_cache,
+            write_cache,
+            object_cache,
+            private_cache,
+        ] = fields;
+        Self {
+            offset,
+            parameters,
+            loop_depth,
+            size,
+            name,
+            number_regs,
+            non_pointer_regs,
+            frame_size,
+            read_cache: read_cache as u8,
+            write_cache: write_cache as u8,
+            object_cache: object_cache as u8,
+            private_cache: private_cache as u8,
+            flags,
+            large,
+        }
+    }
+
+    /// The numeric fields in header order: the words, then the cache sizes.
+    fn fields(&self) -> [u32; FIELDS] {
+        [
+            self.offset,
+            self.parameters,
+            self.loop_depth,
+            self.size,
+            self.name,
+            self.number_regs,
+            self.non_pointer_regs,
+            self.frame_size,
+            self.read_cache.into(),
+            self.write_cache.into(),
+            self.object_cache.into(),
+            self.private_cache.into(),
+        ]
     }
 
     pub(crate) fn fits_small(&self) -> bool {
-        OFFSET.fits(self.offset)
-            && PARAMETERS.fits(self.parameters)
-            && LOOP_DEPTH.fits(self.loop_depth)
-            && SIZE.fits(self.size)
-            && NAME.fits(self.name)
-            && NUMBER_REGS.fits(self.number_regs)
-            && NON_POINTER_REGS.fits(self.non_pointer_regs)
-            && FRAME_SIZE.fits(self.frame_size)
-            && WRITE_CACHE.fits(self.write_cache.into())
-            && OBJECT_CACHE.fits(self.object_cache.into())
-            && PRIVATE_CACHE.fits(self.private_cache.into())
+        SMALL
+            .iter()
+            .zip(self.fields())
+            .all(|(field, value)| field.fits(value))
             && !self.flags.exception_handler
             && !self.flags.debug_info
     }
@@ -164,18 +195,9 @@ impl FunctionHeader {
             LARGE_HIGH.put(&mut bytes, large >> 24);
             bytes[FLAGS] = FunctionFlags::OVERFLOWED;
         } else {
-            OFFSET.put(&mut bytes, self.offset);
-            PARAMETERS.put(&mut bytes, self.parameters);
-            LOOP_DEPTH.put(&mut bytes, self.loop_depth);
-            SIZE.put(&mut bytes, self.size);
-            NAME.put(&mut bytes, self.name);
-            NUMBER_REGS.put(&mut bytes, self.number_regs);
-            NON_POINTER_REGS.put(&mut bytes, self.non_pointer_regs);
-            FRAME_SIZE.put(&mut bytes, self.frame_size);
-            READ_CACHE.put(&mut bytes, self.read_cache.into());
-            WRITE_CACHE.put(&mut bytes, self.write_cache.into());
-            OBJECT_CACHE.put(&mut bytes, self.object_cache.into());
-            PRIVATE_CACHE.put(&mut bytes, self.private_cache.into());
+            for (field, value) in SMALL.iter().zip(self.fields()) {
+                field.put(&mut bytes, value);
+            }
             bytes[FLAGS] = self.flags.encode(false);
         }
         bytes
@@ -183,28 +205,13 @@ impl FunctionHeader {
 
     pub(crate) fn encode_large(&self) -> [u8; LARGE_HEADER_SIZE] {
         let mut bytes = [0; LARGE_HEADER_SIZE];
-        for (index, value) in [
-            self.offset,
-            self.parameters,
-            self.loop_depth,
-            self.size,
-            self.name,
-            self.number_regs,
-            self.non_pointer_regs,
-            self.frame_size,
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            bytes[index * 4..index * 4 + 4].copy_from_slice(&value.to_le_bytes());
+        for (index, value) in self.fields().into_iter().enumerate() {
+            match index.checked_sub(WORDS) {
+                Some(byte) => bytes[WORDS * 4 + byte] = value as u8,
+                None => bytes[index * 4..index * 4 + 4].copy_from_slice(&value.to_le_bytes()),
+            }
         }
-        bytes[32..].copy_from_slice(&[
-            self.read_cache,
-            self.write_cache,
-            self.object_cache,
-            self.private_cache,
-            self.flags.encode(true),
-        ]);
+        bytes[LARGE_HEADER_SIZE - 1] = self.flags.encode(true);
         bytes
     }
 }

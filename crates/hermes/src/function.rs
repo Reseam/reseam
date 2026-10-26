@@ -3,6 +3,7 @@
 
 use std::ops::Range;
 
+use crate::FunctionId;
 use crate::bytes::{align, read_u32, slice};
 use crate::error::{Result, invalid};
 use crate::string::StringId;
@@ -12,9 +13,6 @@ mod header;
 
 pub(crate) use flags::{FunctionFlags, FunctionKind, Prohibit};
 pub(crate) use header::{FunctionHeader, LARGE_HEADER_SIZE, SMALL_HEADER_SIZE};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct FunctionId(pub(crate) u32);
 
 const EXCEPTION_HANDLER_SIZE: usize = 12;
 

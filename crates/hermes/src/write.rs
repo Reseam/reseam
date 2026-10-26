@@ -6,11 +6,12 @@ use std::io::Write;
 
 use sha1::Digest;
 
+use crate::FunctionId;
 use crate::HermesFile;
 use crate::bytes::align;
 use crate::edit::{EditedFunction, Edits};
 use crate::error::{Result, invalid};
-use crate::function::{ExceptionHandler, FunctionId};
+use crate::function::ExceptionHandler;
 use crate::hook::rooted_functions;
 use crate::layout::{FOOTER_SIZE, Field, Section};
 use crate::link::bootstrap;

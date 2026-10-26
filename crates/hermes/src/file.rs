@@ -3,9 +3,10 @@
 
 use std::ops::Range;
 
+use crate::FunctionId;
 use crate::bytes::{read_u32, slice};
 use crate::error::{HermesError, Result, invalid};
-use crate::function::{Function, FunctionHeader, FunctionId, SMALL_HEADER_SIZE};
+use crate::function::{Function, FunctionHeader, SMALL_HEADER_SIZE};
 use crate::layout::{Field, OPTIONS_OFFSET, Section};
 use crate::string::{KindRun, StringEntry, StringId, StringKind, StringValue};
 

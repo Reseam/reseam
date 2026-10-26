@@ -3,13 +3,12 @@
 
 use std::collections::BTreeMap;
 
+use crate::FunctionId;
 use crate::HermesFile;
 use crate::bytes::align;
 use crate::edit::{EditedFunction, Edits};
 use crate::error::{HermesError, Result};
-use crate::function::{
-    ExceptionHandler, FunctionHeader, FunctionId, LARGE_HEADER_SIZE, SMALL_HEADER_SIZE,
-};
+use crate::function::{ExceptionHandler, FunctionHeader, LARGE_HEADER_SIZE, SMALL_HEADER_SIZE};
 use crate::layout::{FOOTER_SIZE, Field, HEADER_SIZE, Section};
 
 /// Where the written file puts everything that moves. Sections keep their order and grow by their
