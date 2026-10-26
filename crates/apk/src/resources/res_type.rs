@@ -10,7 +10,7 @@ use std::ops::Range;
 
 use reseam_storage::Bytes;
 
-use super::entry::{self, ResEntry};
+use super::entry::{self, EntryValue, ResEntry};
 use crate::buf::{read_u16_le, read_u32_le, require_len};
 use crate::error::{Result, invalid};
 use crate::value::ResValue;
@@ -147,8 +147,8 @@ impl ResType {
         if let Some(entry) = self.overlay.get(&(i as u32)) {
             return Ok(entry.as_ref().map(|entry| {
                 let value = match entry.value {
-                    super::EntryValue::Simple(value) => Some(value),
-                    super::EntryValue::Complex { .. } => None,
+                    EntryValue::Simple(value) => Some(value),
+                    EntryValue::Complex { .. } => None,
                 };
                 (entry.key, value)
             }));
