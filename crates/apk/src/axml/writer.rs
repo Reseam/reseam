@@ -3,6 +3,7 @@
 
 use std::borrow::Cow;
 
+use super::document::AttributeRoles;
 use super::reader::ATTRIBUTE_LEN;
 use super::{
     AxmlAttribute, AxmlDocument, AxmlEvent, CHUNK_END_ELEMENT, CHUNK_END_NAMESPACE,
@@ -243,10 +244,10 @@ fn encode_start_element<'a>(
             .map_err(|_| invalid("axml element", "more than 65535 attributes"))?
             .to_le_bytes(),
     );
-    for (role, offset) in [14, 16, 18].into_iter().enumerate() {
+    for (role, offset) in AttributeRoles::FIELDS {
         let index = attributes
             .iter()
-            .position(|attr| attr.roles[role])
+            .position(|attr| attr.roles.contains(role))
             .map_or(0, |i| i as u16 + 1);
         bytes[at + offset..at + offset + 2].copy_from_slice(&index.to_le_bytes());
     }

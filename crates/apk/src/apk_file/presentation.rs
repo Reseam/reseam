@@ -89,7 +89,7 @@ impl ApkFile {
             return Ok(None);
         };
         let literal = drawable.attribute_string(attribute).map(Cow::into_owned);
-        let resolved = self.resolve(attribute.value, literal)?;
+        let resolved = self.resolve(attribute.value(), literal)?;
         let Some(bitmap) = self.densest_bitmap(&resolved)? else {
             return Ok(resolved.iter().find_map(|entry| match entry.value {
                 Leaf::Color(color) => Some(IconLayer::Color(color)),
@@ -108,7 +108,7 @@ impl ApkFile {
             return Ok(Vec::new());
         };
         let literal = manifest.attribute_string(attribute).map(Cow::into_owned);
-        self.resolve(attribute.value, literal)
+        self.resolve(attribute.value(), literal)
     }
 
     fn resolve(&mut self, value: ResValue, literal: Option<String>) -> Result<Vec<Resolved>> {

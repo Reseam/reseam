@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
+use reseam_apk::axml::AxmlAttribute;
 use reseam_apk::{ApkFile, ResValue, ResourceTable};
 use reseam_dex::{DexFile, DexHeader, DexVersion, ParseOptions};
 use reseam_patcher::bundle::{BUNDLE_FORMAT_VERSION, BundleArchive, pack};
@@ -1393,7 +1394,7 @@ fn inline_file_paths(table: &ResourceTable, pulse: &reseam_apk::AxmlDocument) ->
     let root = pulse.root().unwrap();
     let target = pulse.find_element("target").unwrap();
     [(root, "drawable"), (target, "animation")].map(|(element, attribute)| {
-        let value = pulse.attribute_named(element, attribute).unwrap().value;
+        let value = pulse.attribute_named(element, attribute).unwrap().value();
         assert_eq!(value.kind, ResValue::REFERENCE);
         let (_, file) = table.values(value.data).next().unwrap().unwrap();
         assert_eq!(file.kind, ResValue::STRING);
@@ -1550,16 +1551,16 @@ fn an_adopted_subtree_carries_the_ids_the_inflater_resolves_it_by() {
     let container = layout.find_element("FrameLayout").unwrap();
     let res_auto = layout.namespace_index(RES_AUTO).unwrap();
     let constraint = layout.attribute(container, app_attr).unwrap();
-    assert_eq!(constraint.value, ResValue::reference(fullscreen));
+    assert_eq!(constraint.value(), ResValue::reference(fullscreen));
     assert_eq!(
-        constraint.namespace,
+        constraint.namespace(),
         Some(res_auto),
         "the source prefix was yt, the target declares app, and both mean res-auto"
     );
     assert_eq!(
         layout
             .attribute(container, ANDROID_ID)
-            .map(|attr| attr.value.kind),
+            .map(|attr| attr.value().kind),
         Some(ResValue::REFERENCE)
     );
     assert_eq!(
@@ -1578,12 +1579,14 @@ fn an_adopted_subtree_carries_the_ids_the_inflater_resolves_it_by() {
     assert_eq!(
         layout
             .attribute(image[1], ANDROID_SRC)
-            .map(|attr| attr.value),
+            .map(AxmlAttribute::value),
         Some(ResValue::reference(icon)),
         "the fragment compiled against the drawable the patch had just registered"
     );
     assert_eq!(
-        layout.attribute(image[0], app_attr).map(|attr| attr.value),
+        layout
+            .attribute(image[0], app_attr)
+            .map(AxmlAttribute::value),
         Some(ResValue::reference(controls)),
         "set binds an app attribute on a document that declares res-auto"
     );
@@ -1596,7 +1599,7 @@ fn an_adopted_subtree_carries_the_ids_the_inflater_resolves_it_by() {
     assert_eq!(
         manifest
             .attribute(manifest.root().unwrap(), app_attr)
-            .map(|attr| attr.value),
+            .map(AxmlAttribute::value),
         Some(ResValue::reference(controls))
     );
 }

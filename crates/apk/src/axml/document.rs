@@ -73,14 +73,34 @@ impl NodeMetadata {
     }
 }
 
+/// An attribute of a start element. A string value's raw text index follows
+/// its typed value, so the value changes only through [`Self::set_value`].
 #[derive(Debug, Clone)]
 pub struct AxmlAttribute {
-    pub namespace: Option<u32>,
-    pub name: u32,
-    pub raw_value: Option<u32>,
-    pub value: ResValue,
+    pub(super) namespace: Option<u32>,
+    pub(super) name: u32,
+    pub(super) raw_value: Option<u32>,
+    pub(super) value: ResValue,
+    /// The attribute as parsed, including any bytes past the 20 Android reads.
     pub(super) encoded: Vec<u8>,
-    pub(super) roles: [bool; 3],
+    pub(super) roles: AttributeRoles,
+}
+
+bitflags::bitflags! {
+    /// The special attributes a start element names by index.
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+    pub(super) struct AttributeRoles: u8 {
+        const ID = 1;
+        const CLASS = 1 << 1;
+        const STYLE = 1 << 2;
+    }
+}
+
+impl AttributeRoles {
+    /// Each role with the offset of its 1-based attribute index in a start
+    /// element's extension; 0 there means no attribute has the role.
+    pub(super) const FIELDS: [(Self, usize); 3] =
+        [(Self::ID, 14), (Self::CLASS, 16), (Self::STYLE, 18)];
 }
 
 impl AxmlDocument {
@@ -168,8 +188,20 @@ impl AxmlAttribute {
             raw_value: value.string_index(),
             value,
             encoded: Vec::new(),
-            roles: [false; 3],
+            roles: AttributeRoles::empty(),
         }
+    }
+
+    pub fn namespace(&self) -> Option<u32> {
+        self.namespace
+    }
+
+    pub fn name(&self) -> u32 {
+        self.name
+    }
+
+    pub fn value(&self) -> ResValue {
+        self.value
     }
 
     pub fn set_value(&mut self, value: ResValue) {

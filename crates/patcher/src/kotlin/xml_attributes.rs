@@ -36,7 +36,7 @@ pub(super) fn attribute_text(
     name: &str,
 ) -> Option<String> {
     let attribute = find_attribute(document, attributes, name)?;
-    let value = attribute.value;
+    let value = attribute.value();
     Some(match value.kind {
         ResValue::STRING => document.attribute_string(attribute)?.into_owned(),
         _ => value.to_text().unwrap_or_else(|| value.data.to_string()),

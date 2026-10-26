@@ -272,7 +272,7 @@ pub fn extended_axml() -> Vec<u8> {
     let roles = ["id", "class", "style"].map(|name| {
         doc.attributes(root)
             .iter()
-            .position(|attr| doc.string(attr.name).as_deref() == Some(name))
+            .position(|attr| doc.string(attr.name()).as_deref() == Some(name))
             .expect("special attribute") as u16
             + 1
     });
@@ -458,7 +458,7 @@ pub fn attribute<'a>(doc: &'a AxmlDocument, element: usize, name: &str) -> &'a A
 }
 
 pub fn root_value(doc: &AxmlDocument, name: &str) -> ResValue {
-    attribute(doc, doc.root().expect("fixture root"), name).value
+    attribute(doc, doc.root().expect("fixture root"), name).value()
 }
 
 pub fn round_trip(table: &ResourceTable) -> ResourceTable {

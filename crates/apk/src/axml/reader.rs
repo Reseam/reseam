@@ -5,6 +5,7 @@ use std::ops::Range;
 
 use reseam_storage::Bytes;
 
+use super::document::AttributeRoles;
 use super::{
     AxmlAttribute, AxmlDocument, AxmlEvent, CHUNK_END_ELEMENT, CHUNK_END_NAMESPACE,
     CHUNK_RESOURCE_IDS, CHUNK_START_ELEMENT, CHUNK_START_NAMESPACE, CHUNK_TEXT, CHUNK_XML_DOCUMENT,
@@ -166,9 +167,14 @@ fn parse_start_element(
         .checked_mul(attr_size)
         .ok_or_else(|| invalid("axml attributes", "attribute data size overflows"))?;
     require_len(body, attrs_offset, attrs_len, "axml attributes")?;
-    let roles = [14, 16, 18]
-        .map(|offset| read_u16_le(body, header_size + offset, "axml attribute index"))
-        .into_iter()
+    let roles = AttributeRoles::FIELDS
+        .iter()
+        .map(|&(role, offset)| {
+            Ok((
+                role,
+                read_u16_le(body, header_size + offset, "axml attribute index")?,
+            ))
+        })
         .collect::<Result<Vec<_>>>()?;
     let attributes = (0..attr_count)
         .map(|i| {
@@ -180,7 +186,10 @@ fn parse_start_element(
             );
             attr.raw_value = optional(read_u32_le(body, at + 8, "axml attribute")?);
             attr.encoded = body[at..at + attr_size].to_vec();
-            attr.roles = std::array::from_fn(|role| roles[role] as usize == i + 1);
+            attr.roles = roles
+                .iter()
+                .filter(|&&(_, index)| usize::from(index) == i + 1)
+                .fold(AttributeRoles::empty(), |roles, &(role, _)| roles | role);
             Ok(attr)
         })
         .collect::<Result<_>>()?;

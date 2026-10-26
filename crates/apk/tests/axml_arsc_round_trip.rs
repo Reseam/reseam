@@ -107,11 +107,11 @@ fn an_adopted_subtree_is_rebound_in_the_document_that_takes_it() -> TestResult {
         decoded
             .attribute(graft, attr)
             .expect("constraint")
-            .namespace,
+            .namespace(),
         decoded.namespace_index(axml::APP_NS)
     );
     assert_eq!(
-        attribute(&decoded, graft, "id").value.kind,
+        attribute(&decoded, graft, "id").value().kind,
         ResValue::REFERENCE
     );
     let inner = decoded.find_element("ImageView").expect("child");
@@ -239,7 +239,7 @@ fn binary_xml_edits_retain_metadata_and_relocate_special_attribute_indices() -> 
         let index = usize::from(u16_at(&edited, start + header + offset));
         assert_eq!(
             decoded
-                .string(decoded.attributes(decoded.root().expect("root"))[index - 1].name)
+                .string(decoded.attributes(decoded.root().expect("root"))[index - 1].name())
                 .as_deref(),
             Some(name)
         );
@@ -250,7 +250,7 @@ fn binary_xml_edits_retain_metadata_and_relocate_special_attribute_indices() -> 
     );
     let id = axml::android_attr_res_id("id").expect("ID");
     doc.edit_attributes(root, |document, attributes| {
-        attributes.retain(|attribute| document.resource_id_for(attribute.name) != Some(id));
+        attributes.retain(|attribute| document.resource_id_for(attribute.name()) != Some(id));
     })
     .expect("root element");
     let removed = doc.serialize()?;
@@ -515,7 +515,7 @@ fn framework_attributes_match_by_resource_id_when_their_name_string_is_scrambled
     let doc = AxmlDocument::parse(&scrambled)?;
     let application = doc.find_element("application").expect("application");
     let attr = &doc.attributes(application)[0];
-    assert_eq!(doc.string(attr.name).as_deref(), Some("zzzz"));
+    assert_eq!(doc.string(attr.name()).as_deref(), Some("zzzz"));
     let android = doc.declared_namespace("android");
     assert!(doc.is_attribute(attr, android, "name"));
     assert!(!doc.is_attribute(attr, android, "label"));
