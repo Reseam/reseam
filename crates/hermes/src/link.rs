@@ -5,9 +5,10 @@ use crate::assemble::assemble;
 use crate::bytes::read_u32;
 use crate::edit::Editor;
 use crate::error::{HermesError, Result, invalid};
+use crate::layout::{Field, STATIC_BUILTINS, Section};
 use crate::metro::MetroModuleId;
-use crate::model::{Field, STATIC_BUILTINS, Section, StringId, StringKind};
 use crate::opcode::{IdKind, Op};
+use crate::string::{StringId, StringKind};
 use crate::{FunctionId, FunctionIndex, HermesFile};
 
 mod bootstrap;

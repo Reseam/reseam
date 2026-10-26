@@ -5,8 +5,9 @@ use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 
 use crate::error::{HermesError, Result, invalid};
-use crate::model::{Encoding, FOOTER_SIZE, StringId, StringValue};
+use crate::layout::FOOTER_SIZE;
 use crate::opcode::IdKind;
+use crate::string::{Encoding, StringId, StringValue};
 use crate::switch::switch_table;
 use crate::{FunctionId, HermesFile};
 

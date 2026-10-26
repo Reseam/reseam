@@ -6,7 +6,7 @@ use crate::codegen::{self, Layer, Links};
 use crate::edit::Editor;
 use crate::environment::original_function;
 use crate::error::{HermesError, Result, invalid};
-use crate::model::{StringId, StringKind};
+use crate::string::{StringId, StringKind};
 use crate::{FunctionId, FunctionIndex, ModuleId};
 
 mod resolver;

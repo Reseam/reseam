@@ -7,8 +7,8 @@ use crate::dataflow::register_states;
 use crate::edit::Editor;
 use crate::error::{HermesError, Result, invalid};
 use crate::literal::shape_keys;
-use crate::model::StringId;
 use crate::opcode::Op;
+use crate::string::StringId;
 use crate::{FunctionId, FunctionIndex, HermesFile};
 
 /// Metro's module registration global, `__d(factory, moduleId, dependencyMap)`.

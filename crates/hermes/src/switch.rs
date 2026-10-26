@@ -3,8 +3,9 @@
 
 use crate::bytes::{align, slice};
 use crate::error::{Result, invalid};
-use crate::model::{Function, StringId};
+use crate::function::Function;
 use crate::opcode::{Instruction, Op};
+use crate::string::StringId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SwitchKind {

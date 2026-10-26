@@ -5,9 +5,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
 use crate::error::{Result, invalid};
-use crate::model::{
-    ExceptionHandler, FOOTER_SIZE, Field, FunctionHeader, Section, StringId, StringKind,
-};
+use crate::function::{ExceptionHandler, FunctionHeader};
+use crate::layout::{FOOTER_SIZE, Field, Section};
+use crate::string::{StringId, StringKind};
 use crate::{FunctionId, HermesFile};
 
 mod strings;

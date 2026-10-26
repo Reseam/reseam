@@ -4,7 +4,7 @@
 use crate::code::{Code, Condition, HookKind, Operand, Place, SlotId, Statement};
 use crate::edit::Editor;
 use crate::error::{HermesError, Result};
-use crate::model::{StringId, StringKind};
+use crate::string::{StringId, StringKind};
 
 /// Checks a hook's code and resolves its names to the file's strings.
 pub(super) struct Resolver<'e, 'a> {

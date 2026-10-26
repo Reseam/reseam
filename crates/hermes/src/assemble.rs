@@ -6,8 +6,8 @@ use std::collections::BTreeMap;
 use crate::bytes::align;
 use crate::edit::{EditedFunction, FunctionBody};
 use crate::error::{Result, invalid};
-use crate::model::ExceptionHandler;
-use crate::model::Function;
+use crate::function::ExceptionHandler;
+use crate::function::Function;
 use crate::opcode::{Instruction, Opcode, OperandKind};
 use crate::switch::switch_table;
 

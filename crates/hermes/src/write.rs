@@ -8,10 +8,10 @@ use crate::Result;
 use crate::bytes::align;
 use crate::edit::{EditedFunction, Editor};
 use crate::error::invalid;
-use crate::model::{
-    ExceptionHandler, FOOTER_SIZE, Field, FunctionHeader, FunctionId, HEADER_SIZE,
-    LARGE_HEADER_SIZE, SMALL_HEADER_SIZE, Section,
+use crate::function::{
+    ExceptionHandler, FunctionHeader, FunctionId, LARGE_HEADER_SIZE, SMALL_HEADER_SIZE,
 };
+use crate::layout::{FOOTER_SIZE, Field, HEADER_SIZE, Section};
 
 struct PlannedFunction {
     header: FunctionHeader,

@@ -4,8 +4,9 @@
 use crate::assemble::encode;
 use crate::edit::{EditedFunction, Editor, FunctionBody};
 use crate::error::{Result, invalid};
-use crate::model::{FunctionFlags, FunctionHeader, FunctionKind, Prohibit, StringId, StringKind};
+use crate::function::{FunctionFlags, FunctionHeader, FunctionKind, Prohibit};
 use crate::opcode::{Instruction, Op};
+use crate::string::{StringId, StringKind};
 
 impl Editor<'_> {
     pub(crate) fn refresh_bootstrap(&mut self) -> Result<()> {

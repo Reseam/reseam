@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, VecDeque};
 
 use crate::error::{Result, invalid};
-use crate::model::Function;
+use crate::function::Function;
 use crate::opcode::{Instruction, Op, OperandKind};
 use crate::switch::switch_table;
 

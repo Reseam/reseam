@@ -3,9 +3,8 @@
 
 use super::Editor;
 use crate::error::{Result, invalid};
-use crate::model::{
-    Encoding, Field, KindRun, Section, StringEntry, StringId, StringKind, StringValue,
-};
+use crate::layout::{Field, Section};
+use crate::string::{Encoding, KindRun, StringEntry, StringId, StringKind, StringValue};
 
 pub(crate) struct AddedString {
     pub bytes: Vec<u8>,

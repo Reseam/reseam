@@ -7,10 +7,10 @@ use crate::code::{Code, Condition, HookKind, Operand, Place, Statement};
 use crate::edit::EditedFunction;
 use crate::environment::environment_depth;
 use crate::error::{HermesError, Result};
+use crate::function::Function;
 use crate::link::generated_function;
-use crate::model::Function;
-use crate::model::StringId;
 use crate::opcode::{BUILTIN_APPLY, Instruction, Op};
+use crate::string::StringId;
 
 /// A hook ready to compile: its code with names resolved to the file's strings, and how many
 /// slots it keeps.

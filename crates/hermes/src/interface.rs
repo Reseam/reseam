@@ -4,9 +4,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::error::{HermesError, Result};
+use crate::layout::Section;
 use crate::literal::{LiteralValue, read_literals, shape_keys};
-use crate::model::{Section, StringId};
 use crate::opcode::{Instruction, Op};
+use crate::string::StringId;
 use crate::{FunctionId, HermesFile};
 
 /// What a module declares to be linked. Its global code evaluates to `{ imports, link }`:

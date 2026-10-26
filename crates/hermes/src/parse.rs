@@ -3,10 +3,11 @@
 
 use crate::bytes::{align, read_u32, slice};
 use crate::error::{HermesError, Result, invalid};
-use crate::model::{
-    FOOTER_SIZE, Field, FunctionId, HEADER_SIZE, HermesFile, MAGIC, Section, StringId,
-};
+use crate::file::HermesFile;
+use crate::function::FunctionId;
+use crate::layout::{FOOTER_SIZE, Field, HEADER_SIZE, MAGIC, Section};
 use crate::opcode::BytecodeVersion;
+use crate::string::StringId;
 
 impl<'a> HermesFile<'a> {
     /// Parses without copying file data. All structured sections, string
@@ -62,7 +63,7 @@ impl<'a> HermesFile<'a> {
                 return Err(invalid(kinds, "empty string kind run"));
             }
             count += u64::from(run.count);
-            if run.kind == crate::model::StringKind::Identifier {
+            if run.kind == crate::string::StringKind::Identifier {
                 identifiers += u64::from(run.count);
             }
         }

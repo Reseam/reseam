@@ -4,7 +4,8 @@
 use crate::HermesFile;
 use crate::bytes::{read_u32, slice};
 use crate::error::{Result, invalid};
-use crate::model::{Section, StringId};
+use crate::layout::Section;
+use crate::string::StringId;
 
 /// The value type of a run in a literal buffer (`SerializedLiteralGenerator` tags).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
