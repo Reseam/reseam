@@ -23,7 +23,7 @@
   "scripts": {
     "check": "tsc --noEmit",
     "test": "bun test test",
-    "engine": "bash scripts/build-engine.sh",
+    "engine": "cargo xtask pack-browser",
     "types": "tsc -p tsconfig.types.json",
     "harness": "tsc --noEmit && vite build"
   },

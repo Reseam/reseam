@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::env;
 use std::fs;
 use std::io::Write as _;
 use std::path::Path;
@@ -122,9 +121,7 @@ fn pack_desktop(target: &DesktopTarget, host: &str, jdk: &Path) -> Result<()> {
         .rev()
         .find_map(|line| line.strip_prefix("note: native-static-libs: "))
         .context("cargo rustc did not report native static library dependencies")?;
-    let target_dir =
-        env::var_os("CARGO_TARGET_DIR").map_or_else(|| root.join("target"), |path| root.join(path));
-    let archive = target_dir
+    let archive = paths::target_dir()
         .join(target.triple)
         .join("release/libreseam_sdk_native.a");
     let output_dir = root

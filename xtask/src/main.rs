@@ -6,6 +6,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 mod boltffi;
+mod browser;
 mod framework;
 mod patch_api;
 mod paths;
@@ -32,6 +33,8 @@ enum Cmd {
     Runtime,
     /// Packages SDK Android and desktop JNI libraries after building the runtime jar.
     PackSdk,
+    /// Builds the browser engine and runtime assets into `browser/public/runtime`. Needs `WASI_SDK_PATH`.
+    PackBrowser,
     /// Sets the workspace version, commits, and tags the release.
     Release { version: String },
     /// Fails unless the tag names the workspace version.
@@ -61,14 +64,22 @@ fn main() -> Result<()> {
                 sdk::regen()?;
             }
         }
-        Cmd::Runtime => run::gradle(&[":reseam-sdk:patchRuntimeJar", ":app-runtime:stage"])?,
+        Cmd::Runtime => runtime()?,
         Cmd::PackSdk => {
             boltffi::check_version()?;
             sdk::pack()?;
+        }
+        Cmd::PackBrowser => {
+            boltffi::check_version()?;
+            browser::pack()?;
         }
         Cmd::Release { version } => version::tag(&version)?,
         Cmd::CheckTag { tag } => version::check_tag(&tag)?,
         Cmd::FrameworkAttributes { android_jar } => framework::generate(&android_jar)?,
     }
     Ok(())
+}
+
+fn runtime() -> Result<()> {
+    run::gradle(&[":reseam-sdk:patchRuntimeJar", ":app-runtime:stage"])
 }
