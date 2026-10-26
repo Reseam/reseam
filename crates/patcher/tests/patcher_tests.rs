@@ -12,7 +12,7 @@ use std::sync::OnceLock;
 
 use reseam_apk::reseam_dex::{DexFile, DexHeader, DexVersion, ParseOptions};
 use reseam_apk::{ApkFile, ResValue, ResourceTable};
-use reseam_patcher::bundle::{BUNDLE_FORMAT_VERSION, BundleArchive, pack};
+use reseam_patcher::bundle::{BUNDLE_FORMAT_VERSION, BundleArchive, BundleKey, pack};
 use reseam_patcher::context::PatchContext;
 use reseam_patcher::engine::{self, PatchSelection, PatchStatus};
 use reseam_patcher::options::OptionValue;
@@ -96,13 +96,9 @@ fn write_bundle_reseam() -> TestBundle {
         ),
     )
     .unwrap();
-    pack(
-        tmp.path(),
-        None,
-        &ed25519_dalek::SigningKey::from_bytes(&TEST_SIGNING_SEED),
-        &out_path,
-    )
-    .unwrap();
+    let key = tmp.path().join("bundle-signing.key");
+    fs::write(&key, TEST_SIGNING_SEED).unwrap();
+    pack(tmp.path(), None, &BundleKey::read(&key).unwrap(), &out_path).unwrap();
 
     TestBundle {
         _dir: tmp,

@@ -322,7 +322,7 @@ fn print_apply_diagnostics(d: &ApplyDiagnostics) {
     println!("  native heap attribution (all lower bounds):");
     println!(
         "    materialized IR:         {}",
-        format_bytes(estimated_ir_bytes(ir))
+        format_bytes(dex.materialized_ir_bytes)
     );
     println!(
         "    raw dex buffers:         {}",
@@ -341,7 +341,7 @@ fn print_apply_diagnostics(d: &ApplyDiagnostics) {
         "    class-def structs:       {}",
         format_bytes(dex.class_def_bytes)
     );
-    let accounted = estimated_ir_bytes(ir)
+    let accounted = dex.materialized_ir_bytes
         + dex.raw_buffer_bytes
         + dex.string_pool_bytes
         + dex.id_table_bytes
@@ -395,13 +395,4 @@ fn format_bytes(bytes: u64) -> String {
     } else {
         format!("{value:.2}{}", UNITS[unit])
     }
-}
-
-fn estimated_ir_bytes(stats: &reseam_model::MaterializationStats) -> u64 {
-    reseam_apk::reseam_dex::estimated_ir_bytes(&reseam_apk::reseam_dex::MaterializationStats {
-        total_classes: stats.total_classes,
-        resolved_classes: stats.resolved_classes,
-        methods: stats.methods,
-        instructions: stats.instructions,
-    })
 }

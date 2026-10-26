@@ -2,15 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::collections::HashSet;
-use std::io::{Read, Write};
 use std::path::Path;
 
-use anyhow::{Context, Result, ensure};
-use ed25519_dalek::{SecretKey, SigningKey};
-use reseam_model::{InspectRequest, PatchMetadata};
-use reseam_patcher::Compatibility;
+use anyhow::Result;
+use reseam_model::{Compatibility, InspectRequest, PatchMetadata};
+use reseam_sdk::authoring::{BundleKey, manifest_info, pack};
 use reseam_sdk::inspect;
-use ring::rand::{SecureRandom, SystemRandom};
 use tracing::info;
 
 use super::create_parent;
@@ -153,62 +150,31 @@ fn print_patch(index: usize, patch: &PatchMetadata, hidden: &HashSet<String>) {
 }
 
 pub fn run_bundle_keygen(command: &BundleKeygenCommand) -> Result<()> {
-    ensure!(
-        !command.out.exists(),
-        "refusing to overwrite existing key at {}",
-        command.out.display()
-    );
     create_parent(&command.out)?;
-    let mut seed = [0u8; 32];
-    SystemRandom::new()
-        .fill(&mut seed)
-        .map_err(|error| anyhow::anyhow!("generate signing seed: {error}"))?;
-    let parent = command
-        .out
-        .parent()
-        .filter(|path| !path.as_os_str().is_empty())
-        .unwrap_or(Path::new("."));
-    let mut staged = tempfile::NamedTempFile::new_in(parent)?;
-    staged.write_all(&seed)?;
-    staged
-        .persist_noclobber(&command.out)
-        .map_err(|error| error.error)
-        .with_context(|| format!("publish key {}", command.out.display()))?;
-
+    let key = BundleKey::generate(&command.out)?;
     println!("Ed25519 keypair generated");
     println!("  private seed: {}", command.out.display());
-    println!(
-        "  public key (hex): {}",
-        hex::encode(SigningKey::from_bytes(&seed).verifying_key().to_bytes())
-    );
+    println!("  public key (hex): {}", hex::encode(key.public_key()));
     Ok(())
 }
 
 pub fn run_bundle_pubkey(command: &BundlePubkeyCommand) -> Result<()> {
     println!(
         "{}",
-        hex::encode(read_signing_key(&command.key)?.verifying_key().to_bytes())
+        hex::encode(BundleKey::read(&command.key)?.public_key())
     );
     Ok(())
 }
 
 pub fn run_bundle_pack(command: &BundlePackCommand) -> Result<()> {
-    let key = read_signing_key(&command.key)?;
+    let key = BundleKey::read(&command.key)?;
     create_parent(&command.out)?;
-    reseam_patcher::bundle::pack(&command.dir, command.version.as_deref(), &key, &command.out)?;
+    pack(&command.dir, command.version.as_deref(), &key, &command.out)?;
     info!(out = %command.out.display(), "bundle packed and signed");
     Ok(())
 }
 
-fn read_signing_key(path: &Path) -> Result<SigningKey> {
-    let mut file =
-        std::fs::File::open(path).with_context(|| format!("read key {}", path.display()))?;
-    let mut seed: SecretKey = [0; 32];
-    file.read_exact(&mut seed)
-        .context("signing key must be exactly 32 bytes")?;
-    ensure!(
-        file.read(&mut [0])? == 0,
-        "signing key must be exactly 32 bytes"
-    );
-    Ok(SigningKey::from_bytes(&seed))
+pub fn run_bundle_manifest(path: &Path) -> Result<()> {
+    println!("{}", serde_json::to_string(&manifest_info(path)?)?);
+    Ok(())
 }

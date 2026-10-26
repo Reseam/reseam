@@ -10,8 +10,9 @@ mod s3;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, ensure};
-use reseam_patcher::bundle::BundleArchive;
+use anyhow::{Context, Result, bail, ensure};
+use reseam_model::{InspectRequest, InspectResponse, Trust};
+use reseam_sdk::inspect;
 use semver::Version;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -30,9 +31,23 @@ const PATCHES_INDEX: &str = "patches.json";
 const MANAGER_INDEX: &str = "manager.json";
 
 pub fn run_release_patches(command: &ReleasePatchesCommand) -> Result<()> {
-    let archive = BundleArchive::open(&command.bundle)
-        .with_context(|| format!("failed to open bundle {}", command.bundle.display()))?;
-    let info = archive.info();
+    let InspectResponse {
+        mut bundles,
+        patches,
+        ..
+    } = inspect(&InspectRequest {
+        apk_path: None,
+        split_paths: Vec::new(),
+        bundle_paths: vec![command.bundle.display().to_string()],
+        trust: Trust::default(),
+    })?;
+    let info = bundles.remove(0);
+    if let Some(problem) = info.problem {
+        bail!(
+            "failed to open bundle {}: {problem}",
+            command.bundle.display()
+        );
+    }
     ensure!(
         !info.version.is_empty(),
         "{} has no version; pack it with --version",
@@ -54,7 +69,7 @@ pub fn run_release_patches(command: &ReleasePatchesCommand) -> Result<()> {
         author: info.author.clone(),
         description: info.description.clone(),
         homepage,
-        public_key: Some(hex::encode(archive.public_key())),
+        public_key: Some(info.public_key),
     };
     let prerelease = is_prerelease(&info.version);
     let entry = Entry {
@@ -66,7 +81,7 @@ pub fn run_release_patches(command: &ReleasePatchesCommand) -> Result<()> {
             .download_url(&release.args.tag, file_name(&command.bundle)?)?
             .to_string(),
         prerelease,
-        patches: Some(archive.patches().to_vec()),
+        patches: Some(patches.into_iter().map(|patch| patch.spec).collect()),
     };
     let staged = Staged::index(PATCHES_INDEX, &Index::add(previous, publisher, entry)?)?;
     let body = match &release.store {

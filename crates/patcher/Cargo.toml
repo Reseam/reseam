@@ -27,6 +27,7 @@ zip         = { workspace = true }
 tracing     = { workspace = true }
 tempfile    = { workspace = true }
 ed25519-dalek = { workspace = true }
+ring        = { workspace = true }
 sha2        = { workspace = true }
 hex         = { workspace = true }
 

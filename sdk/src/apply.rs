@@ -4,6 +4,7 @@
 use std::collections::HashSet;
 
 use reseam_apk::ApkFile;
+use reseam_apk::reseam_dex::estimated_ir_bytes;
 use reseam_apk::reseam_dex::write::{LinkPolicy, MetadataPolicy, WriteOptions};
 use reseam_model::{ApplyDiagnostics, MaterializationStats, MemoryBreakdown, PatchPhase, RunEvent};
 use reseam_patcher::bundle::PatchBundle;
@@ -103,6 +104,7 @@ fn apply_diagnostics(ctx: &PatchContext<'_>) -> ApplyDiagnostics {
             string_count: dex.string_count,
             id_table_bytes: dex.id_table_bytes,
             class_def_bytes: dex.class_def_bytes,
+            materialized_ir_bytes: estimated_ir_bytes(&dex.materialized),
             materialized: MaterializationStats {
                 total_classes: dex.materialized.total_classes,
                 resolved_classes: dex.materialized.resolved_classes,

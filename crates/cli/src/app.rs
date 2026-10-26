@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use clap::{Args, Parser, Subcommand};
-use reseam_patcher::PatchPreset;
+use reseam_model::PatchPreset;
 use url::Url;
 
 #[derive(Parser)]

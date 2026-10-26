@@ -6,6 +6,7 @@
 
 mod apk;
 mod apply;
+pub mod authoring;
 mod bundles;
 mod error;
 mod inputs;

@@ -23,6 +23,8 @@ pub struct MemoryBreakdown {
     pub string_count: u64,
     pub id_table_bytes: u64,
     pub class_def_bytes: u64,
+    /// Heap held by the materialized class data, methods and instructions.
+    pub materialized_ir_bytes: u64,
     pub materialized: MaterializationStats,
 }
 

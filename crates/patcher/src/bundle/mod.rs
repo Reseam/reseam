@@ -10,6 +10,7 @@ mod archive;
 #[cfg(feature = "bridge")]
 pub(crate) mod declarations;
 pub(crate) mod index;
+mod key;
 mod pack;
 
 use std::collections::BTreeMap;
@@ -22,6 +23,7 @@ use crate::error::PatcherError;
 use crate::patch::{Patch, PatchSpec};
 
 pub use archive::BundleArchive;
+pub use key::BundleKey;
 pub(crate) use pack::copy_hashed;
 pub use pack::pack;
 
