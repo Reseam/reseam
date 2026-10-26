@@ -12,6 +12,7 @@ mod items;
 pub use items::{FileRecord, FileTable};
 mod lookup;
 mod pools;
+mod sorted_index;
 mod static_values;
 mod strings;
 #[cfg(test)]

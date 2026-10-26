@@ -5,11 +5,11 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 
-use rustc_hash::{FxHashMap, FxHasher};
-use smallvec::SmallVec;
+use rustc_hash::FxHasher;
 
 mod lookup;
 
+use super::sorted_index::SortedIndex;
 use crate::DexBytes;
 use crate::encoding::leb128::{read_uleb128, write_uleb128};
 use crate::encoding::mutf8::{ascii_order, mutf8_compare, mutf8_units};
@@ -21,18 +21,13 @@ use crate::read::u32_at;
 
 /// The string table left in the file: raw entries are read through the
 /// `string_ids` table on access, and only strings added after parse are owned.
-///
-/// The leading `sorted_len` entries are in DEX sort order (the format requires
-/// it), so lookups binary-search them; entries after that are found through a
-/// small hash index.
 #[derive(Debug, Clone, Default)]
 pub struct StringPool {
     raw: Option<DexBytes>,
     ids_off: usize,
     raw_len: usize,
     owned: Vec<Box<str>>,
-    sorted_len: usize,
-    tail: FxHashMap<u64, SmallVec<[u32; 1]>>,
+    index: SortedIndex,
 }
 
 impl StringPool {
@@ -55,7 +50,11 @@ impl StringPool {
             raw_len: count,
             ..Self::default()
         };
-        pool.rebuild_tail();
+        pool.index = SortedIndex::new(
+            count,
+            |i| pool.compare(i as u32 - 1, i as u32) == Ordering::Less,
+            |i| hash_units(mutf8_units(&pool.mutf8(i))),
+        );
         Ok(pool)
     }
 
@@ -91,27 +90,15 @@ impl StringPool {
     pub fn push(&mut self, s: &str) -> StringIdx {
         let idx = StringIdx(self.len() as u32);
         self.owned.push(s.into());
-        self.tail.entry(hash_str(s)).or_default().push(idx.0);
+        self.index.push(hash_str(s), idx.0 as usize);
         idx
     }
 
     /// Drops the strings pushed after the pool held `len`.
     pub(crate) fn truncate(&mut self, len: usize) {
-        assert!(
-            len >= self.raw_len.max(self.sorted_len),
-            "only pushed strings are truncated"
-        );
-        for i in len..self.len() {
-            let hash = hash_str(&self.owned[i - self.raw_len]);
-            let slots = self
-                .tail
-                .get_mut(&hash)
-                .expect("pushed strings are indexed");
-            slots.retain(|slot| *slot as usize != i);
-            if slots.is_empty() {
-                self.tail.remove(&hash);
-            }
-        }
+        assert!(len >= self.raw_len, "only pushed strings are truncated");
+        self.index
+            .truncate(len..self.len(), |i| hash_str(&self.owned[i - self.raw_len]));
         self.owned.truncate(len - self.raw_len);
     }
 
@@ -160,12 +147,12 @@ impl StringPool {
 
     /// How many leading entries are in DEX sort order.
     pub(crate) fn sorted_len(&self) -> usize {
-        self.sorted_len
+        self.index.sorted_len()
     }
 
     /// Whether every entry is already in DEX sort order.
     pub fn is_sorted(&self) -> bool {
-        self.sorted_len == self.len()
+        self.index.sorted_len() == self.len()
     }
 
     pub fn heap_bytes(&self) -> u64 {
@@ -174,20 +161,7 @@ impl StringPool {
             .iter()
             .map(|s| s.len() + size_of::<Box<str>>())
             .sum();
-        (owned + self.tail.len() * 24) as u64
-    }
-
-    fn rebuild_tail(&mut self) {
-        let len = self.len();
-        self.sorted_len = (1..len)
-            .find(|&i| self.compare(i as u32 - 1, i as u32) != Ordering::Less)
-            .unwrap_or(len);
-        let mut tail: FxHashMap<u64, SmallVec<[u32; 1]>> = FxHashMap::default();
-        for i in self.sorted_len..len {
-            let h = hash_units(mutf8_units(&self.mutf8(i)));
-            tail.entry(h).or_default().push(i as u32);
-        }
-        self.tail = tail;
+        (owned + self.index.heap_bytes()) as u64
     }
 
     fn plain(&self, i: usize) -> Option<&[u8]> {
