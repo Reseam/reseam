@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::{EditedFunction, Edits, LinkNames};
+use super::{EditedFunction, Edits, LinkNames, strings};
 use crate::FunctionId;
 use crate::closure::RootAttachment;
 
@@ -27,7 +27,7 @@ pub(super) enum Undo {
 pub(super) struct Marks {
     additions: [usize; 15],
     appended: usize,
-    strings: usize,
+    strings: strings::Marks,
     modules: usize,
     bootstrap: Option<FunctionId>,
     string_switches: u32,
@@ -84,7 +84,7 @@ impl Edits {
         Marks {
             additions: self.additions.each_ref().map(Vec::len),
             appended: self.appended.len(),
-            strings: self.strings.len(),
+            strings: self.strings.marks(),
             modules: self.modules.len(),
             bootstrap: self.bootstrap,
             string_switches: self.string_switches,
@@ -97,17 +97,6 @@ impl Edits {
             bytes.truncate(length);
         }
         self.appended.truncate(marks.appended);
-        for string in &self.strings[marks.strings..] {
-            let key = (string.value().fingerprint(), string.kind);
-            let ids = self
-                .string_index
-                .get_mut(&key)
-                .expect("appended strings are indexed");
-            ids.retain(|id| *id != string.id);
-            if ids.is_empty() {
-                self.string_index.remove(&key);
-            }
-        }
         self.strings.truncate(marks.strings);
         self.modules.truncate(marks.modules);
         self.bootstrap = marks.bootstrap;

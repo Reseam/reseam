@@ -94,9 +94,7 @@ impl Linker<'_> {
             }
             let (id, shape) = self.metro.module(&self.file, self.index, import.function)?;
             resolved.push(LinkedImport {
-                specifier: self
-                    .edits
-                    .intern(&self.file, &import.specifier, StringKind::String)?,
+                specifier: self.string(&import.specifier)?,
                 id,
                 es_module: shape.es_module,
                 keys: shape.keys.into_iter().collect(),
@@ -104,19 +102,7 @@ impl Linker<'_> {
         }
         let mut strings = Vec::with_capacity(module.string_count() as usize);
         for (id, kind) in module.strings() {
-            let value = module.string(id)?;
-            let length = value.bytes.len() / value.encoding.unit_size();
-            strings.push(
-                self.edits
-                    .append_string(
-                        &self.file,
-                        value.bytes.to_vec(),
-                        value.encoding,
-                        length as u32,
-                        kind,
-                    )?
-                    .0,
-            );
+            strings.push(self.edits.strings_mut().append(module.string(id)?, kind)?.0);
         }
         let bases = Bases {
             function: self.edits.function_count(&self.file),
@@ -222,6 +208,8 @@ impl Linker<'_> {
     }
 
     fn string(&mut self, text: &str) -> Result<StringId> {
-        self.edits.intern(&self.file, text, StringKind::String)
+        self.edits
+            .strings_mut()
+            .intern(&self.file, text, StringKind::String)
     }
 }

@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::closure::RootAttachment;
 use crate::error::{Result, invalid};
 use crate::layout::{Field, Section};
-use crate::string::{StringId, StringKind};
+
 use crate::{FunctionId, HermesFile};
 
 mod function;
@@ -17,19 +17,18 @@ mod undo;
 pub(crate) use function::{EditedFunction, FunctionBody, generated_function, original_function};
 pub use module::ModuleId;
 pub(crate) use module::{LinkNames, LinkedImport, LinkedModule};
-use strings::AddedString;
+pub(crate) use strings::AddedStrings;
 use undo::{Part, Undo};
 
 /// Changes to one file, kept apart from it. Original function and string identities stay
 /// stable; only additions and changed bodies allocate. Every change can be rolled back.
 pub(crate) struct Edits {
+    strings: AddedStrings,
+    /// What is added to the sections strings do not own.
     additions: [Vec<u8>; 15],
     /// Replaced app function bodies.
     functions: BTreeMap<FunctionId, EditedFunction>,
     appended: Vec<EditedFunction>,
-    strings: Vec<AddedString>,
-    string_index: rustc_hash::FxHashMap<(u64, StringKind), Vec<StringId>>,
-    original_strings_indexed: bool,
     /// The appended function that initializes linked modules and then runs the app's global code.
     bootstrap: Option<FunctionId>,
     modules: Vec<LinkedModule>,
@@ -46,12 +45,10 @@ pub(crate) struct Edits {
 impl Edits {
     pub(crate) fn new(file: &HermesFile<'_>) -> Self {
         Self {
+            strings: AddedStrings::new(file),
             additions: std::array::from_fn(|_| Vec::new()),
             functions: BTreeMap::new(),
             appended: Vec::new(),
-            strings: Vec::new(),
-            string_index: rustc_hash::FxHashMap::default(),
-            original_strings_indexed: false,
             bootstrap: None,
             modules: Vec::new(),
             link_names: None,
@@ -84,7 +81,7 @@ impl Edits {
     }
 
     pub(crate) fn section_size(&self, file: &HermesFile<'_>, section: Section) -> usize {
-        file.section(section).len() + self.additions[section as usize].len()
+        file.section(section).len() + self.added(section).len()
     }
 
     pub(crate) fn section_count(&self, file: &HermesFile<'_>, section: Section) -> u32 {
@@ -93,7 +90,17 @@ impl Edits {
 
     /// The bytes added to the end of `section`.
     pub(crate) fn added(&self, section: Section) -> &[u8] {
-        &self.additions[section as usize]
+        self.strings
+            .section(section)
+            .unwrap_or(&self.additions[section as usize])
+    }
+
+    pub(crate) fn strings(&self) -> &AddedStrings {
+        &self.strings
+    }
+
+    pub(crate) fn strings_mut(&mut self) -> &mut AddedStrings {
+        &mut self.strings
     }
 
     /// Adds `bytes` to the end of a literal `section`.

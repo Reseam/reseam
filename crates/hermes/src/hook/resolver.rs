@@ -118,9 +118,11 @@ impl Resolver<'_, '_> {
             Operand::Null => Operand::Null,
             Operand::Bool(value) => Operand::Bool(*value),
             Operand::Int(value) => Operand::Int(*value),
-            Operand::Text(text) => {
-                Operand::Text(self.edits.intern(self.file, text, StringKind::String)?)
-            }
+            Operand::Text(text) => Operand::Text(self.edits.strings_mut().intern(
+                self.file,
+                text,
+                StringKind::String,
+            )?),
         })
     }
 

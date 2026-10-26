@@ -124,14 +124,16 @@ fn declared_export(
         .ok_or_else(|| invalid(0, "module belongs to another editor"))?;
     let mut declared = false;
     for &id in &linked.exports {
-        declared |= edits.string(file, id)?.equals(export);
+        declared |= edits.strings().string(file, id)?.equals(export);
     }
     if !declared {
         return Err(HermesError::Unsupported(format!(
             "module does not export {export:?}"
         )));
     }
-    edits.intern(file, export, StringKind::Identifier)
+    edits
+        .strings_mut()
+        .intern(file, export, StringKind::Identifier)
 }
 
 #[cfg(test)]
