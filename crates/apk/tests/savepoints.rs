@@ -3,9 +3,12 @@
 
 #[path = "common/archive.rs"]
 mod archive;
+#[path = "common/dex.rs"]
+mod dex_fixture;
 #[path = "common/manifest.rs"]
 mod manifest;
 use archive::write_apk;
+use dex_fixture::{dex_bytes, minimal_dex_bytes};
 use manifest::manifest_bytes;
 use reseam_apk::resources::ResPackage;
 use reseam_apk::{
@@ -42,7 +45,7 @@ fn rollback_returns_the_session_to_each_savepoint() -> TestResult {
     type Entries = Result<Vec<(String, Vec<u8>)>, Box<dyn std::error::Error>>;
 
     let dir = tempfile::tempdir()?;
-    let dex = reseam_dex::write(&empty_dex())?;
+    let dex = minimal_dex_bytes();
     write_apk(
         &dir.path().join("app.apk"),
         &manifest_bytes("original", None),
@@ -102,7 +105,7 @@ fn rollback_returns_the_session_to_each_savepoint() -> TestResult {
     apk.inject_file(
         0,
         "classes.dex",
-        reseam_dex::write(&replacement)?,
+        dex_bytes(&replacement),
         Compression::Stored,
     )?;
     apk.add_dex(empty_dex());

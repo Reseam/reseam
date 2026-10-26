@@ -82,7 +82,7 @@ pub(crate) fn validate_pools(dex: &DexFile) -> Result<()> {
         call_site(&mut validator, site?.as_ref());
     }
     for index in 0..dex.classes.len() {
-        let header = dex.class_header(index);
+        let header = dex.classes().header(index);
         validator.add(Pool::Type, header.class_type.0);
         if let Some(superclass) = header.superclass {
             validator.add(Pool::Type, superclass.0);

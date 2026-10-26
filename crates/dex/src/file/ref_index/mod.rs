@@ -10,7 +10,6 @@ pub(crate) use resident::ClassRefs;
 use smallvec::SmallVec;
 
 use super::DexFile;
-use crate::error::Result;
 use crate::types::{FieldIdx, MethodIdx, Pool, StringIdx};
 use postings::Postings;
 
@@ -110,10 +109,6 @@ impl PoolKeys {
 }
 
 impl RefIndex {
-    pub(crate) fn build(dex: &DexFile) -> Result<Self> {
-        build::build(dex)
-    }
-
     fn postings(&self, key: RefKey) -> &[Slot] {
         match key {
             RefKey::Method(idx) => self.pool_postings(Pool::Method, idx.0),

@@ -51,7 +51,8 @@ pub fn index_of_first_literal_reversed(m: u32, literal: i64) -> Option<u32> {
 #[export]
 pub fn index_of_first_string(m: u32, s: String) -> Option<u32> {
     position(m, 0, |dex, insn| {
-        insn.string_ref().is_some_and(|idx| dex.string(idx) == s)
+        insn.string_ref()
+            .is_some_and(|idx| dex.strings().get(idx) == s)
     })
 }
 
@@ -59,7 +60,7 @@ pub fn index_of_first_string(m: u32, s: String) -> Option<u32> {
 pub fn index_of_first_string_with_prefix(m: u32, prefix: String) -> Option<u32> {
     position(m, 0, |dex, insn| {
         insn.string_ref()
-            .is_some_and(|idx| dex.string(idx).starts_with(&prefix))
+            .is_some_and(|idx| dex.strings().get(idx).starts_with(&prefix))
     })
 }
 
@@ -89,7 +90,7 @@ pub fn index_of_first_method_call(
         insn.method_ref().is_some_and(|idx| {
             let method = dex.method_id(idx);
             dex.type_descriptor(method.class) == defining_class
-                && dex.string(method.name) == method_name
+                && dex.strings().get(method.name) == method_name
         })
     })
 }

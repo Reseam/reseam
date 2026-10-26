@@ -6,7 +6,7 @@ use reseam_apk::reseam_dex::{self, DexFile, FieldIdx, MethodIdx};
 pub(super) fn resolve_method_ref(dex: &DexFile, idx: MethodIdx) -> MethodRef {
     let mid = dex.method_id(idx);
     let class = dex.type_descriptor(mid.class).into_owned();
-    let name = dex.string(mid.name).into_owned();
+    let name = dex.strings().get(mid.name).into_owned();
     MethodRef {
         defining_class: class,
         name,
@@ -18,7 +18,7 @@ pub(super) fn resolve_field_ref(dex: &DexFile, idx: FieldIdx) -> FieldRef {
     let fid = dex.field_id(idx);
     FieldRef {
         defining_class: dex.type_descriptor(fid.class).into_owned(),
-        name: dex.string(fid.name).into_owned(),
+        name: dex.strings().get(fid.name).into_owned(),
         field_type: dex.type_descriptor(fid.type_).into_owned(),
     }
 }
@@ -43,7 +43,7 @@ pub(super) fn invalid(reason: impl Into<String>) -> DexError {
 
 macro_rules! export_field {
     (StringIdx, $value:expr, $dex:ident, $dex_index:ident) => {
-        $dex.string(*$value).into_owned()
+        $dex.strings().get(*$value).into_owned()
     };
     (TypeIdx, $value:expr, $dex:ident, $dex_index:ident) => {
         $dex.type_descriptor(*$value).into_owned()

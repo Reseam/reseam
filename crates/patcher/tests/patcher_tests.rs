@@ -850,7 +850,7 @@ fn replace_strings_containing_or_starting_with_rewrites_only_what_transform_retu
             .instructions()
             .iter()
             .filter_map(|instruction| match instruction {
-                ConstString { string, .. } => Some(dex.string(*string).into_owned()),
+                ConstString { string, .. } => Some(dex.strings().get(*string).into_owned()),
                 _ => None,
             })
             .collect();
@@ -1031,15 +1031,25 @@ fn invoked_by(dex: &DexFile, owner: &str, name: &str) -> Vec<String> {
         .filter_map(reseam_apk::reseam_dex::Instruction::method_ref)
         .map(|idx| {
             let id = dex.method_id(idx);
-            format!("{}->{}", dex.type_descriptor(id.class), dex.string(id.name))
+            format!(
+                "{}->{}",
+                dex.type_descriptor(id.class),
+                dex.strings().get(id.name)
+            )
         })
         .collect()
 }
 
+fn dex_bytes(dex: &DexFile) -> Vec<u8> {
+    let (spooled, _) = reseam_apk::reseam_dex::write_spooled(dex, None).unwrap();
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut spooled.reader(), &mut bytes).unwrap();
+    bytes
+}
+
 fn written_dex(apk: &ApkFile, index: usize) -> DexFile {
-    use reseam_apk::reseam_dex as dex;
-    dex::parse(
-        &dex::write(apk.dex().dex(index).unwrap()).unwrap(),
+    reseam_apk::reseam_dex::parse(
+        &dex_bytes(apk.dex().dex(index).unwrap()),
         ParseOptions::default(),
     )
     .unwrap()
@@ -1131,10 +1141,8 @@ fn assert_app_entry_follows_swapped_application(manifest: &[u8]) {
 
 #[test]
 fn app_entry_fails_the_patch_when_the_manifest_names_no_application() {
-    let (_apk_dir, mut apk) = open_dex_apk(&[&reseam_apk::reseam_dex::write(&DexFile::new(
-        DexHeader::new(DexVersion::V035),
-    ))
-    .unwrap()]);
+    let (_apk_dir, mut apk) =
+        open_dex_apk(&[&dex_bytes(&DexFile::new(DexHeader::new(DexVersion::V035)))]);
     let bundle = loaded_test_bundle();
     let patches: Vec<&Patch> = bundle.patches().iter().collect();
     let results = apply(
@@ -1182,7 +1190,12 @@ fn enum_constants_resolve_by_name_through_obfuscated_fields() {
         .instructions()
         .iter()
         .find_map(reseam_apk::reseam_dex::Instruction::field_ref)
-        .map(|idx| written.string(written.field_id(idx).name).into_owned());
+        .map(|idx| {
+            written
+                .strings()
+                .get(written.field_id(idx).name)
+                .into_owned()
+        });
     assert_eq!(read.as_deref(), Some("c"));
 }
 
@@ -1242,9 +1255,10 @@ fn enum_constants_resolve_when_optimizers_bypass_the_enum_constructor() {
                 let field = written.field_id(idx);
                 (
                     written
-                        .string(written.type_string(field.class))
+                        .strings()
+                        .get(written.type_string(field.class))
                         .into_owned(),
-                    written.string(field.name).into_owned(),
+                    written.strings().get(field.name).into_owned(),
                 )
             });
         assert_eq!(read, Some((owner.to_string(), "c".to_string())), "{method}");
@@ -1328,10 +1342,7 @@ fn bundles_cannot_define_app_runtime_classes() {
     )
     .unwrap();
     let dir = tempfile::tempdir().unwrap();
-    let paths = extension_files(
-        dir.path(),
-        &[("runtime", &reseam_apk::reseam_dex::write(&dex).unwrap())],
-    );
+    let paths = extension_files(dir.path(), &[("runtime", &dex_bytes(&dex))]);
     let Err(error) = ExtensionSet::load(&paths) else {
         panic!("a bundle's copy of the app runtime must not load");
     };
@@ -1644,7 +1655,7 @@ fn read_method(
     name: &str,
 ) -> Option<reseam_apk::reseam_dex::EncodedMethod> {
     let class = dex.find_class_index(owner)?;
-    let name = dex.find_string_idx(name)?;
+    let name = dex.strings().find(name)?;
     let hit = dex
         .scan_methods_find(&reseam_apk::reseam_dex::RefQuery::default(), |view| {
             Ok(
@@ -2040,7 +2051,7 @@ fn settings_hosts_start_the_app_runtime_and_gate_on_the_bundles_own_settings() {
     assert!(
         code.instructions().iter().any(|instruction| matches!(
             instruction,
-            ConstString { string, .. } if written.string(*string) == "runtime-test-bundle"
+            ConstString { string, .. } if written.strings().get(*string) == "runtime-test-bundle"
         )),
         "gates name the bundle whose settings they read"
     );

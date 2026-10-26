@@ -308,7 +308,7 @@ pub(crate) fn fixup_code(code: &mut CodeItem) -> crate::error::Result<()> {
                 dest: *dest,
                 string: *string,
             };
-            code.replace_instruction(i, promoted)?;
+            code.replace_instructions(i, &[promoted])?;
         }
         i += 1;
     }

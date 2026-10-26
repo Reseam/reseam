@@ -66,7 +66,7 @@ impl PatchContext<'_> {
 
     pub fn find_methods_by_name(&self, method_name: &str) -> Result<Vec<MethodLocation>> {
         self.scan_all("methods by name", |dex_idx, dex| {
-            let Some(name) = dex.find_string_idx(method_name) else {
+            let Some(name) = dex.strings().find(method_name) else {
                 return Ok(Vec::new());
             };
             let methods: Vec<MethodIdx> = dex

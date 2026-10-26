@@ -85,7 +85,7 @@ pub(crate) fn log_mutation<R>(
 }
 
 pub(crate) fn method_ref(dex: &DexFile, m: MethodLocation) -> Option<&EncodedMethod> {
-    let data = dex.resident_class(m.class_idx)?.class_data.as_ref()?;
+    let data = dex.classes().resident(m.class_idx)?.class_data.as_ref()?;
     let list = if m.kind == MethodKind::Virtual {
         &data.virtual_methods
     } else {

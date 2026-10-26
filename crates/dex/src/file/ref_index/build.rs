@@ -46,39 +46,41 @@ fn unpack(packed: u64) -> (usize, Slot) {
     ((packed >> 16) as usize, packed as Slot)
 }
 
-pub(super) fn build(dex: &DexFile) -> Result<RefIndex> {
-    let keys = PoolKeys::of(dex);
-    let refs = collect(dex, &keys)?;
-    let pools = Postings::counted(
-        keys.end,
-        refs.pool.iter().flatten().map(|&packed| unpack(packed)),
-    );
-    let mut literal_values: Vec<i64> = refs
-        .literals
-        .iter()
-        .flatten()
-        .map(|&(value, _)| value)
-        .collect();
-    literal_values.par_sort_unstable();
-    literal_values.dedup();
-    literal_values.shrink_to_fit();
-    let literals = Postings::counted(
-        literal_values.len(),
-        refs.literals.iter().flatten().map(|&(value, slot)| {
-            let key = literal_values
-                .binary_search(&value)
-                .expect("every literal value was collected");
-            (key, slot)
-        }),
-    );
-    Ok(RefIndex {
-        class_start: refs.class_start,
-        uncovered: dex.classes.resident_indices().to_vec(),
-        keys,
-        pools,
-        literal_values,
-        literals,
-    })
+impl RefIndex {
+    pub(crate) fn build(dex: &DexFile) -> Result<Self> {
+        let keys = PoolKeys::of(dex);
+        let refs = collect(dex, &keys)?;
+        let pools = Postings::counted(
+            keys.end,
+            refs.pool.iter().flatten().map(|&packed| unpack(packed)),
+        );
+        let mut literal_values: Vec<i64> = refs
+            .literals
+            .iter()
+            .flatten()
+            .map(|&(value, _)| value)
+            .collect();
+        literal_values.par_sort_unstable();
+        literal_values.dedup();
+        literal_values.shrink_to_fit();
+        let literals = Postings::counted(
+            literal_values.len(),
+            refs.literals.iter().flatten().map(|&(value, slot)| {
+                let key = literal_values
+                    .binary_search(&value)
+                    .expect("every literal value was collected");
+                (key, slot)
+            }),
+        );
+        Ok(Self {
+            class_start: refs.class_start,
+            uncovered: dex.classes.resident_indices().to_vec(),
+            keys,
+            pools,
+            literal_values,
+            literals,
+        })
+    }
 }
 
 fn collect(dex: &DexFile, keys: &PoolKeys) -> Result<Refs> {

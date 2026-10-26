@@ -15,21 +15,8 @@ pub struct ClassHiddenApiFlags {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct HiddenApiFlags(u32);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HiddenApiRestriction {
-    Sdk,
-    Unsupported,
-    Blocked,
-    MaxO,
-    MaxP,
-    MaxQ,
-    MaxR,
-    MaxS,
-}
-
 impl HiddenApiFlags {
     pub const SDK: Self = Self(0);
-    pub const UNSUPPORTED: Self = Self(1);
     pub const BLOCKED: Self = Self(2);
 
     /// Preserves all bits, including flags introduced by newer ART versions.
@@ -39,26 +26,5 @@ impl HiddenApiFlags {
 
     pub const fn bits(self) -> u32 {
         self.0
-    }
-
-    /// ART treats an unknown restriction value as unsupported.
-    pub const fn restriction(self) -> HiddenApiRestriction {
-        match self.0 & 0xf {
-            0 => HiddenApiRestriction::Sdk,
-            2 => HiddenApiRestriction::Blocked,
-            3 => HiddenApiRestriction::MaxO,
-            4 => HiddenApiRestriction::MaxP,
-            5 => HiddenApiRestriction::MaxQ,
-            6 => HiddenApiRestriction::MaxR,
-            7 => HiddenApiRestriction::MaxS,
-            _ => HiddenApiRestriction::Unsupported,
-        }
-    }
-
-    pub const fn is_core_platform_api(self) -> bool {
-        self.0 & 0x10 != 0
-    }
-    pub const fn is_test_api(self) -> bool {
-        self.0 & 0x20 != 0
     }
 }

@@ -100,7 +100,7 @@ pub(super) fn export_call_site(
     Ok(CallSiteRef {
         origin: pool_origin(dex_index, index.0)?,
         bootstrap: export_handle(dex, dex_index, site.bootstrap_method)?,
-        name: dex.string(site.method_name).into_owned(),
+        name: dex.strings().get(site.method_name).into_owned(),
         proto: dex.proto_descriptor(&dex.proto(site.method_type)),
         arguments: site
             .extra_arguments
@@ -240,7 +240,7 @@ pub(super) fn export_value(
         V::Long(v) => EncodedVal::LongVal(*v),
         V::Float(v) => EncodedVal::FloatVal(*v),
         V::Double(v) => EncodedVal::DoubleVal(*v),
-        V::String(v) => EncodedVal::StringVal(dex.string(*v).into_owned()),
+        V::String(v) => EncodedVal::StringVal(dex.strings().get(*v).into_owned()),
         V::Type(v) => EncodedVal::TypeVal(dex.type_descriptor(*v).into_owned()),
         V::MethodType(v) => EncodedVal::ProtoVal(dex.proto_descriptor(&dex.proto(*v))),
         V::MethodHandle(v) => EncodedVal::HandleVal(export_handle(dex, dex_index, *v)?),
@@ -259,7 +259,7 @@ pub(super) fn export_value(
                 .iter()
                 .map(|element| {
                     Ok(AnnotationElement {
-                        name: dex.string(element.name).into_owned(),
+                        name: dex.strings().get(element.name).into_owned(),
                         value: export_value(dex, dex_index, &element.value)?,
                     })
                 })

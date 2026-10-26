@@ -54,9 +54,6 @@ impl Instruction {
     pub fn is_invoke(&self) -> bool {
         matches!(self.opcode(), Some(0x6e..=0x72 | 0x74..=0x78 | 0xfa..=0xfd))
     }
-    pub fn is_branch(&self) -> bool {
-        matches!(self.opcode(), Some(0x28..=0x2c | 0x32..=0x3d))
-    }
     pub fn is_return(&self) -> bool {
         matches!(self.opcode(), Some(0x0e..=0x11))
     }

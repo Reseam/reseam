@@ -86,14 +86,6 @@ impl ClassTable {
         })
     }
 
-    pub fn from_defs(defs: Vec<ClassDef>) -> Self {
-        Self {
-            resident: (0..defs.len() as u32).collect(),
-            slots: defs.into_iter().map(ClassSlot::resident).collect(),
-            ..Self::default()
-        }
-    }
-
     pub fn len(&self) -> usize {
         self.slots.len()
     }
@@ -189,43 +181,12 @@ impl ClassTable {
         })
     }
 
-    pub fn iter_resident_mut(&mut self) -> impl Iterator<Item = &mut ClassDef> {
-        if let Some(index) = self.by_type.get_mut() {
-            index
-                .changed
-                .extend(self.slots.iter().enumerate().filter_map(|(i, slot)| {
-                    matches!(slot, ClassSlot::Resident(_)).then_some(i as u32)
-                }));
-        }
-        let journal = &mut self.journal;
-        self.slots
-            .iter_mut()
-            .enumerate()
-            .filter_map(move |(i, s)| match s {
-                ClassSlot::Resident(c) => {
-                    journal.record(ClassKey::Slot(i as u32), || {
-                        ClassUndo::Restore(i as u32, Prior::Resident(Box::new(c.def.clone())))
-                    });
-                    Some(c.grant())
-                }
-                ClassSlot::Raw(_) => None,
-            })
-    }
-
     pub(crate) fn resident_indices(&self) -> &[u32] {
         &self.resident
     }
 
     pub fn is_resident(&self, i: usize) -> bool {
         matches!(self.slots.get(i), Some(ClassSlot::Resident(_)))
-    }
-
-    pub fn all_resident(&self) -> bool {
-        self.resident.len() == self.slots.len()
-    }
-
-    pub fn resident_count(&self) -> usize {
-        self.resident.len()
     }
 
     pub fn heap_bytes(&self) -> u64 {

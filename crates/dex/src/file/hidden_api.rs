@@ -41,7 +41,8 @@ impl HiddenApiData {
         }
     }
 
-    pub fn from_flags(flags: BTreeMap<TypeIdx, ClassHiddenApiFlags>) -> Self {
+    #[cfg(test)]
+    pub(crate) fn from_flags(flags: BTreeMap<TypeIdx, ClassHiddenApiFlags>) -> Self {
         Self {
             source: None,
             owned: flags,
@@ -65,10 +66,5 @@ impl HiddenApiData {
         };
         crate::read::hidden_api::read_class_flags(source, source.classes[index].1)
             .map(|flags| Some(Cow::Owned(flags)))
-    }
-
-    /// Replaces a class's flags. Unedited source classes remain deferred.
-    pub fn set(&mut self, class: TypeIdx, flags: ClassHiddenApiFlags) {
-        self.owned.insert(class, flags);
     }
 }

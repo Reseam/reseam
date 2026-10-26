@@ -8,6 +8,13 @@ use reseam_dex::types::debug::{DebugBytecode, DebugInfo};
 use reseam_dex::types::metadata::Metadata;
 use reseam_dex::{CodeItem, DexFile, DexHeader, DexVersion, EncodedValue, Instruction};
 
+pub fn write(dex: &DexFile) -> reseam_dex::Result<Vec<u8>> {
+    let (spooled, _) = reseam_dex::write_spooled(dex, None)?;
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut spooled.reader(), &mut bytes)?;
+    Ok(bytes)
+}
+
 pub fn dex() -> DexFile {
     let mut dex = DexFile::new(DexHeader::new(DexVersion::V039));
     let class = dex
@@ -75,7 +82,7 @@ pub fn dex() -> DexFile {
         .set_register_frame(2, 1, 0)
         .expect("virtual frame");
     virtual_code
-        .replace_instruction(1, Instruction::ReturnObject { src: 0 })
+        .replace_instructions(1, &[Instruction::ReturnObject { src: 0 }])
         .expect("return edit");
     class.add_virtual_method(EncodedMethod {
         method: virtual_method,

@@ -10,7 +10,7 @@ type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 #[test]
 fn streamed_resident_and_spooled_writers_preserve_the_same_program() -> TestResult {
-    let input = reseam_dex::write(&common::dex())?;
+    let input = common::write(&common::dex())?;
     let mut streamed = reseam_dex::parse(
         &input,
         ParseOptions {
@@ -23,8 +23,8 @@ fn streamed_resident_and_spooled_writers_preserve_the_same_program() -> TestResu
     let mut resident = reseam_dex::parse(&input, ParseOptions::default())?;
     streamed.intern_string("!first sorted string");
     resident.intern_string("!first sorted string");
-    let expected = reseam_dex::write(&resident)?;
-    assert_eq!(reseam_dex::write(&streamed)?, expected);
+    let expected = common::write(&resident)?;
+    assert_eq!(common::write(&streamed)?, expected);
     let (spool, _) = reseam_dex::write_spooled(&streamed, None)?;
     let mut actual = Vec::new();
     spool.reader().read_to_end(&mut actual)?;
@@ -35,7 +35,7 @@ fn streamed_resident_and_spooled_writers_preserve_the_same_program() -> TestResu
 
 #[test]
 fn truncated_files_fail_validation() -> TestResult {
-    let bytes = reseam_dex::write(&common::dex())?;
+    let bytes = common::write(&common::dex())?;
     for length in [0, 8, 111, bytes.len() - 1] {
         assert!(reseam_dex::parse(&bytes[..length], ParseOptions::default()).is_err());
     }
@@ -61,7 +61,7 @@ fn edits_relocate_debug_and_handlers_and_roll_back_invalid_targets() -> TestResu
     )?;
     let original = code.clone();
     assert!(
-        code.replace_instruction(0, Instruction::Goto { offset: 1 })
+        code.replace_instructions(0, &[Instruction::Goto { offset: 1 }])
             .is_err()
     );
     assert_eq!(*code, original);
@@ -73,12 +73,12 @@ fn edits_relocate_debug_and_handlers_and_roll_back_invalid_targets() -> TestResu
         .is_err()
     );
     assert_eq!(*code, original);
-    code.insert_instruction(
+    code.insert_instructions(
         1,
-        Instruction::Const {
+        &[Instruction::Const {
             dest: 1,
             value: 700,
-        },
+        }],
     )?;
     assert_eq!(code.tries()[0].insn_count, 5);
     assert_eq!(code.catch_handlers()[0].catch_all_addr, Some(5));
@@ -115,8 +115,8 @@ fn edits_relocate_debug_and_handlers_and_roll_back_invalid_targets() -> TestResu
             ],
         },
     )));
-    code.insert_instruction(0, Instruction::Nop)?;
-    let bytes = reseam_dex::write(&dex)?;
+    code.insert_instructions(0, &[Instruction::Nop])?;
+    let bytes = common::write(&dex)?;
     reseam_dex::parse(&bytes, ParseOptions::default())?;
     Ok(())
 }
@@ -141,17 +141,21 @@ fn prototype_identities_survive_global_pool_overflow_and_part_compaction() -> Te
         access_flags: AccessFlags::PUBLIC | AccessFlags::STATIC | AccessFlags::NATIVE,
         code: None,
     });
-    assert!(reseam_dex::write(&dex).is_err());
+    assert!(common::write(&dex).is_err());
     let parts = reseam_dex::split_to_fit(&dex)?.expect("fixture");
     assert_eq!(parts.len(), 1);
     let (spool, _) = reseam_dex::write_spooled(&dex, Some(&parts[0]))?;
     let mut bytes = Vec::new();
     spool.reader().read_to_end(&mut bytes)?;
     let parsed = reseam_dex::parse(&bytes, ParseOptions::default())?;
-    let method = parsed
-        .find_method_by_name("nativeCall")?
-        .expect("fixture")
-        .method;
+    let name = parsed.strings().find("nativeCall").expect("fixture");
+    let method = reseam_dex::MethodIdx(
+        parsed
+            .methods()
+            .iter()
+            .position(|method| method.name == name)
+            .expect("fixture") as u32,
+    );
     assert_eq!(
         parsed.proto_descriptor(&parsed.proto(parsed.method_id(method).proto)),
         descriptor
@@ -160,34 +164,8 @@ fn prototype_identities_survive_global_pool_overflow_and_part_compaction() -> Te
 }
 
 #[test]
-fn descriptor_policies_match_resident_and_deferred_methods_consistently() -> TestResult {
-    use reseam_dex::{Fingerprint, TypePattern};
-    let bytes = reseam_dex::write(&common::dex())?;
-    for loading in [Loading::Eager, Loading::Deferred] {
-        let dex = common::parse_with_loading(&bytes, loading)?;
-        for (pattern, count) in [
-            (TypePattern::Exact("V".into()), 1),
-            (TypePattern::Exact("Ljava/lang/Object;".into()), 0),
-            (TypePattern::Prefix("Ljava/".into()), 1),
-            (TypePattern::Object, 1),
-            (TypePattern::Array, 0),
-        ] {
-            assert_eq!(
-                dex.find_methods_by_fingerprint(&Fingerprint {
-                    return_type: Some(pattern),
-                    ..Fingerprint::default()
-                })?
-                .len(),
-                count
-            );
-        }
-    }
-    Ok(())
-}
-
-#[test]
 fn table_counts_and_offsets_are_checked_against_the_declared_source_span() -> TestResult {
-    let bytes = reseam_dex::write(&common::dex())?;
+    let bytes = common::write(&common::dex())?;
     let options = common::unchecked();
     for count_at in [0x38, 0x40, 0x48, 0x50, 0x58, 0x60] {
         let mut invalid = bytes.clone();
@@ -218,7 +196,7 @@ fn invocation_arguments_require_an_encoding_that_can_represent_them() -> TestRes
                 Instruction::InvokeStatic { method, args },
                 Instruction::ReturnVoid,
             ]);
-            let mut bytes = reseam_dex::write(&dex)?;
+            let mut bytes = common::write(&dex)?;
             let deferred = common::parse_with_loading(&bytes, Loading::Deferred)?;
             let code_offset =
                 deferred.class_skeleton(0)?.expect("fixture").direct_methods[0].code_off as usize;
@@ -234,7 +212,7 @@ fn invocation_arguments_require_an_encoding_that_can_represent_them() -> TestRes
             },
             Instruction::ReturnVoid,
         ]);
-        let bytes = reseam_dex::write(&dex)?;
+        let bytes = common::write(&dex)?;
         reseam_dex::parse(&bytes, ParseOptions::default())?;
     }
     Ok(())
@@ -243,11 +221,11 @@ fn invocation_arguments_require_an_encoding_that_can_represent_them() -> TestRes
 #[test]
 fn invalid_descriptors_leave_type_and_string_pools_unchanged() {
     let mut dex = common::dex();
-    let types = dex.type_count();
+    let types = dex.types().len();
     let strings = dex.strings().len();
     for descriptor in ["", "L;", "[V", "Lmissing", "II"] {
         assert!(dex.intern_type(descriptor).is_err());
-        assert_eq!(dex.type_count(), types);
+        assert_eq!(dex.types().len(), types);
         assert_eq!(dex.strings().len(), strings);
     }
 }
@@ -276,29 +254,32 @@ fn call_sites_and_method_handles_survive_deferred_reads_appends_and_remapping() 
         },
         Instruction::ReturnVoid,
     ]);
-    let input = reseam_dex::write(&dex)?;
+    let input = common::write(&dex)?;
     let mut parsed = common::parse_with_loading(&input, Loading::Deferred)?;
     assert!(parsed.call_sites().get(1).is_err());
     let mut appended = parsed.call_sites().get(0)?.into_owned();
     appended.method_name = parsed.intern_string("!appendedCall");
     parsed.call_sites_mut().push(appended);
-    let bytes = reseam_dex::write(&parsed)?;
+    let bytes = common::write(&parsed)?;
     let result = reseam_dex::parse(&bytes, ParseOptions::default())?;
     assert_eq!(result.call_sites().len(), 2);
     for (index, name) in [(0, "dynamicCall"), (1, "!appendedCall")] {
         let site = result.call_sites().get(index)?;
-        assert_eq!(result.string(site.method_name), name);
+        assert_eq!(result.strings().get(site.method_name), name);
         let EncodedValue::String(argument) = site.extra_arguments[0] else {
             panic!("string argument");
         };
-        assert_eq!(result.string(argument), "argument");
+        assert_eq!(result.strings().get(argument), "argument");
         let handle = result
             .method_handles()
             .get(site.bootstrap_method.0 as usize)?;
         let MethodHandleMember::Method(target) = handle.member else {
             panic!("bootstrap method");
         };
-        assert_eq!(result.string(result.method_id(target).name), "bootstrap");
+        assert_eq!(
+            result.strings().get(result.method_id(target).name),
+            "bootstrap"
+        );
     }
     Ok(())
 }
@@ -306,7 +287,7 @@ fn call_sites_and_method_handles_survive_deferred_reads_appends_and_remapping() 
 #[test]
 fn invalid_pool_references_fail_before_lookup_or_serialization() -> TestResult {
     use reseam_dex::{Instruction, MethodIdx, StringIdx};
-    let bytes = reseam_dex::write(&common::dex())?;
+    let bytes = common::write(&common::dex())?;
     let parsed = reseam_dex::parse(&bytes, ParseOptions::default())?;
     let header = parsed.header();
     let options = common::unchecked();
@@ -324,8 +305,8 @@ fn invalid_pool_references_fail_before_lookup_or_serialization() -> TestResult {
     let mut dex = common::dex();
     let method = common::direct_method(&mut dex);
     method.method = MethodIdx(u32::MAX);
-    assert!(dex.find_method_by_name("report").is_err());
-    assert!(reseam_dex::write(&dex).is_err());
+    assert!(dex.find_methods_with_opcodes(&[]).is_err());
+    assert!(common::write(&dex).is_err());
     let mut dex = common::dex();
     common::body(&mut dex).set_instructions(vec![
         Instruction::ConstString {
@@ -368,7 +349,7 @@ fn array_payloads_require_complete_elements_with_nonzero_width() -> TestResult {
                 data,
             })),
         ]);
-        let encoded = reseam_dex::write(&dex);
+        let encoded = common::write(&dex);
         if valid {
             reseam_dex::parse(&encoded?, ParseOptions::default())?;
         } else {
@@ -380,36 +361,32 @@ fn array_payloads_require_complete_elements_with_nonzero_width() -> TestResult {
 
 #[test]
 fn fingerprint_opcode_windows_agree_for_deferred_and_resident_methods() -> TestResult {
-    use reseam_dex::{Fingerprint, InstructionPattern, OpcodeMatcher};
-    let bytes = reseam_dex::write(&common::dex())?;
+    use reseam_dex::{InstructionPattern, OpcodeMatcher};
+    let bytes = common::write(&common::dex())?;
     for loading in [Loading::Deferred, Loading::Eager] {
         let dex = common::parse_with_loading(&bytes, loading)?;
-        let fingerprint = Fingerprint {
-            name: Some("report".into()),
-            opcodes: Some(vec![
-                InstructionPattern::Opcode(OpcodeMatcher::ConstString),
-                InstructionPattern::Opcode(OpcodeMatcher::ReturnVoid),
-            ]),
-            ..Fingerprint::default()
+        let reports = |opcodes: &[OpcodeMatcher]| -> reseam_dex::Result<bool> {
+            let pattern: Vec<_> = opcodes
+                .iter()
+                .map(|&opcode| InstructionPattern::Opcode(opcode))
+                .collect();
+            Ok(dex
+                .find_methods_with_opcodes(&pattern)?
+                .iter()
+                .any(|hit| dex.strings().get(dex.method_id(hit.method).name) == "report"))
         };
-        let hit = dex
-            .find_method_by_fingerprint(&fingerprint)?
-            .expect("fixture");
-        assert_eq!(hit.matched_indices, vec![0, 1]);
-        let mismatch = Fingerprint {
-            opcodes: Some(vec![InstructionPattern::Opcode(
-                OpcodeMatcher::ReturnObject,
-            )]),
-            ..fingerprint
-        };
-        assert!(dex.find_method_by_fingerprint(&mismatch)?.is_none());
+        assert!(reports(&[
+            OpcodeMatcher::ConstString,
+            OpcodeMatcher::ReturnVoid
+        ])?);
+        assert!(!reports(&[OpcodeMatcher::ReturnObject])?);
     }
     Ok(())
 }
 
 #[test]
 fn cached_reference_search_tracks_resident_edits_and_class_removal() -> TestResult {
-    use reseam_dex::{AccessFlags, CodeItem, EncodedMethod, Fingerprint, Instruction};
+    use reseam_dex::{AccessFlags, CodeItem, EncodedMethod, Instruction};
     let mut dex = common::dex();
     let class = dex.create_class(
         "Lexample/Dashboard;",
@@ -431,19 +408,16 @@ fn cached_reference_search_tracks_resident_edits_and_class_removal() -> TestResu
             ],
         )?)),
     });
-    let bytes = reseam_dex::write(&dex)?;
+    let bytes = common::write(&dex)?;
     let mut dex = common::parse_with_loading(&bytes, Loading::Deferred)?;
-    let fingerprint = Fingerprint {
-        strings: Some(vec!["dashboard opened".into()]),
-        ..Fingerprint::default()
-    };
-    assert_eq!(dex.find_methods_by_fingerprint(&fingerprint)?.len(), 1);
+    let opened = ["dashboard opened"];
+    assert_eq!(dex.find_methods_by_strings(&opened)?.len(), 1);
     let activity = dex.find_type_idx("Lexample/Activity;").expect("fixture");
     dex.remove_class(activity)?.expect("fixture");
-    assert_eq!(dex.find_methods_by_fingerprint(&fingerprint)?.len(), 1);
+    assert_eq!(dex.find_methods_by_strings(&opened)?.len(), 1);
     dex.intern_string("new pool entry");
     common::body(&mut dex).set_instructions(vec![Instruction::ReturnVoid]);
-    assert!(dex.find_methods_by_fingerprint(&fingerprint)?.is_empty());
+    assert!(dex.find_methods_by_strings(&opened)?.is_empty());
     Ok(())
 }
 
@@ -454,22 +428,22 @@ fn android_string_encodings_survive_lookup_interning_and_serialization() -> Test
     for value in text {
         dex.intern_string(value);
     }
-    let bytes = reseam_dex::write(&dex)?;
+    let bytes = common::write(&dex)?;
     for loading in [Loading::Eager, Loading::Deferred] {
         let mut dex = common::parse_with_loading(&bytes, loading)?;
-        assert_eq!(reseam_dex::write(&dex)?, bytes);
+        assert_eq!(common::write(&dex)?, bytes);
         dex.intern_string("!new");
-        let output = reseam_dex::write(&dex)?;
+        let output = common::write(&dex)?;
         let result = reseam_dex::parse(&output, ParseOptions::default())?;
         for value in text {
-            let index = result.find_string_idx(value).expect("fixture");
-            assert_eq!(result.string(index), value);
+            let index = result.strings().find(value).expect("fixture");
+            assert_eq!(result.strings().get(index), value);
         }
     }
     let mut dex =
         reseam_dex::DexFile::new(reseam_dex::DexHeader::new(reseam_dex::DexVersion::V039));
     dex.intern_string("\u{fffd}");
-    let mut bytes = reseam_dex::write(&dex)?;
+    let mut bytes = common::write(&dex)?;
     let parsed = reseam_dex::parse(&bytes, ParseOptions::default())?;
     let ids = parsed.header().string_ids_off as usize;
     let data = u32::from_le_bytes(bytes[ids..ids + 4].try_into()?) as usize;
@@ -481,9 +455,9 @@ fn android_string_encodings_survive_lookup_interning_and_serialization() -> Test
     }
     bytes[data + 1..data + 4].copy_from_slice(&[0xed, 0xa0, 0x80]);
     let mut dex = reseam_dex::parse(&bytes, options)?;
-    assert!(dex.find_string_idx("\u{fffd}").is_none());
+    assert!(dex.strings().find("\u{fffd}").is_none());
     dex.intern_string("\u{fffd}");
-    let output = reseam_dex::write(&dex)?;
+    let output = common::write(&dex)?;
     let result = reseam_dex::parse(&output, ParseOptions::default())?;
     assert_eq!(result.strings().len(), 2);
     assert!(

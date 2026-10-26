@@ -34,7 +34,7 @@ pub fn add_method(c: u32, method: NewMethod) -> u32 {
     );
     with_class_mut(c, |dex, loc| {
         let class_desc = dex
-            .type_descriptor(dex.class_header(loc.class_idx).class_type)
+            .type_descriptor(dex.classes().header(loc.class_idx).class_type)
             .into_owned();
         let method_idx = logged(
             "intern method",

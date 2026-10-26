@@ -40,7 +40,7 @@ impl ApkFile {
         opts: ParseOptions,
     ) -> Result<Self> {
         validate_components(&components)?;
-        let mut dex = MultiDexContainer::new();
+        let mut dex = MultiDexContainer::default();
         let mut dex_origins = Vec::new();
         for (index, component) in components.iter_mut().enumerate() {
             if opts.classes == reseam_dex::types::header::Loading::Eager {

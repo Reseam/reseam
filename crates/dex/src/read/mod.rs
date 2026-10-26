@@ -9,7 +9,6 @@ pub(crate) mod debug;
 pub(crate) mod encoded_value;
 pub(crate) mod header;
 pub(crate) mod hidden_api;
-pub(crate) mod ids;
 pub mod parse;
 
 pub(crate) use bytes::{i32_at, read_u8, read_u16, read_u32, u16_at, u32_at};

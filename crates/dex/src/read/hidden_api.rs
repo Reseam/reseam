@@ -3,7 +3,7 @@
 
 use super::class::read_class_skeleton_at;
 use super::read_u32;
-use crate::encoding::leb128::read_uleb128_with_opts;
+use crate::encoding::leb128::read_uleb128;
 use crate::error::{Result, invalid, require_len};
 use crate::file::hidden_api::{FlagClass, FlagSource};
 use crate::file::{DexBytes, DexFile, HiddenApiData};
@@ -82,7 +82,7 @@ pub(crate) fn read_class_flags(
     )?;
     let mut position = class.flags_offset;
     let mut next_flag = || -> Result<HiddenApiFlags> {
-        let (value, size) = read_uleb128_with_opts(
+        let (value, size) = read_uleb128(
             &source.bytes.as_bytes()[..source.end],
             position,
             source.options,

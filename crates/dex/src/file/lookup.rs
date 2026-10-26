@@ -10,12 +10,8 @@ use crate::types::{
 };
 
 impl DexFile {
-    pub fn string(&self, idx: StringIdx) -> Cow<'_, str> {
-        self.strings.get(idx)
-    }
-
     pub fn type_descriptor(&self, idx: TypeIdx) -> Cow<'_, str> {
-        self.string(self.type_string(idx))
+        self.strings().get(self.type_string(idx))
     }
 
     pub fn proto_descriptor(&self, proto: &Prototype) -> String {
@@ -30,17 +26,13 @@ impl DexFile {
     }
 
     pub fn find_class_index(&self, descriptor: &str) -> Option<usize> {
-        self.class_index_of(self.find_type_idx(descriptor)?)
-    }
-
-    pub fn find_string_idx(&self, s: &str) -> Option<StringIdx> {
-        self.strings.find(s)
+        self.classes.index_of_type(self.find_type_idx(descriptor)?)
     }
 
     pub fn find_type_idx(&self, descriptor: &str) -> Option<TypeIdx> {
         self.type_lookups
             .get_or_find(descriptor, self.types.len(), || {
-                let string_idx = self.find_string_idx(descriptor)?;
+                let string_idx = self.strings().find(descriptor)?;
                 self.types.find(&string_idx).map(|i| TypeIdx(i as u32))
             })
     }
@@ -102,9 +94,5 @@ impl DexFile {
         self.fields
             .find(&FieldId { class, name, type_ })
             .map(|i| FieldIdx(i as u32))
-    }
-
-    pub fn class_index_of(&self, type_idx: TypeIdx) -> Option<usize> {
-        self.classes.index_of_type(type_idx)
     }
 }

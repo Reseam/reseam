@@ -153,7 +153,7 @@ fn incoming_kinds(
                     "incoming descriptor outside pool",
                 ));
             }
-            Ok(kind(&dex.string(descriptor)))
+            Ok(kind(&dex.strings().get(descriptor)))
         })
         .collect::<Result<Vec<_>>>()?;
     if incoming

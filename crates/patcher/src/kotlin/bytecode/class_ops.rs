@@ -54,7 +54,7 @@ pub fn add_interface(c: u32, interface_descriptor: String) {
 #[export]
 pub fn remove_class(c: u32) {
     with_class_header(c, |dex, loc| {
-        let class_type = dex.class_header(loc.class_idx).class_type;
+        let class_type = dex.classes().header(loc.class_idx).class_type;
         let removed = checked(dex.remove_class(class_type).map(Some))?;
         forget_class(loc);
         Some(removed)

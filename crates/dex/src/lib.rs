@@ -3,7 +3,7 @@
 
 //! `reseam-dex` parses, inspects, mutates, and writes Dalvik DEX files.
 //!
-//! Typical entrypoints are [`parse`], [`parse_file`], and [`write`].
+//! Typical entrypoints are [`parse`], [`parse_file`], and [`write_spooled`].
 //!
 //! # Examples
 //!
@@ -34,9 +34,8 @@ pub use file::container::{
     MaterializationStats, MemoryBreakdown, MultiDexContainer, estimated_ir_bytes,
 };
 pub use file::{
-    DexFile, Fingerprint, FingerprintHit, HiddenApiData, InstructionHit, InstructionPattern,
-    InstructionSite, MemberCounts, MethodHit, MethodSummary, MethodView, OpcodeMatcher, RefKey,
-    RefQuery, TypePattern, summarize_resident,
+    DexFile, HiddenApiData, InstructionHit, InstructionPattern, InstructionSite, MemberCounts,
+    MethodHit, MethodSummary, MethodView, OpcodeMatcher, RefKey, RefQuery, summarize_resident,
 };
 pub use read::class::{ClassSkeleton, MethodHeader};
 pub use read::parse;
@@ -54,7 +53,7 @@ pub use types::code::{CatchHandler, CodeItem, TryItem, TypedCatch};
 pub use types::debug::DebugInfo;
 pub use types::encoded_value::EncodedValue;
 pub use types::header::{DexHeader, DexVersion, Loading, ParseOptions, Validation, Verification};
-pub use types::hidden_api::{ClassHiddenApiFlags, HiddenApiFlags, HiddenApiRestriction};
+pub use types::hidden_api::{ClassHiddenApiFlags, HiddenApiFlags};
 pub use types::instruction::{
     FillArrayPayloadData, Instruction, PackedSwitchData, RegList, SparseSwitchData,
 };
@@ -64,7 +63,5 @@ pub use types::register_analysis::{
     find_contiguous_free_registers, find_free_register, find_free_registers, reaching_definitions,
 };
 pub use types::{FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx};
-pub use write::write;
-pub use write::write_container;
 pub use write::write_container_spooled;
 pub use write::{DexPart, Spooled, WriteLayout, split_to_fit, write_spooled};

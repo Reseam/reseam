@@ -101,9 +101,9 @@ pub fn get_method_info(m: u32) -> Option<MethodInfo> {
         let method_id = dex.methods().try_get(summary.method.0 as usize)?;
         Some(MethodInfo {
             class_descriptor: dex
-                .type_descriptor(dex.class_header(location.class_idx).class_type)
+                .type_descriptor(dex.classes().header(location.class_idx).class_type)
                 .into_owned(),
-            method_name: dex.string(method_id.name).into_owned(),
+            method_name: dex.strings().get(method_id.name).into_owned(),
             proto: dex.proto_descriptor(&dex.prototypes().try_get(method_id.proto.0 as usize)?),
             access_flags: summary.access_flags.bits(),
             dex_index: location.dex_idx as u32,
@@ -121,7 +121,7 @@ pub fn get_class_info(c: u32) -> Option<ClassInfo> {
     with_ctx(|ctx| {
         let counts = checked(ctx.read_class_counts(location))?;
         let dex = ctx.dex_file(location.dex_idx)?;
-        let class = dex.class_header(location.class_idx);
+        let class = dex.classes().header(location.class_idx);
         Some(ClassInfo {
             descriptor: dex.type_descriptor(class.class_type).into_owned(),
             access_flags: class.access_flags.bits(),
@@ -134,7 +134,9 @@ pub fn get_class_info(c: u32) -> Option<ClassInfo> {
                 .iter()
                 .map(|i| dex.type_descriptor(*i).into_owned())
                 .collect(),
-            source_file: class.source_file.map(|idx| dex.string(idx).into_owned()),
+            source_file: class
+                .source_file
+                .map(|idx| dex.strings().get(idx).into_owned()),
             dex_index: location.dex_idx as u32,
             direct_method_count: counts.direct_methods,
             virtual_method_count: counts.virtual_methods,
@@ -173,7 +175,7 @@ pub fn class_methods_by_name(c: u32, name: String) -> Vec<u32> {
         let Some(dex) = ctx.dex_file(location.dex_idx) else {
             return Vec::new();
         };
-        let Some(name) = dex.find_string_idx(&name) else {
+        let Some(name) = dex.strings().find(&name) else {
             return Vec::new();
         };
         let mut result = Vec::new();
@@ -193,7 +195,7 @@ pub fn class_methods_by_name(c: u32, name: String) -> Vec<u32> {
                         }),
                 );
             };
-        if let Some(class) = dex.resident_class(location.class_idx) {
+        if let Some(class) = dex.classes().resident(location.class_idx) {
             if let Some(data) = class.class_data.as_ref() {
                 collect(
                     MethodKind::Direct,
@@ -250,7 +252,7 @@ pub fn class_fields(c: u32) -> Vec<FieldInfo> {
         else {
             return Vec::new();
         };
-        let class_type = dex.class_header(location.class_idx).class_type;
+        let class_type = dex.classes().header(location.class_idx).class_type;
         fields
             .statics
             .iter()
@@ -282,7 +284,7 @@ fn field_info(
     let field_id = dex.field_id(field.field);
     FieldInfo {
         class_descriptor: dex.type_descriptor(class_type).into_owned(),
-        name: dex.string(field_id.name).into_owned(),
+        name: dex.strings().get(field_id.name).into_owned(),
         field_type: dex.type_descriptor(field_id.type_).into_owned(),
         access_flags: field.access_flags.bits(),
         initial_value,

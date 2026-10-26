@@ -76,7 +76,7 @@ pub(crate) fn write_hidden_api<S: DexSink>(
         w.write_u32(0);
     }
     for (i, &source) in plan.class_order.iter().enumerate() {
-        let ty = plan.dex.class_header(source).class_type;
+        let ty = plan.dex.classes().header(source).class_type;
         let Some(flags) = hidden_api.get(ty)? else {
             continue;
         };
@@ -99,7 +99,7 @@ pub(crate) fn write_hidden_api<S: DexSink>(
                 );
             }
         }
-        let groups = if let Some(class) = plan.dex.resident_class(source) {
+        let groups = if let Some(class) = plan.dex.classes().resident(source) {
             class.class_data.as_ref().map_or_else(
                 || [Vec::new(), Vec::new()],
                 |data| {

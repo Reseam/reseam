@@ -93,18 +93,4 @@ impl ClassTable {
             .barrier(|| ClassUndo::Insert(i as u32, Box::new(def.clone())));
         Ok(def)
     }
-
-    pub fn into_defs(mut self, opts: ParseOptions) -> Result<Vec<ClassDef>> {
-        self.materialize_all(opts)?;
-        Ok(self
-            .slots
-            .into_iter()
-            .map(|slot| match slot {
-                ClassSlot::Resident(c) => c.def,
-                ClassSlot::Raw(_) => {
-                    unreachable!("materialization has replaced the raw slot with a resident class")
-                }
-            })
-            .collect())
-    }
 }

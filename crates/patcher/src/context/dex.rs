@@ -37,7 +37,7 @@ impl PatchContext<'_> {
         location: MethodLocation,
     ) -> Result<Option<(&DexFile, &EncodedMethod)>> {
         if let Some(dex) = self.apk.dex().dex(location.dex_idx)
-            && let Some(class) = dex.resident_class(location.class_idx)
+            && let Some(class) = dex.classes().resident(location.class_idx)
         {
             let method = class
                 .class_data
@@ -86,7 +86,8 @@ impl PatchContext<'_> {
             return Ok(None);
         };
         if let Some(data) = dex
-            .resident_class(location.class_idx)
+            .classes()
+            .resident(location.class_idx)
             .and_then(|c| c.class_data.as_deref())
         {
             let list = if location.kind == MethodKind::Virtual {
@@ -170,7 +171,7 @@ impl PatchContext<'_> {
         let mut chain: Vec<ClassLocation> = Vec::new();
         let mut current = class;
         while let Some(superclass) = self.dex_file(current.dex_idx).and_then(|dex| {
-            let header = dex.class_header(current.class_idx);
+            let header = dex.classes().header(current.class_idx);
             header
                 .superclass
                 .map(|ty| dex.type_descriptor(ty).into_owned())

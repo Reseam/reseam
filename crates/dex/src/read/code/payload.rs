@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::encoding::leb128::{read_sleb128_with_opts, read_uleb128_with_opts};
+use crate::encoding::leb128::{read_sleb128, read_uleb128};
 use crate::error::{Result, invalid_offset, require_len};
 use crate::read::{u16_at, u32_at};
 use crate::types::TypeIdx;
@@ -21,18 +21,18 @@ pub(crate) fn walk_handler_list(
     opts: ParseOptions,
     mut visit: impl FnMut(HandlerEvent) -> Result<()>,
 ) -> Result<usize> {
-    let (count, size) = read_uleb128_with_opts(buf, list_off, opts)?;
+    let (count, size) = read_uleb128(buf, list_off, opts)?;
     visit(HandlerEvent::Count(count))?;
     let mut pos = list_off + size;
     for _ in 0..count {
         let offset = pos - list_off;
-        let (size, consumed) = read_sleb128_with_opts(buf, pos, opts)?;
+        let (size, consumed) = read_sleb128(buf, pos, opts)?;
         pos += consumed;
         visit(HandlerEvent::Handler { offset, size })?;
         for _ in 0..size.unsigned_abs() {
-            let (type_idx, consumed) = read_uleb128_with_opts(buf, pos, opts)?;
+            let (type_idx, consumed) = read_uleb128(buf, pos, opts)?;
             pos += consumed;
-            let (addr, consumed) = read_uleb128_with_opts(buf, pos, opts)?;
+            let (addr, consumed) = read_uleb128(buf, pos, opts)?;
             pos += consumed;
             visit(HandlerEvent::Typed(TypedCatch {
                 exception_type: TypeIdx(type_idx),
@@ -40,7 +40,7 @@ pub(crate) fn walk_handler_list(
             }))?;
         }
         if size <= 0 {
-            let (addr, consumed) = read_uleb128_with_opts(buf, pos, opts)?;
+            let (addr, consumed) = read_uleb128(buf, pos, opts)?;
             pos += consumed;
             visit(HandlerEvent::CatchAll(addr))?;
         }

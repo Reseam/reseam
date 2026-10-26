@@ -3,10 +3,9 @@
 
 use super::code::read_code_item;
 use super::encoded_value::read_encoded_array_with_opts;
-use super::ids::read_type_list;
-use crate::encoding::leb128::read_uleb128_with_opts;
+use crate::encoding::leb128::read_uleb128;
 use crate::error::Result;
-use crate::file::RawClassDef;
+use crate::file::{RawClassDef, read_type_list, validate_type_list};
 use crate::types::access_flags::AccessFlags;
 use crate::types::class::{ClassData, ClassDef, EncodedField, EncodedMethod};
 use crate::types::header::ParseOptions;
@@ -21,7 +20,9 @@ pub fn read_class_def(
     let buf = source.as_bytes();
     let header = raw.header();
     let interfaces = if raw.interfaces_off != 0 {
-        read_type_list(buf, raw.interfaces_off)?
+        let off = raw.interfaces_off as usize;
+        validate_type_list(buf, off)?;
+        read_type_list(buf, off)
     } else {
         crate::types::TypeList::new()
     };
@@ -105,7 +106,7 @@ impl<'a> ClassDataCursor<'a> {
     }
 
     fn uleb(&mut self) -> Result<u32> {
-        let (value, size) = read_uleb128_with_opts(self.buf, self.pos, self.opts)?;
+        let (value, size) = read_uleb128(self.buf, self.pos, self.opts)?;
         self.pos += size;
         Ok(value)
     }

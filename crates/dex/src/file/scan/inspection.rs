@@ -4,7 +4,8 @@
 use super::class::decode_one_method;
 use super::view::MethodHit;
 use crate::error::Result;
-use crate::file::{DexFile, Fingerprint, InstructionPattern, RefQuery};
+use crate::file::pattern::find_pattern_span;
+use crate::file::{DexFile, InstructionPattern, RefKey, RefQuery};
 use crate::read::class::{
     ClassDataCursor, ClassSkeleton, MemberCounts, MethodHeader, read_class_skeleton_at,
 };
@@ -64,31 +65,6 @@ impl DexFile {
             summary.instruction_count = count_instructions(buf, base + 16, insns_size)?;
         }
         Ok(summary)
-    }
-
-    /// Summarizes one method: from IR when its class is materialized, else via
-    /// [`Self::class_skeleton`] and [`Self::summarize_method`].
-    pub fn method_summary(
-        &self,
-        class_idx: usize,
-        method_pos: usize,
-        kind: crate::types::class::MethodKind,
-    ) -> Result<Option<MethodSummary>> {
-        if let Some(data) = self.resident_class_data(class_idx) {
-            let list = if kind == crate::types::class::MethodKind::Virtual {
-                &data.virtual_methods
-            } else {
-                &data.direct_methods
-            };
-            return Ok(list.get(method_pos).map(summarize_resident));
-        }
-        let Some(skeleton) = self.class_skeleton(class_idx)? else {
-            return Ok(None);
-        };
-        skeleton
-            .method(method_pos, kind)
-            .map(|header| self.summarize_method(header))
-            .transpose()
     }
 }
 
@@ -216,35 +192,43 @@ impl DexFile {
 }
 
 impl DexFile {
-    pub fn find_method_by_name(&self, name: &str) -> Result<Option<MethodHit>> {
-        let Some(name) = self.find_string_idx(name) else {
-            return Ok(None);
-        };
-        self.scan_methods_find(&RefQuery::default(), |view| {
-            Ok((self.method_id(view.method).name == name).then(|| view.hit()))
-        })
-    }
-
     /// Finds every method whose body loads all of the given string constants.
     ///
     /// The string set is resolved to indices once per DEX; a DEX missing any of
     /// them is rejected before a single method is scanned.
     pub fn find_methods_by_strings(&self, strings: &[&str]) -> Result<Vec<MethodHit>> {
-        self.find_methods_by_fingerprint(&Fingerprint {
-            strings: Some(strings.iter().map(|value| (*value).to_owned()).collect()),
-            ..Fingerprint::default()
+        let Some(targets) = strings
+            .iter()
+            .map(|value| self.strings().find(value))
+            .collect::<Option<Vec<_>>>()
+        else {
+            return Ok(Vec::new());
+        };
+        let query = RefQuery::all_of(targets.iter().map(|&target| RefKey::String(target)));
+        self.scan_methods_collect(&query, |view| {
+            if !view.has_code() {
+                return Ok(None);
+            }
+            for &target in &targets {
+                if !view.any_instruction(|insn| insn.string_ref() == Some(target))? {
+                    return Ok(None);
+                }
+            }
+            Ok(Some(view.hit()))
         })
-        .map(|hits| hits.into_iter().map(|hit| hit.method).collect())
     }
 
     pub fn find_methods_with_opcodes(
         &self,
         opcodes: &[InstructionPattern],
     ) -> Result<Vec<MethodHit>> {
-        self.find_methods_by_fingerprint(&Fingerprint {
-            opcodes: Some(opcodes.to_vec()),
-            ..Fingerprint::default()
+        self.scan_methods_collect(&RefQuery::default(), |view| {
+            if !view.has_code() {
+                return Ok(None);
+            }
+            let mut sequence = Vec::new();
+            view.opcodes(&mut sequence)?;
+            Ok(find_pattern_span(&sequence, opcodes).map(|_| view.hit()))
         })
-        .map(|hits| hits.into_iter().map(|hit| hit.method).collect())
     }
 }

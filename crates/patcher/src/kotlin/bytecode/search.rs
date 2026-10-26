@@ -140,7 +140,7 @@ pub fn all_method_handles() -> Vec<u32> {
 pub fn instruction_string_ref(m: u32, index: u32) -> Option<String> {
     with_instruction(m, index, |dex, instruction| {
         let idx = instruction.string_ref()?;
-        Some(dex.string(idx).into_owned())
+        Some(dex.strings().get(idx).into_owned())
     })
 }
 
@@ -150,7 +150,7 @@ pub fn instruction_method_ref(m: u32, index: u32) -> Option<MethodRef> {
         let method = dex.method_id(instruction.method_ref()?);
         Some(MethodRef {
             defining_class: dex.type_descriptor(method.class).into_owned(),
-            name: dex.string(method.name).into_owned(),
+            name: dex.strings().get(method.name).into_owned(),
             proto: dex.proto_descriptor(&dex.proto(method.proto)),
         })
     })
@@ -162,7 +162,7 @@ pub fn instruction_field_ref(m: u32, index: u32) -> Option<FieldRef> {
         let field = dex.field_id(instruction.field_ref()?);
         Some(FieldRef {
             defining_class: dex.type_descriptor(field.class).into_owned(),
-            name: dex.string(field.name).into_owned(),
+            name: dex.strings().get(field.name).into_owned(),
             field_type: dex.type_descriptor(field.type_).into_owned(),
         })
     })

@@ -245,7 +245,7 @@ impl PatchContext<'_> {
                     .filter_map(|string| {
                         self.extensions
                             .providers
-                            .get(dex.string(string).as_ref())
+                            .get(dex.strings().get(string).as_ref())
                             .copied()
                     })
                     .filter(|&provider| provider != index),

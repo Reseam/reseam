@@ -22,7 +22,7 @@ impl PatchContext<'_> {
 
     pub fn find_instructions_by_string(&self, target: &str) -> Result<Vec<InstructionLocation>> {
         self.scan_all("instructions by string", |dex_idx, dex| {
-            let Some(target_idx) = dex.find_string_idx(target) else {
+            let Some(target_idx) = dex.strings().find(target) else {
                 return Ok(Vec::new());
             };
             dex.scan_instructions(&RefQuery::all_of([RefKey::String(target_idx)]), |site| {
@@ -75,7 +75,7 @@ impl PatchContext<'_> {
         self.scan_all("calls matching reference", |dex_idx, dex| {
             let (Ok(owner), Ok(name)) = (
                 resolve(owner, |v| dex.find_type_idx(v)),
-                resolve(name, |v| dex.find_string_idx(v)),
+                resolve(name, |v| dex.strings().find(v)),
             ) else {
                 return Ok(Vec::new());
             };
@@ -144,7 +144,7 @@ impl PatchContext<'_> {
         self.scan_all("field accesses matching reference", |dex_idx, dex| {
             let (Ok(owner), Ok(name), Ok(field_type)) = (
                 resolve(query.owner, |v| dex.find_type_idx(v)),
-                resolve(query.name, |v| dex.find_string_idx(v)),
+                resolve(query.name, |v| dex.strings().find(v)),
                 resolve(query.field_type, |v| dex.find_type_idx(v)),
             ) else {
                 return Ok(Vec::new());

@@ -9,7 +9,7 @@ mod dex_fixture;
 mod manifest;
 #[path = "common/session.rs"]
 mod session;
-use dex_fixture::{container_dex_bytes, minimal_dex_bytes};
+use dex_fixture::{dex_bytes, minimal_dex_bytes, spooled_bytes};
 use manifest::manifest_bytes;
 use reseam_apk::{ApkFile as Apk, ApkWriteOptions as WriteOptions, Compression, ResourceTable};
 use reseam_dex::{DexFile, DexHeader, DexVersion, Loading, ParseOptions};
@@ -17,6 +17,21 @@ use session::*;
 use std::fs::File;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+fn container_dex_bytes(classes: &[&str]) -> Vec<u8> {
+    let members: Vec<_> = classes
+        .iter()
+        .map(|name| {
+            let mut dex = DexFile::new(DexHeader::new(DexVersion::V035));
+            dex.create_class(name, reseam_dex::AccessFlags::PUBLIC, None)
+                .expect("fixture class");
+            dex
+        })
+        .collect();
+    let (spooled, _) = reseam_dex::write_container_spooled(members.iter().map(|dex| (dex, None)))
+        .expect("DEX container fixture");
+    spooled_bytes(&spooled)
+}
 
 #[test]
 fn split_apk_supports_split_resource_tables_and_component_state() -> TestResult {
@@ -122,7 +137,7 @@ fn replacing_format_entries_replaces_their_parsed_state_before_further_edits() -
         table.add_string_resource("greeting", "replacement")?;
         for (name, bytes) in [
             ("AndroidManifest.xml", manifest_bytes("replacement", None)),
-            ("classes.dex", reseam_dex::write(&dex)?),
+            ("classes.dex", dex_bytes(&dex)),
             ("resources.arsc", table.serialize()?),
         ] {
             apk.inject_file(0, name, bytes.clone(), Compression::Stored)?;
@@ -148,8 +163,8 @@ fn replacing_format_entries_replaces_their_parsed_state_before_further_edits() -
                 Some(expected)
             );
             let dex = reopened.dex().dex(0).expect("DEX");
-            assert!(dex.find_string_idx(expected).is_some());
-            assert!(dex.find_string_idx("discarded").is_none());
+            assert!(dex.strings().find(expected).is_some());
+            assert!(dex.strings().find("discarded").is_none());
         }
     }
     Ok(())
@@ -176,7 +191,8 @@ fn deletion_removes_dirty_entries_and_keeps_other_dex_identities_stable() -> Tes
         apk.dex()
             .dex(1)
             .expect("DEX")
-            .find_string_idx("retained")
+            .strings()
+            .find("retained")
             .is_some()
     );
     assert!(apk.delete_file(0, "AndroidManifest.xml").is_err());
@@ -189,7 +205,8 @@ fn deletion_removes_dirty_entries_and_keeps_other_dex_identities_stable() -> Tes
             .dex()
             .dex(0)
             .expect("DEX")
-            .find_string_idx("retained")
+            .strings()
+            .find("retained")
             .is_some()
     );
     Ok(())
@@ -337,11 +354,7 @@ fn dex_containers_preserve_all_members_through_loading_and_editing() -> TestResu
                 .expect("container");
             let members = reseam_dex::parse_container(&edited, options)?;
             assert_eq!(members.len(), 2);
-            assert!(
-                members[1]
-                    .find_string_idx("patched second member")
-                    .is_some()
-            );
+            assert!(members[1].strings().find("patched second member").is_some());
             for name in ["edited", "edited-again"] {
                 let paths = apk.write_to(dir.path().join(name), WriteOptions::default())?;
                 let reopened = Apk::open_split(&paths[0], &paths[1..], options)?;
@@ -349,11 +362,11 @@ fn dex_containers_preserve_all_members_through_loading_and_editing() -> TestResu
                 for (index, expected) in ["LFirst;", "LSecond;"].into_iter().enumerate() {
                     let dex = reopened.dex().dex(index).expect("DEX");
                     assert_eq!(
-                        dex.type_descriptor(dex.class_header(0).class_type),
+                        dex.type_descriptor(dex.classes().header(0).class_type),
                         expected
                     );
                     assert_eq!(
-                        dex.find_string_idx("patched second member").is_some(),
+                        dex.strings().find("patched second member").is_some(),
                         index == 1
                     );
                 }
@@ -375,7 +388,7 @@ fn replacing_and_deleting_dex_containers_keeps_unrelated_slots_stable() -> TestR
     unrelated.create_class("LUnrelated;", reseam_dex::AccessFlags::PUBLIC, None)?;
     let Session { dir, mut apk } = Session::single(&[
         ("classes.dex", &container_dex_bytes(&["LA;", "LB;"])),
-        ("classes2.dex", &reseam_dex::write(&unrelated)?),
+        ("classes2.dex", &dex_bytes(&unrelated)),
     ]);
     for classes in [
         vec!["LSingle;"],
@@ -387,7 +400,7 @@ fn replacing_and_deleting_dex_containers_keeps_unrelated_slots_stable() -> TestR
         assert_eq!(apk.read_entry("classes.dex")?, Some(bytes));
         let original = apk.dex_mut(2).expect("unrelated DEX");
         assert_eq!(
-            original.type_descriptor(original.class_header(0).class_type),
+            original.type_descriptor(original.classes().header(0).class_type),
             "LUnrelated;"
         );
         assert_eq!(
@@ -412,12 +425,15 @@ fn replacing_and_deleting_dex_containers_keeps_unrelated_slots_stable() -> TestR
     let classes: Vec<_> = reopened
         .dex()
         .iter()
-        .map(|d| d.type_descriptor(d.class_header(0).class_type).into_owned())
+        .map(|d| {
+            d.type_descriptor(d.classes().header(0).class_type)
+                .into_owned()
+        })
         .collect();
     assert_eq!(classes, ["LX;", "LY;", "LUnrelated;"]);
     assert_eq!(
         reopened.read_entry("classes2.dex")?,
-        Some(reseam_dex::write(&unrelated)?)
+        Some(dex_bytes(&unrelated))
     );
     apk.delete_file(0, "classes.dex")?;
     for index in [0, 1, 3] {
@@ -429,7 +445,7 @@ fn replacing_and_deleting_dex_containers_keeps_unrelated_slots_stable() -> TestR
     assert_eq!(reopened.dex().len(), 1);
     let dex = reopened.dex().dex(0).expect("unrelated DEX");
     assert_eq!(
-        dex.type_descriptor(dex.class_header(0).class_type),
+        dex.type_descriptor(dex.classes().header(0).class_type),
         "LUnrelated;"
     );
     Ok(())
@@ -489,7 +505,7 @@ fn serialization_failure_preserves_destinations_and_allows_repair() -> TestResul
                 repaired
                     .dex()
                     .iter()
-                    .all(|d| d.find_string_idx("edited").is_some())
+                    .all(|d| d.strings().find("edited").is_some())
             );
         }
     }

@@ -30,10 +30,6 @@ pub struct ClassDef {
 }
 
 impl ClassDef {
-    pub fn set_access_flags(&mut self, flags: AccessFlags) {
-        self.access_flags = flags;
-    }
-
     pub fn definal(&mut self) {
         self.access_flags &= !AccessFlags::FINAL;
         if let Some(data) = self.class_data.as_mut() {
@@ -65,13 +61,6 @@ impl ClassDef {
 
     pub fn add_instance_field(&mut self, field: EncodedField) {
         self.ensure_class_data().instance_fields.push(field);
-    }
-
-    pub fn remove_methods_by<F: FnMut(&EncodedMethod) -> bool>(&mut self, mut predicate: F) {
-        if let Some(data) = self.class_data.as_mut() {
-            data.direct_methods.retain(|m| !predicate(m));
-            data.virtual_methods.retain(|m| !predicate(m));
-        }
     }
 }
 
@@ -105,29 +94,5 @@ impl EncodedMethod {
 
     pub fn code_mut(&mut self) -> Option<&mut CodeItem> {
         self.code.as_mut().map(Arc::make_mut)
-    }
-
-    pub fn return_early(&mut self) {
-        if let Some(code) = self.code_mut() {
-            code.return_early();
-        }
-    }
-
-    pub fn return_early_int(&mut self, value: i32) {
-        if let Some(code) = self.code_mut() {
-            code.return_early_int(value);
-        }
-    }
-
-    pub fn return_early_object(&mut self, value: i32) {
-        if let Some(code) = self.code_mut() {
-            code.return_early_object(value);
-        }
-    }
-
-    pub fn return_early_wide(&mut self, value: i64) {
-        if let Some(code) = self.code_mut() {
-            code.return_early_wide(value);
-        }
     }
 }

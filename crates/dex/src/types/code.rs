@@ -50,10 +50,6 @@ impl CodeItem {
     pub fn instructions(&self) -> &[Instruction] {
         &self.instructions
     }
-    /// Consumes the code item, transferring its instruction storage without copying it.
-    pub fn into_instructions(self) -> Vec<Instruction> {
-        self.instructions
-    }
 
     pub fn registers_size(&self) -> u16 {
         self.registers_size
@@ -153,44 +149,15 @@ impl CodeItem {
         Ok(result)
     }
 
-    /// Replaces the body and declared frame together, dropping old coordinate
-    /// metadata. An invalid frame leaves the previous body unchanged.
-    pub fn replace_body(
-        &mut self,
-        registers_size: u16,
-        outs_size: u16,
-        instructions: Vec<Instruction>,
-    ) -> Result<()> {
-        if self.ins_size > registers_size {
-            return Err(invalid(
-                "code item",
-                "incoming words exceed the register frame",
-            ));
-        }
-        self.set_instructions(instructions);
-        self.registers_size = registers_size;
-        self.outs_size = outs_size;
-        Ok(())
-    }
-
     /// Outgoing argument words the code needs: what the instructions require
     /// after any edits, never less than what the method was compiled with.
     pub fn compute_outs_size(&self) -> u16 {
         self.instructions
             .iter()
-            .map(Instruction::outgoing_arg_count)
+            .map(Instruction::argument_words)
             .max()
             .unwrap_or(0)
             .max(self.outs_size)
-    }
-
-    /// Replaces one instruction and returns the relocated original boundaries, including the end.
-    pub fn replace_instruction(
-        &mut self,
-        index: usize,
-        insn: Instruction,
-    ) -> Result<InstructionMap> {
-        self.replace_instructions(index, &[insn])
     }
 
     /// Replaces one instruction with a nonempty block. Incoming edges enter the
@@ -218,10 +185,6 @@ impl CodeItem {
         self.relocate_entries(entries, Vec::new(), &BTreeMap::new())
     }
 
-    pub fn insert_instruction(&mut self, index: usize, insn: Instruction) -> Result<()> {
-        self.insert_instructions(index, &[insn]).map(drop)
-    }
-
     /// Inserts before `index`. Existing branches continue targeting the original
     /// instruction, skipping inserted code. Returns the relocated original boundaries,
     /// including the end. Failed relocation leaves the code unchanged.
@@ -246,11 +209,6 @@ impl CodeItem {
             inserted
         };
         self.relocate_entries(entries, tail, &BTreeMap::new())
-    }
-
-    /// Removes one instruction and returns the relocated original boundaries, including the end.
-    pub fn remove_instruction(&mut self, index: usize) -> Result<InstructionMap> {
-        self.remove_instructions(index, 1)
     }
 
     /// Removes exactly `count` original instructions, redirecting incoming edges

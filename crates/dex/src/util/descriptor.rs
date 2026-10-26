@@ -73,12 +73,6 @@ pub fn parse_method_descriptor(desc: &str) -> Option<(Vec<&str>, &str)> {
     Some((params, return_type))
 }
 
-/// Generate a shorty descriptor from a method descriptor.
-pub fn shorty_from_descriptor(desc: &str) -> Option<String> {
-    let (params, ret) = parse_method_descriptor(desc)?;
-    Some(shorty_from_parts(&params, ret))
-}
-
 pub(crate) fn shorty_from_parts(params: &[&str], ret: &str) -> String {
     let mut shorty = String::with_capacity(1 + params.len());
     shorty.push(shorty_char(ret));

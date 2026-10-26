@@ -3,25 +3,15 @@
 
 use std::borrow::Cow;
 
+use super::DexFile;
 use super::ref_index::RefIndex;
-use super::{ClassHeader, DexFile};
 use crate::error::invalid_offset;
 use crate::read::encoded_value::read_encoded_array_with_opts;
 use crate::types::FieldIdx;
-use crate::types::TypeIdx;
 use crate::types::class::ClassDef;
 use crate::types::encoded_value::EncodedValue;
 
 impl DexFile {
-    pub fn class_header(&self, class_idx: usize) -> ClassHeader {
-        self.classes.header(class_idx)
-    }
-
-    /// The class if a patch already materialized it.
-    pub fn resident_class(&self, class_idx: usize) -> Option<&ClassDef> {
-        self.classes.resident(class_idx)
-    }
-
     /// A class's static initial values, decoded from the file for classes
     /// that are not resident.
     pub fn class_static_values(
@@ -80,11 +70,6 @@ impl DexFile {
         }
     }
 
-    /// Builds the class-type index up front instead of on the first lookup.
-    pub fn build_lookups(&self) {
-        self.classes.index_of_type(TypeIdx(0));
-    }
-
     pub(crate) fn ref_index(&self) -> crate::error::Result<&RefIndex> {
         if let Some(index) = self.ref_index.get() {
             return Ok(index);
@@ -112,23 +97,5 @@ impl DexFile {
     pub fn class_mut(&mut self, class_idx: usize) -> crate::error::Result<&mut ClassDef> {
         self.touch();
         self.classes.materialize(class_idx, self.parse_options)
-    }
-
-    /// Whether any class is still a file record rather than resident.
-    pub fn is_lazy(&self) -> bool {
-        !self.classes.all_resident()
-    }
-
-    /// Materializes a class for reading. Returns whether it was decoded now.
-    pub fn resolve_class_data(&mut self, class_idx: usize) -> crate::error::Result<bool> {
-        if self.classes.is_resident(class_idx) {
-            return Ok(false);
-        }
-        self.classes.materialize(class_idx, self.parse_options)?;
-        Ok(true)
-    }
-
-    pub fn resolve_all_class_data(&mut self) -> crate::error::Result<()> {
-        self.classes.materialize_all(self.parse_options)
     }
 }

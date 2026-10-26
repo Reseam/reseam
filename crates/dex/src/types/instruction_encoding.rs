@@ -37,10 +37,3 @@ macro_rules! define_encoding {
     };
 }
 instruction_catalogue!(define_encoding);
-
-impl Instruction {
-    /// Argument words passed to invokes and filled-new-array.
-    pub fn outgoing_arg_count(&self) -> u16 {
-        self.argument_words()
-    }
-}

@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::encoding::leb128::{
-    read_sleb128_with_opts, read_uleb128_with_opts, read_uleb128p1_with_opts,
-};
+use crate::encoding::leb128::{read_sleb128, read_uleb128, read_uleb128p1};
 use crate::error::{Result, require_len};
 use crate::types::debug::{DebugBytecode, DebugInfo};
 use crate::types::header::ParseOptions;
@@ -37,20 +35,20 @@ struct DebugCursor<'a> {
 
 impl DebugCursor<'_> {
     fn uleb(&mut self) -> Result<u32> {
-        let (value, size) = read_uleb128_with_opts(self.buf, self.pos, self.opts)?;
+        let (value, size) = read_uleb128(self.buf, self.pos, self.opts)?;
         self.pos += size;
         Ok(value)
     }
 
     fn sleb(&mut self) -> Result<i32> {
-        let (value, size) = read_sleb128_with_opts(self.buf, self.pos, self.opts)?;
+        let (value, size) = read_sleb128(self.buf, self.pos, self.opts)?;
         self.pos += size;
         Ok(value)
     }
 
     fn index(&mut self, pool: Pool) -> Result<Option<u32>> {
         let start = self.pos;
-        let (value, size) = read_uleb128p1_with_opts(self.buf, self.pos, self.opts)?;
+        let (value, size) = read_uleb128p1(self.buf, self.pos, self.opts)?;
         self.pos += size;
         self.indices.push(DebugIndex {
             pool,

@@ -82,7 +82,7 @@ fn switch_edits_relocate_targets_and_keep_payloads_aligned() {
                         .expect("insert");
                 }
                 Edit::Remove(at) => {
-                    code.remove_instruction(at).expect("remove");
+                    code.remove_instructions(at, 1).expect("remove");
                 }
             }
             assert_eq!(payload_offset(&code), offset);
@@ -142,6 +142,6 @@ fn branch_edits_keep_targets_on_surviving_instructions() {
         }
     }
     let mut code = code_item(vec![Goto { offset: 2 }, Nop, Nop, ReturnVoid]);
-    code.remove_instruction(2).expect("remove target");
+    code.remove_instructions(2, 1).expect("remove target");
     assert_eq!(code.instructions(), [Goto { offset: 2 }, Nop, ReturnVoid]);
 }

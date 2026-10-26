@@ -66,21 +66,6 @@ pub fn decode_instructions(
     insns_size: usize,
 ) -> Result<Vec<Instruction>> {
     let mut instructions = Vec::with_capacity(insns_size.min(buf.len().saturating_sub(start) / 2));
-    decode_instructions_into(buf, start, insns_size, &mut instructions)?;
-    Ok(instructions)
-}
-
-/// Decodes instructions into `out`, reusing its existing capacity.
-///
-/// `out` is cleared first. Scanning callers pass the same buffer for every
-/// method so decoding allocates only when a method exceeds all previous sizes.
-pub fn decode_instructions_into(
-    buf: &[u8],
-    start: usize,
-    insns_size: usize,
-    out: &mut Vec<Instruction>,
-) -> Result<()> {
-    out.clear();
     for frame in instruction_stream(buf, start, insns_size)? {
         let frame = frame?;
         let unit_off = frame.offset();
@@ -124,8 +109,8 @@ pub fn decode_instructions_into(
         };
 
         debug_assert_eq!(frame.units, decoded.code_units() as usize);
-        out.push(decoded);
+        instructions.push(decoded);
     }
 
-    Ok(())
+    Ok(instructions)
 }

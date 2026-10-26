@@ -11,7 +11,7 @@ use smallvec::SmallVec;
 mod lookup;
 
 use super::DexBytes;
-use crate::encoding::leb128::{read_uleb128_with_opts, write_uleb128};
+use crate::encoding::leb128::{read_uleb128, write_uleb128};
 use crate::encoding::mutf8::{decode_mutf8_lossy, encode_mutf8, utf16_len, utf16_units};
 use crate::error::{Result, invalid, invalid_mutf8};
 use crate::read::u32_at;
@@ -254,7 +254,7 @@ fn payload_start(item: &[u8]) -> usize {
 }
 
 fn validate_item(buf: &[u8], off: u32, opts: ParseOptions) -> Result<()> {
-    let (declared, leb_size) = read_uleb128_with_opts(buf, off as usize, opts)?;
+    let (declared, leb_size) = read_uleb128(buf, off as usize, opts)?;
     let start = off as usize + leb_size;
     let rest = buf
         .get(start..)

@@ -26,17 +26,4 @@ bitflags::bitflags! {
     }
 }
 
-impl AccessFlags {
-    pub fn is_volatile_field(self) -> bool {
-        self.contains(Self::VOLATILE)
-    }
-    pub fn is_bridge_method(self) -> bool {
-        self.contains(Self::BRIDGE)
-    }
-    pub fn is_transient_field(self) -> bool {
-        self.contains(Self::TRANSIENT)
-    }
-    pub fn is_varargs_method(self) -> bool {
-        self.contains(Self::VARARGS)
-    }
-}
+impl AccessFlags {}

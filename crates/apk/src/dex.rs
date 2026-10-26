@@ -47,7 +47,7 @@ pub(crate) fn parse_entry(
 /// extraction rather than returning a partial container.
 pub fn extract_dex(path: &Path, opts: ParseOptions) -> Result<(MultiDexContainer, Vec<String>)> {
     let archive = reader::open_archive(path)?;
-    let mut container = MultiDexContainer::new();
+    let mut container = MultiDexContainer::default();
     let mut names = Vec::new();
     for (name, dex) in load_dex(&archive, opts)? {
         names.push(name.to_string());

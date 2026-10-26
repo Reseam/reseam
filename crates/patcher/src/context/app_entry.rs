@@ -119,20 +119,20 @@ impl PatchContext<'_> {
         let code = super::code_mut(dex, on_create)?
             .ok_or_else(|| app_entry_error("the Application's onCreate() has no code"))?;
         code.ensure_outs_size(1);
-        code.insert_instruction(
+        code.insert_instructions(
             0,
-            Instruction::InvokeStaticRange {
+            &[Instruction::InvokeStaticRange {
                 method: hook,
                 first_reg: code.registers_size() - code.ins_size(),
                 count: 1,
-            },
+            }],
         )?;
         Ok(())
     }
 
     fn add_on_create(&mut self, application: ClassLocation) -> Result<()> {
         let dex = self.class_dex(application)?;
-        let header = dex.class_header(application.class_idx);
+        let header = dex.classes().header(application.class_idx);
         let class = dex.type_descriptor(header.class_type).into_owned();
         let superclass = header.superclass.map_or_else(
             || APPLICATION.to_owned(),
@@ -207,10 +207,10 @@ fn declared_method(
     name: &str,
     proto: &str,
 ) -> Option<(usize, MethodKind)> {
-    let data = dex.resident_class(class_idx)?.class_data.as_ref()?;
+    let data = dex.classes().resident(class_idx)?.class_data.as_ref()?;
     let matches = |method: &EncodedMethod| {
         let id = dex.method_id(method.method);
-        dex.string(id.name) == name && dex.proto_descriptor(&dex.proto(id.proto)) == proto
+        dex.strings().get(id.name) == name && dex.proto_descriptor(&dex.proto(id.proto)) == proto
     };
     data.direct_methods
         .iter()

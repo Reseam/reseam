@@ -7,6 +7,16 @@ mod rollback;
 use super::*;
 use crate::types::access_flags::AccessFlags;
 
+fn write(dex: &DexFile) -> crate::Result<Vec<u8>> {
+    read(&crate::write_spooled(dex, None)?.0)
+}
+
+fn read(spooled: &crate::Spooled) -> crate::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut spooled.reader(), &mut bytes)?;
+    Ok(bytes)
+}
+
 #[test]
 fn write_orders_superclasses_and_interfaces_across_storage_modes() {
     let mut dex = DexFile::new(DexHeader::new(crate::DexVersion::V035));
@@ -29,12 +39,12 @@ fn write_orders_superclasses_and_interfaces_across_storage_modes() {
     let descriptors = |dex: &DexFile| {
         (0..dex.classes.len())
             .map(|i| {
-                dex.type_descriptor(dex.class_header(i).class_type)
+                dex.type_descriptor(dex.classes().header(i).class_type)
                     .into_owned()
             })
             .collect::<Vec<_>>()
     };
-    let bytes = crate::write(&dex).unwrap();
+    let bytes = write(&dex).unwrap();
     let parsed = crate::parse(&bytes, ParseOptions::default()).unwrap();
     assert_eq!(
         descriptors(&parsed),
@@ -62,14 +72,14 @@ fn write_orders_superclasses_and_interfaces_across_storage_modes() {
             // classes must now move after this newly appended definition.
             dex.create_class("Ljava/lang/Object;", AccessFlags::PUBLIC, None)
                 .unwrap();
-            let written = crate::write(&dex).unwrap();
-            assert_eq!(written, crate::write(&dex).unwrap());
+            let written = write(&dex).unwrap();
+            assert_eq!(written, write(&dex).unwrap());
             let parsed = crate::parse(&written, ParseOptions::default()).unwrap();
             assert_eq!(
                 descriptors(&parsed),
                 ["Ljava/lang/Object;", "LZBase;", "LYInterface;", "LAChild;"]
             );
-            assert_eq!(crate::write(&parsed).unwrap(), written);
+            assert_eq!(write(&parsed).unwrap(), written);
         }
     }
 }
@@ -83,14 +93,14 @@ fn write_rejects_cyclic_and_duplicate_class_definitions() {
         let b = dex.create_class("LB;", AccessFlags::PUBLIC, None).unwrap();
         let a = dex.intern_type("LA;").expect("valid fixture descriptor");
         dex.class_mut(b).unwrap().interfaces.push(a);
-        assert!(crate::write(&dex).is_err());
+        assert!(write(&dex).is_err());
     }
 
     let mut dex = DexFile::new(DexHeader::new(crate::DexVersion::V035));
     for _ in 0..2 {
         dex.create_class("LA;", AccessFlags::PUBLIC, None).unwrap();
     }
-    assert!(crate::write(&dex).is_err());
+    assert!(write(&dex).is_err());
 }
 
 #[test]
@@ -118,7 +128,7 @@ fn write_keeps_hidden_api_flags_with_reordered_classes() {
                 access_flags: AccessFlags::PUBLIC | AccessFlags::STATIC,
             });
         flags.insert(
-            dex.class_header(class).class_type,
+            dex.classes().header(class).class_type,
             ClassHiddenApiFlags {
                 field_flags: [(field, flag)].into_iter().collect(),
                 method_flags: std::collections::BTreeMap::default(),
@@ -126,7 +136,7 @@ fn write_keeps_hidden_api_flags_with_reordered_classes() {
         );
     }
     dex.hidden_api = Some(HiddenApiData::from_flags(flags));
-    let written = crate::write(&dex).unwrap();
+    let written = write(&dex).unwrap();
     let parsed = crate::parse(&written, ParseOptions::default()).unwrap();
     let flags = parsed.hidden_api.as_ref().unwrap();
     for (name, expected) in [
@@ -134,7 +144,7 @@ fn write_keeps_hidden_api_flags_with_reordered_classes() {
         ("LZChild;", HiddenApiFlags::from_bits(0x37)),
     ] {
         let i = parsed.find_class_index(name).unwrap();
-        let ty = parsed.class_header(i).class_type;
+        let ty = parsed.classes().header(i).class_type;
         assert_eq!(
             flags
                 .get(ty)
@@ -147,7 +157,7 @@ fn write_keeps_hidden_api_flags_with_reordered_classes() {
             [expected]
         );
     }
-    let mut deferred = crate::parse(
+    let deferred = crate::parse(
         &written,
         ParseOptions {
             classes: crate::Loading::Deferred,
@@ -155,28 +165,11 @@ fn write_keeps_hidden_api_flags_with_reordered_classes() {
         },
     )
     .expect("deferred classes parse");
-    let child = deferred.find_type_idx("LZChild;").expect("child type");
-    let mut child_flags = deferred
-        .hidden_api()
-        .expect("hidden API")
-        .get(child)
-        .expect("source flags decode")
-        .expect("child flags")
-        .into_owned();
-    child_flags
-        .field_flags
-        .values_mut()
-        .for_each(|flag| *flag = HiddenApiFlags::BLOCKED);
-    deferred
-        .hidden_api_mut()
-        .as_mut()
-        .expect("hidden API")
-        .set(child, child_flags);
-    let output = crate::write(&deferred).expect("source and edited flags serialize");
+    let output = write(&deferred).expect("source flags serialize");
     let reparsed = crate::parse(&output, ParseOptions::default()).expect("flags parse");
     for (name, expected) in [
         ("LABase;", HiddenApiFlags::SDK),
-        ("LZChild;", HiddenApiFlags::BLOCKED),
+        ("LZChild;", HiddenApiFlags::from_bits(0x37)),
     ] {
         let ty = reparsed.find_type_idx(name).expect("class type");
         assert_eq!(
@@ -218,7 +211,7 @@ fn static_values_and_flags_follow_members_through_sorting_and_removal() {
         .extend([(z, EncodedValue::Int(11)), (a, EncodedValue::Int(22))]);
     dex.hidden_api = Some(HiddenApiData::from_flags(
         [(
-            dex.class_header(class).class_type,
+            dex.classes().header(class).class_type,
             ClassHiddenApiFlags {
                 field_flags: [
                     (z, HiddenApiFlags::BLOCKED),
@@ -242,16 +235,17 @@ fn static_values_and_flags_follow_members_through_sorting_and_removal() {
                 .static_fields
                 .retain(|field| field.field != z);
         }
-        let bytes = crate::write(&dex).unwrap();
+        let bytes = write(&dex).unwrap();
         let parsed = crate::parse(&bytes, ParseOptions::default()).unwrap();
         let data = parsed
-            .resident_class(0)
+            .classes()
+            .resident(0)
             .unwrap()
             .class_data
             .as_ref()
             .unwrap();
         for field in &data.static_fields {
-            let name = parsed.string(parsed.field_id(field.field).name);
+            let name = parsed.strings().get(parsed.field_id(field.field).name);
             let (value, flag) = if name == "a" {
                 (22, HiddenApiFlags::from_bits(0x28))
             } else {
@@ -259,7 +253,8 @@ fn static_values_and_flags_follow_members_through_sorting_and_removal() {
             };
             assert_eq!(
                 parsed
-                    .resident_class(0)
+                    .classes()
+                    .resident(0)
                     .unwrap()
                     .static_values
                     .get(&field.field),
@@ -270,7 +265,7 @@ fn static_values_and_flags_follow_members_through_sorting_and_removal() {
                     .hidden_api
                     .as_ref()
                     .unwrap()
-                    .get(parsed.class_header(0).class_type)
+                    .get(parsed.classes().header(0).class_type)
                     .expect("flags decode")
                     .expect("flags exist")
                     .field_flags[&field.field],
@@ -291,7 +286,12 @@ fn container_members_are_finalized_after_layout_and_require_complete_input() {
     second
         .create_class("LSecond;", AccessFlags::PUBLIC, None)
         .unwrap();
-    let bytes = crate::write_container(&[first, second]).unwrap();
+    let bytes = read(
+        &crate::write_container_spooled([(&first, None), (&second, None)])
+            .unwrap()
+            .0,
+    )
+    .unwrap();
     let members = crate::parse_container(&bytes, ParseOptions::default()).unwrap();
     assert_eq!(members.len(), 2);
     assert!(
@@ -300,11 +300,11 @@ fn container_members_are_finalized_after_layout_and_require_complete_input() {
             .all(|dex| dex.header.version == crate::DexVersion::V041)
     );
     assert_eq!(
-        members[0].type_descriptor(members[0].class_header(0).class_type),
+        members[0].type_descriptor(members[0].classes().header(0).class_type),
         "LFirst;"
     );
     assert_eq!(
-        members[1].type_descriptor(members[1].class_header(0).class_type),
+        members[1].type_descriptor(members[1].classes().header(0).class_type),
         "LSecond;"
     );
     let mut damaged = bytes.clone();

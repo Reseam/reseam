@@ -170,7 +170,8 @@ pub fn remove_instructions(m: u32, index: u32, count: u32) -> Result<MethodEdit,
 pub fn return_early(m: u32) {
     with_method_mut(m, |dex, loc| {
         Ok(logged("access method", method_mut(dex, loc))?
-            .map(reseam_apk::reseam_dex::EncodedMethod::return_early))
+            .and_then(reseam_apk::reseam_dex::EncodedMethod::code_mut)
+            .map(CodeItem::return_early))
     });
 }
 
@@ -178,7 +179,8 @@ pub fn return_early(m: u32) {
 pub fn return_early_int(m: u32, value: i32) {
     with_method_mut(m, |dex, loc| {
         Ok(logged("access method", method_mut(dex, loc))?
-            .map(|method| method.return_early_int(value)))
+            .and_then(reseam_apk::reseam_dex::EncodedMethod::code_mut)
+            .map(|code| code.return_early_int(value)))
     });
 }
 
@@ -186,7 +188,8 @@ pub fn return_early_int(m: u32, value: i32) {
 pub fn return_early_object_null(m: u32) {
     with_method_mut(m, |dex, loc| {
         Ok(logged("access method", method_mut(dex, loc))?
-            .map(|method| method.return_early_object(0)))
+            .and_then(reseam_apk::reseam_dex::EncodedMethod::code_mut)
+            .map(|code| code.return_early_object(0)))
     });
 }
 
@@ -194,6 +197,7 @@ pub fn return_early_object_null(m: u32) {
 pub fn return_early_wide(m: u32, value: i64) {
     with_method_mut(m, |dex, loc| {
         Ok(logged("access method", method_mut(dex, loc))?
-            .map(|method| method.return_early_wide(value)))
+            .and_then(reseam_apk::reseam_dex::EncodedMethod::code_mut)
+            .map(|code| code.return_early_wide(value)))
     });
 }

@@ -3,9 +3,8 @@
 
 use crate::error::Result;
 use crate::file::DexFile;
-use crate::types::header::ParseOptions;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MultiDexContainer {
     pub dex_files: Vec<DexFile>,
 }
@@ -33,33 +32,6 @@ pub struct MemoryBreakdown {
 }
 
 impl MultiDexContainer {
-    pub fn new() -> Self {
-        Self {
-            dex_files: Vec::new(),
-        }
-    }
-
-    pub fn parse(buffers: &[&[u8]], opts: ParseOptions) -> Result<Self> {
-        use rayon::prelude::*;
-
-        let results: Result<Vec<_>> = buffers
-            .par_iter()
-            .map(|buf| crate::read::parse::parse(buf, opts))
-            .collect();
-        Ok(Self {
-            dex_files: results?,
-        })
-    }
-
-    pub fn parse_container(buf: &[u8], opts: ParseOptions) -> Result<Self> {
-        let dex_files = crate::read::parse::parse_container(buf, opts)?;
-        Ok(Self { dex_files })
-    }
-
-    pub fn write_container(&self) -> Result<Vec<u8>> {
-        crate::write::write_container(&self.dex_files)
-    }
-
     pub fn memory_breakdown(&self) -> MemoryBreakdown {
         let mut breakdown = MemoryBreakdown::default();
         for dex in &self.dex_files {
@@ -119,21 +91,6 @@ impl MultiDexContainer {
         self.dex_files.get_mut(index)
     }
 
-    pub fn dex_class_resolved(
-        &mut self,
-        index: usize,
-        class_idx: usize,
-    ) -> Result<Option<&DexFile>> {
-        let Some(dex) = self.dex_files.get_mut(index) else {
-            return Ok(None);
-        };
-        if class_idx >= dex.classes.len() {
-            return Ok(None);
-        }
-        dex.resolve_class_data(class_idx)?;
-        Ok(Some(dex))
-    }
-
     pub fn dex_class_resolved_mut(
         &mut self,
         index: usize,
@@ -161,26 +118,12 @@ impl MultiDexContainer {
         self.dex_files.push(dex);
     }
 
-    pub fn extend(&mut self, mut other: Self) {
-        self.dex_files.append(&mut other.dex_files);
-    }
-
-    pub fn remove_dex(&mut self, index: usize) -> DexFile {
-        self.dex_files.remove(index)
-    }
-
     pub fn iter(&self) -> std::slice::Iter<'_, DexFile> {
         self.dex_files.iter()
     }
 
     pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, DexFile> {
         self.dex_files.iter_mut()
-    }
-}
-
-impl Default for MultiDexContainer {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

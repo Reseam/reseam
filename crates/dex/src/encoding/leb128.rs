@@ -4,11 +4,7 @@
 use crate::error::{Result, buffer_exhausted, invalid_leb128};
 use crate::types::header::ParseOptions;
 
-pub fn read_uleb128(buf: &[u8], pos: usize) -> Result<(u32, usize)> {
-    read_uleb128_with_opts(buf, pos, ParseOptions::default())
-}
-
-pub fn read_uleb128_with_opts(buf: &[u8], pos: usize, opts: ParseOptions) -> Result<(u32, usize)> {
+pub fn read_uleb128(buf: &[u8], pos: usize, opts: ParseOptions) -> Result<(u32, usize)> {
     let mut value: u32 = 0;
     for i in 0..5 {
         let at = pos
@@ -28,11 +24,7 @@ pub fn read_uleb128_with_opts(buf: &[u8], pos: usize, opts: ParseOptions) -> Res
     Err(invalid_leb128(pos))
 }
 
-pub fn read_sleb128(buf: &[u8], pos: usize) -> Result<(i32, usize)> {
-    read_sleb128_with_opts(buf, pos, ParseOptions::default())
-}
-
-pub fn read_sleb128_with_opts(buf: &[u8], pos: usize, opts: ParseOptions) -> Result<(i32, usize)> {
+pub fn read_sleb128(buf: &[u8], pos: usize, opts: ParseOptions) -> Result<(i32, usize)> {
     let mut value: u32 = 0;
     for i in 0..5 {
         let at = pos
@@ -57,16 +49,8 @@ pub fn read_sleb128_with_opts(buf: &[u8], pos: usize, opts: ParseOptions) -> Res
     Err(invalid_leb128(pos))
 }
 
-pub fn read_uleb128p1(buf: &[u8], pos: usize) -> Result<(Option<u32>, usize)> {
-    read_uleb128p1_with_opts(buf, pos, ParseOptions::default())
-}
-
-pub fn read_uleb128p1_with_opts(
-    buf: &[u8],
-    pos: usize,
-    opts: ParseOptions,
-) -> Result<(Option<u32>, usize)> {
-    let (raw, size) = read_uleb128_with_opts(buf, pos, opts)?;
+pub fn read_uleb128p1(buf: &[u8], pos: usize, opts: ParseOptions) -> Result<(Option<u32>, usize)> {
+    let (raw, size) = read_uleb128(buf, pos, opts)?;
     if raw == 0 {
         Ok((None, size))
     } else {
@@ -155,15 +139,24 @@ mod tests {
             let value = signed as u32;
             let mut bytes = Vec::new();
             write_uleb128(&mut bytes, value);
-            assert_eq!(read_uleb128(&bytes, 0).unwrap(), (value, bytes.len()));
+            assert_eq!(
+                read_uleb128(&bytes, 0, ParseOptions::default()).unwrap(),
+                (value, bytes.len())
+            );
             bytes.clear();
             write_sleb128(&mut bytes, signed);
-            assert_eq!(read_sleb128(&bytes, 0).unwrap(), (signed, bytes.len()));
+            assert_eq!(
+                read_sleb128(&bytes, 0, ParseOptions::default()).unwrap(),
+                (signed, bytes.len())
+            );
         }
         for value in [None, Some(0), Some(1), Some(u32::MAX - 1)] {
             let mut bytes = Vec::new();
             write_uleb128p1(&mut bytes, value);
-            assert_eq!(read_uleb128p1(&bytes, 0).unwrap(), (value, bytes.len()));
+            assert_eq!(
+                read_uleb128p1(&bytes, 0, ParseOptions::default()).unwrap(),
+                (value, bytes.len())
+            );
         }
         for (bytes, value) in [
             (&[0x80, 0][..], 0),
@@ -171,7 +164,10 @@ mod tests {
             (&[0x81, 0][..], 1),
             (&[0x81, 0x80, 0][..], 1),
         ] {
-            assert_eq!(read_uleb128(bytes, 0).unwrap(), (value, bytes.len()));
+            assert_eq!(
+                read_uleb128(bytes, 0, ParseOptions::default()).unwrap(),
+                (value, bytes.len())
+            );
         }
     }
 }

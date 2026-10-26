@@ -3,24 +3,19 @@
 
 use reseam_journal::Savepoint;
 
+use super::DexFile;
 use super::classes::Undone;
-use super::{DexFile, HiddenApiData};
-use crate::types::header::DexHeader;
 use crate::write::WriteOptions;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(super) enum DexPart {
     Pools,
-    Header,
-    HiddenApi,
     WriteOptions,
 }
 
 #[derive(Debug, Clone)]
 pub(super) enum DexUndo {
     Pools(PoolLens),
-    Header(DexHeader),
-    HiddenApi(Option<HiddenApiData>),
     WriteOptions(WriteOptions),
 }
 
@@ -83,8 +78,6 @@ impl DexFile {
                     self.dirty = lens.dirty;
                     self.type_lookups.clear();
                 }
-                DexUndo::Header(header) => self.header = header,
-                DexUndo::HiddenApi(hidden_api) => self.hidden_api = hidden_api,
                 DexUndo::WriteOptions(options) => self.write_options = options,
             }
         }

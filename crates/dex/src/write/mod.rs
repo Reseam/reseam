@@ -82,15 +82,6 @@ pub(crate) fn is_default_value(v: &EncodedValue) -> bool {
         || matches!(v, EncodedValue::Double(d) if d.to_bits() == 0)
 }
 
-/// Serializes a [`DexFile`] back into canonical DEX bytes.
-///
-/// Unedited classes remain file-backed. Code is remapped and emitted one method
-/// at a time; the complete output is buffered by this convenience API. Use
-/// [`write_spooled`] to stream large output. The source file is not modified.
-pub fn write(dex: &DexFile) -> Result<Vec<u8>> {
-    Ok(write_into(dex, None, Vec::new())?.0)
-}
-
 /// Class `class_idx` serialized as a DEX of its own. Every id pool of a DEX is
 /// sorted, so two definitions of a class written by the same DEX version yield
 /// the same bytes exactly when they are equivalent, whichever files hold them.
@@ -160,14 +151,6 @@ fn validate_index_limits(plan: &plan::WritePlan<'_>) -> Result<()> {
         }
     }
     Ok(())
-}
-
-/// Serializes multiple [`DexFile`]s into a single v41 container buffer.
-///
-/// Each logical DEX file is written sequentially. All offsets are relative
-/// to the start of the physical container.
-pub fn write_container(dex_files: &[DexFile]) -> Result<Vec<u8>> {
-    Ok(write_container_into(dex_files.iter().map(|dex| (dex, None)), Vec::new())?.0)
 }
 
 /// Streams logical DEX members into one v041 container backed by an anonymous

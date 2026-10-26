@@ -12,7 +12,7 @@ use reseam_apk::reseam_dex::{Instruction as DexInsn, MethodIdx};
 #[export]
 pub fn replace_strings(m: u32, old: String, new: String, all: bool) -> u32 {
     with_method_mut(m, |dex, loc| {
-        let Some(old) = dex.find_string_idx(&old) else {
+        let Some(old) = dex.strings().find(&old) else {
             return Ok(None);
         };
         let new = dex.intern_string(&new);

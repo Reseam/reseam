@@ -13,7 +13,7 @@ impl DexFile {
     }
 
     pub fn remove_class(&mut self, type_: TypeIdx) -> Result<Option<ClassDef>> {
-        let Some(pos) = self.class_index_of(type_) else {
+        let Some(pos) = self.classes.index_of_type(type_) else {
             return Ok(None);
         };
         let options = self.parse_options;

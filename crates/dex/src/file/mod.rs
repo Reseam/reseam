@@ -5,7 +5,6 @@ mod class_access;
 mod class_ops;
 mod classes;
 pub mod container;
-mod fingerprint;
 pub(crate) mod hidden_api;
 pub use hidden_api::HiddenApiData;
 mod ids;
@@ -36,7 +35,6 @@ use crate::types::header::{DexHeader, ParseOptions};
 use crate::types::method_handle::{CallSiteItem, MethodHandle};
 use crate::types::{FieldId, MethodId, Prototype, StringIdx};
 
-pub use fingerprint::{Fingerprint, FingerprintHit, TypePattern};
 pub use pattern::{InstructionPattern, OpcodeMatcher};
 pub use scan::{
     InstructionHit, InstructionSite, MemberCounts, MethodHit, MethodSummary, MethodView,
@@ -91,15 +89,6 @@ impl DexFile {
 
     pub fn header(&self) -> &DexHeader {
         &self.header
-    }
-
-    /// Marks the DEX changed before granting mutation.
-    pub fn header_mut(&mut self) -> &mut DexHeader {
-        self.touch();
-        self.journal.record(undo::DexPart::Header, || {
-            undo::DexUndo::Header(self.header.clone())
-        });
-        &mut self.header
     }
 
     pub fn raw_buffer(&self) -> Option<&[u8]> {

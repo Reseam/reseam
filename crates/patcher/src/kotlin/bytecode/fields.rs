@@ -14,7 +14,7 @@ pub fn add_field(c: u32, field: NewField) {
     link_descriptors([field.field_type.as_str()]);
     with_class_mut(c, |dex, loc| {
         let class_desc = dex
-            .type_descriptor(dex.class_header(loc.class_idx).class_type)
+            .type_descriptor(dex.classes().header(loc.class_idx).class_type)
             .into_owned();
         let field_idx = logged(
             "intern field",
@@ -59,7 +59,7 @@ fn set_static_value(
     slot: usize,
     value: EncodedValue,
 ) -> Result<Option<()>, String> {
-    let Some(class) = dex.resident_class(class_idx) else {
+    let Some(class) = dex.classes().resident(class_idx) else {
         return Ok(None);
     };
     let Some(fields) = class.class_data.as_ref().map(|data| &data.static_fields) else {
@@ -75,12 +75,12 @@ fn set_static_value(
 }
 
 pub(super) fn field_named(dex: &DexFile, class_idx: usize, name: &str) -> Option<FieldIdx> {
-    let data = dex.resident_class(class_idx)?.class_data.as_ref()?;
+    let data = dex.classes().resident(class_idx)?.class_data.as_ref()?;
     data.static_fields
         .iter()
         .chain(&data.instance_fields)
         .map(|f| f.field)
-        .find(|&field| dex.string(dex.field_id(field).name) == name)
+        .find(|&field| dex.strings().get(dex.field_id(field).name) == name)
 }
 
 #[export]
@@ -152,12 +152,13 @@ pub fn set_static_field_value(c: u32, field_name: String, value: EncodedVal) {
     link_descriptors(value_types(&value));
     with_class_mut(c, |dex, loc| {
         let Some(slot) = dex
-            .resident_class(loc.class_idx)
+            .classes()
+            .resident(loc.class_idx)
             .and_then(|class| class.class_data.as_ref())
             .and_then(|data| {
                 data.static_fields
                     .iter()
-                    .position(|f| dex.string(dex.field_id(f.field).name) == field_name)
+                    .position(|f| dex.strings().get(dex.field_id(f.field).name) == field_name)
             })
         else {
             return Err(format!("class handle {c} has no static field {field_name}"));
