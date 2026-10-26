@@ -10,6 +10,7 @@ use crate::model::method_handle::{CallSiteItem, MethodHandle, MethodHandleMember
 use crate::model::{
     FieldIdx, MethodHandleIdx, MethodIdx, PerPool, Pool, ProtoIdx, StringIdx, TypeIdx,
 };
+use crate::references::{self, RefSink, ReferenceValidator};
 
 /// Where each source pool index lands in the written pools; `u32::MAX` marks
 /// an entry the output leaves out.
@@ -36,6 +37,17 @@ impl Remap {
                     format!("{pool:?} index {idx} is absent from the output pool"),
                 )
             })
+    }
+
+    /// Fails unless every reference `walk` reports has a place in the output pools.
+    fn check(
+        &self,
+        walk: impl FnOnce(&mut ReferenceValidator<'_>) -> crate::Result<()>,
+    ) -> crate::Result<()> {
+        let covered = |pool, index| self.index(pool, index).map(drop);
+        let mut validator = ReferenceValidator::new(&covered);
+        walk(&mut validator)?;
+        validator.finish()
     }
 
     fn map(&self, pool: Pool, idx: u32) -> u32 {
@@ -75,21 +87,20 @@ impl Remap {
     }
 
     pub(crate) fn remap_code(&self, code: &mut CodeItem) -> crate::error::Result<()> {
-        let mut validator = crate::references::ReferenceValidator::new(|pool, index| {
-            self.index(pool, index).map(|_| ())
-        });
-        for instruction in &code.instructions {
-            crate::references::instruction(&mut validator, instruction);
-        }
-        for handler in &code.catch_handlers {
-            for catch in &handler.typed_catches {
-                crate::references::RefSink::add(&mut validator, Pool::Type, catch.exception_type.0);
+        self.check(|refs| {
+            for instruction in &code.instructions {
+                references::instruction(refs, instruction);
             }
-        }
-        if let Some(debug) = &code.debug_info {
-            crate::references::debug_info(&mut validator, debug.read()?.as_ref());
-        }
-        validator.finish()?;
+            for handler in &code.catch_handlers {
+                for catch in &handler.typed_catches {
+                    refs.add(Pool::Type, catch.exception_type.0);
+                }
+            }
+            if let Some(debug) = &code.debug_info {
+                references::debug_info(refs, debug.read()?.as_ref());
+            }
+            Ok(())
+        })?;
 
         for insn in &mut code.instructions {
             self.remap_instruction(insn);
@@ -106,11 +117,10 @@ impl Remap {
     }
 
     pub(crate) fn remap_debug(&self, debug: &mut DebugInfo) -> crate::Result<()> {
-        let mut validator = crate::references::ReferenceValidator::new(|pool, index| {
-            self.index(pool, index).map(|_| ())
-        });
-        crate::references::debug_info(&mut validator, debug);
-        validator.finish()?;
+        self.check(|refs| {
+            references::debug_info(refs, debug);
+            Ok(())
+        })?;
         for name in &mut debug.parameter_names {
             *name = self.remap_opt_string(*name);
         }
@@ -143,11 +153,10 @@ impl Remap {
         &self,
         dir: &mut AnnotationsDirectory,
     ) -> crate::Result<()> {
-        let mut validator = crate::references::ReferenceValidator::new(|pool, index| {
-            self.index(pool, index).map(|_| ())
-        });
-        crate::references::annotations_dir(&mut validator, dir);
-        validator.finish()?;
+        self.check(|refs| {
+            references::annotations_dir(refs, dir);
+            Ok(())
+        })?;
         for item in &mut dir.class {
             self.remap_annotation_item(item);
         }
@@ -194,11 +203,10 @@ impl Remap {
     }
 
     pub(crate) fn remap_encoded_value(&self, value: &mut EncodedValue) -> crate::Result<()> {
-        let mut validator = crate::references::ReferenceValidator::new(|pool, index| {
-            self.index(pool, index).map(|_| ())
-        });
-        crate::references::encoded_value(&mut validator, value);
-        validator.finish()?;
+        self.check(|refs| {
+            references::encoded_value(refs, value);
+            Ok(())
+        })?;
         self.map_value(value);
         Ok(())
     }
@@ -233,11 +241,10 @@ impl Remap {
     }
 
     pub(crate) fn remap_call_site(&self, cs: &mut CallSiteItem) -> crate::Result<()> {
-        let mut validator = crate::references::ReferenceValidator::new(|pool, index| {
-            self.index(pool, index).map(|_| ())
-        });
-        crate::references::call_site(&mut validator, cs);
-        validator.finish()?;
+        self.check(|refs| {
+            references::call_site(refs, cs);
+            Ok(())
+        })?;
         cs.bootstrap_method = self.remap_method_handle_idx(cs.bootstrap_method);
         cs.method_name = self.remap_string(cs.method_name);
         cs.method_type = self.remap_proto(cs.method_type);

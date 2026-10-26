@@ -8,6 +8,15 @@ use crate::error::{Result, invalid};
 use crate::instruction::Instruction;
 use crate::model::code::CodeItem;
 
+/// The value a body replaced by [`CodeItem::return_early`] returns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EarlyReturn {
+    Void,
+    Int(i32),
+    Null,
+    Wide(i64),
+}
+
 impl CodeItem {
     /// Edits a staged body. Changed instruction widths relocate existing branches
     /// and metadata once; any edit or relocation error leaves this item unchanged.
@@ -125,41 +134,35 @@ impl CodeItem {
         self.outs_size = self.compute_outs_size();
     }
 
-    pub fn return_early(&mut self) {
-        self.set_instructions(vec![Instruction::ReturnVoid]);
-        self.registers_size = self.ins_size;
+    /// Replaces the body with an immediate return of `value`, staged in v0.
+    pub fn return_early(&mut self, value: EarlyReturn) {
+        let (body, words) = match value {
+            EarlyReturn::Void => (vec![Instruction::ReturnVoid], 0),
+            EarlyReturn::Int(value) => (
+                vec![
+                    Instruction::Const { dest: 0, value },
+                    Instruction::Return { src: 0 },
+                ],
+                1,
+            ),
+            EarlyReturn::Null => (
+                vec![
+                    Instruction::Const { dest: 0, value: 0 },
+                    Instruction::ReturnObject { src: 0 },
+                ],
+                1,
+            ),
+            EarlyReturn::Wide(value) => (
+                vec![
+                    Instruction::ConstWide { dest: 0, value },
+                    Instruction::ReturnWide { src: 0 },
+                ],
+                2,
+            ),
+        };
+        self.set_instructions(body);
+        self.registers_size = self.ins_size.max(words);
         self.outs_size = 0;
-        self.debug_info = None;
-    }
-
-    pub fn return_early_int(&mut self, value: i32) {
-        self.set_instructions(vec![
-            Instruction::Const { dest: 0, value },
-            Instruction::Return { src: 0 },
-        ]);
-        self.registers_size = self.ins_size.max(1);
-        self.outs_size = 0;
-        self.debug_info = None;
-    }
-
-    pub fn return_early_object(&mut self, value: i32) {
-        self.set_instructions(vec![
-            Instruction::Const { dest: 0, value },
-            Instruction::ReturnObject { src: 0 },
-        ]);
-        self.registers_size = self.ins_size.max(1);
-        self.outs_size = 0;
-        self.debug_info = None;
-    }
-
-    pub fn return_early_wide(&mut self, value: i64) {
-        self.set_instructions(vec![
-            Instruction::ConstWide { dest: 0, value },
-            Instruction::ReturnWide { src: 0 },
-        ]);
-        self.registers_size = self.ins_size.max(2);
-        self.outs_size = 0;
-        self.debug_info = None;
     }
 
     fn ensure_index(&self, index: usize, bound: usize) -> Result<()> {

@@ -1,86 +1,59 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use fixedbitset::FixedBitSet;
+
 use super::flow::ControlFlow;
 use crate::model::code::CodeItem;
 
-enum LiveChange {
-    Read,
-    Write,
-}
-
+/// The lowest register no live value occupies before instruction `at_index`,
+/// other than those in `exclude`.
 pub fn find_free_register(code: &CodeItem, at_index: usize, exclude: &[u16]) -> Option<u16> {
-    let live = live_registers(code, at_index);
-    let excluded = BitSet::from_slice(usize::from(code.registers_size), exclude);
-
-    (0..code.registers_size)
-        .find(|&reg| !live.contains(usize::from(reg)) && !excluded.contains(usize::from(reg)))
+    free_registers(code, at_index, exclude).next()
 }
 
+/// The `count` lowest free registers before instruction `at_index`.
 pub fn find_free_registers(
     code: &CodeItem,
     at_index: usize,
     count: usize,
     exclude: &[u16],
 ) -> Option<Vec<u16>> {
-    if count == 0 {
-        return Some(Vec::new());
-    }
-
-    let live = live_registers(code, at_index);
-    let excluded = BitSet::from_slice(usize::from(code.registers_size), exclude);
-    let mut free = Vec::with_capacity(count);
-
-    for reg in 0..code.registers_size {
-        if live.contains(usize::from(reg)) || excluded.contains(usize::from(reg)) {
-            continue;
-        }
-        free.push(reg);
-        if free.len() == count {
-            return Some(free);
-        }
-    }
-
-    None
+    let free: Vec<u16> = free_registers(code, at_index, exclude)
+        .take(count)
+        .collect();
+    (free.len() == count).then_some(free)
 }
 
+/// The lowest run of `count` consecutive free registers before instruction `at_index`.
 pub fn find_contiguous_free_registers(
     code: &CodeItem,
     at_index: usize,
     count: usize,
     exclude: &[u16],
 ) -> Option<Vec<u16>> {
-    if count == 0 {
-        return Some(Vec::new());
+    let mut run: Vec<u16> = Vec::with_capacity(count);
+    for register in free_registers(code, at_index, exclude) {
+        if run.len() == count {
+            break;
+        }
+        if run.last().is_some_and(|&last| last + 1 != register) {
+            run.clear();
+        }
+        run.push(register);
     }
+    (run.len() == count).then_some(run)
+}
 
-    let live = live_registers(code, at_index);
-    let excluded = BitSet::from_slice(usize::from(code.registers_size), exclude);
-    let mut run_start = None;
-    let mut run_len = 0usize;
-
-    for reg in 0..code.registers_size {
-        if live.contains(usize::from(reg)) || excluded.contains(usize::from(reg)) {
-            run_start = None;
-            run_len = 0;
-            continue;
-        }
-
-        let expected = run_start.unwrap_or(reg) + run_len as u16;
-        if run_start.is_none() || reg != expected {
-            run_start = Some(reg);
-            run_len = 1;
-        } else {
-            run_len += 1;
-        }
-
-        if run_len == count {
-            let start = run_start?;
-            return Some((start..start + count as u16).collect());
-        }
-    }
-
-    None
+fn free_registers<'a>(
+    code: &CodeItem,
+    at_index: usize,
+    exclude: &'a [u16],
+) -> impl Iterator<Item = u16> + 'a {
+    let liveness = RegisterLiveness::new(code);
+    (0..code.registers_size).filter(move |register| {
+        !liveness.is_live(at_index, *register) && !exclude.contains(register)
+    })
 }
 
 /// The instructions whose write of `register` reaches the start of the one at
@@ -102,10 +75,10 @@ pub fn reaching_definitions(
         return None;
     }
     let graph = ControlFlow::new(code)?;
-    let mut reachable = vec![false; count];
+    let mut reachable = FixedBitSet::with_capacity(count);
     let mut pending = vec![0];
     while let Some(current) = pending.pop() {
-        if std::mem::replace(&mut reachable[current], true) {
+        if reachable.put(current) {
             continue;
         }
         pending.extend(
@@ -117,18 +90,18 @@ pub fn reaching_definitions(
         );
     }
 
-    let mut visited = vec![false; count];
-    let mut definitions = BitSet::new(count);
+    let mut visited = FixedBitSet::with_capacity(count);
+    let mut definitions = FixedBitSet::with_capacity(count);
     let mut entry = false;
     pending.push(index);
     while let Some(current) = pending.pop() {
-        if !reachable[current] || std::mem::replace(&mut visited[current], true) {
+        if !reachable.contains(current) || visited.put(current) {
             continue;
         }
         entry |= current == 0;
         for &previous in graph.predecessors(current) {
             let previous = previous as usize;
-            if !reachable[previous] {
+            if !reachable.contains(previous) {
                 continue;
             }
             // Exceptions observe the input even if the normal edge writes a value.
@@ -147,131 +120,69 @@ pub fn reaching_definitions(
             }
         }
     }
-    Some((
-        (0..count).filter(|&i| definitions.contains(i)).collect(),
-        entry,
-    ))
+    Some((definitions.ones().collect(), entry))
 }
 
 /// Register-word liveness at instruction boundaries, including exception edges.
 /// Unknown instructions or malformed control flow conservatively keep every register live.
 pub struct RegisterLiveness {
-    before: Vec<u64>,
-    words: usize,
-    register_count: u16,
+    before: Vec<FixedBitSet>,
 }
 
 impl RegisterLiveness {
     pub fn new(code: &CodeItem) -> Self {
-        let words = usize::from(code.registers_size).div_ceil(64);
-        let before = Self::analyze(code, words)
-            .unwrap_or_else(|| vec![u64::MAX; code.instructions.len() * words]);
-        Self {
-            before,
-            words,
-            register_count: code.registers_size,
-        }
+        let registers = usize::from(code.registers_size);
+        let before = Self::analyze(code).unwrap_or_else(|| {
+            let mut all = FixedBitSet::with_capacity(registers);
+            all.insert_range(..);
+            vec![all; code.instructions.len()]
+        });
+        Self { before }
     }
 
     pub fn is_live(&self, index: usize, register: u16) -> bool {
-        register < self.register_count
-            && self
-                .at(index)
-                .is_some_and(|live| live[usize::from(register) / 64] & 1 << (register % 64) != 0)
-    }
-
-    fn at(&self, index: usize) -> Option<&[u64]> {
         self.before
-            .get(index * self.words..(index + 1) * self.words)
+            .get(index)
+            .is_some_and(|live| live.contains(usize::from(register)))
     }
 
-    fn analyze(code: &CodeItem, words: usize) -> Option<Vec<u64>> {
+    fn analyze(code: &CodeItem) -> Option<Vec<FixedBitSet>> {
         let graph = ControlFlow::new(code)?;
         let count = code.instructions.len();
-        let mut before = vec![0u64; count * words];
-        let mut live = vec![0u64; words];
+        let registers = usize::from(code.registers_size);
+        let mut before = vec![FixedBitSet::with_capacity(registers); count];
+        let mut live = FixedBitSet::with_capacity(registers);
         let mut pending: std::collections::VecDeque<usize> = (0..count).rev().collect();
-        let mut queued = vec![true; count];
-        let set = |live: &mut [u64], reg: u16, change: LiveChange| {
-            let (word, bit) = (usize::from(reg) / 64, 1u64 << (reg % 64));
-            if let Some(word) = live.get_mut(word) {
-                *word = match change {
-                    LiveChange::Read => *word | bit,
-                    LiveChange::Write => *word & !bit,
-                };
-            }
-        };
-        let union = |live: &mut [u64], before: &[u64], index: usize| {
-            for (word, other) in live.iter_mut().zip(&before[index * words..]) {
-                *word |= other;
+        let mut queued = FixedBitSet::with_capacity(count);
+        queued.insert_range(..);
+        let mark = |live: &mut FixedBitSet, register: u16, value: bool| {
+            if usize::from(register) < registers {
+                live.set(usize::from(register), value);
             }
         };
         while let Some(index) = pending.pop_front() {
-            queued[index] = false;
-            live.fill(0);
+            queued.set(index, false);
+            live.clear();
             for &next in graph.successors(index) {
-                union(&mut live, &before, next as usize);
+                live.union_with(&before[next as usize]);
             }
             let insn = &code.instructions[index];
-            insn.visit_written_registers(|reg| set(&mut live, reg, LiveChange::Write));
+            insn.visit_written_registers(|reg| mark(&mut live, reg, false));
             // An instruction can throw before writing its result.
             for &handler in graph.handlers(index) {
-                union(&mut live, &before, handler as usize);
+                live.union_with(&before[handler as usize]);
             }
-            insn.visit_read_registers(|reg| set(&mut live, reg, LiveChange::Read));
-            let slot = &mut before[index * words..(index + 1) * words];
-            if slot != live.as_slice() {
-                slot.copy_from_slice(&live);
+            insn.visit_read_registers(|reg| mark(&mut live, reg, true));
+            if before[index] != live {
+                before[index].clone_from(&live);
                 for &previous in graph.predecessors(index) {
-                    if !std::mem::replace(&mut queued[previous as usize], true) {
+                    if !queued.put(previous as usize) {
                         pending.push_back(previous as usize);
                     }
                 }
             }
         }
         Some(before)
-    }
-}
-
-fn live_registers(code: &CodeItem, at_index: usize) -> BitSet {
-    let liveness = RegisterLiveness::new(code);
-    BitSet {
-        words: liveness
-            .at(at_index)
-            .map_or_else(|| vec![0; liveness.words], <[u64]>::to_vec),
-    }
-}
-
-#[derive(Clone, PartialEq, Eq)]
-struct BitSet {
-    words: Vec<u64>,
-}
-
-impl BitSet {
-    fn new(capacity: usize) -> Self {
-        Self {
-            words: vec![0; capacity.div_ceil(64)],
-        }
-    }
-
-    fn from_slice(capacity: usize, members: &[u16]) -> Self {
-        let mut set = Self::new(capacity);
-        for &member in members {
-            set.insert(usize::from(member));
-        }
-        set
-    }
-
-    fn insert(&mut self, member: usize) {
-        if let Some(word) = self.words.get_mut(member / 64) {
-            *word |= 1 << (member % 64);
-        }
-    }
-
-    fn contains(&self, member: usize) -> bool {
-        self.words
-            .get(member / 64)
-            .is_some_and(|word| word & (1 << (member % 64)) != 0)
     }
 }
 

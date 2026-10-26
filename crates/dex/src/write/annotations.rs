@@ -8,6 +8,10 @@ use super::plan::WritePlan;
 use super::sink::DexSink;
 use crate::encoding::leb128::write_uleb128;
 use crate::error::Result;
+use crate::model::map::{
+    TYPE_ANNOTATION_ITEM, TYPE_ANNOTATION_SET_ITEM, TYPE_ANNOTATION_SET_REF_LIST,
+    TYPE_ANNOTATIONS_DIRECTORY_ITEM,
+};
 
 struct PendingClassAnnData {
     class_ann_set: Option<usize>,
@@ -78,13 +82,7 @@ pub(crate) fn write_annotations<S: DexSink>(
         }
     }
 
-    if items.len() > 0 {
-        w.map_entries.push(crate::model::map::MapItem {
-            type_code: crate::model::map::TYPE_ANNOTATION_ITEM,
-            size: items.len() as u32,
-            offset: ann_items_start,
-        });
-    }
+    w.map_section(TYPE_ANNOTATION_ITEM, ann_items_start, items.len() as u32);
 
     let annotation_set_offsets = write_sets(w, &sets)?;
 
@@ -101,11 +99,11 @@ pub(crate) fn write_annotations<S: DexSink>(
             }
             annotation_ref_list_offsets.push(ref_list_off);
         }
-        w.map_entries.push(crate::model::map::MapItem {
-            type_code: crate::model::map::TYPE_ANNOTATION_SET_REF_LIST,
-            size: annotation_ref_lists.len() as u32,
-            offset: annotation_set_ref_first_off,
-        });
+        w.map_section(
+            TYPE_ANNOTATION_SET_REF_LIST,
+            annotation_set_ref_first_off,
+            annotation_ref_lists.len() as u32,
+        );
     }
 
     Ok(write_directories(
@@ -131,11 +129,11 @@ fn write_sets<S: DexSink>(w: &mut DexWriter<S>, sets: &ByteInterner) -> Result<V
             }
             annotation_set_offsets.push(set_off);
         }
-        w.map_entries.push(crate::model::map::MapItem {
-            type_code: crate::model::map::TYPE_ANNOTATION_SET_ITEM,
-            size: sets.len() as u32,
-            offset: annotation_set_first_off,
-        });
+        w.map_section(
+            TYPE_ANNOTATION_SET_ITEM,
+            annotation_set_first_off,
+            sets.len() as u32,
+        );
     }
 
     Ok(annotation_set_offsets)
@@ -178,11 +176,11 @@ fn write_directories<S: DexSink>(
                 class_ann_datas.push(0);
             }
         }
-        w.map_entries.push(crate::model::map::MapItem {
-            type_code: crate::model::map::TYPE_ANNOTATIONS_DIRECTORY_ITEM,
-            size: annotation_dir_count,
-            offset: annotation_dir_first_off,
-        });
+        w.map_section(
+            TYPE_ANNOTATIONS_DIRECTORY_ITEM,
+            annotation_dir_first_off,
+            annotation_dir_count,
+        );
     } else {
         class_ann_datas.resize(pending_class_ann_datas.len(), 0);
     }

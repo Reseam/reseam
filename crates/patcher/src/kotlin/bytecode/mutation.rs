@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use boltffi::export;
 use reseam_apk::reseam_dex::InstructionExpansion;
-use reseam_apk::reseam_dex::{AccessFlags, CodeItem, Instruction as DexInsn};
+use reseam_apk::reseam_dex::{AccessFlags, CodeItem, EarlyReturn, Instruction as DexInsn};
 
 use crate::kotlin::convert::kotlin_to_dex;
 use crate::kotlin::handles::{code_mut, method_mut, with_method_mut};
@@ -166,38 +166,30 @@ pub fn remove_instructions(m: u32, index: u32, count: u32) -> Result<MethodEdit,
     result.ok_or_else(|| format!("method handle {m} could not be edited"))
 }
 
-#[export]
-pub fn return_early(m: u32) {
+fn return_early_with(m: u32, value: EarlyReturn) {
     with_method_mut(m, |dex, loc| {
         Ok(logged("access method", method_mut(dex, loc))?
             .and_then(reseam_apk::reseam_dex::EncodedMethod::code_mut)
-            .map(CodeItem::return_early))
+            .map(|code| code.return_early(value)))
     });
+}
+
+#[export]
+pub fn return_early(m: u32) {
+    return_early_with(m, EarlyReturn::Void);
 }
 
 #[export]
 pub fn return_early_int(m: u32, value: i32) {
-    with_method_mut(m, |dex, loc| {
-        Ok(logged("access method", method_mut(dex, loc))?
-            .and_then(reseam_apk::reseam_dex::EncodedMethod::code_mut)
-            .map(|code| code.return_early_int(value)))
-    });
+    return_early_with(m, EarlyReturn::Int(value));
 }
 
 #[export]
 pub fn return_early_object_null(m: u32) {
-    with_method_mut(m, |dex, loc| {
-        Ok(logged("access method", method_mut(dex, loc))?
-            .and_then(reseam_apk::reseam_dex::EncodedMethod::code_mut)
-            .map(|code| code.return_early_object(0)))
-    });
+    return_early_with(m, EarlyReturn::Null);
 }
 
 #[export]
 pub fn return_early_wide(m: u32, value: i64) {
-    with_method_mut(m, |dex, loc| {
-        Ok(logged("access method", method_mut(dex, loc))?
-            .and_then(reseam_apk::reseam_dex::EncodedMethod::code_mut)
-            .map(|code| code.return_early_wide(value)))
-    });
+    return_early_with(m, EarlyReturn::Wide(value));
 }

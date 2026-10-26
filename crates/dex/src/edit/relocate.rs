@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 
 use crate::error::{Result, invalid};
 use crate::instruction::Instruction;
-use crate::instruction::branch::is_payload;
+use crate::instruction::branch::Addresses;
 use crate::model::code::CodeItem;
 use crate::model::debug::{DebugBytecode, DebugInfo};
 
@@ -103,7 +103,9 @@ impl CodeItem {
     }
 
     pub(super) fn has_payload_from(&self, index: usize) -> bool {
-        self.instructions[index..].iter().any(is_payload)
+        self.instructions[index..]
+            .iter()
+            .any(Instruction::is_payload)
     }
 
     /// Replaces each instruction with an expansion and returns the new index of
@@ -136,7 +138,7 @@ impl CodeItem {
                 "prefix count does not match code",
             ));
         }
-        let original = offsets(&self.instructions);
+        let original = Addresses::of(&self.instructions);
         let expansions = std::mem::take(&mut self.instructions)
             .into_iter()
             .zip(prefixes)
@@ -163,7 +165,12 @@ impl CodeItem {
                 "expansion count does not match code",
             ));
         }
-        self.relocate_with_offsets(expansions, tail, targets, &offsets(&self.instructions))
+        self.relocate_with_offsets(
+            expansions,
+            tail,
+            targets,
+            &Addresses::of(&self.instructions),
+        )
     }
 
     fn relocate_with_offsets(
@@ -171,7 +178,7 @@ impl CodeItem {
         mut expansions: Vec<RewriteEntry>,
         tail: Vec<Instruction>,
         targets: &BTreeMap<usize, BranchDestination>,
-        original: &[u32],
+        original: &Addresses,
     ) -> Result<InstructionMap> {
         let branch_targets = branch_destinations(&expansions, targets, original)?;
         let mut long_condition = vec![false; expansions.len()];
@@ -245,7 +252,11 @@ impl CodeItem {
     }
 }
 
-fn relocate_debug_address(original: &[u32], layout: &RewriteLayout, address: u32) -> Result<u32> {
+fn relocate_debug_address(
+    original: &Addresses,
+    layout: &RewriteLayout,
+    address: u32,
+) -> Result<u32> {
     let index = original.partition_point(|&boundary| boundary <= address) - 1;
     let old_start = original[index];
     let new_start = if address == old_start {
@@ -292,17 +303,6 @@ fn relocate_debug(debug: &DebugInfo, relocate: &impl Fn(u32) -> Result<u32>) -> 
         );
     }
     Ok(debug)
-}
-
-fn offsets(instructions: &[Instruction]) -> Vec<u32> {
-    let mut offsets = Vec::with_capacity(instructions.len() + 1);
-    let mut address = 0;
-    for insn in instructions {
-        offsets.push(address);
-        address += insn.code_units();
-    }
-    offsets.push(address);
-    offsets
 }
 
 fn units(instructions: &[Instruction]) -> u32 {

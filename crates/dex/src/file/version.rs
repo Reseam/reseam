@@ -3,6 +3,7 @@
 
 use super::DexFile;
 use crate::instruction::Instruction;
+use crate::instruction::opcodes::{CONST_METHOD_TYPE, INVOKE_POLYMORPHIC};
 use crate::model::header::DexVersion;
 
 impl DexFile {
@@ -40,14 +41,9 @@ impl DexFile {
     }
 }
 
+/// The opcodes from `invoke-polymorphic` on came with DEX 038.
 fn uses_v038_instruction(instruction: &Instruction) -> bool {
-    matches!(
-        instruction,
-        Instruction::InvokePolymorphic { .. }
-            | Instruction::InvokePolymorphicRange { .. }
-            | Instruction::InvokeCustom { .. }
-            | Instruction::InvokeCustomRange { .. }
-            | Instruction::ConstMethodHandle { .. }
-            | Instruction::ConstMethodType { .. }
-    )
+    instruction
+        .opcode()
+        .is_some_and(|opcode| (INVOKE_POLYMORPHIC..=CONST_METHOD_TYPE).contains(&opcode))
 }

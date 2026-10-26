@@ -8,7 +8,7 @@ use super::sink::DexSink;
 use crate::error::Result;
 use crate::model::Pool;
 use crate::model::encoded_value::EncodedValue;
-use crate::model::map::{MapItem, TYPE_ENCODED_ARRAY_ITEM};
+use crate::model::map::TYPE_ENCODED_ARRAY_ITEM;
 
 pub(crate) fn write_encoded_arrays<S: DexSink>(
     w: &mut DexWriter<S>,
@@ -53,13 +53,11 @@ pub(crate) fn write_encoded_arrays<S: DexSink>(
         encoded_array_count += 1;
     }
 
-    if encoded_array_count > 0 {
-        w.map_entries.push(MapItem {
-            type_code: TYPE_ENCODED_ARRAY_ITEM,
-            size: encoded_array_count,
-            offset: encoded_arrays_start,
-        });
-    }
+    w.map_section(
+        TYPE_ENCODED_ARRAY_ITEM,
+        encoded_arrays_start,
+        encoded_array_count,
+    );
 
     Ok((static_values_offsets, call_site_data_offsets))
 }

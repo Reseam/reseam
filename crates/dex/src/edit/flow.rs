@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use crate::instruction::Instruction;
+use crate::instruction::branch::Addresses;
 use crate::model::code::CodeItem;
 
 struct Edges {
@@ -23,95 +25,23 @@ pub(crate) struct ControlFlow {
 
 impl ControlFlow {
     pub fn new(code: &CodeItem) -> Option<Self> {
-        use crate::instruction::Instruction::{
-            FillArrayDataPayload, Goto, Goto16, Goto32, IfEq, IfEqz, IfGe, IfGez, IfGt, IfGtz,
-            IfLe, IfLez, IfLt, IfLtz, IfNe, IfNez, PackedSwitch, PackedSwitchPayload, Raw, Return,
-            ReturnObject, ReturnVoid, ReturnWide, SparseSwitch, SparseSwitchPayload, Throw,
-        };
         let count = code.instructions.len();
-        let offsets: Vec<u32> = code
-            .instructions
-            .iter()
-            .scan(0u32, |offset, insn| {
-                let current = *offset;
-                *offset += insn.code_units();
-                Some(current)
-            })
-            .collect();
-        let target = |index: usize, delta: i32| -> Option<u32> {
-            let address = i64::from(offsets[index]) + i64::from(delta);
-            offsets
-                .binary_search(&u32::try_from(address).ok()?)
-                .ok()
-                .map(|i| i as u32)
-        };
+        let addresses = Addresses::of(&code.instructions);
         let mut successors = Edges {
             start: Vec::with_capacity(count + 1),
             targets: Vec::with_capacity(count + count / 4),
         };
         successors.start.push(0);
-        for (index, insn) in code.instructions.iter().enumerate() {
-            let next = &mut successors.targets;
-            match insn {
-                Raw { .. } => return None,
-                ReturnVoid
-                | Return { .. }
-                | ReturnWide { .. }
-                | ReturnObject { .. }
-                | Throw { .. }
-                | PackedSwitchPayload(_)
-                | SparseSwitchPayload(_)
-                | FillArrayDataPayload(_) => {}
-                Goto { offset } => next.push(target(index, i32::from(*offset))?),
-                Goto16 { offset } => next.push(target(index, i32::from(*offset))?),
-                Goto32 { offset } => next.push(target(index, *offset)?),
-                _ => {
-                    if index + 1 < count {
-                        next.push(index as u32 + 1);
-                    }
-                    match insn {
-                        IfEq { offset, .. }
-                        | IfNe { offset, .. }
-                        | IfLt { offset, .. }
-                        | IfGe { offset, .. }
-                        | IfGt { offset, .. }
-                        | IfLe { offset, .. }
-                        | IfEqz { offset, .. }
-                        | IfNez { offset, .. }
-                        | IfLtz { offset, .. }
-                        | IfGez { offset, .. }
-                        | IfGtz { offset, .. }
-                        | IfLez { offset, .. } => {
-                            next.push(target(index, i32::from(*offset))?);
-                        }
-                        PackedSwitch { payload_offset, .. } => {
-                            let PackedSwitchPayload(payload) =
-                                &code.instructions[target(index, *payload_offset)? as usize]
-                            else {
-                                return None;
-                            };
-                            for offset in &payload.targets {
-                                next.push(target(index, *offset)?);
-                            }
-                        }
-                        SparseSwitch { payload_offset, .. } => {
-                            let SparseSwitchPayload(payload) =
-                                &code.instructions[target(index, *payload_offset)? as usize]
-                            else {
-                                return None;
-                            };
-                            for (_, offset) in &payload.keys_and_targets {
-                                next.push(target(index, *offset)?);
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            successors.start.push(next.len() as u32);
+        for index in 0..count {
+            normal_successors(
+                &code.instructions,
+                &addresses,
+                index,
+                &mut successors.targets,
+            )?;
+            successors.start.push(successors.targets.len() as u32);
         }
-
-        let (handler_of, handler_lists) = Self::exception_edges(code, &offsets)?;
+        let (handler_of, handler_lists) = Self::exception_edges(code, &addresses)?;
         let predecessors = Self::reverse_edges(&successors, &handler_of, &handler_lists);
         Some(Self {
             successors,
@@ -148,8 +78,12 @@ impl ControlFlow {
         Edges { start, targets }
     }
 
-    fn exception_edges(code: &CodeItem, offsets: &[u32]) -> Option<(Vec<u32>, Vec<Vec<u32>>)> {
+    fn exception_edges(
+        code: &CodeItem,
+        addresses: &Addresses,
+    ) -> Option<(Vec<u32>, Vec<Vec<u32>>)> {
         let count = code.instructions.len();
+        let starts = &addresses[..count];
         let mut handler_of = vec![u32::MAX; count];
         let mut handler_lists = Vec::with_capacity(code.tries.len());
         for protected in &code.tries {
@@ -162,10 +96,15 @@ impl ControlFlow {
                 .iter()
                 .map(|catch| catch.addr)
                 .chain(handler.catch_all_addr)
-                .map(|addr| offsets.binary_search(&addr).ok().map(|i| i as u32))
+                .map(|addr| {
+                    addresses
+                        .index_of(addr)
+                        .filter(|&i| i < count)
+                        .map(|i| i as u32)
+                })
                 .collect::<Option<_>>()?;
-            let first = offsets.partition_point(|&offset| offset < protected.start_addr);
-            let last = offsets.partition_point(|&offset| offset < end);
+            let first = starts.partition_point(|&offset| offset < protected.start_addr);
+            let last = starts.partition_point(|&offset| offset < end);
             handler_of[first..last].fill(handler_lists.len() as u32);
             handler_lists.push(targets);
         }
@@ -187,4 +126,37 @@ impl ControlFlow {
     pub fn predecessors(&self, index: usize) -> &[u32] {
         self.predecessors.of(index)
     }
+}
+
+/// Where control goes after instruction `index` completes normally; `None`
+/// when that cannot be followed: an unknown instruction, or a branch that does
+/// not land on an instruction.
+fn normal_successors(
+    instructions: &[Instruction],
+    addresses: &Addresses,
+    index: usize,
+    out: &mut Vec<u32>,
+) -> Option<()> {
+    let instruction = &instructions[index];
+    if matches!(instruction, Instruction::Raw { .. }) {
+        return None;
+    }
+    let target = |delta| {
+        addresses
+            .target(index, delta)
+            .filter(|&target| target < instructions.len())
+    };
+    if instruction.falls_through() && index + 1 < instructions.len() {
+        out.push(index as u32 + 1);
+    }
+    if let Some(delta) = instruction.branch_offset() {
+        out.push(target(delta)? as u32);
+    }
+    if instruction.is_switch() {
+        let payload = &instructions[target(instruction.payload_offset()?)?];
+        for delta in payload.switch_targets()? {
+            out.push(target(delta)? as u32);
+        }
+    }
+    Some(())
 }

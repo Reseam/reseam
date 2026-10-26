@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use boltffi::export;
-use dex::{BranchDestination, branch_offset as native_branch_offset};
+use dex::BranchDestination;
 use reseam_apk::reseam_dex::{self as dex, CodeItem, DexFile};
 
 use crate::kotlin::convert::{dex_to_kotlin, kotlin_to_dex};
@@ -89,7 +89,7 @@ pub(super) fn assemble(
             .expect("lowering preserves each original instruction");
         let placeholder = branch_placeholder(primary);
         let primary = kotlin_to_dex(placeholder.as_ref().unwrap_or(primary), dex, dex_index)?;
-        branches.push(authored_branch.or_else(|| native_branch_offset(&primary)));
+        branches.push(authored_branch.or_else(|| primary.branch_offset()));
         address = address
             .checked_add(primary.code_units())
             .ok_or_else(|| invalid("code unit count exceeds 32 bits"))?;
@@ -154,7 +154,7 @@ impl Assembly {
             for (offset, instruction) in lowered.into_iter().enumerate() {
                 let native = &self.code.instructions()[self.boundaries[index] + offset];
                 // Payload identifiers span two bytes; data references must retain relocated offsets.
-                if native_branch_offset(native).is_none()
+                if native.branch_offset().is_none()
                     && !matches!(
                         native,
                         dex::Instruction::FillArrayData { .. }

@@ -7,7 +7,9 @@ use super::sink::DexSink;
 use super::{annotations, class_data, code, encoded_arrays, finalize, hidden_api, type_lists};
 use crate::error::Result;
 use crate::model::Pool;
-use crate::model::map::{MapItem, TYPE_HEADER_ITEM, TYPE_MAP_LIST, TYPE_STRING_DATA_ITEM};
+use crate::model::map::{
+    TYPE_HEADER_ITEM, TYPE_HIDDENAPI_CLASS_DATA_ITEM, TYPE_MAP_LIST, TYPE_STRING_DATA_ITEM,
+};
 
 impl<S: DexSink> DexWriter<S> {
     pub(crate) fn write_dex(
@@ -24,11 +26,7 @@ impl<S: DexSink> DexWriter<S> {
         let header_size = version.header_size() as usize;
         self.write_zeros(header_size);
         self.map_entries.clear();
-        self.map_entries.push(MapItem {
-            type_code: TYPE_HEADER_ITEM,
-            size: 1,
-            offset: header_off,
-        });
+        self.map_section(TYPE_HEADER_ITEM, header_off, 1);
 
         let ids = self.write_ids(plan)?;
         let data_off = self.pos();
@@ -50,13 +48,11 @@ impl<S: DexSink> DexWriter<S> {
             self.write(&plan.string_item(i));
         }
         dex.release_pages();
-        if plan.count(Pool::String) > 0 {
-            self.map_entries.push(MapItem {
-                type_code: TYPE_STRING_DATA_ITEM,
-                size: plan.count(Pool::String) as u32,
-                offset: string_data_start,
-            });
-        }
+        self.map_section(
+            TYPE_STRING_DATA_ITEM,
+            string_data_start,
+            plan.count(Pool::String) as u32,
+        );
 
         let (static_values_offsets, call_site_data_offsets) =
             encoded_arrays::write_encoded_arrays(self, plan)?;
@@ -65,20 +61,12 @@ impl<S: DexSink> DexWriter<S> {
             self.align(4);
             let hidden_api_off = self.pos();
             hidden_api::write_hidden_api(self, hidden_api, plan)?;
-            self.map_entries.push(MapItem {
-                type_code: crate::model::map::TYPE_HIDDENAPI_CLASS_DATA_ITEM,
-                size: 1,
-                offset: hidden_api_off,
-            });
+            self.map_section(TYPE_HIDDENAPI_CLASS_DATA_ITEM, hidden_api_off, 1);
         }
 
         self.align(4);
         let map_off = self.pos();
-        self.map_entries.push(MapItem {
-            type_code: TYPE_MAP_LIST,
-            size: 1,
-            offset: map_off,
-        });
+        self.map_section(TYPE_MAP_LIST, map_off, 1);
         self.map_entries.sort_by_key(|e| e.offset);
         let map_entries = std::mem::take(&mut self.map_entries);
         self.write_u32(map_entries.len() as u32);

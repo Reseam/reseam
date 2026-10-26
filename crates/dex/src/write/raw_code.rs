@@ -9,13 +9,20 @@ use crate::options::ParseOptions;
 use crate::read::code::payload::{HandlerEvent, handler_index, walk_handler_list};
 use crate::read::debug::walk_debug_info;
 
+/// How copying a file code item went: copied with its indices remapped in
+/// place, or not, because a remapped index outgrows its 16-bit operand.
+pub(crate) enum RawCopy {
+    Copied,
+    IndexOverflow,
+}
+
 pub(crate) fn copy_code_item(
     buf: &[u8],
     code_off: u32,
     remap: Option<&Remap>,
     opts: ParseOptions,
     out: &mut Vec<u8>,
-) -> Result<bool> {
+) -> Result<RawCopy> {
     let base = code_off as usize;
     require_len(buf, base, 16, "code item")?;
     let tries_size = u16::from_le_bytes([buf[base + 6], buf[base + 7]]) as usize;
@@ -32,12 +39,12 @@ pub(crate) fn copy_code_item(
             !remap_instruction_stream(buf, insns_start, insns_size, remap, &mut out[start + 16..])?;
         if widened {
             out.truncate(start);
-            return Ok(false);
+            return Ok(RawCopy::IndexOverflow);
         }
     }
 
     if tries_size == 0 {
-        return Ok(true);
+        return Ok(RawCopy::Copied);
     }
     let mut pos = insns_start + insns_size * 2;
     if !insns_size.is_multiple_of(2) {
@@ -102,7 +109,7 @@ pub(crate) fn copy_code_item(
         })?;
         out[at..at + 2].copy_from_slice(&mapped.to_le_bytes());
     }
-    Ok(true)
+    Ok(RawCopy::Copied)
 }
 
 fn remap_operands(opcode: u8, remap: &Remap, insn: &mut [u8]) -> Result<bool> {

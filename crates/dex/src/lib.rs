@@ -32,6 +32,7 @@ mod references;
 mod search;
 mod write;
 
+pub use edit::body::EarlyReturn;
 pub use edit::grow::grow_registers;
 pub use edit::liveness::{
     find_contiguous_free_registers, find_free_register, find_free_registers, reaching_definitions,
@@ -43,7 +44,6 @@ pub use file::container::{
     MaterializationStats, MemoryBreakdown, MultiDexContainer, estimated_ir_bytes,
 };
 pub use file::{ClassTable, DexFile, FileRecord, FileTable, HiddenApiData, IdTable, StringPool};
-pub use instruction::branch::branch_offset;
 pub use instruction::{
     FillArrayPayloadData, Instruction, PackedSwitchData, RegList, SparseSwitchData,
 };

@@ -6,9 +6,9 @@ use super::items::{annotations_dir, debug_info, encoded_value, instruction};
 use crate::DexFile;
 use crate::error::{Result, require_len};
 use crate::instruction::stream::{index_operands, walk_instructions};
-use crate::model::Pool;
-use crate::model::class::ClassDef;
+use crate::model::class::{ClassDef, ClassHeader};
 use crate::model::code::CodeItem;
+use crate::model::{Pool, TypeIdx, TypeList};
 use crate::options::ParseOptions;
 use crate::read::annotation::read_annotations_directory;
 use crate::read::class::RawClassDef;
@@ -25,22 +25,27 @@ pub(crate) enum Bodies {
     Skip,
 }
 
+/// The references of a `class_def_item`'s own fields.
+pub(crate) fn class_header(sink: &mut impl RefSink, header: ClassHeader, interfaces: &[TypeIdx]) {
+    sink.add(Pool::Type, header.class_type.0);
+    if let Some(superclass) = header.superclass {
+        sink.add(Pool::Type, superclass.0);
+    }
+    for interface in interfaces {
+        sink.add(Pool::Type, interface.0);
+    }
+    if let Some(source_file) = header.source_file {
+        sink.add(Pool::String, source_file.0);
+    }
+}
+
 pub(crate) fn class(
     sink: &mut impl RefSink,
     class: &ClassDef,
     dex: &DexFile,
     bodies: Bodies,
 ) -> Result<()> {
-    sink.add(Pool::Type, class.class_type.0);
-    if let Some(superclass) = class.superclass {
-        sink.add(Pool::Type, superclass.0);
-    }
-    for interface in &class.interfaces {
-        sink.add(Pool::Type, interface.0);
-    }
-    if let Some(source_file) = class.source_file {
-        sink.add(Pool::String, source_file.0);
-    }
+    class_header(sink, ClassHeader::of(class), &class.interfaces);
     if let Some(annotations) = class.annotations.as_ref().filter(|metadata| {
         dex.write_options()
             .annotations
@@ -76,19 +81,12 @@ pub(crate) fn raw_class(
     options: crate::options::WriteOptions,
     bodies: Bodies,
 ) -> Result<()> {
-    let header = raw.header();
-    sink.add(Pool::Type, header.class_type.0);
-    if let Some(superclass) = header.superclass {
-        sink.add(Pool::Type, superclass.0);
-    }
-    if let Some(source_file) = header.source_file {
-        sink.add(Pool::String, source_file.0);
-    }
-    if raw.interfaces_off != 0 {
-        for interface in read_type_list(buf, raw.interfaces_off as usize) {
-            sink.add(Pool::Type, interface.0);
-        }
-    }
+    let interfaces = if raw.interfaces_off == 0 {
+        TypeList::new()
+    } else {
+        read_type_list(buf, raw.interfaces_off as usize)
+    };
+    class_header(sink, raw.header(), &interfaces);
     if raw.annotations_off != 0 && options.annotations == crate::options::MetadataPolicy::Preserve {
         annotations_dir(
             sink,

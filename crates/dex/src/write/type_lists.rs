@@ -7,7 +7,7 @@ use super::plan::WritePlan;
 use super::sink::DexSink;
 use crate::error::Result;
 use crate::model::Pool;
-use crate::model::map::{MapItem, TYPE_TYPE_LIST};
+use crate::model::map::TYPE_TYPE_LIST;
 
 pub(crate) fn write_type_lists<S: DexSink>(
     w: &mut DexWriter<S>,
@@ -34,13 +34,7 @@ pub(crate) fn write_type_lists<S: DexSink>(
         class_interface_offsets.push(intern_type_list(w, &mut lists, &mut encoded, &interfaces)?);
     }
 
-    if lists.len() > 0 {
-        w.map_entries.push(MapItem {
-            type_code: TYPE_TYPE_LIST,
-            size: lists.len() as u32,
-            offset: type_lists_off,
-        });
-    }
+    w.map_section(TYPE_TYPE_LIST, type_lists_off, lists.len() as u32);
     Ok((proto_param_offsets, class_interface_offsets))
 }
 

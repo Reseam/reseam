@@ -5,20 +5,18 @@ use super::{
     BTreeMap, BoundaryTarget, BranchDestination, Instruction, Result, RewriteEntry, displacement,
     invalid, units,
 };
-use crate::instruction::branch::{
-    branch_offset, invert_condition, is_condition, is_payload, set_branch_offset,
-};
+use crate::instruction::branch::Addresses;
 
 pub(super) fn branch_destinations(
     expansions: &[RewriteEntry],
     targets: &BTreeMap<usize, BranchDestination>,
-    original: &[u32],
+    original: &Addresses,
 ) -> Result<Vec<Option<usize>>> {
     if targets.keys().any(|&index| {
         expansions
             .get(index)
             .and_then(|entry| entry.instruction.as_ref())
-            .and_then(branch_offset)
+            .and_then(Instruction::branch_offset)
             .is_none()
     }) {
         return Err(invalid(
@@ -45,7 +43,7 @@ pub(super) fn branch_destinations(
             entry
                 .instruction
                 .as_ref()
-                .and_then(branch_offset)
+                .and_then(Instruction::branch_offset)
                 .map(|delta| target_index(original, index, delta))
                 .transpose()
         })
@@ -74,7 +72,12 @@ fn layout_entries(
     let mut address = 0u32;
     let mut instruction_index = 0;
     for (i, expansion) in expansions.iter().enumerate() {
-        if expansion.instruction.as_ref().is_some_and(is_payload) && !address.is_multiple_of(2) {
+        if expansion
+            .instruction
+            .as_ref()
+            .is_some_and(Instruction::is_payload)
+            && !address.is_multiple_of(2)
+        {
             address += 1;
             instruction_index += 1;
         }
@@ -121,17 +124,13 @@ fn layout_entries(
     }
 }
 
-fn target_index(original: &[u32], source: usize, delta: i32) -> Result<usize> {
-    let target = i64::from(original[source]) + i64::from(delta);
-    u32::try_from(target)
-        .ok()
-        .and_then(|addr| original.binary_search(&addr).ok())
-        .ok_or_else(|| {
-            invalid(
-                "instruction rewrite",
-                "target is not an instruction boundary",
-            )
-        })
+fn target_index(original: &Addresses, source: usize, delta: i32) -> Result<usize> {
+    original.target(source, delta).ok_or_else(|| {
+        invalid(
+            "instruction rewrite",
+            "target is not an instruction boundary",
+        )
+    })
 }
 
 pub(super) fn stabilized_layout(
@@ -166,7 +165,7 @@ pub(super) fn stabilized_layout(
                     *instruction = Goto32 { offset: 0 };
                     changed = true;
                 }
-                insn if is_condition(insn)
+                insn if insn.is_condition()
                     && i16::try_from(delta).is_err()
                     && !long_condition[i] =>
                 {
@@ -184,40 +183,26 @@ pub(super) fn stabilized_layout(
 
 pub(super) fn relocated_payloads(
     expansions: &[RewriteEntry],
-    original: &[u32],
+    original: &Addresses,
     layout: &RewriteLayout,
 ) -> Result<std::collections::HashMap<usize, Vec<i32>>> {
-    use Instruction::{PackedSwitch, PackedSwitchPayload, SparseSwitch, SparseSwitchPayload};
     let mut payload_targets = std::collections::HashMap::new();
     for (i, entry) in expansions.iter().enumerate() {
-        let Some(insn) = &entry.instruction else {
+        let Some(insn) = entry.instruction.as_ref().filter(|insn| insn.is_switch()) else {
             continue;
         };
-        let payload_offset = match insn {
-            PackedSwitch { payload_offset, .. } | SparseSwitch { payload_offset, .. } => {
-                *payload_offset
-            }
-            _ => continue,
-        };
+        let payload_offset = insn.payload_offset().expect("a switch reads a payload");
         let payload = target_index(original, i, payload_offset)?;
-        let payload_insn = expansions
+        let old_targets = expansions
             .get(payload)
             .and_then(|entry| entry.instruction.as_ref())
-            .ok_or_else(|| invalid("instruction rewrite", "missing switch payload"))?;
-        let old_targets: Vec<i32> = match payload_insn {
-            PackedSwitchPayload(data) => data.targets.clone(),
-            SparseSwitchPayload(data) => data
-                .keys_and_targets
-                .iter()
-                .map(|(_, target)| *target)
-                .collect(),
-            _ => {
-                return Err(invalid(
+            .and_then(Instruction::switch_targets)
+            .ok_or_else(|| {
+                invalid(
                     "instruction rewrite",
                     "switch target is not a switch payload",
-                ));
-            }
-        };
+                )
+            })?;
         let targets = old_targets
             .into_iter()
             .map(|target| {
@@ -242,20 +227,22 @@ pub(super) fn relocated_payloads(
 pub(super) fn emit_entries(
     expansions: Vec<RewriteEntry>,
     tail: Vec<Instruction>,
-    original: &[u32],
+    original: &Addresses,
     layout: &RewriteLayout,
     branch_targets: &[Option<usize>],
     long_condition: &[bool],
     mut payload_targets: std::collections::HashMap<usize, Vec<i32>>,
 ) -> Result<Vec<Instruction>> {
-    use Instruction::{
-        FillArrayData, Goto32, Nop, PackedSwitch, PackedSwitchPayload, SparseSwitch,
-        SparseSwitchPayload,
-    };
+    use Instruction::{Goto32, Nop};
     let mut instructions = Vec::new();
     let mut address = 0;
     for (i, mut expansion) in expansions.into_iter().enumerate() {
-        if expansion.instruction.as_ref().is_some_and(is_payload) && address % 2 != 0 {
+        if expansion
+            .instruction
+            .as_ref()
+            .is_some_and(Instruction::is_payload)
+            && address % 2 != 0
+        {
             instructions.push(Nop);
             address += 1;
         }
@@ -266,8 +253,8 @@ pub(super) fn emit_entries(
                 .as_mut()
                 .expect("branch target belongs to a body instruction");
             if long_condition[i] {
-                *instruction = invert_condition(instruction)?;
-                set_branch_offset(instruction, 5)?;
+                *instruction = instruction.inverted_condition()?;
+                instruction.set_branch_offset(5)?;
                 expansion.after.insert(
                     0,
                     Goto32 {
@@ -275,31 +262,16 @@ pub(super) fn emit_entries(
                     },
                 );
             } else {
-                set_branch_offset(instruction, displacement(layout.bodies[i], destination)?)?;
+                instruction.set_branch_offset(displacement(layout.bodies[i], destination)?)?;
             }
         }
-        match expansion.instruction.as_mut() {
-            Some(
-                PackedSwitch { payload_offset, .. }
-                | SparseSwitch { payload_offset, .. }
-                | FillArrayData { payload_offset, .. },
-            ) => {
+        if let Some(instruction) = expansion.instruction.as_mut() {
+            if let Some(payload_offset) = instruction.payload_offset_mut() {
                 let payload = layout.starts[target_index(original, i, *payload_offset)?];
                 *payload_offset = displacement(layout.bodies[i], payload)?;
+            } else if let Some(targets) = payload_targets.remove(&i) {
+                instruction.set_switch_targets(targets);
             }
-            Some(PackedSwitchPayload(data)) => {
-                if let Some(targets) = payload_targets.remove(&i) {
-                    data.targets = targets;
-                }
-            }
-            Some(SparseSwitchPayload(data)) => {
-                if let Some(targets) = payload_targets.remove(&i) {
-                    for ((_, target), relocated) in data.keys_and_targets.iter_mut().zip(targets) {
-                        *target = relocated;
-                    }
-                }
-            }
-            _ => {}
         }
         address += units(&expansion.before)
             + expansion

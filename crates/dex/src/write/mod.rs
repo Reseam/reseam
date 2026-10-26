@@ -185,6 +185,31 @@ impl<S: DexSink> DexWriter<S> {
         self.sink.pos()
     }
 
+    /// Lists a section of `size` items at `offset` in the map; an empty
+    /// section is not listed.
+    pub(crate) fn map_section(&mut self, type_code: u16, offset: u32, size: u32) {
+        if size > 0 {
+            self.map_entries.push(MapItem {
+                type_code,
+                size,
+                offset,
+            });
+        }
+    }
+
+    /// Writes a section of `size` items and lists it in the map, returning where it starts.
+    pub(crate) fn section(
+        &mut self,
+        type_code: u16,
+        size: usize,
+        write: impl FnOnce(&mut Self),
+    ) -> u32 {
+        let offset = self.pos();
+        write(self);
+        self.map_section(type_code, offset, size as u32);
+        offset
+    }
+
     pub(crate) fn write(&mut self, bytes: &[u8]) {
         self.sink.write(bytes);
     }
