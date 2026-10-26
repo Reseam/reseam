@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use super::component::map_staged;
 use super::{ApkFile, ComponentIndex, dex_set};
 use crate::entry::dex_ordinal;
 use crate::error::{Result, invalid};
 use crate::zip::Compression;
-use crate::zip::reader;
 use std::io::Write;
 
 impl ApkFile {
@@ -20,7 +20,7 @@ impl ApkFile {
         data: Vec<u8>,
         compression: Compression,
     ) -> Result<()> {
-        let file = reader::spool_file(&mut data.as_slice())?;
+        let file = reseam_storage::spool(|out| out.write_all(&data))?;
         drop(data);
         self.inject_file_spooled(component, name, file, compression)
     }
@@ -40,11 +40,11 @@ impl ApkFile {
             return Err(invalid("apk", format!("no component at index {component}")));
         }
         let manifest = (name == crate::entry::MANIFEST_ENTRY)
-            .then(|| crate::AxmlDocument::parse(&reader::map_spooled(&file)?))
+            .then(|| crate::AxmlDocument::parse(&map_staged(&file)?))
             .transpose()
             .map_err(|error| error.in_entry(name))?;
         let dex = dex_ordinal(name)
-            .map(|_| dex_set::parse_entry(reader::map_spooled(&file)?, self.options))
+            .map(|_| dex_set::parse_entry(map_staged(&file)?, self.options))
             .transpose()
             .map_err(|error| error.in_entry(name))?;
         self.components[component]
@@ -72,7 +72,10 @@ impl ApkFile {
                 .rewritten_dex_entry(ComponentIndex(component), name)
                 .map_err(|error| error.in_entry(name))?
         {
-            return Ok(Some(reader::map_spooled(&spooled.into_file())?));
+            // SAFETY: the serialized DEX is a temporary file nothing else holds.
+            return Ok(Some(unsafe {
+                reseam_storage::map_file(&spooled.into_file())?
+            }));
         }
         self.components
             .get_mut(component)

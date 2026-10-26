@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use reseam_storage::Bytes;
 
-use super::{ApkComponent, EntryEdit, Resources};
+use super::{ApkComponent, EntryEdit, Resources, map_staged};
 use crate::axml::AxmlDocument;
 use crate::entry::{EntryName, MANIFEST_ENTRY, RESOURCES_ENTRY, dex_ordinal, is_native_library};
 use crate::error::{Result, invalid};
@@ -52,7 +52,7 @@ impl ApkComponent {
     ) -> Result<()> {
         let resources = if path == RESOURCES_ENTRY {
             Some(ResourceTable::parse(Bytes::from_mmap(Arc::new(
-                reader::map_spooled(&file)?,
+                map_staged(&file)?,
             )))?)
         } else {
             None
@@ -138,15 +138,10 @@ impl ApkComponent {
             return Ok(false);
         }
         match self.edits.get(name) {
-            Some(EntryEdit::Staged { file, .. }) => {
-                reader::copy_spooled(file, output)?;
-            }
+            Some(EntryEdit::Staged { file, .. }) => reseam_storage::copy_file(file, output)?,
             Some(EntryEdit::Manifest) => output.write_all(&self.manifest.serialize()?)?,
             Some(EntryEdit::Resources) => {
-                let Resources::Loaded(table) = &self.resources else {
-                    return Err(invalid("resources", "edited resource table is not loaded"));
-                };
-                reader::copy_spooled(&table.serialize_spooled()?, output)?;
+                reseam_storage::copy_file(&self.resources_file()?, output)?;
             }
             Some(EntryEdit::Dex) => {
                 return Err(invalid("apk entry", "DEX entries are owned by the session"));
@@ -163,11 +158,11 @@ impl ApkComponent {
         name: &str,
     ) -> Result<Option<reseam_storage::MappedFile>> {
         match self.edits.get(name) {
-            Some(EntryEdit::Staged { file, .. }) => Ok(Some(reader::map_spooled(file)?)),
+            Some(EntryEdit::Staged { file, .. }) => Ok(Some(map_staged(file)?)),
             Some(EntryEdit::Manifest | EntryEdit::Resources | EntryEdit::Dex) => {
-                let mut file = reseam_storage::temporary_file()?;
-                self.copy_entry(name, &mut file)?;
-                Ok(Some(reader::map_spooled(&file)?))
+                Ok(Some(reseam_storage::spool_mapped(|mut out| {
+                    self.copy_entry(name, &mut out).map(drop)
+                })?))
             }
             None if reader::contains(&self.archive, name) => {
                 Ok(Some(reader::map_entry(&mut self.archive, name)?))

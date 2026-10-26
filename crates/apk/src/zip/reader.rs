@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::fs::File;
-use std::io::{self, BufWriter, Read, Write};
+use std::io::{self, Read};
 use std::path::Path;
 
 use reseam_storage::file::FileReader;
@@ -52,7 +52,9 @@ pub(crate) fn map_entry(archive: &mut Archive, name: &str) -> Result<reseam_stor
     let file = archive.clone().into_inner();
     let mut entry = archive.by_name(name)?;
     if entry.compression() != zip::CompressionMethod::Stored {
-        return spool(&mut entry);
+        return Ok(reseam_storage::spool_mapped(|out| {
+            io::copy(&mut entry, out).map(drop)
+        })?);
     }
     let offset = entry
         .data_start()
@@ -76,36 +78,4 @@ pub(crate) fn map_file(archive: &Archive) -> Result<reseam_storage::MappedFile> 
     // SAFETY: the archive is opened read-only for the whole run and nothing
     // in this process writes to it.
     Ok(unsafe { reseam_storage::map_file(file.file())? })
-}
-
-pub(crate) fn spool(reader: &mut impl Read) -> Result<reseam_storage::MappedFile> {
-    map_spooled(&spool_file(reader)?)
-}
-
-pub(crate) fn spool_file(reader: &mut impl Read) -> Result<File> {
-    let mut file = reseam_storage::temporary_file()?;
-    let mut out = BufWriter::with_capacity(1 << 20, &mut file);
-    io::copy(reader, &mut out)?;
-    out.flush()?;
-    drop(out);
-    Ok(file)
-}
-
-pub(crate) fn map_spooled(file: &File) -> Result<reseam_storage::MappedFile> {
-    // SAFETY: spooled files are immutable after creation and never exposed for writing.
-    Ok(unsafe { reseam_storage::map_file(file)? })
-}
-
-pub(crate) fn copy_spooled(file: &File, output: &mut impl Write) -> Result<()> {
-    #[cfg(not(target_os = "wasi"))]
-    let mut file = io::BufReader::new(FileReader::new(file.try_clone()?)?);
-    #[cfg(target_os = "wasi")]
-    let mut file = {
-        // WASI has one engine thread and cannot clone file descriptors.
-        let mut source = file;
-        io::Seek::seek(&mut source, io::SeekFrom::Start(0))?;
-        io::BufReader::new(source)
-    };
-    io::copy(&mut file, output)?;
-    Ok(())
 }

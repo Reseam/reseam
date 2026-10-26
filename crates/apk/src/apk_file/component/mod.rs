@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use reseam_dex::Loading;
-use reseam_storage::Bytes;
+use reseam_storage::{Bytes, MappedFile};
 
 use crate::axml::AxmlDocument;
 use crate::entry::{EntryName, MANIFEST_ENTRY, RESOURCES_ENTRY};
@@ -90,7 +90,7 @@ impl ApkComponent {
 
     /// Maps the original APK, including its signing block. Staged edits are
     /// available through the session's entry APIs instead.
-    pub fn source(&self) -> Result<reseam_storage::MappedFile> {
+    pub fn source(&self) -> Result<MappedFile> {
         reader::map_file(&self.archive)
     }
 
@@ -148,10 +148,18 @@ impl ApkComponent {
         Ok(())
     }
 
-    pub(super) fn resources_file(&self) -> Result<File> {
+    /// The edited resource table, serialized to a temporary file.
+    pub(in crate::apk_file) fn resources_file(&self) -> Result<File> {
         let Resources::Loaded(table) = &self.resources else {
             return Err(invalid("resources", "edited resource table is not loaded"));
         };
-        table.serialize_spooled()
+        reseam_storage::spool(|out| table.write_to(out))
     }
+}
+
+/// Maps a staged entry file. Staging takes a file on the promise that nothing
+/// writes to it afterwards, which is what a mapping needs.
+pub(in crate::apk_file) fn map_staged(file: &File) -> Result<MappedFile> {
+    // SAFETY: staged files are immutable once handed to the session.
+    Ok(unsafe { reseam_storage::map_file(file)? })
 }
