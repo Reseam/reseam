@@ -9,7 +9,6 @@ pub(crate) use resident::ClassRefs;
 
 use smallvec::SmallVec;
 
-use super::DexFile;
 use crate::types::{FieldIdx, MethodIdx, Pool, StringIdx};
 use postings::Postings;
 
@@ -79,20 +78,18 @@ pub(crate) struct RefIndex {
 /// Method, field and string ids numbered as one key range: method ids, then
 /// field ids, then string ids.
 #[derive(Debug, Clone)]
-struct PoolKeys {
+pub(crate) struct PoolKeys {
     field_base: usize,
     string_base: usize,
     end: usize,
 }
 
 impl PoolKeys {
-    fn of(dex: &DexFile) -> Self {
-        let field_base = dex.methods().len();
-        let string_base = field_base + dex.fields().len();
+    pub(crate) fn new(methods: usize, fields: usize, strings: usize) -> Self {
         Self {
-            field_base,
-            string_base,
-            end: string_base + dex.strings().len(),
+            field_base: methods,
+            string_base: methods + fields,
+            end: methods + fields + strings,
         }
     }
 

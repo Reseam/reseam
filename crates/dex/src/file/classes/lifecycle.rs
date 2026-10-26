@@ -3,12 +3,12 @@
 
 use rayon::prelude::*;
 
-use super::records::RECORD_SIZE;
-use super::{ClassKey, ClassSlot, ClassTable, ClassUndo, Prior, RawClassDef};
+use super::{ClassKey, ClassSlot, ClassTable, ClassUndo, Prior};
 use crate::error::{Result, index_out_of_bounds};
+use crate::options::ParseOptions;
 use crate::read::class::read_class_def;
+use crate::read::class::{RECORD_SIZE, RawClassDef};
 use crate::types::class::ClassDef;
-use crate::types::header::ParseOptions;
 
 impl ClassTable {
     /// Decodes the class from the file if needed and returns it mutably.

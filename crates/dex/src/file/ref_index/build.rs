@@ -8,7 +8,8 @@ use rayon::prelude::*;
 use super::postings::Postings;
 use super::{PoolKeys, RefIndex, Slot};
 use crate::error::{Result, invalid};
-use crate::file::DexFile;
+use crate::file::ClassTable;
+use crate::options::ParseOptions;
 use crate::read::class::read_class_skeleton_at;
 use crate::read::code::walk_instructions;
 use crate::read::read_u32;
@@ -47,9 +48,8 @@ fn unpack(packed: u64) -> (usize, Slot) {
 }
 
 impl RefIndex {
-    pub(crate) fn build(dex: &DexFile) -> Result<Self> {
-        let keys = PoolKeys::of(dex);
-        let refs = collect(dex, &keys)?;
+    pub(crate) fn build(classes: &ClassTable, keys: PoolKeys, opts: ParseOptions) -> Result<Self> {
+        let refs = collect(classes, &keys, opts)?;
         let pools = Postings::counted(
             keys.end,
             refs.pool.iter().flatten().map(|&packed| unpack(packed)),
@@ -74,7 +74,7 @@ impl RefIndex {
         );
         Ok(Self {
             class_start: refs.class_start,
-            uncovered: dex.classes.resident_indices().to_vec(),
+            uncovered: classes.resident_indices().to_vec(),
             keys,
             pools,
             literal_values,
@@ -83,8 +83,8 @@ impl RefIndex {
     }
 }
 
-fn collect(dex: &DexFile, keys: &PoolKeys) -> Result<Refs> {
-    let classes = dex.classes.len();
+fn collect(table: &ClassTable, keys: &PoolKeys, opts: ParseOptions) -> Result<Refs> {
+    let classes = table.len();
     let mut refs = Refs {
         class_start: Vec::with_capacity(classes + 1),
         pool: Vec::new(),
@@ -96,7 +96,7 @@ fn collect(dex: &DexFile, keys: &PoolKeys) -> Result<Refs> {
             .step_by(CHUNK)
             .collect::<Vec<_>>()
             .into_par_iter()
-            .map(|start| chunk_refs(dex, keys, start..(start + CHUNK).min(classes)))
+            .map(|start| chunk_refs(table, keys, opts, start..(start + CHUNK).min(classes)))
             .collect::<Result<_>>()?;
         let mut pool = Vec::with_capacity(chunks.iter().map(|chunk| chunk.pool.len()).sum());
         let mut literals =
@@ -136,7 +136,12 @@ fn collect(dex: &DexFile, keys: &PoolKeys) -> Result<Refs> {
     Ok(refs)
 }
 
-fn chunk_refs(dex: &DexFile, keys: &PoolKeys, classes: Range<usize>) -> Result<ChunkRefs> {
+fn chunk_refs(
+    table: &ClassTable,
+    keys: &PoolKeys,
+    opts: ParseOptions,
+    classes: Range<usize>,
+) -> Result<ChunkRefs> {
     let mut refs = ChunkRefs {
         methods: Vec::with_capacity(classes.len()),
         pool: Vec::new(),
@@ -145,12 +150,12 @@ fn chunk_refs(dex: &DexFile, keys: &PoolKeys, classes: Range<usize>) -> Result<C
     let mut method = MethodRefs::default();
     let mut position = 0u32;
     for class_idx in classes {
-        let Some(offset) = dex.raw_class_data_offset(class_idx) else {
+        let Some(offset) = table.class_data_offset(class_idx) else {
             refs.methods.push(0);
             continue;
         };
-        let buf = dex.raw_bytes(offset)?;
-        let skeleton = read_class_skeleton_at(buf, offset as usize, dex.parse_options)?;
+        let buf = table.raw_bytes();
+        let skeleton = read_class_skeleton_at(buf, offset as usize, opts)?;
         let headers = skeleton
             .direct_methods
             .iter()

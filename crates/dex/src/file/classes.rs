@@ -3,20 +3,18 @@
 
 mod by_type;
 mod lifecycle;
-mod records;
 mod undo;
 
 use std::sync::OnceLock;
 
-use super::DexBytes;
-use super::ids::{read_type_list, validate_type_list};
 use super::ref_index::ClassRefs;
+use crate::DexBytes;
 use crate::error::Result;
-use crate::types::class::ClassDef;
+use crate::read::class::{RECORD_SIZE, RawClassDef};
+use crate::read::type_list::{read_type_list, validate_type_list};
+use crate::types::class::{ClassDef, ClassHeader};
 use crate::types::{TypeIdx, TypeList};
 use by_type::TypeIndex;
-use records::RECORD_SIZE;
-pub use records::{ClassHeader, RawClassDef};
 pub(crate) use undo::Undone;
 use undo::{ClassKey, ClassUndo, Prior};
 
@@ -127,6 +125,14 @@ impl ClassTable {
         }
     }
 
+    /// Where a file class's `class_data_item` starts; `None` for resident
+    /// classes and classes without class data.
+    pub(crate) fn class_data_offset(&self, i: usize) -> Option<u32> {
+        self.raw_def(i)
+            .map(|def| def.class_data_off)
+            .filter(|&off| off != 0)
+    }
+
     pub fn resident(&self, i: usize) -> Option<&ClassDef> {
         match self.slots.get(i)? {
             ClassSlot::Resident(c) => Some(&c.def),
@@ -210,7 +216,7 @@ impl ClassTable {
         RawClassDef::read(self.raw_bytes(), self.off + r as usize * RECORD_SIZE)
     }
 
-    fn raw_bytes(&self) -> &[u8] {
+    pub(crate) fn raw_bytes(&self) -> &[u8] {
         self.raw
             .as_ref()
             .expect("raw entries exist only while the buffer is retained")

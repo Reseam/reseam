@@ -96,3 +96,24 @@ impl EncodedMethod {
         self.code.as_mut().map(Arc::make_mut)
     }
 }
+
+/// The four id fields of a `class_def_item`, readable for any class without
+/// materializing it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClassHeader {
+    pub class_type: TypeIdx,
+    pub access_flags: AccessFlags,
+    pub superclass: Option<TypeIdx>,
+    pub source_file: Option<StringIdx>,
+}
+
+impl ClassHeader {
+    pub fn of(class: &ClassDef) -> Self {
+        Self {
+            class_type: class.class_type,
+            access_flags: class.access_flags,
+            superclass: class.superclass,
+            source_file: class.source_file,
+        }
+    }
+}

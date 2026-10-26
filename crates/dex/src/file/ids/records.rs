@@ -6,7 +6,8 @@ use std::hash::{Hash, Hasher};
 
 use super::IdRecord;
 use crate::error::Result;
-use crate::read::{read_u32, u16_at, u32_at};
+use crate::read::type_list::{read_type_list, validate_type_list};
+use crate::read::{u16_at, u32_at};
 use crate::types::{FieldId, MethodId, ProtoIdx, Prototype, StringIdx, TypeIdx, TypeList};
 
 fn check(buf: &[u8], off: usize, size: usize) -> Result<()> {
@@ -117,17 +118,4 @@ impl IdRecord for MethodId {
     fn key_hash<H: Hasher>(&self, state: &mut H) {
         self.hash(state);
     }
-}
-
-pub(crate) fn read_type_list(buf: &[u8], off: usize) -> TypeList {
-    let size = u32_at(buf, off) as usize;
-    (0..size)
-        .map(|i| TypeIdx(u32::from(u16_at(buf, off + 4 + i * 2))))
-        .collect()
-}
-
-pub(crate) fn validate_type_list(buf: &[u8], off: usize) -> Result<()> {
-    let size = read_u32(buf, off)? as usize;
-    crate::error::require_array(buf, off + 4, size, 2, "type list")?;
-    Ok(())
 }

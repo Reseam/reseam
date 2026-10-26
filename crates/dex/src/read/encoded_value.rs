@@ -3,12 +3,12 @@
 
 use crate::encoding::leb128::read_uleb128;
 use crate::error::{Result, invalid_encoded_value_type, malformed, slice};
+use crate::options::ParseOptions;
 use crate::read::read_u8;
+use crate::types::MethodHandleIdx;
 use crate::types::encoded_value::{
     EncodedAnnotation, EncodedAnnotationElement, EncodedValue, ValueKind,
 };
-use crate::types::header::ParseOptions;
-use crate::types::method_handle::MethodHandleIdx;
 use crate::types::{FieldIdx, MethodIdx, ProtoIdx, StringIdx, TypeIdx};
 
 pub fn read_encoded_value_with_opts(

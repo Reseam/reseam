@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::method_handle::MethodHandleIdx;
-use super::{FieldIdx, MethodIdx, ProtoIdx, StringIdx, TypeIdx};
+use super::{FieldIdx, MethodHandleIdx, MethodIdx, ProtoIdx, StringIdx, TypeIdx};
 
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]

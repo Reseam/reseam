@@ -4,7 +4,7 @@
 use std::borrow::Cow;
 
 use super::DexFile;
-use super::ref_index::RefIndex;
+use super::ref_index::{PoolKeys, RefIndex};
 use crate::error::invalid_offset;
 use crate::read::encoded_value::read_encoded_array_with_opts;
 use crate::types::FieldIdx;
@@ -74,7 +74,8 @@ impl DexFile {
         if let Some(index) = self.ref_index.get() {
             return Ok(index);
         }
-        let index = RefIndex::build(self)?;
+        let keys = PoolKeys::new(self.methods.len(), self.fields.len(), self.strings.len());
+        let index = RefIndex::build(&self.classes, keys, self.parse_options)?;
         self.release_pages();
         Ok(self.ref_index.get_or_init(|| index))
     }

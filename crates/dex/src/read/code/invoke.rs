@@ -3,13 +3,13 @@
 
 use crate::error::{Result, malformed};
 use crate::read::u16_at;
+use crate::types::CallSiteIdx;
 use crate::types::instruction::{Instruction, RegList};
 use crate::types::instruction_encoding::opcodes::{
     INVOKE_CUSTOM, INVOKE_CUSTOM_RANGE, INVOKE_DIRECT, INVOKE_DIRECT_RANGE, INVOKE_INTERFACE,
     INVOKE_INTERFACE_RANGE, INVOKE_POLYMORPHIC, INVOKE_POLYMORPHIC_RANGE, INVOKE_STATIC,
     INVOKE_STATIC_RANGE, INVOKE_SUPER, INVOKE_SUPER_RANGE, INVOKE_VIRTUAL, INVOKE_VIRTUAL_RANGE,
 };
-use crate::types::method_handle::CallSiteIdx;
 use crate::types::{MethodIdx, ProtoIdx};
 
 fn hi8(unit: u16) -> u8 {

@@ -23,15 +23,15 @@ mod type_lookups;
 mod undo;
 mod version;
 
-pub use classes::{ClassHeader, ClassTable, RawClassDef};
+use crate::DexBytes;
+pub use classes::ClassTable;
 pub use ids::{IdRecord, IdTable};
-pub(crate) use ids::{read_type_list, validate_type_list};
 use ref_index::RefIndex;
 pub use ref_index::{RefKey, RefQuery};
-pub use reseam_storage::Bytes as DexBytes;
 pub use strings::StringPool;
 
-use crate::types::header::{DexHeader, ParseOptions};
+use crate::options::ParseOptions;
+use crate::types::header::DexHeader;
 use crate::types::method_handle::{CallSiteItem, MethodHandle};
 use crate::types::{FieldId, MethodId, Prototype, StringIdx};
 
@@ -60,7 +60,7 @@ pub struct DexFile {
     ref_index: std::sync::OnceLock<RefIndex>,
     type_lookups: type_lookups::TypeLookups,
     dirty: bool,
-    write_options: crate::write::WriteOptions,
+    write_options: crate::options::WriteOptions,
     journal: reseam_journal::Journal<undo::DexPart, undo::DexUndo>,
 }
 
@@ -82,7 +82,7 @@ impl DexFile {
             ref_index: std::sync::OnceLock::new(),
             type_lookups: type_lookups::TypeLookups::default(),
             dirty: false,
-            write_options: crate::write::WriteOptions::default(),
+            write_options: crate::options::WriteOptions::default(),
             journal: reseam_journal::Journal::default(),
         }
     }
@@ -101,12 +101,12 @@ impl DexFile {
         }
     }
 
-    pub fn write_options(&self) -> crate::write::WriteOptions {
+    pub fn write_options(&self) -> crate::options::WriteOptions {
         self.write_options
     }
 
     /// Changes serialization policy and marks the DEX dirty when it changes.
-    pub fn set_write_options(&mut self, options: crate::write::WriteOptions) {
+    pub fn set_write_options(&mut self, options: crate::options::WriteOptions) {
         if self.write_options != options {
             self.touch();
             self.journal.record(undo::DexPart::WriteOptions, || {

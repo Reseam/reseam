@@ -8,6 +8,7 @@ pub use self::part::{DexPart, split_to_fit};
 pub use self::sink::{DexSink, SpoolSink, Spooled};
 use crate::error::Result;
 use crate::file::DexFile;
+use crate::options::{LinkPolicy, MAX_POOL_SIZE, WriteOptions};
 use crate::types::encoded_value::EncodedValue;
 use crate::types::header::DexVersion;
 use crate::types::map::MapItem;
@@ -28,45 +29,6 @@ pub(crate) mod plan;
 pub(crate) mod raw_code;
 pub(crate) mod sink;
 pub(crate) mod sort;
-
-/// Selection of metadata to emit, independent of how it was loaded.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum MetadataPolicy {
-    #[default]
-    Preserve,
-    Omit,
-    /// Omit metadata from this DEX's original mapping, retaining imported or authored metadata.
-    OmitOriginal,
-}
-
-impl MetadataPolicy {
-    pub(crate) fn keeps<T: crate::types::metadata::MetadataItem>(
-        self,
-        metadata: &crate::types::metadata::Metadata<T>,
-        original: Option<&crate::file::DexBytes>,
-    ) -> bool {
-        match self {
-            Self::Preserve => true,
-            Self::Omit => false,
-            Self::OmitOriginal => !metadata.belongs_to(original),
-        }
-    }
-}
-
-/// Opaque link bytes cannot be relocated after pool and section layout changes.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum LinkPolicy {
-    #[default]
-    Reject,
-    Omit,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct WriteOptions {
-    pub debug_info: MetadataPolicy,
-    pub annotations: MetadataPolicy,
-    pub link_data: LinkPolicy,
-}
 
 pub(crate) fn is_default_value(v: &EncodedValue) -> bool {
     matches!(
@@ -127,8 +89,6 @@ fn validate_link_policy(plan: &plan::WritePlan<'_>) -> Result<()> {
     }
     Ok(())
 }
-
-pub const MAX_POOL_SIZE: usize = 1 << 16;
 
 fn validate_index_limits(plan: &plan::WritePlan<'_>) -> Result<()> {
     let checks: &[(&str, usize)] = &[
@@ -207,7 +167,7 @@ pub(crate) struct DexWriter<S: DexSink> {
     pub(crate) header_base: u32,
     pub(crate) version: DexVersion,
     pub(crate) options: WriteOptions,
-    pub(crate) original: Option<crate::file::DexBytes>,
+    pub(crate) original: Option<crate::DexBytes>,
 }
 
 impl<S: DexSink> DexWriter<S> {

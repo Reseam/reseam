@@ -5,7 +5,7 @@ use reseam_journal::Savepoint;
 
 use super::DexFile;
 use super::classes::Undone;
-use crate::write::WriteOptions;
+use crate::options::WriteOptions;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(super) enum DexPart {

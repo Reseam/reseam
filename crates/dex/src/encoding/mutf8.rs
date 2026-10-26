@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::error::{Result, invalid_mutf8};
-use crate::types::header::ParseOptions;
+use crate::options::ParseOptions;
 
 pub fn decode_mutf8(bytes: &[u8]) -> Result<String> {
     decode_mutf8_with_opts(bytes, 0, ParseOptions::default())
@@ -57,7 +57,7 @@ fn checked_units(
     offset: usize,
     opts: ParseOptions,
 ) -> impl Iterator<Item = Result<u16>> + use<'_> {
-    let lenient = opts.mutf8 == crate::types::header::Validation::Permissive;
+    let lenient = opts.mutf8 == crate::options::Validation::Permissive;
     let mut position = 0;
     std::iter::from_fn(move || {
         let lead = *bytes.get(position)?;

@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::DexBytes;
+use crate::DexBytes;
 use crate::error::{Result, invalid, invalid_call_site, invalid_method_handle_type, require_array};
+use crate::options::ParseOptions;
 use crate::read::{read_u16, read_u32};
 use crate::types::encoded_value::EncodedValue;
-use crate::types::header::ParseOptions;
 use crate::types::method_handle::{
     CallSiteItem, MethodHandle, MethodHandleMember, MethodHandleType,
 };

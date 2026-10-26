@@ -44,8 +44,8 @@ fn metadata_fixture() -> DexFile {
 
 #[test]
 fn deferred_metadata_survives_resolution_and_serialization_policies_are_explicit() {
-    use crate::types::header::Loading;
-    use crate::write::{MetadataPolicy, WriteOptions};
+    use crate::options::Loading;
+    use crate::options::{MetadataPolicy, WriteOptions};
     let bytes = write(&metadata_fixture()).unwrap();
     for lazy in [false, true] {
         let mut dex = crate::parse(
@@ -109,7 +109,7 @@ fn deferred_metadata_survives_resolution_and_serialization_policies_are_explicit
 
 #[test]
 fn opaque_link_data_requires_an_explicit_omission_policy() {
-    use crate::write::{LinkPolicy, WriteOptions};
+    use crate::options::{LinkPolicy, WriteOptions};
     let mut bytes = write(&DexFile::new(DexHeader::new(crate::DexVersion::V035))).unwrap();
     let offset = bytes.len() as u32;
     bytes.extend_from_slice(b"opaque");
@@ -118,8 +118,8 @@ fn opaque_link_data_requires_an_explicit_omission_policy() {
     bytes[0x2c..0x30].copy_from_slice(&6u32.to_le_bytes());
     bytes[0x30..0x34].copy_from_slice(&offset.to_le_bytes());
     let options = ParseOptions {
-        checksum: crate::types::header::Verification::Skip,
-        signature: crate::types::header::Verification::Skip,
+        checksum: crate::options::Verification::Skip,
+        signature: crate::options::Verification::Skip,
         ..Default::default()
     };
     let mut dex = crate::parse(&bytes, options).unwrap();

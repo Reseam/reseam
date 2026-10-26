@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::method_handle::{CallSiteIdx, MethodHandleIdx};
-use super::{FieldIdx, MethodIdx, ProtoIdx, StringIdx, TypeIdx};
+use super::{CallSiteIdx, FieldIdx, MethodHandleIdx, MethodIdx, ProtoIdx, StringIdx, TypeIdx};
 
 /// At most five register arguments for a compact instruction.
 /// Dynamic lists use fallible construction; longer invocations require a range form.

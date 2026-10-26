@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::annotation::AnnotationsDirectory;
-use super::debug::DebugInfo;
-use super::header::{Loading, ParseOptions};
+use crate::DexBytes;
 use crate::error::Result;
-use crate::file::DexBytes;
+use crate::options::{Loading, ParseOptions};
 use std::borrow::Cow;
 
 /// Metadata either owned by the IR or still backed by its original file.
@@ -30,17 +28,6 @@ enum State<T> {
 /// The metadata grammars that can remain deferred in a materialized class.
 pub trait MetadataItem: Clone {
     fn decode(source: &[u8], offset: u32, options: ParseOptions) -> Result<Self>;
-}
-
-impl MetadataItem for DebugInfo {
-    fn decode(source: &[u8], offset: u32, options: ParseOptions) -> Result<Self> {
-        crate::read::debug::read_debug_info(source, offset, options)
-    }
-}
-impl MetadataItem for AnnotationsDirectory {
-    fn decode(source: &[u8], offset: u32, options: ParseOptions) -> Result<Self> {
-        crate::read::annotation::read_annotations_directory(source, offset, options)
-    }
 }
 
 impl<T> Metadata<T> {

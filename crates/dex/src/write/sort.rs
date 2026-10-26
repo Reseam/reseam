@@ -6,10 +6,8 @@ use crate::types::code::CodeItem;
 use crate::types::debug::{DebugBytecode, DebugInfo};
 use crate::types::encoded_value::EncodedValue;
 use crate::types::instruction::Instruction;
-use crate::types::method_handle::{
-    CallSiteItem, MethodHandle, MethodHandleIdx, MethodHandleMember,
-};
-use crate::types::{FieldIdx, MethodIdx, Pool, ProtoIdx, StringIdx, TypeIdx};
+use crate::types::method_handle::{CallSiteItem, MethodHandle, MethodHandleMember};
+use crate::types::{FieldIdx, MethodHandleIdx, MethodIdx, Pool, ProtoIdx, StringIdx, TypeIdx};
 
 pub(crate) struct RemapTables {
     pub string: Vec<u32>,

@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::encoded_value::EncodedValue;
-use super::{FieldIdx, MethodIdx, ProtoIdx, StringIdx};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct MethodHandleIdx(pub u32);
+use super::{FieldIdx, MethodHandleIdx, MethodIdx, ProtoIdx, StringIdx};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MethodHandle {
@@ -69,9 +66,6 @@ pub enum MethodHandleMember {
     Field(FieldIdx),
     Method(MethodIdx),
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct CallSiteIdx(pub u32);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CallSiteItem {

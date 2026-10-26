@@ -31,7 +31,7 @@ fn rollback_returns_a_dex_to_each_savepoint() {
     let mut dex = crate::parse(
         &bytes,
         ParseOptions {
-            classes: crate::types::header::Loading::Deferred,
+            classes: crate::options::Loading::Deferred,
             ..ParseOptions::default()
         },
     )
@@ -98,7 +98,7 @@ fn searches_find_a_class_a_rollback_returned_to_its_file_record() {
     let mut dex = crate::parse(
         &bytes,
         ParseOptions {
-            classes: crate::types::header::Loading::Deferred,
+            classes: crate::options::Loading::Deferred,
             ..ParseOptions::default()
         },
     )

@@ -4,7 +4,7 @@
 use super::{Bodies, RefSink, call_site, class, raw_class};
 use crate::DexFile;
 use crate::error::Result;
-use crate::file::read_type_list;
+use crate::read::type_list::read_type_list;
 use crate::types::Pool;
 use crate::types::class::ClassDef;
 

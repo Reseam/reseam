@@ -4,18 +4,14 @@
 use super::decode::decode_instructions;
 use super::payload::read_tries_and_handlers;
 use crate::error::Result;
+use crate::options::ParseOptions;
 use crate::read::{u16_at, u32_at};
 use crate::types::code::CodeItem;
-use crate::types::header::ParseOptions;
 
 use crate::types::metadata::Metadata;
 
 /// Decodes one `code_item`, including debug info and exception metadata.
-pub fn read_code_item(
-    source: &crate::file::DexBytes,
-    off: u32,
-    opts: ParseOptions,
-) -> Result<CodeItem> {
+pub fn read_code_item(source: &crate::DexBytes, off: u32, opts: ParseOptions) -> Result<CodeItem> {
     let buf = source.as_bytes();
     let base = off as usize;
     crate::error::require_len(buf, base, 16, "code item")?;

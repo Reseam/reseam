@@ -32,7 +32,7 @@ impl DexFile {
     /// without touching any code. `None` for materialized classes and classes
     /// without class data.
     pub fn class_skeleton(&self, class_idx: usize) -> Result<Option<ClassSkeleton>> {
-        let Some(offset) = self.raw_class_data_offset(class_idx) else {
+        let Some(offset) = self.classes.class_data_offset(class_idx) else {
             return Ok(None);
         };
         let buf = self.raw_bytes(offset)?;
@@ -97,7 +97,7 @@ impl DexFile {
                 instance_fields: data.instance_fields.len() as u32,
             }));
         }
-        let Some(offset) = self.raw_class_data_offset(class_idx) else {
+        let Some(offset) = self.classes.class_data_offset(class_idx) else {
             return Ok(Some(MemberCounts::default()));
         };
         let buf = self.raw_bytes(offset)?;
@@ -123,7 +123,7 @@ impl DexFile {
                 data.instance_fields.clone(),
             )));
         }
-        let Some(offset) = self.raw_class_data_offset(class_idx) else {
+        let Some(offset) = self.classes.class_data_offset(class_idx) else {
             return Ok(Some((Vec::new(), Vec::new())));
         };
         let buf = self.raw_bytes(offset)?;
@@ -138,13 +138,6 @@ impl DexFile {
             instance_fields.push(field);
         })?;
         Ok(Some((static_fields, instance_fields)))
-    }
-
-    pub(crate) fn raw_class_data_offset(&self, class_idx: usize) -> Option<u32> {
-        self.classes
-            .raw_def(class_idx)
-            .map(|def| def.class_data_off)
-            .filter(|&off| off != 0)
     }
 
     pub(super) fn resident_class_data(&self, class_idx: usize) -> Option<&ClassData> {
@@ -180,7 +173,7 @@ impl DexFile {
             return Ok(list.get(method_pos).cloned());
         }
 
-        let Some(offset) = self.raw_class_data_offset(class_idx) else {
+        let Some(offset) = self.classes.class_data_offset(class_idx) else {
             return Ok(None);
         };
         let source = self

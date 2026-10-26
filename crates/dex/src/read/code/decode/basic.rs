@@ -146,10 +146,7 @@ pub(super) fn decode_opcode(buf: &[u8], unit_off: usize, opcode: u8) -> Result<I
         },
         CONST_METHOD_HANDLE => Instruction::ConstMethodHandle {
             dest: hi8(unit0),
-            method_handle: crate::types::method_handle::MethodHandleIdx(u32::from(u16_at(
-                buf,
-                unit_off + 2,
-            ))),
+            method_handle: crate::types::MethodHandleIdx(u32::from(u16_at(buf, unit_off + 2))),
         },
         CONST_METHOD_TYPE => Instruction::ConstMethodType {
             dest: hi8(unit0),

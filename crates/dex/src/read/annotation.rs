@@ -3,11 +3,12 @@
 
 use super::encoded_value::read_encoded_annotation_with_opts;
 use crate::error::{Result, invalid_annotation_visibility};
+use crate::options::ParseOptions;
 use crate::read::{read_u8, read_u32};
 use crate::types::annotation::{
     AnnotationElement, AnnotationItem, AnnotationVisibility, AnnotationsDirectory,
 };
-use crate::types::header::ParseOptions;
+use crate::types::metadata::MetadataItem;
 use crate::types::{FieldIdx, MethodIdx};
 
 pub fn read_annotations_directory(
@@ -121,4 +122,10 @@ fn read_annotation_item(buf: &[u8], off: u32, opts: ParseOptions) -> Result<Anno
             })
             .collect(),
     })
+}
+
+impl MetadataItem for AnnotationsDirectory {
+    fn decode(source: &[u8], offset: u32, options: ParseOptions) -> Result<Self> {
+        read_annotations_directory(source, offset, options)
+    }
 }

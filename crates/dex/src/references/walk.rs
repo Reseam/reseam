@@ -5,17 +5,18 @@ use super::RefSink;
 use super::items::{annotations_dir, debug_info, encoded_value, instruction};
 use crate::DexFile;
 use crate::error::{Result, require_len};
-use crate::file::{RawClassDef, read_type_list};
+use crate::options::ParseOptions;
 use crate::read::annotation::read_annotations_directory;
+use crate::read::class::RawClassDef;
 use crate::read::class::read_class_skeleton_at;
 use crate::read::code::payload::{HandlerEvent, walk_handler_list};
 use crate::read::code::{index_operands, walk_instructions};
 use crate::read::debug::read_debug_info;
 use crate::read::encoded_value::read_encoded_array_with_opts;
+use crate::read::type_list::read_type_list;
 use crate::types::Pool;
 use crate::types::class::ClassDef;
 use crate::types::code::CodeItem;
-use crate::types::header::ParseOptions;
 
 /// Whether a class walk also visits the bodies of its methods.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,7 +73,7 @@ pub(crate) fn raw_class(
     buf: &[u8],
     raw: &RawClassDef,
     opts: ParseOptions,
-    options: crate::write::WriteOptions,
+    options: crate::options::WriteOptions,
     bodies: Bodies,
 ) -> Result<()> {
     let header = raw.header();
@@ -88,7 +89,7 @@ pub(crate) fn raw_class(
             sink.add(Pool::Type, interface.0);
         }
     }
-    if raw.annotations_off != 0 && options.annotations == crate::write::MetadataPolicy::Preserve {
+    if raw.annotations_off != 0 && options.annotations == crate::options::MetadataPolicy::Preserve {
         annotations_dir(
             sink,
             &read_annotations_directory(buf, raw.annotations_off, opts)?,
@@ -128,7 +129,7 @@ fn raw_code_item(
     buf: &[u8],
     base: usize,
     opts: ParseOptions,
-    options: crate::write::WriteOptions,
+    options: crate::options::WriteOptions,
 ) -> Result<()> {
     require_len(buf, base, 16, "code item")?;
     let word = |at: usize| crate::read::u32_at(buf, at);
@@ -156,7 +157,7 @@ fn raw_code_item(
             Ok(())
         })?;
     }
-    if debug_off != 0 && options.debug_info == crate::write::MetadataPolicy::Preserve {
+    if debug_off != 0 && options.debug_info == crate::options::MetadataPolicy::Preserve {
         debug_info(sink, &read_debug_info(buf, debug_off, opts)?);
     }
     Ok(())

@@ -5,8 +5,9 @@ use crate::error::{
     Result, checksum_mismatch, invalid, invalid_magic, require_len, signature_mismatch, slice,
     truncated, unsupported,
 };
+use crate::options::ParseOptions;
 use crate::read::u32_at;
-use crate::types::header::{DexHeader, DexVersion, ParseOptions};
+use crate::types::header::{DexHeader, DexVersion};
 
 pub fn read_header_at(buf: &[u8], header_off: usize, opts: ParseOptions) -> Result<DexHeader> {
     require_len(buf, header_off, 112, "dex header")?;
@@ -156,14 +157,14 @@ fn verify_integrity(
     signature: &[u8; 20],
     opts: ParseOptions,
 ) -> Result<()> {
-    if !(opts.checksum == crate::types::header::Verification::Skip) {
+    if !(opts.checksum == crate::options::Verification::Skip) {
         let computed = zlib_rs::adler32::adler32(1, &buf[header_off + 12..logical_end]);
         if computed != checksum {
             return Err(checksum_mismatch(checksum, computed));
         }
     }
 
-    if !(opts.signature == crate::types::header::Verification::Skip) {
+    if !(opts.signature == crate::options::Verification::Skip) {
         let computed = <sha1::Sha1 as sha1::Digest>::digest(&buf[header_off + 32..logical_end]);
         if computed.as_slice() != signature.as_slice() {
             return Err(signature_mismatch());

@@ -3,8 +3,9 @@
 
 use crate::encoding::leb128::{read_sleb128, read_uleb128, read_uleb128p1};
 use crate::error::{Result, require_len};
+use crate::options::ParseOptions;
 use crate::types::debug::{DebugBytecode, DebugInfo};
-use crate::types::header::ParseOptions;
+use crate::types::metadata::MetadataItem;
 use crate::types::{Pool, StringIdx, TypeIdx};
 
 pub(crate) enum DebugEvent {
@@ -160,4 +161,10 @@ pub fn read_debug_info(buf: &[u8], off: u32, opts: ParseOptions) -> Result<Debug
         Ok(())
     })?;
     Ok(info)
+}
+
+impl MetadataItem for DebugInfo {
+    fn decode(source: &[u8], offset: u32, options: ParseOptions) -> Result<Self> {
+        read_debug_info(source, offset, options)
+    }
 }

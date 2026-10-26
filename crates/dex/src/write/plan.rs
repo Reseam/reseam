@@ -16,11 +16,12 @@ use rustc_hash::FxHashMap;
 use super::part::DexPart;
 use super::sort::{Remap, RemapTables};
 use crate::error::{Result, invalid};
-use crate::file::{ClassHeader, DexFile, RawClassDef};
+use crate::file::DexFile;
 use crate::read::annotation::read_annotations_directory;
+use crate::read::class::RawClassDef;
 use crate::types::TypeList;
 use crate::types::annotation::AnnotationsDirectory;
-use crate::types::class::ClassDef;
+use crate::types::class::{ClassDef, ClassHeader};
 use crate::types::encoded_value::EncodedValue;
 
 pub(crate) enum WriteClass<'a> {
@@ -30,7 +31,7 @@ pub(crate) enum WriteClass<'a> {
 
 pub(crate) struct WritePlan<'a> {
     pub dex: &'a DexFile,
-    pub options: super::WriteOptions,
+    pub options: crate::options::WriteOptions,
     /// `None` when every pool is written whole and already in DEX sort order.
     pub order: Option<PoolOrder>,
     pub remap: Option<RemapTables>,
@@ -43,7 +44,7 @@ impl<'a> WritePlan<'a> {
     pub(crate) fn new(
         dex: &'a DexFile,
         part: Option<&DexPart>,
-        options: super::WriteOptions,
+        options: crate::options::WriteOptions,
     ) -> Result<Self> {
         crate::references::validate_pools(dex)?;
         if let Some(part) = part {

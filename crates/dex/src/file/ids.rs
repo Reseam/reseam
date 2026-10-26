@@ -9,9 +9,7 @@ use smallvec::SmallVec;
 
 mod records;
 
-pub(crate) use records::{read_type_list, validate_type_list};
-
-use super::DexBytes;
+use crate::DexBytes;
 use crate::error::Result;
 
 /// A fixed-size id-table record that can be read straight from the buffer.

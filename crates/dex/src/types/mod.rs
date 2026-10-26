@@ -53,6 +53,12 @@ pub struct MethodId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ProtoIdx(pub u32);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct MethodHandleIdx(pub u32);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CallSiteIdx(pub u32);
+
 pub type TypeList = smallvec::SmallVec<[TypeIdx; 4]>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

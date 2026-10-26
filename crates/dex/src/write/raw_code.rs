@@ -4,10 +4,10 @@
 use super::sort::Remap;
 use crate::encoding::leb128::{write_sleb128, write_uleb128, write_uleb128p1};
 use crate::error::{Result, require_len};
+use crate::options::ParseOptions;
 use crate::read::code::payload::{HandlerEvent, handler_index, walk_handler_list};
 use crate::read::code::{index_operands, walk_instructions};
 use crate::read::debug::walk_debug_info;
-use crate::types::header::ParseOptions;
 
 pub(crate) fn copy_code_item(
     buf: &[u8],

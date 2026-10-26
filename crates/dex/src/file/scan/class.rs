@@ -7,11 +7,11 @@ use super::view::{Code, MethodView};
 use crate::error::Result;
 use crate::file::DexFile;
 use crate::file::ref_index::Slot;
+use crate::options::ParseOptions;
 use crate::read::class::ClassDataCursor;
 use crate::read::code::read_code_item;
 use crate::types::TypeIdx;
 use crate::types::class::{ClassData, EncodedMethod};
-use crate::types::header::ParseOptions;
 
 impl DexFile {
     pub(super) fn scan_class<T>(
@@ -36,7 +36,7 @@ impl DexFile {
                 None => Ok(ControlFlow::Continue(())),
             };
         }
-        match self.raw_class_data_offset(class_idx) {
+        match self.classes.class_data_offset(class_idx) {
             Some(offset) => self.scan_raw_class(class_idx, class_type, offset, methods, visit),
             None => Ok(ControlFlow::Continue(())),
         }
@@ -157,7 +157,7 @@ fn scan_resolved_class<T>(
 }
 
 pub(super) fn decode_one_method(
-    source: &crate::file::DexBytes,
+    source: &crate::DexBytes,
     offset: u32,
     method_pos: usize,
     kind: crate::types::class::MethodKind,

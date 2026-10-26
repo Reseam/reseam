@@ -8,13 +8,13 @@ use super::raw_code::{copy_code_item, copy_debug_info};
 use super::sink::DexSink;
 use super::sort::Remap;
 use crate::error::Result;
+use crate::options::ParseOptions;
 use crate::read::class::read_class_skeleton_at;
 use crate::read::code::read_code_item;
 use crate::types::MethodIdx;
 use crate::types::access_flags::AccessFlags;
 use crate::types::class::{ClassData, EncodedField};
 use crate::types::code::CodeItem;
-use crate::types::header::ParseOptions;
 use crate::types::map::{MapItem, TYPE_CODE_ITEM, TYPE_DEBUG_INFO_ITEM};
 
 mod item;
@@ -224,7 +224,7 @@ impl CodeEmitter {
     fn write_file_code<S: DexSink>(
         &mut self,
         w: &mut DexWriter<S>,
-        source: &crate::file::DexBytes,
+        source: &crate::DexBytes,
         code_off: u32,
         remap: Option<&Remap<'_>>,
         opts: ParseOptions,
@@ -236,7 +236,8 @@ impl CodeEmitter {
             let off = w.pos();
             w.write(&self.code_buf);
             let debug_off = crate::read::u32_at(buf, code_off as usize + 8);
-            let item = if debug_off != 0 && w.options.debug_info == super::MetadataPolicy::Preserve
+            let item = if debug_off != 0
+                && w.options.debug_info == crate::options::MetadataPolicy::Preserve
             {
                 self.scratch.clear();
                 copy_debug_info(buf, debug_off, remap, opts, &mut self.scratch)?;

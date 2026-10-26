@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::MAX_POOL_SIZE;
 use crate::error::{Result, invalid};
 use crate::file::DexFile;
+use crate::options::MAX_POOL_SIZE;
 use crate::references::{self as refs, Bodies, RefSink, pool_len};
 use crate::types::Pool;
 use crate::types::method_handle::MethodHandleMember;
