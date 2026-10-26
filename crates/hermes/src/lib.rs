@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-//! Hermes execution bytecode. Version 98 is supported.
+//! Links JavaScript modules into an app's Hermes bytecode and hooks its functions. Version 98
+//! is supported.
 //!
-//! Files borrow their input, including string storage and function bodies. Keep
-//! the input mapping alive and unchanged until the file is dropped. Unedited
-//! output preserves every byte, including padding, the footer, and any epilogue.
+//! [`Editor`] owns the app's file storage, which must not change while it lives. Unedited output
+//! preserves every byte, including padding, the footer, and any epilogue.
 
 mod assemble;
 mod bytes;
@@ -35,7 +35,7 @@ mod write;
 pub use code::{BlockId, Code, Condition, HookKind, Operand, Place, SlotId, Statement};
 pub use edit::ModuleId;
 pub use editor::Editor;
-pub use error::{HermesError, Result};
+pub use error::{HermesError, LinkError, Result, Unsupported};
 pub use file::HermesFile;
 pub use function::FunctionId;
 pub use interface::imports;
