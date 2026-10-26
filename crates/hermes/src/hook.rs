@@ -60,19 +60,18 @@ impl Hooker<'_> {
             modules: plan.as_ref().map(|plan| plan.depth),
         };
         let body = codegen::compile(&target, &layer, &links)?;
-        let edited = self.edits.function(&self.file, function).cloned();
+        let edited = self.edits.function(&self.file, function).is_some();
         if let Some(original) = original {
-            let relocated = edited.is_none();
-            let previous = match edited {
-                Some(previous) => previous,
+            let previous = match self.edits.function(&self.file, function) {
+                Some(previous) => previous.clone(),
                 None => original_function(&target)?,
             };
             self.edits.append_function(&self.file, previous);
-            if relocated {
+            if !edited {
                 self.edits.relocate(function, original);
             }
-        } else if edited.is_none() {
-            if self.edits.has_root(function) {
+        } else if !edited {
+            if self.edits.roots().contains_key(&function) {
                 return Err(unsupported(function, Unsupported::NeededClosures));
             }
             self.edits.discard(function);
@@ -113,7 +112,8 @@ fn declared_export(
     export: &str,
 ) -> Result<StringId> {
     let linked = edits
-        .module(module)
+        .modules()
+        .get(module.0 as usize)
         .ok_or_else(|| unsupported(function, Unsupported::Module))?;
     let mut declared = false;
     for &id in &linked.exports {

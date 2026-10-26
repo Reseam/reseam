@@ -140,10 +140,6 @@ impl Edits {
         self.discarded.contains(&id)
     }
 
-    pub(crate) fn has_root(&self, id: FunctionId) -> bool {
-        self.roots.contains_key(&id)
-    }
-
     pub(crate) fn roots(&self) -> &BTreeMap<FunctionId, RootAttachment> {
         &self.roots
     }
@@ -180,10 +176,6 @@ impl Edits {
 
     pub(crate) fn modules(&self) -> &[LinkedModule] {
         &self.modules
-    }
-
-    pub(crate) fn module(&self, id: ModuleId) -> Option<&LinkedModule> {
-        self.modules.get(id.0 as usize)
     }
 
     pub(crate) fn link_names(&self) -> Option<LinkNames> {
