@@ -12,8 +12,8 @@ pub mod entry;
 pub mod error;
 pub mod resources;
 pub use reseam_storage::{Bytes, ScratchDir};
+mod res_value;
 mod string_pool;
-mod value;
 mod zip;
 
 pub use apk_file::{
@@ -23,6 +23,6 @@ pub use apk_file::{
 pub use axml::AxmlDocument;
 pub use container::{ContainerBundle, ContainerFormat};
 pub use error::{ApkError, Result};
+pub use res_value::ResValue;
 pub use resources::{ResourceScope, ResourceTable};
 pub use string_pool::{StringEncoding, StringPool};
-pub use value::ResValue;

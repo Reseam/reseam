@@ -3,7 +3,7 @@
 
 use super::{EntryValue, MapEntry, ResourceTable};
 use crate::error::Result;
-use crate::value::ResValue;
+use crate::res_value::ResValue;
 
 /// The bag item of an `attr` entry that holds its formats.
 const ATTR_TYPE: u32 = 0x0100_0000;

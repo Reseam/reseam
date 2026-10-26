@@ -8,8 +8,8 @@ use super::NodeMetadata;
 use super::android_attrs::android_attr_res_id;
 use super::{ANDROID_NS, AxmlAttribute, AxmlDocument, AxmlEvent};
 use crate::error::{Result, invalid};
+use crate::res_value::ResValue;
 use crate::resources::ResourceTable;
-use crate::value::ResValue;
 
 impl AxmlDocument {
     pub fn root(&self) -> Option<usize> {

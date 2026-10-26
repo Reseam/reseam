@@ -6,7 +6,7 @@ use std::borrow::Cow;
 use super::id::ResourceAddress;
 use super::{EntryValue, ResourceTable};
 use crate::error::{Result, invalid};
-use crate::value::ResValue;
+use crate::res_value::ResValue;
 
 /// A string-typed entry and the key it is filed under.
 #[derive(Debug, Clone)]
@@ -143,25 +143,14 @@ impl ResourceTable {
     }
 
     /// A value as the text that parses back to it, or `None` for a kind that
-    /// has no such form.
+    /// has no such form. Strings read this table's global pool.
     pub fn value_text(&self, value: ResValue) -> Result<Option<String>> {
-        Ok(Some(match value.kind {
-            ResValue::STRING => self
-                .get_string(value.data)?
-                .ok_or_else(|| invalid("resource string", format!("invalid index {}", value.data)))?
-                .into_owned(),
-            ResValue::REFERENCE if value.data == 0 => "@null".to_string(),
-            ResValue::REFERENCE => format!("@0x{:08x}", value.data),
-            ResValue::ATTRIBUTE => format!("?0x{:08x}", value.data),
-            ResValue::INT_BOOLEAN => (value.data != 0).to_string(),
-            ResValue::INT_DEC => (value.data as i32).to_string(),
-            ResValue::INT_HEX => format!("0x{:x}", value.data),
-            ResValue::FLOAT => f32::from_bits(value.data).to_string(),
-            ResValue::INT_COLOR_ARGB8..=ResValue::INT_COLOR_RGB4 => {
-                format!("#{:08x}", value.data)
-            }
-            _ => return Ok(None),
-        }))
+        let Some(index) = value.string_index() else {
+            return Ok(value.to_text());
+        };
+        self.get_string(index)?
+            .map(|text| Some(text.into_owned()))
+            .ok_or_else(|| invalid("resource string", format!("invalid index {index}")))
     }
 
     fn pool_index(&self, res_id: u32) -> Result<Option<u32>> {

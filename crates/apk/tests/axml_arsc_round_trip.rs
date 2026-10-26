@@ -395,8 +395,7 @@ fn attribute_formats_control_compilation_and_style_literals() -> TestResult {
         let mut table = attribute_table(&[("value", formats.bits())]);
         let id = table.find_resource_id("attr", "value")?.expect("ID");
         assert!(
-            axml::parse_attribute_value(text, id, Some(&mut ResourceScope::from(&mut table)))
-                .is_err()
+            axml::parse_value(text, Some(id), Some(&mut ResourceScope::from(&mut table))).is_err()
         );
     }
     for text in ["true", "12", "#abc"] {

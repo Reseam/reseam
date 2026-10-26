@@ -5,7 +5,7 @@ use super::{COMPLEX_LEN, EntryValue, FLAG_COMPACT, FLAG_COMPLEX, ResEntry, SIMPL
 use super::{MAP_ENTRY_LEN, MapEntry};
 use crate::buf::{read_u16_le, read_u32_le, require_len};
 use crate::error::{Result, malformed};
-use crate::value::ResValue;
+use crate::res_value::ResValue;
 
 pub(in crate::resources) fn entry_len(chunk: &[u8], pos: usize) -> Result<usize> {
     require_len(chunk, pos, SIMPLE_LEN, "res entry")?;

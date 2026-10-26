@@ -36,13 +36,10 @@ pub(super) fn attribute_text(
     name: &str,
 ) -> Option<String> {
     let attribute = find_attribute(document, attributes, name)?;
-    Some(match attribute.value.kind {
+    let value = attribute.value;
+    Some(match value.kind {
         ResValue::STRING => document.attribute_string(attribute)?.into_owned(),
-        ResValue::INT_DEC => (attribute.value.data as i32).to_string(),
-        ResValue::INT_BOOLEAN => (attribute.value.data != 0).to_string(),
-        ResValue::REFERENCE => format!("@0x{:08x}", attribute.value.data),
-        ResValue::INT_HEX => format!("0x{:08x}", attribute.value.data),
-        _ => attribute.value.data.to_string(),
+        _ => value.to_text().unwrap_or_else(|| value.data.to_string()),
     })
 }
 
@@ -124,11 +121,8 @@ pub fn xml_set_attribute(
 ) -> Result<(), String> {
     let element = ElementId(element);
     set_attribute_value(doc, element, &name, |pool, attribute, scope| {
-        let parsed = match attribute {
-            Some(id) => axml::parse_attribute_value(&value, id, scope),
-            None => axml::infer_value(&value, scope),
-        }
-        .map_err(|e| format!("attribute {name}: {e}"))?;
+        let parsed = axml::parse_value(&value, attribute, scope)
+            .map_err(|e| format!("attribute {name}: {e}"))?;
         match parsed {
             AttributeValue::Value(value) => Ok(value),
             AttributeValue::Text => pool

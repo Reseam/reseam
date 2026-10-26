@@ -6,8 +6,8 @@ use std::borrow::Cow;
 use std::ops::Range;
 
 use super::ANDROID_NS;
+use crate::res_value::ResValue;
 use crate::string_pool::{StringEncoding, StringPool};
-use crate::value::ResValue;
 
 /// A binary XML document as its flat event stream. Names and string values
 /// are indices into `string_pool`; `resource_ids[i]` is the framework

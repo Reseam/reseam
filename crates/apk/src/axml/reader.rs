@@ -13,8 +13,8 @@ use super::{
 use crate::buf::{read_u16_le, read_u32_le, require_len};
 use crate::chunk;
 use crate::error::{Result, invalid, malformed};
+use crate::res_value::ResValue;
 use crate::string_pool::{CHUNK_STRING_POOL, StringPool};
-use crate::value::ResValue;
 
 pub(super) const ATTRIBUTE_LEN: usize = 20;
 

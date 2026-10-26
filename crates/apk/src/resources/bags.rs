@@ -3,7 +3,7 @@
 
 use super::{EntryValue, MapEntry, ResourceTable};
 use crate::error::{Result, invalid};
-use crate::value::ResValue;
+use crate::res_value::ResValue;
 
 /// The name aapt gives an array's first element; the rest follow in order.
 const ARRAY_FIRST_NAME: u32 = 0x0100_0001;

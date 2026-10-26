@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::value::ResValue;
+use crate::res_value::ResValue;
 
 /// `0xPPTTEEEE`: package, type and entry index.
 pub(super) fn res_id(package_id: u32, type_id: u8, entry_index: usize) -> u32 {

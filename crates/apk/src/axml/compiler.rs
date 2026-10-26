@@ -1,20 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-mod value;
-
-pub use value::{AttributeValue, attribute_symbols, infer_value, parse_attribute_value};
-
 use super::NodeMetadata;
 
+use super::reference::android_resource;
 use super::text::{self, Attribute, Element, Name, Namespace, Node};
-use super::{
-    AAPT_NS, ANDROID_NS, AxmlAttribute, AxmlDocument, AxmlEvent, TOOLS_NS, android_attr_symbol,
-    android_res_id,
-};
+use super::value::{AttributeValue, parse_value};
+use super::{AAPT_NS, ANDROID_NS, AxmlAttribute, AxmlDocument, AxmlEvent, TOOLS_NS};
 use crate::error::{Result, invalid};
-use crate::resources::{AttrFormats, ResourceScope, ResourceTable};
-use crate::value::ResValue;
+use crate::res_value::ResValue;
+use crate::resources::{ResourceScope, ResourceTable};
 
 pub fn is_compiled_axml(data: &[u8]) -> bool {
     data.get(..2) == Some(&[0x03, 0x00])
@@ -106,15 +101,13 @@ pub(super) fn build_element(
                     .map(|attr| {
                         let namespace = attr.uri.as_deref().map(|uri| doc.intern_string(uri));
                         let name = attr.name.unwrap_or_else(|| doc.intern_string(attr.local));
-                        let value = match match attr.res_id {
-                            Some(id) => {
-                                parse_attribute_value(attr.text, id, resources.as_deref_mut())
-                            }
-                            None => infer_value(attr.text, resources.as_deref_mut()),
-                        }? {
-                            AttributeValue::Value(value) => value,
-                            AttributeValue::Text => ResValue::string(doc.intern_string(attr.text)),
-                        };
+                        let value =
+                            match parse_value(attr.text, attr.res_id, resources.as_deref_mut())? {
+                                AttributeValue::Value(value) => value,
+                                AttributeValue::Text => {
+                                    ResValue::string(doc.intern_string(attr.text))
+                                }
+                            };
                         Ok(AxmlAttribute::new(namespace, name, value))
                     })
                     .collect::<Result<Vec<_>>>()?;
@@ -342,13 +335,4 @@ pub(super) fn attribute_resource_id(
             .map(Some)
             .ok_or_else(|| invalid("XML attribute", format!("the app has no attr/{local}"))),
     }
-}
-
-fn android_resource(type_name: &str, name: &str) -> Result<u32> {
-    android_res_id(type_name, name).ok_or_else(|| {
-        invalid(
-            "framework resource",
-            format!("android:{type_name}/{name} is not public"),
-        )
-    })
 }

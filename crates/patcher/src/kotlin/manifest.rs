@@ -6,7 +6,7 @@ use std::borrow::Cow;
 use boltffi::export;
 use reseam_apk::axml::android_attrs::{
     ATTR_CONFIG_CHANGES, ATTR_ENABLED, ATTR_LABEL, ATTR_MIME_TYPE, ATTR_NAME, ATTR_TARGET_ACTIVITY,
-    android_attr_res_id,
+    android_attr_res_id, android_attr_symbol,
 };
 use reseam_apk::axml::{self, AttributeValue};
 use reseam_apk::{AxmlDocument, ResValue, ResourceScope};
@@ -174,10 +174,7 @@ fn text_value_in(
             .flatten()
             .map_or_else(|| TextValue::Text(text.to_string()), TextValue::Resolved));
     }
-    match match attr {
-        Some(id) => axml::parse_attribute_value(text, id, resources),
-        None => axml::infer_value(text, resources),
-    } {
+    match axml::parse_value(text, attr, resources) {
         Ok(AttributeValue::Value(value)) => Ok(TextValue::Resolved(value)),
         Ok(AttributeValue::Text) => Err(format!("{text}: no such resource")),
         Err(error) => Err(format!("{text}: {error}")),
@@ -230,7 +227,7 @@ pub fn manifest_set_activity_config_changes(
     with_component(component, |ctx, index| {
         let outcome = xml::edit_manifest(ctx, index, |m, _| {
             let activity = find_activity(m, &activity_name)?;
-            let (flags, unknown) = parse_config_changes(&config_changes)?;
+            let (flags, unknown) = parse_config_changes(&config_changes);
             let value = ResValue::int(flags);
             if !m.set_attribute(activity, ATTR_CONFIG_CHANGES, value) {
                 let attribute = m.make_attribute("configChanges", ATTR_CONFIG_CHANGES, value);
@@ -389,36 +386,16 @@ pub fn manifest_get_document(component: Option<String>) -> Option<u32> {
     .flatten()
 }
 
-fn parse_config_changes(text: &str) -> Result<(i32, Vec<String>), String> {
+/// The `android:configChanges` mask of `|`-joined flag names, and the names
+/// the framework attribute does not define.
+fn parse_config_changes(text: &str) -> (i32, Vec<String>) {
     let mut flags = 0;
     let mut unknown = Vec::new();
     for part in text.split('|').map(str::trim) {
-        if matches!(
-            part,
-            "mcc"
-                | "mnc"
-                | "locale"
-                | "touchscreen"
-                | "keyboard"
-                | "keyboardHidden"
-                | "navigation"
-                | "orientation"
-                | "screenLayout"
-                | "uiMode"
-                | "screenSize"
-                | "smallestScreenSize"
-                | "density"
-                | "layoutDirection"
-                | "colorMode"
-                | "fontScale"
-        ) {
-            let value = axml::attribute_symbols(ATTR_CONFIG_CHANGES, part, None)
-                .map_err(|error| error.to_string())?
-                .ok_or_else(|| format!("missing framework configChanges flag {part}"))?;
-            flags |= value.data as i32;
-        } else {
-            unknown.push(part.to_owned());
+        match android_attr_symbol(ATTR_CONFIG_CHANGES, part) {
+            Some(symbol) => flags |= symbol.value as i32,
+            None => unknown.push(part.to_owned()),
         }
     }
-    Ok((flags, unknown))
+    (flags, unknown)
 }

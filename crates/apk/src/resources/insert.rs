@@ -3,7 +3,7 @@
 
 use super::{EntryValue, ResEntry, ResourceTable, config_for_qualifiers, package};
 use crate::error::{Result, invalid};
-use crate::value::ResValue;
+use crate::res_value::ResValue;
 
 impl ResourceTable {
     /// Renames the first package. `Resources.getIdentifier(name, type, context.getPackageName())`

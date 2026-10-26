@@ -13,7 +13,7 @@ use reseam_storage::Bytes;
 use super::entry::{self, EntryValue, ResEntry};
 use crate::buf::{read_u16_le, read_u32_le, require_len};
 use crate::error::{Result, invalid};
-use crate::value::ResValue;
+use crate::res_value::ResValue;
 
 const HEADER_LEN: usize = 20;
 const NO_ENTRY: u32 = 0xFFFF_FFFF;

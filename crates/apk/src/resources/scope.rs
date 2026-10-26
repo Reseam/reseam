@@ -4,7 +4,7 @@
 use super::{EntryValue, MapEntry, ResourceTable};
 use crate::axml;
 use crate::error::{Result, invalid};
-use crate::value::ResValue;
+use crate::res_value::ResValue;
 
 /// Finds `type/name` in the app's other resource tables.
 pub type SplitLookup<'a> = dyn FnMut(&str, &str) -> Result<Option<u32>> + 'a;
@@ -59,11 +59,7 @@ impl<'a> ResourceScope<'a> {
     }
 
     pub(crate) fn parse_value(&mut self, text: &str, attr: Option<u32>) -> Result<ResValue> {
-        let value = match attr {
-            Some(attr) => axml::parse_attribute_value(text, attr, Some(self))?,
-            None => axml::infer_value(text, Some(self))?,
-        };
-        Ok(match value {
+        Ok(match axml::parse_value(text, attr, Some(self))? {
             axml::AttributeValue::Value(value) => value,
             axml::AttributeValue::Text => ResValue::string(self.table.add_global_string(text)),
         })

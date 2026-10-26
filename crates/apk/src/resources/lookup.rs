@@ -6,7 +6,7 @@ use std::borrow::Cow;
 use super::id::{EntryLocation, ResourceAddress};
 use super::{ResEntry, ResPackage, ResType, ResourceTable};
 use crate::error::{Result, invalid};
-use crate::value::ResValue;
+use crate::res_value::ResValue;
 
 /// The first value found. Errors only surface when no item finds one, so a
 /// malformed candidate does not hide a valid match elsewhere.
