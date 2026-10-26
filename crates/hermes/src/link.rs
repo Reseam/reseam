@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::assemble::assemble;
-use crate::bytes::read_u32;
 use crate::edit::{Edits, LinkNames, LinkedImport, LinkedModule, ModuleId};
 use crate::error::{HermesError, LinkError, Result};
 use crate::layout::{Field, STATIC_BUILTINS, Section};
@@ -71,8 +70,8 @@ impl Linker<'_> {
             ),
             shape_table: module.section(Section::Shapes).as_chunks::<8>().0,
         };
-        self.shapes(module, &strings)?;
-        self.storage(module)?;
+        literals::copy_shapes(&self.file, self.edits, module, &strings)?;
+        literals::copy_storage(&self.file, self.edits, module)?;
         self.functions(module, &mut remap)?;
         self.edits.append(Section::Values, &remap.values.output);
         self.edits.add_string_switches(remap.switches.count)?;
@@ -123,42 +122,6 @@ impl Linker<'_> {
             });
         }
         Ok(resolved)
-    }
-
-    /// Appends the module's object shapes, with the key literals they read.
-    fn shapes(&mut self, module: &HermesFile<'_>, strings: &[u32]) -> Result<()> {
-        let mut keys = Literals::new(
-            module,
-            Section::Keys,
-            strings,
-            self.edits.section_size(&self.file, Section::Keys) as u32,
-        );
-        for entry in module.section(Section::Shapes).as_chunks::<8>().0 {
-            let offset = keys.relocate(read_u32(entry, 0)?, read_u32(entry, 4)?)?;
-            self.edits.append(Section::Shapes, &offset.to_le_bytes());
-            self.edits.append(Section::Shapes, &entry[4..]);
-        }
-        self.edits.append(Section::Keys, &keys.output);
-        Ok(())
-    }
-
-    /// Appends the module's bigints and regexps with their storage.
-    fn storage(&mut self, module: &HermesFile<'_>) -> Result<()> {
-        for (table, storage) in [
-            (Section::BigInts, Section::BigIntStorage),
-            (Section::Regexps, Section::RegexpStorage),
-        ] {
-            let base = self.edits.section_size(&self.file, storage) as u32;
-            for entry in module.section(table).as_chunks::<8>().0 {
-                let offset = read_u32(entry, 0)?
-                    .checked_add(base)
-                    .ok_or(HermesError::Limit("four GiB of literal storage"))?;
-                self.edits.append(table, &offset.to_le_bytes());
-                self.edits.append(table, &entry[4..]);
-            }
-            self.edits.append(storage, module.section(storage));
-        }
-        Ok(())
     }
 
     /// Appends the module's functions with every reference moved.

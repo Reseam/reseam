@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use crate::HermesError;
 use crate::code::{BlockId, Code, Condition, HookKind, Operand, Place, SlotId, Statement};
-use crate::fixtures::{BUNDLED, function, host, image, written};
+use crate::error::Unsupported;
+use crate::fixtures::{BUNDLED, LITERALS, function, host, image, written};
 
 /// Code that reads every kind of operand, branches and calls an export.
 fn exercising(module: crate::ModuleId, kind: HookKind) -> Code {
@@ -120,5 +122,42 @@ fn hooked_functions_jump_only_to_their_own_instructions() {
                 );
             }
         }
+    }
+}
+
+fn calling(module: crate::ModuleId, export: &str) -> Code {
+    Code {
+        blocks: vec![vec![Statement::Call {
+            into: SlotId(0),
+            module,
+            export: export.into(),
+            arguments: vec![Operand::Param(0)],
+        }]],
+    }
+}
+
+#[test]
+fn hooks_reach_the_exports_link_returns() {
+    let greet = function(&host(), "greet");
+    let modules: [(&[u8], &[&str]); 2] = [
+        (LITERALS, &["rows", "render"]),
+        (BUNDLED, &["isEnabled", "withProperty"]),
+    ];
+    for (bytes, exports) in modules {
+        let module = image(bytes);
+        let mut editor = host();
+        let id = editor.link(&module.file(), &[]).expect("module links");
+        for export in exports {
+            editor
+                .hook(greet, HookKind::Before, &calling(id, export))
+                .unwrap_or_else(|error| panic!("{export} is exported: {error}"));
+        }
+        assert!(matches!(
+            editor.hook(greet, HookKind::Before, &calling(id, "missing")),
+            Err(HermesError::Unsupported {
+                reason: Unsupported::Export(_),
+                ..
+            })
+        ));
     }
 }

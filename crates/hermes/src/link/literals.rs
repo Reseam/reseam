@@ -4,6 +4,8 @@
 use std::collections::BTreeMap;
 
 use crate::HermesFile;
+use crate::bytes::read_u32;
+use crate::edit::Edits;
 use crate::error::{HermesError, Result, invalid};
 use crate::layout::Section;
 use crate::literal::{Literal, MAX_RUN, read_literals};
@@ -77,4 +79,49 @@ impl<'a> Literals<'a> {
         self.copies.insert((offset, count), copy);
         Ok(copy)
     }
+}
+
+/// Appends the module's object shapes, with the key literals they read.
+pub(super) fn copy_shapes(
+    app: &HermesFile<'_>,
+    edits: &mut Edits,
+    module: &HermesFile<'_>,
+    strings: &[u32],
+) -> Result<()> {
+    let mut keys = Literals::new(
+        module,
+        Section::Keys,
+        strings,
+        edits.section_size(app, Section::Keys) as u32,
+    );
+    for entry in module.section(Section::Shapes).as_chunks::<8>().0 {
+        let offset = keys.relocate(read_u32(entry, 0)?, read_u32(entry, 4)?)?;
+        edits.append(Section::Shapes, &offset.to_le_bytes());
+        edits.append(Section::Shapes, &entry[4..]);
+    }
+    edits.append(Section::Keys, &keys.output);
+    Ok(())
+}
+
+/// Appends the module's bigints and regexps with their storage.
+pub(super) fn copy_storage(
+    app: &HermesFile<'_>,
+    edits: &mut Edits,
+    module: &HermesFile<'_>,
+) -> Result<()> {
+    for (table, storage) in [
+        (Section::BigInts, Section::BigIntStorage),
+        (Section::Regexps, Section::RegexpStorage),
+    ] {
+        let base = edits.section_size(app, storage) as u32;
+        for entry in module.section(table).as_chunks::<8>().0 {
+            let offset = read_u32(entry, 0)?
+                .checked_add(base)
+                .ok_or(HermesError::Limit("four GiB of literal storage"))?;
+            edits.append(table, &offset.to_le_bytes());
+            edits.append(table, &entry[4..]);
+        }
+        edits.append(storage, module.section(storage));
+    }
+    Ok(())
 }

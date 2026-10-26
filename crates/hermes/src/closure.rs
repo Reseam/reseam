@@ -3,24 +3,26 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use crate::dataflow::{Registers, register_states};
 use crate::error::{Result, Unsupported, unsupported};
-use crate::function::Function;
-use crate::opcode::{Instruction, Op};
+use crate::opcode::Op;
 use crate::{FunctionId, FunctionIndex, HermesFile};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Value {
-    Undefined,
-    Environment(u16),
-}
+mod sites;
 
-#[derive(Clone)]
-struct ClosureSite {
-    target: FunctionId,
-    instruction: usize,
-    environment: Option<Value>,
-    offset: u32,
+use sites::{ClosureSite, Value, analyse};
+
+/// `target` and every function whose closures lead to it.
+fn ancestors(index: &FunctionIndex, target: FunctionId) -> BTreeSet<FunctionId> {
+    let mut found = BTreeSet::from([target]);
+    let mut pending = VecDeque::from([target]);
+    while let Some(id) = pending.pop_front() {
+        for &creator in index.creators(id) {
+            if found.insert(creator) {
+                pending.push_back(creator);
+            }
+        }
+    }
+    found
 }
 
 /// Closure environment analyses and hook plans, kept across hooks.
@@ -42,15 +44,7 @@ impl Closures {
         if let Some(plan) = self.plans.get(&target) {
             return Ok(plan.clone());
         }
-        let mut needed = BTreeSet::from([target]);
-        let mut pending = VecDeque::from([target]);
-        while let Some(id) = pending.pop_front() {
-            for &creator in index.creators(id) {
-                if needed.insert(creator) {
-                    pending.push_back(creator);
-                }
-            }
-        }
+        let needed = ancestors(index, target);
         if !needed.contains(&file.global_function()) {
             return Err(unsupported(target, Unsupported::Unreachable));
         }
@@ -151,70 +145,6 @@ pub(crate) struct RootAttachment {
 pub(crate) struct HookPlan {
     pub depth: u16,
     pub roots: BTreeMap<FunctionId, RootAttachment>,
-}
-
-/// Tracks which registers hold `undefined` or a known environment depth and reports what each
-/// closure captures.
-fn analyse(
-    function: &Function<'_>,
-    code: &[Instruction],
-    enclosing: u16,
-) -> Result<Vec<ClosureSite>> {
-    let states = register_states(function, code, |inst, before: &Registers<Value>| {
-        let offset = inst.offset.expect("analysed instructions are decoded");
-        let v = &inst.values;
-        let shifted = |value: Value, delta: i32| -> Result<Value> {
-            match value {
-                Value::Environment(depth) => {
-                    let depth = i32::from(depth) + delta;
-                    let depth = u16::try_from(depth).map_err(|_| {
-                        unsupported(function.id, Unsupported::EscapedEnvironment(offset))
-                    })?;
-                    Ok(Value::Environment(depth))
-                }
-                Value::Undefined => Err(unsupported(
-                    function.id,
-                    Unsupported::UnprovenEnvironment(offset),
-                )),
-            }
-        };
-        Ok(match inst.op {
-            Op::LoadConstUndefined => Some(Value::Undefined),
-            Op::Mov | Op::MovLong => before.get(&(v[1] as u32)).copied(),
-            Op::GetParentEnvironment => {
-                Some(shifted(Value::Environment(enclosing), -(v[1] as i32))?)
-            }
-            Op::CreateFunctionEnvironment => Some(shifted(Value::Environment(enclosing), 1)?),
-            Op::CreateTopLevelEnvironment => Some(Value::Environment(1)),
-            Op::CreateEnvironment => before
-                .get(&(v[1] as u32))
-                .copied()
-                .map(|p| shifted(p, 1))
-                .transpose()?,
-            Op::GetEnvironment => before
-                .get(&(v[1] as u32))
-                .copied()
-                .map(|p| shifted(p, -(v[2] as i32)))
-                .transpose()?,
-            _ => None,
-        })
-    })?;
-    let mut sites = Vec::new();
-    for (index, inst) in code.iter().enumerate() {
-        if !matches!(inst.op, Op::CreateClosure | Op::CreateClosureLongIndex) {
-            continue;
-        }
-        let Some(state) = states.get(&index) else {
-            continue;
-        };
-        sites.push(ClosureSite {
-            target: FunctionId(inst.values[2] as u32),
-            instruction: index,
-            environment: state.get(&(inst.values[1] as u32)).copied(),
-            offset: inst.offset.expect("analysed instructions are decoded"),
-        });
-    }
-    Ok(sites)
 }
 
 /// `depth` as the operand of an environment instruction in `function`.

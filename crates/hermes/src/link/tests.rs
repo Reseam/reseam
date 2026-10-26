@@ -6,6 +6,7 @@ use std::collections::BTreeSet;
 use super::remap::literal_count;
 use super::*;
 use crate::FunctionId;
+use crate::bytes::read_u32;
 use crate::fixtures::{HOST, LITERALS, host, image, written};
 use crate::literal::{Literal, read_literals};
 use crate::opcode::{IdKind, Instruction};
