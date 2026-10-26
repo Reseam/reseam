@@ -13,7 +13,7 @@ use std::path::Path;
 use archive::write_apk;
 use manifest::manifest_bytes;
 use reseam_apk::{
-    ApkError, ApkFile, ApkWriteOptions, Compression, ContainerBundle, ContainerFormat,
+    ApkError, ApkFile, ApkWriteOptions, Compression, ContainerFormat, open_container,
 };
 
 struct Entry<'a> {
@@ -85,9 +85,10 @@ fn containers_classify_extract_and_transfer_their_lifetime_to_a_session() {
             entries.push(Entry { name: case.metadata_name, data: case.metadata, compression });
             let input = dir.path().join(format!("app.{}", case.extension));
             write_container(&input, &entries);
-            let bundle = ContainerBundle::open(&input).expect("extract").expect("container");
-            assert_eq!(bundle.format(), case.format);
-            let mut apk = bundle.into_apk(ApkFile::patch_options()).expect("session");
+            let (format, mut apk) = open_container(&input, ApkFile::patch_options())
+                .expect("extract")
+                .expect("container");
+            assert_eq!(format, case.format);
             let extracted = apk.components()[0].path().to_path_buf();
             assert!(extracted.is_file());
             assert_eq!(apk.components()[0].manifest().package_name().as_deref(), Some("com.example.test"));
@@ -118,7 +119,11 @@ fn an_apk_manifest_takes_precedence_over_embedded_metadata_and_extension() {
                 ("embedded.apk", b"asset"),
             ],
         );
-        assert!(ContainerBundle::open(&path).expect("open").is_none());
+        assert!(
+            open_container(&path, ApkFile::patch_options())
+                .expect("open")
+                .is_none()
+        );
     }
 }
 
@@ -161,7 +166,7 @@ fn explicit_and_contained_sets_enforce_the_same_manifest_identity_rules() {
         let input = dir.path().join("app.apkm");
         write_container(&input, &candidate_entries(&manifests, &apks));
         assert!(matches!(
-            ContainerBundle::open(&input),
+            open_container(&input, ApkFile::patch_options()),
             Err(ApkError::Invalid { .. })
         ));
         let splits: Vec<_> = (1..manifests.len())
@@ -200,7 +205,7 @@ fn container_metadata_must_describe_the_complete_set_without_overriding_manifest
         let input = dir.path().join("app.xapk");
         write_container(&input, &entries);
         assert!(matches!(
-            ContainerBundle::open(&input),
+            open_container(&input, ApkFile::patch_options()),
             Err(ApkError::Invalid { .. })
         ));
     }
@@ -221,7 +226,7 @@ fn unsafe_names_and_expansion_payloads_cannot_be_materialized() {
         let input = dir.path().join("app.apkm");
         write_container(&input, &candidate_entries(&manifests, &apks));
         assert!(matches!(
-            ContainerBundle::open(&input),
+            open_container(&input, ApkFile::patch_options()),
             Err(ApkError::Invalid { .. })
         ));
     }
@@ -255,6 +260,6 @@ fn extraction_checks_payload_integrity_before_opening_an_apk() {
         drop(archive);
         bytes[offset] ^= 1;
         std::fs::write(&path, bytes).expect("corrupt fixture");
-        assert!(ContainerBundle::open(&path).is_err());
+        assert!(open_container(&path, ApkFile::patch_options()).is_err());
     }
 }

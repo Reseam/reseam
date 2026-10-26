@@ -5,7 +5,7 @@ mod component;
 mod dex;
 mod dex_set;
 mod open;
-pub(crate) use open::validate_components;
+pub(crate) use open::order_components;
 mod entries;
 mod presentation;
 mod resources;
@@ -27,7 +27,8 @@ pub struct ApkFile {
     options: reseam_dex::ParseOptions,
     components: Vec<ApkComponent>,
     dex: DexSet,
-    pub(crate) scratch: Option<reseam_storage::ScratchDir>,
+    /// Where the components of a container were extracted, removed with the session.
+    _scratch: Option<reseam_storage::ScratchDir>,
     journal: reseam_journal::Journal<undo::Part, undo::Undo>,
 }
 

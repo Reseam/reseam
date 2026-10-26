@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use reseam_dex::{Loading, ParseOptions, Verification};
+use reseam_storage::ScratchDir;
 use tracing::{info, instrument};
 
 use super::{ApkComponent, ApkFile, DexSet};
@@ -30,15 +31,17 @@ impl ApkFile {
             .chain(splits.iter().map(AsRef::as_ref))
             .map(|path| ApkComponent::open(path, opts.classes))
             .collect::<Result<_>>()?;
-        components.sort_by_key(|component| component.manifest().split_name().is_some());
-        Self::from_components(components, opts)
+        order_components(&mut components)?;
+        Self::from_components(components, opts, None)
     }
 
+    /// A session over components [`order_components`] put in order. It owns
+    /// `scratch`, the directory a container's components were extracted to.
     pub(crate) fn from_components(
         mut components: Vec<ApkComponent>,
         opts: ParseOptions,
+        scratch: Option<ScratchDir>,
     ) -> Result<Self> {
-        validate_components(&components)?;
         if opts.classes == Loading::Eager {
             for component in &mut components {
                 component.resources()?;
@@ -48,7 +51,7 @@ impl ApkFile {
             options: opts,
             dex: DexSet::load(&components, opts)?,
             components,
-            scratch: None,
+            _scratch: scratch,
             journal: reseam_journal::Journal::default(),
         };
         info!(
@@ -75,7 +78,10 @@ impl ApkFile {
     }
 }
 
-pub(crate) fn validate_components(components: &[ApkComponent]) -> Result<()> {
+/// Puts the base first and checks the set: one base with a package name, and
+/// splits with unique nonempty names that match its package and version code.
+pub(crate) fn order_components(components: &mut [ApkComponent]) -> Result<()> {
+    components.sort_by_key(|component| component.manifest().split_name().is_some());
     let base = components
         .first()
         .ok_or_else(|| invalid("apk set", "no base APK"))?

@@ -20,7 +20,7 @@ pub use apk_file::{
     ApkComponent, ApkFile, ApkWriteOptions, ApplicationIcon, DexSet, IconLayer, SignaturePolicy,
 };
 pub use axml::AxmlDocument;
-pub use container::{ContainerBundle, ContainerFormat};
+pub use container::{ContainerFormat, open_container};
 pub use error::{ApkError, Result};
 pub use res_value::ResValue;
 pub use resources::{ResourceScope, ResourceTable};

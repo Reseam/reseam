@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::error::{HostError, Result, classify};
-use reseam_apk::{ApkFile, ContainerBundle, ContainerFormat};
+use reseam_apk::{ApkFile, ContainerFormat, open_container};
 use reseam_dex::ParseOptions;
 use reseam_patcher::bundle::{BundleArchive, PatchBundle};
 use reseam_patcher::{ApkVersion, PatchPreset, PatchSpec};
@@ -239,27 +239,25 @@ pub(crate) fn open_apk(
     split_paths: &[PathBuf],
     options: ParseOptions,
 ) -> Result<OpenedApk> {
-    let bundle = ContainerBundle::open(apk_path).map_err(|source| HostError::Apk {
+    let apk_error = |source| HostError::Apk {
         path: apk_path.to_owned(),
         source,
-    })?;
-    if bundle.is_some() && !split_paths.is_empty() {
-        return Err(HostError::InvalidRequest(
-            "split files cannot be combined with an APKM/XAPK container",
-        ));
-    }
-    let format = bundle.as_ref().map(ContainerBundle::format);
-    let apk = match bundle {
-        Some(bundle) => bundle.into_apk(options),
-        None => ApkFile::open_split(apk_path, split_paths, options),
-    }
-    .map_err(|source| HostError::Apk {
-        path: apk_path.to_owned(),
-        source,
-    })?;
+    };
+    let (bundle, apk) = match open_container(apk_path, options).map_err(apk_error)? {
+        Some(_) if !split_paths.is_empty() => {
+            return Err(HostError::InvalidRequest(
+                "split files cannot be combined with an APKM/XAPK container",
+            ));
+        }
+        Some((format, apk)) => (Some(format), apk),
+        None => (
+            None,
+            ApkFile::open_split(apk_path, split_paths, options).map_err(apk_error)?,
+        ),
+    };
     Ok(OpenedApk {
         apk,
-        bundle: format,
+        bundle,
         input: apk_path.to_owned(),
     })
 }
