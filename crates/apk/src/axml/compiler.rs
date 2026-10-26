@@ -3,13 +3,13 @@
 
 use super::NodeMetadata;
 
-use super::reference::android_resource;
+use super::bind::attribute_resource_id;
 use super::text::{self, Attribute, Element, Name, Namespace, Node};
 use super::value::{AttributeValue, parse_value};
 use super::{AAPT_NS, ANDROID_NS, AxmlAttribute, AxmlDocument, AxmlEvent, TOOLS_NS};
 use crate::error::{Result, invalid};
 use crate::res_value::ResValue;
-use crate::resources::{ResourceScope, ResourceTable};
+use crate::resources::ResourceScope;
 
 pub fn is_compiled_axml(data: &[u8]) -> bool {
     data.get(..2) == Some(&[0x03, 0x00])
@@ -111,7 +111,7 @@ pub(super) fn build_element(
                         Ok(AxmlAttribute::new(namespace, name, value))
                     })
                     .collect::<Result<Vec<_>>>()?;
-                attributes.sort_by_key(|attr| doc.resource_id_for(attr.name).unwrap_or(u32::MAX));
+                doc.sort_attributes(&mut attributes);
                 doc.elements.push(AxmlEvent::StartElement {
                     metadata: NodeMetadata::default(),
                     namespace,
@@ -317,22 +317,5 @@ fn resolve_namespace(name: &Name, scope: &[Namespace], use_of: NameUse) -> Resul
             "XML namespace",
             format!("{}: undeclared prefix {prefix}", name.qualified()),
         )),
-    }
-}
-
-pub(super) fn attribute_resource_id(
-    uri: Option<&str>,
-    local: &str,
-    resources: Option<&ResourceTable>,
-) -> Result<Option<u32>> {
-    match uri {
-        None => Ok(None),
-        Some(ANDROID_NS) => android_resource("attr", local).map(Some),
-        Some(_) => resources
-            .map(|table| table.find_resource_id("attr", local))
-            .transpose()?
-            .flatten()
-            .map(Some)
-            .ok_or_else(|| invalid("XML attribute", format!("the app has no attr/{local}"))),
     }
 }

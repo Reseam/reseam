@@ -3,16 +3,20 @@
 
 //! Android binary XML: parsing, editing, serializing, and compiling from text.
 
+mod adopt;
 pub mod android_attrs;
+mod bind;
 mod compiler;
 mod document;
 mod edit;
 mod inline;
 mod manifest;
 mod probe;
+mod query;
 mod reader;
 mod reference;
 mod text;
+mod tree;
 mod value;
 mod writer;
 
@@ -20,6 +24,7 @@ pub use android_attrs::{android_attr_res_id, android_attr_symbol, android_res_id
 pub use compiler::{build_document, compile_xml, is_compiled_axml};
 pub use document::{AxmlAttribute, AxmlDocument, AxmlEvent, NodeMetadata};
 pub use inline::{AAPT_NS, CompiledXmlResource, compile_resource_file};
+pub use tree::{children, element_end, parent};
 pub use value::{AttributeValue, attribute_symbols, parse_value};
 
 pub const ANDROID_NS: &str = "http://schemas.android.com/apk/res/android";

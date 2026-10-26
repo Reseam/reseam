@@ -1,18 +1,23 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::{
-    AxmlAttribute, AxmlDocument, AxmlEvent, NodeMetadata, ResValue, ResourceTable, Result, invalid,
-};
+use std::borrow::Cow;
+
+use super::bind::attribute_resource_id;
+use super::{AxmlAttribute, AxmlDocument, AxmlEvent, NodeMetadata};
+use crate::error::{Result, invalid};
+use crate::res_value::ResValue;
+use crate::resources::ResourceTable;
+use crate::string_pool::StringPool;
 
 impl AxmlDocument {
-    /// A deep copy of `events`, a subtree of `source`, in this document's own
-    /// strings and namespaces. Every attribute is re-bound to the id this
+    /// A deep copy of `events`, a subtree whose strings are in `source`, in
+    /// this document's own strings and namespaces. Every attribute is re-bound to the id this
     /// document resolves it by, so an adopted attribute carries what the
     /// inflater reads or the adoption fails.
     pub fn adopt(
         &mut self,
-        source: &AxmlDocument,
+        source: &StringPool,
         events: &[AxmlEvent],
         resources: Option<&ResourceTable>,
     ) -> Result<Vec<AxmlEvent>> {
@@ -96,13 +101,13 @@ impl AxmlDocument {
             .collect()
     }
 
-    fn adopt_string(&mut self, source: &AxmlDocument, index: u32) -> Result<u32> {
+    fn adopt_string(&mut self, source: &StringPool, index: u32) -> Result<u32> {
         let value = Self::source_string(source, index)?;
         Ok(self.intern_string(&value))
     }
 
-    fn source_string(source: &AxmlDocument, index: u32) -> Result<std::borrow::Cow<'_, str>> {
-        source.string(index).ok_or_else(|| {
+    fn source_string(source: &StringPool, index: u32) -> Result<Cow<'_, str>> {
+        source.get(index)?.ok_or_else(|| {
             invalid(
                 "axml adopt",
                 format!("source string index {index} is invalid"),
@@ -112,7 +117,7 @@ impl AxmlDocument {
 
     fn adopt_namespace(
         &mut self,
-        source: &AxmlDocument,
+        source: &StringPool,
         namespace: Option<u32>,
         declarations: &[u32],
     ) -> Result<Option<u32>> {
@@ -132,22 +137,18 @@ impl AxmlDocument {
 
     fn adopt_attribute(
         &mut self,
-        source: &AxmlDocument,
+        source: &StringPool,
         attr: &AxmlAttribute,
         resources: Option<&ResourceTable>,
         declarations: &[u32],
     ) -> Result<AxmlAttribute> {
         let uri = attr
             .namespace
-            .map(|index| Self::source_string(source, index).map(std::borrow::Cow::into_owned))
+            .map(|index| Self::source_string(source, index).map(Cow::into_owned))
             .transpose()?;
         let local = Self::source_string(source, attr.name)?;
         let namespace = self.adopt_namespace(source, attr.namespace, declarations)?;
-        let name = match crate::axml::compiler::attribute_resource_id(
-            uri.as_deref(),
-            &local,
-            resources,
-        )? {
+        let name = match attribute_resource_id(uri.as_deref(), &local, resources)? {
             Some(id) => self.intern_attribute_name(&local, id),
             None => self.intern_string(&local),
         };

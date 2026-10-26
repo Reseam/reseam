@@ -93,9 +93,13 @@ fn an_adopted_subtree_is_rebound_in_the_document_that_takes_it() -> TestResult {
     let mut target = view(r#"android:tag="root""#, Some(&mut table));
     let mut missing = axml::build_document("<LinearLayout/>", None)?;
     let start = source.root().expect("root");
-    let subtree = &source.events()[start..=source.find_end_element(start).expect("end")];
-    assert!(missing.adopt(&source, subtree, Some(&table)).is_err());
-    let adopted = target.adopt(&source, subtree, Some(&table))?;
+    let subtree = &source.events()[start..=axml::element_end(source.events(), start).expect("end")];
+    assert!(
+        missing
+            .adopt(source.string_pool(), subtree, Some(&table))
+            .is_err()
+    );
+    let adopted = target.adopt(source.string_pool(), subtree, Some(&table))?;
     target.insert_events(target.root().expect("root") + 1, adopted)?;
     let decoded = AxmlDocument::parse(&target.serialize()?)?;
     let graft = decoded.find_element("FrameLayout").expect("graft");

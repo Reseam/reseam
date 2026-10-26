@@ -6,7 +6,7 @@ use super::handles::{HandleSpace, checked};
 use crate::context::PatchContext;
 use boltffi::export;
 use reseam_apk::axml::AxmlDocument;
-use reseam_apk::{Compression, StringEncoding, StringPool};
+use reseam_apk::{Compression, StringEncoding};
 use std::cell::RefCell;
 use std::panic::{self, AssertUnwindSafe};
 
@@ -133,12 +133,7 @@ pub(super) fn with_read<R>(
 }
 
 pub(super) fn empty_document() -> AxmlDocument {
-    AxmlDocument::from_parts(
-        StringPool::new(Vec::new(), StringEncoding::Utf8),
-        Vec::new(),
-        Vec::new(),
-    )
-    .expect("empty document has no invalid strings")
+    AxmlDocument::new(StringEncoding::Utf8)
 }
 
 pub(super) fn with_edit<R>(

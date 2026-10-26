@@ -127,65 +127,6 @@ impl AxmlDocument {
         &self.elements
     }
 
-    /// Inserts event nodes at a boundary. Document pools cannot be inserted
-    /// through this operation. Out-of-range boundaries are errors.
-    pub fn insert_events(
-        &mut self,
-        position: usize,
-        events: impl IntoIterator<Item = AxmlEvent>,
-    ) -> crate::Result<()> {
-        if position > self.elements.len() {
-            return Err(crate::error::invalid(
-                "axml edit",
-                "insertion boundary is outside the document",
-            ));
-        }
-        let events = events.into_iter().collect::<Vec<_>>();
-        if events
-            .iter()
-            .any(|event| matches!(event, AxmlEvent::StringPool | AxmlEvent::ResourceMap))
-        {
-            return Err(crate::error::invalid(
-                "axml edit",
-                "cannot insert a document pool as a node",
-            ));
-        }
-        self.elements.splice(position..position, events);
-        Ok(())
-    }
-
-    /// Removes a complete element subtree, transferring its original metadata
-    /// with it. An absent or unterminated element is an error.
-    pub fn detach_element(&mut self, start: usize) -> crate::Result<Vec<AxmlEvent>> {
-        let end = self.find_end_element(start).ok_or_else(|| {
-            crate::error::invalid("axml edit", "element is absent or unterminated")
-        })?;
-        Ok(self.elements.drain(start..=end).collect())
-    }
-
-    /// Edits an element's attributes while retaining its node metadata. The
-    /// callback may intern strings and bind names but must not move event nodes.
-    /// Returns `None` if the index is not an element or the callback removes it.
-    pub fn edit_attributes<R>(
-        &mut self,
-        index: usize,
-        edit: impl FnOnce(&mut Self, &mut Vec<AxmlAttribute>) -> R,
-    ) -> Option<R> {
-        let AxmlEvent::StartElement { attributes, .. } = self.elements.get_mut(index)? else {
-            return None;
-        };
-        let mut attributes = std::mem::take(attributes);
-        let result = edit(self, &mut attributes);
-        let Some(AxmlEvent::StartElement {
-            attributes: slot, ..
-        }) = self.elements.get_mut(index)
-        else {
-            return None;
-        };
-        *slot = attributes;
-        Some(result)
-    }
-
     pub fn string(&self, index: u32) -> Option<Cow<'_, str>> {
         self.string_pool
             .get(index)
@@ -203,14 +144,6 @@ impl AxmlDocument {
             .get(name as usize)
             .copied()
             .filter(|&id| id != 0)
-    }
-
-    pub(crate) fn bind_resource_id(&mut self, name: u32, res_id: u32) {
-        let index = name as usize;
-        if self.resource_ids.len() <= index {
-            self.resource_ids.resize(index + 1, 0);
-        }
-        self.resource_ids[index] = res_id;
     }
 
     /// The URI index of the declared Android framework namespace.

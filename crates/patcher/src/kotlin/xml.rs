@@ -4,7 +4,7 @@
 use super::handles::checked;
 use boltffi::export;
 use reseam_apk::ResourceScope;
-use reseam_apk::axml::{self, AxmlDocument, AxmlEvent, NodeMetadata};
+use reseam_apk::axml::{self, AxmlEvent, NodeMetadata};
 
 use super::xml_attributes::attribute_text;
 use super::xml_documents::{Source, open, with_edit, with_read};
@@ -53,28 +53,8 @@ pub fn xml_children(doc: u32, element: u32) -> Vec<u32> {
     let element = ElementId(element);
     checked(with_read(doc, |nodes, document| {
         let position = nodes.position(element)?;
-        let end = nodes.end(document, position)?;
-        let mut depth = 0usize;
-        let children: Vec<_> = nodes
-            .events(document, position.tree)?
-            .iter()
-            .enumerate()
-            .take(end)
-            .skip(position.index + 1)
-            .filter_map(|(index, event)| match event {
-                AxmlEvent::StartElement { .. } => {
-                    let direct = depth == 0;
-                    depth += 1;
-                    direct.then_some(index)
-                }
-                AxmlEvent::EndElement { .. } => {
-                    depth -= 1;
-                    None
-                }
-                _ => None,
-            })
-            .collect();
-        children
+        nodes.end(document, position)?;
+        axml::children(nodes.events(document, position.tree)?, position.index)
             .into_iter()
             .map(|index| {
                 nodes
@@ -93,23 +73,7 @@ pub fn xml_parent(doc: u32, element: u32) -> Option<u32> {
     let element = ElementId(element);
     checked(with_read(doc, |nodes, document| {
         let position = nodes.position(element)?;
-        let events = nodes.events(document, position.tree)?;
-        let mut depth = 0usize;
-        let parent = (0..position.index)
-            .rev()
-            .find(|&index| match events[index] {
-                AxmlEvent::EndElement { .. } => {
-                    depth += 1;
-                    false
-                }
-                AxmlEvent::StartElement { .. } if depth == 0 => true,
-                AxmlEvent::StartElement { .. } => {
-                    depth -= 1;
-                    false
-                }
-                _ => false,
-            });
-        parent
+        axml::parent(nodes.events(document, position.tree)?, position.index)
             .map(|index| {
                 nodes
                     .id(Position {
@@ -260,24 +224,22 @@ pub fn xml_adopt(doc: u32, source: u32, element: u32) -> Result<u32, String> {
     if source == doc {
         return Err("use clone within one XML document".into());
     }
-    let snapshot = with_read(source, |nodes, document| {
+    let (strings, subtree) = with_read(source, |nodes, document| {
         let position = nodes.position(element)?;
         let end = nodes.end(document, position)?;
         // StringPool clones share the input backing; only the requested subtree is copied.
-        AxmlDocument::from_parts(
+        Ok((
             document.string_pool().clone(),
-            Vec::new(),
             nodes.events(document, position.tree)?[position.index..=end].to_vec(),
-        )
-        .map_err(|e| e.to_string())
+        ))
     })?;
     with_edit(doc, |nodes, document, ctx| {
         let events = ctx
             .apk_mut()
             .with_resource_scope(0, |scope| {
                 document.adopt(
-                    &snapshot,
-                    snapshot.events(),
+                    &strings,
+                    &subtree,
                     scope.as_deref().map(ResourceScope::table),
                 )
             })
@@ -316,6 +278,7 @@ mod tests {
     use crate::kotlin::xml_attributes::{xml_get_attribute, xml_set_attribute};
     use crate::kotlin::xml_documents::{xml_close, xml_open};
     use reseam_apk::Compression;
+    use reseam_apk::axml::AxmlDocument;
 
     #[test]
     fn manifest_views_share_borrows_and_keep_element_identities() {

@@ -94,7 +94,7 @@ pub fn manifest_add_permission(component: Option<String>, permission: String) {
     edit(component, |m, nodes| {
         let end = m
             .root()
-            .and_then(|root| m.find_end_element(root))
+            .and_then(|root| axml::element_end(m.events(), root))
             .ok_or("manifest root not found")?;
         if !m.add_permission(&permission) {
             return Err("unterminated manifest root".into());
@@ -299,9 +299,8 @@ pub fn manifest_add_activity_alias(
         let application = m
             .find_element("application")
             .ok_or("application element not found")?;
-        let at = m
-            .find_end_element(application)
-            .ok_or("unterminated application element")?;
+        let at =
+            axml::element_end(m.events(), application).ok_or("unterminated application element")?;
         add_activity_alias(m, &target_activity, &alias_name, enabled, label)?;
         nodes.inserted_document(at, 2);
         Ok(())
@@ -353,21 +352,14 @@ fn copy_intent_filters(
 ) -> Result<(), String> {
     let from = find_activity_or_alias(m, from_activity)?;
     let to = find_activity_or_alias(m, to_activity)?;
-    let from_end = m
-        .find_end_element(from)
-        .ok_or("unterminated source activity")?;
-    let mut filters = Vec::new();
-    let mut i = from + 1;
-    while i < from_end {
-        let is_filter = m.element_name(i).as_deref() == Some("intent-filter");
-        match m.find_end_element(i).filter(|_| is_filter) {
-            Some(end) => {
-                filters.push(m.events()[i..=end].to_vec());
-                i = end + 1;
-            }
-            None => i += 1,
-        }
-    }
+    axml::element_end(m.events(), from).ok_or("unterminated source activity")?;
+    let filters: Vec<_> = axml::children(m.events(), from)
+        .into_iter()
+        .filter(|&child| m.element_name(child).as_deref() == Some("intent-filter"))
+        .filter_map(|child| {
+            Some(m.events()[child..=axml::element_end(m.events(), child)?].to_vec())
+        })
+        .collect();
     let insert_at = to + 1;
     for events in filters.into_iter().rev() {
         let count = events.len();

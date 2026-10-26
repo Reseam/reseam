@@ -43,26 +43,6 @@ pub(super) fn attribute_text(
     })
 }
 
-fn set_attribute(
-    document: &mut AxmlDocument,
-    attributes: &mut Vec<AxmlAttribute>,
-    namespace: Option<u32>,
-    name: u32,
-    value: ResValue,
-) {
-    let local = document.string(name).map(std::borrow::Cow::into_owned);
-    let existing = local.and_then(|local| {
-        attributes
-            .iter()
-            .position(|attribute| document.is_attribute(attribute, namespace, &local))
-    });
-    if let Some(attribute) = existing.map(|index| &mut attributes[index]) {
-        attribute.set_value(value);
-    } else {
-        document.insert_attribute(attributes, AxmlAttribute::new(namespace, name, value));
-    }
-}
-
 #[export]
 pub fn xml_get_attribute(doc: u32, element: u32, name: String) -> Option<String> {
     let element = ElementId(element);
@@ -104,7 +84,7 @@ fn set_attribute_value(
                         .map_err(|e| e.to_string())?;
                     let attribute = namespace.and_then(|_| document.resource_id_for(name));
                     let value = value(document.string_pool_mut(), attribute, scope)?;
-                    set_attribute(document, attributes, namespace, name, value);
+                    document.put_attribute(attributes, namespace, name, value);
                     Ok(())
                 })
             })
