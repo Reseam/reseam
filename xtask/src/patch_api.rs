@@ -38,6 +38,10 @@ pub fn regen() -> Result<()> {
         .into_target()?;
     let (contract, _) = target.stack().build(&bindings)?.into_parts();
     let output = paths::workspace_root().join("patch-api").join("generated");
+    // Regeneration replaces the whole tree, so files a previous generator wrote do not linger.
+    if output.exists() {
+        fs::remove_dir_all(&output)?;
+    }
     Generation::write_output(target.render(&bindings)?, &output)?;
     fs::write(output.join("jni/registration.c"), registration(&contract)?)?;
     browser_bridge(&contract, &output)?;
@@ -549,44 +553,17 @@ fn kotlin_surface(output: &std::path::Path) -> Result<()> {
     }
     let values_path = output.join("app/reseam/patch/types");
     fs::create_dir_all(&values_path)?;
-    let (imports, aliases) = kotlin_value_aliases(&values);
     fs::write(values_path.join("PatchValues.kt"), values)?;
     let calls = checked_kotlin_calls(&owned_kotlin_types(&source[values_end..]))?;
 
     fs::write(
         path,
         format!(
-            "@file:OptIn(kotlin.ExperimentalUnsignedTypes::class)\npackage app.reseam.patch.native\n\nimport app.reseam.patch.types.*\n{imports}\n{}\n{exceptions}\n{calls}\nprivate inline fun <T> bridgeCall(block: () -> T): T =\n    try {{ block() }} catch (error: BoltFfiErrorBufferException) {{\n        throw FfiException(WireReader(error.bytes).readString())\n    }}\n",
+            "@file:OptIn(kotlin.ExperimentalUnsignedTypes::class)\npackage app.reseam.patch.native\n\nimport app.reseam.patch.types.*\n\n{}\n{exceptions}\n{calls}\nprivate inline fun <T> bridgeCall(block: () -> T): T =\n    try {{ block() }} catch (error: BoltFfiErrorBufferException) {{\n        throw FfiException(WireReader(error.bytes).readString())\n    }}\n",
             &source[native..native_end]
         ),
     )?;
-    fs::write(
-        output.join("app/reseam/patch/native/References.kt"),
-        format!("package app.reseam.patch.native\n\n{aliases}"),
-    )?;
     Ok(())
-}
-
-fn kotlin_value_aliases(source: &str) -> (String, String) {
-    let names: Vec<_> = source
-        .lines()
-        .filter_map(|line| {
-            ["data class ", "sealed class ", "enum class "]
-                .iter()
-                .find_map(|prefix| line.strip_prefix(prefix))?
-                .split(['(', '{', ':', ' '])
-                .next()
-        })
-        .collect();
-    let (mut imports, mut aliases) = (String::new(), String::new());
-    for name in names {
-        writeln!(imports, "import app.reseam.patch.types.{name}")
-            .expect("writing to a String is infallible");
-        writeln!(aliases,
-            "@Deprecated(\"Import app.reseam.patch.types.{name}\", ReplaceWith(\"{name}\", \"app.reseam.patch.types.{name}\"))\ntypealias {name} = app.reseam.patch.types.{name}\n"
-        ).expect("writing to a String is infallible");
-    }
-    (imports, aliases)
 }
 
 fn checked_kotlin_calls(source: &str) -> Result<String> {

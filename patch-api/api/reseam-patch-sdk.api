@@ -234,7 +234,6 @@ public final class app/reseam/patch/FileScope {
 	public final fun list ()Ljava/util/List;
 	public final fun read (Ljava/lang/String;)[B
 	public final fun signers ()Ljava/util/List;
-	public final fun source ()[B
 	public final fun sourceStream ()Ljava/io/InputStream;
 	public final fun write (Ljava/lang/String;[B)V
 	public final fun writeStored (Ljava/lang/String;[B)V

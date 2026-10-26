@@ -123,26 +123,6 @@ fn carries_attribute(
 }
 
 #[export]
-pub fn file_source(component: Option<String>) -> Option<Vec<u8>> {
-    with_component(component, |ctx, index| {
-        let source = ctx
-            .apk()
-            .component(index)
-            .expect("component checked by with_component")
-            .source();
-        match source {
-            Ok(bytes) => Some(bytes[..].to_vec()),
-            Err(error) => {
-                record_failure(&error);
-                ctx.log().warn(format!("file_source: {error}"));
-                None
-            }
-        }
-    })
-    .flatten()
-}
-
-#[export]
 pub fn file_source_size(component: Option<String>) -> Result<u64, String> {
     with_component(component, |ctx, index| {
         let component = ctx

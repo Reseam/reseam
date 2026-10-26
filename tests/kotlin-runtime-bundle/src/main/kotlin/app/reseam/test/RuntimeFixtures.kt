@@ -13,9 +13,9 @@ import app.reseam.patch.dex.opcode
 import app.reseam.patch.klass
 import app.reseam.patch.method
 import app.reseam.patch.methods
-import app.reseam.patch.native.FieldRef
 import app.reseam.patch.patch
 import app.reseam.patch.point
+import app.reseam.patch.types.FieldRef
 
 internal val appVideoState = klass("appVideoState") { strings("NEW", "PLAYING") }
 

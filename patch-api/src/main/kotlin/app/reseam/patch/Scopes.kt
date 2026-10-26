@@ -17,7 +17,6 @@ import app.reseam.patch.native.fileInject
 import app.reseam.patch.native.fileList
 import app.reseam.patch.native.fileRead
 import app.reseam.patch.native.fileSigners
-import app.reseam.patch.native.fileSource
 import app.reseam.patch.native.fileSourceRange
 import app.reseam.patch.native.fileSourceSize
 import app.reseam.patch.native.fileXmlWith
@@ -140,10 +139,6 @@ class FileScope internal constructor(private val componentName: String? = null) 
      */
     fun xmlFilesWith(vararg attributes: String): List<String> =
         fileXmlWith(componentName, attributes.toList())
-
-    /** The original, unmodified bytes of this component's APK, signing block included. */
-    @Deprecated("Use sourceStream() to avoid copying the entire APK into memory")
-    fun source(): ByteArray? = fileSource(componentName)
 
     /**
      * Streams original APK bytes, including the signing block, in bounded reads. The stream is

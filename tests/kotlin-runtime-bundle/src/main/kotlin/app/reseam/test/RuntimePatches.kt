@@ -22,8 +22,6 @@ import app.reseam.patch.invoke
 import app.reseam.patch.klass
 import app.reseam.patch.method
 import app.reseam.patch.methods
-import app.reseam.patch.native.FieldRef
-import app.reseam.patch.native.NewField
 import app.reseam.patch.patch
 import app.reseam.patch.point
 import app.reseam.patch.replace
@@ -33,6 +31,8 @@ import app.reseam.patch.settings.section
 import app.reseam.patch.settings.settingsHost
 import app.reseam.patch.settings.toggle
 import app.reseam.patch.skipWhen
+import app.reseam.patch.types.FieldRef
+import app.reseam.patch.types.NewField
 
 val finalizeOwner =
     declaredFixture("finalize-owner") {
