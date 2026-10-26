@@ -3,39 +3,8 @@
 
 use std::collections::BTreeMap;
 
-use crate::bytes::read_u32;
 use crate::error::{Result, invalid};
 use crate::literal::{Literal, MAX_RUN, read_literals};
-use crate::opcode::{Instruction, Op};
-
-pub(super) fn at(inst: &Instruction) -> usize {
-    inst.offset.expect("decoded instructions have offsets") as usize
-}
-
-pub(super) fn checked_id(value: u64, count: u32, base: u32) -> Result<u32> {
-    if value >= u64::from(count) {
-        return Err(invalid(0, "linked ID out of range"));
-    }
-    base.checked_add(value as u32)
-        .ok_or_else(|| invalid(0, "linked ID overflow"))
-}
-
-/// How many literals an instruction reads from the value buffer: an array's
-/// static elements, or one value per property of an object's shape.
-pub(super) fn literal_count(inst: &Instruction, shapes: &[[u8; 8]]) -> Result<Option<u32>> {
-    let shape = |index: u64| {
-        shapes
-            .get(index as usize)
-            .map(|entry| read_u32(entry, 4))
-            .ok_or_else(|| invalid(at(inst), "shape ID out of range"))?
-    };
-    Ok(match inst.op {
-        Op::NewArrayWithBuffer | Op::NewArrayWithBufferLong => Some(inst.values[2] as u32),
-        Op::NewObjectWithBuffer | Op::NewObjectWithBufferLong => Some(shape(inst.values[1])?),
-        Op::NewObjectWithBufferAndParent => Some(shape(inst.values[2])?),
-        _ => None,
-    })
-}
 
 /// A linked module's literal buffer, copied per reference. Hermes shares
 /// byte-identical literal sequences, so a reference may start inside another

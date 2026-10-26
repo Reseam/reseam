@@ -3,11 +3,12 @@
 
 use std::collections::BTreeSet;
 
+use super::remap::literal_count;
 use super::*;
 use crate::FunctionId;
 use crate::fixtures::{HOST, LITERALS, host, image, written};
 use crate::literal::{Literal, read_literals};
-use crate::opcode::Instruction;
+use crate::opcode::{IdKind, Instruction};
 
 /// A literal as text and bytes, comparable across files whose string IDs differ.
 #[derive(Debug, PartialEq)]
