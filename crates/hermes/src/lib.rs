@@ -14,6 +14,8 @@ mod dataflow;
 mod edit;
 mod environment;
 mod error;
+#[cfg(test)]
+mod fixtures;
 mod hook;
 mod index;
 mod interface;

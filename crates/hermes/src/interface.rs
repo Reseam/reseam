@@ -216,11 +216,8 @@ impl Frame {
 
 #[cfg(test)]
 mod tests {
-    use reseam_storage::Bytes;
-
-    use crate::{
-        Code, Editor, FunctionIndex, HermesError, HermesImage, HookKind, Operand, SlotId, Statement,
-    };
+    use crate::fixtures::{BUNDLED, HOST, LITERALS, function, image};
+    use crate::{Code, Editor, FunctionIndex, HermesError, HookKind, Operand, SlotId, Statement};
 
     fn calling(module: crate::ModuleId, export: &str) -> Code {
         Code {
@@ -235,24 +232,15 @@ mod tests {
 
     #[test]
     fn hooks_reach_the_exports_link_returns() {
-        let host = HermesImage::parse(Bytes::from_slice(include_bytes!("../fixtures/host.hbc")))
-            .expect("host fixture parses");
+        let host = image(HOST);
         let index = FunctionIndex::build(&host.file()).expect("host indexes");
-        let greet = index
-            .find_function(&host.file(), Some("greet"), &[], None)
-            .expect("fixture function exists");
+        let greet = function(&host, &index, "greet");
         let modules: [(&[u8], &[&str]); 2] = [
-            (
-                include_bytes!("../fixtures/literals.hbc"),
-                &["rows", "render"],
-            ),
-            (
-                include_bytes!("../fixtures/bundled.hbc"),
-                &["isEnabled", "withProperty"],
-            ),
+            (LITERALS, &["rows", "render"]),
+            (BUNDLED, &["isEnabled", "withProperty"]),
         ];
         for (bytes, exports) in modules {
-            let module = HermesImage::parse(Bytes::from_slice(bytes)).expect("module parses");
+            let module = image(bytes);
             let mut editor = Editor::new(host.file());
             let id = editor
                 .link(&index, &module.file(), &[])

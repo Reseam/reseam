@@ -3,12 +3,11 @@
 
 use std::collections::BTreeSet;
 
-use reseam_storage::Bytes;
-
 use super::*;
+use crate::FunctionId;
+use crate::fixtures::{HOST, LITERALS, image, written};
 use crate::literal::{Literal, read_literals};
 use crate::opcode::Instruction;
-use crate::{FunctionId, HermesImage};
 
 /// A literal as text and bytes, comparable across files whose string IDs differ.
 #[derive(Debug, PartialEq)]
@@ -59,12 +58,8 @@ fn run_starts(buffer: &[u8]) -> BTreeSet<u64> {
 
 #[test]
 fn linked_literals_read_back_the_values_and_keys_of_the_module() {
-    let host = HermesImage::parse(Bytes::from_slice(include_bytes!("../../fixtures/host.hbc")))
-        .expect("host fixture parses");
-    let module = HermesImage::parse(Bytes::from_slice(include_bytes!(
-        "../../fixtures/literals.hbc"
-    )))
-    .expect("module fixture parses");
+    let host = image(HOST);
+    let module = image(LITERALS);
     let module_file = module.file();
     let host_functions = host.file().function_count();
     let index = FunctionIndex::build(&host.file()).expect("host indexes");
@@ -72,9 +67,7 @@ fn linked_literals_read_back_the_values_and_keys_of_the_module() {
     editor
         .link(&index, &module_file, &[])
         .expect("module links");
-    let mut output = Vec::new();
-    editor.write(&mut output).expect("linked file writes");
-    let linked = HermesImage::parse(Bytes::from_vec(output)).expect("linked file parses");
+    let linked = image(&written(&editor));
     let linked_file = linked.file();
 
     let source_shapes = module_file.section(Section::Shapes).as_chunks::<8>().0;

@@ -275,21 +275,14 @@ fn shape(file: &HermesFile<'_>, factory: FunctionId) -> Result<ModuleShape> {
 
 #[cfg(test)]
 mod tests {
-    use reseam_storage::Bytes;
-
     use super::*;
-    use crate::HermesImage;
+    use crate::fixtures::{HOST, function, image};
 
     #[test]
     fn functions_resolve_to_the_metro_module_whose_factory_creates_them() {
-        let host = HermesImage::parse(Bytes::from_slice(include_bytes!("../fixtures/host.hbc")))
-            .expect("host fixture parses");
+        let host = image(HOST);
         let index = FunctionIndex::build(&host.file()).expect("host indexes");
-        let function = |name| {
-            index
-                .find_function(&host.file(), Some(name), &[], None)
-                .expect("fixture function exists")
-        };
+        let function = |name| function(&host, &index, name);
         let mut editor = Editor::new(host.file());
         assert_eq!(
             editor.metro_module(&index, function("greet")).unwrap(),
@@ -308,8 +301,7 @@ mod tests {
 
     #[test]
     fn module_shapes_name_what_each_factory_exports() {
-        let host = HermesImage::parse(Bytes::from_slice(include_bytes!("../fixtures/host.hbc")))
-            .expect("host fixture parses");
+        let host = image(HOST);
         let file = host.file();
         let index = FunctionIndex::build(&file).expect("host indexes");
         let mut editor = Editor::new(host.file());
@@ -318,10 +310,8 @@ mod tests {
             ("getTheme", true, &["ThemeTypes", "default"]),
             ("View", false, &["Text", "View"]),
         ];
-        for (function, es_module, keys) in cases {
-            let function = index
-                .find_function(&file, Some(function), &[], None)
-                .expect("fixture function exists");
+        for (name, es_module, keys) in cases {
+            let function = function(&host, &index, name);
             let (_, shape) = editor
                 .metro_shape(&index, function)
                 .expect("module shape reads");
