@@ -5,15 +5,15 @@ use std::collections::BTreeMap;
 
 use crate::bytes::align;
 use crate::edit::{EditedFunction, FunctionBody};
-use crate::error::{Result, invalid};
+use crate::error::{Result, Unsupported, invalid, unsupported};
 use crate::function::ExceptionHandler;
 use crate::function::Function;
 use crate::opcode::{Instruction, Opcode, OperandKind};
 use crate::switch::switch_table;
 
-/// Moves `inst` to its narrowest encoding that holds its operands. Relocated
+/// Moves `inst` to its narrowest encoding that holds its operands, if one does. Relocated
 /// branches always take 32-bit addresses, since their distances change.
-fn promote(inst: &mut Instruction) -> Result<()> {
+fn promote(inst: &mut Instruction) -> Option<()> {
     let operands = inst.definition().operands;
     for (value, operand) in inst.values.iter_mut().zip(operands) {
         if operand.kind == OperandKind::Addr8 {
@@ -25,17 +25,9 @@ fn promote(inst: &mut Instruction) -> Result<()> {
             o.kind != OperandKind::Addr8 && (o.kind.width() == 8 || v < 1 << (o.kind.width() * 8))
         })
     };
-    let opcode = inst
-        .encodings()
-        .find(|&opcode| fits(opcode))
-        .ok_or_else(|| {
-            invalid(
-                inst.offset.unwrap_or_default() as usize,
-                format!("operands do not fit {:?}", inst.op),
-            )
-        })?;
-    inst.op = opcode.op;
-    Ok(())
+    let op = inst.encodings().find(|&opcode| fits(opcode))?.op;
+    inst.op = op;
+    Some(())
 }
 
 pub(crate) fn encode(instructions: &[Instruction]) -> Vec<u8> {
@@ -57,7 +49,7 @@ pub(crate) fn assemble(
     strings: Option<&[u32]>,
 ) -> Result<EditedFunction> {
     for inst in &mut instructions {
-        promote(inst)?;
+        promote(inst).ok_or_else(|| unsupported(function.id, Unsupported::Encoding))?;
     }
     let mut locations = BTreeMap::new();
     let mut cursor = 0_u32;
@@ -69,21 +61,24 @@ pub(crate) fn assemble(
     }
     locations.insert(function.header.size, cursor);
     let code_size = cursor;
+    let start = function.header.offset as usize;
     let moved = |old: i64| -> Result<u32> {
-        let old = u32::try_from(old).map_err(|_| invalid(0, "negative branch target"))?;
-        locations
-            .get(&old)
-            .copied()
-            .ok_or_else(|| invalid(old as usize, "branch target is not an instruction boundary"))
+        u32::try_from(old)
+            .ok()
+            .and_then(|old| locations.get(&old).copied())
+            .ok_or_else(|| {
+                invalid(
+                    start.saturating_add_signed(old as isize),
+                    "branch target is not an instruction boundary",
+                )
+            })
     };
     let mut payload = Vec::new();
     let mut position = 0_u32;
     for inst in &mut instructions {
         let definition = inst.definition();
         for (operand, relative) in inst.jumps().collect::<Vec<_>>() {
-            let origin = inst
-                .offset
-                .ok_or_else(|| invalid(0, "generated branch lacks a target"))?;
+            let origin = inst.offset.expect("assembled branches are decoded");
             let target = moved(i64::from(origin) + relative)?;
             inst.values[operand] = u64::from(target.wrapping_sub(position));
         }

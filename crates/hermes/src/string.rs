@@ -3,8 +3,6 @@
 
 use std::hash::Hasher;
 
-use crate::error::{Result, invalid};
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct StringId(pub u32);
 
@@ -157,10 +155,9 @@ impl StringValue<'_> {
         self.units().eq(text.encode_utf16())
     }
 
-    /// The text, for strings that are valid UTF-16.
-    pub(crate) fn text(self) -> Result<String> {
-        String::from_utf16(&self.units().collect::<Vec<_>>())
-            .map_err(|_| invalid(0, "string has an unpaired surrogate"))
+    /// The text, unless the string has an unpaired surrogate.
+    pub(crate) fn text(self) -> Option<String> {
+        String::from_utf16(&self.units().collect::<Vec<_>>()).ok()
     }
 
     /// The identifier hash Hermes stores for each identifier.

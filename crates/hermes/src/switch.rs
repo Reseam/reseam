@@ -65,13 +65,14 @@ pub(crate) fn switch_table<'a>(
         Op::StringSwitchImm => (SwitchKind::String, 2, Some(inst.values[4])),
         _ => return Ok(None),
     };
-    let at = inst
-        .offset
-        .ok_or_else(|| invalid(0, "generated switch has no table"))? as usize;
+    let at = function.header.offset as usize
+        + inst
+            .offset
+            .expect("switch tables belong to decoded instructions") as usize;
     let count = count.ok_or_else(|| invalid(at, "invalid switch range"))?;
-    let offset = (function.header.offset as usize)
-        .checked_add(at)
-        .and_then(|n| n.checked_add(usize::try_from(inst.values[operand]).ok()?))
+    let offset = usize::try_from(inst.values[operand])
+        .ok()
+        .and_then(|relative| at.checked_add(relative))
         .filter(|&n| n <= usize::MAX - 3)
         .map(align)
         .ok_or_else(|| invalid(at, "switch offset overflow"))?;

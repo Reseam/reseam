@@ -173,7 +173,9 @@ impl FunctionIndex {
             Ok(id)
         } else {
             Err(HermesError::Match {
-                query: format!("name={name:?}, strings={strings:?}, parameters={parameters:?}"),
+                name: name.map(str::to_owned),
+                strings: strings.iter().map(|&text| text.to_owned()).collect(),
+                parameters,
                 count: matches.len(),
             })
         }

@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use crate::HermesFile;
 use crate::bytes::align;
 use crate::edit::{EditedFunction, Edits};
-use crate::error::{Result, invalid};
+use crate::error::{HermesError, Result};
 use crate::function::{
     ExceptionHandler, FunctionHeader, FunctionId, LARGE_HEADER_SIZE, SMALL_HEADER_SIZE,
 };
@@ -43,9 +43,7 @@ impl Layout {
         for section in &Section::ALL[1..] {
             cursor = align(cursor) + edits.section_size(file, *section);
         }
-        let shift = cursor
-            .checked_sub(old_tail)
-            .ok_or_else(|| invalid(0, "section relocation underflow"))?;
+        let shift = cursor.checked_sub(old_tail).expect("sections only grow");
         cursor += old_debug - old_tail;
         let mut placed = Vec::with_capacity(functions.len());
         let mut patches = BTreeMap::new();
@@ -122,13 +120,9 @@ impl Layout {
 }
 
 fn as_offset(value: usize) -> Result<u32> {
-    u32::try_from(value).map_err(|_| invalid(value, "file exceeds four GiB"))
+    u32::try_from(value).map_err(|_| HermesError::Limit("four GiB"))
 }
 
 fn relocate(offset: usize, shift: usize) -> Result<u32> {
-    as_offset(
-        offset
-            .checked_add(shift)
-            .ok_or_else(|| invalid(offset, "offset overflow"))?,
-    )
+    as_offset(offset.saturating_add(shift))
 }

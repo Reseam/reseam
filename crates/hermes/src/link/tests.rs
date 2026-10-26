@@ -18,7 +18,7 @@ enum Value {
 }
 
 fn values(file: &HermesFile<'_>, buffer: Section, offset: u64, count: u32) -> Vec<Value> {
-    read_literals(file.section(buffer), offset as usize, count as usize)
+    read_literals(file, buffer, offset as usize, count as usize)
         .expect("fixture literals decode")
         .into_iter()
         .map(|literal| match literal.string() {
@@ -83,7 +83,7 @@ fn linked_literals_read_back_the_values_and_keys_of_the_module() {
             .instructions()
             .unwrap();
         for (source, copy) in source.iter().zip(&copy) {
-            let Some(count) = literal_count(source, source_shapes).unwrap() else {
+            let Some(count) = literal_count(source, source_shapes, 0).unwrap() else {
                 continue;
             };
             let (from, to) = (

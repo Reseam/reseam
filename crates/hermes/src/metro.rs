@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::dataflow::register_states;
-use crate::error::{HermesError, Result, invalid};
+use crate::error::{Result, Unsupported, unsupported};
 use crate::opcode::Op;
 use crate::string::StringId;
 use crate::{FunctionId, FunctionIndex, HermesFile};
@@ -57,10 +57,7 @@ impl MetroModules {
                 continue;
             }
             if id == global {
-                return Err(HermesError::Unsupported(format!(
-                    "function {} is created outside every Metro module",
-                    function.0
-                )));
+                return Err(unsupported(function, Unsupported::OutsideMetro));
             }
             for &creator in index.creators(id) {
                 if seen.insert(creator) {
@@ -70,14 +67,8 @@ impl MetroModules {
         }
         match modules.into_iter().collect::<Vec<_>>()[..] {
             [(module, factory)] => Ok((module, exports::shape(file, factory)?)),
-            [] => Err(HermesError::Unsupported(format!(
-                "function {} is not reachable from a Metro module",
-                function.0
-            ))),
-            _ => Err(HermesError::Unsupported(format!(
-                "function {} is created in several Metro modules",
-                function.0
-            ))),
+            [] => Err(unsupported(function, Unsupported::Unreachable)),
+            _ => Err(unsupported(function, Unsupported::SeveralMetro)),
         }
     }
 }
@@ -115,27 +106,22 @@ fn factories(file: &HermesFile<'_>) -> Result<BTreeMap<FunctionId, MetroModuleId
         if inst.op != Op::Call4 || state.get(&(inst.values[1] as u32)) != Some(&Known::Define) {
             continue;
         }
-        let offset = inst.offset.expect("analysed instructions are decoded") as usize;
         let (Some(&Known::Closure(factory)), Some(&Known::Id(id))) = (
             state.get(&(inst.values[3] as u32)),
             state.get(&(inst.values[4] as u32)),
         ) else {
-            return Err(invalid(
-                offset,
-                "Metro module definition without a provable factory and ID",
-            ));
+            let offset = inst.offset.expect("analysed instructions are decoded");
+            return Err(unsupported(global.id, Unsupported::UnprovenMetro(offset)));
         };
         if factories
             .insert(factory, id)
             .is_some_and(|previous| previous != id)
         {
-            return Err(invalid(offset, "Metro factory defines several modules"));
+            return Err(unsupported(factory, Unsupported::SharedFactory));
         }
     }
     if factories.is_empty() {
-        return Err(HermesError::Unsupported(
-            "the global code defines no Metro modules".into(),
-        ));
+        return Err(unsupported(global.id, Unsupported::NoMetro));
     }
     Ok(factories)
 }

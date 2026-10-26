@@ -4,7 +4,7 @@
 use rustc_hash::FxHashMap;
 
 use crate::HermesFile;
-use crate::error::{Result, invalid};
+use crate::error::{HermesError, Result};
 use crate::layout::{Field, Section};
 use crate::string::{
     Encoding, KindRun, StringEntry, StringId, StringKind, StringValue, fingerprint,
@@ -150,7 +150,7 @@ impl AddedStrings {
         let id = StringId(
             self.first
                 .checked_add(self.strings.len() as u32)
-                .ok_or_else(|| invalid(0, "too many strings"))?,
+                .ok_or(HermesError::Limit("four billion strings"))?,
         );
         if value.encoding == Encoding::Utf16
             && !(self.storage_base + self.storage.len()).is_multiple_of(2)
@@ -158,7 +158,7 @@ impl AddedStrings {
             self.storage.push(0);
         }
         let offset = u32::try_from(self.storage_base + self.storage.len())
-            .map_err(|_| invalid(0, "string storage exceeds four GiB"))?;
+            .map_err(|_| HermesError::Limit("four GiB of string storage"))?;
         let length = (value.bytes.len() / value.encoding.unit_size()) as u32;
         let entry = match StringEntry::inline(offset, length, value.encoding) {
             Some(entry) => entry,
@@ -195,7 +195,7 @@ impl AddedStrings {
             u32::try_from(self.overflow_base + self.overflow.len() / Section::Overflow.stride())
                 .ok()
                 .filter(|&index| index < StringEntry::OFFSET_LIMIT)
-                .ok_or_else(|| invalid(0, "overflow string table exceeds 23 bits"))?;
+                .ok_or(HermesError::Limit("2^23 overflowing strings"))?;
         self.overflow.extend_from_slice(&offset.to_le_bytes());
         self.overflow.extend_from_slice(&length.to_le_bytes());
         Ok(StringEntry::Overflow { index, encoding })

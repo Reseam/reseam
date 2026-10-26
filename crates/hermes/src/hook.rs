@@ -4,7 +4,7 @@
 use crate::closure::Closures;
 use crate::code::{Code, HookKind};
 use crate::edit::{Edits, ModuleId, original_function};
-use crate::error::{HermesError, Result, invalid};
+use crate::error::{Result, Unsupported, unsupported};
 use crate::function::{Function, FunctionKind, Prohibit};
 use crate::opcode::Op;
 use crate::string::{StringId, StringKind};
@@ -31,6 +31,7 @@ impl Hooker<'_> {
     pub(crate) fn hook(&mut self, function: FunctionId, kind: HookKind, code: &Code) -> Result<()> {
         let target = editable(&self.file, function)?;
         let mut resolver = Resolver {
+            function,
             file: &self.file,
             edits: &mut *self.edits,
             kind,
@@ -49,10 +50,7 @@ impl Hooker<'_> {
             .flat_map(|plan| plan.roots.keys())
             .find(|&&id| self.edits.is_discarded(id))
         {
-            return Err(HermesError::Unsupported(format!(
-                "function {} was replaced, so the closures this hook needs no longer exist",
-                id.0
-            )));
+            return Err(unsupported(*id, Unsupported::Replaced));
         }
         let original =
             (kind != HookKind::Replace).then(|| FunctionId(self.edits.function_count(&self.file)));
@@ -75,10 +73,7 @@ impl Hooker<'_> {
             }
         } else if edited.is_none() {
             if self.edits.has_root(function) {
-                return Err(HermesError::Unsupported(format!(
-                    "function {} creates closures that a hook needs",
-                    function.0
-                )));
+                return Err(unsupported(function, Unsupported::NeededClosures));
             }
             self.edits.discard(function);
         }
@@ -94,7 +89,7 @@ impl Hooker<'_> {
 /// constructors keep state or a receiver that a replaced body cannot reproduce.
 fn editable<'a>(file: &HermesFile<'a>, function: FunctionId) -> Result<Function<'a>> {
     if function == file.global_function() {
-        return Err(HermesError::Unsupported("global function".into()));
+        return Err(unsupported(function, Unsupported::Global));
     }
     let target = file.function(function)?;
     if target.header.flags.kind != FunctionKind::Normal
@@ -104,10 +99,7 @@ fn editable<'a>(file: &HermesFile<'a>, function: FunctionId) -> Result<Function<
             .iter()
             .any(|i| matches!(i.op, Op::GetNewTarget | Op::DirectEval))
     {
-        return Err(HermesError::Unsupported(format!(
-            "function {} is a generator, async function, constructor or uses new.target/eval",
-            function.0
-        )));
+        return Err(unsupported(function, Unsupported::Stateful));
     }
     Ok(target)
 }
@@ -116,20 +108,22 @@ fn editable<'a>(file: &HermesFile<'a>, function: FunctionId) -> Result<Function<
 fn declared_export(
     file: &HermesFile<'_>,
     edits: &mut Edits,
+    function: FunctionId,
     module: ModuleId,
     export: &str,
 ) -> Result<StringId> {
     let linked = edits
         .module(module)
-        .ok_or_else(|| invalid(0, "module belongs to another editor"))?;
+        .ok_or_else(|| unsupported(function, Unsupported::Module))?;
     let mut declared = false;
     for &id in &linked.exports {
         declared |= edits.strings().string(file, id)?.equals(export);
     }
     if !declared {
-        return Err(HermesError::Unsupported(format!(
-            "module does not export {export:?}"
-        )));
+        return Err(unsupported(
+            function,
+            Unsupported::Export(export.to_owned()),
+        ));
     }
     edits
         .strings_mut()

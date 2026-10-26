@@ -4,7 +4,7 @@
 use std::ops::Range;
 
 use crate::bytes::{read_u32, slice};
-use crate::error::{Result, invalid};
+use crate::error::{HermesError, Result, invalid};
 use crate::function::{Function, FunctionHeader, FunctionId, SMALL_HEADER_SIZE};
 use crate::layout::{Field, OPTIONS_OFFSET, Section};
 use crate::string::{KindRun, StringEntry, StringId, StringKind, StringValue};
@@ -67,6 +67,21 @@ impl<'a> HermesFile<'a> {
         &self.source[self.sections[section as usize].clone()]
     }
 
+    /// `length` bytes at `offset` in `section`, with errors at their offset in the file.
+    pub(crate) fn section_bytes(
+        &self,
+        section: Section,
+        offset: usize,
+        length: usize,
+    ) -> Result<&'a [u8]> {
+        let range = &self.sections[section as usize];
+        slice(
+            &self.source[..range.end],
+            range.start.saturating_add(offset),
+            length,
+        )
+    }
+
     pub(crate) fn kind_runs(&self) -> impl Iterator<Item = KindRun> + use<'a> {
         self.section(Section::Kinds)
             .as_chunks::<4>()
@@ -85,7 +100,7 @@ impl<'a> HermesFile<'a> {
 
     pub(crate) fn function(&self, id: FunctionId) -> Result<Function<'a>> {
         if id.0 >= self.function_count() {
-            return Err(invalid(0, "function ID out of range"));
+            return Err(HermesError::NoFunction(id));
         }
         let header = FunctionHeader::decode(
             self.source,
@@ -99,6 +114,7 @@ impl<'a> HermesFile<'a> {
             ));
         }
         Ok(Function {
+            id,
             header,
             source: self.source,
         })
@@ -106,7 +122,7 @@ impl<'a> HermesFile<'a> {
 
     pub(crate) fn string(&self, id: StringId) -> Result<StringValue<'a>> {
         if id.0 >= self.string_count() {
-            return Err(invalid(0, "string ID out of range"));
+            return Err(HermesError::NoString(id.0));
         }
         let (offset, length, encoding) =
             match StringEntry::decode(read_u32(self.section(Section::Strings), id.0 as usize * 4)?)
@@ -117,22 +133,18 @@ impl<'a> HermesFile<'a> {
                     encoding,
                 } => (offset, length, encoding),
                 StringEntry::Overflow { index, encoding } => {
-                    let overflow = self.section(Section::Overflow);
                     let position = index as usize * Section::Overflow.stride();
-                    (
-                        read_u32(overflow, position)?,
-                        read_u32(overflow, position + 4)?,
-                        encoding,
-                    )
+                    let entry = self.section_bytes(Section::Overflow, position, 8)?;
+                    (read_u32(entry, 0)?, read_u32(entry, 4)?, encoding)
                 }
             };
-        let bytes = slice(
-            self.section(Section::Storage),
-            offset as usize,
-            (length as usize)
-                .checked_mul(encoding.unit_size())
-                .ok_or_else(|| invalid(offset as usize, "string length overflow"))?,
-        )?;
+        let size = (length as usize)
+            .checked_mul(encoding.unit_size())
+            .ok_or_else(|| {
+                let storage = self.sections[Section::Storage as usize].start;
+                invalid(storage + offset as usize, "string length overflow")
+            })?;
+        let bytes = self.section_bytes(Section::Storage, offset as usize, size)?;
         Ok(StringValue { encoding, bytes })
     }
 }

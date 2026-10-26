@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::closure::RootAttachment;
-use crate::error::{Result, invalid};
+use crate::error::{HermesError, Result};
 use crate::layout::{Field, Section};
 
 use crate::{FunctionId, HermesFile};
@@ -174,7 +174,7 @@ impl Edits {
         self.string_switches = self
             .string_switches
             .checked_add(count)
-            .ok_or_else(|| invalid(0, "too many string switches"))?;
+            .ok_or(HermesError::Limit("four billion string switches"))?;
         Ok(())
     }
 

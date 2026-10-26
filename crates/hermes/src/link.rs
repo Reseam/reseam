@@ -4,7 +4,7 @@
 use crate::assemble::assemble;
 use crate::bytes::read_u32;
 use crate::edit::{Edits, LinkNames, LinkedImport, LinkedModule, ModuleId};
-use crate::error::{HermesError, Result, invalid};
+use crate::error::{HermesError, LinkError, Result};
 use crate::layout::{Field, STATIC_BUILTINS, Section};
 use crate::metro::MetroModules;
 use crate::opcode::Op;
@@ -64,7 +64,8 @@ impl Linker<'_> {
                 count: module.field(Field::StringSwitchCount),
             },
             values: Literals::new(
-                module.section(Section::Values),
+                module,
+                Section::Values,
                 &strings,
                 self.edits.section_size(&self.file, Section::Values) as u32,
             ),
@@ -100,9 +101,7 @@ impl Linker<'_> {
             .iter()
             .find(|specifier| imports.iter().all(|import| &import.specifier != *specifier))
         {
-            return Err(HermesError::Unsupported(format!(
-                "module imports {missing:?}, which is not resolved"
-            )));
+            return Err(HermesError::Link(LinkError::Unresolved(missing.clone())));
         }
         let mut resolved = Vec::with_capacity(imports.len());
         for (position, import) in imports.iter().enumerate() {
@@ -111,9 +110,8 @@ impl Linker<'_> {
                     .iter()
                     .any(|other| other.specifier == import.specifier)
             {
-                return Err(HermesError::Unsupported(format!(
-                    "{:?} is resolved but not imported once by the module",
-                    import.specifier
+                return Err(HermesError::Link(LinkError::Unimported(
+                    import.specifier.clone(),
                 )));
             }
             let (id, shape) = self.metro.module(&self.file, self.index, import.function)?;
@@ -130,7 +128,8 @@ impl Linker<'_> {
     /// Appends the module's object shapes, with the key literals they read.
     fn shapes(&mut self, module: &HermesFile<'_>, strings: &[u32]) -> Result<()> {
         let mut keys = Literals::new(
-            module.section(Section::Keys),
+            module,
+            Section::Keys,
             strings,
             self.edits.section_size(&self.file, Section::Keys) as u32,
         );
@@ -153,7 +152,7 @@ impl Linker<'_> {
             for entry in module.section(table).as_chunks::<8>().0 {
                 let offset = read_u32(entry, 0)?
                     .checked_add(base)
-                    .ok_or_else(|| invalid(0, "literal storage offset overflow"))?;
+                    .ok_or(HermesError::Limit("four GiB of literal storage"))?;
                 self.edits.append(table, &offset.to_le_bytes());
                 self.edits.append(table, &entry[4..]);
             }
@@ -168,7 +167,7 @@ impl Linker<'_> {
             let function = module.function(FunctionId(id))?;
             let mut instructions = function.instructions()?;
             for inst in &mut instructions {
-                remap.instruction(inst)?;
+                remap.instruction(inst, function.header.offset as usize)?;
             }
             let mut edited = assemble(&function, instructions, Some(remap.strings))?;
             edited.header.name = remap.strings[function.header.name as usize];
@@ -188,15 +187,10 @@ impl Linker<'_> {
 /// and assumes no static builtins the app does not.
 fn standalone(app: &HermesFile<'_>, module: &HermesFile<'_>) -> Result<()> {
     if module.field(Field::CjsModuleCount) != 0 || module.field(Field::SegmentId) != 0 {
-        return Err(HermesError::Unsupported(
-            "extensions must be standalone execution bytecode; CommonJS segments are unsupported"
-                .into(),
-        ));
+        return Err(HermesError::Link(LinkError::Segmented));
     }
     if module.options() & STATIC_BUILTINS != 0 && app.options() & STATIC_BUILTINS == 0 {
-        return Err(HermesError::Unsupported(
-            "extension assumes static builtins but app does not".into(),
-        ));
+        return Err(HermesError::Link(LinkError::StaticBuiltins));
     }
     if module
         .function(module.global_function())?
@@ -204,9 +198,7 @@ fn standalone(app: &HermesFile<'_>, module: &HermesFile<'_>) -> Result<()> {
         .iter()
         .any(|i| i.op == Op::DeclareGlobalVar)
     {
-        return Err(HermesError::Unsupported(
-            "extension declares globals; compile an IIFE returning exports".into(),
-        ));
+        return Err(HermesError::Link(LinkError::Globals));
     }
     Ok(())
 }

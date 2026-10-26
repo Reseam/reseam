@@ -5,7 +5,7 @@ use super::Linker;
 use crate::HermesFile;
 use crate::assemble::encode;
 use crate::edit::{EditedFunction, Edits, generated_function};
-use crate::error::{Result, invalid};
+use crate::error::{HermesError, Result};
 use crate::opcode::{Instruction, Op};
 use crate::string::StringId;
 
@@ -13,7 +13,7 @@ impl Linker<'_> {
     /// Makes room for one more module in the bootstrap, appending the bootstrap function first.
     pub(super) fn add_bootstrap(&mut self) -> Result<()> {
         if self.edits.modules().len() >= usize::from(u16::MAX) {
-            return Err(invalid(0, "too many extension modules"));
+            return Err(HermesError::Limit("65535 linked modules"));
         }
         if self.edits.bootstrap().is_none() {
             let name = self.string("reseamBootstrap")?;

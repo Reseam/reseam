@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::dataflow::{Registers, register_states};
-use crate::error::{HermesError, Result, invalid};
+use crate::error::{Result, Unsupported, unsupported};
 use crate::function::Function;
 use crate::opcode::{Instruction, Op};
 use crate::{FunctionId, FunctionIndex, HermesFile};
@@ -52,9 +52,7 @@ impl Closures {
             }
         }
         if !needed.contains(&file.global_function()) {
-            return Err(HermesError::Unsupported(
-                "hooked functions are not reachable from app global closures".into(),
-            ));
+            return Err(unsupported(target, Unsupported::Unreachable));
         }
         let mut depths = BTreeMap::from([(file.global_function(), 0_u16)]);
         let mut work = VecDeque::from([file.global_function()]);
@@ -75,25 +73,22 @@ impl Closures {
                     }
                     Some(Value::Environment(depth)) => depth,
                     None => {
-                        return Err(HermesError::Unsupported(format!(
-                            "cannot prove closure environment at function {}, byte {}",
-                            id.0, site.offset
-                        )));
+                        return Err(unsupported(
+                            id,
+                            Unsupported::UnprovenEnvironment(site.offset),
+                        ));
                     }
                 };
                 if let Some(previous) = depths.insert(site.target, child_depth) {
                     if previous != child_depth {
-                        return Err(HermesError::Unsupported(format!(
-                            "function {} has closures at different environment depths",
-                            site.target.0
-                        )));
+                        return Err(unsupported(site.target, Unsupported::EnvironmentDepths));
                     }
                 } else {
                     work.push_back(site.target);
                 }
             }
             if !attach.is_empty() || analysis.top_level {
-                environment_depth(depth)?;
+                environment_depth(id, depth)?;
                 roots.insert(
                     id,
                     RootAttachment {
@@ -103,12 +98,9 @@ impl Closures {
                 );
             }
         }
-        let depth = *depths.get(&target).ok_or_else(|| {
-            HermesError::Unsupported(format!(
-                "cannot resolve private environment for function {}",
-                target.0
-            ))
-        })?;
+        let depth = *depths
+            .get(&target)
+            .ok_or_else(|| unsupported(target, Unsupported::UnresolvedEnvironment))?;
         let plan = HookPlan { depth, roots };
         self.plans.insert(target, plan.clone());
         Ok(plan)
@@ -137,10 +129,7 @@ impl Closures {
             }
         };
         if analysis.depth != depth {
-            return Err(HermesError::Unsupported(format!(
-                "function {} has closures at different environment depths",
-                id.0
-            )));
+            return Err(unsupported(id, Unsupported::EnvironmentDepths));
         }
         Ok(analysis)
     }
@@ -179,11 +168,14 @@ fn analyse(
                 Value::Environment(depth) => {
                     let depth = i32::from(depth) + delta;
                     let depth = u16::try_from(depth).map_err(|_| {
-                        invalid(offset as usize, "environment escapes private root")
+                        unsupported(function.id, Unsupported::EscapedEnvironment(offset))
                     })?;
                     Ok(Value::Environment(depth))
                 }
-                Value::Undefined => Err(invalid(offset as usize, "undefined environment parent")),
+                Value::Undefined => Err(unsupported(
+                    function.id,
+                    Unsupported::UnprovenEnvironment(offset),
+                )),
             }
         };
         Ok(match inst.op {
@@ -225,8 +217,7 @@ fn analyse(
     Ok(sites)
 }
 
-/// `depth` as the operand of an environment instruction.
-pub(crate) fn environment_depth(depth: u16) -> Result<u8> {
-    u8::try_from(depth)
-        .map_err(|_| HermesError::Unsupported("private environment deeper than 255 scopes".into()))
+/// `depth` as the operand of an environment instruction in `function`.
+pub(crate) fn environment_depth(function: FunctionId, depth: u16) -> Result<u8> {
+    u8::try_from(depth).map_err(|_| unsupported(function, Unsupported::DeepEnvironment))
 }

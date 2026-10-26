@@ -55,15 +55,15 @@ impl<'a> HermesFile<'a> {
             (Section::Regexps, Section::RegexpStorage),
         ] {
             for entry in self.section(table).as_chunks::<8>().0 {
-                slice(
-                    self.section(storage),
+                self.section_bytes(
+                    storage,
                     read_u32(entry, 0)? as usize,
                     read_u32(entry, 4)? as usize,
                 )?;
             }
         }
         for entry in self.section(Section::Shapes).as_chunks::<8>().0 {
-            slice(self.section(Section::Keys), read_u32(entry, 0)? as usize, 0)?;
+            self.section_bytes(Section::Keys, read_u32(entry, 0)? as usize, 0)?;
         }
         Ok(())
     }

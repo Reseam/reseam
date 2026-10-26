@@ -49,9 +49,12 @@ pub(crate) fn register_states<V: Copy + Eq>(
             flow(&mut states, &mut work, next, &after);
         }
         for handler in handlers.iter().filter(|h| h.covers(offset)) {
-            let next = *indices
-                .get(&handler.target)
-                .ok_or_else(|| invalid(offset as usize, "invalid exception target"))?;
+            let next = *indices.get(&handler.target).ok_or_else(|| {
+                invalid(
+                    function.header.offset as usize + handler.target as usize,
+                    "exception target is not an instruction",
+                )
+            })?;
             flow(&mut states, &mut work, next, &thrown);
         }
     }
@@ -106,14 +109,13 @@ fn successors(
     let inst = &code[index];
     let origin = i64::from(inst.offset.expect("analysed instructions are decoded"));
     let mut result = Vec::new();
+    let start = function.header.offset as usize;
     let mut add = |relative: i64| -> Result<()> {
         let target = u32::try_from(origin + relative)
-            .map_err(|_| invalid(origin as usize, "branch target out of range"))?;
-        result.push(
-            *indices
-                .get(&target)
-                .ok_or_else(|| invalid(target as usize, "branch outside instructions"))?,
-        );
+            .ok()
+            .and_then(|target| indices.get(&target))
+            .ok_or_else(|| invalid(start + origin as usize, "branch outside instructions"))?;
+        result.push(*target);
         Ok(())
     };
     for (_, relative) in inst.jumps() {

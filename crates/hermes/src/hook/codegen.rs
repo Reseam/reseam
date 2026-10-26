@@ -7,7 +7,7 @@ use crate::closure::environment_depth;
 use crate::code::{Code, Condition, HookKind, Operand, Place, Statement};
 use crate::edit::EditedFunction;
 use crate::edit::generated_function;
-use crate::error::{HermesError, Result};
+use crate::error::{Result, Unsupported, unsupported};
 use crate::function::Function;
 use crate::opcode::{BUILTIN_APPLY, Instruction, Op};
 use crate::string::StringId;
@@ -49,6 +49,7 @@ pub(crate) fn compile(
     links: &Links,
 ) -> Result<EditedFunction> {
     let mut emitter = Emitter {
+        function: function.id,
         code: Vec::new(),
         labels: Vec::new(),
         jumps: Vec::new(),
@@ -80,15 +81,11 @@ pub(crate) fn compile(
     Ok(result)
 }
 
-fn register(index: u32) -> Result<u8> {
-    u8::try_from(index)
-        .map_err(|_| HermesError::Unsupported("hook needs more than 255 registers".into()))
-}
-
 #[derive(Clone, Copy)]
 struct Label(usize);
 
 struct Emitter<'a> {
+    function: FunctionId,
     code: Vec<Instruction>,
     /// The instruction index each label marks.
     labels: Vec<Option<usize>>,
@@ -128,8 +125,12 @@ impl Emitter<'_> {
         self.emit(op, &values);
     }
 
+    fn register(&self, index: u32) -> Result<u8> {
+        u8::try_from(index).map_err(|_| unsupported(self.function, Unsupported::Registers))
+    }
+
     fn temp(&mut self) -> Result<u8> {
-        let temp = register(self.temps)?;
+        let temp = self.register(self.temps)?;
         self.temps += 1;
         self.top = self.top.max(self.temps);
         Ok(temp)
@@ -137,9 +138,9 @@ impl Emitter<'_> {
 
     fn cache(&mut self) -> Result<u64> {
         let index = self.read_cache;
-        self.read_cache = index.checked_add(1).ok_or_else(|| {
-            HermesError::Unsupported("hook reads more than 255 properties".into())
-        })?;
+        self.read_cache = index
+            .checked_add(1)
+            .ok_or_else(|| unsupported(self.function, Unsupported::Properties))?;
         Ok(u64::from(index))
     }
 
@@ -169,7 +170,10 @@ impl Emitter<'_> {
         if let Some(depth) = self.links.modules {
             self.emit(
                 Op::GetParentEnvironment,
-                &[u64::from(MODULES), u64::from(environment_depth(depth)?)],
+                &[
+                    u64::from(MODULES),
+                    u64::from(environment_depth(self.function, depth)?),
+                ],
             );
         }
         // The arguments as an array, so assignments change what the original receives.
@@ -233,7 +237,12 @@ impl Emitter<'_> {
                     module,
                     export,
                     arguments,
-                } => self.call(register(FIRST_SLOT + into.0)?, module.0, *export, arguments)?,
+                } => self.call(
+                    self.register(FIRST_SLOT + into.0)?,
+                    module.0,
+                    *export,
+                    arguments,
+                )?,
                 Statement::Assign { place, value } => {
                     let value = self.load(value)?;
                     match place {
@@ -243,7 +252,7 @@ impl Emitter<'_> {
                         ),
                         Place::Result => self.emit(Op::Mov, &[u64::from(RESULT), u64::from(value)]),
                         Place::Slot(slot) => {
-                            let slot = register(FIRST_SLOT + slot.0)?;
+                            let slot = self.register(FIRST_SLOT + slot.0)?;
                             self.emit(Op::Mov, &[u64::from(slot), u64::from(value)]);
                         }
                     }
@@ -354,7 +363,7 @@ impl Emitter<'_> {
             Operand::Receiver => Ok(RECEIVER),
             Operand::Result => Ok(RESULT),
             Operand::Undefined => Ok(UNDEFINED),
-            Operand::Slot(slot) => register(FIRST_SLOT + slot.0),
+            Operand::Slot(slot) => self.register(FIRST_SLOT + slot.0),
             Operand::Param(index) => {
                 let value = self.temp()?;
                 let key = self.temp()?;
@@ -382,7 +391,7 @@ impl Emitter<'_> {
     /// Resolves jumps and outgoing registers; returns the body and its frame size.
     fn finish(mut self) -> Result<(Vec<u8>, u32)> {
         let frame = self.top + CALL_FRAME + 3;
-        register(frame)?;
+        self.register(frame)?;
         for &first in &self.calls {
             for offset in 0..3 {
                 self.code[first + offset].values[0] =

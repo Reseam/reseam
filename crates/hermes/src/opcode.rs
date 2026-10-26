@@ -147,18 +147,19 @@ impl Instruction {
 }
 
 /// Decodes a function's instruction stream, stopping before appended switch tables.
-/// Unknown opcodes and truncated operands report their byte offsets.
-pub(crate) fn decode(bytes: &[u8]) -> Result<Vec<Instruction>> {
+/// Unknown opcodes and truncated operands report their offset in the file, where `bytes` start
+/// at `start`.
+pub(crate) fn decode(bytes: &[u8], start: usize) -> Result<Vec<Instruction>> {
     let mut offset = 0;
     let mut instructions = Vec::new();
     while offset < bytes.len() {
         let definition = OPCODES
             .get(usize::from(bytes[offset]))
-            .ok_or_else(|| invalid(offset, "unknown opcode"))?;
+            .ok_or_else(|| invalid(start + offset, "unknown opcode"))?;
         let end = offset + definition.size();
         let data = bytes
             .get(offset + 1..end)
-            .ok_or_else(|| invalid(offset, "truncated instruction"))?;
+            .ok_or_else(|| invalid(start + offset, "truncated instruction"))?;
         let mut cursor = 0;
         let values = definition
             .operands

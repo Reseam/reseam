@@ -3,7 +3,9 @@
 
 use std::collections::BTreeMap;
 
-use crate::error::{Result, invalid};
+use crate::HermesFile;
+use crate::error::{HermesError, Result, invalid};
+use crate::layout::Section;
 use crate::literal::{Literal, MAX_RUN, read_literals};
 
 /// A linked module's literal buffer, copied per reference. Hermes shares
@@ -12,7 +14,8 @@ use crate::literal::{Literal, MAX_RUN, read_literals};
 /// it, and copied with its string IDs remapped. Short strings become long
 /// strings, since remapped IDs need not fit 16 bits.
 pub(super) struct Literals<'a> {
-    source: &'a [u8],
+    module: &'a HermesFile<'a>,
+    buffer: Section,
     strings: &'a [u32],
     base: u32,
     pub(super) output: Vec<u8>,
@@ -20,9 +23,15 @@ pub(super) struct Literals<'a> {
 }
 
 impl<'a> Literals<'a> {
-    pub(super) fn new(source: &'a [u8], strings: &'a [u32], base: u32) -> Self {
+    pub(super) fn new(
+        module: &'a HermesFile<'a>,
+        buffer: Section,
+        strings: &'a [u32],
+        base: u32,
+    ) -> Self {
         Self {
-            source,
+            module,
+            buffer,
             strings,
             base,
             output: Vec::new(),
@@ -38,8 +47,8 @@ impl<'a> Literals<'a> {
         let copy = u32::try_from(self.output.len())
             .ok()
             .and_then(|length| self.base.checked_add(length))
-            .ok_or_else(|| invalid(offset as usize, "literal buffer offset overflow"))?;
-        let literals = read_literals(self.source, offset as usize, count as usize)?;
+            .ok_or(HermesError::Limit("four GiB of literals"))?;
+        let literals = read_literals(self.module, self.buffer, offset as usize, count as usize)?;
         for run in literals.chunk_by(|a, b| a.kind == b.kind) {
             for run in run.chunks(MAX_RUN) {
                 let kind = match run[0].kind {

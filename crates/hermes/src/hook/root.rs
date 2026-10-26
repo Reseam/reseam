@@ -35,7 +35,7 @@ fn attach_root(
     depth: u16,
     attach: &BTreeSet<usize>,
 ) -> Result<EditedFunction> {
-    let depth = environment_depth(depth)?;
+    let depth = environment_depth(function.id, depth)?;
     let mut rewritten = vec![Instruction::new(
         Op::GetParentEnvironment,
         &[0, u64::from(depth)],

@@ -46,6 +46,7 @@ impl ExceptionHandler {
 
 /// A borrowed function view. Parameter count excludes the implicit `this`.
 pub(crate) struct Function<'a> {
+    pub id: FunctionId,
     pub header: FunctionHeader,
     pub source: &'a [u8],
 }
@@ -65,7 +66,7 @@ impl Function<'_> {
     }
 
     pub(crate) fn instructions(&self) -> Result<Vec<crate::opcode::Instruction>> {
-        crate::opcode::decode(&self.source[self.body_range()])
+        crate::opcode::decode(&self.source[self.body_range()], self.header.offset as usize)
     }
 
     pub(crate) fn exception_handlers(&self) -> Result<Vec<ExceptionHandler>> {

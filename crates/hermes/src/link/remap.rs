@@ -3,7 +3,7 @@
 
 use super::literals::Literals;
 use crate::bytes::read_u32;
-use crate::error::{Result, invalid};
+use crate::error::{HermesError, Result, invalid};
 use crate::opcode::{IdKind, Instruction, Op};
 
 /// IDs of one kind in a linked module: `count` of them, moved to start at `base`.
@@ -14,13 +14,13 @@ pub(super) struct Moved {
 }
 
 impl Moved {
-    fn id(self, value: u64) -> Result<u32> {
+    fn id(self, value: u64, at: usize) -> Result<u32> {
         if value >= u64::from(self.count) {
-            return Err(invalid(0, "linked ID out of range"));
+            return Err(invalid(at, "ID out of range"));
         }
         self.base
             .checked_add(value as u32)
-            .ok_or_else(|| invalid(0, "linked ID overflow"))
+            .ok_or(HermesError::Limit("four billion IDs of one kind"))
     }
 }
 
@@ -39,10 +39,11 @@ pub(super) struct Remap<'m> {
 }
 
 impl Remap<'_> {
-    /// Rewrites every ID operand of `inst`, copying the literals it reads.
-    pub(super) fn instruction(&mut self, inst: &mut Instruction) -> Result<()> {
-        let at = at(inst);
-        let read_values = literal_count(inst, self.shape_table)?;
+    /// Rewrites every ID operand of `inst`, in a body that starts at `start` in the module,
+    /// copying the literals it reads.
+    pub(super) fn instruction(&mut self, inst: &mut Instruction, start: usize) -> Result<()> {
+        let at = start + inst.offset.expect("linked instructions are decoded") as usize;
+        let read_values = literal_count(inst, self.shape_table, at)?;
         for (operand, value) in inst.definition().operands.iter().zip(&mut inst.values) {
             *value = u64::from(match operand.id {
                 IdKind::None => continue,
@@ -50,11 +51,11 @@ impl Remap<'_> {
                     .strings
                     .get(*value as usize)
                     .ok_or_else(|| invalid(at, "string ID out of range"))?,
-                IdKind::Function => self.functions.id(*value)?,
-                IdKind::BigInt => self.bigints.id(*value)?,
-                IdKind::RegExp => self.regexps.id(*value)?,
-                IdKind::Shape => self.shapes.id(*value)?,
-                IdKind::Switch => self.switches.id(*value)?,
+                IdKind::Function => self.functions.id(*value, at)?,
+                IdKind::BigInt => self.bigints.id(*value, at)?,
+                IdKind::RegExp => self.regexps.id(*value, at)?,
+                IdKind::Shape => self.shapes.id(*value, at)?,
+                IdKind::Switch => self.switches.id(*value, at)?,
                 IdKind::ValueBuffer => self.values.relocate(
                     *value as u32,
                     read_values.ok_or_else(|| invalid(at, "value buffer without a length"))?,
@@ -65,18 +66,19 @@ impl Remap<'_> {
     }
 }
 
-fn at(inst: &Instruction) -> usize {
-    inst.offset.expect("decoded instructions have offsets") as usize
-}
-
 /// How many literals an instruction reads from the value buffer: an array's
 /// static elements, or one value per property of an object's shape.
-pub(super) fn literal_count(inst: &Instruction, shapes: &[[u8; 8]]) -> Result<Option<u32>> {
+/// `at` is where `inst` is in the module.
+pub(super) fn literal_count(
+    inst: &Instruction,
+    shapes: &[[u8; 8]],
+    at: usize,
+) -> Result<Option<u32>> {
     let shape = |index: u64| {
         shapes
             .get(index as usize)
             .map(|entry| read_u32(entry, 4))
-            .ok_or_else(|| invalid(at(inst), "shape ID out of range"))?
+            .ok_or_else(|| invalid(at, "shape ID out of range"))?
     };
     Ok(match inst.op {
         Op::NewArrayWithBuffer | Op::NewArrayWithBufferLong => Some(inst.values[2] as u32),

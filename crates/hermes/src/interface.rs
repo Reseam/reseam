@@ -4,11 +4,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::dataflow::{Registers, straight_line};
-use crate::error::{HermesError, Result};
+use crate::error::{HermesError, LinkError, Result};
 use crate::layout::Section;
 use crate::literal::{LiteralValue, read_literals, shape_keys};
 use crate::opcode::{Instruction, Op};
-use crate::string::StringId;
+use crate::string::{StringId, StringValue};
 use crate::{FunctionId, HermesFile};
 
 /// What a module declares to be linked. Its global code evaluates to `{ imports, link }`:
@@ -37,14 +37,10 @@ pub(crate) fn interface(file: &HermesFile<'_>) -> Result<Interface> {
         Ok(None)
     };
     let Some(Value::Strings(imports)) = property("imports")? else {
-        return Err(HermesError::Unsupported(
-            "module declares no imports array of string literals".into(),
-        ));
+        return Err(HermesError::Link(LinkError::Imports));
     };
     let Some(Value::Function(link)) = property("link")? else {
-        return Err(HermesError::Unsupported(
-            "module declares no link function".into(),
-        ));
+        return Err(HermesError::Link(LinkError::Link));
     };
     let exports = returned(file, link, &mut BTreeSet::new())?
         .into_keys()
@@ -90,6 +86,19 @@ fn returned(
     Ok(frame.result.unwrap_or_default())
 }
 
+/// The texts of an array literal, when every element is a string.
+fn texts(file: &HermesFile<'_>, offset: usize, count: usize) -> Result<Option<Vec<String>>> {
+    let mut texts = Vec::with_capacity(count);
+    for literal in read_literals(file, Section::Values, offset, count)? {
+        let value = literal.string().map(|id| file.string(id)).transpose()?;
+        let Some(text) = value.and_then(StringValue::text) else {
+            return Ok(None);
+        };
+        texts.push(text);
+    }
+    Ok(Some(texts))
+}
+
 /// What one function's analysis knows besides its registers.
 #[derive(Default)]
 struct Frame {
@@ -129,16 +138,7 @@ impl Frame {
             }
             Op::NewArray => Some(Value::Strings(Vec::new())),
             Op::NewArrayWithBuffer | Op::NewArrayWithBufferLong => {
-                read_literals(file.section(Section::Values), v[3] as usize, v[2] as usize)?
-                    .iter()
-                    .map(|literal| {
-                        literal
-                            .string()
-                            .map(|id| file.string(id)?.text())
-                            .transpose()
-                    })
-                    .collect::<Result<Option<Vec<_>>>>()?
-                    .map(Value::Strings)
+                texts(file, v[3] as usize, v[2] as usize)?.map(Value::Strings)
             }
             Op::CreateClosure | Op::CreateClosureLongIndex => {
                 Some(Value::Function(FunctionId(v[2] as u32)))
@@ -209,6 +209,7 @@ impl Frame {
 
 #[cfg(test)]
 mod tests {
+    use crate::error::Unsupported;
     use crate::fixtures::{BUNDLED, LITERALS, function, host, image};
     use crate::{Code, HermesError, HookKind, Operand, SlotId, Statement};
 
@@ -241,7 +242,10 @@ mod tests {
             }
             assert!(matches!(
                 editor.hook(greet, HookKind::Before, &calling(id, "missing")),
-                Err(HermesError::Unsupported(_))
+                Err(HermesError::Unsupported {
+                    reason: Unsupported::Export(_),
+                    ..
+                })
             ));
         }
     }

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::HermesFile;
-use crate::bytes::{read_u32, slice};
-use crate::error::{Result, invalid};
+use crate::bytes::read_u32;
+use crate::error::{HermesError, Result, invalid};
 use crate::layout::Section;
 use crate::string::StringId;
 
@@ -81,29 +81,32 @@ impl LiteralValue<'_> {
 
 /// Reads `count` literals from `offset` the way the runtime does: run by run,
 /// stopping inside a run once `count` literals are read.
-pub(crate) fn read_literals(
-    source: &[u8],
+pub(crate) fn read_literals<'a>(
+    file: &HermesFile<'a>,
+    buffer: Section,
     offset: usize,
     count: usize,
-) -> Result<Vec<LiteralValue<'_>>> {
+) -> Result<Vec<LiteralValue<'a>>> {
+    let byte = |at: usize| Ok::<_, HermesError>(file.section_bytes(buffer, at, 1)?[0]);
     let mut literals = Vec::with_capacity(count);
     let mut cursor = offset;
     while literals.len() < count {
-        let tag = slice(source, cursor, 1)?[0];
+        let tag = byte(cursor)?;
         cursor += 1;
         let mut length = usize::from(tag & Literal::LENGTH);
         if tag & Literal::LONG_RUN != 0 {
-            length = length << 8 | usize::from(slice(source, cursor, 1)?[0]);
+            length = length << 8 | usize::from(byte(cursor)?);
             cursor += 1;
         }
         if length == 0 {
-            return Err(invalid(cursor, "empty literal run"));
+            let start = file.sections[buffer as usize].start;
+            return Err(invalid(start + cursor, "empty literal run"));
         }
         let kind = Literal::decode(tag);
         for _ in 0..length.min(count - literals.len()) {
             literals.push(LiteralValue {
                 kind,
-                bytes: slice(source, cursor, kind.size())?,
+                bytes: file.section_bytes(buffer, cursor, kind.size())?,
             });
             cursor += kind.size();
         }
@@ -114,13 +117,10 @@ pub(crate) fn read_literals(
 /// The keys of object shape `shape`, in slot order.
 pub(crate) fn shape_keys<'a>(file: &HermesFile<'a>, shape: u32) -> Result<Vec<LiteralValue<'a>>> {
     let stride = Section::Shapes.stride();
-    let entry = slice(
-        file.section(Section::Shapes),
-        shape as usize * stride,
-        stride,
-    )?;
+    let entry = file.section_bytes(Section::Shapes, shape as usize * stride, stride)?;
     read_literals(
-        file.section(Section::Keys),
+        file,
+        Section::Keys,
         read_u32(entry, 0)? as usize,
         read_u32(entry, 4)? as usize,
     )
