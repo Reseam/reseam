@@ -3,12 +3,13 @@
 
 use std::collections::BTreeMap;
 
-use crate::Function;
+use crate::bytes::align;
 use crate::edit::{EditedFunction, FunctionBody};
 use crate::error::{Result, invalid};
 use crate::model::ExceptionHandler;
+use crate::model::Function;
 use crate::opcode::{Instruction, Opcode, OperandKind};
-use crate::parse::{align, switch_table};
+use crate::switch::switch_table;
 
 fn signed(value: u64, kind: OperandKind) -> i64 {
     match kind {

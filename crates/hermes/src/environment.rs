@@ -7,10 +7,11 @@ use crate::assemble::assemble;
 use crate::dataflow::{Registers, register_states};
 use crate::edit::{EditedFunction, Editor, FunctionBody};
 use crate::error::{HermesError, Result, invalid};
+use crate::model::Function;
 use crate::model::{FunctionKind, Prohibit};
 use crate::opcode::{Instruction, Op};
-use crate::parse::switch_table;
-use crate::{Function, FunctionId, FunctionIndex};
+use crate::switch::switch_table;
+use crate::{FunctionId, FunctionIndex};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Value {

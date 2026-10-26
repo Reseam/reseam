@@ -3,10 +3,10 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
-use crate::Function;
 use crate::error::{Result, invalid};
+use crate::model::Function;
 use crate::opcode::{Instruction, Op, OperandKind};
-use crate::parse::switch_table;
+use crate::switch::switch_table;
 
 /// Values known to be held by registers, by register number.
 pub(crate) type Registers<V> = BTreeMap<u32, V>;

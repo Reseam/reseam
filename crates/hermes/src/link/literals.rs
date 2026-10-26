@@ -3,10 +3,10 @@
 
 use std::collections::BTreeMap;
 
+use crate::bytes::read_u32;
 use crate::error::{Result, invalid};
 use crate::literal::{Literal, MAX_RUN, read_literals};
 use crate::opcode::{Instruction, Op};
-use crate::parse::read_u32;
 
 pub(super) fn at(inst: &Instruction) -> usize {
     inst.offset.expect("decoded instructions have offsets") as usize

@@ -8,6 +8,7 @@
 //! output preserves every byte, including padding, the footer, and any epilogue.
 
 mod assemble;
+mod bytes;
 mod code;
 mod codegen;
 mod dataflow;
@@ -25,6 +26,7 @@ mod metro;
 mod model;
 mod opcode;
 mod parse;
+mod switch;
 mod write;
 
 pub use code::{BlockId, Code, Condition, HookKind, Operand, Place, SlotId, Statement};
@@ -34,5 +36,3 @@ pub use index::FunctionIndex;
 pub use interface::imports;
 pub use link::{Import, ModuleId};
 pub use model::{FunctionId, HermesFile, HermesImage};
-
-use model::Function;

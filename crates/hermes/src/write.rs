@@ -5,13 +5,13 @@ use sha1::Digest;
 use std::io::Write;
 
 use crate::Result;
+use crate::bytes::align;
 use crate::edit::{EditedFunction, Editor};
 use crate::error::invalid;
 use crate::model::{
     ExceptionHandler, FOOTER_SIZE, Field, FunctionHeader, FunctionId, HEADER_SIZE,
     LARGE_HEADER_SIZE, SMALL_HEADER_SIZE, Section,
 };
-use crate::parse::align;
 
 struct PlannedFunction {
     header: FunctionHeader,

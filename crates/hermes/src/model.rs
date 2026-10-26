@@ -4,9 +4,9 @@
 use std::hash::Hasher;
 use std::ops::Range;
 
+use crate::bytes::{align, read_u32, slice};
 use crate::error::{Result, invalid};
 use crate::opcode::BytecodeVersion;
-use crate::parse::{align, read_u32, slice};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FunctionId(pub(crate) u32);

@@ -1,15 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use crate::FunctionId;
 use crate::assemble::encode;
 use crate::code::{Code, Condition, HookKind, Operand, Place, Statement};
 use crate::edit::EditedFunction;
 use crate::environment::environment_depth;
 use crate::error::{HermesError, Result};
 use crate::link::generated_function;
+use crate::model::Function;
 use crate::model::StringId;
 use crate::opcode::{BUILTIN_APPLY, Instruction, Op};
-use crate::{Function, FunctionId};
 
 /// A hook ready to compile: its code with names resolved to the file's strings, and how many
 /// slots it keeps.

@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::assemble::assemble;
+use crate::bytes::read_u32;
 use crate::edit::Editor;
 use crate::error::{HermesError, Result, invalid};
 use crate::metro::MetroModuleId;
 use crate::model::{Field, STATIC_BUILTINS, Section, StringId, StringKind};
 use crate::opcode::{IdKind, Op};
-use crate::parse::read_u32;
 use crate::{FunctionId, FunctionIndex, HermesFile};
 
 mod bootstrap;

@@ -7,7 +7,7 @@ use rustc_hash::FxHashMap;
 use crate::error::{HermesError, Result, invalid};
 use crate::model::{Encoding, FOOTER_SIZE, StringId, StringValue};
 use crate::opcode::IdKind;
-use crate::parse::switch_table;
+use crate::switch::switch_table;
 use crate::{FunctionId, HermesFile};
 
 /// An immutable search index of the original app functions. Build it once and
