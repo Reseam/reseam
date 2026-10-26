@@ -19,6 +19,7 @@ semver = { workspace = true }
 boltffi_backend = { workspace = true }
 boltffi_bindgen = { workspace = true }
 boltffi_binding = { workspace = true }
+reseam-dex = { path = "../crates/dex" }
 reseam-apk = { path = "../crates/apk" }
 memmap2 = { workspace = true }
 sha2 = { workspace = true }

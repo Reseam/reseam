@@ -15,7 +15,7 @@ reseam-storage = { workspace = true }
 reseam-model   = { workspace = true }
 reseam-sdk     = { workspace = true, features = ["kotlin"] }
 reseam-patcher = { workspace = true }
-reseam-apk     = { workspace = true }
+reseam-dex     = { workspace = true }
 clap           = { workspace = true }
 anyhow         = { workspace = true }
 tracing        = { workspace = true }

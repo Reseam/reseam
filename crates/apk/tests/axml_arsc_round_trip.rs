@@ -9,7 +9,7 @@ mod resource_cases;
 use reseam_apk::axml::{self, AxmlDocument, AxmlEvent};
 use reseam_apk::resources::{AttrFormats, EntryValue, MapEntry, ResType, ResourceTable};
 use reseam_apk::{ResValue, ResourceScope, StringEncoding};
-use reseam_dex::file::DexBytes;
+use reseam_dex::DexBytes;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 

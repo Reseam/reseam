@@ -18,7 +18,6 @@ pub use crate::patch::{
     is_slug,
 };
 pub use reseam_apk;
-pub use reseam_apk::reseam_dex;
 
 pub use reseam_model::JvmHeapStats;
 

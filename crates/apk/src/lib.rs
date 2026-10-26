@@ -27,5 +27,3 @@ pub use error::{ApkError, Result};
 pub use resources::{ResourceScope, ResourceTable};
 pub use string_pool::{StringEncoding, StringPool};
 pub use value::ResValue;
-
-pub use reseam_dex;

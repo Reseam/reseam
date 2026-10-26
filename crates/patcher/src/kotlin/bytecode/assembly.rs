@@ -4,8 +4,8 @@
 use std::collections::BTreeMap;
 
 use boltffi::export;
-use dex::types::code_rewrite::{BranchDestination, branch_offset as native_branch_offset};
-use reseam_apk::reseam_dex::{self as dex, CodeItem, DexFile};
+use dex::{BranchDestination, branch_offset as native_branch_offset};
+use reseam_dex::{self as dex, CodeItem, DexFile};
 
 use crate::kotlin::convert::{dex_to_kotlin, kotlin_to_dex};
 use crate::kotlin::types::{Instruction, ScratchSpan};

@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use reseam_apk::reseam_dex::{
+use reseam_dex::{
     DexFile, EncodedField, EncodedMethod, MemberCounts, MethodSummary, MultiDexContainer,
     summarize_resident,
 };
 
-use reseam_apk::reseam_dex::MethodKind;
+use reseam_dex::MethodKind;
 
 use crate::error::Result;
 

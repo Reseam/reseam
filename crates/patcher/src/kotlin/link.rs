@@ -5,9 +5,7 @@ use super::handles::with_ctx;
 use super::types::{CallSiteRef, EncodedVal, FieldRef, HandleRef, Instruction, MethodRef};
 
 pub(super) fn proto_types(proto: &str) -> Vec<&str> {
-    let Some((parameters, returns)) =
-        reseam_apk::reseam_dex::util::descriptor::parse_method_descriptor(proto)
-    else {
+    let Some((parameters, returns)) = reseam_dex::parse_method_descriptor(proto) else {
         super::handles::record_failure(format!("invalid method descriptor: {proto}"));
         return Vec::new();
     };

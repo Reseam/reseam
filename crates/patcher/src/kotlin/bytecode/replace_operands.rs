@@ -7,7 +7,7 @@ use crate::kotlin::handles::{code_mut, log_mutation, method_location, with_ctx, 
 use crate::kotlin::link::link_method;
 use crate::kotlin::types::MethodRef;
 use boltffi::export;
-use reseam_apk::reseam_dex::{Instruction as DexInsn, MethodIdx};
+use reseam_dex::{Instruction as DexInsn, MethodIdx};
 
 #[export]
 pub fn replace_strings(m: u32, old: String, new: String, all: bool) -> u32 {

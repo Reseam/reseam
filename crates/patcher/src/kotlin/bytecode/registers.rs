@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::kotlin::handles::record_failure;
 use boltffi::export;
-use reseam_apk::reseam_dex::{self as dex, AccessFlags};
+use reseam_dex::{self as dex, AccessFlags};
 
 use crate::kotlin::handles::{code_mut, method_mut, with_code, with_instruction, with_method_mut};
 use crate::kotlin::types::{MethodEdit, RegisterWriters};
@@ -55,13 +55,7 @@ pub fn grow_local_registers(
         let incoming = incoming_types(dex, id, flags);
         let indices = logged(
             "grow method registers",
-            dex::types::register_allocation::grow_registers(
-                &mut code,
-                additional_locals,
-                &incoming,
-                &protected,
-                dex,
-            ),
+            dex::grow_registers(&mut code, additional_locals, &incoming, &protected, dex),
         );
         logged("restore method code", method_mut(dex, loc))?
             .expect("frame growth leaves the method slot in place")

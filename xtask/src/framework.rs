@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result, bail, ensure};
 use reseam_apk::ResourceTable;
-use reseam_apk::reseam_dex::file::DexBytes;
 use reseam_apk::resources::{EntryValue, MapEntry};
+use reseam_dex::DexBytes;
 use sha2::{Digest, Sha256};
 
 // Android SDK platforms;android-36, revision 2. Hash the decompressed resource

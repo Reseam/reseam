@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use reseam_apk::reseam_dex::{self, DexFile, FieldIdx, MethodIdx};
+use reseam_dex::{self, DexFile, FieldIdx, MethodIdx};
 
 pub(super) fn resolve_method_ref(dex: &DexFile, idx: MethodIdx) -> MethodRef {
     let mid = dex.method_id(idx);
@@ -228,7 +228,7 @@ fn export_payload(instruction: &D) -> reseam_dex::Result<Instruction> {
                 .collect(),
         ),
         _ => Instruction::Raw(
-            reseam_dex::write::encode_instructions(std::slice::from_ref(instruction))?
+            reseam_dex::encode_instructions(std::slice::from_ref(instruction))?
                 .into_iter()
                 .flat_map(u16::to_le_bytes)
                 .collect(),
@@ -320,8 +320,7 @@ pub fn kotlin_to_dex(
             if bytes.is_empty() || !bytes.len().is_multiple_of(2) {
                 return Err(invalid("raw instruction must contain complete code units"));
             }
-            let mut instructions =
-                reseam_dex::read::decode_instructions(bytes, 0, bytes.len() / 2)?;
+            let mut instructions = reseam_dex::decode_instructions(bytes, 0, bytes.len() / 2)?;
             if instructions.len() != 1 {
                 return Err(invalid(
                     "raw instruction must encode exactly one instruction",

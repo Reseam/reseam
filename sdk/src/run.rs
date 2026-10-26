@@ -158,9 +158,9 @@ fn run(
         dex.release_search_caches();
         dex.release_pages();
         if !added && dex.is_dirty() {
-            dex.set_write_options(reseam_apk::reseam_dex::write::WriteOptions {
-                debug_info: reseam_apk::reseam_dex::write::MetadataPolicy::OmitOriginal,
-                link_data: reseam_apk::reseam_dex::write::LinkPolicy::Omit,
+            dex.set_write_options(reseam_dex::WriteOptions {
+                debug_info: reseam_dex::MetadataPolicy::OmitOriginal,
+                link_data: reseam_dex::LinkPolicy::Omit,
                 ..Default::default()
             });
         }

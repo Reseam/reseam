@@ -6,7 +6,7 @@ use super::types::{
     AnnotationElement, AnnotationValue, CallSiteRef, EncodedVal, FieldHandleRef, HandleRef,
     MethodHandleRef,
 };
-use reseam_apk::reseam_dex::{self, DexFile};
+use reseam_dex::{self, DexFile};
 
 use super::convert::{invalid, resolve_field_ref, resolve_method_ref};
 
@@ -28,7 +28,7 @@ pub(super) fn export_handle(
     dex_index: Option<usize>,
     index: reseam_dex::MethodHandleIdx,
 ) -> reseam_dex::Result<HandleRef> {
-    use reseam_dex::types::method_handle::MethodHandleMember;
+    use reseam_dex::MethodHandleMember;
     let handle = dex.method_handles().get(index.0 as usize)?;
     Ok(match handle.member {
         MethodHandleMember::Field(field) => HandleRef::Field(FieldHandleRef {
@@ -49,7 +49,7 @@ pub(super) fn import_handle(
     dex_index: Option<usize>,
     handle: &HandleRef,
 ) -> reseam_dex::Result<reseam_dex::MethodHandleIdx> {
-    use reseam_dex::types::method_handle::{MethodHandle, MethodHandleMember, MethodHandleType};
+    use reseam_dex::{MethodHandle, MethodHandleMember, MethodHandleType};
     let origin = match handle {
         HandleRef::Field(value) => value.origin,
         HandleRef::Method(value) => value.origin,
@@ -136,8 +136,8 @@ pub(super) fn import_call_site(
     )?))
 }
 
-fn intern_pool<T: reseam_dex::file::FileRecord>(
-    table: &mut reseam_dex::file::FileTable<T>,
+fn intern_pool<T: reseam_dex::FileRecord>(
+    table: &mut reseam_dex::FileTable<T>,
     value: T,
     origin: Option<PoolOrigin>,
     destination: Option<usize>,
@@ -275,7 +275,7 @@ pub(super) fn import_value(
     value: &EncodedVal,
 ) -> reseam_dex::Result<reseam_dex::EncodedValue> {
     use reseam_dex::EncodedValue as V;
-    use reseam_dex::types::encoded_value::{EncodedAnnotation, EncodedAnnotationElement};
+    use reseam_dex::{EncodedAnnotation, EncodedAnnotationElement};
     Ok(match value {
         EncodedVal::Null => V::Null,
         EncodedVal::BoolVal(v) => V::Boolean(*v),

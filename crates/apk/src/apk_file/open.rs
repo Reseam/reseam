@@ -43,7 +43,7 @@ impl ApkFile {
         let mut dex = MultiDexContainer::default();
         let mut dex_origins = Vec::new();
         for (index, component) in components.iter_mut().enumerate() {
-            if opts.classes == reseam_dex::types::header::Loading::Eager {
+            if opts.classes == reseam_dex::Loading::Eager {
                 component.resources()?;
             }
             for (name, file) in dex::load_dex(component.archive(), opts)? {
@@ -76,7 +76,7 @@ impl ApkFile {
     /// Patch-time inspection defers class and debug decoding and accepts stale
     /// DEX checksums and signatures, as repacked APKs commonly carry them.
     pub fn patch_options() -> ParseOptions {
-        use reseam_dex::types::header::{Loading, Verification};
+        use reseam_dex::{Loading, Verification};
         ParseOptions {
             classes: Loading::Deferred,
             debug_info: Loading::Deferred,

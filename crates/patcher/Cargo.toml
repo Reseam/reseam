@@ -14,6 +14,7 @@ reseam-storage = { workspace = true }
 reseam-journal = { workspace = true }
 reseam-hermes = { workspace = true }
 reseam-model = { workspace = true }
+reseam-dex     = { workspace = true }
 reseam-apk          = { workspace = true }
 reseam-sign         = { workspace = true, optional = true }
 thiserror   = { workspace = true }

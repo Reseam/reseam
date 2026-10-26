@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use boltffi::export;
-use reseam_apk::reseam_dex::{self as dex, util::descriptor::parse_method_descriptor};
+use reseam_dex::{self as dex, parse_method_descriptor};
 
 use super::types::{
     CustomRangeInsn, FilledArrayRangeInsn, Instruction, InvokeRangeInsn, PolymorphicRangeInsn,
@@ -172,7 +172,7 @@ fn ranged_invocation(instruction: &Instruction) -> dex::Result<Option<Invocation
 fn array_arguments(descriptor: &str, count: usize) -> dex::Result<Vec<ArgumentKind>> {
     let element = descriptor
         .strip_prefix('[')
-        .filter(|_| dex::util::descriptor::is_type_descriptor(descriptor))
+        .filter(|_| dex::is_type_descriptor(descriptor))
         .ok_or_else(|| invalid("filled-new-array requires an array descriptor"))?;
     let kind = ArgumentKind::descriptor(element);
     if matches!(kind, ArgumentKind::Wide) {

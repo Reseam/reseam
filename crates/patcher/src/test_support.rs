@@ -94,9 +94,9 @@ pub(crate) fn duplicate_call_site(
         .unwrap()
         .insert_instructions(
             4,
-            &[reseam_apk::reseam_dex::Instruction::InvokeCustom {
-                call_site: reseam_apk::reseam_dex::CallSiteIdx(duplicate as u32),
-                args: reseam_apk::reseam_dex::RegList::default(),
+            &[reseam_dex::Instruction::InvokeCustom {
+                call_site: reseam_dex::CallSiteIdx(duplicate as u32),
+                args: reseam_dex::RegList::default(),
             }],
         )
         .unwrap();

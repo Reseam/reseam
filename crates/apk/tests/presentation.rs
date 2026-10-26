@@ -5,11 +5,11 @@
 mod archive;
 use archive::write_apk;
 
-use reseam_apk::reseam_dex::ParseOptions;
 use reseam_apk::resources::{EntryValue, ResEntry, ResPackage, ResType, TypeSpec};
 use reseam_apk::{
     ApkFile, ApplicationIcon, IconLayer, ResValue, ResourceScope, ResourceTable, StringPool, axml,
 };
+use reseam_dex::ParseOptions;
 
 fn strings(values: &[&str]) -> StringPool {
     StringPool::new(

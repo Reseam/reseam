@@ -14,8 +14,8 @@ use crate::kotlin::link::{link_descriptors, link_instructions, proto_types};
 use crate::kotlin::types::NewMethod;
 use boltffi::export;
 use frame::prepare_flag_frame;
-use reseam_apk::reseam_dex::MethodKind;
-use reseam_apk::reseam_dex::{
+use reseam_dex::MethodKind;
+use reseam_dex::{
     AccessFlags, CatchHandler as DexCatchHandler, ClassDef, EncodedMethod, TryItem as DexTryItem,
     TypedCatch as DexTypedCatch,
 };
@@ -97,11 +97,11 @@ pub fn add_method(c: u32, method: NewMethod) -> u32 {
                                                 addr: catch.addr,
                                             })
                                         })
-                                        .collect::<reseam_apk::reseam_dex::Result<_>>()?,
+                                        .collect::<reseam_dex::Result<_>>()?,
                                     catch_all_addr: handler.catch_all_addr,
                                 })
                             })
-                            .collect::<reseam_apk::reseam_dex::Result<_>>()?;
+                            .collect::<reseam_dex::Result<_>>()?;
                         code.set_exception_handlers(tries, handlers)
                     },
                 ),

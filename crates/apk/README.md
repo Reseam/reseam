@@ -24,7 +24,8 @@ Reads and writes APKs for the Reseam engine: the ZIP container, the binary manif
 ## Example
 
 ```rust
-use reseam_apk::{ApkFile, reseam_dex::ParseOptions};
+use reseam_apk::ApkFile;
+use reseam_dex::ParseOptions;
 
 let apk = ApkFile::open("app.apk", ParseOptions::default())?;
 let dex = apk.dex(); // every classes*.dex as one MultiDexContainer

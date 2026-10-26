@@ -396,7 +396,7 @@ fn format_bytes(bytes: u64) -> String {
 }
 
 fn estimated_ir_bytes(stats: &reseam_model::MaterializationStats) -> u64 {
-    reseam_apk::reseam_dex::estimated_ir_bytes(&reseam_apk::reseam_dex::MaterializationStats {
+    reseam_dex::estimated_ir_bytes(&reseam_dex::MaterializationStats {
         total_classes: stats.total_classes,
         resolved_classes: stats.resolved_classes,
         methods: stats.methods,

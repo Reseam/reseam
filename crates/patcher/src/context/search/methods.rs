@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use super::super::{ClassLocation, MethodLocation, PatchContext};
 use super::method_location;
 use crate::error::Result;
-use reseam_apk::reseam_dex::{InstructionPattern, MethodIdx, RefKey, RefQuery, StringIdx, TypeIdx};
+use reseam_dex::{InstructionPattern, MethodIdx, RefKey, RefQuery, StringIdx, TypeIdx};
 
 impl PatchContext<'_> {
     /// Every method whose prototype satisfies each given filter (exact return

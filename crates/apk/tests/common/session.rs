@@ -12,7 +12,7 @@ pub const ALIGNMENT_NATIVE_LIB: u64 = 16 * 1024;
 
 pub fn lazy() -> ParseOptions {
     ParseOptions {
-        classes: reseam_dex::types::header::Loading::Deferred,
+        classes: reseam_dex::Loading::Deferred,
         ..ParseOptions::default()
     }
 }

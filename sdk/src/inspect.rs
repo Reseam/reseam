@@ -5,8 +5,8 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::error::{HostError, Result, classify};
-use reseam_apk::reseam_dex::ParseOptions;
 use reseam_apk::{ApkFile, ContainerBundle, ContainerFormat};
+use reseam_dex::ParseOptions;
 use reseam_patcher::bundle::{BundleArchive, PatchBundle};
 use reseam_patcher::{ApkVersion, PatchPreset, PatchSpec};
 

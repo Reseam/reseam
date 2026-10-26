@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
-use reseam_apk::reseam_dex::{DexFile, DexHeader, DexVersion, ParseOptions};
 use reseam_apk::{ApkFile, ResValue, ResourceTable};
+use reseam_dex::{DexFile, DexHeader, DexVersion, ParseOptions};
 use reseam_patcher::bundle::{BUNDLE_FORMAT_VERSION, BundleArchive, pack};
 use reseam_patcher::context::PatchContext;
 use reseam_patcher::engine::{self, PatchSelection, PatchStatus};
@@ -205,7 +205,7 @@ fn open_split_test_apk_with(
         &base_path,
         &[split_path.as_path()],
         ParseOptions {
-            classes: reseam_apk::reseam_dex::Loading::Deferred,
+            classes: reseam_dex::Loading::Deferred,
             ..ParseOptions::default()
         },
     )
@@ -556,11 +556,8 @@ fn invalid_emitted_operations_fail_the_patch() {
 }
 
 // Distinct incoming words expose lost arguments and overlapping wide moves.
-fn hook_calls(
-    code: &reseam_apk::reseam_dex::CodeItem,
-    incoming: &[i64],
-) -> (Vec<Vec<i64>>, Option<i64>) {
-    use reseam_apk::reseam_dex::Instruction::*;
+fn hook_calls(code: &reseam_dex::CodeItem, incoming: &[i64]) -> (Vec<Vec<i64>>, Option<i64>) {
+    use reseam_dex::Instruction::*;
     let mut registers = vec![-1; usize::from(code.registers_size())];
     registers[usize::from(code.registers_size() - code.ins_size())..].copy_from_slice(incoming);
     let mut calls = Vec::new();
@@ -657,10 +654,10 @@ fn hook_calls(
 }
 
 fn fixture_scalar_write(
-    instruction: &reseam_apk::reseam_dex::Instruction,
+    instruction: &reseam_dex::Instruction,
     registers: &[i64],
 ) -> Option<(usize, i64)> {
-    use reseam_apk::reseam_dex::Instruction::*;
+    use reseam_dex::Instruction::*;
     use std::cmp::Ordering;
     let wide = |register: u8| {
         registers[usize::from(register)] as u64
@@ -696,10 +693,8 @@ fn fixture_scalar_write(
     Some((usize::from(dest), value))
 }
 
-fn fixture_invoke_arguments(
-    instruction: &reseam_apk::reseam_dex::Instruction,
-) -> Option<Vec<usize>> {
-    use reseam_apk::reseam_dex::Instruction::*;
+fn fixture_invoke_arguments(instruction: &reseam_dex::Instruction) -> Option<Vec<usize>> {
+    use reseam_dex::Instruction::*;
     match instruction {
         InvokeStatic { args, .. }
         | InvokeVirtual { args, .. }
@@ -733,8 +728,8 @@ struct FixtureMovement {
     words: usize,
 }
 
-fn fixture_movement(instruction: &reseam_apk::reseam_dex::Instruction) -> Option<FixtureMovement> {
-    use reseam_apk::reseam_dex::Instruction::*;
+fn fixture_movement(instruction: &reseam_dex::Instruction) -> Option<FixtureMovement> {
+    use reseam_dex::Instruction::*;
     let (destination, source) = match *instruction {
         Move { dest, src } | MoveObject { dest, src } | MoveWide { dest, src } => {
             (usize::from(dest), usize::from(src))
@@ -827,7 +822,7 @@ fn after_hooks_preserve_entry_arguments_when_parameter_registers_are_reused() {
 
 #[test]
 fn replace_strings_containing_or_starting_with_rewrites_only_what_transform_returns() {
-    use reseam_apk::reseam_dex::Instruction::ConstString;
+    use reseam_dex::Instruction::ConstString;
 
     const REWRITTEN: &str = "content://app.reseam.gsf.gservices/prefix";
     const ACTION: &str = "com.google.android.gsf.intent.SYNC";
@@ -1028,7 +1023,7 @@ fn invoked_by(dex: &DexFile, owner: &str, name: &str) -> Vec<String> {
         .unwrap()
         .instructions()
         .iter()
-        .filter_map(reseam_apk::reseam_dex::Instruction::method_ref)
+        .filter_map(reseam_dex::Instruction::method_ref)
         .map(|idx| {
             let id = dex.method_id(idx);
             format!(
@@ -1041,14 +1036,14 @@ fn invoked_by(dex: &DexFile, owner: &str, name: &str) -> Vec<String> {
 }
 
 fn dex_bytes(dex: &DexFile) -> Vec<u8> {
-    let (spooled, _) = reseam_apk::reseam_dex::write_spooled(dex, None).unwrap();
+    let (spooled, _) = reseam_dex::write_spooled(dex, None).unwrap();
     let mut bytes = Vec::new();
     std::io::Read::read_to_end(&mut spooled.reader(), &mut bytes).unwrap();
     bytes
 }
 
 fn written_dex(apk: &ApkFile, index: usize) -> DexFile {
-    reseam_apk::reseam_dex::parse(
+    reseam_dex::parse(
         &dex_bytes(apk.dex().dex(index).unwrap()),
         ParseOptions::default(),
     )
@@ -1059,7 +1054,7 @@ const APP_ENTRY_HOOK: &str = "Lapp/reseam/AppEntry;->onCreate";
 
 #[test]
 fn app_entry_unseals_the_final_on_create_it_overrides() {
-    use reseam_apk::reseam_dex::AccessFlags;
+    use reseam_dex::AccessFlags;
 
     const BASE: &str = "Lcom/example/AppBase;";
     const APP: &str = "Lcom/example/App;";
@@ -1162,11 +1157,7 @@ fn app_entry_fails_the_patch_when_the_manifest_names_no_application() {
     assert!(matches!(status, PatchStatus::Failed { .. }), "{status:?}");
 }
 
-fn method_flags(
-    dex: &DexFile,
-    owner: &str,
-    name: &str,
-) -> Option<reseam_apk::reseam_dex::AccessFlags> {
+fn method_flags(dex: &DexFile, owner: &str, name: &str) -> Option<reseam_dex::AccessFlags> {
     read_method(dex, owner, name).map(|method| method.access_flags)
 }
 
@@ -1189,7 +1180,7 @@ fn enum_constants_resolve_by_name_through_obfuscated_fields() {
     let read = code
         .instructions()
         .iter()
-        .find_map(reseam_apk::reseam_dex::Instruction::field_ref)
+        .find_map(reseam_dex::Instruction::field_ref)
         .map(|idx| {
             written
                 .strings()
@@ -1250,7 +1241,7 @@ fn enum_constants_resolve_when_optimizers_bypass_the_enum_constructor() {
         let read = code
             .instructions()
             .iter()
-            .find_map(reseam_apk::reseam_dex::Instruction::field_ref)
+            .find_map(reseam_dex::Instruction::field_ref)
             .map(|idx| {
                 let field = written.field_id(idx);
                 (
@@ -1331,7 +1322,7 @@ fn extensions_share_a_class_they_define_identically() {
 
 #[test]
 fn bundles_cannot_define_app_runtime_classes() {
-    use reseam_apk::reseam_dex::AccessFlags;
+    use reseam_dex::AccessFlags;
     use reseam_patcher::context::ExtensionSet;
 
     let mut dex = DexFile::new(DexHeader::new(DexVersion::V035));
@@ -1641,7 +1632,7 @@ fn a_class_reaches_the_methods_its_base_declares() {
     );
 }
 
-fn patched_code(apk: &ApkFile, owner: &str, name: &str) -> reseam_apk::reseam_dex::CodeItem {
+fn patched_code(apk: &ApkFile, owner: &str, name: &str) -> reseam_dex::CodeItem {
     read_method(&written_dex(apk, 0), owner, name)
         .unwrap()
         .code
@@ -1649,15 +1640,11 @@ fn patched_code(apk: &ApkFile, owner: &str, name: &str) -> reseam_apk::reseam_de
         .unwrap()
 }
 
-fn read_method(
-    dex: &DexFile,
-    owner: &str,
-    name: &str,
-) -> Option<reseam_apk::reseam_dex::EncodedMethod> {
+fn read_method(dex: &DexFile, owner: &str, name: &str) -> Option<reseam_dex::EncodedMethod> {
     let class = dex.find_class_index(owner)?;
     let name = dex.strings().find(name)?;
     let hit = dex
-        .scan_methods_find(&reseam_apk::reseam_dex::RefQuery::default(), |view| {
+        .scan_methods_find(&reseam_dex::RefQuery::default(), |view| {
             Ok(
                 (view.class_idx == class && dex.method_id(view.method).name == name)
                     .then(|| view.hit()),
@@ -1738,13 +1725,11 @@ fn a_writer_is_the_one_instruction_that_defined_an_argument() {
 
 #[test]
 fn point_queries_and_redirects_share_tracked_control_flow() {
-    use reseam_apk::reseam_dex::Instruction::*;
+    use reseam_dex::Instruction::*;
     const OWNER: &str = "Lcom/example/PointQueryHost;";
 
     let (_dir, mut apk) = open_dex_apk(&[dex!("point_queries")]);
-    apk.add_dex(
-        reseam_apk::reseam_dex::parse(dex!("extension_caller"), ParseOptions::default()).unwrap(),
-    );
+    apk.add_dex(reseam_dex::parse(dex!("extension_caller"), ParseOptions::default()).unwrap());
     let bundle = loaded_test_bundle();
     let patches: Vec<&Patch> = bundle.patches().iter().collect();
     run_one_patch(
@@ -1786,15 +1771,13 @@ fn point_queries_and_redirects_share_tracked_control_flow() {
 #[test]
 fn string_prefix_queries_use_literal_prefixes_and_exclude_extensions() {
     let (_dir, mut apk) = open_dex_apk(&[dex!("prefix_queries")]);
-    apk.add_dex(
-        reseam_apk::reseam_dex::parse(dex!("extension_routes"), ParseOptions::default()).unwrap(),
-    );
+    apk.add_dex(reseam_dex::parse(dex!("extension_routes"), ParseOptions::default()).unwrap());
     apply_fixture(&mut apk, "string-prefix-queries", "stringPrefixQueries");
 }
 
 #[test]
 fn high16_literals_are_consistent_in_queries_and_mutations() {
-    use reseam_apk::reseam_dex::Instruction::*;
+    use reseam_dex::Instruction::*;
 
     let owner = "Lcom/example/High16;";
 
@@ -1819,7 +1802,7 @@ fn high16_literals_are_consistent_in_queries_and_mutations() {
 
 #[test]
 fn hierarchy_queries_follow_subclasses_across_dex_files_and_direct_interfaces() {
-    use reseam_apk::reseam_dex::AccessFlags;
+    use reseam_dex::AccessFlags;
 
     // PreferenceFragment, in the first DEX, extends PreferenceBase from the second.
     let (_dir, mut apk) = open_dex_apk(&[dex!("inherited_app"), dex!("inherited_base")]);
@@ -1881,7 +1864,7 @@ fn hierarchy_queries_follow_subclasses_across_dex_files_and_direct_interfaces() 
 
 #[test]
 fn instance_field_queries_read_lazy_fields_and_observe_edits() {
-    use reseam_apk::reseam_dex::{AccessFlags, EncodedField};
+    use reseam_dex::{AccessFlags, EncodedField};
 
     let (_dir, mut apk) = open_dex_apk(&[dex!("instance_fields")]);
     let mut ctx = PatchContext::new(&mut apk);
@@ -2030,7 +2013,7 @@ fn settings_schemas_carry_the_bundle_license_and_normalized_svg_icons() {
 
 #[test]
 fn settings_hosts_start_the_app_runtime_and_gate_on_the_bundles_own_settings() {
-    use reseam_apk::reseam_dex::Instruction::ConstString;
+    use reseam_dex::Instruction::ConstString;
 
     let (_dir, mut apk) = open_settings_test_apk();
     apply_fixture(&mut apk, "Settings gated entry", "gatedEntry");

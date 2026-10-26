@@ -54,7 +54,7 @@ fn payload_references_survive_alignment_during_pure_lowering() {
         let destination = addresses
             .iter()
             .find_map(|(address, instruction)| match instruction {
-                reseam_apk::reseam_dex::Instruction::FillArrayData { payload_offset, .. } => {
+                reseam_dex::Instruction::FillArrayData { payload_offset, .. } => {
                     address.checked_add_signed(*payload_offset)
                 }
                 _ => None,
@@ -65,7 +65,7 @@ fn payload_references_survive_alignment_during_pure_lowering() {
             .find(|(address, _)| *address == destination)
             .unwrap()
             .1;
-        let reseam_apk::reseam_dex::Instruction::FillArrayDataPayload(payload) = target else {
+        let reseam_dex::Instruction::FillArrayDataPayload(payload) = target else {
             panic!("array initializer targets something other than its data")
         };
         assert_eq!(&payload.data[..], &[7]);
@@ -75,7 +75,7 @@ fn payload_references_survive_alignment_during_pure_lowering() {
 #[test]
 fn assembling_blocks_keeps_branches_over_lowered_invocations() {
     use crate::kotlin::types::{Branch0Insn, InvokeInsn, MethodRef, ScratchSpan};
-    use reseam_apk::reseam_dex::Instruction as NativeInstruction;
+    use reseam_dex::Instruction as NativeInstruction;
 
     let (directory, mut apk) = crate::test_support::apk();
     apk.add_dex(DexFile::new(DexHeader::new(DexVersion::V039)));
