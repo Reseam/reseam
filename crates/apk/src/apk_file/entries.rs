@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::{ApkFile, ComponentIndex, Compression, DexOrigin, DexSource};
+use super::{ApkFile, ComponentIndex, Compression, dex_set};
 use crate::entry::dex_ordinal;
 use crate::error::{Result, invalid};
 use crate::zip::reader;
@@ -42,37 +42,15 @@ impl ApkFile {
             .then(|| crate::AxmlDocument::parse(&reader::map_spooled(&file)?))
             .transpose()
             .map_err(|error| error.in_entry(name))?;
-        let dex = if dex_ordinal(name).is_some() {
-            Some(
-                crate::dex::parse_entry(reader::map_spooled(&file)?, self.options)
-                    .map_err(|error| error.in_entry(name))?,
-            )
-        } else {
-            None
-        };
+        let dex = dex_ordinal(name)
+            .map(|_| dex_set::parse_entry(reader::map_spooled(&file)?, self.options))
+            .transpose()
+            .map_err(|error| error.in_entry(name))?;
         self.components[component]
             .stage(name, file, manifest, compression)
             .map_err(|error| error.in_entry(name))?;
         if let Some(members) = dex {
-            let previous: Vec<_> = self.dex_entries(component, name).collect();
-            let count = members.len();
-            for (ordinal, dex) in members.into_iter().enumerate() {
-                if let Some(&index) = previous.get(ordinal) {
-                    self.replace_dex(index, dex, DexSource::Archive);
-                } else {
-                    self.push_dex(
-                        dex,
-                        DexOrigin {
-                            component: ComponentIndex(component),
-                            name: name.into(),
-                            kind: DexSource::Archive,
-                        },
-                    );
-                }
-            }
-            for index in previous.into_iter().skip(count) {
-                self.remove_dex_slot(index);
-            }
+            self.replace_dex_entry(ComponentIndex(component), name, members);
         }
         Ok(())
     }
@@ -85,15 +63,15 @@ impl ApkFile {
         component: usize,
         name: &str,
     ) -> Result<Option<reseam_storage::MappedFile>> {
-        let changed = self.dex_entries(component, name).any(|index| {
-            self.dex.dex_files[index].is_dirty() || self.dex_origins[index].kind == DexSource::Added
-        });
-        if changed {
-            let mut file = reseam_storage::temporary_file()?;
-            if !self.copy_entry(component, name, &mut file)? {
-                return Ok(None);
-            }
-            return Ok(Some(reader::map_spooled(&file)?));
+        if self
+            .components
+            .get(component)
+            .is_some_and(|entry| entry.contains(name))
+            && let Some(spooled) = self
+                .rewritten_dex_entry(ComponentIndex(component), name)
+                .map_err(|error| error.in_entry(name))?
+        {
+            return Ok(Some(reader::map_spooled(&spooled.into_file())?));
         }
         self.components
             .get_mut(component)
@@ -110,10 +88,7 @@ impl ApkFile {
             .get_mut(component)
             .ok_or_else(|| invalid("apk", format!("no component at index {component}")))?
             .delete(name)?;
-        let indices: Vec<_> = self.dex_entries(component, name).collect();
-        for index in indices {
-            self.remove_dex_slot(index);
-        }
+        self.remove_dex_entry(ComponentIndex(component), name);
         Ok(())
     }
 
@@ -144,26 +119,8 @@ impl ApkFile {
         if !entry.contains(name) {
             return Ok(false);
         }
-        let indices: Vec<_> = self
-            .dex_entries(component, name)
-            .filter(|&index| self.dex_origins[index].kind != DexSource::Removed)
-            .collect();
-        let changed = indices.iter().any(|&index| {
-            self.dex.dex_files[index].is_dirty() || self.dex_origins[index].kind == DexSource::Added
-        });
-        if changed {
-            let file = match indices.as_slice() {
-                [index] => reseam_dex::write_spooled(&self.dex.dex_files[*index], None)?.0,
-                _ => {
-                    reseam_dex::write_container_spooled(
-                        indices
-                            .iter()
-                            .map(|&index| (&self.dex.dex_files[index], None)),
-                    )?
-                    .0
-                }
-            };
-            std::io::copy(&mut file.reader(), output)?;
+        if let Some(spooled) = self.rewritten_dex_entry(ComponentIndex(component), name)? {
+            std::io::copy(&mut spooled.reader(), output)?;
             return Ok(true);
         }
         self.components[component].copy_entry(name, output)
@@ -193,24 +150,5 @@ impl ApkFile {
             return Ok(None);
         };
         self.read_component_entry(component, name)
-    }
-
-    fn dex_entries<'a>(
-        &'a self,
-        component: usize,
-        name: &'a str,
-    ) -> impl Iterator<Item = usize> + 'a {
-        self.dex_origins
-            .iter()
-            .enumerate()
-            .filter_map(move |(index, origin)| {
-                (origin.component == ComponentIndex(component) && origin.name.as_str() == name)
-                    .then_some(index)
-            })
-    }
-
-    fn remove_dex_slot(&mut self, index: usize) {
-        let header = self.dex.dex_files[index].header().clone();
-        self.replace_dex(index, reseam_dex::DexFile::new(header), DexSource::Removed);
     }
 }

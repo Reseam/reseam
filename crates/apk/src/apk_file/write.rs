@@ -190,7 +190,7 @@ impl ApkFile {
         std::thread::scope(|scope| {
             let mut entries = DexEntryStream::start(
                 scope,
-                &self.dex.dex_files,
+                &self.dex,
                 &jobs,
                 options.dex_workers.get(),
                 options.dex_compression_level,

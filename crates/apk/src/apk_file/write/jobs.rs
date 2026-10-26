@@ -6,7 +6,8 @@ use std::collections::HashSet;
 use reseam_dex::DexPart;
 
 use super::super::component::{Compression, EntryEdit};
-use super::super::{ApkFile, ComponentIndex, DexIndex, DexSource};
+use super::super::dex_set::{DexIndex, DexSource};
+use super::super::{ApkFile, ComponentIndex};
 use crate::entry::{EntryName, next_free_dex_name};
 use crate::error::Result;
 
@@ -29,13 +30,9 @@ impl ApkFile {
     pub(super) fn dex_jobs(&self) -> Result<Vec<DexJob>> {
         let rewritten: HashSet<_> = self
             .dex
-            .iter()
-            .zip(&self.dex_origins)
-            .filter(|(dex, origin)| {
-                origin.kind != DexSource::Removed
-                    && (dex.is_dirty() || origin.kind == DexSource::Added)
-            })
-            .map(|(_, origin)| (origin.component, &origin.name))
+            .slots()
+            .filter(|&(index, _, _)| self.dex.is_rewritten(index))
+            .map(|(_, _, origin)| (origin.component, &origin.name))
             .collect();
         let mut used: Vec<HashSet<EntryName>> = self
             .components
@@ -50,7 +47,7 @@ impl ApkFile {
             .collect();
         let mut jobs = Vec::new();
         let mut emitted = HashSet::new();
-        for (dex_index, (dex, origin)) in self.dex.iter().zip(&self.dex_origins).enumerate() {
+        for (dex_index, dex, origin) in self.dex.slots() {
             if origin.kind == DexSource::Removed
                 || !self.components[origin.component.0].contains(origin.name.as_str())
                 || !rewritten.contains(&(origin.component, &origin.name))
@@ -70,15 +67,13 @@ impl ApkFile {
             if dex.header().version.is_container_format() {
                 let members = self
                     .dex
-                    .iter()
-                    .zip(&self.dex_origins)
-                    .enumerate()
-                    .filter(|(_, (_, member))| {
+                    .slots()
+                    .filter(|(_, _, member)| {
                         member.kind != DexSource::Removed
                             && member.component == component
                             && member.name == origin.name
                     })
-                    .map(|(index, (dex, _))| members_for(DexIndex(index), dex))
+                    .map(|(index, dex, _)| members_for(index, dex))
                     .collect::<Result<Vec<_>>>()?
                     .into_iter()
                     .flatten()
@@ -91,10 +86,7 @@ impl ApkFile {
                 });
                 continue;
             }
-            for (ordinal, member) in members_for(DexIndex(dex_index), dex)?
-                .into_iter()
-                .enumerate()
-            {
+            for (ordinal, member) in members_for(dex_index, dex)?.into_iter().enumerate() {
                 let name = if ordinal == 0 {
                     name.clone()
                 } else {

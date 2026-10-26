@@ -31,9 +31,7 @@ pub mod write;
 
 pub use encoding::mutf8::decode_mutf8;
 pub use error::{DexError, Result};
-pub use file::container::{
-    MaterializationStats, MemoryBreakdown, MultiDexContainer, estimated_ir_bytes,
-};
+pub use file::memory::{MaterializationStats, MemoryBreakdown, estimated_ir_bytes};
 pub use file::{DexBytes, FileRecord, FileTable};
 pub use file::{
     DexFile, HiddenApiData, InstructionHit, InstructionPattern, InstructionSite, MemberCounts,

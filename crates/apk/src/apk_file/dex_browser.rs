@@ -6,9 +6,9 @@ use std::fs::File;
 use std::os::wasi::io::AsRawFd;
 use std::thread::Scope;
 
-use reseam_dex::{DexFile, WriteLayout};
+use reseam_dex::WriteLayout;
 
-use super::{Compression, DexEntry, DexJob, WrittenDex, serialize_dex, stored_entry};
+use super::{Compression, DexEntry, DexJob, DexSet, WrittenDex, stored_entry};
 use crate::error::{Result, invalid};
 use crate::zip::COPY_BUFFER;
 
@@ -49,7 +49,7 @@ impl Drop for Pending {
 }
 
 pub(in crate::apk_file) struct DexEntryStream<'a> {
-    dex: &'a [DexFile],
+    dex: &'a DexSet,
     jobs: &'a [DexJob],
     pending: VecDeque<Pending>,
     scheduled: usize,
@@ -61,7 +61,7 @@ pub(in crate::apk_file) struct DexEntryStream<'a> {
 impl<'a> DexEntryStream<'a> {
     pub fn start<'scope, 'env>(
         _scope: &'scope Scope<'scope, 'env>,
-        dex: &'a [DexFile],
+        dex: &'a DexSet,
         jobs: &'a [DexJob],
         _workers: usize,
         level: u32,
@@ -90,7 +90,9 @@ impl<'a> DexEntryStream<'a> {
         let Some(job) = self.jobs.get(self.scheduled) else {
             return Ok(());
         };
-        let (spooled, layouts) = serialize_dex(self.dex, &job.members)
+        let (spooled, layouts) = self
+            .dex
+            .serialize(&job.members)
             .map_err(|error| error.in_entry(job.name.as_str()))?;
         let pending = match job.compression {
             Compression::Stored => Pending {

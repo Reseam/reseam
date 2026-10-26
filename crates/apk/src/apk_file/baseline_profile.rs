@@ -4,8 +4,9 @@
 use reseam_dex::WriteLayout;
 use tracing::warn;
 
+use super::dex_set::{DexIndex, DexSource};
 use super::write::DexJob;
-use super::{ApkFile, ComponentIndex, DexSource};
+use super::{ApkFile, ComponentIndex};
 use crate::art_profile::{BaselineProfile, DexProfile, PROFILE_ENTRY};
 use crate::error::Result;
 use crate::zip::reader;
@@ -52,11 +53,11 @@ impl ProfileRewrite {
                 };
                 let rewritten = jobs
                     .iter()
-                    .any(|job| job.members.iter().any(|member| member.dex_index.0 == index));
+                    .any(|job| job.members.iter().any(|member| member.dex_index == index));
                 if rewritten {
                     return Vec::new();
                 }
-                let dex = &apk.dex.dex_files[index];
+                let dex = apk.dex.dex(index);
                 vec![profile.rewrite(
                     dex,
                     &WriteLayout::unchanged(dex),
@@ -81,7 +82,7 @@ impl ProfileRewrite {
         let ([member], [layout]) = (job.members.as_slice(), layouts) else {
             return;
         };
-        let origin = &apk.dex_origins[member.dex_index.0];
+        let origin = apk.dex.origin(member.dex_index);
         let Some(position) = self
             .source
             .dex
@@ -90,10 +91,10 @@ impl ProfileRewrite {
         else {
             return;
         };
-        if apk.profiled_dex(component, origin.name.as_str()) != Some(member.dex_index.0) {
+        if apk.profiled_dex(component, origin.name.as_str()) != Some(member.dex_index) {
             return;
         }
-        let dex = &apk.dex.dex_files[member.dex_index.0];
+        let dex = apk.dex.dex(member.dex_index);
         self.written[position].push(self.source.dex[position].rewrite(
             dex,
             layout,
@@ -112,11 +113,12 @@ impl ProfileRewrite {
 impl ApkFile {
     /// The DEX parsed from entry `name` of `component`, which its baseline
     /// profile was recorded against.
-    fn profiled_dex(&self, component: ComponentIndex, name: &str) -> Option<usize> {
-        self.dex_origins.iter().position(|origin| {
-            origin.component == component
+    fn profiled_dex(&self, component: ComponentIndex, name: &str) -> Option<DexIndex> {
+        self.dex.slots().find_map(|(index, _, origin)| {
+            (origin.component == component
                 && origin.kind == DexSource::Archive
-                && origin.name.as_str() == name
+                && origin.name.as_str() == name)
+                .then_some(index)
         })
     }
 }

@@ -164,7 +164,7 @@ fn replacing_format_entries_replaces_their_parsed_state_before_further_edits() -
                 reopened.string_resource("greeting")?.as_deref(),
                 Some(expected)
             );
-            let dex = reopened.dex().dex(0).expect("DEX");
+            let dex = reopened.dex().get(0).expect("DEX");
             assert!(dex.strings().find(expected).is_some());
             assert!(dex.strings().find("discarded").is_none());
         }
@@ -191,7 +191,7 @@ fn deletion_removes_dirty_entries_and_keeps_other_dex_identities_stable() -> Tes
     assert!(apk.dex_mut(0).is_none());
     assert!(
         apk.dex()
-            .dex(1)
+            .get(1)
             .expect("DEX")
             .strings()
             .find("retained")
@@ -205,7 +205,7 @@ fn deletion_removes_dirty_entries_and_keeps_other_dex_identities_stable() -> Tes
     assert!(
         reopened
             .dex()
-            .dex(0)
+            .get(0)
             .expect("DEX")
             .strings()
             .find("retained")
@@ -355,7 +355,7 @@ fn dex_containers_preserve_all_members_through_loading_and_editing() -> TestResu
                 let reopened = Apk::open_split(&paths[0], &paths[1..], options)?;
                 assert_eq!(reopened.dex().len(), 2);
                 for (index, expected) in ["LFirst;", "LSecond;"].into_iter().enumerate() {
-                    let dex = reopened.dex().dex(index).expect("DEX");
+                    let dex = reopened.dex().get(index).expect("DEX");
                     assert_eq!(
                         dex.type_descriptor(dex.classes().header(0).class_type),
                         expected
@@ -438,7 +438,7 @@ fn replacing_and_deleting_dex_containers_keeps_unrelated_slots_stable() -> TestR
     let paths = apk.write_to(dir.path().join("deleted"), WriteOptions::default())?;
     let reopened = Apk::open(&paths[0], lazy())?;
     assert_eq!(reopened.dex().len(), 1);
-    let dex = reopened.dex().dex(0).expect("unrelated DEX");
+    let dex = reopened.dex().get(0).expect("unrelated DEX");
     assert_eq!(
         dex.type_descriptor(dex.classes().header(0).class_type),
         "LUnrelated;"
@@ -490,7 +490,7 @@ fn serialization_failure_preserves_destinations_and_allows_repair() -> TestResul
             assert_eq!(
                 repaired
                     .dex()
-                    .dex(invalid_component)
+                    .get(invalid_component)
                     .expect("DEX")
                     .classes()
                     .len(),

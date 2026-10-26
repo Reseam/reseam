@@ -10,12 +10,13 @@ use std::sync::{Arc, Mutex};
 #[cfg(not(target_os = "wasi"))]
 use std::thread::Scope;
 
-use reseam_dex::{DexFile, WriteLayout};
+use reseam_dex::WriteLayout;
 #[cfg(not(target_os = "wasi"))]
 use tracing::debug;
 
 use super::component::Compression;
-use super::write::{DexJob, DexMember};
+use super::dex_set::DexSet;
+use super::write::DexJob;
 use crate::error::Result;
 #[cfg(not(target_os = "wasi"))]
 use crate::error::invalid;
@@ -50,7 +51,7 @@ pub(super) struct DexEntryStream<'a> {
 impl DexEntryStream<'_> {
     pub fn start<'scope, 'env>(
         scope: &'scope Scope<'scope, 'env>,
-        dex_files: &'env [DexFile],
+        dex: &'env DexSet,
         jobs: &'env [DexJob],
         workers: usize,
         level: u32,
@@ -77,7 +78,7 @@ impl DexEntryStream<'_> {
                         break;
                     };
                     let job = &jobs[index];
-                    let result = write_dex(dex_files, job, level, &mut buffer)
+                    let result = write_dex(dex, job, level, &mut buffer)
                         .map_err(|error| error.in_entry(job.name.as_str()));
                     let failed = result.is_err();
                     if outputs[index % outputs.len()].send(result).is_err() || failed {
@@ -120,28 +121,6 @@ impl DexEntryStream<'_> {
     }
 }
 
-fn serialize_dex(
-    dex_files: &[DexFile],
-    members: &[DexMember],
-) -> Result<(reseam_dex::Spooled, Vec<WriteLayout>)> {
-    let written = match members {
-        [member] => {
-            let (spooled, layout) =
-                reseam_dex::write_spooled(&dex_files[member.dex_index.0], member.part.as_ref())?;
-            (spooled, vec![layout])
-        }
-        _ => reseam_dex::write_container_spooled(
-            members
-                .iter()
-                .map(|member| (&dex_files[member.dex_index.0], member.part.as_ref())),
-        )?,
-    };
-    if let Some(member) = members.first() {
-        dex_files[member.dex_index.0].release_pages();
-    }
-    Ok(written)
-}
-
 /// The entry for a stored job, which needs no compression worker. `buffer`
 /// carries the bytes being checksummed.
 fn stored_entry(spooled: reseam_dex::Spooled, buffer: &mut [u8]) -> Result<DexEntry> {
@@ -162,14 +141,9 @@ fn stored_entry(spooled: reseam_dex::Spooled, buffer: &mut [u8]) -> Result<DexEn
 }
 
 #[cfg(not(target_os = "wasi"))]
-fn write_dex(
-    dex_files: &[DexFile],
-    job: &DexJob,
-    level: u32,
-    buffer: &mut [u8],
-) -> Result<WrittenDex> {
+fn write_dex(dex: &DexSet, job: &DexJob, level: u32, buffer: &mut [u8]) -> Result<WrittenDex> {
     let started = std::time::Instant::now();
-    let (spooled, layouts) = serialize_dex(dex_files, &job.members)?;
+    let (spooled, layouts) = dex.serialize(&job.members)?;
     let serialized = started.elapsed();
     let compressing = std::time::Instant::now();
     let bytes = spooled.len();

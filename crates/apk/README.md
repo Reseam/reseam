@@ -28,5 +28,5 @@ use reseam_apk::ApkFile;
 use reseam_dex::ParseOptions;
 
 let apk = ApkFile::open("app.apk", ParseOptions::default())?;
-let dex = apk.dex(); // every classes*.dex as one MultiDexContainer
+let dex = apk.dex(); // every classes*.dex of the APK and its splits, as one DexSet
 ```

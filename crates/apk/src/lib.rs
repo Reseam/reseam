@@ -8,7 +8,6 @@ mod buf;
 mod chunk;
 pub mod compression;
 mod container;
-mod dex;
 pub mod entry;
 pub mod error;
 pub mod resources;
@@ -18,7 +17,7 @@ mod value;
 mod zip;
 
 pub use apk_file::{
-    ApkComponent, ApkFile, ApkWriteOptions, ApplicationIcon, Compression, IconLayer,
+    ApkComponent, ApkFile, ApkWriteOptions, ApplicationIcon, Compression, DexSet, IconLayer,
     SignaturePolicy,
 };
 pub use axml::AxmlDocument;

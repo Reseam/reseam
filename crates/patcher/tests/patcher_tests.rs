@@ -1044,7 +1044,7 @@ fn dex_bytes(dex: &DexFile) -> Vec<u8> {
 
 fn written_dex(apk: &ApkFile, index: usize) -> DexFile {
     reseam_dex::parse(
-        &dex_bytes(apk.dex().dex(index).unwrap()),
+        &dex_bytes(apk.dex().get(index).unwrap()),
         ParseOptions::default(),
     )
     .unwrap()

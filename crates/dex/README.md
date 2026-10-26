@@ -7,7 +7,6 @@
 Reads, edits, and writes Android DEX files. The rest of the Reseam engine uses it for every bytecode change a patch makes.
 
 - Parses DEX files from bytes or memory-mapped files into a `DexFile`.
-- Opens every `classes*.dex` of an app as one `MultiDexContainer`.
 - Writes a modified `DexFile` back out with correct section order, offsets, and checksums.
 - Finds methods by the strings they load or an opcode pattern, through a reference index.
 - Decodes MUTF-8 strings and LEB128 numbers, with strict options that reject malformed input.

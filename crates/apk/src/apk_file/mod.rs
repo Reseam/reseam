@@ -3,6 +3,8 @@
 
 mod baseline_profile;
 mod component;
+mod dex;
+mod dex_set;
 mod dex_workers;
 mod open;
 pub(crate) use open::validate_components;
@@ -14,13 +16,11 @@ mod write;
 use std::borrow::Cow;
 use std::collections::HashSet;
 
-use reseam_dex::{DexFile, MultiDexContainer};
-
-use crate::entry::EntryName;
 use crate::error::{Result, invalid};
 use crate::resources::{ResourceScope, ResourceTable, first_found};
 
 pub use component::{ApkComponent, Compression};
+pub use dex_set::DexSet;
 pub use presentation::{ApplicationIcon, IconLayer};
 pub use write::{ApkWriteOptions, SignaturePolicy};
 
@@ -30,30 +30,13 @@ pub use write::{ApkWriteOptions, SignaturePolicy};
 pub struct ApkFile {
     options: reseam_dex::ParseOptions,
     components: Vec<ApkComponent>,
-    dex: MultiDexContainer,
-    dex_origins: Vec<DexOrigin>,
+    dex: DexSet,
     pub(crate) scratch: Option<reseam_storage::ScratchDir>,
     journal: reseam_journal::Journal<undo::Part, undo::Undo>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct ComponentIndex(usize);
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct DexIndex(usize);
-
-struct DexOrigin {
-    component: ComponentIndex,
-    name: EntryName,
-    kind: DexSource,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum DexSource {
-    Archive,
-    Added,
-    Removed,
-}
 
 impl ApkFile {
     pub fn components(&self) -> &[ApkComponent] {
@@ -110,62 +93,6 @@ impl ApkFile {
             .flat_map(ApkComponent::entry_names)
             .filter(|name| seen.insert(name.clone()))
             .collect()
-    }
-
-    /// DEX slots in load order, including empty tombstones left by deletion.
-    pub fn dex(&self) -> &MultiDexContainer {
-        &self.dex
-    }
-
-    /// One DEX without resolving deferred class data, for whole-DEX
-    /// operations such as interning or adding classes.
-    pub fn dex_mut(&mut self, index: usize) -> Option<&mut DexFile> {
-        if self.dex_origins.get(index)?.kind == DexSource::Removed {
-            return None;
-        }
-        self.dex.dex_mut(index)
-    }
-
-    /// Adds a DEX to the base component under the next unused classes name.
-    /// Names stay reserved after deletion, and DEX indices remain stable.
-    /// Serialization assigns additions after any overflow parts of earlier DEX
-    /// files, so their output names can differ from their session entry names.
-    pub fn add_dex(&mut self, dex: DexFile) {
-        let mut used = self.components[0]
-            .reserved_dex_names()
-            .map(EntryName::from)
-            .collect();
-        let name = crate::entry::next_free_dex_name(&mut used);
-        self.components[0].add_dex_entry(name.as_str());
-        self.push_dex(
-            dex,
-            DexOrigin {
-                component: ComponentIndex(0),
-                name,
-                kind: DexSource::Added,
-            },
-        );
-    }
-
-    pub fn is_added_dex(&self, index: usize) -> bool {
-        self.dex_origins
-            .get(index)
-            .is_some_and(|origin| origin.kind == DexSource::Added)
-    }
-
-    pub fn resolve_dex_class_mut(
-        &mut self,
-        index: usize,
-        class_idx: usize,
-    ) -> Result<Option<&mut DexFile>> {
-        if self
-            .dex_origins
-            .get(index)
-            .is_none_or(|origin| origin.kind == DexSource::Removed)
-        {
-            return Ok(None);
-        }
-        Ok(self.dex.dex_class_resolved_mut(index, class_idx)?)
     }
 
     pub fn find_resource(
