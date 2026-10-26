@@ -7,7 +7,7 @@ use reseam_apk::reseam_dex::{AccessFlags, DexFile};
 
 use crate::context::ClassLocation;
 use crate::kotlin::handles::{
-    alloc_class, changed, class_location, forget_class, record_failure, with_class_mut, with_ctx,
+    alloc_class, changed, class_location, forget_class, with_class_mut, with_ctx,
 };
 use crate::kotlin::link::link_descriptors;
 
@@ -59,31 +59,6 @@ pub fn remove_class(c: u32) {
         forget_class(loc);
         Some(removed)
     });
-}
-
-#[export]
-pub fn create_class(dex_index: u32, descriptor: String, flags: u32, superclass: String) -> u32 {
-    link_descriptors([superclass.as_str()]);
-    changed();
-    with_ctx(|ctx| {
-        let Some(dex) = ctx.dex_file_mut(dex_index as usize) else {
-            record_failure(format!("invalid DEX index {dex_index}"));
-            return None;
-        };
-        let class_idx = checked(
-            dex.create_class(
-                &descriptor,
-                AccessFlags::from_bits_retain(flags),
-                Some(&superclass),
-            )
-            .map(Some),
-        )?;
-        Some(alloc_class(ClassLocation {
-            dex_idx: dex_index as usize,
-            class_idx,
-        }))
-    })
-    .unwrap_or(0)
 }
 
 #[export]

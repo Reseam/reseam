@@ -4,13 +4,9 @@
 mod instructions;
 mod methods;
 
-use super::{FingerprintLocation, InstructionLocation, MethodLocation, PatchContext};
+use super::{InstructionLocation, MethodLocation, PatchContext};
 use crate::error::Result;
-use reseam_apk::reseam_dex::{
-    DexFile, FingerprintHit, InstructionSite, MethodHit, StringIdx, TypeIdx,
-};
-use std::collections::HashMap;
-use std::hash::Hash;
+use reseam_apk::reseam_dex::{DexFile, InstructionSite, MethodHit};
 use tracing::debug;
 
 type DexResult<T> = reseam_apk::reseam_dex::Result<T>;
@@ -29,20 +25,6 @@ impl PatchContext<'_> {
                 hits.extend(scan(index, dex)?);
                 Ok(hits)
             })
-    }
-
-    pub(super) fn scan_first<T>(
-        &self,
-        what: &str,
-        scan: impl Fn(usize, &DexFile) -> DexResult<Option<T>>,
-    ) -> Result<Option<T>> {
-        debug!(what, "scan");
-        for (index, dex) in self.dex().iter().enumerate() {
-            if let Some(hit) = scan(index, dex)? {
-                return Ok(Some(hit));
-            }
-        }
-        Ok(None)
     }
 }
 
@@ -83,37 +65,12 @@ pub(super) fn resolve<T>(
     value.map_or(Ok(None), |value| find(value).map(Some).ok_or(Unresolved))
 }
 
-pub(super) fn member_targets<K: Hash + Eq, I: Iterator<Item = K>>(
-    dex: &DexFile,
-    targets: &[(String, String)],
-    members: impl Fn(TypeIdx, StringIdx) -> I,
-) -> HashMap<K, usize> {
-    targets
-        .iter()
-        .enumerate()
-        .filter_map(|(index, (class, name))| {
-            Some((index, dex.find_type_idx(class)?, dex.find_string_idx(name)?))
-        })
-        .flat_map(|(index, class, name)| members(class, name).map(move |id| (id, index)))
-        .fold(HashMap::new(), |mut map, (id, index)| {
-            map.entry(id).or_insert(index);
-            map
-        })
-}
-
 pub(super) fn method_location(dex_idx: usize, hit: &MethodHit) -> MethodLocation {
     MethodLocation {
         dex_idx,
         class_idx: hit.class_idx,
         method_idx: hit.method_pos,
         kind: hit.kind,
-    }
-}
-
-pub(super) fn fingerprint_location(dex_idx: usize, hit: FingerprintHit) -> FingerprintLocation {
-    FingerprintLocation {
-        method: method_location(dex_idx, &hit.method),
-        matched_indices: hit.matched_indices,
     }
 }
 

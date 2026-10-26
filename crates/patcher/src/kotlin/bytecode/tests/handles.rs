@@ -56,12 +56,7 @@ fn handles_survive_class_removal_and_callback_boundaries() {
     let classes: Vec<_> = ["LA;", "LB;", "LC;"]
         .into_iter()
         .map(|name| {
-            let class = class_ops::create_class(
-                0,
-                name.into(),
-                AccessFlags::PUBLIC.bits(),
-                "Ljava/lang/Object;".into(),
-            );
+            let class = fixture_class(0, name);
             let methods: Vec<_> = ["first", "second"]
                 .into_iter()
                 .map(|method| {
@@ -83,8 +78,8 @@ fn handles_survive_class_removal_and_callback_boundaries() {
         assert_eq!(lookup::find_class(descriptor.into()), Some(*class));
         for (name, method) in ["first", "second"].into_iter().zip(methods) {
             assert_eq!(
-                lookup::find_method(descriptor.into(), name.into()),
-                Some(*method)
+                lookup::class_methods_by_name(*class, name.into()),
+                [*method]
             );
             assert_eq!(
                 lookup::get_method_info(*method).unwrap().class_descriptor,

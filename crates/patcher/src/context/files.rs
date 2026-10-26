@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::path::Path;
-
 use reseam_apk::axml;
 use reseam_apk::entry::MANIFEST_ENTRY;
 use reseam_apk::{ApkComponent, ApkFile, Compression};
@@ -33,28 +31,6 @@ impl PatchContext<'_> {
 
     pub fn read_file(&mut self, component: usize, path: &str) -> Result<Option<Vec<u8>>> {
         Ok(self.apk_mut().read_component_entry(component, path)?)
-    }
-
-    /// Copies `<bundle_dir>/resources/<res_type>/<file>` into `res/<res_type>/<file>`.
-    pub fn copy_resource_group(
-        &mut self,
-        bundle_dir: &Path,
-        res_type: &str,
-        files: &[&str],
-    ) -> Result<usize> {
-        for file in files {
-            let source = bundle_dir.join("resources").join(res_type).join(file);
-            let data = std::fs::read(&source).map_err(|e| {
-                PatcherError::Bundle(format!("read resource file {}: {e}", source.display()))
-            })?;
-            self.inject_file(
-                0,
-                &format!("res/{res_type}/{file}"),
-                data,
-                Compression::Deflated,
-            )?;
-        }
-        Ok(files.len())
     }
 
     pub fn component_mut(&mut self, index: usize) -> Result<&mut ApkComponent> {

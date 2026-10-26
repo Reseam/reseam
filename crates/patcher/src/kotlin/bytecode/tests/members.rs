@@ -15,12 +15,7 @@ fn edits_preserve_instruction_identity_through_nonlocal_expansion() {
     let _run = RunGuard::enter().unwrap();
     let guard =
         ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned())).unwrap();
-    let class = class_ops::create_class(
-        0,
-        "LRelocation;".into(),
-        AccessFlags::PUBLIC.bits(),
-        "Ljava/lang/Object;".into(),
-    );
+    let class = fixture_class(0, "LRelocation;");
     for (input, edit) in [
         (crate::test_support::branch_marker(), Edit::Insert),
         (crate::test_support::invoke_frame(), Edit::Grow),
@@ -65,12 +60,7 @@ fn flag_changes_keep_member_groups_frames_and_handles_consistent() {
     let _run = RunGuard::enter().unwrap();
     let guard =
         ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned())).unwrap();
-    let class = class_ops::create_class(
-        0,
-        "LFlags;".into(),
-        AccessFlags::PUBLIC.bits(),
-        "Ljava/lang/Object;".into(),
-    );
+    let class = fixture_class(0, "LFlags;");
     let methods: Vec<_> = ["first", "second", "third"]
         .into_iter()
         .map(|name| methods::add_method(class, fixture_method(name.into(), "(I)V".into(), 1, 1)))
@@ -82,27 +72,28 @@ fn flag_changes_keep_member_groups_frames_and_handles_consistent() {
     ] {
         methods::set_method_access_flags(methods[1], flags.bits()).unwrap();
         assert_eq!(
-            lookup::find_method("LFlags;".into(), "second".into()),
-            Some(methods[1])
+            lookup::class_methods_by_name(class, "second".into()),
+            [methods[1]]
         );
-        assert_eq!(registers::ins_size(methods[1]), 2);
-        assert!(registers::registers_size(methods[1]) >= 2);
+        let info = lookup::get_method_info(methods[1]).unwrap();
+        assert_eq!(info.ins_size, 2);
+        assert!(info.register_count >= 2);
         let info = lookup::get_class_info(class).unwrap();
         assert_eq!(info.direct_method_count + info.virtual_method_count, 3);
     }
     methods::remove_method(methods[0]);
     for (name, handle) in ["second", "third"].into_iter().zip(&methods[1..]) {
-        assert_eq!(
-            lookup::find_method("LFlags;".into(), name.into()),
-            Some(*handle)
-        );
+        assert_eq!(lookup::class_methods_by_name(class, name.into()), [*handle]);
     }
     methods::set_method_access_flags(
         methods[1],
         (AccessFlags::PUBLIC | AccessFlags::ABSTRACT).bits(),
     )
     .unwrap();
-    assert_eq!(registers::registers_size(methods[1]), 0);
+    assert_eq!(
+        lookup::get_method_info(methods[1]).unwrap().register_count,
+        0
+    );
     mutation::replace_body(
         methods[1],
         2,
@@ -110,11 +101,9 @@ fn flag_changes_keep_member_groups_frames_and_handles_consistent() {
         vec![Instruction::Simple(SimpleInsn { opcode: 0x0e })],
     )
     .unwrap();
-    assert_eq!(registers::ins_size(methods[1]), 2);
-    assert!(
-        !AccessFlags::from_bits_retain(lookup::get_method_info(methods[1]).unwrap().access_flags)
-            .contains(AccessFlags::ABSTRACT)
-    );
+    let info = lookup::get_method_info(methods[1]).unwrap();
+    assert_eq!(info.ins_size, 2);
+    assert!(!AccessFlags::from_bits_retain(info.access_flags).contains(AccessFlags::ABSTRACT));
     class_ops::remove_class(class);
     guard.finish().unwrap();
 }
@@ -128,12 +117,7 @@ fn field_storage_changes_preserve_unrelated_initial_values() {
     let _run = RunGuard::enter().unwrap();
     let guard =
         ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned())).unwrap();
-    let class = class_ops::create_class(
-        0,
-        "LFields;".into(),
-        AccessFlags::PUBLIC.bits(),
-        "Ljava/lang/Object;".into(),
-    );
+    let class = fixture_class(0, "LFields;");
     for (name, value) in [("changed", 10), ("retained", 42)] {
         fields::add_field(
             class,

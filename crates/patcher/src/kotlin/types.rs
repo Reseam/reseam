@@ -46,34 +46,6 @@ pub struct FieldInfo {
 }
 
 #[data]
-#[derive(Debug, Clone)]
-pub struct FingerprintDef {
-    #[boltffi::default(None)]
-    pub name: Option<String>,
-    #[boltffi::default(None)]
-    pub defining_class: Option<String>,
-    #[boltffi::default(None)]
-    pub access_flags: Option<u32>,
-    #[boltffi::default(None)]
-    pub return_type: Option<String>,
-    #[boltffi::default(None)]
-    pub parameters: Option<Vec<String>>,
-    #[boltffi::default(None)]
-    pub opcodes: Option<Vec<i32>>,
-    #[boltffi::default(None)]
-    pub strings: Option<Vec<String>>,
-    #[boltffi::default(None)]
-    pub literals: Option<Vec<i64>>,
-}
-
-#[data]
-#[derive(Debug, Clone, Copy)]
-pub struct FingerprintResult {
-    pub method: u32,
-    pub matched_count: u32,
-}
-
-#[data]
 #[derive(Debug, Clone, Copy)]
 pub struct InstructionHit {
     pub method: u32,
@@ -85,14 +57,6 @@ pub struct InstructionHit {
 pub struct RegisterWriters {
     pub indices: Vec<u32>,
     pub from_entry: bool,
-}
-
-#[data]
-#[derive(Debug, Clone, Copy)]
-pub struct MethodCallSiteResult {
-    pub method: u32,
-    pub index: u32,
-    pub target_index: u32,
 }
 
 #[data]

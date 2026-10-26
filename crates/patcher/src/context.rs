@@ -40,18 +40,6 @@ pub struct InstructionLocation {
     pub insn_idx: usize,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct SiteHit {
-    pub loc: InstructionLocation,
-    pub target_index: usize,
-}
-
-#[derive(Debug, Clone)]
-pub struct FingerprintLocation {
-    pub method: MethodLocation,
-    pub matched_indices: Vec<u32>,
-}
-
 pub struct PatchContext<'a> {
     apk: &'a mut ApkFile,
     log: PatchLog,

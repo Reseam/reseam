@@ -111,7 +111,6 @@ fn browser_bridge(contract: &JniBridgeContract, output: &std::path::Path) -> Res
         let name = format!("reseam_bridge_{index}");
         let original = method.symbol().to_string();
         let exempt = [
-            "_ctx_is_active",
             "_check_call",
             "_invoke_scratch_words",
             "_lower_instruction",
@@ -349,7 +348,6 @@ fn registration(contract: &JniBridgeContract) -> Result<String> {
             .collect::<Vec<_>>();
         let returns = return_signature(method.returns())?;
         let symbol = if [
-            "_ctx_is_active",
             "_check_call",
             "_invoke_scratch_words",
             "_lower_instruction",
@@ -538,11 +536,8 @@ fn kotlin_surface(output: &std::path::Path) -> Result<()> {
     values.push_str(&source[native_end..values_end]);
     values = owned_kotlin_types(&values);
     for name in [
-        "FingerprintDef",
-        "FingerprintResult",
         "InstructionHit",
         "RegisterWriters",
-        "MethodCallSiteResult",
         "ResourceScalar",
         "ScratchSpan",
         "MethodEdit",
@@ -605,7 +600,7 @@ fn checked_kotlin_calls(source: &str) -> Result<String> {
             let (name, _) = declaration
                 .split_once('(')
                 .context("generated Kotlin callable must have parameters")?;
-            wrapped = !matches!(name, "ctxIsActive" | "checkCall" | "checkInvocation");
+            wrapped = !matches!(name, "checkCall" | "checkInvocation");
             format!(
                 "internal fun {declaration}{} {{",
                 if wrapped { " = bridgeCall" } else { "" }

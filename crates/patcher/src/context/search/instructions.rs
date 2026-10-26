@@ -3,10 +3,8 @@
 
 use std::collections::HashSet;
 
-use super::super::{InstructionLocation, PatchContext, SiteHit};
-use super::{
-    DexResult, FieldRefQuery, MethodRefQuery, instruction_location, member_targets, resolve,
-};
+use super::super::{InstructionLocation, PatchContext};
+use super::{DexResult, FieldRefQuery, MethodRefQuery, instruction_location, resolve};
 use crate::error::Result;
 use reseam_apk::reseam_dex::{
     DexFile, FieldIdx, MethodIdx, ProtoIdx, RefKey, RefQuery, StringIdx, TypeIdx,
@@ -57,26 +55,6 @@ impl PatchContext<'_> {
         self.scan_all("instructions by string prefix", |dex_idx, dex| {
             let matches = dex.strings().with_prefix(prefix).into_iter().collect();
             string_loads(dex_idx, dex, &matches)
-        })
-    }
-
-    /// Call sites of `(class, method)` targets; hits carry the target's index.
-    pub fn find_method_call_sites(&self, targets: &[(String, String)]) -> Result<Vec<SiteHit>> {
-        self.scan_all("method call sites", |dex_idx, dex| {
-            let map = member_targets(dex, targets, |class, name| {
-                dex.methods_of(class, Some(name))
-            });
-            if map.is_empty() {
-                return Ok(Vec::new());
-            }
-            let query = RefQuery::any_of(map.keys().map(|&m| RefKey::Method(m)));
-            dex.scan_instructions(&query, |site| {
-                let target_index = *map.get(&site.instruction.method_ref()?)?;
-                Some(SiteHit {
-                    loc: instruction_location(dex_idx, site),
-                    target_index,
-                })
-            })
         })
     }
 

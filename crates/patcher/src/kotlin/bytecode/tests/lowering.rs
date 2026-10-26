@@ -28,12 +28,7 @@ fn payload_references_survive_alignment_during_pure_lowering() {
         let guard =
             ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned()))
                 .unwrap();
-        let class = class_ops::create_class(
-            0,
-            "LPayloads;".into(),
-            AccessFlags::PUBLIC.bits(),
-            "Ljava/lang/Object;".into(),
-        );
+        let class = fixture_class(0, "LPayloads;");
         let method = methods::add_method(
             class,
             NewMethod {
@@ -88,12 +83,7 @@ fn assembling_blocks_keeps_branches_over_lowered_invocations() {
     let _run = RunGuard::enter().unwrap();
     let guard =
         ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned())).unwrap();
-    let class = class_ops::create_class(
-        0,
-        "LAssembly;".into(),
-        AccessFlags::PUBLIC.bits(),
-        "Ljava/lang/Object;".into(),
-    );
+    let class = fixture_class(0, "LAssembly;");
     let mut locations = Vec::new();
     for (index, branch) in [
         Instruction::Branch0(Branch0Insn {

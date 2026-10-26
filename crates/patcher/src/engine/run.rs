@@ -21,8 +21,8 @@ mod savepoints;
 use results::Run;
 use savepoints::Savepoints;
 
-/// Runs `plan` over `specs` in dependency order, then the `after_dependents`
-/// hook of every applied patch that finalizes, then binds the app entry hook to
+/// Runs `plan` over `specs` in dependency order, then the finalize phase of
+/// every applied patch that finalizes, then binds the app entry hook to
 /// the final manifest. `patches` holds the code of at least every patch the
 /// plan executes.
 ///

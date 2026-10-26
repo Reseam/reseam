@@ -21,12 +21,7 @@ fn pool_operands_survive_copying_between_dex_files() {
     let methods: Vec<_> = [(0, "LSource;"), (1, "LDestination;")]
         .into_iter()
         .map(|(dex, name)| {
-            let class = class_ops::create_class(
-                dex,
-                name.into(),
-                AccessFlags::PUBLIC.bits(),
-                "Ljava/lang/Object;".into(),
-            );
+            let class = fixture_class(dex, name);
             methods::add_method(
                 class,
                 NewMethod {
@@ -102,14 +97,17 @@ fn authored_raw_pool_references_survive_pure_lowering_and_insertion() {
         ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned())).unwrap();
     let handles = example_handles("RawReferences");
     registers::grow_local_registers(handles.method, 1, vec![]).unwrap();
+    let intern = |pool: fn(&mut DexFile) -> u32| {
+        crate::kotlin::handles::with_ctx(|ctx| pool(ctx.dex_file_mut(0).unwrap()))
+    };
     let references = [
         (
             Reference::String,
-            (0x1a, pools::intern_string(0, "held string".into())),
+            (0x1a, intern(|dex| dex.intern_string("held string").0)),
         ),
         (
             Reference::Type,
-            (0x1c, pools::intern_type(0, "LHeldType;".into())),
+            (0x1c, intern(|dex| dex.intern_type("LHeldType;").unwrap().0)),
         ),
     ];
     guard.finish().unwrap();

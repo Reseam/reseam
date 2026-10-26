@@ -75,21 +75,6 @@ pub fn grow_local_registers(
 }
 
 #[export]
-pub fn registers_size(m: u32) -> u16 {
-    with_code(m, |_, code| Some(code.registers_size())).unwrap_or(0)
-}
-
-#[export]
-pub fn ins_size(m: u32) -> u16 {
-    with_code(m, |_, code| Some(code.ins_size())).unwrap_or(0)
-}
-
-#[export]
-pub fn outs_size(m: u32) -> u16 {
-    with_code(m, |_, code| Some(code.outs_size())).unwrap_or(0)
-}
-
-#[export]
 pub fn find_free_register(m: u32, at_index: u32, exclude: Vec<u16>) -> Option<u16> {
     with_code(m, |_, code| {
         dex::find_free_register(code, at_index as usize, &exclude)

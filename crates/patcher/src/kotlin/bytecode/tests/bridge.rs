@@ -24,18 +24,6 @@ fn bridge_queries_distinguish_absence_from_invalid_requests() {
         (false, |handles| {
             registers::instruction_wide_literal(handles.method, 0);
         }),
-        (false, |_handles| {
-            pools::intern_string(1, "text".into());
-        }),
-        (false, |_handles| {
-            pools::get_string(0, u32::MAX);
-        }),
-        (false, |_handles| {
-            pools::get_type_descriptor(0, u32::MAX);
-        }),
-        (false, |_handles| {
-            pools::intern_type(0, "not a descriptor".into());
-        }),
         (false, |handles| {
             fields::set_static_field_value(
                 handles.class,
@@ -51,9 +39,6 @@ fn bridge_queries_distinguish_absence_from_invalid_requests() {
         }),
         (false, |handles| {
             search::instruction_type_ref(handles.method, 1);
-        }),
-        (false, |_handles| {
-            search::find_method_call_sites(vec!["LRequired;".into()], vec![]);
         }),
         (false, |_handles| {
             lookup::find_methods_by_opcodes(vec![i32::MAX]);
@@ -93,12 +78,7 @@ fn invalid_instruction_operands_fail_the_callback() {
     let _run = RunGuard::enter().unwrap();
     let guard =
         ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned())).unwrap();
-    let class = class_ops::create_class(
-        0,
-        "LSubject;".into(),
-        AccessFlags::PUBLIC.bits(),
-        "Ljava/lang/Object;".into(),
-    );
+    let class = fixture_class(0, "LSubject;");
     let method = methods::add_method(class, fixture_method("run".into(), "()V".into(), 32, 0));
     guard.finish().unwrap();
     for instruction in [
@@ -131,8 +111,4 @@ fn invalid_instruction_operands_fail_the_callback() {
         assert!(mutation::set_instructions(method, vec![instruction]).is_err());
         assert!(guard.finish().is_err());
     }
-    let guard =
-        ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned())).unwrap();
-    search::get_instruction(method, 1000);
-    assert!(guard.finish().is_err());
 }

@@ -310,7 +310,7 @@ fn take_failure() -> PatcherResult<()> {
     })
 }
 
-pub(super) fn context_is_active() -> bool {
+fn context_is_active() -> bool {
     CTX_PTR.with(|cell| !cell.get().is_null())
 }
 

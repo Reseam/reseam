@@ -7,11 +7,10 @@ use boltffi::export;
 use reseam_apk::axml::{self, AttributeValue};
 use reseam_apk::{ResValue, ResourceScope, ResourceTable};
 
-use super::files::{inject, with_component};
-use super::handles::{bundle_path, record_failure, with_ctx};
+use super::files::with_component;
+use super::handles::with_ctx;
 use super::types::{ResourceRef, ResourceScalar, StyleItem};
 use crate::context::PatchContext;
-use reseam_apk::Compression;
 
 fn with_resources<R>(
     component: Option<String>,
@@ -185,17 +184,7 @@ pub fn res_set_string_by_id(
     }
 }
 
-#[export]
-pub fn res_add(
-    component: Option<String>,
-    res_type: String,
-    name: String,
-    value: String,
-) -> Result<Option<u32>, String> {
-    res_add_in(component, res_type, name, value, String::new())
-}
-
-/// [`res_add`] in the configuration `qualifiers` names, written as in a `res/` directory name.
+/// Adds resource `name` in the configuration `qualifiers` names, written as in a `res/` directory name.
 #[export]
 pub fn res_add_in(
     component: Option<String>,
@@ -412,58 +401,6 @@ pub fn res_string_array_set(
         })
     })
     .unwrap_or_else(|| Err("unknown component".to_string()))
-}
-
-#[export]
-pub fn res_copy(bundle_relative: String, apk_path: String) {
-    let source = bundle_path(&bundle_relative);
-    match std::fs::read(&source) {
-        Ok(data) => inject(None, &apk_path, data, Compression::Deflated),
-        Err(error) => with_ctx(|ctx| {
-            record_failure(format!(
-                "read bundle resource {}: {error}",
-                source.display()
-            ));
-            ctx.log().warn(format!(
-                "res_copy: failed to read {}: {error}",
-                source.display()
-            ));
-        }),
-    }
-}
-
-#[export]
-pub fn res_copy_group(res_type: String, files: Vec<String>) {
-    let bundle_dir = bundle_path("");
-    let files: Vec<&str> = files.iter().map(String::as_str).collect();
-    with_ctx(|ctx| {
-        if let Err(error) = ctx.copy_resource_group(&bundle_dir, &res_type, &files) {
-            record_failure(&error);
-            ctx.log().warn(format!("res_copy_group: {error}"));
-        }
-    });
-}
-
-#[export]
-pub fn res_inject(apk_path: String, data: Vec<u8>) {
-    inject(None, &apk_path, data, Compression::Deflated);
-}
-
-#[export]
-pub fn res_delete(apk_path: String) {
-    super::files::file_delete(None, apk_path);
-}
-
-#[export]
-pub fn res_list(prefix: String) -> Vec<String> {
-    with_ctx(|ctx| {
-        ctx.apk()
-            .entry_names()
-            .iter()
-            .filter(|name| name.as_str().starts_with(&prefix))
-            .map(ToString::to_string)
-            .collect()
-    })
 }
 
 #[export]

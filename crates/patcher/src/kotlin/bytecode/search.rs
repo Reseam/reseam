@@ -1,19 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::kotlin::handles::{checked, record_failure};
+use crate::kotlin::handles::checked;
 use boltffi::export;
 use reseam_apk::reseam_dex::{DexFile, Instruction as DexInsn};
 
-use crate::context::{FieldRefQuery, InstructionLocation, MethodRefQuery, SiteHit};
-use crate::error::{PatcherError, Result as PatcherResult};
+use crate::context::{FieldRefQuery, InstructionLocation, MethodRefQuery};
 use crate::kotlin::convert::{self, dex_to_kotlin};
 use crate::kotlin::handles::{
     alloc_method, alloc_methods, method_location, with_code, with_ctx, with_instruction,
 };
-use crate::kotlin::types::{
-    FieldRef, Instruction, InstructionHit, MethodCallSiteResult, MethodRef, SimpleInsn,
-};
+use crate::kotlin::types::{FieldRef, Instruction, InstructionHit, MethodRef};
 
 #[export]
 pub fn get_instructions(m: u32) -> Vec<Instruction> {
@@ -63,23 +60,6 @@ pub fn find_methods_by_string_prefix(prefix: String) -> Vec<u32> {
     alloc_methods(with_ctx(|ctx| {
         checked(ctx.find_methods_by_string_prefix(&prefix))
     }))
-}
-
-#[export]
-pub fn get_instruction(m: u32, index: u32) -> Instruction {
-    with_instruction(m, index, |dex, instruction| {
-        let dex_index = method_location(m)?.dex_idx;
-        checked(dex_to_kotlin(instruction, dex, Some(dex_index)).map(Some))
-    })
-    .unwrap_or_else(|| {
-        record_failure(format!("method {m} has no instruction at index {index}"));
-        Instruction::Simple(SimpleInsn { opcode: 0 })
-    })
-}
-
-#[export]
-pub fn instruction_count(m: u32) -> u32 {
-    with_code(m, |_, code| Some(code.instructions().len() as u32)).unwrap_or(0)
 }
 
 #[export]
@@ -135,27 +115,6 @@ pub fn find_instructions_by_string_prefix(prefix: String) -> Vec<InstructionHit>
 }
 
 #[export]
-pub fn find_instructions_by_resource_id(res_type: String, res_name: String) -> Vec<InstructionHit> {
-    match with_ctx(|ctx| checked(ctx.apk_mut().find_resource(&res_type, &res_name))) {
-        Some((_, res_id)) => find_instructions_by_literal(i64::from(res_id)),
-        None => Vec::new(),
-    }
-}
-
-#[export]
-pub fn find_method_call_sites(
-    class_names: Vec<String>,
-    method_names: Vec<String>,
-) -> Vec<MethodCallSiteResult> {
-    site_results(with_ctx(|ctx| {
-        checked(
-            member_queries(class_names, method_names)
-                .and_then(|targets| ctx.find_method_call_sites(&targets)),
-        )
-    }))
-}
-
-#[export]
 pub fn find_field_accesses_matching(
     owner: Option<String>,
     name: Option<String>,
@@ -168,31 +127,6 @@ pub fn find_field_accesses_matching(
             field_type: field_type.as_deref(),
         }))
     }))
-}
-
-fn member_queries(owners: Vec<String>, names: Vec<String>) -> PatcherResult<Vec<(String, String)>> {
-    if owners.len() != names.len() {
-        return Err(PatcherError::Bridge(format!(
-            "member query has {} owners but {} names",
-            owners.len(),
-            names.len()
-        )));
-    }
-    Ok(owners.into_iter().zip(names).collect())
-}
-
-#[export]
-pub fn find_instructions_by_invoke(
-    defining_class: String,
-    method_name: String,
-) -> Vec<InstructionHit> {
-    find_method_call_sites(vec![defining_class], vec![method_name])
-        .into_iter()
-        .map(|site| InstructionHit {
-            method: site.method,
-            index: site.index,
-        })
-        .collect()
 }
 
 #[export]
@@ -248,17 +182,6 @@ fn hits(locations: Vec<InstructionLocation>) -> Vec<InstructionHit> {
         .map(|loc| InstructionHit {
             method: alloc_method(loc.method),
             index: loc.insn_idx as u32,
-        })
-        .collect()
-}
-
-fn site_results(sites: Vec<SiteHit>) -> Vec<MethodCallSiteResult> {
-    sites
-        .into_iter()
-        .map(|hit| MethodCallSiteResult {
-            method: alloc_method(hit.loc.method),
-            index: hit.loc.insn_idx as u32,
-            target_index: hit.target_index as u32,
         })
         .collect()
 }

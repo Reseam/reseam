@@ -1545,7 +1545,6 @@ dependencies = [
 name = "reseam-patcher"
 version = "0.32.0"
 dependencies = [
- "anyhow",
  "boltffi",
  "cc",
  "ed25519-dalek",
@@ -1562,7 +1561,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "smallvec",
  "tempfile",
  "thiserror",
  "toml",

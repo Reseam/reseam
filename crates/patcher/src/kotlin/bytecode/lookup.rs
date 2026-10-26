@@ -6,30 +6,13 @@ use reseam_apk::reseam_dex::MethodKind;
 use crate::error::{PatcherError, Result as PatcherResult};
 use crate::kotlin::handles::checked;
 use boltffi::export;
-use reseam_apk::reseam_dex::{
-    AccessFlags, DexFile, EncodedField, Fingerprint, InstructionPattern, TypeIdx,
-};
+use reseam_apk::reseam_dex::{DexFile, EncodedField, InstructionPattern, TypeIdx};
 
-use crate::context::{ClassLocation, FingerprintLocation, MethodLocation};
+use crate::context::{ClassLocation, MethodLocation};
 use crate::kotlin::handles::{
     alloc_class, alloc_method, alloc_methods, changed, class_location, method_location, with_ctx,
 };
-use crate::kotlin::types::{
-    ClassInfo, EncodedVal, FieldInfo, FingerprintDef, FingerprintResult, MethodInfo,
-};
-
-#[export]
-pub fn find_method(class_descriptor: String, method_name: String) -> Option<u32> {
-    with_ctx(|ctx| {
-        let before = ctx.dex().len();
-        ctx.find_or_link_class(&class_descriptor)?;
-        if ctx.dex().len() != before {
-            changed();
-        }
-        checked(ctx.find_method(&class_descriptor, &method_name))
-    })
-    .map(alloc_method)
-}
+use crate::kotlin::types::{ClassInfo, EncodedVal, FieldInfo, MethodInfo};
 
 #[export]
 pub fn app_entry_hook() -> Result<u32, String> {
@@ -42,11 +25,6 @@ pub fn app_entry_hook() -> Result<u32, String> {
         .flatten()
         .map(alloc_method)
         .map_err(|e| e.to_string())
-}
-
-#[export]
-pub fn find_method_by_name(name: String) -> Option<u32> {
-    with_ctx(|ctx| checked(ctx.find_method_by_name(&name))).map(alloc_method)
 }
 
 #[export]
@@ -87,30 +65,6 @@ pub fn find_methods_by_opcodes(pattern: Vec<i32>) -> Vec<u32> {
             opcode_patterns(&pattern).and_then(|pattern| ctx.find_methods_with_opcodes(&pattern)),
         )
     }))
-}
-
-#[export]
-pub fn find_method_by_fingerprint(fp: FingerprintDef) -> Option<FingerprintResult> {
-    with_ctx(|ctx| {
-        checked(
-            convert_fingerprint(&fp)
-                .and_then(|fingerprint| ctx.find_method_by_fingerprint(&fingerprint)),
-        )
-    })
-    .map(fingerprint_result)
-}
-
-#[export]
-pub fn find_methods_by_fingerprint(fp: FingerprintDef) -> Vec<FingerprintResult> {
-    with_ctx(|ctx| {
-        checked(
-            convert_fingerprint(&fp)
-                .and_then(|fingerprint| ctx.find_methods_by_fingerprint(&fingerprint)),
-        )
-    })
-    .into_iter()
-    .map(fingerprint_result)
-    .collect()
 }
 
 #[export]
@@ -353,38 +307,6 @@ pub(super) fn opcode_patterns(opcodes: &[i32]) -> PatcherResult<Vec<InstructionP
             })
         })
         .collect()
-}
-
-fn convert_fingerprint(fp: &FingerprintDef) -> PatcherResult<Fingerprint> {
-    Ok(Fingerprint {
-        name: fp.name.clone(),
-        defining_class: fp.defining_class.clone(),
-        access_flags: fp.access_flags.map(AccessFlags::from_bits_retain),
-        return_type: fp
-            .return_type
-            .clone()
-            .map(reseam_apk::reseam_dex::TypePattern::Prefix),
-        parameters: fp.parameters.as_ref().map(|parameters| {
-            parameters
-                .iter()
-                .map(|parameter| match parameter.as_str() {
-                    "L" => reseam_apk::reseam_dex::TypePattern::Object,
-                    "[" => reseam_apk::reseam_dex::TypePattern::Array,
-                    _ => reseam_apk::reseam_dex::TypePattern::Exact(parameter.clone()),
-                })
-                .collect()
-        }),
-        opcodes: fp.opcodes.as_deref().map(opcode_patterns).transpose()?,
-        strings: fp.strings.clone(),
-        literals: fp.literals.clone(),
-    })
-}
-
-fn fingerprint_result(hit: FingerprintLocation) -> FingerprintResult {
-    FingerprintResult {
-        method: alloc_method(hit.method),
-        matched_count: hit.matched_indices.len() as u32,
-    }
 }
 
 #[export]

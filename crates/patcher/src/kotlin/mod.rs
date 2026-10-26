@@ -41,16 +41,9 @@ mod xml_attributes;
 mod xml_documents;
 mod xml_nodes;
 
-use boltffi::export;
-
 #[cfg(feature = "kotlin")]
 pub(crate) use loader::load_patches;
 #[cfg(all(feature = "browser", not(feature = "kotlin")))]
 mod browser;
 #[cfg(all(feature = "browser", not(feature = "kotlin")))]
 pub(crate) use browser::load_patches;
-
-#[export]
-pub fn ctx_is_active() -> bool {
-    handles::context_is_active()
-}

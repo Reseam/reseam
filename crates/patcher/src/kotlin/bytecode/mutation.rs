@@ -9,14 +9,10 @@ use reseam_apk::reseam_dex::{AccessFlags, CodeItem, Instruction as DexInsn};
 
 use crate::kotlin::convert::kotlin_to_dex;
 use crate::kotlin::handles::{code_mut, method_mut, with_method_mut};
-use crate::kotlin::link::{link_instructions, link_method};
-use crate::kotlin::types::{Instruction, MethodEdit, MethodRef};
+use crate::kotlin::link::link_instructions;
+use crate::kotlin::types::{Instruction, MethodEdit};
 
 use super::logged;
-
-mod static_invoke;
-
-use static_invoke::lower_static_invoke;
 
 fn edit_code<R>(
     m: u32,
@@ -200,80 +196,4 @@ pub fn return_early_wide(m: u32, value: i64) {
         Ok(logged("access method", method_mut(dex, loc))?
             .map(|method| method.return_early_wide(value)))
     });
-}
-
-#[export]
-pub fn insert_invoke_static(
-    m: u32,
-    index: u32,
-    class_name: String,
-    name: String,
-    proto: String,
-    registers: Vec<u16>,
-) -> bool {
-    insert_invoke(m, index, &class_name, &name, &proto, &registers, None)
-}
-
-#[export]
-#[expect(
-    clippy::too_many_arguments,
-    reason = "the legacy JNI export retains its positional arguments"
-)]
-pub fn insert_invoke_static_with_move_result(
-    m: u32,
-    index: u32,
-    class_name: String,
-    name: String,
-    proto: String,
-    registers: Vec<u16>,
-    result_register: u16,
-    is_object: bool,
-) -> bool {
-    insert_invoke(
-        m,
-        index,
-        &class_name,
-        &name,
-        &proto,
-        &registers,
-        Some((result_register, is_object)),
-    )
-}
-
-fn insert_invoke(
-    m: u32,
-    index: u32,
-    class: &str,
-    name: &str,
-    proto: &str,
-    registers: &[u16],
-    move_result: Option<(u16, bool)>,
-) -> bool {
-    link_method(&MethodRef {
-        defining_class: class.to_owned(),
-        name: name.to_owned(),
-        proto: proto.to_owned(),
-    });
-    with_method_mut(m, |dex, loc| {
-        let method = logged("intern method", dex.intern_method(class, name, proto))?;
-        let Some(code) = logged("access method", code_mut(dex, loc))? else {
-            return Ok(None);
-        };
-        let mut lowered = lower_static_invoke(code, index as usize, method, proto, registers)?;
-        if let Some((dest, is_object)) = move_result {
-            let dest = u8::try_from(dest)
-                .map_err(|_| format!("move-result destination {dest} exceeds v255"))?;
-            lowered.push(if is_object {
-                DexInsn::MoveResultObject { dest }
-            } else {
-                DexInsn::MoveResult { dest }
-            });
-        }
-        logged(
-            "insert_invoke_static",
-            code.insert_instructions(index as usize, &lowered),
-        )
-        .map(Some)
-    })
-    .is_some()
 }

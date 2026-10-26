@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use reseam_apk::reseam_dex::{
-    DexFile, EncodedField, EncodedMethod, MemberCounts, MethodIdx, MethodSummary,
-    MultiDexContainer, summarize_resident,
+    DexFile, EncodedField, EncodedMethod, MemberCounts, MethodSummary, MultiDexContainer,
+    summarize_resident,
 };
 
 use reseam_apk::reseam_dex::MethodKind;
@@ -186,62 +186,6 @@ impl PatchContext<'_> {
         }
         chain
     }
-
-    /// Locates a method by class and name without materializing the class:
-    /// resident classes are searched through their IR, others through the
-    /// raw member list.
-    pub fn find_method(
-        &self,
-        class_descriptor: &str,
-        method_name: &str,
-    ) -> Result<Option<MethodLocation>> {
-        self.scan_first("method", |dex_idx, dex| {
-            let (Some(class_idx), Some(name)) = (
-                dex.find_class_index(class_descriptor),
-                dex.find_string_idx(method_name),
-            ) else {
-                return Ok(None);
-            };
-            let named = |method: MethodIdx| dex.method_id(method).name == name;
-            let slot = match dex.resident_class(class_idx) {
-                Some(class) => class.class_data.as_ref().and_then(|data| {
-                    find_slot(
-                        data.direct_methods.iter().map(|m| m.method),
-                        data.virtual_methods.iter().map(|m| m.method),
-                        named,
-                    )
-                }),
-                None => dex.class_skeleton(class_idx)?.and_then(|skeleton| {
-                    find_slot(
-                        skeleton.direct_methods.iter().map(|m| m.method),
-                        skeleton.virtual_methods.iter().map(|m| m.method),
-                        named,
-                    )
-                }),
-            };
-            Ok(slot.map(|(method_idx, kind)| MethodLocation {
-                dex_idx,
-                class_idx,
-                method_idx,
-                kind,
-            }))
-        })
-    }
-}
-
-fn find_slot(
-    mut direct: impl Iterator<Item = MethodIdx>,
-    mut virtual_: impl Iterator<Item = MethodIdx>,
-    named: impl Fn(MethodIdx) -> bool,
-) -> Option<(usize, MethodKind)> {
-    direct
-        .position(&named)
-        .map(|pos| (pos, MethodKind::Direct))
-        .or_else(|| {
-            virtual_
-                .position(named)
-                .map(|pos| (pos, MethodKind::Virtual))
-        })
 }
 
 pub struct ClassFields {

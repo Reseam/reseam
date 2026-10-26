@@ -3,12 +3,10 @@
 
 use std::collections::HashSet;
 
-use super::super::{ClassLocation, FingerprintLocation, MethodLocation, PatchContext};
-use super::{fingerprint_location, method_location};
+use super::super::{ClassLocation, MethodLocation, PatchContext};
+use super::method_location;
 use crate::error::Result;
-use reseam_apk::reseam_dex::{
-    Fingerprint, InstructionPattern, MethodIdx, RefKey, RefQuery, StringIdx, TypeIdx,
-};
+use reseam_apk::reseam_dex::{InstructionPattern, MethodIdx, RefKey, RefQuery, StringIdx, TypeIdx};
 
 impl PatchContext<'_> {
     /// Every method whose prototype satisfies each given filter (exact return
@@ -86,14 +84,6 @@ impl PatchContext<'_> {
         })
     }
 
-    pub fn find_method_by_name(&self, method_name: &str) -> Result<Option<MethodLocation>> {
-        self.scan_first("method by name", |dex_idx, dex| {
-            Ok(dex
-                .find_method_by_name(method_name)?
-                .map(|hit| method_location(dex_idx, &hit)))
-        })
-    }
-
     pub fn find_methods_by_strings(&self, strings: &[&str]) -> Result<Vec<MethodLocation>> {
         self.scan_all("methods by strings", |dex_idx, dex| {
             let hits = dex.find_methods_by_strings(strings)?;
@@ -113,30 +103,6 @@ impl PatchContext<'_> {
             Ok(hits
                 .iter()
                 .map(|hit| method_location(dex_idx, hit))
-                .collect())
-        })
-    }
-
-    pub fn find_method_by_fingerprint(
-        &self,
-        fp: &Fingerprint,
-    ) -> Result<Option<FingerprintLocation>> {
-        self.scan_first("method by fingerprint", |dex_idx, dex| {
-            Ok(dex
-                .find_method_by_fingerprint(fp)?
-                .map(|hit| fingerprint_location(dex_idx, hit)))
-        })
-    }
-
-    pub fn find_methods_by_fingerprint(
-        &self,
-        fp: &Fingerprint,
-    ) -> Result<Vec<FingerprintLocation>> {
-        self.scan_all("methods by fingerprint", |dex_idx, dex| {
-            let hits = dex.find_methods_by_fingerprint(fp)?;
-            Ok(hits
-                .into_iter()
-                .map(|hit| fingerprint_location(dex_idx, hit))
                 .collect())
         })
     }
