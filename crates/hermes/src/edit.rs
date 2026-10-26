@@ -2,72 +2,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::ops::Range;
 
 use crate::error::{Result, invalid};
-use crate::function::{ExceptionHandler, FunctionHeader};
 use crate::layout::{FOOTER_SIZE, Field, Section};
 use crate::string::{StringId, StringKind};
 use crate::{FunctionId, HermesFile};
 
+mod function;
 mod strings;
 mod undo;
 
+pub(crate) use function::{EditedFunction, FunctionBody, generated_function, original_function};
 pub(crate) use strings::AddedString;
 use undo::{Part, Undo};
-
-#[derive(Clone)]
-pub(crate) struct EditedFunction {
-    pub header: FunctionHeader,
-    pub body: FunctionBody,
-    pub exceptions: Vec<ExceptionHandler>,
-}
-
-impl EditedFunction {
-    /// Edited functions are written with a new large header and no debug info.
-    pub(crate) fn new(
-        mut header: FunctionHeader,
-        body: FunctionBody,
-        exceptions: Vec<ExceptionHandler>,
-    ) -> Self {
-        header.flags.debug_info = false;
-        header.flags.exception_handler = !exceptions.is_empty();
-        header.large = None;
-        Self {
-            header,
-            body,
-            exceptions,
-        }
-    }
-}
-
-#[derive(Clone)]
-pub(crate) enum FunctionBody {
-    Original(Range<usize>),
-    Owned(Vec<u8>),
-}
-
-impl FunctionBody {
-    pub(crate) fn bytes<'a>(&'a self, file: &'a HermesFile<'_>) -> &'a [u8] {
-        match self {
-            Self::Original(range) => &file.source[range.clone()],
-            Self::Owned(bytes) => bytes,
-        }
-    }
-    pub(crate) fn len(&self) -> usize {
-        match self {
-            Self::Original(range) => range.len(),
-            Self::Owned(bytes) => bytes.len(),
-        }
-    }
-    pub(crate) fn place(&self, cursor: usize) -> usize {
-        let remainder = match self {
-            Self::Original(range) => range.start & 3,
-            Self::Owned(_) => 0,
-        };
-        cursor + ((remainder + 4 - (cursor & 3)) & 3)
-    }
-}
 
 /// Owns edits over a borrowed file. Original function and string identities
 /// remain stable. Only additions, changed bodies and indices allocate storage.
@@ -91,9 +38,9 @@ pub struct Edits {
     pub(crate) modules: Vec<crate::link::LinkedModule>,
     pub(crate) link_names: Option<crate::link::LinkNames>,
     pub(crate) string_switches: u32,
-    pub(crate) hook_graph: Option<crate::environment::HookGraph>,
+    pub(crate) hook_graph: Option<crate::closure::HookGraph>,
     pub(crate) metro: Option<crate::metro::MetroModules>,
-    pub(crate) roots: BTreeMap<FunctionId, crate::environment::RootAttachment>,
+    pub(crate) roots: BTreeMap<FunctionId, crate::closure::RootAttachment>,
     /// Hooked app functions, each with the appended function now holding its original body.
     pub(crate) relocated: BTreeMap<FunctionId, FunctionId>,
     /// App functions replaced before any hook kept their original body.

@@ -3,14 +3,11 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use crate::assemble::assemble;
 use crate::dataflow::{Registers, register_states};
-use crate::edit::{EditedFunction, Editor, FunctionBody};
+use crate::edit::Editor;
 use crate::error::{HermesError, Result, invalid};
 use crate::function::Function;
-use crate::function::{FunctionKind, Prohibit};
 use crate::opcode::{Instruction, Op};
-use crate::switch::switch_table;
 use crate::{FunctionId, FunctionIndex};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,44 +107,6 @@ impl Editor<'_> {
         graph.plans.insert(target, plan.clone());
         Ok(plan)
     }
-
-    pub(crate) fn rooted_functions(&self) -> Result<BTreeMap<FunctionId, EditedFunction>> {
-        self.edits
-            .roots
-            .iter()
-            .map(|(&id, root)| {
-                let function = self.file.function(id)?;
-                let body =
-                    attach_root(&function, function.instructions()?, root.depth, &root.sites)?;
-                // A hooked function's original body lives on in the function its hook calls.
-                Ok((self.edits.relocated.get(&id).copied().unwrap_or(id), body))
-            })
-            .collect()
-    }
-}
-
-impl<'a> Editor<'a> {
-    /// The app function whose body an edit may replace. Generators, async functions and
-    /// constructors keep state or a receiver that a replaced body cannot reproduce.
-    pub(crate) fn editable(&self, function: FunctionId) -> Result<Function<'a>> {
-        if function == self.file.global_function() {
-            return Err(HermesError::Unsupported("global function".into()));
-        }
-        let target = self.file.function(function)?;
-        if target.header.flags.kind != FunctionKind::Normal
-            || target.header.flags.prohibit == Prohibit::Call
-            || target
-                .instructions()?
-                .iter()
-                .any(|i| matches!(i.op, Op::GetNewTarget | Op::DirectEval))
-        {
-            return Err(HermesError::Unsupported(format!(
-                "function {} is a generator, async function, constructor or uses new.target/eval",
-                function.0
-            )));
-        }
-        Ok(target)
-    }
 }
 
 /// Closure environment analyses and hook plans, kept across hooks.
@@ -198,7 +157,7 @@ struct ClosureAnalysis {
 
 #[derive(Clone)]
 pub(crate) struct RootAttachment {
-    depth: u16,
+    pub depth: u16,
     pub sites: BTreeSet<usize>,
 }
 
@@ -269,58 +228,8 @@ fn analyse(
     Ok(sites)
 }
 
-fn attach_root(
-    function: &Function<'_>,
-    code: Vec<Instruction>,
-    depth: u16,
-    attach: &BTreeSet<usize>,
-) -> Result<EditedFunction> {
-    let depth = environment_depth(depth)?;
-    let mut rewritten = vec![Instruction::new(
-        Op::GetParentEnvironment,
-        &[0, u64::from(depth)],
-    )];
-    for (index, mut inst) in code.into_iter().enumerate() {
-        for (operand, value) in inst.definition().operands.iter().zip(&mut inst.values) {
-            if operand.kind.is_register() {
-                *value += 1;
-            }
-        }
-        if attach.contains(&index) {
-            inst.values[1] = 0;
-        }
-        if inst.op == Op::CreateTopLevelEnvironment {
-            let mut replacement =
-                Instruction::new(Op::CreateEnvironment, &[inst.values[0], 0, inst.values[1]]);
-            replacement.offset = inst.offset;
-            rewritten.push(replacement);
-        } else {
-            rewritten.push(inst);
-        }
-    }
-    let mut function = assemble(function, rewritten, None)?;
-    function.header.frame_size += 1;
-    function.header.number_regs = 0;
-    function.header.non_pointer_regs = 0;
-    Ok(function)
-}
-
 /// `depth` as the operand of an environment instruction.
 pub(crate) fn environment_depth(depth: u16) -> Result<u8> {
     u8::try_from(depth)
         .map_err(|_| HermesError::Unsupported("private environment deeper than 255 scopes".into()))
-}
-
-pub(crate) fn original_function(function: &Function<'_>) -> Result<EditedFunction> {
-    let mut end = function.body_range().end;
-    for inst in function.instructions()? {
-        if let Some(table) = switch_table(function, &inst)? {
-            end = end.max(table.offset + table.bytes.len());
-        }
-    }
-    Ok(EditedFunction::new(
-        function.header.clone(),
-        FunctionBody::Original(function.body_range().start..end),
-        function.exception_handlers()?,
-    ))
 }

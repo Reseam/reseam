@@ -16,7 +16,6 @@ mod literals;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use bootstrap::generated_function;
 use literals::{Literals, at, checked_id, literal_count};
 
 /// Identity of a module linked into this editor. Its exports remain in a

@@ -16,7 +16,7 @@ pub(super) enum Part {
 pub(super) enum Undo {
     Marks(Marks),
     Function(FunctionId, Option<EditedFunction>),
-    Root(FunctionId, Option<crate::environment::RootAttachment>),
+    Root(FunctionId, Option<crate::closure::RootAttachment>),
     Relocated(FunctionId, Option<FunctionId>),
     Discarded(FunctionId, bool),
 }
@@ -132,7 +132,7 @@ impl Edits {
             .record(Part::Discarded(id), || Undo::Discarded(id, discarded));
     }
 
-    pub(crate) fn attach_root(&mut self, id: FunctionId, root: crate::environment::RootAttachment) {
+    pub(crate) fn attach_root(&mut self, id: FunctionId, root: crate::closure::RootAttachment) {
         self.journal.record(Part::Root(id), || {
             Undo::Root(id, self.roots.get(&id).cloned())
         });

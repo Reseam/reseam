@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::code::{Code, HookKind};
-use crate::codegen::{self, Layer, Links};
 use crate::edit::Editor;
-use crate::environment::original_function;
+use crate::edit::original_function;
 use crate::error::{HermesError, Result, invalid};
+use crate::function::{Function, FunctionKind, Prohibit};
+use crate::opcode::Op;
 use crate::string::{StringId, StringKind};
 use crate::{FunctionId, FunctionIndex, ModuleId};
+use codegen::{Layer, Links};
 
+mod codegen;
 mod resolver;
+mod root;
 
 use resolver::Resolver;
 
@@ -117,6 +121,30 @@ impl Editor<'_> {
             )));
         }
         self.intern(export, StringKind::Identifier)
+    }
+}
+
+impl<'a> Editor<'a> {
+    /// The app function whose body an edit may replace. Generators, async functions and
+    /// constructors keep state or a receiver that a replaced body cannot reproduce.
+    pub(crate) fn editable(&self, function: FunctionId) -> Result<Function<'a>> {
+        if function == self.file.global_function() {
+            return Err(HermesError::Unsupported("global function".into()));
+        }
+        let target = self.file.function(function)?;
+        if target.header.flags.kind != FunctionKind::Normal
+            || target.header.flags.prohibit == Prohibit::Call
+            || target
+                .instructions()?
+                .iter()
+                .any(|i| matches!(i.op, Op::GetNewTarget | Op::DirectEval))
+        {
+            return Err(HermesError::Unsupported(format!(
+                "function {} is a generator, async function, constructor or uses new.target/eval",
+                function.0
+            )));
+        }
+        Ok(target)
     }
 }
 

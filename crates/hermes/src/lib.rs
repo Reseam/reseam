@@ -9,11 +9,10 @@
 
 mod assemble;
 mod bytes;
+mod closure;
 mod code;
-mod codegen;
 mod dataflow;
 mod edit;
-mod environment;
 mod error;
 mod file;
 #[cfg(test)]

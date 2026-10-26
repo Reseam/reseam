@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::assemble::encode;
-use crate::edit::{EditedFunction, Editor, FunctionBody};
+use crate::edit::{EditedFunction, Editor, generated_function};
 use crate::error::{Result, invalid};
-use crate::function::{FunctionFlags, FunctionHeader, FunctionKind, Prohibit};
 use crate::opcode::{Instruction, Op};
 use crate::string::{StringId, StringKind};
 
@@ -99,39 +98,4 @@ impl Editor<'_> {
         );
         Some(generated_function(name, 1, 16, encode(&code)))
     }
-}
-
-/// A strict function that refuses construction, as compiled for ordinary strict-mode code.
-pub(crate) fn generated_function(
-    name: StringId,
-    parameters: u32,
-    frame_size: u32,
-    body: Vec<u8>,
-) -> EditedFunction {
-    EditedFunction::new(
-        FunctionHeader {
-            offset: 0,
-            parameters,
-            loop_depth: 0,
-            size: body.len() as u32,
-            name: name.0,
-            number_regs: 0,
-            non_pointer_regs: 0,
-            frame_size,
-            read_cache: 0,
-            write_cache: 0,
-            object_cache: 0,
-            private_cache: 0,
-            flags: FunctionFlags {
-                prohibit: Prohibit::Construct,
-                strict: true,
-                exception_handler: false,
-                debug_info: false,
-                kind: FunctionKind::Normal,
-            },
-            large: None,
-        },
-        FunctionBody::Owned(body),
-        Vec::new(),
-    )
 }

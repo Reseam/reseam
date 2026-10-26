@@ -3,12 +3,12 @@
 
 use crate::FunctionId;
 use crate::assemble::encode;
+use crate::closure::environment_depth;
 use crate::code::{Code, Condition, HookKind, Operand, Place, Statement};
 use crate::edit::EditedFunction;
-use crate::environment::environment_depth;
+use crate::edit::generated_function;
 use crate::error::{HermesError, Result};
 use crate::function::Function;
-use crate::link::generated_function;
 use crate::opcode::{BUILTIN_APPLY, Instruction, Op};
 use crate::string::StringId;
 
