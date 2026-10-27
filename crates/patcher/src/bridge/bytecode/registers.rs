@@ -3,12 +3,11 @@
 
 use std::sync::Arc;
 
-use crate::bridge::run_state::record_failure;
 use boltffi::export;
 use reseam_dex::{self as dex, AccessFlags};
 
 use crate::bridge::dex::types::{MethodEdit, RegisterWriters};
-use crate::bridge::handles::{with_code, with_instruction, with_method_mut};
+use crate::bridge::handles::{with_code, with_method_mut};
 use crate::context::{code_mut, method_mut};
 
 use super::logged;
@@ -94,14 +93,6 @@ pub fn find_free_register(m: u32, at_index: u32, exclude: Vec<u16>) -> Option<u1
 }
 
 #[export]
-pub fn find_free_registers(m: u32, at_index: u32, count: u32, exclude: Vec<u16>) -> Vec<u16> {
-    with_code(m, |_, code| {
-        dex::find_free_registers(code, at_index as usize, count as usize, &exclude)
-    })
-    .unwrap_or_default()
-}
-
-#[export]
 pub fn find_contiguous_free_registers(
     m: u32,
     at_index: u32,
@@ -122,26 +113,5 @@ pub fn register_writers(m: u32, index: u32, register: u16) -> Option<RegisterWri
             indices: indices.into_iter().map(|index| index as u32).collect(),
             from_entry,
         })
-    })
-}
-
-#[export]
-pub fn instruction_register(m: u32, index: u32, position: u32) -> u16 {
-    with_instruction(m, index, |_, instruction| {
-        instruction.registers_used().get(position as usize).copied()
-    })
-    .unwrap_or_else(|| {
-        record_failure(format!(
-            "method {m} instruction {index} has no register operand {position}"
-        ));
-        0
-    })
-}
-
-#[export]
-pub fn instruction_wide_literal(m: u32, index: u32) -> i64 {
-    with_instruction(m, index, |_, instruction| instruction.literal()).unwrap_or_else(|| {
-        record_failure(format!("method {m} instruction {index} has no literal"));
-        0
     })
 }

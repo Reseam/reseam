@@ -11,16 +11,8 @@ use crate::context::code_mut;
 use boltffi::export;
 use reseam_dex::{Instruction as DexInsn, MethodIdx};
 
-/// Which matches an edit replaces.
-#[boltffi::data]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Occurrences {
-    First,
-    All,
-}
-
 #[export]
-pub fn replace_strings(m: u32, old: String, new: String, occurrences: Occurrences) -> u32 {
+pub fn replace_strings(m: u32, old: String, new: String) -> u32 {
     with_method_mut(m, |dex, loc| {
         let Some(old) = dex.strings().find(&old) else {
             return Ok(None);
@@ -40,9 +32,6 @@ pub fn replace_strings(m: u32, old: String, new: String, occurrences: Occurrence
                     {
                         *string = new;
                         count += 1;
-                        if occurrences == Occurrences::First {
-                            break;
-                        }
                     }
                 }
                 Ok(count)
@@ -54,7 +43,7 @@ pub fn replace_strings(m: u32, old: String, new: String, occurrences: Occurrence
 }
 
 #[export]
-pub fn replace_literals(m: u32, old: i64, new: i64, occurrences: Occurrences) -> u32 {
+pub fn replace_literals(m: u32, old: i64, new: i64) -> u32 {
     let Some(location) = method_location(m) else {
         return 0;
     };
@@ -82,9 +71,6 @@ pub fn replace_literals(m: u32, old: i64, new: i64, occurrences: Occurrences) ->
                                 first_error.get_or_insert_with(|| message.to_owned());
                                 skipped += 1;
                             }
-                        }
-                        if occurrences == Occurrences::First {
-                            break;
                         }
                     }
                     Ok(count)

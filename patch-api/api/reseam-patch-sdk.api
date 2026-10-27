@@ -3090,20 +3090,6 @@ public final class app/reseam/patch/types/NewMethod {
 public final class app/reseam/patch/types/NewMethod$Companion {
 }
 
-public final class app/reseam/patch/types/Occurrences : java/lang/Enum {
-	public static final field ALL Lapp/reseam/patch/types/Occurrences;
-	public static final field Companion Lapp/reseam/patch/types/Occurrences$Companion;
-	public static final field FIRST Lapp/reseam/patch/types/Occurrences;
-	public static fun getEntries ()Lkotlin/enums/EnumEntries;
-	public final fun getValue ()I
-	public static fun valueOf (Ljava/lang/String;)Lapp/reseam/patch/types/Occurrences;
-	public static fun values ()[Lapp/reseam/patch/types/Occurrences;
-}
-
-public final class app/reseam/patch/types/Occurrences$Companion {
-	public final fun fromValue (I)Lapp/reseam/patch/types/Occurrences;
-}
-
 public final class app/reseam/patch/types/PackedSwitchInsn {
 	public static final field Companion Lapp/reseam/patch/types/PackedSwitchInsn$Companion;
 	public fun <init> (I[I)V

@@ -33,7 +33,6 @@ import app.reseam.patch.types.AnnotationItem
 import app.reseam.patch.types.Instruction
 import app.reseam.patch.types.MethodInfo
 import app.reseam.patch.types.MethodRef
-import app.reseam.patch.types.Occurrences
 
 /** A method in the app's bytecode, identified by an engine handle valid for the running patch. */
 @JvmInline
@@ -114,11 +113,9 @@ value class Method(val handle: UInt) {
         edits?.relocated(handle, mapping, EditKind.REMOVE, index until index + count)
     }
 
-    fun replaceAllStrings(old: String, new: String): Int =
-        replaceStrings(handle, old, new, Occurrences.ALL).toInt()
+    fun replaceAllStrings(old: String, new: String): Int = replaceStrings(handle, old, new).toInt()
 
-    fun replaceAllLiterals(old: Long, new: Long): Int =
-        replaceLiterals(handle, old, new, Occurrences.ALL).toInt()
+    fun replaceAllLiterals(old: Long, new: Long): Int = replaceLiterals(handle, old, new).toInt()
 
     fun replaceMethodCall(index: Int, target: MethodRef): Boolean =
         replaceMethodCall(handle, index.toUInt(), target.definingClass, target.name, target.proto)

@@ -12,19 +12,6 @@ pub fn find_free_register(code: &CodeItem, at_index: usize, exclude: &[u16]) -> 
     free_registers(code, at_index, exclude).next()
 }
 
-/// The `count` lowest free registers before instruction `at_index`.
-pub fn find_free_registers(
-    code: &CodeItem,
-    at_index: usize,
-    count: usize,
-    exclude: &[u16],
-) -> Option<Vec<u16>> {
-    let free: Vec<u16> = free_registers(code, at_index, exclude)
-        .take(count)
-        .collect();
-    (free.len() == count).then_some(free)
-}
-
 /// The lowest run of `count` consecutive free registers before instruction `at_index`.
 pub fn find_contiguous_free_registers(
     code: &CodeItem,

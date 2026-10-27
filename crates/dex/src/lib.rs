@@ -32,13 +32,12 @@ mod references;
 mod search;
 mod write;
 
-pub use edit::body::EarlyReturn;
 pub use edit::grow::grow_registers;
 pub use edit::invoke::{
     ArgumentMove, Invocation, InvokeEncoding, InvokeForm, Receiver, argument_kinds, array_kinds,
 };
 pub use edit::liveness::{
-    find_contiguous_free_registers, find_free_register, find_free_registers, reaching_definitions,
+    find_contiguous_free_registers, find_free_register, reaching_definitions,
 };
 pub use edit::relocate::{BranchDestination, InstructionExpansion, InstructionMap};
 pub use encoding::mutf8::decode_mutf8;

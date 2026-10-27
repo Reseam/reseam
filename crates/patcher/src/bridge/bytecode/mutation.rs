@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use boltffi::export;
 use reseam_dex::InstructionExpansion;
-use reseam_dex::{AccessFlags, CodeItem, EarlyReturn, Instruction as DexInsn};
+use reseam_dex::{AccessFlags, CodeItem, Instruction as DexInsn};
 
 use crate::bridge::dex::convert::kotlin_to_dex;
 use crate::bridge::dex::link::link_instructions;
@@ -35,14 +35,6 @@ fn edit_code<R>(
     });
     crate::bridge::run_state::check_call()?;
     result.ok_or_else(|| format!("method handle {m} could not be edited"))
-}
-
-#[export]
-pub fn set_instructions(m: u32, insns: Vec<Instruction>) -> Result<(), String> {
-    edit_code(m, &insns, |code, insns| {
-        code.set_instructions(insns);
-        Ok(())
-    })
 }
 
 #[export]
@@ -163,32 +155,4 @@ pub fn remove_instructions(m: u32, index: u32, count: u32) -> Result<MethodEdit,
     });
     crate::bridge::run_state::check_call()?;
     result.ok_or_else(|| format!("method handle {m} could not be edited"))
-}
-
-fn return_early_with(m: u32, value: EarlyReturn) {
-    with_method_mut(m, |dex, loc| {
-        Ok(logged("access method", method_mut(dex, loc))?
-            .and_then(reseam_dex::EncodedMethod::code_mut)
-            .map(|code| code.return_early(value)))
-    });
-}
-
-#[export]
-pub fn return_early(m: u32) {
-    return_early_with(m, EarlyReturn::Void);
-}
-
-#[export]
-pub fn return_early_int(m: u32, value: i32) {
-    return_early_with(m, EarlyReturn::Int(value));
-}
-
-#[export]
-pub fn return_early_object_null(m: u32) {
-    return_early_with(m, EarlyReturn::Null);
-}
-
-#[export]
-pub fn return_early_wide(m: u32, value: i64) {
-    return_early_with(m, EarlyReturn::Wide(value));
 }
