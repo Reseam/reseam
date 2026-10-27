@@ -73,7 +73,7 @@ pub fn generate(android_jar: &Path) -> Result<()> {
     }
     let output = format_catalogue(&table, &resources, &attributes)?;
     let destination =
-        crate::paths::workspace_root().join("crates/apk/src/axml/android_attrs/data.rs");
+        crate::paths::workspace_root().join("crates/apk/src/axml/android_attrs/generated/mod.rs");
     fs::create_dir_all(destination.parent().context("framework output directory")?)?;
     fs::write(destination, output)?;
     Ok(())

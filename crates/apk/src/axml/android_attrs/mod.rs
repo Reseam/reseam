@@ -5,10 +5,10 @@ use std::sync::LazyLock;
 
 use crate::resources::{AttrFormats, AttrSymbol};
 
-mod data;
+mod generated;
 
-use data::{ANDROID_ATTR_SYMBOLS, ANDROID_ATTRS, ANDROID_RESOURCES};
-pub use data::{
+use generated::{ANDROID_ATTR_SYMBOLS, ANDROID_ATTRS, ANDROID_RESOURCES};
+pub use generated::{
     ATTR_CONFIG_CHANGES, ATTR_DRAWABLE, ATTR_ENABLED, ATTR_ICON, ATTR_LABEL, ATTR_MIME_TYPE,
     ATTR_MIN_SDK_VERSION, ATTR_NAME, ATTR_SPLIT_NAME, ATTR_TARGET_ACTIVITY, ATTR_VERSION_CODE,
     ATTR_VERSION_NAME,
