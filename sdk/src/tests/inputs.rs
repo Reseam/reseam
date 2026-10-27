@@ -83,12 +83,12 @@ fn incompatible_inputs_and_output_fail_before_loading_patches() {
 #[test]
 fn host_failures_retain_problem_categories_and_sources() {
     use reseam_patcher::error::PatcherError;
-    let older = || PatcherError::BundleTooOld {
+    let older = || Problem::BundleTooOld {
         bundle: "example".into(),
         built: "0.3.0".into(),
         running: "0.15.0".into(),
     };
-    let newer = || PatcherError::EngineTooOld {
+    let newer = || Problem::EngineTooOld {
         bundle: "example".into(),
         built: "1.0.0".into(),
         running: "0.15.0".into(),
@@ -97,22 +97,11 @@ fn host_failures_retain_problem_categories_and_sources() {
         (
             HostError::Bundle {
                 path: "patches.reseam".into(),
-                source: older(),
+                source: PatcherError::Problem(older()),
             },
-            Problem::BundleTooOld {
-                bundle: "example".into(),
-                built: "0.3.0".into(),
-                running: "0.15.0".into(),
-            },
+            older(),
         ),
-        (
-            HostError::Patcher(newer()),
-            Problem::EngineTooOld {
-                bundle: "example".into(),
-                built: "1.0.0".into(),
-                running: "0.15.0".into(),
-            },
-        ),
+        (HostError::Patcher(PatcherError::Problem(newer())), newer()),
         (
             HostError::Problem(Problem::SingleFileComponents { components: 2 }),
             Problem::SingleFileComponents { components: 2 },

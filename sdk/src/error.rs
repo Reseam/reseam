@@ -101,24 +101,7 @@ pub(crate) fn classify(error: &(dyn std::error::Error + 'static)) -> Problem {
                 _ => {}
             }
             match cause.downcast_ref::<PatcherError>() {
-                Some(PatcherError::BundleTooOld {
-                    bundle,
-                    built,
-                    running,
-                }) => Some(Problem::BundleTooOld {
-                    bundle: bundle.clone(),
-                    built: built.clone(),
-                    running: running.clone(),
-                }),
-                Some(PatcherError::EngineTooOld {
-                    bundle,
-                    built,
-                    running,
-                }) => Some(Problem::EngineTooOld {
-                    bundle: bundle.clone(),
-                    built: built.clone(),
-                    running: running.clone(),
-                }),
+                Some(PatcherError::Problem(problem)) => Some(problem.clone()),
                 Some(PatcherError::RewriteOutput { patch, .. }) => Some(Problem::PatchesFailed {
                     patches: vec![patch.clone()],
                 }),

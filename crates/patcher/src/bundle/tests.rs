@@ -9,7 +9,14 @@ use sha2::{Digest, Sha256};
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
 
+use std::collections::BTreeMap;
+use std::path::Path;
+
+use reseam_model::Problem;
+
+use super::manifest::BundleManifest;
 use super::*;
+use crate::error::PatcherError;
 
 fn load_all(archive: BundleArchive) -> crate::error::Result<PatchBundle> {
     let ids = archive
@@ -102,9 +109,9 @@ fn compatibility_errors_take_precedence_over_catalog_schema_errors() {
         let error = BundleArchive::open(&path).err().unwrap();
         assert!(
             if older {
-                matches!(error, PatcherError::BundleTooOld { .. })
+                matches!(error, PatcherError::Problem(Problem::BundleTooOld { .. }))
             } else {
-                matches!(error, PatcherError::EngineTooOld { .. })
+                matches!(error, PatcherError::Problem(Problem::EngineTooOld { .. }))
             },
             "{error}"
         );

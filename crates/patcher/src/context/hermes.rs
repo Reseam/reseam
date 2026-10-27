@@ -11,7 +11,7 @@ use reseam_hermes::{Code, Editor, FunctionId, HermesFile, HookKind, Import, Modu
 use reseam_storage::Bytes;
 
 use super::PatchContext;
-use crate::error::{PatcherError, Result};
+use crate::error::{BundleError, PatcherError, Result};
 
 /// The React Native bundle in the base APK.
 const BUNDLE: &str = "assets/index.android.bundle";
@@ -142,8 +142,10 @@ pub(crate) fn hermes_imports(module: &Path) -> Result<Vec<String>> {
 }
 
 fn extension_bytes(module: &Path) -> Result<Bytes> {
-    let file = std::fs::File::open(module)
-        .map_err(|e| PatcherError::Bundle(format!("Hermes extension {}: {e}", module.display())))?;
+    let file = std::fs::File::open(module).map_err(|source| BundleError::Payload {
+        name: module.display().to_string(),
+        source,
+    })?;
     // SAFETY: bundle payloads are validated immutable snapshots retained for the run.
     Ok(Bytes::from_mmap(Arc::new(unsafe {
         reseam_storage::map_file(&file)?

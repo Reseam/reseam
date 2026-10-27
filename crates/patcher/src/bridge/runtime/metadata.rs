@@ -16,7 +16,7 @@ use super::jni_values::{
 };
 use super::jvm::jvm_err;
 use super::loader::PatchLoader;
-use crate::bundle::is_slug;
+use crate::bundle::manifest::is_slug;
 use crate::error::Result;
 use crate::options::{OptionDeclaration, OptionType, OptionValue};
 use crate::patch::{CompatiblePackage, Patch, PatchSpec};

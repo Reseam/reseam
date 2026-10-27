@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use crate::error::{PatcherError, Result};
+use crate::error::{BundleError, PatcherError, Result};
 use crate::patch::PatchSpec;
 
 /// Patch identities shared by planning and CLI options. A reference
@@ -46,10 +46,11 @@ impl<'a> PatchCatalog<'a> {
                 )
                 .is_some()
             {
-                return Err(PatcherError::Bundle(format!(
-                    "bundle '{}' declares patch '{}' more than once",
-                    spec.bundle, spec.id
-                )));
+                return Err(BundleError::DuplicatePatch {
+                    bundle: spec.bundle.clone(),
+                    id: spec.id.clone(),
+                }
+                .into());
             }
             ids.entry(&spec.id).or_default().push(index);
             if !spec.hidden {

@@ -1359,7 +1359,7 @@ fn bundles_cannot_define_app_runtime_classes() {
 
 #[test]
 fn extensions_defining_a_class_differently_conflict() {
-    use reseam_patcher::context::ExtensionSet;
+    use reseam_patcher::error::{ExtensionError, PatcherError};
 
     let dir = tempfile::tempdir().unwrap();
     let paths = extension_files(
@@ -1373,9 +1373,13 @@ fn extensions_defining_a_class_differently_conflict() {
         panic!("differing definitions of {SHARED_CLASS} must not load");
     };
     assert!(
-        error
-            .to_string()
-            .contains(&format!("{SHARED_CLASS} is defined differently")),
+        matches!(
+            &error,
+            PatcherError::Extension {
+                reason: ExtensionError::Conflict { descriptor, .. },
+                ..
+            } if descriptor == SHARED_CLASS
+        ),
         "{error}"
     );
 }

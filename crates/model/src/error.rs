@@ -11,13 +11,17 @@ use thiserror::Error;
 #[serde(tag = "type", rename_all = "snake_case")]
 #[boltffi::data]
 pub enum Problem {
-    #[error("bundle {bundle} was built for engine {built}; this is {running}")]
+    #[error(
+        "bundle {bundle} was built for Reseam engine {built}, which this engine ({running}) no longer loads; ask its author for a rebuild"
+    )]
     BundleTooOld {
         bundle: String,
         built: String,
         running: String,
     },
-    #[error("bundle {bundle} needs engine {built}; this is {running}")]
+    #[error(
+        "bundle {bundle} needs Reseam engine {built} or newer; this is {running}. Update Reseam"
+    )]
     EngineTooOld {
         bundle: String,
         built: String,

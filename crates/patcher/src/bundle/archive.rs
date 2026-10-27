@@ -12,13 +12,13 @@ use reseam_storage::ScratchDir;
 use tracing::info;
 use zip::ZipArchive;
 
-use super::{
-    BUNDLE_MIMETYPE, BundleInfo, BundleManifest, CONTROL_ENTRIES, ManifestHeader, PatchBundle,
-    PayloadKind, bundle_error, check_engine, check_info, payload_kind,
-};
-use crate::error::Result;
-use crate::patch::PatchSpec;
 use reseam_storage::copy_hashed;
+
+use super::manifest::{BundleManifest, ManifestHeader};
+use super::payload::{PayloadKind, payload_kind};
+use super::{BUNDLE_MIMETYPE, BundleInfo, CONTROL_ENTRIES, PatchBundle};
+use crate::error::{BundleError, Result};
+use crate::patch::PatchSpec;
 
 /// A bundle whose manifest signature and format version have been checked.
 /// Payload hashes are checked when the payload is read by [`Self::load`].
@@ -30,33 +30,33 @@ pub struct BundleArchive {
 
 impl BundleArchive {
     pub fn open(path: &Path) -> Result<Self> {
-        let file = File::open(path)
-            .map_err(|e| bundle_error(format!("failed to open {}: {e}", path.display())))?;
-        let mut archive = ZipArchive::new(file)
-            .map_err(|e| bundle_error(format!("failed to open zip {}: {e}", path.display())))?;
-
-        if read_entry(&mut archive, "mimetype")? != BUNDLE_MIMETYPE.as_bytes() {
-            return Err(bundle_error(format!(
-                "invalid mimetype marker (expected {BUNDLE_MIMETYPE})"
-            )));
+        let archive_error = |source| BundleError::Archive {
+            path: path.to_owned(),
+            source,
+        };
+        let mut archive = ZipArchive::new(File::open(path)?).map_err(archive_error)?;
+        if read_entry(&mut archive, "mimetype", BUNDLE_MIMETYPE.len() as u64)?
+            != BUNDLE_MIMETYPE.as_bytes()
+        {
+            return Err(BundleError::Mimetype.into());
         }
-        let manifest_bytes = read_entry(&mut archive, "manifest.toml")?;
-        let public_key: [u8; 32] = read_entry(&mut archive, "manifest.pubkey")?
+        let manifest_bytes = read_entry(&mut archive, "manifest.toml", 16 * 1024 * 1024)?;
+        let public_key: [u8; 32] = read_entry(&mut archive, "manifest.pubkey", 32)?
             .try_into()
-            .map_err(|_| bundle_error("manifest.pubkey must be 32 bytes"))?;
-        let signature = Signature::from_slice(&read_entry(&mut archive, "manifest.sig")?)
-            .map_err(|e| bundle_error(format!("invalid Ed25519 signature: {e}")))?;
+            .map_err(|_| BundleError::Signature("manifest.pubkey must be 32 bytes"))?;
+        let signature = Signature::from_slice(&read_entry(&mut archive, "manifest.sig", 64)?)
+            .map_err(|_| BundleError::Signature("invalid Ed25519 signature"))?;
         VerifyingKey::from_bytes(&public_key)
-            .map_err(|e| bundle_error(format!("invalid Ed25519 public key: {e}")))?
+            .map_err(|_| BundleError::Signature("invalid Ed25519 public key"))?
             .verify(&manifest_bytes, &signature)
-            .map_err(|_| bundle_error("manifest signature verification failed"))?;
+            .map_err(|_| BundleError::Signature("verification failed"))?;
 
-        let manifest_text = std::str::from_utf8(&manifest_bytes)
-            .map_err(|e| bundle_error(format!("manifest.toml not UTF-8: {e}")))?;
+        let manifest_text =
+            std::str::from_utf8(&manifest_bytes).map_err(|_| BundleError::ManifestEncoding)?;
         // Catalog schemas can differ between engine lines, so report compatibility first.
         let header: ManifestHeader = toml::from_str(manifest_text)?;
-        check_info(&header.bundle)?;
-        check_engine(&header.bundle)?;
+        header.bundle.check()?;
+        header.bundle.check_engine()?;
         let manifest: BundleManifest = toml::from_str(manifest_text)?;
         manifest.check_patches()?;
         Ok(Self {
@@ -89,10 +89,7 @@ impl BundleArchive {
     /// their declaring classes are initialized; the rest of the bundle runs no code.
     pub fn load(mut self, patches: &HashSet<String>) -> Result<PatchBundle> {
         info!(bundle = %self.manifest.bundle.name, "loading bundle");
-        let extracted = Arc::new(
-            ScratchDir::new("bundle")
-                .map_err(|e| bundle_error(format!("failed to create scratch directory: {e}")))?,
-        );
+        let extracted = Arc::new(ScratchDir::new("bundle")?);
         let mut jars = Vec::new();
         let mut extension_dex = Vec::new();
         let mut remaining = std::mem::take(&mut self.manifest.files);
@@ -102,26 +99,26 @@ impl BundleArchive {
             if entry.is_dir() || CONTROL_ENTRIES.contains(&name.as_str()) {
                 continue;
             }
-            let expected = remaining.remove(&name).ok_or_else(|| {
-                bundle_error(format!(
-                    "file {name} is undeclared or occurs more than once"
-                ))
-            })?;
+            let expected = remaining
+                .remove(&name)
+                .ok_or_else(|| BundleError::UndeclaredPayload(name.clone()))?;
             let expected: [u8; 32] = hex::decode(expected)
-                .map_err(|error| bundle_error(format!("invalid hash for {name}: {error}")))?
-                .try_into()
-                .map_err(|_| bundle_error(format!("hash for {name} must be SHA-256")))?;
+                .ok()
+                .and_then(|hash| hash.try_into().ok())
+                .ok_or_else(|| BundleError::PayloadHash(name.clone()))?;
             let kind = payload_kind(&name)?;
             let out = extracted.path().join(&name);
             if let Some(parent) = out.parent() {
                 std::fs::create_dir_all(parent)?;
             }
             let mut file = File::create(&out)?;
-            if copy_hashed(&mut entry, &mut file)
-                .map_err(|error| bundle_error(format!("extract payload {name}: {error}")))?
-                != expected
-            {
-                return Err(bundle_error(format!("hash mismatch for {name}")));
+            let hash =
+                copy_hashed(&mut entry, &mut file).map_err(|source| BundleError::Payload {
+                    name: name.clone(),
+                    source,
+                })?;
+            if hash != expected {
+                return Err(BundleError::HashMismatch(name).into());
             }
             // ART refuses to load writable code on Android 14 and later.
             #[cfg(target_os = "android")]
@@ -137,9 +134,7 @@ impl BundleArchive {
             }
         }
         if !remaining.is_empty() {
-            return Err(bundle_error(
-                "manifest declares files missing from the archive",
-            ));
+            return Err(BundleError::MissingPayload.into());
         }
         jars.sort();
         extension_dex.sort();
@@ -171,9 +166,7 @@ impl BundleArchive {
         loaded_specs.sort_by(|a, b| a.id.cmp(&b.id));
         declared.sort_by(|a, b| a.id.cmp(&b.id));
         if loaded_specs != declared {
-            return Err(bundle_error(
-                "loaded patch metadata differs from the signed catalog; rebuild the bundle",
-            ));
+            return Err(BundleError::CatalogMismatch.into());
         }
 
         info!(
@@ -193,28 +186,15 @@ impl BundleArchive {
     }
 }
 
-fn read_entry(archive: &mut ZipArchive<File>, name: &str) -> Result<Vec<u8>> {
-    let mut entry = archive.by_name(name).map_err(|error| {
-        bundle_error(format!("required entry `{name}` cannot be read: {error}"))
-    })?;
-    let limit = match name {
-        "manifest.toml" => 16 * 1024 * 1024,
-        "manifest.pubkey" => 32,
-        "manifest.sig" => 64,
-        "mimetype" => BUNDLE_MIMETYPE.len() as u64,
-        _ => return Err(bundle_error(format!("unknown control entry {name}"))),
-    };
-    if entry.size() > limit {
-        return Err(bundle_error(format!(
-            "control entry {name} exceeds {limit} bytes"
-        )));
-    }
+/// A control entry, which must not exceed `limit` bytes.
+fn read_entry(archive: &mut ZipArchive<File>, name: &'static str, limit: u64) -> Result<Vec<u8>> {
+    let mut entry = archive
+        .by_name(name)
+        .map_err(|source| BundleError::MissingEntry { name, source })?;
     let mut buf = Vec::new();
     entry.by_ref().take(limit + 1).read_to_end(&mut buf)?;
-    if buf.len() as u64 > limit {
-        return Err(bundle_error(format!(
-            "control entry {name} exceeds {limit} bytes"
-        )));
+    if entry.size() > limit || buf.len() as u64 > limit {
+        return Err(BundleError::EntryTooLarge { name, limit }.into());
     }
     Ok(buf)
 }
