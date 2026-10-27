@@ -24,7 +24,7 @@ pub(in crate::bridge) fn resolve_field_ref(dex: &DexFile, idx: FieldIdx) -> Fiel
 }
 
 pub(in crate::bridge) use super::encoded_values::{export_value, import_value};
-use super::invocations::lower_invocation;
+use super::invocations::encoded_invocation;
 use super::payloads::{export_payload, import_payload};
 use super::pool_values::{export_call_site, export_handle, import_call_site, import_handle};
 use super::types::{
@@ -234,17 +234,14 @@ pub fn kotlin_to_dex(
     dex: &mut DexFile,
     dex_index: Option<usize>,
 ) -> reseam_dex::Result<D> {
-    let lowered = lower_invocation(instruction.clone(), &[])?;
-    let [instruction] = lowered.as_slice() else {
-        return Err(invalid("instruction conversion requires an encoded invoke"));
-    };
+    let instruction = &encoded_invocation(instruction.clone())?;
     let Some(opcode) = instruction.opcode() else {
         return import_payload(instruction);
     };
     if let Instruction::RegLiteral(record) = instruction
         && let Some(bits) = dropped_literal_bits(opcode)
     {
-        if record.literal & ((1 << bits) - 1) != 0 {
+        if record.literal.trailing_zeros() < bits {
             return Err(invalid("high-half constant has low literal bits set"));
         }
         let mut record = *record;

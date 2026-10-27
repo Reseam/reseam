@@ -70,6 +70,7 @@ pub fn grow_local_registers(
             .map(Arc::unwrap_or_clone)
             .ok_or_else(|| format!("method handle {m} has no code"))?;
         let incoming = incoming_types(dex, id, flags);
+        let base = code.registers_size() - code.ins_size();
         let indices = logged(
             "grow method registers",
             dex::grow_registers(&mut code, additional_locals, &incoming, &protected, dex),
@@ -77,9 +78,7 @@ pub fn grow_local_registers(
         logged("restore method code", method_mut(dex, loc))?
             .expect("frame growth leaves the method slot in place")
             .code = Some(Arc::new(code));
-        let mut mapping = super::mutation::edit_mapping(indices?)?;
-        mapping.register_shift = additional_locals;
-        Ok(Some(mapping))
+        super::mutation::growth_mapping(base, additional_locals, indices?).map(Some)
     });
     crate::bridge::run_state::check_call()?;
     outcome.ok_or_else(|| format!("method handle {m} could not grow"))
@@ -90,19 +89,6 @@ pub fn find_free_register(m: u32, at_index: u32, exclude: Vec<u16>) -> Option<u1
     with_code(m, |_, code| {
         dex::find_free_register(code, at_index as usize, &exclude)
     })
-}
-
-#[export]
-pub fn find_contiguous_free_registers(
-    m: u32,
-    at_index: u32,
-    count: u32,
-    exclude: Vec<u16>,
-) -> Vec<u16> {
-    with_code(m, |_, code| {
-        dex::find_contiguous_free_registers(code, at_index as usize, count as usize, &exclude)
-    })
-    .unwrap_or_default()
 }
 
 #[export]

@@ -20,7 +20,7 @@ Reads, edits, and writes Android DEX files. The rest of the Reseam engine uses i
 | `read` | the parser: header, IDs, class data, code, annotations, debug info |
 | `file` | `DexFile`: file-backed tables, interning, class edits, undo |
 | `search` | the reference index, method scans, and opcode patterns |
-| `edit` | method body edits: relocation, control flow, liveness, register growth |
+| `edit` | method body edits: relocation, control flow, liveness, register growth, and blocks written over temporaries that insertion places in registers |
 | `write` | the writer: section layout, pool ordering, splitting, compaction |
 | `encoding` | MUTF-8 and LEB128 |
 

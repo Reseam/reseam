@@ -6,41 +6,42 @@ package app.reseam.patch.emit
 import app.reseam.patch.Capture
 import app.reseam.patch.CodeScope
 import app.reseam.patch.dex.Method
-import app.reseam.patch.dex.growLocals
+import app.reseam.patch.dex.descriptor
+import app.reseam.patch.native.emitCode
+import app.reseam.patch.run.EditKind
+import app.reseam.patch.run.edits
+import app.reseam.patch.types.CodeEdit
+import app.reseam.patch.types.CodePlacement
+import app.reseam.patch.types.CodeStep
 
-internal enum class InsertionBranches {
-    KEEP_ORIGINAL_TARGET,
-    RUN_INSERTION,
-}
-
+/** Writes [block] at [placement]; [captures] are the point values it can read. */
 internal fun Method.insertCode(
-    index: Int,
-    captures: List<Capture>,
+    placement: CodePlacement,
     block: CodeScope.() -> Unit,
-    entrySnapshots: MutableMap<Int, EntrySnapshot>? = null,
-    returned: Capture? = null,
-    branches: InsertionBranches =
-        if (entrySnapshots != null) InsertionBranches.RUN_INSERTION
-        else InsertionBranches.KEEP_ORIGINAL_TARGET,
+    captures: List<Capture> = emptyList(),
 ) {
-    val emitter = CodeEmitter.forInsertion(this, index, captures, returned, entrySnapshots)
+    val emitter = CodeEmitter(this, placement, captures)
     emitter.code.block()
-    val instructions = emitter.build()
-    val localGrowth = emitter.plannedLocalGrowth
-    val insertionIndex =
-        if (localGrowth > 0) {
-            val indices = growLocals(localGrowth)
-            indices[index]
-        } else index
-    when (branches) {
-        InsertionBranches.RUN_INSERTION -> insertOnEveryPath(insertionIndex, instructions)
-        InsertionBranches.KEEP_ORIGINAL_TARGET -> insertInstructions(insertionIndex, instructions)
+    if (placement == CodePlacement.Body) emitter.requireReturn()
+    val held = if (placement == CodePlacement.Body) null else edits?.held(this)
+    val applied = emitCode(handle, placement, emitter.steps, held ?: UShortArray(0))
+    for (edit in applied) {
+        when (edit) {
+            is CodeEdit.Grow -> edits?.grew(handle, edit.field0)
+            is CodeEdit.Insert -> edits?.relocated(handle, edit.field0, EditKind.INSERT)
+        }
     }
+    if (placement == CodePlacement.Body) edits?.bodyReplaced(handle)
 }
 
-internal fun Method.replaceCode(block: CodeScope.() -> Unit) {
-    val emitter = CodeEmitter.forReplacement(this)
-    emitter.code.block()
-    val plan = emitter.buildReplacement()
-    replaceBody(plan.registersSize, plan.outsSize, plan.instructions)
+private fun CodeEmitter.requireReturn() {
+    // A branch to a trailing label would target past the end of the body.
+    val trailingLabels =
+        steps.takeLastWhile { it is CodeStep.Label }.map { (it as CodeStep.Label).field0 }.toSet()
+    check(
+        steps.lastOrNull { it !is CodeStep.Label }?.fallsThrough == false &&
+            steps.none { it is CodeStep.Instruction && it.field0.target in trailingLabels }
+    ) {
+        "The replacement for ${info.descriptor} falls off the end of the method; end every path with a return"
+    }
 }

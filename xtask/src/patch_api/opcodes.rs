@@ -6,12 +6,11 @@ use std::path::Path;
 
 use anyhow::Result;
 
-/// Writes the Kotlin opcode enum and width table from the DEX instruction catalogue.
+/// Writes the Kotlin opcode enum and its invoke and return sets from the DEX instruction catalogue.
 pub fn write(directory: &Path) -> Result<()> {
     struct Opcode {
         name: &'static str,
         value: u16,
-        units: u32,
         invokes: bool,
         returns: bool,
     }
@@ -61,7 +60,6 @@ pub fn write(directory: &Path) -> Result<()> {
                 value: instruction
                     .opcode()
                     .expect("fixed instructions have opcodes"),
-                units: instruction.code_units(),
                 invokes: instruction.is_invoke(),
                 returns: instruction.is_return(),
             });
@@ -76,11 +74,6 @@ pub fn write(directory: &Path) -> Result<()> {
         }};
     }
     let opcodes = reseam_dex::instruction_catalogue!(rows);
-    let widths = opcodes
-        .iter()
-        .map(|op| format!("            {} -> {}", op.value, op.units))
-        .collect::<Vec<_>>()
-        .join("\n");
     let invokes = opcodes
         .iter()
         .filter(|op| op.invokes)
@@ -98,11 +91,11 @@ pub fn write(directory: &Path) -> Result<()> {
         .map(|op| format!("    {}(0x{:02x})", kotlin_opcode_name(op.name), op.value))
         .collect::<Vec<_>>()
         .join(",\n");
-    let widths = format!(
-        "// Generated from the DEX instruction catalogue. Do not edit.\npackage app.reseam.patch.dex\n\ninternal object OpcodeWidths {{\n    fun units(opcode: Int): Int =\n        when (opcode) {{\n{widths}\n            else -> error(\"unsupported opcode: $opcode\")\n        }}\n    fun invokes(opcode: Int): Boolean = when (opcode) {{ {invokes} -> true; else -> false }}\n    fun returns(opcode: Int): Boolean = when (opcode) {{ {returns} -> true; else -> false }}\n}}\n"
+    let kinds = format!(
+        "// Generated from the DEX instruction catalogue. Do not edit.\npackage app.reseam.patch.dex\n\ninternal object OpcodeKinds {{\n    fun invokes(opcode: Int): Boolean = when (opcode) {{ {invokes} -> true; else -> false }}\n    fun returns(opcode: Int): Boolean = when (opcode) {{ {returns} -> true; else -> false }}\n}}\n"
     );
     fs::create_dir_all(directory)?;
-    fs::write(directory.join("OpcodeWidths.kt"), widths)?;
+    fs::write(directory.join("OpcodeKinds.kt"), kinds)?;
     fs::write(directory.join("Opcode.kt"), opcode_enum(&entries))?;
     Ok(())
 }
@@ -116,8 +109,8 @@ package app.reseam.patch.dex
 enum class Opcode(val value: Int) {{
 {entries};
 
-    val isInvoke: Boolean get() = OpcodeWidths.invokes(value)
-    val isReturn: Boolean get() = OpcodeWidths.returns(value)
+    val isInvoke: Boolean get() = OpcodeKinds.invokes(value)
+    val isReturn: Boolean get() = OpcodeKinds.returns(value)
     /** Execution never falls through to the next instruction. */
     val endsFlow: Boolean get() = isReturn || this == THROW || this == GOTO || this == GOTO_16 || this == GOTO_32
     val isMoveResult: Boolean get() = this == MOVE_RESULT || this == MOVE_RESULT_WIDE || this == MOVE_RESULT_OBJECT

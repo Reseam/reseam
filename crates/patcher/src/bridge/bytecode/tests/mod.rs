@@ -4,18 +4,17 @@
 use reseam_dex::{AccessFlags, DexFile, DexHeader, DexVersion};
 
 use super::{
-    annotations, assembly, class_ops, fields, lookup, methods, mutation, positions, registers,
-    search,
+    annotations, class_ops, fields, lookup, methods, mutation, positions, registers, search,
 };
 use crate::bridge::dex::types::{Instruction, NewMethod, SimpleInsn};
 use crate::bridge::phase::{ContextGuard, RunningBundle};
 use crate::bridge::run_state::RunGuard;
 use crate::context::{ExtensionSet, PatchContext};
 
+mod assembled;
 mod bridge;
 mod fixtures;
 mod handles;
-mod lowering;
 mod members;
 mod operands;
 

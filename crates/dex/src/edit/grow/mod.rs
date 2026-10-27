@@ -5,8 +5,8 @@ mod allocation;
 mod invoke;
 mod widen;
 
+use super::forms::move_register;
 use allocation::{Allocation, ArgumentArea};
-use widen::move_register;
 
 use super::liveness::RegisterLiveness;
 use super::register_types::RegisterTypes;

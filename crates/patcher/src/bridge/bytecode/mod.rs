@@ -4,6 +4,7 @@
 pub(crate) mod annotations;
 pub(crate) mod assembly;
 pub(crate) mod class_ops;
+pub(crate) mod code;
 pub(crate) mod fields;
 pub(crate) mod lookup;
 pub(crate) mod methods;

@@ -1,18 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-//! Bridge invocations lowered through the DEX invoke rules: argument moves
-//! into scratch registers and the encoding that reaches the arguments.
+//! Bridge invocations encoded through the DEX invoke rules.
 
 use reseam_dex::{
-    ArgumentMove, Invocation, InvokeEncoding, InvokeForm, Receiver, RegisterKind, argument_kinds,
-    array_kinds,
+    Invocation, InvokeEncoding, InvokeForm, Receiver, RegisterKind, argument_kinds, array_kinds,
 };
 
 use super::convert::invalid;
 use super::types::{
     CustomRangeInsn, FilledArrayRangeInsn, Instruction, InvokeRangeInsn, PolymorphicRangeInsn,
-    Reg2Insn,
 };
 
 /// An invoke or filled-new-array as written: its form, its argument words,
@@ -99,64 +96,18 @@ fn range_registers(start: u16, count: u16) -> reseam_dex::Result<Vec<u16>> {
         .collect()
 }
 
-/// Scratch words an instruction needs to be lowered; zero for all but
-/// invocations whose arguments no encoding reaches where they are.
-pub(in crate::bridge) fn scratch_words(instruction: &Instruction) -> reseam_dex::Result<u16> {
-    Ok(match invocation(instruction)? {
-        Some(written) => written.invocation()?.scratch_words(),
-        None => 0,
-    })
-}
-
-/// The instructions an invocation lowers to: copies into `scratch` when its
-/// arguments are not consecutive, then the call in the form that reaches
-/// them. Any other instruction lowers to itself.
-pub(in crate::bridge) fn lower_invocation(
+/// An invocation in the form that reaches its arguments where they are: the form it was
+/// written in when that fits, else the range form. Any other instruction is unchanged.
+pub(in crate::bridge) fn encoded_invocation(
     instruction: Instruction,
-    scratch: &[u16],
-) -> reseam_dex::Result<Vec<Instruction>> {
+) -> reseam_dex::Result<Instruction> {
     let Some(written) = invocation(&instruction)? else {
-        return Ok(vec![instruction]);
+        return Ok(instruction);
     };
-    let invocation = written.invocation()?;
-    let words = usize::from(invocation.scratch_words());
-    if words != 0
-        && (scratch.len() != words
-            || scratch
-                .windows(2)
-                .any(|pair| pair[0].checked_add(1) != Some(pair[1])))
-    {
-        return Err(invalid(
-            "scratch span must be consecutive and match the argument words",
-        ));
+    match written.invocation()?.lower(None)?.1 {
+        InvokeEncoding::Compact => Ok(instruction),
+        InvokeEncoding::Range { first, count } => range(instruction, first, u16::from(count)),
     }
-    let (moves, encoding) = invocation.lower(scratch.first().copied().filter(|_| words != 0))?;
-    let mut lowered: Vec<Instruction> = moves.into_iter().map(move_argument).collect();
-    lowered.push(match encoding {
-        InvokeEncoding::Compact => instruction,
-        InvokeEncoding::Range { first, count } => range(instruction, first, u16::from(count))?,
-    });
-    Ok(lowered)
-}
-
-fn move_argument(argument: ArgumentMove) -> Instruction {
-    let base = match argument.kind {
-        RegisterKind::Value => 1,
-        RegisterKind::Wide => 4,
-        RegisterKind::Object => 7,
-    };
-    let width = if argument.dest <= 15 && argument.src <= 15 {
-        0
-    } else if argument.dest <= 255 {
-        1
-    } else {
-        2
-    };
-    Instruction::Reg2(Reg2Insn {
-        opcode: base + width,
-        reg_a: argument.dest,
-        reg_b: argument.src,
-    })
 }
 
 /// The range form of an invocation, reading `count` words from `first`.

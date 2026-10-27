@@ -3,19 +3,10 @@
 
 use std::collections::BTreeMap;
 
-use boltffi::export;
-use dex::BranchDestination;
-use reseam_dex::{self as dex, CodeItem, DexFile};
+use reseam_dex::{self as dex, BranchDestination, CodeItem, DexFile, InstructionExpansion};
 
-use crate::bridge::dex::convert::{dex_to_kotlin, kotlin_to_dex};
-use crate::bridge::dex::invocations::{lower_invocation, scratch_words};
-use crate::bridge::dex::types::{Instruction, ScratchSpan};
-
-pub(super) struct Assembly {
-    pub code: CodeItem,
-    pub boundaries: Vec<usize>,
-    originals: Vec<Vec<Instruction>>,
-}
+use crate::bridge::dex::convert::kotlin_to_dex;
+use crate::bridge::dex::types::Instruction;
 
 fn invalid(reason: impl Into<String>) -> dex::DexError {
     dex::DexError::Invalid {
@@ -54,47 +45,27 @@ fn branch_placeholder(instruction: &Instruction) -> Option<Instruction> {
     })
 }
 
+/// A body from instructions as a patch wrote them. Each branch keeps the instruction its
+/// displacement names, or the outside of the block, while its encoding widens to reach it.
 pub(super) fn assemble(
     instructions: Vec<Instruction>,
-    scratch: Vec<ScratchSpan>,
     dex: &mut DexFile,
     dex_index: Option<usize>,
     initialize: impl FnOnce(&mut CodeItem, &mut DexFile) -> dex::Result<()>,
-) -> dex::Result<Assembly> {
-    let mut scratch_by_instruction = BTreeMap::new();
-    for span in scratch {
-        let index = span.instruction_index as usize;
-        if index >= instructions.len()
-            || scratch_by_instruction
-                .insert(index, span.registers)
-                .is_some()
-        {
-            return Err(invalid("scratch hint must name one existing instruction"));
-        }
-    }
-    let mut originals = Vec::with_capacity(instructions.len());
+) -> dex::Result<CodeItem> {
     let mut native = Vec::with_capacity(instructions.len());
     let mut offsets = Vec::with_capacity(instructions.len() + 1);
     let mut branches = Vec::new();
     let mut address = 0u32;
-    for (index, instruction) in instructions.into_iter().enumerate() {
+    for instruction in &instructions {
         offsets.push(address);
-        let authored_branch = branch_offset(&instruction);
-        let lowered = lower_invocation(
-            instruction,
-            &scratch_by_instruction.remove(&index).unwrap_or_default(),
-        )?;
-        let primary = lowered
-            .last()
-            .expect("lowering preserves each original instruction");
-        let placeholder = branch_placeholder(primary);
-        let primary = kotlin_to_dex(placeholder.as_ref().unwrap_or(primary), dex, dex_index)?;
-        branches.push(authored_branch.or_else(|| primary.branch_offset()));
+        let placeholder = branch_placeholder(instruction);
+        let converted = kotlin_to_dex(placeholder.as_ref().unwrap_or(instruction), dex, dex_index)?;
+        branches.push(branch_offset(instruction).or_else(|| converted.branch_offset()));
         address = address
-            .checked_add(primary.code_units())
+            .checked_add(converted.code_units())
             .ok_or_else(|| invalid("code unit count exceeds 32 bits"))?;
-        native.push(primary);
-        originals.push(lowered);
+        native.push(converted);
     }
     offsets.push(address);
     let targets = branches
@@ -114,98 +85,20 @@ pub(super) fn assemble(
                         return Err(invalid("branch target is not an instruction boundary"));
                     }
                     None => {
-                        native[index] = kotlin_to_dex(
-                            originals[index]
-                                .last()
-                                .expect("lowering retains every original instruction"),
-                            dex,
-                            dex_index,
-                        )?;
+                        native[index] = kotlin_to_dex(&instructions[index], dex, dex_index)?;
                         BranchDestination::External
                     }
                 },
             ))
         })
         .collect::<dex::Result<BTreeMap<_, _>>>()?;
-    let prefixes = originals
+    let expansions = native
         .iter()
-        .map(|lowered| {
-            lowered[..lowered.len() - 1]
-                .iter()
-                .map(|instruction| kotlin_to_dex(instruction, dex, dex_index))
-                .collect::<dex::Result<Vec<_>>>()
-        })
-        .collect::<dex::Result<_>>()?;
+        .cloned()
+        .map(InstructionExpansion::from)
+        .collect();
     let mut code = CodeItem::new(u16::MAX, 0, 0, native)?;
     initialize(&mut code, dex)?;
-    let (code, mapping) = code.prepend_instructions(prefixes, &targets)?;
-    let boundaries = mapping.starts().to_vec();
-    Ok(Assembly {
-        code,
-        boundaries,
-        originals,
-    })
-}
-
-impl Assembly {
-    fn into_sdk(self, dex: &DexFile) -> dex::Result<Vec<Instruction>> {
-        let mut unchanged = BTreeMap::new();
-        for (index, lowered) in self.originals.into_iter().enumerate() {
-            for (offset, instruction) in lowered.into_iter().enumerate() {
-                let native = &self.code.instructions()[self.boundaries[index] + offset];
-                // Payload identifiers span two bytes; data references must retain relocated offsets.
-                if native.branch_offset().is_none()
-                    && !matches!(
-                        native,
-                        dex::Instruction::FillArrayData { .. }
-                            | dex::Instruction::PackedSwitch { .. }
-                            | dex::Instruction::SparseSwitch { .. }
-                    )
-                    && native
-                        .opcode()
-                        .is_some_and(|opcode| u8::try_from(opcode).is_ok())
-                {
-                    unchanged.insert(self.boundaries[index] + offset, instruction);
-                }
-            }
-        }
-        self.code
-            .instructions()
-            .iter()
-            .enumerate()
-            .map(|(index, instruction)| match unchanged.remove(&index) {
-                Some(instruction) => Ok(instruction),
-                None => dex_to_kotlin(instruction, dex, None),
-            })
-            .collect()
-    }
-}
-
-/// Scratch words each instruction needs to be lowered; zero for all but wide invokes.
-#[export]
-pub fn invoke_scratch_words(instructions: Vec<Instruction>) -> Result<Vec<u32>, String> {
-    instructions
-        .iter()
-        .map(|instruction| scratch_words(instruction).map(u32::from))
-        .collect::<dex::Result<_>>()
-        .map_err(|error| error.to_string())
-}
-
-#[export]
-pub fn lower_instruction(
-    instruction: Instruction,
-    scratch: Vec<u16>,
-) -> Result<Vec<Instruction>, String> {
-    lower_invocation(instruction, &scratch).map_err(|error| error.to_string())
-}
-
-#[export]
-pub fn lower_instructions(
-    instructions: Vec<Instruction>,
-    scratch: Vec<ScratchSpan>,
-) -> Result<Vec<Instruction>, String> {
-    let mut dex = DexFile::new(dex::DexHeader::new(dex::DexVersion::V039));
-    assemble(instructions, scratch, &mut dex, None, |_, _| Ok(()))
-        .and_then(|assembly| assembly.into_sdk(&dex))
-        .map_err(|error| error.to_string())
+    code.rewrite_instructions(expansions, &targets)?;
+    Ok(code)
 }

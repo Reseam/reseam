@@ -64,7 +64,6 @@ pub fn add_method(c: u32, method: NewMethod) -> u32 {
                 "assemble method body",
                 super::assembly::assemble(
                     method.instructions,
-                    Vec::new(),
                     dex,
                     Some(loc.dex_idx),
                     |code, dex| {
@@ -106,7 +105,7 @@ pub fn add_method(c: u32, method: NewMethod) -> u32 {
                     },
                 ),
             )?;
-            Some(assembly.code)
+            Some(assembly)
         };
         let encoded = EncodedMethod {
             method: method_idx,

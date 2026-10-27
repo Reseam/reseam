@@ -87,7 +87,18 @@ internal class MethodEdits {
         of(local.method.handle).locals += local
     }
 
-    fun reserved(method: Method): List<MethodLocal> = tracked[method.handle]?.locals.orEmpty()
+    /**
+     * The registers of [method]'s reserved locals. A reserved local is dead between the block that
+     * writes it and the one that reads it until the reader is emitted, so liveness alone would let
+     * an edit reuse it.
+     */
+    fun held(method: Method): UShortArray =
+        tracked[method.handle]
+            ?.locals
+            .orEmpty()
+            .flatMap { local -> (local.register until local.register + local.wordCount) }
+            .map { it.toUShort() }
+            .toUShortArray()
 
     fun entry(method: Method): Int = tracked[method.handle]?.prologueEnd ?: 0
 
@@ -106,9 +117,12 @@ internal class MethodEdits {
         entry.anchors.forEach { it.relocate(mapping, kind, removed) }
     }
 
-    /** Locals added below the incoming window shift every register at or above [base]. */
-    fun grewRegisters(handle: UInt, base: Int, additional: Int) {
+    /** Locals added below the incoming window shift every register at or above the base. */
+    fun grew(handle: UInt, growth: MethodEdit) {
+        relocated(handle, growth, EditKind.GROW)
         val entry = tracked[handle] ?: return
+        val base = growth.registerBase.toInt()
+        val additional = growth.registerShift.toInt()
         entry.captures.forEach { it.relocate(base, additional) }
         entry.locals.forEach { it.relocate(base, additional) }
     }

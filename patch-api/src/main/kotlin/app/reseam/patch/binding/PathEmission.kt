@@ -7,12 +7,9 @@ import app.reseam.patch.Type
 import app.reseam.patch.ValueRef
 import app.reseam.patch.dex.Opcode
 import app.reseam.patch.dex.isReferenceType
-import app.reseam.patch.dex.registerWordCount
 import app.reseam.patch.emit.CodeEmitter
-import app.reseam.patch.emit.EmissionLabel
-import app.reseam.patch.emit.RegisterConstraint
+import app.reseam.patch.emit.Label
 import app.reseam.patch.emit.Value
-import app.reseam.patch.emit.allocTemp
 import app.reseam.patch.emit.builtBy
 import app.reseam.patch.emit.cast
 import app.reseam.patch.emit.constZero
@@ -21,9 +18,7 @@ import app.reseam.patch.emit.ifNonZero
 import app.reseam.patch.emit.ifZero
 import app.reseam.patch.emit.instanceOf
 import app.reseam.patch.emit.invoke
-import app.reseam.patch.emit.label
-import app.reseam.patch.emit.moveValue
-import app.reseam.patch.emit.nextLabel
+import app.reseam.patch.emit.move
 import app.reseam.patch.emit.readField
 import app.reseam.patch.native.isAssignable
 import app.reseam.patch.types.MethodRef
@@ -37,9 +32,9 @@ internal fun ResolvedPath.emit(base: ValueRef, label: String): ValueRef {
     var current = adaptInput(emitter, start, rootType, label)
     if (steps.isEmpty()) return current
 
-    val nullLabel = emitter.nextLabel()
-    val doneLabel = emitter.nextLabel()
-    val result = emitter.allocTemp(registerWordCount(resultType))
+    val nullLabel = emitter.label()
+    val doneLabel = emitter.label()
+    val result = emitter.temporary(resultType)
 
     for (step in steps) {
         current =
@@ -84,44 +79,41 @@ internal fun ResolvedPath.emit(base: ValueRef, label: String): ValueRef {
                 is PathStep.CastValue -> emitter.cast(current, step.type).builtBy(emitter)
                 is PathStep.ObjectSlot -> {
                     val obj = nullChecked(emitter, current, nullLabel)
-                    val slotDone = emitter.nextLabel()
-                    val slot = emitter.allocTemp(constraint = RegisterConstraint.LOW)
-                    emitter.constZero(slot, step.targetType)
-                    val slotValue = Value(emitter, slot, step.targetType)
+                    val slotDone = emitter.label()
+                    val slot = emitter.temporary(step.targetType)
+                    emitter.constZero(slot)
                     for (field in step.fields) {
-                        val next = emitter.nextLabel()
+                        val next = emitter.label()
                         val probe = emitter.readField(obj, field).builtBy(emitter)
                         val isInstance = emitter.instanceOf(probe, step.targetType)
                         emitter.ifZero(isInstance, next)
-                        emitter.moveValue(slot, probe.register, step.targetType)
-                        emitter.cast(slotValue, step.targetType)
+                        emitter.move(slot, probe)
+                        emitter.cast(slot, step.targetType)
                         emitter.goto(slotDone)
-                        emitter.label(next)
+                        emitter.place(next)
                     }
-                    emitter.label(slotDone)
-                    emitter.ifZero(slotValue, nullLabel)
-                    slotValue
+                    emitter.place(slotDone)
+                    emitter.ifZero(slot, nullLabel)
+                    slot
                 }
             }
     }
 
-    emitter.moveValue(result, current.register, resultType)
+    emitter.move(result, current)
     emitter.goto(doneLabel)
-    emitter.label(nullLabel)
-    emitter.constZero(result, resultType)
-    emitter.label(doneLabel)
-    return Value(emitter, result, resultType)
+    emitter.place(nullLabel)
+    emitter.constZero(result)
+    emitter.place(doneLabel)
+    return result
 }
 
 private fun nullChecked(
     emitter: CodeEmitter,
     value: Value,
-    nullLabel: EmissionLabel,
+    nullLabel: Label,
 ): Value {
-    if (!isReferenceType(value.type)) return value
-    val checked = value.asByte()
-    emitter.ifZero(checked, nullLabel)
-    return checked
+    if (isReferenceType(value.type)) emitter.ifZero(value, nullLabel)
+    return value
 }
 
 private fun adaptInput(

@@ -12,7 +12,7 @@ To write patches, start from the [patch bundle template](https://git.reseam.app/
 
 | Package | Contents |
 |---|---|
-| `app.reseam.patch` | What patch authors use. `Patch.kt` declares patches. `Targets.kt`, `Query.kt`, and `Point.kt` find code. `Code.kt`, `CodeEmitter.kt`, and `Hooks.kt` change it. `Scopes.kt` covers the manifest, resources, files, and XML. `Options.kt` and `settings/` cover user settings. `Bindings.kt` reads obfuscated objects. |
+| `app.reseam.patch` | What patch authors use. `Patch.kt` declares patches. `Targets.kt`, `Query.kt`, and `Point.kt` find code. `Code.kt` and `Hooks.kt` change it, and `emit/` records code blocks over temporaries that the engine places in registers. `Scopes.kt` covers the manifest, resources, files, and XML. `Options.kt` and `settings/` cover user settings. `Bindings.kt` reads obfuscated objects. |
 | `app.reseam.patch.dex` | Raw bytecode access: `Method`, `DexClass`, `Opcode`, `InstructionBuilder`. |
 | `app.reseam.patch.types` | Generated data types such as `Instruction` and `MethodRef`. Authors use these too. |
 | `app.reseam.patch.native` | Generated calls into the engine. Only the handwritten code uses them. |

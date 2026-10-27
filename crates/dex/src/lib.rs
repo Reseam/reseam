@@ -32,13 +32,16 @@ mod references;
 mod search;
 mod write;
 
+pub use edit::block::{
+    BlockInsertion, BlockOperand, BlockRegister, BlockStep, FrameGrowth, insert_block,
+};
+pub use edit::body::IncomingBranches;
+pub use edit::forms::move_register;
 pub use edit::grow::grow_registers;
 pub use edit::invoke::{
     ArgumentMove, Invocation, InvokeEncoding, InvokeForm, Receiver, argument_kinds, array_kinds,
 };
-pub use edit::liveness::{
-    find_contiguous_free_registers, find_free_register, reaching_definitions,
-};
+pub use edit::liveness::{find_free_register, reaching_definitions};
 pub use edit::relocate::{BranchDestination, InstructionExpansion, InstructionMap};
 pub use encoding::mutf8::decode_mutf8;
 pub use error::{DexError, Result};

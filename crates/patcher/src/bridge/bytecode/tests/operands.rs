@@ -84,7 +84,7 @@ fn pool_operands_survive_copying_between_dex_files() {
 }
 
 #[test]
-fn authored_raw_pool_references_survive_pure_lowering_and_insertion() {
+fn authored_raw_pool_references_survive_insertion() {
     enum Reference {
         String,
         Type,
@@ -114,11 +114,10 @@ fn authored_raw_pool_references_survive_pure_lowering_and_insertion() {
     for (reference, (opcode, index)) in references {
         let index = u16::try_from(index).unwrap().to_le_bytes();
         let raw = Instruction::Raw(vec![opcode, 0, index[0], index[1]]);
-        let lowered = assembly::lower_instructions(vec![raw], vec![]).unwrap();
         let guard =
             ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned()))
                 .unwrap();
-        mutation::insert_instructions(handles.method, 0, lowered).unwrap();
+        mutation::insert_instructions(handles.method, 0, vec![raw]).unwrap();
         match (reference, &search::get_instructions(handles.method)[0]) {
             (Reference::String, Instruction::RegString(load)) => {
                 assert_eq!(load.value, "held string");

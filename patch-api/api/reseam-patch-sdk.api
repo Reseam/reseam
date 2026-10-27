@@ -1016,19 +1016,19 @@ public final class app/reseam/patch/dex/InstructionBuilder {
 	public final fun constString (ILjava/lang/String;)V
 	public final fun divInt (III)V
 	public final fun field (Lapp/reseam/patch/dex/Opcode;IILapp/reseam/patch/types/FieldRef;)V
-	public final fun goto (Ljava/lang/String;)V
-	public final fun ifEq (IILjava/lang/String;)V
-	public final fun ifEqz (ILjava/lang/String;)V
-	public final fun ifGe (IILjava/lang/String;)V
-	public final fun ifGez (ILjava/lang/String;)V
-	public final fun ifGt (IILjava/lang/String;)V
-	public final fun ifGtz (ILjava/lang/String;)V
-	public final fun ifLe (IILjava/lang/String;)V
-	public final fun ifLez (ILjava/lang/String;)V
-	public final fun ifLt (IILjava/lang/String;)V
-	public final fun ifLtz (ILjava/lang/String;)V
-	public final fun ifNe (IILjava/lang/String;)V
-	public final fun ifNez (ILjava/lang/String;)V
+	public final fun goto (I)V
+	public final fun ifEq (III)V
+	public final fun ifEqz (II)V
+	public final fun ifGe (III)V
+	public final fun ifGez (II)V
+	public final fun ifGt (III)V
+	public final fun ifGtz (II)V
+	public final fun ifLe (III)V
+	public final fun ifLez (II)V
+	public final fun ifLt (III)V
+	public final fun ifLtz (II)V
+	public final fun ifNe (III)V
+	public final fun ifNez (II)V
 	public final fun iget (IILapp/reseam/patch/types/FieldRef;)V
 	public final fun instanceOf (IILjava/lang/String;)V
 	public final fun invoke (Lapp/reseam/patch/dex/Opcode;Lapp/reseam/patch/types/MethodRef;Ljava/util/List;)V
@@ -1039,7 +1039,6 @@ public final class app/reseam/patch/dex/InstructionBuilder {
 	public final fun invokeSuper (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[I)V
 	public final fun invokeVirtual (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[I)V
 	public final fun iput (IILapp/reseam/patch/types/FieldRef;)V
-	public final fun label (Ljava/lang/String;)V
 	public final fun literal (Lapp/reseam/patch/dex/Opcode;IJI)V
 	public static synthetic fun literal$default (Lapp/reseam/patch/dex/InstructionBuilder;Lapp/reseam/patch/dex/Opcode;IJIILjava/lang/Object;)V
 	public final fun move (IILjava/lang/String;)V

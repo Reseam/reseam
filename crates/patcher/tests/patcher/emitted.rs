@@ -156,3 +156,15 @@ fn a_goto_past_127_code_units_lands_on_its_label() {
     let code = patched_code(&apk, "Lcom/example/ConstantHost;", "small");
     assert_eq!(hook_calls(&code, &[1]), (vec![], Some(0)));
 }
+
+#[test]
+fn emitted_operands_reach_registers_their_encoding_cannot_name() {
+    let (_directory, mut apk) = open_dex_apk(&[dex!("entry_values")]);
+    apply_fixture(&mut apk, "distant-operands", "distantOperands");
+    let code = patched_code(&apk, "Lcom/example/HookTarget;", "invokeGrowth");
+    assert!(code.registers_size() - code.ins_size() > 15);
+    for (incoming, entered) in [([1, 2, 6, 6, 9], true), ([1, 2, 6, 7, 9], false)] {
+        let (calls, _) = hook_calls(&code, &incoming);
+        assert_eq!(calls.first() == Some(&vec![9]), entered, "{incoming:?}");
+    }
+}
