@@ -26,4 +26,4 @@ Apps that patch should call [`reseam-sdk`](../../sdk/) instead. It wraps this cr
 
 The engine checks that a bundle is intact and signed by the key it carries. Whether to accept that key is up to the host.
 
-The Kotlin side of the bridge lives in [`patch-api/`](../../patch-api/). After changing an `#[export]` function, run `cargo xtask regen patch-api`. [`ARCHITECTURE.md`](ARCHITECTURE.md) describes how a run flows through the modules.
+The Kotlin side of the bridge lives in [`patch-api/`](../../patch-api/). After changing an `#[export]` function, run `cargo xtask regen patch-api`.
