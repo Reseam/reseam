@@ -21,7 +21,7 @@ Handwritten code lives in `src/main/kotlin/app/reseam/patch/`. Everything under 
 
 ## Adding an engine capability
 
-1. Add an `#[export]` function in `crates/patcher/src/kotlin/`.
+1. Add an `#[export]` function in `crates/patcher/src/bridge/`.
 2. Regenerate the bindings:
 
    ```bash

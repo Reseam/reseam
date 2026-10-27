@@ -41,7 +41,7 @@ pub fn apply_patches<'p>(
     mut observer: impl FnMut(RunEvent),
 ) -> Result<AppliedRun<'p>> {
     #[cfg(feature = "bridge")]
-    let _bridge = crate::kotlin::run_state::RunGuard::enter()?;
+    let _bridge = crate::bridge::run_state::RunGuard::enter()?;
     info!(
         patch_count = plan.order().len(),
         "starting patch application"
@@ -177,7 +177,7 @@ impl AppliedRun<'_> {
         mut observer: impl FnMut(RunEvent),
     ) -> Result<()> {
         #[cfg(feature = "bridge")]
-        let _bridge = crate::kotlin::run_state::RunGuard::enter()?;
+        let _bridge = crate::bridge::run_state::RunGuard::enter()?;
         for rewrite in &self.rewrites {
             let reference = rewrite.patch.reference();
             let _span = info_span!("rewrite_output", patch = reference).entered();

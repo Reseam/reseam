@@ -22,7 +22,7 @@ Apps that patch should call [`reseam-sdk`](../../sdk/) instead. It wraps this cr
 | `context` | `PatchContext`: the open APK, DEX search, logs, and options |
 | `patch` | `Patch`, `PatchSpec`, and compatibility declarations |
 | `options` | option declarations, values, and validation |
-| `kotlin` | the JVM host, bundle class loading, and the `#[export]` functions Kotlin calls |
+| `bridge` | the JVM host, bundle class loading, and the `#[export]` functions Kotlin calls |
 
 The engine checks that a bundle is intact and signed by the key it carries. Whether to accept that key is up to the host.
 

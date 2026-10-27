@@ -47,7 +47,7 @@ export type JvmRequest =
   | { type: 'disconnect' };
 export interface Declaration { class: string; owner: string; member: string; kind: 'field' | 'method'; id: string }
 type Phase = 'execute' | 'finalize';
-/** A patch runtime request from the engine, as `crates/patcher/src/kotlin/browser.rs` sends it. */
+/** A patch runtime request from the engine, as `crates/patcher/src/bridge/runtime/browser.rs` sends it. */
 export type HostRequest =
   | { operation: 'load'; jars: string[]; bundle: string; declarations: Declaration[] }
   | { operation: 'invoke'; handle: number; patch: string; phase: Phase }

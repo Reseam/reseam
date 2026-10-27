@@ -30,7 +30,7 @@ impl Savepoints {
         self.next = savepoint.next();
         ctx.open_savepoint(savepoint);
         #[cfg(feature = "bridge")]
-        crate::kotlin::savepoints::open_savepoint(savepoint)?;
+        crate::bridge::savepoints::open_savepoint(savepoint)?;
         self.held.push((idx, savepoint));
         Ok(savepoint)
     }
@@ -42,7 +42,7 @@ impl Savepoints {
     ) -> Result<()> {
         ctx.release_savepoint(savepoint);
         #[cfg(feature = "bridge")]
-        crate::kotlin::savepoints::release_savepoint(savepoint)?;
+        crate::bridge::savepoints::release_savepoint(savepoint)?;
         self.held.retain(|&(_, held)| held != savepoint);
         Ok(())
     }
@@ -54,7 +54,7 @@ impl Savepoints {
     ) -> Result<()> {
         ctx.rollback_to(savepoint);
         #[cfg(feature = "bridge")]
-        crate::kotlin::savepoints::rollback_to(savepoint)?;
+        crate::bridge::savepoints::rollback_to(savepoint)?;
         self.held.retain(|&(_, held)| held < savepoint);
         Ok(())
     }
@@ -72,7 +72,7 @@ impl Savepoints {
         for (_, savepoint) in std::mem::take(&mut self.held) {
             ctx.release_savepoint(savepoint);
             #[cfg(feature = "bridge")]
-            crate::kotlin::savepoints::release_savepoint(savepoint)?;
+            crate::bridge::savepoints::release_savepoint(savepoint)?;
         }
         Ok(())
     }

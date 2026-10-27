@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 mod app_runtime;
+#[cfg(feature = "bridge")]
+pub mod bridge;
 pub mod bundle;
 pub mod context;
 pub mod engine;
 pub mod error;
-#[cfg(feature = "bridge")]
-pub mod kotlin;
 pub mod log;
 pub mod options;
 pub mod output;
@@ -24,7 +24,7 @@ pub use reseam_model::JvmHeapStats;
 pub fn jvm_heap_stats() -> Option<JvmHeapStats> {
     #[cfg(feature = "kotlin")]
     {
-        kotlin::jvm::heap_stats()
+        bridge::runtime::jvm::heap_stats()
     }
     #[cfg(not(feature = "kotlin"))]
     {
@@ -36,7 +36,7 @@ pub fn jvm_heap_stats() -> Option<JvmHeapStats> {
 /// unloads the run's class loader and lets the heap shrink back.
 pub fn release_runtime_memory() {
     #[cfg(feature = "kotlin")]
-    kotlin::jvm::collect_garbage();
+    bridge::runtime::jvm::collect_garbage();
 }
 
 #[cfg(test)]

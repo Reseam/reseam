@@ -151,7 +151,7 @@ impl BundleArchive {
                 members.retain(|declaration| patches.contains(&declaration.id));
             }
             declarations.retain(|_, members| !members.is_empty());
-            crate::kotlin::load_patches(
+            crate::bridge::load_patches(
                 &jars,
                 &declarations,
                 Arc::clone(&extracted),

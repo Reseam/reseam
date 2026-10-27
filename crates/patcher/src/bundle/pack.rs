@@ -58,7 +58,7 @@ pub fn pack(dir: &Path, version: Option<&str>, key: &BundleKey, out: &Path) -> R
         ..manifest.bundle
     };
     #[cfg(feature = "kotlin")]
-    let patches = crate::kotlin::load_patches(
+    let patches = crate::bridge::load_patches(
         &jars,
         &super::declarations::declarations(&jars)?,
         Arc::clone(&snapshot),

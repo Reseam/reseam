@@ -25,8 +25,8 @@ pub(crate) fn apk() -> (tempfile::TempDir, ApkFile) {
     (dir, apk)
 }
 
-pub(crate) fn pool_operands() -> Vec<crate::kotlin::types::Instruction> {
-    use crate::kotlin::types::{
+pub(crate) fn pool_operands() -> Vec<crate::bridge::dex::types::Instruction> {
+    use crate::bridge::dex::types::{
         CallSiteRef, CustomInsn, EncodedVal, HandleRef, Instruction, MethodHandleRef, MethodRef,
         PolymorphicInsn, RegHandleInsn, RegProtoInsn, SimpleInsn,
     };
@@ -105,8 +105,10 @@ pub(crate) fn duplicate_call_site(
         .unwrap();
 }
 
-pub(crate) fn branch_marker() -> crate::kotlin::types::NewMethod {
-    use crate::kotlin::types::{BranchInsn, Instruction, NewMethod, RegStringInsn, SimpleInsn};
+pub(crate) fn branch_marker() -> crate::bridge::dex::types::NewMethod {
+    use crate::bridge::dex::types::{
+        BranchInsn, Instruction, NewMethod, RegStringInsn, SimpleInsn,
+    };
     NewMethod {
         name: "branchMarker".into(),
         proto: "(I)V".into(),
@@ -138,8 +140,8 @@ pub(crate) fn branch_marker() -> crate::kotlin::types::NewMethod {
     }
 }
 
-pub(crate) fn invoke_frame() -> crate::kotlin::types::NewMethod {
-    use crate::kotlin::types::{
+pub(crate) fn invoke_frame() -> crate::bridge::dex::types::NewMethod {
+    use crate::bridge::dex::types::{
         Instruction, InvokeInsn, MethodRef, NewMethod, RegLiteralInsn, SimpleInsn,
     };
     NewMethod {

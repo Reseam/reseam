@@ -24,7 +24,7 @@ pub use error::HostError;
 pub use inspection::{PreparedInspection, inspect};
 pub use install::dex_metadata;
 #[cfg(target_os = "android")]
-pub use reseam_patcher::kotlin::android_host::install_class_loader;
+pub use reseam_patcher::bridge::runtime::android_host::install_class_loader;
 pub use run::patch;
 
 #[cfg(test)]
