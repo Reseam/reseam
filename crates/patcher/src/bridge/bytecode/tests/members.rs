@@ -17,8 +17,8 @@ fn edits_preserve_instruction_identity_through_nonlocal_expansion() {
         ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned())).unwrap();
     let class = fixture_class(0, "LRelocation;");
     for (input, edit) in [
-        (crate::test_support::branch_marker(), Edit::Insert),
-        (crate::test_support::invoke_frame(), Edit::Grow),
+        (fixtures::branch_marker(), Edit::Insert),
+        (fixtures::invoke_frame(), Edit::Grow),
     ] {
         let method = methods::add_method(class, input);
         let mapping = match edit {

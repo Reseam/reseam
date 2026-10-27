@@ -41,6 +41,9 @@ kotlin = ["bridge", "dep:jni"]
 bridge = ["dep:boltffi", "dep:reseam-sign"]
 browser = ["bridge"]
 
+[dev-dependencies]
+reseam-fixtures = { workspace = true }
+
 [build-dependencies]
 cc = "1"
 

@@ -1935,6 +1935,7 @@ dependencies = [
  "libloading 0.9.0",
  "reseam-apk",
  "reseam-dex",
+ "reseam-fixtures",
  "reseam-hermes",
  "reseam-journal",
  "reseam-model",

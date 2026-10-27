@@ -17,7 +17,7 @@ fn pool_operands_survive_copying_between_dex_files() {
     let _run = RunGuard::enter().unwrap();
     let guard =
         ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned())).unwrap();
-    let inputs = crate::test_support::pool_operands();
+    let inputs = fixtures::pool_operands();
     let methods: Vec<_> = [(0, "LSource;"), (1, "LDestination;")]
         .into_iter()
         .map(|(dex, name)| {
@@ -38,7 +38,7 @@ fn pool_operands_survive_copying_between_dex_files() {
         .collect();
     guard.finish().unwrap();
     let source = crate::bridge::handles::method_location(methods[0]).unwrap();
-    crate::test_support::duplicate_call_site(&mut context, source);
+    fixtures::duplicate_call_site(&mut context, source);
     let guard =
         ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned())).unwrap();
     mutation::set_instructions(methods[1], search::get_instructions(methods[0])).unwrap();

@@ -13,6 +13,7 @@ use crate::bridge::run_state::RunGuard;
 use crate::context::{ExtensionSet, PatchContext};
 
 mod bridge;
+mod fixtures;
 mod handles;
 mod lowering;
 mod members;
