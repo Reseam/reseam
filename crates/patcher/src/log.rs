@@ -3,6 +3,24 @@
 
 pub use reseam_model::{LogEntry, LogLevel};
 
+use crate::options::PatchOptions;
+
+/// The log and options of the patch a context runs for.
+#[derive(Default)]
+pub struct PatchScope {
+    pub log: PatchLog,
+    pub options: PatchOptions,
+}
+
+impl PatchScope {
+    pub(crate) fn new(patch: &str, options: PatchOptions) -> Self {
+        Self {
+            log: PatchLog::new(patch),
+            options,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct PatchLog {
     patch: String,

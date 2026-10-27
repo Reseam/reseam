@@ -13,7 +13,7 @@ fn pool_operands_survive_copying_between_dex_files() {
         .intern_method("LDifferent;", "unrelated", "(Z)I")
         .unwrap();
     apk.add_dex(other);
-    let mut context = PatchContext::new(&mut apk);
+    let mut context = PatchContext::new(&mut apk, ExtensionSet::app_runtime());
     let _run = RunGuard::enter().unwrap();
     let guard =
         ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned())).unwrap();
@@ -91,7 +91,7 @@ fn authored_raw_pool_references_survive_pure_lowering_and_insertion() {
     }
     let (directory, mut apk) = crate::test_support::apk();
     apk.add_dex(DexFile::new(DexHeader::new(DexVersion::V039)));
-    let mut context = PatchContext::new(&mut apk);
+    let mut context = PatchContext::new(&mut apk, ExtensionSet::app_runtime());
     let _run = RunGuard::enter().unwrap();
     let guard =
         ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned())).unwrap();

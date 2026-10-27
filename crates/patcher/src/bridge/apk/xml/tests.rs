@@ -11,14 +11,14 @@ use super::*;
 use crate::bridge::apk::{manifest, manifest_activities};
 use crate::bridge::phase::{ContextGuard, RunningBundle};
 use crate::bridge::run_state::{RunGuard, check_invocation};
-use crate::context::PatchContext;
+use crate::context::{ExtensionSet, PatchContext};
 use reseam_apk::Compression;
 use reseam_apk::axml::AxmlDocument;
 
 #[test]
 fn manifest_views_share_borrows_and_keep_element_identities() {
     let (dir, mut apk) = crate::test_support::apk();
-    let mut ctx = PatchContext::new(&mut apk);
+    let mut ctx = PatchContext::new(&mut apk, ExtensionSet::app_runtime());
     let _run = RunGuard::enter().unwrap();
     let guard = ContextGuard::enter(&mut ctx, RunningBundle::at(dir.path().to_owned())).unwrap();
     let outer = manifest::manifest_get_document(None).unwrap();
@@ -85,7 +85,7 @@ fn manifest_views_share_borrows_and_keep_element_identities() {
 #[test]
 fn subtree_handles_follow_moves_and_removal_without_consuming_children() {
     let (dir, mut apk) = crate::test_support::apk();
-    let mut ctx = PatchContext::new(&mut apk);
+    let mut ctx = PatchContext::new(&mut apk, ExtensionSet::app_runtime());
     let _run = RunGuard::enter().unwrap();
     let guard = ContextGuard::enter(&mut ctx, RunningBundle::at(dir.path().to_owned())).unwrap();
     let document = manifest::manifest_get_document(None).unwrap();
@@ -128,7 +128,7 @@ fn subtree_handles_follow_moves_and_removal_without_consuming_children() {
 fn file_edits_commit_on_last_close_and_unfinished_edits_fail() {
     for close in [true, false] {
         let (dir, mut apk) = crate::test_support::apk();
-        let mut ctx = PatchContext::new(&mut apk);
+        let mut ctx = PatchContext::new(&mut apk, ExtensionSet::app_runtime());
         ctx.inject_file(0, "res/layout/main.xml", br#"<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"><TextView android:text="original"/></LinearLayout>"#.to_vec(), Compression::Deflated).unwrap();
         let _run = RunGuard::enter().unwrap();
         let guard =

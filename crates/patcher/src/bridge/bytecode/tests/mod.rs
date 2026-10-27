@@ -10,7 +10,7 @@ use super::{
 use crate::bridge::dex::types::{Instruction, NewMethod, SimpleInsn};
 use crate::bridge::phase::{ContextGuard, RunningBundle};
 use crate::bridge::run_state::RunGuard;
-use crate::context::PatchContext;
+use crate::context::{ExtensionSet, PatchContext};
 
 mod bridge;
 mod handles;
@@ -65,7 +65,7 @@ fn example_handles(name: &str) -> ExampleHandles {
 fn previous_run_handles() -> ExampleHandles {
     let (directory, mut apk) = crate::test_support::apk();
     apk.add_dex(DexFile::new(DexHeader::new(DexVersion::V035)));
-    let mut context = PatchContext::new(&mut apk);
+    let mut context = PatchContext::new(&mut apk, ExtensionSet::app_runtime());
     let _run = RunGuard::enter().unwrap();
     let guard =
         ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned())).unwrap();

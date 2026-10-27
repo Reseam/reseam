@@ -16,7 +16,7 @@ fn handles_from_finished_runs_cannot_alias_current_objects() {
         };
         let (directory, mut apk) = crate::test_support::apk();
         apk.add_dex(DexFile::new(DexHeader::new(DexVersion::V035)));
-        let mut context = PatchContext::new(&mut apk);
+        let mut context = PatchContext::new(&mut apk, ExtensionSet::app_runtime());
         let _run = RunGuard::enter().unwrap();
         let guard =
             ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned()))
@@ -50,7 +50,7 @@ fn handles_from_finished_runs_cannot_alias_current_objects() {
 fn handles_survive_class_removal_and_callback_boundaries() {
     let (dir, mut apk) = crate::test_support::apk();
     apk.add_dex(DexFile::new(DexHeader::new(DexVersion::V035)));
-    let mut ctx = PatchContext::new(&mut apk);
+    let mut ctx = PatchContext::new(&mut apk, ExtensionSet::app_runtime());
     let _run = RunGuard::enter().unwrap();
     let guard = ContextGuard::enter(&mut ctx, RunningBundle::at(dir.path().to_owned())).unwrap();
     let classes: Vec<_> = ["LA;", "LB;", "LC;"]

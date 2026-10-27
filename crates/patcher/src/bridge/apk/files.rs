@@ -182,12 +182,12 @@ mod tests {
     use super::*;
     use crate::bridge::phase::{ContextGuard, RunningBundle};
     use crate::bridge::run_state::RunGuard;
-    use crate::context::PatchContext;
+    use crate::context::{ExtensionSet, PatchContext};
 
     #[test]
     fn original_apk_ranges_are_bounded_and_report_invalid_requests() {
         let (directory, mut apk) = crate::test_support::apk();
-        let mut context = PatchContext::new(&mut apk);
+        let mut context = PatchContext::new(&mut apk, ExtensionSet::app_runtime());
         let _run = RunGuard::enter().unwrap();
         let guard =
             ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned()))

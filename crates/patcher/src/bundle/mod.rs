@@ -113,7 +113,7 @@ impl BundleManifest {
                 )));
             }
         }
-        crate::engine::PatchIndex::new(&self.patches.iter().collect::<Vec<_>>())?;
+        crate::catalog::PatchCatalog::new(&self.patches.iter().collect::<Vec<_>>())?;
         Ok(())
     }
 }

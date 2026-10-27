@@ -58,7 +58,7 @@ fn run_patches(delivery: Delivery, patches: &[&Patch], runs: &Arc<Mutex<Vec<Stri
     .unwrap();
     let mut reverted = Vec::new();
     let results = apply_patches(
-        &mut PatchContext::new(&mut apk),
+        &mut PatchContext::new(&mut apk, ExtensionSet::app_runtime()),
         &specs,
         plan,
         patches,

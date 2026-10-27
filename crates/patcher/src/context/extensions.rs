@@ -187,10 +187,6 @@ fn is_platform(descriptor: &str) -> bool {
 }
 
 impl PatchContext<'_> {
-    pub fn set_extensions(&mut self, extensions: ExtensionSet) {
-        self.extensions = extensions;
-    }
-
     /// Makes sure every class the descriptors refer to is defined, merging
     /// extension DEX files as needed. A reference nothing defines is logged
     /// once, since it is almost always a typo in the patch.

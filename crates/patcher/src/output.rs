@@ -6,24 +6,19 @@ use std::io;
 use std::path::{Component, Path, PathBuf};
 
 use crate::error::{PatcherError, Result};
-use crate::log::{LogEntry, PatchLog};
+use crate::log::{PatchLog, PatchScope};
 use crate::options::PatchOptions;
 
 /// What a patch works on while it rewrites output: the written APK, its
 /// options and its log.
 pub struct OutputContext<'a> {
     apk: &'a mut WrittenApk,
-    log: PatchLog,
-    options: PatchOptions,
+    scope: PatchScope,
 }
 
 impl<'a> OutputContext<'a> {
-    pub(crate) fn new(apk: &'a mut WrittenApk, patch: &str, options: PatchOptions) -> Self {
-        Self {
-            apk,
-            log: PatchLog::new(patch),
-            options,
-        }
+    pub(crate) fn new(apk: &'a mut WrittenApk, scope: PatchScope) -> Self {
+        Self { apk, scope }
     }
 
     pub fn apk(&mut self) -> &mut WrittenApk {
@@ -31,19 +26,15 @@ impl<'a> OutputContext<'a> {
     }
 
     pub fn log(&mut self) -> &mut PatchLog {
-        &mut self.log
+        &mut self.scope.log
     }
 
     pub fn options(&self) -> &PatchOptions {
-        &self.options
+        &self.scope.options
     }
 
-    pub(crate) fn log_and_options(&mut self) -> (&mut PatchLog, &PatchOptions) {
-        (&mut self.log, &self.options)
-    }
-
-    pub(crate) fn take_log_entries(&mut self) -> Vec<LogEntry> {
-        self.log.take_entries()
+    pub(crate) fn scope(&mut self) -> &mut PatchScope {
+        &mut self.scope
     }
 }
 

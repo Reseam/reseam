@@ -7,15 +7,15 @@ use crate::bridge::phase::with_patch;
 
 #[export]
 pub fn log_info(msg: String) {
-    with_patch(|log, _| log.info(msg));
+    with_patch(|scope| scope.log.info(msg));
 }
 
 #[export]
 pub fn log_warn(msg: String) {
-    with_patch(|log, _| log.warn(msg));
+    with_patch(|scope| scope.log.warn(msg));
 }
 
 #[export]
 pub fn log_debug(msg: String) {
-    with_patch(|log, _| log.debug(msg));
+    with_patch(|scope| scope.log.debug(msg));
 }

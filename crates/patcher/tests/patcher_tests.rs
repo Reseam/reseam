@@ -14,7 +14,7 @@ use reseam_apk::axml::AxmlAttribute;
 use reseam_apk::{ApkFile, ResValue, ResourceTable};
 use reseam_dex::{DexFile, DexHeader, DexVersion, ParseOptions};
 use reseam_patcher::bundle::{BUNDLE_FORMAT_VERSION, BundleArchive, BundleKey, pack};
-use reseam_patcher::context::PatchContext;
+use reseam_patcher::context::{ExtensionSet, PatchContext};
 use reseam_patcher::engine::{self, PatchSelection, PatchStatus};
 use reseam_patcher::options::OptionValue;
 use reseam_patcher::{ApkVersion, Patch, PatchPreset};
@@ -227,7 +227,7 @@ fn kotlin_bundle_executes_against_runtime_api() {
     let bundle = load_all(&bundle_file.path);
     let patches: Vec<&Patch> = bundle.patches().iter().collect();
     let (_apk_dir, mut apk) = open_split_test_apk();
-    let mut ctx = PatchContext::new(&mut apk);
+    let mut ctx = PatchContext::new(&mut apk, ExtensionSet::app_runtime());
 
     let mut options = std::collections::HashMap::new();
     options.insert(
@@ -391,7 +391,11 @@ fn kotlin_patch_selection_respects_dependencies_and_required_options() {
                 .collect(),
             ..Default::default()
         };
-        let result = apply(&mut PatchContext::new(&mut apk), &patches, &selection);
+        let result = apply(
+            &mut PatchContext::new(&mut apk, ExtensionSet::app_runtime()),
+            &patches,
+            &selection,
+        );
         match expected {
             SelectionOutcome::MissingBundle => assert!(matches!(result,
                 Err(PatcherError::MissingBundle { patch, dependency, bundle })
@@ -520,7 +524,12 @@ fn kotlin_patch_failure(patch: &str, id: &str) -> PatchStatus {
         enable: [patch.to_string()].into(),
         ..Default::default()
     };
-    let results = apply(&mut PatchContext::new(&mut apk), &patches, &selection).unwrap();
+    let results = apply(
+        &mut PatchContext::new(&mut apk, ExtensionSet::app_runtime()),
+        &patches,
+        &selection,
+    )
+    .unwrap();
     let result = results
         .iter()
         .find(|r| r.patch.ends_with(id))
@@ -871,7 +880,12 @@ fn same_named_patches_keep_independent_identity_options_dependencies_and_setting
         .into(),
         ..Default::default()
     };
-    let results = apply(&mut PatchContext::new(&mut apk), &patches, &selection).unwrap();
+    let results = apply(
+        &mut PatchContext::new(&mut apk, ExtensionSet::app_runtime()),
+        &patches,
+        &selection,
+    )
+    .unwrap();
     let applied: Vec<_> = results
         .iter()
         .filter(|r| r.status == PatchStatus::Applied)
@@ -905,7 +919,7 @@ fn same_named_patches_keep_independent_identity_options_dependencies_and_setting
 fn apply_fixture(apk: &mut ApkFile, name: &str, id: &str) {
     let bundle = loaded_test_bundle();
     run_one_patch(
-        &mut PatchContext::new(apk),
+        &mut PatchContext::new(apk, ExtensionSet::app_runtime()),
         &bundle.patches().iter().collect::<Vec<_>>(),
         name,
         id,
@@ -987,7 +1001,12 @@ fn a_patch_taken_back_takes_back_what_it_registered_for_a_finalizer() {
     };
     for _ in 0..2 {
         let (_apk_dir, mut apk) = open_split_test_apk();
-        let results = apply(&mut PatchContext::new(&mut apk), &patches, &selection).unwrap();
+        let results = apply(
+            &mut PatchContext::new(&mut apk, ExtensionSet::app_runtime()),
+            &patches,
+            &selection,
+        )
+        .unwrap();
         let status = |id: &str| {
             results
                 .iter()
@@ -1138,7 +1157,7 @@ fn app_entry_fails_the_patch_when_the_manifest_names_no_application() {
     let bundle = loaded_test_bundle();
     let patches: Vec<&Patch> = bundle.patches().iter().collect();
     let results = apply(
-        &mut PatchContext::new(&mut apk),
+        &mut PatchContext::new(&mut apk, ExtensionSet::app_runtime()),
         &patches,
         &PatchSelection {
             enable: ["app-entry-hook".to_string()].into(),
@@ -1268,8 +1287,7 @@ fn queries_skip_the_classes_a_bundle_extension_defines() {
         open_split_test_apk_with(&manifest_bytes("1.0-base", None), &[dex!("query_domain")]);
     let bundle = loaded_test_bundle();
     let patches: Vec<&Patch> = bundle.patches().iter().collect();
-    let mut ctx = PatchContext::new(&mut apk);
-    ctx.set_extensions(ExtensionSet::load(&[extension_path]).unwrap());
+    let mut ctx = PatchContext::new(&mut apk, ExtensionSet::load(&[extension_path]).unwrap());
     run_one_patch(&mut ctx, &patches, "extension-shadow", "extensionShadow");
 
     assert_eq!(
@@ -1303,8 +1321,7 @@ fn extensions_share_a_class_they_define_identically() {
         &[("a", dex!("shared_class_a")), ("b", dex!("shared_class_b"))],
     );
     let (_apk_dir, mut apk) = open_dex_apk(&[dex!("types")]);
-    let mut ctx = PatchContext::new(&mut apk);
-    ctx.set_extensions(ExtensionSet::load(&paths).unwrap());
+    let mut ctx = PatchContext::new(&mut apk, ExtensionSet::load(&paths).unwrap());
     ctx.find_or_link_class("Lapp/reseam/test/Bee;").unwrap();
     ctx.find_or_link_class("Lapp/reseam/test/A;").unwrap();
     drop(ctx);
@@ -1732,7 +1749,7 @@ fn point_queries_and_redirects_share_tracked_control_flow() {
     let bundle = loaded_test_bundle();
     let patches: Vec<&Patch> = bundle.patches().iter().collect();
     run_one_patch(
-        &mut PatchContext::new(&mut apk),
+        &mut PatchContext::new(&mut apk, ExtensionSet::app_runtime()),
         &patches,
         "point-queries",
         "pointQueries",
@@ -1752,7 +1769,7 @@ fn point_queries_and_redirects_share_tracked_control_flow() {
     );
     assert_eq!(hook_calls(&code, &[7]), (vec![vec![4]; 4], None));
     run_one_patch(
-        &mut PatchContext::new(&mut apk),
+        &mut PatchContext::new(&mut apk, ExtensionSet::app_runtime()),
         &patches,
         "point-redirects",
         "pointRedirects",
@@ -1805,7 +1822,7 @@ fn hierarchy_queries_follow_subclasses_across_dex_files_and_direct_interfaces() 
 
     // PreferenceFragment, in the first DEX, extends PreferenceBase from the second.
     let (_dir, mut apk) = open_dex_apk(&[dex!("inherited_app"), dex!("inherited_base")]);
-    let mut ctx = PatchContext::new(&mut apk);
+    let mut ctx = PatchContext::new(&mut apk, ExtensionSet::app_runtime());
     let base = ctx.dex_file_mut(1).unwrap();
     let object = Some("Ljava/lang/Object;");
     let fragment = Some("Lcom/example/PreferenceFragment;");
@@ -1866,7 +1883,7 @@ fn instance_field_queries_read_lazy_fields_and_observe_edits() {
     use reseam_dex::{AccessFlags, EncodedField};
 
     let (_dir, mut apk) = open_dex_apk(&[dex!("instance_fields")]);
-    let mut ctx = PatchContext::new(&mut apk);
+    let mut ctx = PatchContext::new(&mut apk, ExtensionSet::app_runtime());
     assert_eq!(ctx.dex().materialization_stats().resolved_classes, 0);
     let matches = ctx
         .find_classes_with_instance_field("Ljava/lang/String;")
@@ -1920,7 +1937,12 @@ fn settings_pages_merge_selected_contributions_and_keep_nested_ancestors() {
             enable: [format!("runtime-test-bundle/app.reseam.test.{patch}")].into(),
             ..Default::default()
         };
-        let results = apply(&mut PatchContext::new(&mut apk), &patches, &selection).unwrap();
+        let results = apply(
+            &mut PatchContext::new(&mut apk, ExtensionSet::app_runtime()),
+            &patches,
+            &selection,
+        )
+        .unwrap();
         assert!(
             results
                 .iter()

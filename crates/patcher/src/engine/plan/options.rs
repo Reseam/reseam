@@ -3,8 +3,8 @@
 
 use std::collections::HashMap;
 
-use super::super::PatchIndex;
 use super::PatchSelection;
+use crate::catalog::PatchCatalog;
 use crate::error::{PatcherError, Result};
 use crate::options::PatchOptions;
 use crate::patch::PatchSpec;
@@ -12,7 +12,7 @@ use crate::patch::PatchSpec;
 pub(super) fn resolve_options(
     specs: &[&PatchSpec],
     selection: &PatchSelection,
-    index: &PatchIndex<'_>,
+    index: &PatchCatalog<'_>,
     package: Option<&str>,
     desired: &[bool],
     disabled: &[bool],

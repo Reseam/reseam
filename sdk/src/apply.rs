@@ -64,8 +64,7 @@ pub(crate) fn apply<'b>(
         .iter()
         .flat_map(|bundle| bundle.extension_dex().iter().cloned())
         .collect();
-    let mut ctx = PatchContext::new(&mut opened.apk);
-    ctx.set_extensions(ExtensionSet::load(&extension_paths)?);
+    let mut ctx = PatchContext::new(&mut opened.apk, ExtensionSet::load(&extension_paths)?);
     let applied = profiler.measure(PatchPhase::ApplyPatches, || {
         engine::apply_patches(&mut ctx, &specs, plan, &patches, &mut *emit)
     })?;

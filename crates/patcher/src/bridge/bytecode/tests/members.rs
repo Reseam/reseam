@@ -11,7 +11,7 @@ fn edits_preserve_instruction_identity_through_nonlocal_expansion() {
     }
     let (directory, mut apk) = crate::test_support::apk();
     apk.add_dex(DexFile::new(DexHeader::new(DexVersion::V035)));
-    let mut context = PatchContext::new(&mut apk);
+    let mut context = PatchContext::new(&mut apk, ExtensionSet::app_runtime());
     let _run = RunGuard::enter().unwrap();
     let guard =
         ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned())).unwrap();
@@ -56,7 +56,7 @@ fn edits_preserve_instruction_identity_through_nonlocal_expansion() {
 fn flag_changes_keep_member_groups_frames_and_handles_consistent() {
     let (directory, mut apk) = crate::test_support::apk();
     apk.add_dex(DexFile::new(DexHeader::new(DexVersion::V039)));
-    let mut context = PatchContext::new(&mut apk);
+    let mut context = PatchContext::new(&mut apk, ExtensionSet::app_runtime());
     let _run = RunGuard::enter().unwrap();
     let guard =
         ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned())).unwrap();
@@ -113,7 +113,7 @@ fn field_storage_changes_preserve_unrelated_initial_values() {
     use crate::bridge::dex::types::{EncodedVal, NewField};
     let (directory, mut apk) = crate::test_support::apk();
     apk.add_dex(DexFile::new(DexHeader::new(DexVersion::V039)));
-    let mut context = PatchContext::new(&mut apk);
+    let mut context = PatchContext::new(&mut apk, ExtensionSet::app_runtime());
     let _run = RunGuard::enter().unwrap();
     let guard =
         ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned())).unwrap();

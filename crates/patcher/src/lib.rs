@@ -5,6 +5,7 @@ mod app_runtime;
 #[cfg(feature = "bridge")]
 pub mod bridge;
 pub mod bundle;
+pub mod catalog;
 pub mod context;
 pub mod engine;
 pub mod error;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::*;
+use crate::context::ExtensionSet;
 use crate::engine::{Delivery, PatchSelection};
 use crate::error::PatcherError;
 use crate::patch::{ApkVersion, Compatibility, CompatiblePackage, PatchPreset, PatchSpec};

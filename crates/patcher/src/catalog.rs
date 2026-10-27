@@ -9,7 +9,7 @@ use crate::patch::PatchSpec;
 /// Patch identities shared by planning and CLI options. A reference
 /// (`<bundle>/<id>`) resolves exactly; a bare ID or a display name must
 /// identify one patch across the loaded bundles for the target package.
-pub struct PatchIndex<'a> {
+pub struct PatchCatalog<'a> {
     patches: &'a [&'a PatchSpec],
     references: HashMap<Reference<'a>, usize>,
     ids: HashMap<&'a str, Vec<usize>>,
@@ -29,7 +29,7 @@ impl<'a> Reference<'a> {
     }
 }
 
-impl<'a> PatchIndex<'a> {
+impl<'a> PatchCatalog<'a> {
     pub fn new(patches: &'a [&'a PatchSpec]) -> Result<Self> {
         let mut references = HashMap::with_capacity(patches.len());
         let mut ids: HashMap<&str, Vec<usize>> = HashMap::new();

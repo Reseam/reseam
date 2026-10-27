@@ -18,8 +18,7 @@ use crate::bridge::run_state::{checked, clear_failure, record_failure, take_fail
 use crate::bundle::BundleInfo;
 use crate::context::PatchContext;
 use crate::error::{PatcherError, Result as PatcherResult};
-use crate::log::PatchLog;
-use crate::options::PatchOptions;
+use crate::log::PatchScope;
 use crate::output::OutputContext;
 
 thread_local! {
@@ -166,17 +165,11 @@ pub(super) fn is_active() -> bool {
 }
 
 /// Runs `f` with the log and options of the patch whose phase is running.
-pub(super) fn with_patch<R: Default>(f: impl FnOnce(&mut PatchLog, &PatchOptions) -> R) -> R {
+pub(super) fn with_patch<R: Default>(f: impl FnOnce(&mut PatchScope) -> R) -> R {
     if context_is_active() {
-        return with_ctx(|ctx| {
-            let (log, options) = ctx.log_and_options();
-            f(log, options)
-        });
+        return with_ctx(|ctx| f(ctx.scope()));
     }
-    with_output(|ctx| {
-        let (log, options) = ctx.log_and_options();
-        f(log, options)
-    })
+    with_output(|ctx| f(ctx.scope()))
 }
 
 pub(super) fn with_output<R: Default>(f: impl FnOnce(&mut OutputContext<'_>) -> R) -> R {

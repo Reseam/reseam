@@ -3,7 +3,8 @@
 
 use std::collections::HashSet;
 
-use super::{PatchIndex, PatchStatus};
+use super::PatchStatus;
+use crate::catalog::PatchCatalog;
 
 use crate::context::PatchContext;
 use crate::error::{PatcherError, Result};
@@ -79,7 +80,7 @@ impl ResolvedPlan {
         package: Option<&str>,
         version: ApkVersion<'_>,
     ) -> Result<Self> {
-        let index = PatchIndex::new(specs)?;
+        let index = PatchCatalog::new(specs)?;
         let DependencyGraph {
             dependencies,
             dependents,

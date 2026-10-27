@@ -23,7 +23,7 @@ fn payload_references_survive_alignment_during_pure_lowering() {
         let lowered = assembly::lower_instructions(instructions, vec![]).unwrap();
         let (directory, mut apk) = crate::test_support::apk();
         apk.add_dex(DexFile::new(DexHeader::new(DexVersion::V039)));
-        let mut context = PatchContext::new(&mut apk);
+        let mut context = PatchContext::new(&mut apk, ExtensionSet::app_runtime());
         let _run = RunGuard::enter().unwrap();
         let guard =
             ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned()))
@@ -79,7 +79,7 @@ fn assembling_blocks_keeps_branches_over_lowered_invocations() {
 
     let (directory, mut apk) = crate::test_support::apk();
     apk.add_dex(DexFile::new(DexHeader::new(DexVersion::V039)));
-    let mut context = PatchContext::new(&mut apk);
+    let mut context = PatchContext::new(&mut apk, ExtensionSet::app_runtime());
     let _run = RunGuard::enter().unwrap();
     let guard =
         ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned())).unwrap();

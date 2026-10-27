@@ -59,7 +59,7 @@ fn bridge_queries_distinguish_absence_from_invalid_requests() {
     for &(optional_absence, request) in cases {
         let (directory, mut apk) = crate::test_support::apk();
         apk.add_dex(DexFile::new(DexHeader::new(DexVersion::V035)));
-        let mut context = PatchContext::new(&mut apk);
+        let mut context = PatchContext::new(&mut apk, ExtensionSet::app_runtime());
         let _run = RunGuard::enter().unwrap();
         let guard =
             ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned()))
@@ -74,7 +74,7 @@ fn invalid_instruction_operands_fail_the_callback() {
     use crate::bridge::dex::types::{Reg1Insn, Reg2Insn, RegLiteralInsn, SparseSwitchInsn};
     let (directory, mut apk) = crate::test_support::apk();
     apk.add_dex(DexFile::new(DexHeader::new(DexVersion::V039)));
-    let mut context = PatchContext::new(&mut apk);
+    let mut context = PatchContext::new(&mut apk, ExtensionSet::app_runtime());
     let _run = RunGuard::enter().unwrap();
     let guard =
         ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned())).unwrap();

@@ -67,7 +67,7 @@ fn finalization_orders_hooks_and_emits_one_terminal_result() {
         )
         .unwrap();
         let results = apply_patches(
-            &mut PatchContext::new(&mut apk),
+            &mut PatchContext::new(&mut apk, ExtensionSet::app_runtime()),
             &specs,
             plan,
             &patches,

@@ -9,11 +9,13 @@ use crate::error::Result;
 use crate::options::{OptionValue, PatchOptions};
 
 fn option<R>(key: &str, f: impl FnOnce(&OptionValue) -> Option<R>) -> Option<R> {
-    with_patch(|_, options| f(options.get(key)?))
+    with_patch(|scope| f(scope.options.get(key)?))
 }
 
 fn file_option<R>(key: &str, f: impl FnOnce(&PatchOptions) -> Result<Option<R>>) -> Option<R> {
-    with_patch(|_, options| checked(f(options).map_err(|error| format!("option '{key}': {error}"))))
+    with_patch(|scope| {
+        checked(f(&scope.options).map_err(|error| format!("option '{key}': {error}")))
+    })
 }
 
 #[export]

@@ -17,7 +17,7 @@ pub use search::{FieldRefQuery, MethodRefQuery};
 use reseam_apk::ApkFile;
 use reseam_dex::{ClassSkeleton, CodeItem, DexFile, EncodedMethod, MethodKind};
 
-use crate::log::{LogEntry, PatchLog};
+use crate::log::{PatchLog, PatchScope};
 use crate::options::PatchOptions;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,8 +42,7 @@ pub struct InstructionLocation {
 
 pub struct PatchContext<'a> {
     apk: &'a mut ApkFile,
-    log: PatchLog,
-    options: PatchOptions,
+    scope: PatchScope,
     skeleton: Option<CachedSkeleton>,
     method: Option<CachedMethod>,
     extensions: ExtensionSet,
@@ -62,14 +61,14 @@ struct CachedMethod {
 }
 
 impl<'a> PatchContext<'a> {
-    pub fn new(apk: &'a mut ApkFile) -> Self {
+    /// A context over `apk` that links classes from `extensions`.
+    pub fn new(apk: &'a mut ApkFile, extensions: ExtensionSet) -> Self {
         Self {
             apk,
-            log: PatchLog::default(),
-            options: PatchOptions::default(),
+            scope: PatchScope::default(),
             skeleton: None,
             method: None,
-            extensions: ExtensionSet::app_runtime(),
+            extensions,
             hermes: None,
             journal: reseam_journal::Journal::default(),
         }
@@ -86,24 +85,19 @@ impl<'a> PatchContext<'a> {
     }
 
     pub fn log(&mut self) -> &mut PatchLog {
-        &mut self.log
+        &mut self.scope.log
     }
 
     pub fn options(&self) -> &PatchOptions {
-        &self.options
+        &self.scope.options
     }
 
-    pub(crate) fn log_and_options(&mut self) -> (&mut PatchLog, &PatchOptions) {
-        (&mut self.log, &self.options)
+    pub(crate) fn scope(&mut self) -> &mut PatchScope {
+        &mut self.scope
     }
 
     pub(crate) fn begin_patch(&mut self, patch: &str, options: PatchOptions) {
-        self.log = PatchLog::new(patch);
-        self.options = options;
-    }
-
-    pub(crate) fn take_log_entries(&mut self) -> Vec<LogEntry> {
-        self.log.take_entries()
+        self.scope = PatchScope::new(patch, options);
     }
 }
 

@@ -3,7 +3,8 @@
 
 use std::collections::VecDeque;
 
-use super::super::{PatchIndex, PatchStatus};
+use super::super::PatchStatus;
+use crate::catalog::PatchCatalog;
 use crate::error::{PatcherError, Result};
 use crate::patch::PatchSpec;
 
@@ -87,7 +88,7 @@ pub(super) struct DependencyGraph {
     pub(super) missing: Vec<Option<MissingDependency>>,
 }
 
-pub(super) fn dependency_edges(specs: &[&PatchSpec], index: &PatchIndex<'_>) -> DependencyGraph {
+pub(super) fn dependency_edges(specs: &[&PatchSpec], index: &PatchCatalog<'_>) -> DependencyGraph {
     let mut dependencies = vec![Vec::new(); specs.len()];
     let mut dependents = vec![Vec::new(); specs.len()];
     let mut missing: Vec<Option<MissingDependency>> = (0..specs.len()).map(|_| None).collect();

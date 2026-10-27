@@ -5,7 +5,7 @@ use reseam_model::{
     ApkMetadata, ApkVersion, InspectRequest, InspectResponse, PatchMetadata, PatchOutcome,
     PatchPreset, PatchRequest, PatchSpec, RunEvent,
 };
-use reseam_patcher::engine::PatchIndex;
+use reseam_patcher::catalog::PatchCatalog;
 use reseam_patcher::error::PatcherError;
 
 use crate::apk::OpenedApk;
@@ -81,7 +81,7 @@ impl PreparedInspection {
             .apk
             .as_ref()
             .and_then(|apk| apk.package_name.as_deref());
-        match PatchIndex::new(&specs)?.resolve(selector, package) {
+        match PatchCatalog::new(&specs)?.resolve(selector, package) {
             Ok(index) => Ok(Some(&self.metadata.patches[index])),
             Err(PatcherError::UnknownPatch(_)) => Ok(None),
             Err(error) => Err(error.into()),
