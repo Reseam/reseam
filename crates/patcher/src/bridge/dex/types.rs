@@ -52,6 +52,38 @@ pub struct InstructionHit {
     pub index: u32,
 }
 
+/// A method reference to match. Unset parts match anything; each required parameter
+/// appears somewhere in the parameter list, and the owner is assignable to each type in
+/// `owner_assignable_to`.
+#[data]
+#[derive(Debug, Clone)]
+pub struct MethodPattern {
+    #[boltffi::default(None)]
+    pub owner: Option<String>,
+    #[boltffi::default(None)]
+    pub name: Option<String>,
+    #[boltffi::default(None)]
+    pub return_type: Option<String>,
+    #[boltffi::default(None)]
+    pub parameters: Option<Vec<String>>,
+    pub required_parameters: Vec<String>,
+    #[boltffi::default(None)]
+    pub parameter_count: Option<u32>,
+    pub owner_assignable_to: Vec<String>,
+}
+
+/// A field reference to match. Unset parts match anything.
+#[data]
+#[derive(Debug, Clone)]
+pub struct FieldPattern {
+    #[boltffi::default(None)]
+    pub owner: Option<String>,
+    #[boltffi::default(None)]
+    pub name: Option<String>,
+    #[boltffi::default(None)]
+    pub field_type: Option<String>,
+}
+
 #[data]
 #[derive(Debug, Clone)]
 pub struct RegisterWriters {

@@ -6,7 +6,9 @@ use boltffi::export;
 use reseam_dex::{DexFile, Instruction as DexInsn};
 
 use crate::bridge::dex::convert::{self, dex_to_kotlin};
-use crate::bridge::dex::types::{FieldRef, Instruction, InstructionHit, MethodRef};
+use crate::bridge::dex::types::{
+    FieldPattern, FieldRef, Instruction, InstructionHit, MethodPattern, MethodRef,
+};
 use crate::bridge::handles::{
     alloc_method, alloc_methods, method_location, with_code, with_instruction,
 };
@@ -116,21 +118,6 @@ pub fn find_instructions_by_string_prefix(prefix: String) -> Vec<InstructionHit>
 }
 
 #[export]
-pub fn find_field_accesses_matching(
-    owner: Option<String>,
-    name: Option<String>,
-    field_type: Option<String>,
-) -> Vec<InstructionHit> {
-    hits(with_ctx(|ctx| {
-        checked(ctx.find_field_accesses_matching(&FieldRefQuery {
-            owner: owner.as_deref(),
-            name: name.as_deref(),
-            field_type: field_type.as_deref(),
-        }))
-    }))
-}
-
-#[export]
 pub fn all_method_handles() -> Vec<u32> {
     let mut locations = Vec::new();
     with_ctx(|ctx| checked(ctx.for_each_method(|location| locations.push(location))));
@@ -188,26 +175,66 @@ fn hits(locations: Vec<InstructionLocation>) -> Vec<InstructionHit> {
 }
 
 #[export]
-pub fn find_calls_matching(
-    owner: Option<String>,
-    name: Option<String>,
-    return_type: Option<String>,
-    parameters: Option<Vec<String>>,
-    required_parameters: Vec<String>,
-    parameter_count: Option<u32>,
-) -> Vec<InstructionHit> {
-    let parameters: Option<Vec<&str>> = parameters
-        .as_ref()
-        .map(|v| v.iter().map(String::as_str).collect());
-    let required_parameters: Vec<&str> = required_parameters.iter().map(String::as_str).collect();
+pub fn find_calls_matching(pattern: MethodPattern) -> Vec<InstructionHit> {
+    with_method_query(&pattern, |query| {
+        hits(with_ctx(|ctx| checked(ctx.find_calls_matching(query))))
+    })
+}
+
+#[export]
+pub fn find_calls_in(m: u32, pattern: MethodPattern) -> Vec<u32> {
+    let Some(location) = method_location(m) else {
+        return Vec::new();
+    };
+    with_method_query(&pattern, |query| {
+        indices(with_ctx(|ctx| checked(ctx.find_calls_in(location, query))))
+    })
+}
+
+#[export]
+pub fn find_field_accesses_matching(pattern: FieldPattern) -> Vec<InstructionHit> {
     hits(with_ctx(|ctx| {
-        checked(ctx.find_calls_matching(&MethodRefQuery {
-            owner: owner.as_deref(),
-            name: name.as_deref(),
-            return_type: return_type.as_deref(),
-            parameters: parameters.as_deref(),
-            required_parameters: &required_parameters,
-            parameter_count: parameter_count.map(|count| count as usize),
-        }))
+        checked(ctx.find_field_accesses_matching(&field_query(&pattern)))
     }))
+}
+
+#[export]
+pub fn find_field_accesses_in(m: u32, pattern: FieldPattern) -> Vec<u32> {
+    let Some(location) = method_location(m) else {
+        return Vec::new();
+    };
+    indices(with_ctx(|ctx| {
+        checked(ctx.find_field_accesses_in(location, &field_query(&pattern)))
+    }))
+}
+
+fn with_method_query<R>(pattern: &MethodPattern, f: impl FnOnce(&MethodRefQuery<'_>) -> R) -> R {
+    let parameters = pattern.parameters.as_deref().map(strs);
+    let required_parameters = strs(&pattern.required_parameters);
+    let owner_assignable_to = strs(&pattern.owner_assignable_to);
+    f(&MethodRefQuery {
+        owner: pattern.owner.as_deref(),
+        name: pattern.name.as_deref(),
+        return_type: pattern.return_type.as_deref(),
+        parameters: parameters.as_deref(),
+        required_parameters: &required_parameters,
+        parameter_count: pattern.parameter_count.map(|count| count as usize),
+        owner_assignable_to: &owner_assignable_to,
+    })
+}
+
+fn strs(values: &[String]) -> Vec<&str> {
+    values.iter().map(String::as_str).collect()
+}
+
+fn field_query(pattern: &FieldPattern) -> FieldRefQuery<'_> {
+    FieldRefQuery {
+        owner: pattern.owner.as_deref(),
+        name: pattern.name.as_deref(),
+        field_type: pattern.field_type.as_deref(),
+    }
+}
+
+fn indices(indices: Vec<usize>) -> Vec<u32> {
+    indices.into_iter().map(|index| index as u32).collect()
 }

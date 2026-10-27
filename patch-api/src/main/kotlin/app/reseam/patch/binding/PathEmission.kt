@@ -25,7 +25,7 @@ import app.reseam.patch.emit.label
 import app.reseam.patch.emit.moveValue
 import app.reseam.patch.emit.nextLabel
 import app.reseam.patch.emit.readField
-import app.reseam.patch.search.isAssignableType
+import app.reseam.patch.native.isAssignable
 import app.reseam.patch.types.MethodRef
 
 private fun ValueRef.emitter(): CodeEmitter =
@@ -133,7 +133,7 @@ private fun adaptInput(
     if (!isReferenceType(start.type) || !isReferenceType(rootType) || start.type == rootType)
         return start
     if (start.type == Type.Object) return emitter.cast(start, rootType).builtBy(emitter)
-    check(isAssignableType(start.type, rootType)) {
+    check(isAssignable(start.type, rootType)) {
         "$label expects a value statically assignable to $rootType, got ${start.type}. " +
             "Only Object-typed inputs get the root check-cast implicitly; cast the value first."
     }

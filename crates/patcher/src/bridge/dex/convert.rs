@@ -180,7 +180,7 @@ macro_rules! validate_arguments {
 
 macro_rules! define_bridge {
     ($($native:ident [$($pattern:tt)*] [$($definition:tt)*] => $name:ident $opcode:expr,$units:tt; [$($reg:ident:$rt:ident $kind:ident $access:ident ($max:expr)),*]; $args:ident; [$($index:ident:$it:ident $pool:ident $at:literal $width:ident),*]; $format:ident($($slot:ident),*);)*) => {
-        pub fn dex_to_kotlin(insn: &D, dex: &DexFile, dex_index: Option<usize>) -> reseam_dex::Result<Instruction> {
+        fn exported(insn: &D, dex: &DexFile, dex_index: Option<usize>) -> reseam_dex::Result<Instruction> {
             Ok(match insn {
                 $(D::$native $($pattern)* => shape!(export_shape,(insn,dex,dex_index,$native,$opcode),[$($definition)*]),)*
                 _ => export_payload(insn)?,
@@ -204,6 +204,31 @@ macro_rules! define_bridge {
     };
 }
 reseam_dex::instruction_catalogue!(define_bridge);
+
+/// Bits of the literal a high-half constant drops: the encoding keeps only those above.
+fn dropped_literal_bits(opcode: u16) -> Option<u32> {
+    match opcode {
+        0x15 => Some(16),
+        0x19 => Some(48),
+        _ => None,
+    }
+}
+
+/// The instruction as the patch API sees it: a literal is the value the instruction loads.
+pub fn dex_to_kotlin(
+    insn: &D,
+    dex: &DexFile,
+    dex_index: Option<usize>,
+) -> reseam_dex::Result<Instruction> {
+    let mut instruction = exported(insn, dex, dex_index)?;
+    if let Instruction::RegLiteral(record) = &mut instruction
+        && let Some(literal) = insn.literal()
+    {
+        record.literal = literal;
+    }
+    Ok(instruction)
+}
+
 pub fn kotlin_to_dex(
     instruction: &Instruction,
     dex: &mut DexFile,
@@ -213,8 +238,18 @@ pub fn kotlin_to_dex(
     let [instruction] = lowered.as_slice() else {
         return Err(invalid("instruction conversion requires an encoded invoke"));
     };
-    if let Some(opcode) = instruction.opcode() {
-        return structured(instruction, opcode, dex, dex_index);
+    let Some(opcode) = instruction.opcode() else {
+        return import_payload(instruction);
+    };
+    if let Instruction::RegLiteral(record) = instruction
+        && let Some(bits) = dropped_literal_bits(opcode)
+    {
+        if record.literal & ((1 << bits) - 1) != 0 {
+            return Err(invalid("high-half constant has low literal bits set"));
+        }
+        let mut record = *record;
+        record.literal >>= bits;
+        return structured(&Instruction::RegLiteral(record), opcode, dex, dex_index);
     }
-    import_payload(instruction)
+    structured(instruction, opcode, dex, dex_index)
 }

@@ -67,7 +67,9 @@ pub fn split_surface(output: &Path) -> Result<()> {
     values.push_str(&source[native_end..values_end]);
     values = owned_kotlin_types(&values);
     for name in [
+        "FieldPattern",
         "InstructionHit",
+        "MethodPattern",
         "RegisterWriters",
         "ResourceScalar",
         "ScratchSpan",

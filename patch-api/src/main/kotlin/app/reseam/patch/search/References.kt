@@ -7,14 +7,15 @@ import app.reseam.patch.dex.Method
 import app.reseam.patch.dex.parameterTypes
 import app.reseam.patch.dex.returnType
 import app.reseam.patch.native.countFollowingCheckCast
-import app.reseam.patch.native.fieldReferences
+import app.reseam.patch.native.findCallsIn
 import app.reseam.patch.native.findCallsMatching
+import app.reseam.patch.native.findFieldAccessesIn
 import app.reseam.patch.native.findFieldAccessesMatching
-import app.reseam.patch.native.instructionMethodRef
 import app.reseam.patch.native.methodReferences
 import app.reseam.patch.run.Memos
-import app.reseam.patch.types.FieldRef
+import app.reseam.patch.types.FieldPattern
 import app.reseam.patch.types.InstructionHit
+import app.reseam.patch.types.MethodPattern
 import app.reseam.patch.types.MethodRef
 
 private data class CastQuery(val callee: MethodSignature, val type: String, val lookAhead: Int)
@@ -22,17 +23,15 @@ private data class CastQuery(val callee: MethodSignature, val type: String, val 
 /** The methods and fields each method's code refers to, and the code referring to each. */
 internal class References(memos: Memos, private val index: SearchIndex) {
     private val methodRefs = memos.perMethod<List<MethodRef>>()
-    private val fieldRefs = memos.perMethod<List<FieldRef>>()
     private val invokeSites = memos.clearedOnEdit<MethodSignature, List<Pair<UInt, Int>>>()
     private val castCounts = memos.clearedOnEdit<CastQuery, Int>()
-    private val matchingCalls = memos.clearedOnEdit<MethodRefMatchSpec, Set<UInt>>()
-    private val matchingAccesses = memos.clearedOnEdit<FieldRefMatchSpec, Set<UInt>>()
+    private val callers = memos.clearedOnEdit<MethodPattern, Set<UInt>>()
+    private val accessors = memos.clearedOnEdit<FieldPattern, Set<UInt>>()
+    private val calls = memos.perMethod<MutableMap<MethodPattern, Set<Int>>>()
+    private val accesses = memos.perMethod<MutableMap<FieldPattern, Set<Int>>>()
 
     fun methodRefsOf(method: Method): List<MethodRef> =
         methodRefs.getOrPut(method.handle) { methodReferences(method.handle).distinct() }
-
-    fun fieldRefsOf(method: Method): List<FieldRef> =
-        fieldRefs.getOrPut(method.handle) { fieldReferences(method.handle) }
 
     fun calleesOf(method: Method): List<Method> = methodRefsOf(method).mapNotNull(index::methodFor)
 
@@ -40,34 +39,28 @@ internal class References(memos: Memos, private val index: SearchIndex) {
         invokeSites[callee]?.any { it.first == method.handle }
             ?: methodRefsOf(method).any { it.signature == callee }
 
-    fun matchesCall(method: Method, spec: MethodRefMatchSpec): Boolean =
-        matchingCalls[spec]?.contains(method.handle) ?: methodRefsOf(method).any(spec::matches)
-
-    fun methodsCalling(spec: MethodRefMatchSpec): Set<UInt> =
-        matchingCalls.getOrPut(spec) {
-            findCallsMatching(
-                    spec.owner,
-                    spec.name,
-                    spec.returnType,
-                    spec.parameters,
-                    spec.requiredParameters,
-                    spec.parameterCount?.toUInt(),
-                )
-                .filter { hit ->
-                    !spec.needsPostFilter ||
-                        instructionMethodRef(hit.method, hit.index)?.let(spec::matches) == true
-                }
-                .mapTo(linkedSetOf()) { it.method }
-        }
-
-    fun matchesAccess(method: Method, spec: FieldRefMatchSpec): Boolean =
-        matchingAccesses[spec]?.contains(method.handle) ?: fieldRefsOf(method).any(spec::matches)
-
-    fun methodsAccessing(spec: FieldRefMatchSpec): Set<UInt> =
-        matchingAccesses.getOrPut(spec) {
-            findFieldAccessesMatching(spec.owner, spec.name, spec.fieldType).mapTo(linkedSetOf()) {
-                it.method
+    /** The indices of the instructions in [method] calling a method [pattern] matches. */
+    fun callsIn(method: Method, pattern: MethodPattern): Set<Int> =
+        calls
+            .getOrPut(method.handle) { HashMap() }
+            .getOrPut(pattern) {
+                findCallsIn(method.handle, pattern).mapTo(linkedSetOf()) { it.toInt() }
             }
+
+    fun methodsCalling(pattern: MethodPattern): Set<UInt> =
+        callers.getOrPut(pattern) { findCallsMatching(pattern).mapTo(linkedSetOf()) { it.method } }
+
+    /** The indices of the instructions in [method] accessing a field [pattern] matches. */
+    fun accessesIn(method: Method, pattern: FieldPattern): Set<Int> =
+        accesses
+            .getOrPut(method.handle) { HashMap() }
+            .getOrPut(pattern) {
+                findFieldAccessesIn(method.handle, pattern).mapTo(linkedSetOf()) { it.toInt() }
+            }
+
+    fun methodsAccessing(pattern: FieldPattern): Set<UInt> =
+        accessors.getOrPut(pattern) {
+            findFieldAccessesMatching(pattern).mapTo(linkedSetOf()) { it.method }
         }
 
     /** The methods invoking [callee], with the index of each invoke. */
@@ -75,12 +68,15 @@ internal class References(memos: Memos, private val index: SearchIndex) {
         invokeSites.getOrPut(callee) {
             val ref = MethodRef(callee.owner, callee.name, callee.proto)
             findCallsMatching(
-                    ref.definingClass,
-                    ref.name,
-                    ref.returnType,
-                    ref.parameterTypes,
-                    emptyList(),
-                    null,
+                    MethodPattern(
+                        ref.definingClass,
+                        ref.name,
+                        ref.returnType,
+                        ref.parameterTypes,
+                        emptyList(),
+                        null,
+                        emptyList(),
+                    )
                 )
                 .map { it.method to it.index.toInt() }
         }

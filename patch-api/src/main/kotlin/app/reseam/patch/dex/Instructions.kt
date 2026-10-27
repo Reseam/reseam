@@ -66,14 +66,7 @@ val Instruction.typeRef: String?
         }
 
 val Instruction.literal: Long?
-    get() {
-        val bits = (this as? Instruction.RegLiteral)?.field0?.literal ?: return null
-        return when (opcode) {
-            Opcode.CONST_HIGH16 -> bits.toInt().shl(16).toLong()
-            Opcode.CONST_WIDE_HIGH16 -> bits shl 48
-            else -> bits
-        }
-    }
+    get() = (this as? Instruction.RegLiteral)?.field0?.literal
 
 internal val Instruction.codeUnitSize: Int
     get() =

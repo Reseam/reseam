@@ -3,6 +3,7 @@
 
 package app.reseam.patch
 
+import app.reseam.patch.dex.fieldRef
 import app.reseam.patch.run.Resolution
 import app.reseam.patch.search.FieldRefMatchSpec
 import app.reseam.patch.types.FieldRef
@@ -49,8 +50,13 @@ fun MethodTarget.field(debugName: String? = null, block: FieldRefMatch.() -> Uni
     val label = debugName ?: "${owner.label}.field"
     return FieldTarget(label) { runtime ->
         val method = runtime.resolve(owner).value
-        val spec = FieldRefMatchSpec().apply(block)
-        val matches = runtime.index.references.fieldRefsOf(method).filter(spec::matches)
+        val pattern = FieldRefMatchSpec().apply(block).pattern
+        val insns = method.instructions
+        val matches =
+            runtime.index.references
+                .accessesIn(method, pattern)
+                .map { checkNotNull(insns[it].fieldRef) }
+                .distinct()
         val ref =
             matches.singleOrNull()
                 ?: error(

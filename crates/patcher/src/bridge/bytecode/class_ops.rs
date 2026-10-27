@@ -79,3 +79,8 @@ pub fn superclass_chain(c: u32) -> Vec<u32> {
         .map(alloc_class)
         .collect()
 }
+
+#[export]
+pub fn is_assignable(actual: String, expected: String) -> bool {
+    with_ctx(|ctx| ctx.is_assignable(&actual, &expected))
+}

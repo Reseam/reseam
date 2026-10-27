@@ -161,6 +161,12 @@ impl ExtensionSet {
     fn provider(&self, descriptor: &str) -> Option<usize> {
         self.providers.get(descriptor).copied()
     }
+
+    /// The definition of `descriptor` in an extension not linked yet.
+    pub(super) fn unlinked_class(&self, descriptor: &str) -> Option<(&DexFile, usize)> {
+        let dex = self.files[self.provider(descriptor)?].file.as_ref()?;
+        Some((dex, dex.find_class_index(descriptor)?))
+    }
 }
 
 fn class_of(descriptor: &str) -> Option<&str> {

@@ -6,8 +6,9 @@ package app.reseam.patch.emit
 import app.reseam.patch.Type
 import app.reseam.patch.dex.Opcode
 import app.reseam.patch.dex.isReferenceType
-import app.reseam.patch.search.integralTypes
-import app.reseam.patch.search.isAssignableType
+import app.reseam.patch.native.isAssignable
+
+internal val integralTypes = setOf("Z", "B", "S", "C", "I")
 
 internal sealed interface ValueType {
     data class Known(val descriptor: String) : ValueType
@@ -20,9 +21,9 @@ internal sealed interface ValueType {
 internal fun requireAssignableType(actual: ValueType, expected: String, location: String) {
     val compatible =
         when (actual) {
-            is ValueType.Known -> isAssignableType(actual.descriptor, expected)
-            ValueType.Zero -> expected in integralTypes || isAssignableType(null, expected)
-            ValueType.Null -> isAssignableType(null, expected)
+            is ValueType.Known -> isAssignable(actual.descriptor, expected)
+            ValueType.Zero -> expected in integralTypes || isReferenceType(expected)
+            ValueType.Null -> isReferenceType(expected)
         }
     require(compatible) { "$location: $actual is incompatible with $expected" }
 }

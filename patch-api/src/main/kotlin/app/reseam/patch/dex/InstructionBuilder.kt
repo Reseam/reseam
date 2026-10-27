@@ -46,14 +46,7 @@ class InstructionBuilder {
 
     fun returnObject(reg: Int) = reg1(Opcode.RETURN_OBJECT, reg)
 
-    fun constInt(dest: Int, value: Int) {
-        val opcode = constIntOpcode(dest, value)
-        literal(
-            opcode,
-            dest,
-            if (opcode == Opcode.CONST_HIGH16) value.toLong() shr 16 else value.toLong(),
-        )
-    }
+    fun constInt(dest: Int, value: Int) = literal(constIntOpcode(dest, value), dest, value.toLong())
 
     fun constLong(dest: Int, value: Long) = literal(constLongOpcode(value), dest, value)
 

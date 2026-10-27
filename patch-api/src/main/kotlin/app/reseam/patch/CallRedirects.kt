@@ -15,7 +15,7 @@ import app.reseam.patch.dex.returnType
 import app.reseam.patch.emit.Access
 import app.reseam.patch.emit.ValueType
 import app.reseam.patch.emit.requireArgumentTypes
-import app.reseam.patch.search.isAssignableType
+import app.reseam.patch.native.isAssignable
 import app.reseam.patch.types.Instruction
 
 /** Redirect this invoke to a static extension, passing the receiver first for instance calls. */
@@ -50,7 +50,7 @@ private fun PointTarget.prepareRedirect(target: ExtMethod): CallRedirect {
     requireArgumentTypes(actual, expected, "$location redirect ${from.descriptor} to $target")
     val registers = call.invokeRegisters.orEmpty()
     if (insns.getOrNull(point.index + 1)?.opcode?.isMoveResult == true) {
-        require(isAssignableType(target.ref.returnType, from.returnType)) {
+        require(isAssignable(target.ref.returnType, from.returnType)) {
             "$location: result of ${from.descriptor} is consumed; $target returns an incompatible type"
         }
     }
