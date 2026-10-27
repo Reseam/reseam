@@ -3,9 +3,9 @@
 
 use reseam_dex::{DexFile, Spooled};
 
+use super::dex_set::DexMember;
 use super::dex_set::{DexIndex, DexOrigin, DexSet, DexSource};
 use super::undo::{Part, Undo};
-use super::write::DexMember;
 use super::{ApkFile, ComponentIndex};
 use crate::entry::{EntryName, next_free_dex_name};
 use crate::error::Result;
