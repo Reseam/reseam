@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-@file:Suppress("unused")
-
 package app.reseam.patch
 
 import app.reseam.patch.native.resAddFile
@@ -225,3 +223,6 @@ class StyleScope internal constructor() {
         items += StyleItem(attr, value)
     }
 }
+
+/** An Android resource scalar. [kind] is the Android type byte and [data] its unmodified bits. */
+data class ResourceValue(val kind: UByte, val data: UInt)

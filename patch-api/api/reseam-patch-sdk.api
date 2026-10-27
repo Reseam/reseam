@@ -89,6 +89,12 @@ public final class app/reseam/patch/ClassTarget : app/reseam/patch/Target {
 	public final fun getDescriptor ()Ljava/lang/String;
 }
 
+public final class app/reseam/patch/ClassTargetsKt {
+	public static final fun classTarget (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/ClassTarget;
+	public static final fun klass (Ljava/lang/String;)Lapp/reseam/patch/ClassTarget;
+	public static final fun klass (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/ClassTarget;
+}
+
 public abstract interface class app/reseam/patch/CodeScope {
 	public abstract fun bool (Z)Lapp/reseam/patch/ValueRef;
 	public abstract fun call (Lapp/reseam/patch/ExtMethod;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
@@ -225,6 +231,16 @@ public final class app/reseam/patch/FieldTarget : app/reseam/patch/Target {
 	public final fun getType ()Ljava/lang/String;
 }
 
+public final class app/reseam/patch/FieldTargetsKt {
+	public static final fun enumConstant (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;)Lapp/reseam/patch/FieldTarget;
+	public static final fun field (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;)Lapp/reseam/patch/FieldTarget;
+	public static final fun field (Lapp/reseam/patch/MethodTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/FieldTarget;
+	public static final fun field (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/FieldTarget;
+	public static synthetic fun field$default (Lapp/reseam/patch/MethodTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/FieldTarget;
+	public static final fun fieldOfType (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;)Lapp/reseam/patch/FieldTarget;
+	public static final fun fieldTarget (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/FieldTarget;
+}
+
 public final class app/reseam/patch/FileScope {
 	public final fun component (Ljava/lang/String;)Lapp/reseam/patch/FileScope;
 	public final fun components ()Ljava/util/List;
@@ -253,19 +269,6 @@ public abstract interface class app/reseam/patch/HermesFunctionQuery {
 	public abstract fun name (Ljava/lang/String;)V
 	public abstract fun paramCount (I)V
 	public abstract fun strings ([Ljava/lang/String;)V
-}
-
-public final class app/reseam/patch/HermesKt {
-	public static final fun after (Lapp/reseam/patch/FunctionTarget;Lkotlin/jvm/functions/Function1;)V
-	public static final fun alwaysReturn (Lapp/reseam/patch/FunctionTarget;)V
-	public static final fun alwaysReturn (Lapp/reseam/patch/FunctionTarget;I)V
-	public static final fun alwaysReturn (Lapp/reseam/patch/FunctionTarget;Ljava/lang/String;)V
-	public static final fun alwaysReturn (Lapp/reseam/patch/FunctionTarget;Z)V
-	public static final fun alwaysReturnNull (Lapp/reseam/patch/FunctionTarget;)V
-	public static final fun before (Lapp/reseam/patch/FunctionTarget;Lkotlin/jvm/functions/Function1;)V
-	public static final fun function (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/FunctionTarget;
-	public static synthetic fun function$default (Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/FunctionTarget;
-	public static final fun replace (Lapp/reseam/patch/FunctionTarget;Lkotlin/jvm/functions/Function1;)V
 }
 
 public final class app/reseam/patch/HermesScope {
@@ -330,6 +333,19 @@ public final class app/reseam/patch/JsExport {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class app/reseam/patch/JsFunctionsKt {
+	public static final fun after (Lapp/reseam/patch/FunctionTarget;Lkotlin/jvm/functions/Function1;)V
+	public static final fun alwaysReturn (Lapp/reseam/patch/FunctionTarget;)V
+	public static final fun alwaysReturn (Lapp/reseam/patch/FunctionTarget;I)V
+	public static final fun alwaysReturn (Lapp/reseam/patch/FunctionTarget;Ljava/lang/String;)V
+	public static final fun alwaysReturn (Lapp/reseam/patch/FunctionTarget;Z)V
+	public static final fun alwaysReturnNull (Lapp/reseam/patch/FunctionTarget;)V
+	public static final fun before (Lapp/reseam/patch/FunctionTarget;Lkotlin/jvm/functions/Function1;)V
+	public static final fun function (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/FunctionTarget;
+	public static synthetic fun function$default (Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/FunctionTarget;
+	public static final fun replace (Lapp/reseam/patch/FunctionTarget;Lkotlin/jvm/functions/Function1;)V
+}
+
 public abstract interface class app/reseam/patch/JsOtherwise {
 	public abstract fun otherwise (Lkotlin/jvm/functions/Function1;)V
 }
@@ -363,6 +379,10 @@ public final class app/reseam/patch/ManifestScope {
 	public final fun setMinSdk-WZ4Q5Ns (I)V
 	public final fun setVersionCode (I)V
 	public final fun setVersionName (Ljava/lang/String;)V
+}
+
+public final class app/reseam/patch/ManifestScopeKt {
+	public static final fun resourceRef (Ljava/lang/String;)Lkotlin/UInt;
 }
 
 public abstract interface class app/reseam/patch/MatchReport {
@@ -449,6 +469,18 @@ public final class app/reseam/patch/MethodTarget : app/reseam/patch/Target {
 	public final fun getProto ()Ljava/lang/String;
 	public final fun getRef ()Lapp/reseam/patch/types/MethodRef;
 	public final fun getReturnType ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/MethodTargetsKt {
+	public static final fun method (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;)Lapp/reseam/patch/MethodTarget;
+	public static final fun method (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/MethodTarget;
+	public static synthetic fun method$default (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/MethodTarget;
+	public static synthetic fun method$default (Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/MethodTarget;
+	public static final fun methodTarget (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/MethodTarget;
+	public static final fun methods (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;)Lapp/reseam/patch/MethodsTarget;
+	public static final fun methods (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/MethodsTarget;
+	public static synthetic fun methods$default (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/MethodsTarget;
+	public static synthetic fun methods$default (Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/MethodsTarget;
 }
 
 public final class app/reseam/patch/MethodsTarget : app/reseam/patch/Target {
@@ -597,11 +629,6 @@ public final class app/reseam/patch/PathQuery$DefaultImpls {
 	public static synthetic fun nextInterfaceCall$default (Lapp/reseam/patch/PathQuery;Ljava/lang/String;ZILjava/lang/Object;)V
 }
 
-public final class app/reseam/patch/PointKt {
-	public static final fun point (Lapp/reseam/patch/MethodTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/PointTarget;
-	public static synthetic fun point$default (Lapp/reseam/patch/MethodTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/PointTarget;
-}
-
 public abstract interface class app/reseam/patch/PointMatch {
 	public abstract fun argument (ILkotlin/jvm/functions/Function1;)V
 	public abstract fun calls (Lapp/reseam/patch/MethodTarget;)V
@@ -640,13 +667,6 @@ public final class app/reseam/patch/PointMatch$DefaultImpls {
 	public static synthetic fun then$default (Lapp/reseam/patch/PointMatch;ILkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 }
 
-public final class app/reseam/patch/PointQueriesKt {
-	public static final fun points (Lapp/reseam/patch/MethodTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/PointsTarget;
-	public static final fun points (Lapp/reseam/patch/MethodsTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/PointsTarget;
-	public static synthetic fun points$default (Lapp/reseam/patch/MethodTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/PointsTarget;
-	public static synthetic fun points$default (Lapp/reseam/patch/MethodsTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/PointsTarget;
-}
-
 public final class app/reseam/patch/PointTarget : app/reseam/patch/Target {
 	public final fun callee (Ljava/lang/String;)Lapp/reseam/patch/MethodTarget;
 	public static synthetic fun callee$default (Lapp/reseam/patch/PointTarget;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/MethodTarget;
@@ -663,6 +683,15 @@ public final class app/reseam/patch/PointTarget : app/reseam/patch/Target {
 	public final fun previous (Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/PointTarget;
 	public final fun writer (ILjava/lang/String;)Lapp/reseam/patch/PointTarget;
 	public static synthetic fun writer$default (Lapp/reseam/patch/PointTarget;ILjava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/PointTarget;
+}
+
+public final class app/reseam/patch/PointsKt {
+	public static final fun point (Lapp/reseam/patch/MethodTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/PointTarget;
+	public static synthetic fun point$default (Lapp/reseam/patch/MethodTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/PointTarget;
+	public static final fun points (Lapp/reseam/patch/MethodTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/PointsTarget;
+	public static final fun points (Lapp/reseam/patch/MethodsTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/PointsTarget;
+	public static synthetic fun points$default (Lapp/reseam/patch/MethodTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/PointsTarget;
+	public static synthetic fun points$default (Lapp/reseam/patch/MethodsTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/PointsTarget;
 }
 
 public final class app/reseam/patch/PointsTarget : app/reseam/patch/Target {
@@ -784,10 +813,6 @@ public final class app/reseam/patch/RuntimeOptions {
 	public final fun getOrNull (Lapp/reseam/patch/Option;)Ljava/lang/Object;
 }
 
-public final class app/reseam/patch/ScopesKt {
-	public static final fun resourceRef (Ljava/lang/String;)Lkotlin/UInt;
-}
-
 public abstract interface class app/reseam/patch/SlotQuery {
 	public abstract fun firstInstanceOf (Ljava/lang/String;)V
 }
@@ -809,28 +834,6 @@ public abstract class app/reseam/patch/Target {
 	public final fun explain ()Lapp/reseam/patch/MatchReport;
 	public final fun getDebugName ()Ljava/lang/String;
 	public fun toString ()Ljava/lang/String;
-}
-
-public final class app/reseam/patch/TargetsKt {
-	public static final fun classTarget (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/ClassTarget;
-	public static final fun enumConstant (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;)Lapp/reseam/patch/FieldTarget;
-	public static final fun field (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;)Lapp/reseam/patch/FieldTarget;
-	public static final fun field (Lapp/reseam/patch/MethodTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/FieldTarget;
-	public static final fun field (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/FieldTarget;
-	public static synthetic fun field$default (Lapp/reseam/patch/MethodTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/FieldTarget;
-	public static final fun fieldOfType (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;)Lapp/reseam/patch/FieldTarget;
-	public static final fun fieldTarget (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/FieldTarget;
-	public static final fun klass (Ljava/lang/String;)Lapp/reseam/patch/ClassTarget;
-	public static final fun klass (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/ClassTarget;
-	public static final fun method (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;)Lapp/reseam/patch/MethodTarget;
-	public static final fun method (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/MethodTarget;
-	public static synthetic fun method$default (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/MethodTarget;
-	public static synthetic fun method$default (Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/MethodTarget;
-	public static final fun methodTarget (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/MethodTarget;
-	public static final fun methods (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;)Lapp/reseam/patch/MethodsTarget;
-	public static final fun methods (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/MethodsTarget;
-	public static synthetic fun methods$default (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/MethodsTarget;
-	public static synthetic fun methods$default (Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/MethodsTarget;
 }
 
 public final class app/reseam/patch/Type {
@@ -946,6 +949,19 @@ public final class app/reseam/patch/dex/AccessFlagsKt {
 	public static final fun allSet-Qn1smSk (II)Z
 	public static final fun isSet (II)Z
 	public static final fun isSet-Qn1smSk (II)Z
+}
+
+public final class app/reseam/patch/dex/DescriptorsKt {
+	public static final fun getDescriptor (Lapp/reseam/patch/types/MethodInfo;)Ljava/lang/String;
+	public static final fun getDescriptor (Lapp/reseam/patch/types/MethodRef;)Ljava/lang/String;
+	public static final fun getParameterTypes (Lapp/reseam/patch/types/MethodInfo;)Ljava/util/List;
+	public static final fun getParameterTypes (Lapp/reseam/patch/types/MethodRef;)Ljava/util/List;
+	public static final fun getReturnType (Lapp/reseam/patch/types/MethodInfo;)Ljava/lang/String;
+	public static final fun getReturnType (Lapp/reseam/patch/types/MethodRef;)Ljava/lang/String;
+	public static final fun isReferenceType (Ljava/lang/String;)Z
+	public static final fun isStatic (Lapp/reseam/patch/types/MethodInfo;)Z
+	public static final fun parseParameterTypes (Ljava/lang/String;)Ljava/util/List;
+	public static final fun registerWordCount (Ljava/lang/String;)I
 }
 
 public final class app/reseam/patch/dex/DexClass {
@@ -1111,32 +1127,33 @@ public final class app/reseam/patch/dex/InstructionBuilder {
 	public final fun type (Lapp/reseam/patch/dex/Opcode;IILjava/lang/String;)V
 }
 
-public final class app/reseam/patch/dex/InstructionsKt {
+public final class app/reseam/patch/dex/InstructionBuilderKt {
 	public static final fun buildInstructions (Lkotlin/jvm/functions/Function1;)Ljava/util/List;
-	public static final fun getCodeUnitSize (Lapp/reseam/patch/types/Instruction;)I
-	public static final fun getDescriptor (Lapp/reseam/patch/types/MethodInfo;)Ljava/lang/String;
-	public static final fun getDescriptor (Lapp/reseam/patch/types/MethodRef;)Ljava/lang/String;
-	public static final fun getFieldRef (Lapp/reseam/patch/types/Instruction;)Lapp/reseam/patch/types/FieldRef;
+}
+
+public final class app/reseam/patch/dex/InstructionRegistersKt {
 	public static final fun getInvokeArgumentTypes (Lapp/reseam/patch/types/Instruction;)Ljava/util/List;
 	public static final fun getInvokeRegisters (Lapp/reseam/patch/types/Instruction;)Ljava/util/List;
-	public static final fun getLiteral (Lapp/reseam/patch/types/Instruction;)Ljava/lang/Long;
-	public static final fun getMethodRef (Lapp/reseam/patch/types/Instruction;)Lapp/reseam/patch/types/MethodRef;
-	public static final fun getOpcode (Lapp/reseam/patch/types/Instruction;)Lapp/reseam/patch/dex/Opcode;
-	public static final fun getOpcodeValue (Lapp/reseam/patch/types/Instruction;)I
-	public static final fun getParameterTypes (Lapp/reseam/patch/types/MethodInfo;)Ljava/util/List;
-	public static final fun getParameterTypes (Lapp/reseam/patch/types/MethodRef;)Ljava/util/List;
 	public static final fun getReferencedRegisters (Lapp/reseam/patch/types/Instruction;)Ljava/util/List;
 	public static final fun getRegA (Lapp/reseam/patch/types/Instruction;)Ljava/lang/Integer;
 	public static final fun getRegB (Lapp/reseam/patch/types/Instruction;)Ljava/lang/Integer;
 	public static final fun getRegC (Lapp/reseam/patch/types/Instruction;)Ljava/lang/Integer;
-	public static final fun getReturnType (Lapp/reseam/patch/types/MethodInfo;)Ljava/lang/String;
-	public static final fun getReturnType (Lapp/reseam/patch/types/MethodRef;)Ljava/lang/String;
+}
+
+public final class app/reseam/patch/dex/InstructionsKt {
+	public static final fun getCodeUnitSize (Lapp/reseam/patch/types/Instruction;)I
+	public static final fun getFieldRef (Lapp/reseam/patch/types/Instruction;)Lapp/reseam/patch/types/FieldRef;
+	public static final fun getLiteral (Lapp/reseam/patch/types/Instruction;)Ljava/lang/Long;
+	public static final fun getMethodRef (Lapp/reseam/patch/types/Instruction;)Lapp/reseam/patch/types/MethodRef;
+	public static final fun getOpcode (Lapp/reseam/patch/types/Instruction;)Lapp/reseam/patch/dex/Opcode;
+	public static final fun getOpcodeValue (Lapp/reseam/patch/types/Instruction;)I
 	public static final fun getStringValue (Lapp/reseam/patch/types/Instruction;)Ljava/lang/String;
 	public static final fun getTypeRef (Lapp/reseam/patch/types/Instruction;)Ljava/lang/String;
-	public static final fun isReferenceType (Ljava/lang/String;)Z
-	public static final fun isStatic (Lapp/reseam/patch/types/MethodInfo;)Z
-	public static final fun parseParameterTypes (Ljava/lang/String;)Ljava/util/List;
-	public static final fun registerWordCount (Ljava/lang/String;)I
+}
+
+public final class app/reseam/patch/dex/InvokeLoweringKt {
+	public static final fun getRangeVariant (Lapp/reseam/patch/dex/Opcode;)Lapp/reseam/patch/dex/Opcode;
+	public static final fun lowerInvokes (Ljava/util/List;Lkotlin/jvm/functions/Function1;)Ljava/util/List;
 }
 
 public final class app/reseam/patch/dex/Method {
@@ -1225,11 +1242,6 @@ public final class app/reseam/patch/dex/Method {
 	public static final fun typeRef-impl (II)Ljava/lang/String;
 	public final synthetic fun unbox-impl ()I
 	public static final fun wideLiteral-impl (II)J
-}
-
-public final class app/reseam/patch/dex/MethodKt {
-	public static final fun getRangeVariant (Lapp/reseam/patch/dex/Opcode;)Lapp/reseam/patch/dex/Opcode;
-	public static final fun lowerInvokes (Ljava/util/List;Lkotlin/jvm/functions/Function1;)Ljava/util/List;
 }
 
 public final class app/reseam/patch/dex/Opcode : java/lang/Enum {

@@ -3,6 +3,8 @@
 
 package app.reseam.patch
 
+import app.reseam.patch.run.ActiveRuntime
+
 /**
  * Values the patches of one run collect for another patch to use, such as the hooks dependents
  * register for a finalizer to emit. Each run starts with none, and a patch the engine takes back

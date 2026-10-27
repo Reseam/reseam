@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-@file:Suppress("unused")
-
 package app.reseam.patch.dex
 
 import app.reseam.patch.types.Branch0Insn
@@ -454,3 +452,6 @@ class InstructionBuilder {
         )
     }
 }
+
+fun buildInstructions(block: InstructionBuilder.() -> Unit): List<Instruction> =
+    InstructionBuilder().apply(block).build()

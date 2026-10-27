@@ -5,7 +5,6 @@
 
 package app.reseam.patch.dex
 
-import app.reseam.patch.ActiveRuntime
 import app.reseam.patch.native.addClassAnnotation
 import app.reseam.patch.native.addField
 import app.reseam.patch.native.addFieldAnnotation
@@ -23,6 +22,7 @@ import app.reseam.patch.native.setFieldAccessFlags
 import app.reseam.patch.native.setStaticFieldValue
 import app.reseam.patch.native.setSuperclass
 import app.reseam.patch.native.superclassChain
+import app.reseam.patch.run.ActiveRuntime
 import app.reseam.patch.types.AnnotationItem
 import app.reseam.patch.types.ClassInfo
 import app.reseam.patch.types.EncodedVal
