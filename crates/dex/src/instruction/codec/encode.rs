@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use super::payload::split32;
 use crate::error::{Result, invalid};
 use crate::instruction::catalogue::instruction_catalogue;
 use crate::instruction::{Instruction, RegList};
@@ -48,10 +49,6 @@ fn literal4(value: i8) -> Result<u8> {
         ));
     }
     Ok(value as u8 & 0xf)
-}
-
-pub(super) fn split32(value: u32) -> [u16; 2] {
-    [value as u16, (value >> 16) as u16]
 }
 
 /// The units of a 35c instruction, which 45cc extends: the argument count

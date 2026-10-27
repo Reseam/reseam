@@ -3,7 +3,6 @@
 
 //! The switch and array-data payloads that a nop opcode unit introduces.
 
-use super::encode::split32;
 use crate::error::{Result, invalid, malformed};
 use crate::instruction::opcodes::{
     FILL_ARRAY_DATA_PAYLOAD, PACKED_SWITCH_PAYLOAD, SPARSE_SWITCH_PAYLOAD,
@@ -94,4 +93,9 @@ pub(super) fn encode(code: &mut Vec<u16>, insn: &Instruction) -> Result<()> {
         _ => return Err(invalid("instruction encoding", "expected a payload")),
     }
     Ok(())
+}
+
+/// A 32-bit value as its low code unit, then its high one.
+pub(super) fn split32(value: u32) -> [u16; 2] {
+    [value as u16, (value >> 16) as u16]
 }

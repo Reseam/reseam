@@ -9,7 +9,6 @@ mod encode;
 mod payload;
 
 pub use decode::decode_instructions;
-pub(crate) use decode::decode_onto;
 pub use encode::encode_instructions;
 
 /// Whether instructions of a format carry a literal.

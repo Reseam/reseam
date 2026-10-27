@@ -47,11 +47,11 @@ pub(crate) fn class(
     bodies: Bodies,
 ) -> Result<()> {
     class_header(sink, ClassHeader::of(class), &class.interfaces);
-    if let Some(annotations) = class.annotations.as_ref().filter(|metadata| {
-        dex.write_options()
-            .annotations
-            .keeps(metadata, dex.raw.as_ref())
-    }) {
+    if let Some(annotations) = class
+        .annotations
+        .as_ref()
+        .filter(|metadata| metadata.kept_by(dex.write_options().annotations, dex.raw.as_ref()))
+    {
         annotations_dir(sink, annotations.read()?.as_ref());
     }
     let Some(data) = &class.class_data else {
@@ -171,11 +171,11 @@ pub(crate) fn code_item(sink: &mut impl RefSink, code: &CodeItem, dex: &DexFile)
             sink.add(Pool::Type, catch.exception_type.0);
         }
     }
-    if let Some(debug) = code.debug_info.as_ref().filter(|metadata| {
-        dex.write_options()
-            .debug_info
-            .keeps(metadata, dex.raw.as_ref())
-    }) {
+    if let Some(debug) = code
+        .debug_info
+        .as_ref()
+        .filter(|metadata| metadata.kept_by(dex.write_options().debug_info, dex.raw.as_ref()))
+    {
         debug_info(sink, debug.read()?.as_ref());
     }
     Ok(())

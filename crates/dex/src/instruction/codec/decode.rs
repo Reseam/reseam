@@ -6,6 +6,7 @@ use crate::instruction::catalogue::instruction_catalogue;
 use crate::instruction::stream::{RawInstruction, instruction_stream};
 use crate::instruction::{Instruction, RegList};
 use reseam_bytes::{u16_at, u32_at};
+use smallvec::SmallVec;
 
 /// Decodes `insns_size` code units starting at byte `start` of `buf`.
 /// Truncated or malformed encodings fail; unknown opcodes keep all their
@@ -25,6 +26,19 @@ pub fn decode_instructions(
         );
     }
     Ok(instructions)
+}
+
+impl RawInstruction {
+    /// The literal of a `const*` or `*-int/lit*` instruction, as
+    /// [`Instruction::literal`] reports it once decoded.
+    pub fn literal(&self, buf: &[u8]) -> Option<i64> {
+        if !super::has_literal(self.opcode) {
+            return None;
+        }
+        let mut decoded = SmallVec::<[Instruction; 1]>::new();
+        decode_onto(buf, self, &mut decoded).ok()?;
+        decoded.pop()?.literal()
+    }
 }
 
 /// The code units of one framed instruction.
@@ -161,7 +175,7 @@ macro_rules! define_decoder {
         /// Decodes the instruction `frame` locates in `buf` onto `out`, where
         /// it is built in place.
         #[inline(always)]
-        pub(crate) fn decode_onto(
+        fn decode_onto(
             buf: &[u8],
             frame: &RawInstruction,
             out: &mut impl Extend<Instruction>,

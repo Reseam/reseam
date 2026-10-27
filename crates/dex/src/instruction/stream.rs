@@ -3,10 +3,7 @@
 
 use super::opcodes::{FILL_ARRAY_DATA_PAYLOAD, PACKED_SWITCH_PAYLOAD, SPARSE_SWITCH_PAYLOAD};
 use reseam_bytes::{require_len, u16_at, u32_at};
-use smallvec::SmallVec;
 
-use super::Instruction;
-use super::codec::{decode_onto, has_literal};
 use super::query::opcode_units;
 use crate::error::{Result, malformed};
 use crate::model::{FieldIdx, MethodIdx, Pool, StringIdx, TypeIdx};
@@ -63,17 +60,6 @@ impl RawInstruction {
             .iter()
             .find(|operand| matches!(operand.pool, Pool::Method | Pool::Field | Pool::String))?;
         Some((operand.pool, operand.read(buf, self.unit_off)))
-    }
-
-    /// The literal of a `const*` or `*-int/lit*` instruction, as
-    /// [`Instruction::literal`](super::Instruction::literal) reports it once decoded.
-    pub fn literal(&self, buf: &[u8]) -> Option<i64> {
-        if !has_literal(self.opcode) {
-            return None;
-        }
-        let mut decoded = SmallVec::<[Instruction; 1]>::new();
-        decode_onto(buf, self, &mut decoded).ok()?;
-        decoded.pop()?.literal()
     }
 }
 #[derive(Debug, Clone, Copy)]

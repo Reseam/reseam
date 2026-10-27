@@ -3,7 +3,7 @@
 
 use crate::DexBytes;
 use crate::error::Result;
-use crate::options::{Loading, ParseOptions};
+use crate::options::{Loading, MetadataPolicy, ParseOptions};
 use std::borrow::Cow;
 
 /// Metadata either owned by the IR or still backed by its original file.
@@ -59,8 +59,16 @@ impl<T: MetadataItem> Metadata<T> {
         })
     }
 
-    pub(crate) fn belongs_to(&self, original: Option<&DexBytes>) -> bool {
-        matches!((&self.state, original), (State::Source { source, .. }, Some(original)) if source.same_source(original))
+    /// Whether `policy` writes this metadata to the DEX whose original mapping is `original`.
+    pub(crate) fn kept_by(&self, policy: MetadataPolicy, original: Option<&DexBytes>) -> bool {
+        match policy {
+            MetadataPolicy::Preserve => true,
+            MetadataPolicy::Omit => false,
+            MetadataPolicy::OmitOriginal => !matches!(
+                (&self.state, original),
+                (State::Source { source, .. }, Some(original)) if source.same_source(original)
+            ),
+        }
     }
 
     pub fn read(&self) -> Result<Cow<'_, T>> {
