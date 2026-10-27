@@ -45,14 +45,14 @@ pub fn find_contiguous_free_registers(
     (run.len() == count).then_some(run)
 }
 
-fn free_registers<'a>(
-    code: &CodeItem,
-    at_index: usize,
-    exclude: &'a [u16],
-) -> impl Iterator<Item = u16> + 'a {
+fn free_registers(code: &CodeItem, at_index: usize, exclude: &[u16]) -> impl Iterator<Item = u16> {
     let liveness = RegisterLiveness::new(code);
-    (0..code.registers_size).filter(move |register| {
-        !liveness.is_live(at_index, *register) && !exclude.contains(register)
+    let excluded: FixedBitSet = exclude
+        .iter()
+        .map(|&register| usize::from(register))
+        .collect();
+    (0..code.registers_size).filter(move |&register| {
+        !liveness.is_live(at_index, register) && !excluded.contains(usize::from(register))
     })
 }
 
