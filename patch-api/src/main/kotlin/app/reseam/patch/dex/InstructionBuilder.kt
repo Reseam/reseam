@@ -315,18 +315,13 @@ class InstructionBuilder {
     fun instanceOf(dest: Int, ref: Int, descriptor: String) =
         type(Opcode.INSTANCE_OF, dest, ref, descriptor)
 
+    /** A `goto` the engine widens when its label is out of an 8-bit offset's reach. */
     fun goto(label: String) {
         val idx = insns.size
         insns.add(Instruction.Branch0(Branch0Insn(Opcode.GOTO.value.toUShort(), 0)))
         branchFixups.add(
             BranchFixup(idx, label) { offset ->
-                val opcode =
-                    when (offset) {
-                        in -128..127 -> Opcode.GOTO
-                        in -32768..32767 -> Opcode.GOTO_16
-                        else -> Opcode.GOTO_32
-                    }
-                Instruction.Branch0(Branch0Insn(opcode.value.toUShort(), offset))
+                Instruction.Branch0(Branch0Insn(Opcode.GOTO.value.toUShort(), offset))
             }
         )
     }

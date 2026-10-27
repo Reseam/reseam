@@ -15,6 +15,7 @@ import app.reseam.patch.appEntry
 import app.reseam.patch.before
 import app.reseam.patch.dex.AccessFlags
 import app.reseam.patch.dex.Opcode
+import app.reseam.patch.dex.buildInstructions
 import app.reseam.patch.dex.opcode
 import app.reseam.patch.enumConstant
 import app.reseam.patch.field
@@ -748,6 +749,25 @@ val constantForms =
                 returnValue(int(0))
             }
         }
+    }
+
+val longGoto =
+    fixturePatch("long-goto") {
+        klass("com.example.ConstantHost")
+            .method("small")
+            .method
+            .replaceBody(
+                2,
+                0,
+                buildInstructions {
+                    const4(0, 0)
+                    goto("end")
+                    repeat(130) { nop() }
+                    const4(0, 1)
+                    label("end")
+                    returnValue(0)
+                },
+            )
     }
 
 private val planEnum = klass("plan") { enumConstants("FREE", "PREMIUM") }

@@ -2187,3 +2187,11 @@ fn emitted_constants_preserve_values_across_encoding_widths_and_branches() {
         }
     }
 }
+
+#[test]
+fn a_goto_past_127_code_units_lands_on_its_label() {
+    let (_directory, mut apk) = open_dex_apk(&[dex!("constants")]);
+    apply_fixture(&mut apk, "long-goto", "longGoto");
+    let code = patched_code(&apk, "Lcom/example/ConstantHost;", "small");
+    assert_eq!(hook_calls(&code, &[1]), (vec![], Some(0)));
+}
