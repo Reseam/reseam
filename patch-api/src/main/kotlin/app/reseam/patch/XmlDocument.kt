@@ -25,6 +25,7 @@ import app.reseam.patch.native.xmlRoot
 import app.reseam.patch.native.xmlSetAttribute
 import app.reseam.patch.native.xmlSetAttributeRef
 import app.reseam.patch.native.xmlTagName
+import app.reseam.patch.types.CloneDepth
 
 class XmlDocument(val handle: UInt) : AutoCloseable {
     private var closed = false
@@ -125,5 +126,8 @@ class XmlElement(val doc: UInt, val handle: UInt) {
     fun remove() = xmlRemoveElement(doc, handle)
 
     fun clone(deep: Boolean = true): XmlElement =
-        XmlElement(doc, xmlCloneElement(doc, handle, deep))
+        XmlElement(
+            doc,
+            xmlCloneElement(doc, handle, if (deep) CloneDepth.DEEP else CloneDepth.SHALLOW),
+        )
 }

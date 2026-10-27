@@ -7,7 +7,8 @@ use boltffi::export;
 use dex::BranchDestination;
 use reseam_dex::{self as dex, CodeItem, DexFile};
 
-use crate::kotlin::convert::{dex_to_kotlin, kotlin_to_dex, lower_invocation, scratch_words};
+use crate::kotlin::convert::{dex_to_kotlin, kotlin_to_dex};
+use crate::kotlin::invocations::{lower_invocation, scratch_words};
 use crate::kotlin::types::{Instruction, ScratchSpan};
 
 pub(super) struct Assembly {

@@ -10,12 +10,15 @@
 pub mod android_host;
 mod bytecode;
 mod changes;
+mod components;
 mod convert;
+mod encoded_values;
 mod files;
 mod handles;
 mod hermes;
 mod identity;
 mod instruction_types;
+mod invocations;
 #[cfg(feature = "kotlin")]
 pub(crate) mod jvm;
 mod link;
@@ -31,10 +34,12 @@ mod options;
 mod output;
 #[cfg(feature = "kotlin")]
 mod patch;
+mod payloads;
 mod phase;
 mod pool_copies;
 mod pool_values;
 mod resource_files;
+mod resource_values;
 mod resources;
 pub(crate) mod run_state;
 pub(crate) mod savepoints;

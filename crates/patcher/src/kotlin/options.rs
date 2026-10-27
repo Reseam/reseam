@@ -4,7 +4,7 @@
 use boltffi::export;
 
 use super::phase::with_patch;
-use super::run_state::record_failure;
+use super::run_state::checked;
 use crate::error::Result;
 use crate::options::{OptionValue, PatchOptions};
 
@@ -13,14 +13,7 @@ fn option<R>(key: &str, f: impl FnOnce(&OptionValue) -> Option<R>) -> Option<R> 
 }
 
 fn file_option<R>(key: &str, f: impl FnOnce(&PatchOptions) -> Result<Option<R>>) -> Option<R> {
-    with_patch(|log, options| match f(options) {
-        Ok(value) => value,
-        Err(error) => {
-            record_failure(&error);
-            log.warn(format!("option '{key}': {error}"));
-            None
-        }
-    })
+    with_patch(|_, options| checked(f(options).map_err(|error| format!("option '{key}': {error}"))))
 }
 
 #[export]

@@ -3,16 +3,24 @@
 
 use super::logged;
 use crate::context::code_mut;
-use crate::kotlin::handles::{log_mutation, method_location, with_method_mut};
+use crate::kotlin::handles::{method_location, with_method_mut};
 use crate::kotlin::link::link_method;
 use crate::kotlin::phase::with_ctx;
-use crate::kotlin::run_state::checked;
+use crate::kotlin::run_state::{checked, record_failure};
 use crate::kotlin::types::MethodRef;
 use boltffi::export;
 use reseam_dex::{Instruction as DexInsn, MethodIdx};
 
+/// Which matches an edit replaces.
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Occurrences {
+    First,
+    All,
+}
+
 #[export]
-pub fn replace_strings(m: u32, old: String, new: String, all: bool) -> u32 {
+pub fn replace_strings(m: u32, old: String, new: String, occurrences: Occurrences) -> u32 {
     with_method_mut(m, |dex, loc| {
         let Some(old) = dex.strings().find(&old) else {
             return Ok(None);
@@ -32,7 +40,7 @@ pub fn replace_strings(m: u32, old: String, new: String, all: bool) -> u32 {
                     {
                         *string = new;
                         count += 1;
-                        if !all {
+                        if occurrences == Occurrences::First {
                             break;
                         }
                     }
@@ -46,7 +54,7 @@ pub fn replace_strings(m: u32, old: String, new: String, all: bool) -> u32 {
 }
 
 #[export]
-pub fn replace_literals(m: u32, old: i64, new: i64, all: bool) -> u32 {
+pub fn replace_literals(m: u32, old: i64, new: i64, occurrences: Occurrences) -> u32 {
     let Some(location) = method_location(m) else {
         return 0;
     };
@@ -75,7 +83,7 @@ pub fn replace_literals(m: u32, old: i64, new: i64, all: bool) -> u32 {
                                 skipped += 1;
                             }
                         }
-                        if !all {
+                        if occurrences == Occurrences::First {
                             break;
                         }
                     }
@@ -93,12 +101,9 @@ pub fn replace_literals(m: u32, old: i64, new: i64, all: bool) -> u32 {
             } else {
                 format!(" ({skipped} instructions skipped)")
             };
-            log_mutation::<()>(
-                ctx,
-                Err(format!(
-                    "replace_literal skipped an instruction: old={old}, new={new}: {message}{suffix}"
-                )),
-            );
+            record_failure(format!(
+                "replace_literal skipped an instruction: old={old}, new={new}: {message}{suffix}"
+            ));
         }
         count
     })

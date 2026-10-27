@@ -8,8 +8,8 @@ use crate::kotlin::run_state::{RunGuard, check_invocation};
 use crate::kotlin::xml_attributes::{xml_get_attribute, xml_set_attribute};
 use crate::kotlin::xml_documents::{xml_close, xml_open};
 use crate::kotlin::xml_tree::{
-    xml_adopt, xml_append_child, xml_clone_element, xml_create_element, xml_insert_before,
-    xml_remove_element,
+    CloneDepth, xml_adopt, xml_append_child, xml_clone_element, xml_create_element,
+    xml_insert_before, xml_remove_element,
 };
 use crate::kotlin::{manifest, manifest_activities};
 use reseam_apk::Compression;
@@ -112,7 +112,7 @@ fn subtree_handles_follow_moves_and_removal_without_consuming_children() {
         xml_get_attribute(document, action, "android:name".into()).as_deref(),
         Some("test.action")
     );
-    let cloned = xml_clone_element(document, parent, false);
+    let cloned = xml_clone_element(document, parent, CloneDepth::Shallow);
     assert!(xml_children(document, cloned).is_empty());
     xml_append_child(document, application, cloned).unwrap();
     xml_remove_element(document, parent);

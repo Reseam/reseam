@@ -246,3 +246,33 @@ pub struct MethodEdit {
     pub instructions: Vec<u32>,
     pub ends: Vec<u32>,
 }
+
+impl Instruction {
+    /// The opcode of a structured instruction; `None` for payloads and raw code.
+    pub(super) fn opcode(&self) -> Option<u16> {
+        Some(match self {
+            Instruction::Simple(value) => value.opcode,
+            Instruction::Reg1(value) => value.opcode,
+            Instruction::Reg2(value) => value.opcode,
+            Instruction::Reg3(value) => value.opcode,
+            Instruction::RegLiteral(value) => value.opcode,
+            Instruction::RegString(value) => value.opcode,
+            Instruction::RegType(value) => value.opcode,
+            Instruction::RegField(value) => value.opcode,
+            Instruction::Invoke(value) => value.opcode,
+            Instruction::InvokeRange(value) => value.opcode,
+            Instruction::Polymorphic(value) => value.opcode,
+            Instruction::PolymorphicRange(value) => value.opcode,
+            Instruction::Custom(value) => value.opcode,
+            Instruction::CustomRange(value) => value.opcode,
+            Instruction::RegHandle(value) => value.opcode,
+            Instruction::RegProto(value) => value.opcode,
+            Instruction::Branch0(value) => value.opcode,
+            Instruction::Branch(value) => value.opcode,
+            Instruction::Branch2(value) => value.opcode,
+            Instruction::FilledArray(value) => value.opcode,
+            Instruction::FilledArrayRange(value) => value.opcode,
+            _ => return None,
+        })
+    }
+}

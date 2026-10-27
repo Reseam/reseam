@@ -12,7 +12,6 @@ use std::sync::Arc;
 use jni::objects::{Global, JObject};
 
 use super::{changes, handles, hermes, phase, pool_copies, xml};
-use crate::context::PatchContext;
 use crate::error::{PatcherError, Result as PatcherResult};
 
 thread_local! {
@@ -83,13 +82,6 @@ pub(super) fn record_failure(error: impl std::fmt::Display) {
             .borrow_mut()
             .get_or_insert_with(|| error.to_string());
     });
-}
-
-/// Fails the running patch with `message` and logs it.
-pub(super) fn fail(ctx: &mut PatchContext<'_>, message: impl std::fmt::Display) {
-    let message = message.to_string();
-    record_failure(&message);
-    ctx.log().warn(message);
 }
 
 /// The value of `result`, or the default after recording its error.

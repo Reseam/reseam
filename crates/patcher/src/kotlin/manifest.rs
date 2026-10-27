@@ -8,56 +8,49 @@ use reseam_apk::axml;
 use reseam_apk::axml::android_attrs::android_attr_res_id;
 use reseam_apk::{AxmlDocument, ResValue};
 
-use super::files::with_component;
+use super::components::{component, with_component};
 use super::manifest_text::text_value;
-use super::run_state::record_failure;
+use super::run_state::{checked, record_failure};
 use super::xml::{self, Nodes};
 
-fn read<R>(component: Option<String>, f: impl FnOnce(&AxmlDocument) -> R) -> Option<R> {
-    with_component(component, |ctx, index| {
-        f(ctx
-            .apk()
-            .component(index)
-            .expect("component checked by with_component")
-            .manifest())
-    })
+fn read<R: Default>(component_name: Option<String>, f: impl FnOnce(&AxmlDocument) -> R) -> R {
+    checked(with_component(component_name, |ctx, index| {
+        Ok(f(component(ctx, index).manifest()))
+    }))
 }
 
 pub(super) fn edit(
-    component: Option<String>,
+    component_name: Option<String>,
     edit: impl FnOnce(&mut AxmlDocument, &mut Nodes) -> Result<(), String>,
 ) {
-    with_component(component, |ctx, index| {
-        if let Err(message) = xml::edit_manifest(ctx, index, edit) {
-            record_failure(&message);
-            ctx.log().warn(message);
-        }
-    });
+    checked(with_component(component_name, |ctx, index| {
+        xml::edit_manifest(ctx, index, edit)
+    }));
 }
 
 #[export]
 pub fn manifest_package_name(component: Option<String>) -> Option<String> {
-    read(component, |m| m.package_name().map(Cow::into_owned)).flatten()
+    read(component, |m| m.package_name().map(Cow::into_owned))
 }
 
 #[export]
 pub fn manifest_version_code(component: Option<String>) -> Option<i32> {
-    read(component, AxmlDocument::version_code).flatten()
+    read(component, AxmlDocument::version_code)
 }
 
 #[export]
 pub fn manifest_version_name(component: Option<String>) -> Option<String> {
-    read(component, |m| m.version_name().map(Cow::into_owned)).flatten()
+    read(component, |m| m.version_name().map(Cow::into_owned))
 }
 
 #[export]
 pub fn manifest_min_sdk_version(component: Option<String>) -> Option<u32> {
-    read(component, AxmlDocument::min_sdk_version).flatten()
+    read(component, AxmlDocument::min_sdk_version)
 }
 
 #[export]
 pub fn manifest_split_name(component: Option<String>) -> Option<String> {
-    read(component, |m| m.split_name().map(Cow::into_owned)).flatten()
+    read(component, |m| m.split_name().map(Cow::into_owned))
 }
 
 #[export]
@@ -121,16 +114,10 @@ pub fn manifest_set_attribute_string(
     attr_name: String,
     value: String,
 ) {
-    let value = match text_value(&value, android_attr_res_id(&attr_name)) {
-        Ok(value) => value,
-        Err(message) => return warn(component, message),
-    };
-    set_attribute(component, &element_name, &attr_name, |m| value.resolve(m));
-}
-
-pub(super) fn warn(component: Option<String>, message: String) {
-    record_failure(&message);
-    with_component(component, |ctx, _| ctx.log().warn(message));
+    match text_value(&value, android_attr_res_id(&attr_name)) {
+        Ok(value) => set_attribute(component, &element_name, &attr_name, |m| value.resolve(m)),
+        Err(message) => record_failure(message),
+    }
 }
 
 fn set_attribute(
@@ -152,9 +139,8 @@ fn set_attribute(
 }
 
 #[export]
-pub fn manifest_get_document(component: Option<String>) -> Option<u32> {
-    with_component(component, |_, index| {
-        super::run_state::checked(xml::open_manifest(index).map(Some))
-    })
-    .flatten()
+pub fn manifest_get_document(component_name: Option<String>) -> Option<u32> {
+    checked(with_component(component_name, |_, index| {
+        xml::open_manifest(index).map(Some)
+    }))
 }

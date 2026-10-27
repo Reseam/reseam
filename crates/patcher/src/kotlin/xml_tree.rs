@@ -130,18 +130,25 @@ pub fn xml_adopt(doc: u32, source: u32, element: u32) -> Result<u32, String> {
     .map(|id| id.0)
 }
 
+/// Whether a cloned element takes its children along.
+#[boltffi::data]
+#[derive(Debug, Clone, Copy)]
+pub enum CloneDepth {
+    Shallow,
+    Deep,
+}
+
 #[export]
-pub fn xml_clone_element(doc: u32, element: u32, deep: bool) -> u32 {
+pub fn xml_clone_element(doc: u32, element: u32, depth: CloneDepth) -> u32 {
     let element = ElementId(element);
     checked(
         with_read(doc, |nodes, document| {
             let position = nodes.position(element)?;
             let events = nodes.events(document, position.tree)?;
             let end = nodes.end(document, position)?;
-            let events = if deep {
-                events[position.index..=end].to_vec()
-            } else {
-                vec![events[position.index].clone(), events[end].clone()]
+            let events = match depth {
+                CloneDepth::Deep => events[position.index..=end].to_vec(),
+                CloneDepth::Shallow => vec![events[position.index].clone(), events[end].clone()],
             };
             nodes.pending(events)
         })

@@ -50,6 +50,7 @@ import app.reseam.patch.types.FieldRef
 import app.reseam.patch.types.Instruction
 import app.reseam.patch.types.MethodInfo
 import app.reseam.patch.types.MethodRef
+import app.reseam.patch.types.Occurrences
 
 /** A method in the app's bytecode, identified by an engine handle valid for the running patch. */
 @JvmInline
@@ -161,16 +162,16 @@ value class Method(val handle: UInt) {
     }
 
     fun replaceString(old: String, new: String): Boolean =
-        replaceStrings(handle, old, new, false) > 0u
+        replaceStrings(handle, old, new, Occurrences.FIRST) > 0u
 
     fun replaceAllStrings(old: String, new: String): Int =
-        replaceStrings(handle, old, new, true).toInt()
+        replaceStrings(handle, old, new, Occurrences.ALL).toInt()
 
     fun replaceLiteral(old: Long, new: Long): Boolean =
-        replaceLiterals(handle, old, new, false) > 0u
+        replaceLiterals(handle, old, new, Occurrences.FIRST) > 0u
 
     fun replaceAllLiterals(old: Long, new: Long): Int =
-        replaceLiterals(handle, old, new, true).toInt()
+        replaceLiterals(handle, old, new, Occurrences.ALL).toInt()
 
     fun replaceMethodCall(index: Int, target: MethodRef): Boolean =
         replaceMethodCall(handle, index.toUInt(), target.definingClass, target.name, target.proto)

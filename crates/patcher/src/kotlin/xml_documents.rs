@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::files::with_component;
+use super::components::with_component;
 use super::handles::HandleSpace;
 use super::run_state::checked;
 use crate::context::PatchContext;
@@ -204,7 +204,7 @@ pub(super) fn edit_manifest<R>(
         edit(
             ctx.apk_mut()
                 .component_mut(component)
-                .expect("component validated by with_component")
+                .expect("component index comes from component_index")
                 .manifest_mut(),
             nodes,
         )
@@ -212,10 +212,10 @@ pub(super) fn edit_manifest<R>(
 }
 
 #[export]
-pub fn xml_open(component: Option<String>, path: String) -> Option<u32> {
-    with_component(component, |ctx, component| {
+pub fn xml_open(component_name: Option<String>, path: String) -> Option<u32> {
+    checked(with_component(component_name, |ctx, component| {
         if path == reseam_apk::entry::MANIFEST_ENTRY {
-            return checked(open_manifest(component).map(Some));
+            return open_manifest(component).map(Some);
         }
         let source = Source::File {
             component,
@@ -229,13 +229,17 @@ pub fn xml_open(component: Option<String>, path: String) -> Option<u32> {
                 .any(|open| open.source == source)
         });
         if existing {
-            return checked(open(source, None).map(Some));
+            return open(source, None).map(Some);
         }
-        let bytes = checked(ctx.read_file(component, &path))?;
-        let document = checked(AxmlDocument::parse(&bytes).map(Some))?;
-        checked(open(source, Some(document)).map(Some))
-    })
-    .flatten()
+        let Some(bytes) = ctx
+            .read_file(component, &path)
+            .map_err(|error| error.to_string())?
+        else {
+            return Ok(None);
+        };
+        let document = AxmlDocument::parse(&bytes).map_err(|error| error.to_string())?;
+        open(source, Some(document)).map(Some)
+    }))
 }
 
 #[export]

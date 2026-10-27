@@ -6,10 +6,10 @@ use std::cell::RefCell;
 use reseam_dex::{CodeItem, DexFile, EncodedMethod, Instruction};
 
 use super::table::HandleTable;
-use crate::context::{ClassLocation, MethodLocation, PatchContext};
+use crate::context::{ClassLocation, MethodLocation};
 use crate::kotlin::changes::{changed, method_changed};
 use crate::kotlin::phase::with_ctx;
-use crate::kotlin::run_state::{checked, fail, record_failure};
+use crate::kotlin::run_state::{checked, record_failure};
 
 thread_local! {
     static HANDLES: RefCell<HandleTable> = RefCell::new(HandleTable::default());
@@ -117,7 +117,7 @@ pub(crate) fn with_method_mut<R>(
             checked(ctx.class_dex_mut(location.dex_idx, location.class_idx))?,
             location,
         );
-        log_mutation(ctx, result)
+        checked(result)
     })
 }
 
@@ -132,17 +132,7 @@ pub(crate) fn with_class_mut<R>(
             checked(ctx.class_dex_mut(location.dex_idx, location.class_idx))?,
             location,
         );
-        log_mutation(ctx, result)
-    })
-}
-
-pub(crate) fn log_mutation<R>(
-    ctx: &mut PatchContext<'_>,
-    result: Result<Option<R>, String>,
-) -> Option<R> {
-    result.unwrap_or_else(|message| {
-        fail(ctx, message);
-        None
+        checked(result)
     })
 }
 

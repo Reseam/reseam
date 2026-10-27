@@ -9,10 +9,10 @@ use reseam_apk::axml::android_attrs::{
 };
 use reseam_apk::{AxmlDocument, ResValue};
 
-use super::files::with_component;
-use super::manifest::{edit, warn};
+use super::components::with_component;
+use super::manifest::edit;
 use super::manifest_text::text_value;
-use super::run_state::record_failure;
+use super::run_state::{checked, record_failure};
 use super::xml::{self, Nodes};
 
 fn find_activity(m: &AxmlDocument, name: &str) -> Result<usize, String> {
@@ -32,8 +32,8 @@ pub fn manifest_set_activity_config_changes(
     activity_name: String,
     config_changes: String,
 ) {
-    with_component(component, |ctx, index| {
-        let outcome = xml::edit_manifest(ctx, index, |m, _| {
+    checked(with_component(component, |ctx, index| {
+        let unknown = xml::edit_manifest(ctx, index, |m, _| {
             let activity = find_activity(m, &activity_name)?;
             let (flags, unknown) = parse_config_changes(&config_changes);
             m.put_android_attribute(
@@ -43,19 +43,15 @@ pub fn manifest_set_activity_config_changes(
                 ResValue::int(flags),
             );
             Ok::<_, String>(unknown)
-        });
-        match outcome {
-            Ok(unknown) if !unknown.is_empty() => ctx.log().warn(format!(
+        })?;
+        if !unknown.is_empty() {
+            ctx.log().warn(format!(
                 "unknown configChanges flags: {}",
                 unknown.join(", ")
-            )),
-            Ok(_) => {}
-            Err(error) => {
-                record_failure(&error);
-                ctx.log().warn(error);
-            }
+            ));
         }
-    });
+        Ok(())
+    }));
 }
 
 #[export]
@@ -102,7 +98,7 @@ pub fn manifest_add_activity_alias(
         .transpose()
     {
         Ok(label) => label,
-        Err(message) => return warn(component, message),
+        Err(message) => return record_failure(message),
     };
     edit(component, |m, nodes| {
         let application = m

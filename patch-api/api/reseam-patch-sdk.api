@@ -1977,6 +1977,20 @@ public final class app/reseam/patch/types/ClassInfo {
 public final class app/reseam/patch/types/ClassInfo$Companion {
 }
 
+public final class app/reseam/patch/types/CloneDepth : java/lang/Enum {
+	public static final field Companion Lapp/reseam/patch/types/CloneDepth$Companion;
+	public static final field DEEP Lapp/reseam/patch/types/CloneDepth;
+	public static final field SHALLOW Lapp/reseam/patch/types/CloneDepth;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getValue ()I
+	public static fun valueOf (Ljava/lang/String;)Lapp/reseam/patch/types/CloneDepth;
+	public static fun values ()[Lapp/reseam/patch/types/CloneDepth;
+}
+
+public final class app/reseam/patch/types/CloneDepth$Companion {
+	public final fun fromValue (I)Lapp/reseam/patch/types/CloneDepth;
+}
+
 public final class app/reseam/patch/types/CustomInsn {
 	public static final field Companion Lapp/reseam/patch/types/CustomInsn$Companion;
 	public synthetic fun <init> (SLapp/reseam/patch/types/CallSiteRef;[SLkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -2276,6 +2290,20 @@ public final class app/reseam/patch/types/FieldRef {
 }
 
 public final class app/reseam/patch/types/FieldRef$Companion {
+}
+
+public final class app/reseam/patch/types/FileCompression : java/lang/Enum {
+	public static final field Companion Lapp/reseam/patch/types/FileCompression$Companion;
+	public static final field DEFLATED Lapp/reseam/patch/types/FileCompression;
+	public static final field STORED Lapp/reseam/patch/types/FileCompression;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getValue ()I
+	public static fun valueOf (Ljava/lang/String;)Lapp/reseam/patch/types/FileCompression;
+	public static fun values ()[Lapp/reseam/patch/types/FileCompression;
+}
+
+public final class app/reseam/patch/types/FileCompression$Companion {
+	public final fun fromValue (I)Lapp/reseam/patch/types/FileCompression;
 }
 
 public final class app/reseam/patch/types/FillArrayInsn {
@@ -3144,6 +3172,20 @@ public final class app/reseam/patch/types/NewMethod {
 }
 
 public final class app/reseam/patch/types/NewMethod$Companion {
+}
+
+public final class app/reseam/patch/types/Occurrences : java/lang/Enum {
+	public static final field ALL Lapp/reseam/patch/types/Occurrences;
+	public static final field Companion Lapp/reseam/patch/types/Occurrences$Companion;
+	public static final field FIRST Lapp/reseam/patch/types/Occurrences;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getValue ()I
+	public static fun valueOf (Ljava/lang/String;)Lapp/reseam/patch/types/Occurrences;
+	public static fun values ()[Lapp/reseam/patch/types/Occurrences;
+}
+
+public final class app/reseam/patch/types/Occurrences$Companion {
+	public final fun fromValue (I)Lapp/reseam/patch/types/Occurrences;
 }
 
 public final class app/reseam/patch/types/PackedSwitchInsn {

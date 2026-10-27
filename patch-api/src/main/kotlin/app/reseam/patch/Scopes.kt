@@ -27,6 +27,7 @@ import app.reseam.patch.native.logDebug
 import app.reseam.patch.native.logInfo
 import app.reseam.patch.native.logWarn
 import app.reseam.patch.native.xmlOpen
+import app.reseam.patch.types.FileCompression
 import app.reseam.patch.types.InstructionHit
 import app.reseam.patch.types.MethodRef
 import java.io.InputStream
@@ -154,9 +155,11 @@ class FileScope internal constructor(private val componentName: String? = null) 
      */
     fun signers(): List<ByteArray> = fileSigners(componentName)
 
-    fun write(path: String, data: ByteArray) = fileInject(componentName, path, data, false)
+    fun write(path: String, data: ByteArray) =
+        fileInject(componentName, path, data, FileCompression.DEFLATED)
 
-    fun writeStored(path: String, data: ByteArray) = fileInject(componentName, path, data, true)
+    fun writeStored(path: String, data: ByteArray) =
+        fileInject(componentName, path, data, FileCompression.STORED)
 
     fun delete(path: String) = fileDelete(componentName, path)
 
