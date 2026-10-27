@@ -4,6 +4,7 @@
 //! Opcode metadata generated from the corresponding Hermes release definition.
 
 use crate::error::{Result, invalid};
+use crate::string::StringId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OperandKind {
@@ -30,10 +31,6 @@ impl OperandKind {
 
     pub(crate) const fn is_register(self) -> bool {
         matches!(self, Self::Reg8 | Self::Reg32)
-    }
-
-    pub(crate) const fn is_address(self) -> bool {
-        matches!(self, Self::Addr8 | Self::Addr32)
     }
 }
 
@@ -73,46 +70,10 @@ impl Opcode {
 
 include!(concat!(env!("OUT_DIR"), "/opcodes.rs"));
 
-/// Execution bytecode formats understood by this crate. Each version selects
-/// its own generated opcode and operand definitions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u32)]
-pub enum BytecodeVersion {
-    V98 = 98,
-}
-
-impl BytecodeVersion {
-    pub(crate) fn parse(version: u32) -> Result<Self> {
-        match version {
-            98 => Ok(Self::V98),
-            other => Err(crate::HermesError::Version(other)),
-        }
-    }
-
-    fn opcodes(self) -> &'static [Opcode] {
-        match self {
-            Self::V98 => &V98,
-        }
-    }
-
-    fn opcode(self, op: Op) -> &'static Opcode {
-        match self {
-            Self::V98 => &V98[op as usize],
-        }
-    }
-
-    fn code(self, op: Op) -> u8 {
-        match self {
-            Self::V98 => op as u8,
-        }
-    }
-}
-
 /// A decoded instruction. Integers retain their raw little-endian bits;
 /// signed addresses use two's complement and doubles use IEEE 754 bits.
 #[derive(Debug, Clone)]
 pub(crate) struct Instruction {
-    pub version: BytecodeVersion,
     /// Byte offset in the original body; `None` for generated instructions.
     pub offset: Option<u32>,
     pub op: Op,
@@ -122,7 +83,6 @@ pub(crate) struct Instruction {
 impl Instruction {
     pub(crate) fn new(op: Op, values: &[u64]) -> Self {
         Self {
-            version: BytecodeVersion::V98,
             offset: None,
             op,
             values: values.to_vec(),
@@ -130,11 +90,11 @@ impl Instruction {
     }
 
     pub(crate) fn definition(&self) -> &'static Opcode {
-        self.version.opcode(self.op)
+        &OPCODES[self.op as usize]
     }
 
     pub(crate) fn code(&self) -> u8 {
-        self.version.code(self.op)
+        self.op as u8
     }
 
     pub(crate) fn operands(&self) -> impl Iterator<Item = (Operand, u64)> {
@@ -152,28 +112,54 @@ impl Instruction {
             .map(|&operand| self.values[operand] as u32)
     }
 
+    /// Each address operand's position and the branch offset it holds, relative to this
+    /// instruction.
+    pub(crate) fn jumps(&self) -> impl Iterator<Item = (usize, i64)> {
+        self.operands()
+            .enumerate()
+            .filter_map(|(position, (operand, value))| match operand.kind {
+                OperandKind::Addr8 => Some((position, i64::from(value as i8))),
+                OperandKind::Addr32 => Some((position, i64::from(value as i32))),
+                _ => None,
+            })
+    }
+
+    /// The property a by-name store writes: `object[key] = value` with the object in the first
+    /// register, the value in the second and the key's string fourth.
+    pub(crate) fn stored_property(&self) -> Option<StringId> {
+        matches!(
+            self.op,
+            Op::PutByIdLoose
+                | Op::PutByIdStrict
+                | Op::PutByIdLooseLong
+                | Op::PutByIdStrictLong
+                | Op::DefineOwnById
+                | Op::DefineOwnByIdLong
+        )
+        .then(|| StringId(self.values[3] as u32))
+    }
+
     /// This instruction's encodings, narrowest first.
     pub(crate) fn encodings(&self) -> impl Iterator<Item = &'static Opcode> {
         let definition = self.definition();
-        std::iter::once(definition)
-            .chain(definition.wider.iter().map(|&op| self.version.opcode(op)))
+        std::iter::once(definition).chain(definition.wider.iter().map(|&op| &OPCODES[op as usize]))
     }
 }
 
 /// Decodes a function's instruction stream, stopping before appended switch tables.
-/// Unknown opcodes and truncated operands report their byte offsets.
-pub(crate) fn decode(version: BytecodeVersion, bytes: &[u8]) -> Result<Vec<Instruction>> {
+/// Unknown opcodes and truncated operands report their offset in the file, where `bytes` start
+/// at `start`.
+pub(crate) fn decode(bytes: &[u8], start: usize) -> Result<Vec<Instruction>> {
     let mut offset = 0;
     let mut instructions = Vec::new();
     while offset < bytes.len() {
-        let definition = version
-            .opcodes()
+        let definition = OPCODES
             .get(usize::from(bytes[offset]))
-            .ok_or_else(|| invalid(offset, "unknown opcode"))?;
+            .ok_or_else(|| invalid(start + offset, "unknown opcode"))?;
         let end = offset + definition.size();
         let data = bytes
             .get(offset + 1..end)
-            .ok_or_else(|| invalid(offset, "truncated instruction"))?;
+            .ok_or_else(|| invalid(start + offset, "truncated instruction"))?;
         let mut cursor = 0;
         let values = definition
             .operands
@@ -187,7 +173,6 @@ pub(crate) fn decode(version: BytecodeVersion, bytes: &[u8]) -> Result<Vec<Instr
             })
             .collect();
         instructions.push(Instruction {
-            version,
             offset: Some(offset as u32),
             op: definition.op,
             values,

@@ -11,7 +11,8 @@ use tracing::info;
 use ureq::Agent;
 use url::Url;
 
-use super::http::{agent, checked, file_name, json, text_if_found};
+use super::http::{agent, checked, json, text_if_found};
+use super::{env, file_name};
 
 pub(super) struct Forge {
     api: Url,
@@ -39,6 +40,7 @@ struct Asset {
 
 impl Forge {
     pub fn from_env() -> Result<Self> {
+        let env = |name| env(name, "run in a GitHub or Forgejo workflow");
         let repository = env("GITHUB_REPOSITORY")?;
         let page = with_segments(
             Url::parse(&env("GITHUB_SERVER_URL")?).context("invalid GITHUB_SERVER_URL")?,
@@ -164,9 +166,4 @@ fn with_segments<'a>(mut url: Url, segments: impl IntoIterator<Item = &'a str>) 
         .pop_if_empty()
         .extend(segments);
     url
-}
-
-fn env(name: &str) -> Result<String> {
-    std::env::var(name)
-        .with_context(|| format!("{name} is not set; run in a GitHub or Forgejo workflow"))
 }

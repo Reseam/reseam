@@ -3,9 +3,10 @@
 
 use super::jvm::{self, jvm_err, string_of};
 use super::patch::KotlinCallback;
+use crate::bundle::is_slug;
 use crate::error::Result;
 use crate::options::{OptionDeclaration, OptionType, OptionValue};
-use crate::patch::{CompatiblePackage, Patch, PatchSpec, is_slug};
+use crate::patch::{CompatiblePackage, Patch, PatchSpec};
 use jni::objects::{JClass, JObject, JValue, JValueOwned};
 use jni::{Env, jni_sig, jni_str};
 use std::sync::Arc;

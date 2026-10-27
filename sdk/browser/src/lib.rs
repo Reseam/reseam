@@ -3,8 +3,7 @@
 
 #![cfg(target_os = "wasi")]
 
-use reseam_sdk::{InspectRequest, PatchRequest};
-use reseam_sdk::{Problem, SdkError};
+use reseam_model::{InspectRequest, PatchRequest, RunEvent, SdkError};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -24,7 +23,6 @@ unsafe extern "C" {
     fn reseam_buffer_alloc(length: u32, width: u32) -> *mut Buffer;
 }
 
-#[cfg(target_os = "wasi")]
 #[link(wasm_import_module = "reseam_host")]
 unsafe extern "C" {
     fn event(ptr: *const u8, length: usize);
@@ -35,13 +33,6 @@ unsafe extern "C" {
 enum Response {
     Success { value: serde_json::Value },
     Failure { error: SdkError },
-}
-
-fn invalid(message: impl Into<String>) -> SdkError {
-    SdkError {
-        problem: Problem::Other,
-        message: message.into(),
-    }
 }
 
 pub struct BrowserState {
@@ -67,15 +58,15 @@ pub unsafe extern "C" fn reseam_session_free(state: *mut BrowserState) {
 }
 
 fn dispatch(state: &mut BrowserState, bytes: &[u8]) -> Result<serde_json::Value, SdkError> {
-    let request =
-        serde_json::from_slice::<Request>(bytes).map_err(|error| invalid(error.to_string()))?;
+    let request = serde_json::from_slice::<Request>(bytes)
+        .map_err(|error| SdkError::other(error.to_string()))?;
     match request {
         Request::Inspect(request) => {
             state.prepared = None;
-            let prepared = reseam_sdk::PreparedInspection::open(&request)
-                .map_err(|error| reseam_sdk::sdk_error(&error))?;
+            let prepared =
+                reseam_sdk::PreparedInspection::open(&request).map_err(SdkError::from)?;
             let value = serde_json::to_value(prepared.metadata())
-                .map_err(|error| invalid(error.to_string()))?;
+                .map_err(|error| SdkError::other(error.to_string()))?;
             state.prepared = Some(prepared);
             Ok(value)
         }
@@ -83,12 +74,14 @@ fn dispatch(state: &mut BrowserState, bytes: &[u8]) -> Result<serde_json::Value,
             Some(prepared) => prepared.patch(&request, |event| emit(&event)),
             None => reseam_sdk::patch(&request, |event| emit(&event)),
         }
-        .map_err(|error| reseam_sdk::sdk_error(&error))
-        .and_then(|value| serde_json::to_value(value).map_err(|error| invalid(error.to_string()))),
+        .map_err(SdkError::from)
+        .and_then(|value| {
+            serde_json::to_value(value).map_err(|error| SdkError::other(error.to_string()))
+        }),
     }
 }
 
-fn emit(event: &reseam_sdk::RunEvent) {
+fn emit(event: &RunEvent) {
     let bytes = serde_json::to_vec(event)
         .expect("run events contain only JSON-serializable text and status");
     // SAFETY: the host copies this borrowed event before returning.
@@ -110,7 +103,7 @@ pub unsafe extern "C" fn reseam_request(
     length: usize,
 ) -> *mut Buffer {
     let result = if state.is_null() || ptr.is_null() || length > 16 * 1024 * 1024 {
-        Err(invalid("invalid browser request size"))
+        Err(SdkError::other("invalid browser request size"))
     } else {
         // SAFETY: the host guarantees that the input range is readable.
         unsafe { dispatch(&mut *state, std::slice::from_raw_parts(ptr, length)) }

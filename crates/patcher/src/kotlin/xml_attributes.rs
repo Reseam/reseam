@@ -36,34 +36,11 @@ pub(super) fn attribute_text(
     name: &str,
 ) -> Option<String> {
     let attribute = find_attribute(document, attributes, name)?;
-    Some(match attribute.value.kind {
+    let value = attribute.value();
+    Some(match value.kind {
         ResValue::STRING => document.attribute_string(attribute)?.into_owned(),
-        ResValue::INT_DEC => (attribute.value.data as i32).to_string(),
-        ResValue::INT_BOOLEAN => (attribute.value.data != 0).to_string(),
-        ResValue::REFERENCE => format!("@0x{:08x}", attribute.value.data),
-        ResValue::INT_HEX => format!("0x{:08x}", attribute.value.data),
-        _ => attribute.value.data.to_string(),
+        _ => value.to_text().unwrap_or_else(|| value.data.to_string()),
     })
-}
-
-fn set_attribute(
-    document: &mut AxmlDocument,
-    attributes: &mut Vec<AxmlAttribute>,
-    namespace: Option<u32>,
-    name: u32,
-    value: ResValue,
-) {
-    let local = document.string(name).map(std::borrow::Cow::into_owned);
-    let existing = local.and_then(|local| {
-        attributes
-            .iter()
-            .position(|attribute| document.is_attribute(attribute, namespace, &local))
-    });
-    if let Some(attribute) = existing.map(|index| &mut attributes[index]) {
-        attribute.set_value(value);
-    } else {
-        document.insert_attribute(attributes, AxmlAttribute::new(namespace, name, value));
-    }
 }
 
 #[export]
@@ -107,7 +84,7 @@ fn set_attribute_value(
                         .map_err(|e| e.to_string())?;
                     let attribute = namespace.and_then(|_| document.resource_id_for(name));
                     let value = value(document.string_pool_mut(), attribute, scope)?;
-                    set_attribute(document, attributes, namespace, name, value);
+                    document.put_attribute(attributes, namespace, name, value);
                     Ok(())
                 })
             })
@@ -124,11 +101,8 @@ pub fn xml_set_attribute(
 ) -> Result<(), String> {
     let element = ElementId(element);
     set_attribute_value(doc, element, &name, |pool, attribute, scope| {
-        let parsed = match attribute {
-            Some(id) => axml::parse_attribute_value(&value, id, scope),
-            None => axml::infer_value(&value, scope),
-        }
-        .map_err(|e| format!("attribute {name}: {e}"))?;
+        let parsed = axml::parse_value(&value, attribute, scope)
+            .map_err(|e| format!("attribute {name}: {e}"))?;
         match parsed {
             AttributeValue::Value(value) => Ok(value),
             AttributeValue::Text => pool

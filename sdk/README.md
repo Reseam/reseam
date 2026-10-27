@@ -10,7 +10,7 @@ This crate is the Rust service. [`sdk/native`](native/) exports it to Kotlin thr
 
 ## API
 
-The types come from [`crates/model`](../crates/model/).
+The types come from [`crates/model`](../crates/model/). Bundle authoring (the signing key, manifest checks and packing behind `reseam bundle`) is in the Rust `authoring` module only.
 
 | Call | What it does |
 |---|---|

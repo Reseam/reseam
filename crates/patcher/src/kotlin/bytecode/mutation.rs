@@ -4,8 +4,8 @@
 use std::sync::Arc;
 
 use boltffi::export;
-use reseam_apk::reseam_dex::InstructionExpansion;
-use reseam_apk::reseam_dex::{AccessFlags, CodeItem, EarlyReturn, Instruction as DexInsn};
+use reseam_dex::InstructionExpansion;
+use reseam_dex::{AccessFlags, CodeItem, EarlyReturn, Instruction as DexInsn};
 
 use crate::kotlin::convert::kotlin_to_dex;
 use crate::kotlin::handles::{code_mut, method_mut, with_method_mut};
@@ -80,9 +80,7 @@ pub fn replace_body(
     outcome.ok_or_else(|| format!("method handle {m} could not be replaced"))
 }
 
-pub(super) fn edit_mapping(
-    mapping: reseam_apk::reseam_dex::InstructionMap,
-) -> Result<MethodEdit, String> {
+pub(super) fn edit_mapping(mapping: reseam_dex::InstructionMap) -> Result<MethodEdit, String> {
     fn indices(values: &[usize]) -> Result<Vec<u32>, String> {
         values
             .iter()
@@ -169,7 +167,7 @@ pub fn remove_instructions(m: u32, index: u32, count: u32) -> Result<MethodEdit,
 fn return_early_with(m: u32, value: EarlyReturn) {
     with_method_mut(m, |dex, loc| {
         Ok(logged("access method", method_mut(dex, loc))?
-            .and_then(reseam_apk::reseam_dex::EncodedMethod::code_mut)
+            .and_then(reseam_dex::EncodedMethod::code_mut)
             .map(|code| code.return_early(value)))
     });
 }

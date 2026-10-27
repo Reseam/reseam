@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use reseam_apk::reseam_dex::{
-    DexFile, EncodedField, EncodedMethod, MemberCounts, MethodSummary, MultiDexContainer,
-    summarize_resident,
+use reseam_apk::DexSet;
+use reseam_dex::{
+    DexFile, EncodedField, EncodedMethod, MemberCounts, MethodSummary, summarize_resident,
 };
 
 use crate::error::Result;
@@ -11,12 +11,12 @@ use crate::error::Result;
 use super::{CachedMethod, CachedSkeleton, ClassLocation, MethodLocation, PatchContext};
 
 impl PatchContext<'_> {
-    pub fn dex(&self) -> &MultiDexContainer {
+    pub fn dex(&self) -> &DexSet {
         self.apk.dex()
     }
 
     pub fn dex_file(&self, index: usize) -> Option<&DexFile> {
-        self.apk.dex().dex(index)
+        self.apk.dex().get(index)
     }
 
     /// One DEX for whole-file operations such as interning, without
@@ -34,7 +34,7 @@ impl PatchContext<'_> {
         &mut self,
         location: MethodLocation,
     ) -> Result<Option<(&DexFile, &EncodedMethod)>> {
-        if let Some(dex) = self.apk.dex().dex(location.dex_idx)
+        if let Some(dex) = self.apk.dex().get(location.dex_idx)
             && let Some(class) = dex.classes().resident(location.class_idx)
         {
             let method = class
@@ -61,7 +61,7 @@ impl PatchContext<'_> {
         Ok(Some((
             self.apk
                 .dex()
-                .dex(location.dex_idx)
+                .get(location.dex_idx)
                 .expect("cached method has a DEX"),
             &self
                 .method
@@ -77,7 +77,7 @@ impl PatchContext<'_> {
         &mut self,
         location: MethodLocation,
     ) -> Result<Option<MethodSummary>> {
-        let Some(dex) = self.apk.dex().dex(location.dex_idx) else {
+        let Some(dex) = self.apk.dex().get(location.dex_idx) else {
             return Ok(None);
         };
         if let Some(data) = dex
@@ -152,10 +152,9 @@ impl PatchContext<'_> {
     }
 
     pub fn find_class(&self, descriptor: &str) -> Option<ClassLocation> {
-        self.dex().iter().enumerate().find_map(|(dex_idx, dex)| {
-            dex.find_class_index(descriptor)
-                .map(|class_idx| ClassLocation { dex_idx, class_idx })
-        })
+        self.dex()
+            .find_class(descriptor)
+            .map(|(dex_idx, class_idx)| ClassLocation { dex_idx, class_idx })
     }
 
     /// Superclasses nearest first. A base class often sits in another DEX of a

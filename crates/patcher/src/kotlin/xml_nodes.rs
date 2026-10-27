@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use reseam_apk::axml::{AxmlAttribute, AxmlDocument, AxmlEvent};
+use reseam_apk::axml::{self, AxmlAttribute, AxmlDocument, AxmlEvent};
 use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -94,32 +94,8 @@ impl Nodes {
     }
 
     pub(super) fn end(&self, document: &AxmlDocument, position: Position) -> Result<usize, String> {
-        if position.tree == Tree::Document {
-            return document
-                .find_end_element(position.index)
-                .ok_or_else(|| "unterminated XML element".into());
-        }
-        let events = self.events(document, position.tree)?;
-        if !matches!(
-            events.get(position.index),
-            Some(AxmlEvent::StartElement { .. })
-        ) {
-            return Err("XML handle does not name an element".into());
-        }
-        let mut depth = 0usize;
-        for (index, event) in events.iter().enumerate().skip(position.index) {
-            match event {
-                AxmlEvent::StartElement { .. } => depth += 1,
-                AxmlEvent::EndElement { .. } => {
-                    depth -= 1;
-                    if depth == 0 {
-                        return Ok(index);
-                    }
-                }
-                _ => {}
-            }
-        }
-        Err("unterminated detached XML element".into())
+        axml::element_end(self.events(document, position.tree)?, position.index)
+            .ok_or_else(|| "XML handle does not name a terminated element".into())
     }
 
     pub(super) fn pending(&mut self, events: Vec<AxmlEvent>) -> Result<ElementId, String> {

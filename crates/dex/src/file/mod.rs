@@ -3,8 +3,8 @@
 
 mod class_ops;
 mod classes;
-pub mod container;
 pub(crate) mod hidden_api;
+pub(crate) mod memory;
 pub use hidden_api::HiddenApiData;
 mod ids;
 mod interning;

@@ -3,10 +3,10 @@
 
 use std::sync::Arc;
 
-use reseam_apk::reseam_dex::{AccessFlags, CodeItem, DexFile, EncodedMethod, Instruction, RegList};
+use reseam_dex::{AccessFlags, CodeItem, DexFile, EncodedMethod, Instruction, RegList};
 
 use super::{ClassLocation, MethodLocation, PatchContext};
-use reseam_apk::reseam_dex::MethodKind;
+use reseam_dex::MethodKind;
 
 use crate::error::{PatcherError, Result};
 

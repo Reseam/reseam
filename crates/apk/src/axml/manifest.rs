@@ -7,7 +7,7 @@ use super::AxmlDocument;
 use super::android_attrs::{
     ATTR_MIN_SDK_VERSION, ATTR_NAME, ATTR_SPLIT_NAME, ATTR_VERSION_CODE, ATTR_VERSION_NAME,
 };
-use crate::value::ResValue;
+use crate::res_value::ResValue;
 
 impl AxmlDocument {
     pub fn package_name(&self) -> Option<Cow<'_, str>> {

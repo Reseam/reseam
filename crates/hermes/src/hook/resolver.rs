@@ -1,14 +1,19 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use super::declared_export;
+use crate::FunctionId;
+use crate::HermesFile;
 use crate::code::{Code, Condition, HookKind, Operand, Place, SlotId, Statement};
-use crate::edit::Editor;
-use crate::error::{HermesError, Result};
-use crate::model::{StringId, StringKind};
+use crate::edit::Edits;
+use crate::error::{HermesError, Result, Unsupported, unsupported};
+use crate::string::{StringId, StringKind};
 
 /// Checks a hook's code and resolves its names to the file's strings.
 pub(super) struct Resolver<'e, 'a> {
-    pub(super) editor: &'e mut Editor<'a>,
+    pub(super) function: FunctionId,
+    pub(super) file: &'e HermesFile<'a>,
+    pub(super) edits: &'e mut Edits,
     pub(super) kind: HookKind,
     pub(super) slots: u32,
     pub(super) calls_exports: bool,
@@ -17,7 +22,7 @@ pub(super) struct Resolver<'e, 'a> {
 impl Resolver<'_, '_> {
     pub(super) fn code(&mut self, code: &Code) -> Result<Code<StringId>> {
         if code.blocks.is_empty() {
-            return Err(malformed("hook code has no body"));
+            return Err(self.malformed("hook code has no body"));
         }
         let mut entered = vec![false; code.blocks.len()];
         entered[0] = true;
@@ -29,9 +34,9 @@ impl Resolver<'_, '_> {
                 for block in [then, otherwise] {
                     let entry = entered
                         .get_mut(block.0 as usize)
-                        .ok_or_else(|| malformed("branch to a missing block"))?;
+                        .ok_or_else(|| self.malformed("branch to a missing block"))?;
                     if std::mem::replace(entry, true) {
-                        return Err(malformed("a block runs from more than one place"));
+                        return Err(self.malformed("a block runs from more than one place"));
                     }
                 }
             }
@@ -57,7 +62,7 @@ impl Resolver<'_, '_> {
                 Statement::Call {
                     into: *into,
                     module: *module,
-                    export: self.editor.declared_export(*module, export)?,
+                    export: declared_export(self.file, self.edits, self.function, *module, export)?,
                     arguments: arguments
                         .iter()
                         .map(|argument| self.operand(argument))
@@ -115,8 +120,16 @@ impl Resolver<'_, '_> {
             Operand::Null => Operand::Null,
             Operand::Bool(value) => Operand::Bool(*value),
             Operand::Int(value) => Operand::Int(*value),
-            Operand::Text(text) => Operand::Text(self.editor.intern(text, StringKind::String)?),
+            Operand::Text(text) => Operand::Text(self.edits.strings_mut().intern(
+                self.file,
+                text,
+                StringKind::String,
+            )?),
         })
+    }
+
+    fn malformed(&self, reason: &'static str) -> HermesError {
+        unsupported(self.function, Unsupported::Malformed(reason))
     }
 
     fn slot(&mut self, slot: SlotId) {
@@ -127,11 +140,7 @@ impl Resolver<'_, '_> {
         if self.kind == HookKind::After {
             Ok(())
         } else {
-            Err(malformed("only after hooks have a result"))
+            Err(self.malformed("only after hooks have a result"))
         }
     }
-}
-
-fn malformed(reason: &str) -> HermesError {
-    HermesError::Unsupported(format!("malformed hook code: {reason}"))
 }

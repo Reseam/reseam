@@ -1,50 +1,39 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use crate::closure::Closures;
 use crate::code::{Code, HookKind};
-use crate::codegen::{self, Layer, Links};
-use crate::edit::Editor;
-use crate::environment::original_function;
-use crate::error::{HermesError, Result, invalid};
-use crate::model::{StringId, StringKind};
-use crate::{FunctionId, FunctionIndex, ModuleId};
+use crate::edit::{Edits, ModuleId, original_function};
+use crate::error::{Result, Unsupported, unsupported};
+use crate::function::{Function, FunctionKind, Prohibit};
+use crate::opcode::Op;
+use crate::string::{StringId, StringKind};
+use crate::{FunctionId, FunctionIndex, HermesFile};
+use codegen::{Layer, Links};
 
+mod codegen;
 mod resolver;
+mod root;
 
 use resolver::Resolver;
+pub(crate) use root::rooted_functions;
 
-impl Editor<'_> {
-    /// Adds `code` to `function` as a new layer; callers are untouched. [`HookKind::Before`] and
-    /// [`HookKind::After`] run around the function as it was, which later layers then run around
-    /// in turn; [`HookKind::Replace`] runs instead of it, and earlier layers no longer run. The
-    /// receiver and the linked modules' exports keep the function's original captured
-    /// environment.
-    ///
-    /// Generators, async functions, constructors, functions using `new.target` or direct
-    /// `eval`, unknown exports, malformed code and unprovable environment chains fail. A replaced
-    /// function whose closures an earlier hook needs fails too. Hooked functions cannot be used
-    /// as constructors afterwards.
-    pub fn hook(
-        &mut self,
-        index: &FunctionIndex,
-        function: FunctionId,
-        kind: HookKind,
-        code: &Code,
-    ) -> Result<()> {
-        index.check(&self.file)?;
-        self.transaction(|editor| editor.hook_function(index, function, kind, code))
-    }
+/// Hooks app functions of one file: its edits, and the closure analysis that finds where linked
+/// modules' exports reach them.
+pub(crate) struct Hooker<'e> {
+    pub file: HermesFile<'e>,
+    pub index: &'e FunctionIndex,
+    pub closures: &'e mut Closures,
+    pub edits: &'e mut Edits,
+}
 
-    fn hook_function(
-        &mut self,
-        index: &FunctionIndex,
-        function: FunctionId,
-        kind: HookKind,
-        code: &Code,
-    ) -> Result<()> {
-        let target = self.editable(function)?;
+impl Hooker<'_> {
+    pub(crate) fn hook(&mut self, function: FunctionId, kind: HookKind, code: &Code) -> Result<()> {
+        let target = editable(&self.file, function)?;
         let mut resolver = Resolver {
-            editor: self,
+            function,
+            file: &self.file,
+            edits: &mut *self.edits,
             kind,
             slots: 0,
             calls_exports: false,
@@ -52,72 +41,93 @@ impl Editor<'_> {
         let code = resolver.code(code)?;
         let (slots, calls_exports) = (resolver.slots, resolver.calls_exports);
         let plan = if calls_exports {
-            Some(self.hook_plan(index, function)?)
+            Some(self.closures.plan(&self.file, self.index, function)?)
         } else {
             None
         };
         if let Some(id) = plan
             .iter()
             .flat_map(|plan| plan.roots.keys())
-            .find(|id| self.edits.discarded.contains(id) && !self.edits.relocated.contains_key(id))
+            .find(|&&id| self.edits.is_discarded(id))
         {
-            return Err(HermesError::Unsupported(format!(
-                "function {} was replaced, so the closures this hook needs no longer exist",
-                id.0
-            )));
+            return Err(unsupported(*id, Unsupported::Replaced));
         }
-        let edited = self.edits.functions.contains_key(&function);
-        let original = (kind != HookKind::Replace).then(|| self.next_function());
+        let original =
+            (kind != HookKind::Replace).then(|| FunctionId(self.edits.function_count(&self.file)));
         let layer = Layer { kind, code, slots };
         let links = Links {
             original,
             modules: plan.as_ref().map(|plan| plan.depth),
         };
         let body = codegen::compile(&target, &layer, &links)?;
+        let edited = self.edits.function(&self.file, function).is_some();
         if let Some(original) = original {
-            let previous = if edited {
-                self.edits.functions[&function].clone()
-            } else {
-                original_function(&target)?
+            let previous = match self.edits.function(&self.file, function) {
+                Some(previous) => previous.clone(),
+                None => original_function(&target)?,
             };
-            self.append_function(previous);
+            self.edits.append_function(&self.file, previous);
             if !edited {
                 self.edits.relocate(function, original);
             }
         } else if !edited {
-            if self.edits.roots.contains_key(&function) {
-                return Err(HermesError::Unsupported(format!(
-                    "function {} creates closures that a hook needs",
-                    function.0
-                )));
+            if self.edits.roots().contains_key(&function) {
+                return Err(unsupported(function, Unsupported::NeededClosures));
             }
             self.edits.discard(function);
         }
-        self.edits.set_function(function, body);
+        self.edits.replace(function, body);
         for (id, root) in plan.into_iter().flat_map(|plan| plan.roots) {
             self.edits.attach_root(id, root);
         }
         Ok(())
     }
+}
 
-    fn declared_export(&mut self, module: ModuleId, export: &str) -> Result<StringId> {
-        let linked = self
-            .edits
-            .modules
-            .get(module.0 as usize)
-            .ok_or_else(|| invalid(0, "module belongs to another editor"))?;
-        let declared = linked.exports.iter().any(|id| {
-            self.edits.strings[(id.0 - self.file.string_count()) as usize]
-                .value()
-                .equals(export)
-        });
-        if !declared {
-            return Err(HermesError::Unsupported(format!(
-                "module does not export {export:?}"
-            )));
-        }
-        self.intern(export, StringKind::Identifier)
+/// The app function whose body an edit may replace. Generators, async functions and
+/// constructors keep state or a receiver that a replaced body cannot reproduce.
+fn editable<'a>(file: &HermesFile<'a>, function: FunctionId) -> Result<Function<'a>> {
+    if function == file.global_function() {
+        return Err(unsupported(function, Unsupported::Global));
     }
+    let target = file.function(function)?;
+    if target.header.flags.kind != FunctionKind::Normal
+        || target.header.flags.prohibit == Prohibit::Call
+        || target
+            .instructions()?
+            .iter()
+            .any(|i| matches!(i.op, Op::GetNewTarget | Op::DirectEval))
+    {
+        return Err(unsupported(function, Unsupported::Stateful));
+    }
+    Ok(target)
+}
+
+/// The string naming `export` of a linked `module`, which must declare it.
+fn declared_export(
+    file: &HermesFile<'_>,
+    edits: &mut Edits,
+    function: FunctionId,
+    module: ModuleId,
+    export: &str,
+) -> Result<StringId> {
+    let linked = edits
+        .modules()
+        .get(module.0 as usize)
+        .ok_or_else(|| unsupported(function, Unsupported::Module))?;
+    let mut declared = false;
+    for &id in &linked.exports {
+        declared |= edits.strings().string(file, id)?.equals(export);
+    }
+    if !declared {
+        return Err(unsupported(
+            function,
+            Unsupported::Export(export.to_owned()),
+        ));
+    }
+    edits
+        .strings_mut()
+        .intern(file, export, StringKind::Identifier)
 }
 
 #[cfg(test)]

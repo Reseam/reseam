@@ -15,7 +15,7 @@ pub(crate) use hermes::hermes_imports;
 pub use search::{FieldRefQuery, MethodRefQuery};
 
 use reseam_apk::ApkFile;
-use reseam_apk::reseam_dex::{ClassSkeleton, CodeItem, DexFile, EncodedMethod, MethodKind};
+use reseam_dex::{ClassSkeleton, CodeItem, DexFile, EncodedMethod, MethodKind};
 
 use crate::log::{LogEntry, PatchLog};
 use crate::options::PatchOptions;

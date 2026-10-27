@@ -3,7 +3,7 @@
 
 use crate::kotlin::handles::checked;
 use boltffi::export;
-use reseam_apk::reseam_dex::{DexFile, Instruction as DexInsn};
+use reseam_dex::{DexFile, Instruction as DexInsn};
 
 use crate::context::{FieldRefQuery, InstructionLocation, MethodRefQuery};
 use crate::kotlin::convert::{self, dex_to_kotlin};
@@ -20,7 +20,7 @@ pub fn get_instructions(m: u32) -> Vec<Instruction> {
             code.instructions()
                 .iter()
                 .map(|insn| dex_to_kotlin(insn, dex, Some(dex_index)))
-                .collect::<reseam_apk::reseam_dex::Result<Vec<_>>>(),
+                .collect::<reseam_dex::Result<Vec<_>>>(),
         ))
     })
     .unwrap_or_default()

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use clap::{Args, Parser, Subcommand};
-use reseam_patcher::PatchPreset;
+use reseam_model::PatchPreset;
 use url::Url;
 
 #[derive(Parser)]
@@ -116,9 +116,7 @@ pub enum BundleCommands {
     Pubkey(BundlePubkeyCommand),
     Pack(BundlePackCommand),
     /// Validate a staging manifest and print its bundle metadata as JSON.
-    Manifest {
-        path: PathBuf,
-    },
+    Manifest(BundleManifestCommand),
     List(BundleListCommand),
 }
 
@@ -132,6 +130,11 @@ pub struct BundleKeygenCommand {
 pub struct BundlePubkeyCommand {
     #[arg(long)]
     pub key: PathBuf,
+}
+
+#[derive(Args)]
+pub struct BundleManifestCommand {
+    pub path: PathBuf,
 }
 
 #[derive(Args)]

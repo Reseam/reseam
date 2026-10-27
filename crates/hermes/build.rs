@@ -168,8 +168,12 @@ fn main() {
         writeln!(output, "    {},", definition.name).expect("writing to a string succeeds");
     }
     output.push_str("}\n\n");
-    writeln!(output, "static V98: [Opcode; {}] = [", definitions.len())
-        .expect("writing to a string succeeds");
+    writeln!(
+        output,
+        "static OPCODES: [Opcode; {}] = [",
+        definitions.len()
+    )
+    .expect("writing to a string succeeds");
     for (definition, writes) in definitions.iter().zip(&writes) {
         let mut wider: Vec<_> = definitions
             .iter()

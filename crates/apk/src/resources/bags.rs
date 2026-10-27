@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::{
-    ATTR_FORMAT_ENUM, ATTR_FORMAT_FLAGS, ATTR_TYPE, AttrSymbol, Cow, EntryValue, MapEntry,
-    ResEntry, ResPackage, ResourceAddress, ResourceTable, Result, first_found,
-};
+use super::{EntryValue, MapEntry, ResourceTable};
+use crate::error::{Result, invalid};
+use crate::res_value::ResValue;
+
+/// The name aapt gives an array's first element; the rest follow in order.
+const ARRAY_FIRST_NAME: u32 = 0x0100_0001;
 
 impl ResourceTable {
     /// The map of the complex entry `type_name/entry_name` in the default
@@ -26,72 +28,102 @@ impl ResourceTable {
         })
     }
 
-    /// The value the app's `attr` `attr_id` gives the enum or flag name
-    /// `symbol`; `None` when its format takes neither or it has no such name.
-    pub fn attr_symbol(&self, attr_id: u32, symbol: &str) -> Result<Option<AttrSymbol>> {
-        let Some((_, entry)) = self.default_entry(attr_id)? else {
-            return Ok(None);
-        };
-        let EntryValue::Complex { entries, .. } = entry.value else {
-            return Ok(None);
-        };
-        let Some(format) = entries
+    /// The elements of `array/name` in the default configuration as text.
+    /// Use [`Self::set_string_array`] to write string-array elements without
+    /// interpreting numeric text, booleans or references as typed literals.
+    pub fn array(&self, name: &str) -> Result<Vec<String>> {
+        let entries = self.complex_entries("array", name)?.ok_or_else(|| {
+            invalid(
+                "array",
+                format!("the table has no array/{name} in the default configuration"),
+            )
+        })?;
+        entries
             .iter()
-            .find(|item| item.name == ATTR_TYPE)
-            .map(|item| item.value.data)
-        else {
-            return Ok(None);
-        };
-        let flags = format & ATTR_FORMAT_FLAGS != 0;
-        if !flags && format & ATTR_FORMAT_ENUM == 0 {
-            return Ok(None);
-        }
-        for item in entries {
-            if self.entry_name(item.name)?.as_deref() == Some(symbol) {
-                return Ok(Some(AttrSymbol {
-                    value: item.value.data,
-                    flags,
-                }));
+            .map(|entry| {
+                self.value_text(entry.value)?.ok_or_else(|| {
+                    invalid(
+                        "array",
+                        format!(
+                            "array/{name} holds a value of kind {:#04x}, which has no text form",
+                            entry.value.kind
+                        ),
+                    )
+                })
+            })
+            .collect()
+    }
+
+    /// Replaces an array with literal strings in every configuration.
+    pub fn set_string_array(&mut self, name: &str, values: &[String]) -> Result<u32> {
+        let values: Vec<ResValue> = values
+            .iter()
+            .map(|value| ResValue::string(self.add_global_string(value)))
+            .collect();
+        self.set_array_values(name, &values)
+    }
+
+    /// Reads array scalars without converting their kinds or pool indices to text.
+    /// String values refer to this table's global string pool. An absent array,
+    /// a non-bag entry, or malformed entry is an error.
+    pub fn array_values(&self, name: &str) -> Result<Vec<ResValue>> {
+        let location = self
+            .find_entry("array", name)?
+            .ok_or_else(|| invalid("array", format!("the table has no array/{name}")))?;
+        let (_, entry) = self.default_entry(location.res_id())?.ok_or_else(|| {
+            invalid(
+                "array",
+                format!("array/{name} has no default configuration"),
+            )
+        })?;
+        match entry.value {
+            EntryValue::Complex { entries, .. } => {
+                Ok(entries.into_iter().map(|entry| entry.value).collect())
             }
-        }
-        Ok(None)
-    }
-
-    pub(super) fn entry_name(&self, res_id: u32) -> Result<Option<Cow<'_, str>>> {
-        match self.default_entry(res_id)? {
-            Some((package, entry)) => package.key_strings.get(entry.key),
-            None => Ok(None),
+            EntryValue::Simple(_) => Err(invalid("array", format!("{name} is not an array"))),
         }
     }
 
-    pub(super) fn default_entry(&self, res_id: u32) -> Result<Option<(&ResPackage, ResEntry)>> {
-        let ResourceAddress {
-            package_id,
-            type_id,
-            entry_index,
-        } = ResourceAddress::decode(res_id);
-        first_found(
-            self.packages
-                .iter()
-                .filter(|package| package.id == package_id)
-                .flat_map(|package| {
-                    package
-                        .types
-                        .iter()
-                        .filter(move |res_type| {
-                            Some(res_type.id) == package.local_type_id(type_id)
-                                && res_type.is_default_config()
-                        })
-                        .map(move |res_type| {
-                            res_type
-                                .entry(entry_index)
-                                .map(|entry| entry.map(|entry| (package, entry)))
-                        })
-                }),
-        )
+    /// Replaces array scalars in every configuration without interpreting them.
+    /// String indices must belong to this table's global pool. The array must
+    /// already exist; its resource ID and configuration coverage are retained.
+    pub fn set_array_values(&mut self, name: &str, values: &[ResValue]) -> Result<u32> {
+        let count = u32::try_from(values.len())
+            .map_err(|_| invalid("array", "array exceeds the map name range"))?;
+        if ARRAY_FIRST_NAME
+            .checked_add(count.saturating_sub(1))
+            .is_none()
+        {
+            return Err(invalid("array", "array index exceeds the map name range"));
+        }
+        for index in values.iter().filter_map(|value| value.string_index()) {
+            self.get_string(index)?
+                .ok_or_else(|| invalid("array", format!("invalid string index {index}")))?;
+        }
+        let entries: Vec<MapEntry> = values
+            .iter()
+            .enumerate()
+            .map(|(i, &value)| MapEntry {
+                name: ARRAY_FIRST_NAME + i as u32,
+                value,
+            })
+            .collect();
+        match self.edit_complex_entries("array", name, |_, existing| {
+            existing.clone_from(&entries);
+        })? {
+            Some((id, edited)) if edited > 0 => Ok(id),
+            Some(_) => Err(invalid(
+                "array",
+                format!("{name} is in the table but is not an array"),
+            )),
+            None => Err(invalid("array", format!("the table has no array/{name}"))),
+        }
     }
 
-    pub(crate) fn edit_complex_entries(
+    /// Edits the parent and map of `type_name/entry_name` in every
+    /// configuration where it is complex, after checking every configuration
+    /// reads. Returns its id and how many configurations were edited.
+    pub(super) fn edit_complex_entries(
         &mut self,
         type_name: &str,
         entry_name: &str,
@@ -100,32 +132,12 @@ impl ResourceTable {
         let Some(location) = self.find_entry(type_name, entry_name)? else {
             return Ok(None);
         };
-        for res_type in self
-            .packages
-            .iter()
-            .filter(|package| package.id == location.package_id)
-            .flat_map(|package| {
-                package
-                    .types
-                    .iter()
-                    .filter(move |t| Some(t.id) == package.local_type_id(location.type_id))
-            })
-        {
+        let res_id = location.res_id();
+        for (_, res_type) in self.configs(res_id) {
             res_type.entry_head(location.entry_index)?;
         }
         let mut edited = 0;
-        for res_type in self
-            .packages
-            .iter_mut()
-            .filter(|package| package.id == location.package_id)
-            .flat_map(|package| {
-                let local = package.local_type_id(location.type_id);
-                package
-                    .types
-                    .iter_mut()
-                    .filter(move |t| Some(t.id) == local)
-            })
-        {
+        for res_type in self.configs_mut(res_id) {
             let Some(mut entry) = res_type.entry(location.entry_index)? else {
                 continue;
             };
@@ -136,6 +148,6 @@ impl ResourceTable {
             res_type.set(location.entry_index, Some(entry))?;
             edited += 1;
         }
-        Ok(Some((location.res_id(), edited)))
+        Ok(Some((res_id, edited)))
     }
 }

@@ -5,9 +5,9 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::path::PathBuf;
 
-use reseam_apk::reseam_dex::Loading;
-use reseam_apk::reseam_dex::write_class;
-use reseam_apk::reseam_dex::{DexFile, ParseOptions, parse_file};
+use reseam_dex::Loading;
+use reseam_dex::write_class;
+use reseam_dex::{DexFile, ParseOptions, parse_file};
 use tracing::debug;
 
 use super::PatchContext;
@@ -60,7 +60,7 @@ impl ExtensionSet {
         #[cfg(feature = "bridge")]
         set.add(
             Source::AppRuntime,
-            reseam_apk::reseam_dex::parse(crate::app_runtime::DEX, options()),
+            reseam_dex::parse(crate::app_runtime::DEX, options()),
         )
         .expect("the build embeds the app runtime as valid DEX");
         set
@@ -75,11 +75,7 @@ impl ExtensionSet {
         Ok(set)
     }
 
-    fn add(
-        &mut self,
-        source: Source,
-        parsed: reseam_apk::reseam_dex::Result<DexFile>,
-    ) -> Result<()> {
+    fn add(&mut self, source: Source, parsed: reseam_dex::Result<DexFile>) -> Result<()> {
         let mut dex = parsed.map_err(|error| {
             PatcherError::Bundle(format!("failed to parse extension DEX {source}: {error}"))
         })?;

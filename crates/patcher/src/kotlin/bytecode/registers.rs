@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::kotlin::handles::record_failure;
 use boltffi::export;
-use reseam_apk::reseam_dex::{self as dex, AccessFlags};
+use reseam_dex::{self as dex, AccessFlags};
 
 use crate::kotlin::handles::{code_mut, method_mut, with_code, with_instruction, with_method_mut};
 use crate::kotlin::types::{MethodEdit, RegisterWriters};

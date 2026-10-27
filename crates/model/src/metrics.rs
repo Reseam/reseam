@@ -23,6 +23,8 @@ pub struct MemoryBreakdown {
     pub string_count: u64,
     pub id_table_bytes: u64,
     pub class_def_bytes: u64,
+    /// Heap held by the materialized class data, methods and instructions.
+    pub materialized_ir_bytes: u64,
     pub materialized: MaterializationStats,
 }
 
@@ -72,10 +74,6 @@ pub struct PatchPhaseMetrics {
     pub duration_ms: u64,
     pub rss_bytes: Option<u64>,
     pub peak_rss_bytes: Option<u64>,
-    pub heap_live_bytes: Option<u64>,
-    /// Highest live heap during the phase, independent of what the allocator
-    /// keeps cached afterwards.
-    pub heap_peak_bytes: Option<u64>,
 }
 
 /// Memory sampled immediately after patch application, attributing process RSS
@@ -94,7 +92,6 @@ pub struct PatchMetrics {
     pub total_duration_ms: u64,
     pub final_rss_bytes: Option<u64>,
     pub peak_rss_bytes: Option<u64>,
-    pub final_heap_live_bytes: Option<u64>,
     pub final_rss_anon_bytes: Option<u64>,
     pub final_rss_file_bytes: Option<u64>,
     pub phases: Vec<PatchPhaseMetrics>,

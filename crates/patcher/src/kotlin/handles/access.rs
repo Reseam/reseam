@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use reseam_apk::reseam_dex::{CodeItem, DexFile, EncodedMethod, Instruction};
+use reseam_dex::{CodeItem, DexFile, EncodedMethod, Instruction};
 
 use super::{
     changed, checked, class_location, method_changed, method_location, record_failure, with_ctx,

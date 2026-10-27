@@ -7,15 +7,14 @@ use std::io::{Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use ed25519_dalek::{Signer, SigningKey};
 use reseam_storage::ScratchDir;
 use sha2::{Digest, Sha256};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 use super::{
-    BUNDLE_MIMETYPE, BundleInfo, BundleManifest, ENGINE_VERSION, PATCH_INDEX, PayloadKind,
-    bundle_error, payload_kind, read_manifest,
+    BUNDLE_MIMETYPE, BundleInfo, BundleKey, BundleManifest, ENGINE_VERSION, PATCH_INDEX,
+    PayloadKind, bundle_error, payload_kind, read_manifest,
 };
 use crate::error::Result;
 
@@ -25,7 +24,7 @@ use crate::error::Result;
 /// Initializes the author's patch declarations to include their static metadata
 /// in the signed manifest. Packing therefore requires trusted source code.
 /// `version` names the release; development builds pass `None`.
-pub fn pack(dir: &Path, version: Option<&str>, signing_key: &SigningKey, out: &Path) -> Result<()> {
+pub fn pack(dir: &Path, version: Option<&str>, key: &BundleKey, out: &Path) -> Result<()> {
     if version.is_some_and(|version| version.trim().is_empty()) {
         return Err(bundle_error("bundle version must not be empty"));
     }
@@ -88,7 +87,7 @@ pub fn pack(dir: &Path, version: Option<&str>, signing_key: &SigningKey, out: &P
     let manifest_bytes = toml::to_string(&manifest)
         .map_err(|e| bundle_error(format!("serialize manifest: {e}")))?
         .into_bytes();
-    let signature = signing_key.sign(&manifest_bytes).to_bytes();
+    let signature = key.sign(&manifest_bytes);
 
     let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
     let deflated = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
@@ -103,7 +102,7 @@ pub fn pack(dir: &Path, version: Option<&str>, signing_key: &SigningKey, out: &P
     zip.start_file("manifest.toml", deflated)?;
     zip.write_all(&manifest_bytes)?;
     zip.start_file("manifest.pubkey", stored)?;
-    zip.write_all(&signing_key.verifying_key().to_bytes())?;
+    zip.write_all(&key.public_key())?;
     zip.start_file("manifest.sig", stored)?;
     zip.write_all(&signature)?;
     for (name, (path, expected)) in payload {

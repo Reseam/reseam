@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
-use reseam_apk::reseam_dex::{self as dex, DexFile, Loading, ParseOptions};
+use reseam_dex::{self as dex, DexFile, Loading, ParseOptions};
 
 /// Decodes every method body of each DEX (or each `classes*.dex` inside an
 /// APK), re-encodes it, and fails unless the code units come back unchanged.

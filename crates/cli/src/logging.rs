@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use anyhow::{Context, Result};
-use tracing::{Level, Subscriber};
-use tracing_subscriber::{EnvFilter, filter::filter_fn, prelude::*};
+use tracing::Subscriber;
+use tracing_subscriber::{EnvFilter, prelude::*};
 
 pub fn init_logging() -> Result<()> {
     let rust_log = match std::env::var("RUST_LOG") {
@@ -28,20 +28,18 @@ fn subscriber(rust_log: Option<&str>) -> Result<impl Subscriber + Send + Sync> {
         .with_env_filter(env_filter)
         .with_target(custom_filter)
         .with_writer(std::io::stderr)
-        .finish()
-        .with(filter_fn(move |metadata| {
-            custom_filter || matches!(*metadata.level(), Level::INFO | Level::ERROR)
-        })))
+        .finish())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tracing::Level;
 
     #[test]
-    fn default_logging_is_quiet_and_rust_log_controls_diagnostics() -> Result<()> {
+    fn default_logging_hides_diagnostics_and_rust_log_controls_them() -> Result<()> {
         for (filter, expected) in [
-            (None, [true, false, true, false, false]),
+            (None, [true, true, true, false, false]),
             (Some("warn"), [false, true, true, false, false]),
             (Some("debug"), [true, true, true, true, false]),
             (Some("trace"), [true, true, true, true, true]),

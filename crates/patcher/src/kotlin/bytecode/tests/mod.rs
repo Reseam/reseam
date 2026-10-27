@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use reseam_apk::reseam_dex::{AccessFlags, DexFile, DexHeader, DexVersion};
+use reseam_dex::{AccessFlags, DexFile, DexHeader, DexVersion};
 
 use super::{
     annotations, assembly, class_ops, fields, lookup, methods, mutation, positions, registers,

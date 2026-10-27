@@ -6,9 +6,7 @@ use std::collections::HashSet;
 use super::super::{InstructionLocation, PatchContext};
 use super::{DexResult, FieldRefQuery, MethodRefQuery, instruction_location, resolve};
 use crate::error::Result;
-use reseam_apk::reseam_dex::{
-    DexFile, FieldIdx, MethodIdx, ProtoIdx, RefKey, RefQuery, StringIdx, TypeIdx,
-};
+use reseam_dex::{DexFile, FieldIdx, MethodIdx, ProtoIdx, RefKey, RefQuery, StringIdx, TypeIdx};
 
 impl PatchContext<'_> {
     pub fn find_instructions_by_literal(&self, literal: i64) -> Result<Vec<InstructionLocation>> {

@@ -88,7 +88,7 @@ pub(crate) fn duplicate_call_site(
 ) {
     let dex = context.dex_file_mut(0).unwrap();
     let site = dex
-        .call_site(reseam_apk::reseam_dex::CallSiteIdx(0))
+        .call_site(reseam_dex::CallSiteIdx(0))
         .unwrap()
         .into_owned();
     let duplicate = dex.intern_call_site(site, Some(&[])).unwrap();
@@ -97,9 +97,9 @@ pub(crate) fn duplicate_call_site(
         .unwrap()
         .insert_instructions(
             4,
-            &[reseam_apk::reseam_dex::Instruction::InvokeCustom {
+            &[reseam_dex::Instruction::InvokeCustom {
                 call_site: duplicate,
-                args: reseam_apk::reseam_dex::RegList::default(),
+                args: reseam_dex::RegList::default(),
             }],
         )
         .unwrap();

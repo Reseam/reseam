@@ -36,13 +36,7 @@ fn signed_bundles_keep_their_resources_and_version() {
     let resource = vec![0x5a; 200_000];
     std::fs::write(stage.path().join("resources/drawable/icon.png"), &resource).unwrap();
     let out = stage.path().join("example.reseam");
-    pack(
-        stage.path(),
-        Some("1.2.0"),
-        &SigningKey::from_bytes(&[42; 32]),
-        &out,
-    )
-    .unwrap();
+    pack(stage.path(), Some("1.2.0"), &test_key(stage.path()), &out).unwrap();
     let archive = BundleArchive::open(&out).unwrap();
     assert_eq!(archive.info().version, "1.2.0");
     assert_eq!(
@@ -72,6 +66,13 @@ fn resource_archive(path: &Path, name: &str, declared: &[u8], actual: &[u8]) {
     };
     let manifest = toml::to_string(&manifest).unwrap();
     signed_archive(path, &manifest, name, actual);
+}
+
+/// The key `signed_archive` signs with, as an author's key file.
+fn test_key(dir: &Path) -> BundleKey {
+    let path = dir.join("bundle-signing.key");
+    std::fs::write(&path, [42; 32]).unwrap();
+    BundleKey::read(&path).unwrap()
 }
 
 fn signed_archive(path: &Path, manifest: &str, name: &str, actual: &[u8]) {
@@ -260,7 +261,7 @@ public final class Declarations {
             )
             .unwrap();
             let out = self.dir.path().join("example.reseam");
-            pack(&stage, None, &SigningKey::from_bytes(&[42; 32]), &out)?;
+            pack(&stage, None, &test_key(&stage), &out)?;
             BundleArchive::open(&out)
         }
     }

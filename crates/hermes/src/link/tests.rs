@@ -3,12 +3,13 @@
 
 use std::collections::BTreeSet;
 
-use reseam_storage::Bytes;
-
+use super::remap::literal_count;
 use super::*;
+use crate::FunctionId;
+use crate::bytes::read_u32;
+use crate::fixtures::{HOST, LITERALS, host, image, written};
 use crate::literal::{Literal, read_literals};
-use crate::opcode::Instruction;
-use crate::{FunctionId, HermesImage};
+use crate::opcode::{IdKind, Instruction};
 
 /// A literal as text and bytes, comparable across files whose string IDs differ.
 #[derive(Debug, PartialEq)]
@@ -18,17 +19,17 @@ enum Value {
 }
 
 fn values(file: &HermesFile<'_>, buffer: Section, offset: u64, count: u32) -> Vec<Value> {
-    read_literals(file.section(buffer), offset as usize, count as usize)
+    read_literals(file, buffer, offset as usize, count as usize)
         .expect("fixture literals decode")
         .into_iter()
-        .map(|literal| match literal.kind {
-            Literal::ShortString | Literal::LongString => Value::Text(
-                file.string(StringId(literal.string_id().expect("string literal")))
+        .map(|literal| match literal.string() {
+            Some(id) => Value::Text(
+                file.string(id)
                     .expect("literal string exists")
                     .units()
                     .collect(),
             ),
-            kind => Value::Other(kind, literal.bytes.to_vec()),
+            None => Value::Other(literal.kind, literal.bytes.to_vec()),
         })
         .collect()
 }
@@ -59,22 +60,12 @@ fn run_starts(buffer: &[u8]) -> BTreeSet<u64> {
 
 #[test]
 fn linked_literals_read_back_the_values_and_keys_of_the_module() {
-    let host = HermesImage::parse(Bytes::from_slice(include_bytes!("../../fixtures/host.hbc")))
-        .expect("host fixture parses");
-    let module = HermesImage::parse(Bytes::from_slice(include_bytes!(
-        "../../fixtures/literals.hbc"
-    )))
-    .expect("module fixture parses");
+    let module = image(LITERALS);
     let module_file = module.file();
-    let host_functions = host.file().function_count();
-    let index = FunctionIndex::build(&host.file()).expect("host indexes");
-    let mut editor = Editor::new(host.file());
-    editor
-        .link(&index, &module_file, &[])
-        .expect("module links");
-    let mut output = Vec::new();
-    editor.write(&mut output).expect("linked file writes");
-    let linked = HermesImage::parse(Bytes::from_vec(output)).expect("linked file parses");
+    let host_functions = image(HOST).file().function_count();
+    let mut editor = host();
+    editor.link(&module_file, &[]).expect("module links");
+    let linked = image(&written(&editor));
     let linked_file = linked.file();
 
     let source_shapes = module_file.section(Section::Shapes).as_chunks::<8>().0;
@@ -93,7 +84,7 @@ fn linked_literals_read_back_the_values_and_keys_of_the_module() {
             .instructions()
             .unwrap();
         for (source, copy) in source.iter().zip(&copy) {
-            let Some(count) = literal_count(source, source_shapes).unwrap() else {
+            let Some(count) = literal_count(source, source_shapes, 0).unwrap() else {
                 continue;
             };
             let (from, to) = (

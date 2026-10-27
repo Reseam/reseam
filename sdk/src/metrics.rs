@@ -3,7 +3,7 @@
 
 use std::time::{Duration, Instant};
 
-pub use reseam_model::{ApplyDiagnostics, PatchMetrics, PatchPhase, PatchPhaseMetrics};
+use reseam_model::{ApplyDiagnostics, PatchMetrics, PatchPhase, PatchPhaseMetrics};
 
 #[derive(Default)]
 struct MemorySample {
@@ -13,17 +13,43 @@ struct MemorySample {
     file_backed: Option<u64>,
 }
 
+/// Runs `run` and reports how long it took and the memory at its end.
+pub(crate) fn measure<T, E>(
+    phase: PatchPhase,
+    run: impl FnOnce() -> Result<T, E>,
+) -> Result<(T, PatchPhaseMetrics), E> {
+    let started_at = Instant::now();
+    let value = run()?;
+    let elapsed = started_at.elapsed();
+    let memory = sample_memory();
+    Ok((
+        value,
+        PatchPhaseMetrics {
+            phase,
+            duration_ms: duration_ms(elapsed),
+            rss_bytes: memory.rss,
+            // The wire field is retained for hosts; this is the process high-water
+            // mark observed at phase end, not an interval peak.
+            peak_rss_bytes: memory.process_peak,
+        },
+    ))
+}
+
 pub(crate) struct PatchProfiler {
     started_at: Instant,
+    /// Time the run's inputs took to open, before the profiler started.
+    opening_ms: u64,
     phases: Vec<PatchPhaseMetrics>,
     apply_diagnostics: Option<ApplyDiagnostics>,
 }
 
 impl PatchProfiler {
-    pub(crate) fn new() -> Self {
+    /// Starts with `opening`, the phase that opened the run's inputs.
+    pub(crate) fn new(opening: PatchPhaseMetrics) -> Self {
         Self {
             started_at: Instant::now(),
-            phases: Vec::new(),
+            opening_ms: opening.duration_ms,
+            phases: vec![opening],
             apply_diagnostics: None,
         }
     }
@@ -41,30 +67,17 @@ impl PatchProfiler {
         phase: PatchPhase,
         run: impl FnOnce() -> Result<T, E>,
     ) -> Result<T, E> {
-        let started_at = Instant::now();
-        let result = run();
-        let elapsed = started_at.elapsed();
-        let memory = sample_memory();
-        self.phases.push(PatchPhaseMetrics {
-            phase,
-            duration_ms: duration_ms(elapsed),
-            rss_bytes: memory.rss,
-            // The wire field is retained for hosts; this is the process high-water
-            // mark observed at phase end, not an interval peak.
-            peak_rss_bytes: memory.process_peak,
-            heap_live_bytes: None,
-            heap_peak_bytes: None,
-        });
-        result
+        let (value, metrics) = measure(phase, run)?;
+        self.phases.push(metrics);
+        Ok(value)
     }
 
     pub(crate) fn finish(self) -> PatchMetrics {
         let memory = sample_memory();
         PatchMetrics {
-            total_duration_ms: duration_ms(self.started_at.elapsed()),
+            total_duration_ms: self.opening_ms + duration_ms(self.started_at.elapsed()),
             final_rss_bytes: memory.rss,
             peak_rss_bytes: memory.process_peak,
-            final_heap_live_bytes: None,
             final_rss_anon_bytes: memory.anonymous,
             final_rss_file_bytes: memory.file_backed,
             phases: self.phases,

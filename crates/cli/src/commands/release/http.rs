@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::path::Path;
-
 use anyhow::{Context, Result, bail};
 use serde::de::DeserializeOwned;
 use ureq::http::{Response, StatusCode};
@@ -45,10 +43,4 @@ pub(super) fn text_if_found(
         return Ok(None);
     }
     Ok(Some(checked(Ok(response))?.into_body().read_to_string()?))
-}
-
-pub(super) fn file_name(path: &Path) -> Result<&str> {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .with_context(|| format!("{} has no UTF-8 file name", path.display()))
 }

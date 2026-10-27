@@ -9,6 +9,7 @@ description = "Browser host for the Reseam engine"
 crate-type = ["cdylib"]
 
 [dependencies]
+reseam-model = { workspace = true }
 reseam-sdk = { workspace = true, features = ["browser"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

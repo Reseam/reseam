@@ -6,7 +6,7 @@ use super::types::{
     AnnotationElement, AnnotationValue, CallSiteRef, EncodedVal, FieldHandleRef, HandleRef,
     MethodHandleRef,
 };
-use reseam_apk::reseam_dex::{self, DexFile};
+use reseam_dex::{self, DexFile};
 
 use super::convert::{invalid, resolve_field_ref, resolve_method_ref};
 

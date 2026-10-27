@@ -3,7 +3,7 @@
 
 mod reader;
 mod writer;
-use crate::value::ResValue;
+use crate::res_value::ResValue;
 pub(super) use reader::{entry_head, entry_len, parse_entry};
 pub(super) use writer::serialize_entry;
 

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use reseam_apk::reseam_dex::{self, DexFile, FieldIdx, MethodIdx};
+use reseam_dex::{self, DexFile, FieldIdx, MethodIdx};
 
 pub(super) fn resolve_method_ref(dex: &DexFile, idx: MethodIdx) -> MethodRef {
     let mid = dex.method_id(idx);

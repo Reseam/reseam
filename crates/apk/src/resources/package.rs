@@ -9,6 +9,7 @@ use std::ops::Range;
 use reseam_storage::Bytes;
 
 use super::config::{config_for_qualifiers, same_config};
+use super::id::res_id;
 use super::{ResType, TypeSpec, first_found};
 use crate::error::Result;
 use crate::string_pool::StringPool;
@@ -83,7 +84,7 @@ impl ResPackage {
             .map_err(|_| crate::error::invalid("resource package", "package ID exceeds 255"))?;
         let index = u16::try_from(index)
             .map_err(|_| crate::error::invalid("resource entry", "entry index exceeds 65535"))?;
-        Ok(super::res_id(
+        Ok(res_id(
             u32::from(package),
             self.resource_type_id(local)?,
             usize::from(index),

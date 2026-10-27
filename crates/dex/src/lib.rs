@@ -43,9 +43,7 @@ pub use edit::liveness::{
 pub use edit::relocate::{BranchDestination, InstructionExpansion, InstructionMap};
 pub use encoding::mutf8::decode_mutf8;
 pub use error::{DexError, Result};
-pub use file::container::{
-    MaterializationStats, MemoryBreakdown, MultiDexContainer, estimated_ir_bytes,
-};
+pub use file::memory::{MaterializationStats, MemoryBreakdown, estimated_ir_bytes};
 pub use file::{ClassTable, DexFile, HiddenApiData, IdTable, StringPool};
 pub use instruction::codec::{decode_instructions, encode_instructions};
 pub use instruction::operands::RegisterKind;

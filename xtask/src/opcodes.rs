@@ -11,7 +11,7 @@ pub(super) fn opcode_metadata() -> (String, String) {
     }
     macro_rules! operand {
         (RegList) => {
-            reseam_apk::reseam_dex::RegList::default()
+            reseam_dex::RegList::default()
         };
         ($index:ident) => {
             Default::default()
@@ -19,33 +19,33 @@ pub(super) fn opcode_metadata() -> (String, String) {
     }
     macro_rules! field {
         (StringIdx) => {
-            reseam_apk::reseam_dex::StringIdx(0)
+            reseam_dex::StringIdx(0)
         };
         (TypeIdx) => {
-            reseam_apk::reseam_dex::TypeIdx(0)
+            reseam_dex::TypeIdx(0)
         };
         (ProtoIdx) => {
-            reseam_apk::reseam_dex::ProtoIdx(0)
+            reseam_dex::ProtoIdx(0)
         };
         (FieldIdx) => {
-            reseam_apk::reseam_dex::FieldIdx(0)
+            reseam_dex::FieldIdx(0)
         };
         (MethodIdx) => {
-            reseam_apk::reseam_dex::MethodIdx(0)
+            reseam_dex::MethodIdx(0)
         };
         (CallSiteIdx) => {
-            reseam_apk::reseam_dex::CallSiteIdx(0)
+            reseam_dex::CallSiteIdx(0)
         };
         (MethodHandleIdx) => {
-            reseam_apk::reseam_dex::MethodHandleIdx(0)
+            reseam_dex::MethodHandleIdx(0)
         };
         ($other:ident) => {
             operand!($other)
         };
     }
     macro_rules! instruction {
-        ($variant:ident, []) => { reseam_apk::reseam_dex::Instruction::$variant };
-        ($variant:ident, [{$($name:ident:$type:ident,)*}]) => { reseam_apk::reseam_dex::Instruction::$variant { $($name:field!($type),)* } };
+        ($variant:ident, []) => { reseam_dex::Instruction::$variant };
+        ($variant:ident, [{$($name:ident:$type:ident,)*}]) => { reseam_dex::Instruction::$variant { $($name:field!($type),)* } };
     }
     macro_rules! fixed {
         ($variant:ident, $definition:tt, $name:ident, $units:literal, $result:ident) => {{
@@ -69,7 +69,7 @@ pub(super) fn opcode_metadata() -> (String, String) {
             result
         }};
     }
-    let opcodes = reseam_apk::reseam_dex::instruction_catalogue!(rows);
+    let opcodes = reseam_dex::instruction_catalogue!(rows);
     let widths = opcodes
         .iter()
         .map(|op| format!("            {} -> {}", op.value, op.units))

@@ -5,23 +5,13 @@ use super::{RES_TABLE_TYPE, ResPackage, ResourceTable, TABLE_HEADER_LEN, TableCh
 use crate::buf::write_u32;
 use crate::chunk::write_header;
 use crate::error::{Result, invalid};
-use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::Write;
 
 impl ResourceTable {
     pub fn serialize(&self) -> Result<Vec<u8>> {
         let mut out = Vec::new();
         self.write_to(&mut out)?;
         Ok(out)
-    }
-
-    pub(crate) fn serialize_spooled(&self) -> Result<File> {
-        let mut file = reseam_storage::temporary_file()?;
-        let mut out = BufWriter::with_capacity(1 << 20, &mut file);
-        self.write_to(&mut out)?;
-        out.flush()?;
-        drop(out);
-        Ok(file)
     }
 
     /// Streams the table, returning I/O errors or errors for unrepresentable sizes.

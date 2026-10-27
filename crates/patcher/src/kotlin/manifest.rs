@@ -6,7 +6,7 @@ use std::borrow::Cow;
 use boltffi::export;
 use reseam_apk::axml::android_attrs::{
     ATTR_CONFIG_CHANGES, ATTR_ENABLED, ATTR_LABEL, ATTR_MIME_TYPE, ATTR_NAME, ATTR_TARGET_ACTIVITY,
-    android_attr_res_id,
+    android_attr_res_id, android_attr_symbol,
 };
 use reseam_apk::axml::{self, AttributeValue};
 use reseam_apk::{AxmlDocument, ResValue, ResourceScope};
@@ -94,7 +94,7 @@ pub fn manifest_add_permission(component: Option<String>, permission: String) {
     edit(component, |m, nodes| {
         let end = m
             .root()
-            .and_then(|root| m.find_end_element(root))
+            .and_then(|root| axml::element_end(m.events(), root))
             .ok_or("manifest root not found")?;
         if !m.add_permission(&permission) {
             return Err("unterminated manifest root".into());
@@ -174,10 +174,7 @@ fn text_value_in(
             .flatten()
             .map_or_else(|| TextValue::Text(text.to_string()), TextValue::Resolved));
     }
-    match match attr {
-        Some(id) => axml::parse_attribute_value(text, id, resources),
-        None => axml::infer_value(text, resources),
-    } {
+    match axml::parse_value(text, attr, resources) {
         Ok(AttributeValue::Value(value)) => Ok(TextValue::Resolved(value)),
         Ok(AttributeValue::Text) => Err(format!("{text}: no such resource")),
         Err(error) => Err(format!("{text}: {error}")),
@@ -230,7 +227,7 @@ pub fn manifest_set_activity_config_changes(
     with_component(component, |ctx, index| {
         let outcome = xml::edit_manifest(ctx, index, |m, _| {
             let activity = find_activity(m, &activity_name)?;
-            let (flags, unknown) = parse_config_changes(&config_changes)?;
+            let (flags, unknown) = parse_config_changes(&config_changes);
             let value = ResValue::int(flags);
             if !m.set_attribute(activity, ATTR_CONFIG_CHANGES, value) {
                 let attribute = m.make_attribute("configChanges", ATTR_CONFIG_CHANGES, value);
@@ -302,9 +299,8 @@ pub fn manifest_add_activity_alias(
         let application = m
             .find_element("application")
             .ok_or("application element not found")?;
-        let at = m
-            .find_end_element(application)
-            .ok_or("unterminated application element")?;
+        let at =
+            axml::element_end(m.events(), application).ok_or("unterminated application element")?;
         add_activity_alias(m, &target_activity, &alias_name, enabled, label)?;
         nodes.inserted_document(at, 2);
         Ok(())
@@ -356,21 +352,14 @@ fn copy_intent_filters(
 ) -> Result<(), String> {
     let from = find_activity_or_alias(m, from_activity)?;
     let to = find_activity_or_alias(m, to_activity)?;
-    let from_end = m
-        .find_end_element(from)
-        .ok_or("unterminated source activity")?;
-    let mut filters = Vec::new();
-    let mut i = from + 1;
-    while i < from_end {
-        let is_filter = m.element_name(i).as_deref() == Some("intent-filter");
-        match m.find_end_element(i).filter(|_| is_filter) {
-            Some(end) => {
-                filters.push(m.events()[i..=end].to_vec());
-                i = end + 1;
-            }
-            None => i += 1,
-        }
-    }
+    axml::element_end(m.events(), from).ok_or("unterminated source activity")?;
+    let filters: Vec<_> = axml::children(m.events(), from)
+        .into_iter()
+        .filter(|&child| m.element_name(child).as_deref() == Some("intent-filter"))
+        .filter_map(|child| {
+            Some(m.events()[child..=axml::element_end(m.events(), child)?].to_vec())
+        })
+        .collect();
     let insert_at = to + 1;
     for events in filters.into_iter().rev() {
         let count = events.len();
@@ -389,36 +378,16 @@ pub fn manifest_get_document(component: Option<String>) -> Option<u32> {
     .flatten()
 }
 
-fn parse_config_changes(text: &str) -> Result<(i32, Vec<String>), String> {
+/// The `android:configChanges` mask of `|`-joined flag names, and the names
+/// the framework attribute does not define.
+fn parse_config_changes(text: &str) -> (i32, Vec<String>) {
     let mut flags = 0;
     let mut unknown = Vec::new();
     for part in text.split('|').map(str::trim) {
-        if matches!(
-            part,
-            "mcc"
-                | "mnc"
-                | "locale"
-                | "touchscreen"
-                | "keyboard"
-                | "keyboardHidden"
-                | "navigation"
-                | "orientation"
-                | "screenLayout"
-                | "uiMode"
-                | "screenSize"
-                | "smallestScreenSize"
-                | "density"
-                | "layoutDirection"
-                | "colorMode"
-                | "fontScale"
-        ) {
-            let value = axml::attribute_symbols(ATTR_CONFIG_CHANGES, part, None)
-                .map_err(|error| error.to_string())?
-                .ok_or_else(|| format!("missing framework configChanges flag {part}"))?;
-            flags |= value.data as i32;
-        } else {
-            unknown.push(part.to_owned());
+        match android_attr_symbol(ATTR_CONFIG_CHANGES, part) {
+            Some(symbol) => flags |= symbol.value as i32,
+            None => unknown.push(part.to_owned()),
         }
     }
-    Ok((flags, unknown))
+    (flags, unknown)
 }

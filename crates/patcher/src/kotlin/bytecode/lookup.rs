@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use reseam_apk::reseam_dex::MethodKind;
+use reseam_dex::MethodKind;
 
 use crate::error::{PatcherError, Result as PatcherResult};
 use crate::kotlin::handles::checked;
 use boltffi::export;
-use reseam_apk::reseam_dex::{DexFile, EncodedField, InstructionPattern, TypeIdx};
+use reseam_dex::{DexFile, EncodedField, InstructionPattern, TypeIdx};
 
 use crate::context::{ClassLocation, MethodLocation};
 use crate::kotlin::handles::{
@@ -178,7 +178,7 @@ pub fn class_methods_by_name(c: u32, name: String) -> Vec<u32> {
         let Some(name) = dex.strings().find(&name) else {
             return Vec::new();
         };
-        let methods = |kind| -> Vec<reseam_apk::reseam_dex::MethodIdx> {
+        let methods = |kind| -> Vec<reseam_dex::MethodIdx> {
             if let Some(class) = dex.classes().resident(location.class_idx) {
                 class.class_data.as_ref().map_or_else(Vec::new, |data| {
                     data.methods(kind)
