@@ -70,9 +70,8 @@ methods("attribution") { literals(attributionId) }
         invokeVirtual { name("findViewById") }
         argument(1) { literal(attributionId) }
     }
-    .all
-    .forEach { point ->
-        point.next { resultOf(Type.View) }.captureAs("view").after {
+    .forEach {
+        next { resultOf(Type.View) }.captureAs("view").after {
             call(Ads.hideAttribution, capture("view"))
         }
     }

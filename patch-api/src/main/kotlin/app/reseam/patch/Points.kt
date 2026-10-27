@@ -45,6 +45,9 @@ internal constructor(
     val all: List<PointTarget>
         get() = resolved
 
+    /** Runs [block] with each matching point as its receiver. */
+    fun forEach(block: PointTarget.() -> Unit) = all.forEach(block)
+
     /** Require exactly one point, when used, with all matching locations in the diagnostic. */
     fun single(): PointTarget {
         val selection = this

@@ -57,6 +57,9 @@ internal constructor(
     val all: List<MethodTarget>
         get() = resolved.map { MethodTarget.of(it, debugName) }
 
+    /** Runs [block] with each matching method as its receiver. */
+    fun forEach(block: MethodTarget.() -> Unit) = all.forEach(block)
+
     /**
      * A deferred target for the one method matching [predicate].
      *

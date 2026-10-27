@@ -479,6 +479,7 @@ public final class app/reseam/patch/MethodTargetsKt {
 }
 
 public final class app/reseam/patch/MethodsTarget : app/reseam/patch/Target {
+	public final fun forEach (Lkotlin/jvm/functions/Function1;)V
 	public final fun getAll ()Ljava/util/List;
 	public final fun single (Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/MethodTarget;
 	public static synthetic fun single$default (Lapp/reseam/patch/MethodsTarget;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/MethodTarget;
@@ -687,6 +688,7 @@ public final class app/reseam/patch/PointsKt {
 }
 
 public final class app/reseam/patch/PointsTarget : app/reseam/patch/Target {
+	public final fun forEach (Lkotlin/jvm/functions/Function1;)V
 	public final fun getAll ()Ljava/util/List;
 	public final fun single ()Lapp/reseam/patch/PointTarget;
 }

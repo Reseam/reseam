@@ -96,7 +96,7 @@ Generators, async functions, class constructors, `new.target`, direct `eval` and
 | `fieldTarget(debugName) { PatchRuntime.() -> FieldRef }` | A field resolved by hand. |
 | `Target.explain()` | The `MatchReport`: `name`, `winner`, `considered`, `reasons`, `nearMisses`. |
 
-`MethodTarget`: `method`, `owner`, `name`, `proto`, `returnType`, `parameterTypes`, `descriptor`, `ref`. `MethodsTarget`: `all`, `single()`, `single { }`. `ClassTarget`: `classDef`, `descriptor`. `FieldTarget`: `ref`, `owner`, `name`, `type`.
+`MethodTarget`: `method`, `owner`, `name`, `proto`, `returnType`, `parameterTypes`, `descriptor`, `ref`. `MethodsTarget`: `all`, `forEach { }`, `single()`, `single { }`. `ClassTarget`: `classDef`, `descriptor`. `FieldTarget`: `ref`, `owner`, `name`, `type`.
 
 `MethodQuery`: `name`, `strings`, `stringsStartingWith(prefix)`, `literals`, `returns`, `params`, `param(index, type)`, `hasParam`, `paramCount`, `flags`, `inClass(target, inherited = false)`, `calls(target)`, `calls(ref)`, `calls { MethodRefMatch }`, `calledBy`, `accesses { FieldRefMatch }`, `callsMethod { MethodRef }`, `opcode`, `opcodeSequence`, `custom { Method }`, `rankBy(label) { MethodRankScope }`, `first()`, `includeExtensions()`.
 
@@ -110,7 +110,7 @@ Generators, async functions, class constructors, `new.target`, direct `eval` and
 |---|---|
 | `MethodTarget.point(debugName = null) { PointMatch }` | The first instruction matching; a sequence ends at its last step. `PointTarget`. |
 | `MethodTarget.points(debugName = null) { PointMatch }`, `MethodsTarget.points(debugName = null) { PointMatch }` | All matches in the selected methods, fetched once per method and anchored before edits. `PointsTarget`. |
-| `PointsTarget.all`, `.single()` | `all` resolves immediately. `single()` defers resolution and fails unless exactly one point matches. |
+| `PointsTarget.all`, `.forEach { }`, `.single()` | `all` and `forEach` resolve immediately; the block has a `PointTarget` receiver. `single()` defers resolution and fails unless exactly one point matches. |
 | `PointTarget.redirectTo(ExtMethod)` | Redirect a static, virtual, or interface invoke to a static extension method, receiver first for instance calls. Validates access, arguments, and any consumed result; preserves branches and anchors. |
 | `PointTarget.previous { }` | Nearest earlier match, one step. |
 | `PointTarget.next { }` | Nearest later match, may be a sequence. On an invoke, a leading `resultOf` must match its immediate result. |
