@@ -26,7 +26,7 @@ pub(super) fn resolve_options(
         {
             return Err(PatcherError::InvalidSelection(format!(
                 "options for patch '{}' were supplied under multiple selectors",
-                specs[idx].reference()
+                specs[idx].reference
             )));
         }
         if !desired[idx] || disabled[idx] {
@@ -42,7 +42,7 @@ pub(super) fn resolve_options(
             if !desired[idx] || disabled[idx] {
                 return Ok(PatchOptions::default());
             }
-            PatchOptions::resolve(&spec.reference(), &spec.options, configured.get(&idx))
+            PatchOptions::resolve(&spec.reference, &spec.options, configured.get(&idx))
         })
         .collect()
 }

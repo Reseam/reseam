@@ -84,8 +84,8 @@ impl<'r, 'c, 'p: 'r, O: FnMut(RunEvent)> Runner<'r, 'c, 'p, O> {
             if self.run.settled(idx) {
                 continue;
             }
-            let reference = self.specs[idx].reference();
-            let _span = info_span!("patch", patch = reference.as_str()).entered();
+            let reference = &self.specs[idx].reference;
+            let _span = info_span!("patch", patch = %reference).entered();
             if let Some(status) = self.run.blocked(&self.plan, idx) {
                 self.run
                     .finish(&self.plan, idx, status, Vec::new(), &mut self.observer);
@@ -95,8 +95,10 @@ impl<'r, 'c, 'p: 'r, O: FnMut(RunEvent)> Runner<'r, 'c, 'p, O> {
                 .expect("loaded_code holds the code of every patch the plan executes");
             let savepoint = self.savepoints.open(self.ctx, idx)?;
             self.ctx
-                .begin_patch(&reference, self.plan.options(idx).clone());
-            (self.observer)(RunEvent::PatchStarted { patch: reference });
+                .begin_patch(reference, self.plan.options(idx).clone());
+            (self.observer)(RunEvent::PatchStarted {
+                patch: reference.clone(),
+            });
             let (status, logs) = self.invoke(patch, Stage::Execute);
             if status != PatchStatus::Applied {
                 self.savepoints.rollback(self.ctx, savepoint)?;
@@ -122,7 +124,7 @@ impl<'r, 'c, 'p: 'r, O: FnMut(RunEvent)> Runner<'r, 'c, 'p, O> {
             if !self.run.applied(idx) || self.run.finalized(idx) {
                 continue;
             }
-            let _span = info_span!("after_dependents", patch = patch.reference()).entered();
+            let _span = info_span!("after_dependents", patch = %patch.reference()).entered();
             self.ctx
                 .begin_patch(patch.reference(), self.plan.options(idx).clone());
             let (status, logs) = self.invoke(patch, Stage::Finalize);

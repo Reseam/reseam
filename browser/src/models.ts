@@ -60,11 +60,6 @@ export type PatchMetadata = {
    * The presets that select this patch for the inspected APK.
    */
   presets: Array<PatchPreset>;
-  bundle: string;
-  /**
-   * `<package>.<property>` of the public declaration; unique within the bundle.
-   */
-  id: string;
   /**
    * What users see. Different patches may share a display name.
    */
@@ -77,9 +72,9 @@ export type PatchMetadata = {
   description: string;
   enabled_by_default: boolean;
   /**
-   * References (`<bundle>/<id>`) to the patches that run first.
+   * The patches that run first.
    */
-  dependencies: Array<string>;
+  dependencies: Array<PatchRef>;
   compatibility: Compatibility;
   options: Array<OptionDeclaration>;
   /**
@@ -87,13 +82,13 @@ export type PatchMetadata = {
    * build leaves such a patch out, since it cannot tell what the files hold.
    */
   rewrites_output: boolean;
+  bundle: string;
+  /**
+   * `<package>.<property>` of the public declaration; unique within the bundle.
+   */
+  id: string;
 };
 export type PatchSpec = {
-  bundle: string;
-  /**
-   * `<package>.<property>` of the public declaration; unique within the bundle.
-   */
-  id: string;
   /**
    * What users see. Different patches may share a display name.
    */
@@ -106,9 +101,9 @@ export type PatchSpec = {
   description: string;
   enabled_by_default: boolean;
   /**
-   * References (`<bundle>/<id>`) to the patches that run first.
+   * The patches that run first.
    */
-  dependencies: Array<string>;
+  dependencies: Array<PatchRef>;
   compatibility: Compatibility;
   options: Array<OptionDeclaration>;
   /**
@@ -116,6 +111,18 @@ export type PatchSpec = {
    * build leaves such a patch out, since it cannot tell what the files hold.
    */
   rewrites_output: boolean;
+  bundle: string;
+  /**
+   * `<package>.<property>` of the public declaration; unique within the bundle.
+   */
+  id: string;
+};
+export type PatchRef = {
+  bundle: string;
+  /**
+   * `<package>.<property>` of the public declaration; unique within the bundle.
+   */
+  id: string;
 };
 export type PatchPreset = 'recommended' | 'all' | 'none';
 export type Compatibility = { kind: 'universal' } | { kind: 'packages'; packages: Array<CompatiblePackage> };
@@ -197,19 +204,16 @@ export type InstallMethod = 'install' | 'mount';
 export type PatchOutcome = { output: PatchArtifact; results: Array<PatchResult>; metrics: PatchMetrics };
 export type PatchArtifact = { kind: 'single_file'; path: string } | { kind: 'split_dir'; path: string };
 export type PatchResult = {
-  /**
-   * `<bundle>/<id>`.
-   */
-  patch: string;
+  patch: PatchRef;
   /**
    * Internal patches run as dependencies and are never listed to users.
    */
   hidden: boolean;
   /**
-   * References of the running patches that pulled this one in, empty when
-   * it was asked for directly.
+   * The running patches that pulled this one in, empty when it was asked
+   * for directly.
    */
-  required_by: Array<string>;
+  required_by: Array<PatchRef>;
   status: PatchStatus;
   logs: Array<LogEntry>;
 };
@@ -217,14 +221,14 @@ export type PatchStatus = { kind: 'applied' } | { kind: 'skipped'; reason: strin
   kind: 'unmountable';
   reason: string;
 } | { kind: 'failed'; reason: string };
-export type LogEntry = { level: LogLevel; patch: string; message: string };
+export type LogEntry = { level: LogLevel; patch: PatchRef; message: string };
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARN';
 export type RunEvent =
   | { type: 'info'; message: string }
-  | { type: 'patch_started'; patch: string }
+  | { type: 'patch_started'; patch: PatchRef }
   | { type: 'patch_log' } & LogEntry
-  | { type: 'patch_finished'; patch: string; status: PatchStatus }
-  | { type: 'patches_reverted'; patches: Array<string> };
+  | { type: 'patch_finished'; patch: PatchRef; status: PatchStatus }
+  | { type: 'patches_reverted'; patches: Array<PatchRef> };
 export type PatchMetrics = {
   total_duration_ms: number;
   final_rss_bytes: number | null;
@@ -275,7 +279,7 @@ export type Problem =
   | { type: 'untrusted_bundle'; path: string; public_key: string }
   | { type: 'unreadable_bundle'; path: string }
   | { type: 'unreadable_apk'; path: string }
-  | { type: 'patches_failed'; patches: Array<string> }
+  | { type: 'patches_failed'; patches: Array<PatchRef> }
   | { type: 'single_file_components'; components: number }
   | { type: 'unknown_preset'; value: string }
   | { type: 'other' };

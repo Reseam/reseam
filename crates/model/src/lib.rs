@@ -28,7 +28,7 @@ pub use metrics::{
 };
 pub use options::{OptionDeclaration, OptionType, OptionValue};
 pub use outcome::{PatchArtifact, PatchOutcome, PatchResult, PatchStatus, RunEvent};
-pub use patch::{PatchPreset, PatchSpec};
+pub use patch::{PatchPreset, PatchRef, PatchSpec};
 pub use request::{
     InstallMethod, PatchOutput, PatchRequest, PatchSelection, SigningKeyFiles, Trust,
 };

@@ -13,7 +13,7 @@ use ts_rs::{Config, TS};
 type Declaration = fn(&Config) -> String;
 
 /// Every model type the browser package exchanges with the engine.
-const DECLARATIONS: [Declaration; 36] = [
+const DECLARATIONS: [Declaration; 37] = [
     declaration::<model::InspectRequest>,
     declaration::<model::InspectResponse>,
     declaration::<model::ApkMetadata>,
@@ -21,6 +21,7 @@ const DECLARATIONS: [Declaration; 36] = [
     declaration::<model::BundleMetadata>,
     declaration::<model::PatchMetadata>,
     declaration::<model::PatchSpec>,
+    declaration::<model::PatchRef>,
     declaration::<model::PatchPreset>,
     declaration::<model::Compatibility>,
     declaration::<model::CompatiblePackage>,

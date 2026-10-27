@@ -19,6 +19,7 @@ use reseam_dex::{ClassSkeleton, CodeItem, DexFile, EncodedMethod, MethodKind};
 
 use crate::log::{PatchLog, PatchScope};
 use crate::options::PatchOptions;
+use crate::patch::PatchRef;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClassLocation {
@@ -96,7 +97,7 @@ impl<'a> PatchContext<'a> {
         &mut self.scope
     }
 
-    pub(crate) fn begin_patch(&mut self, patch: &str, options: PatchOptions) {
+    pub(crate) fn begin_patch(&mut self, patch: &PatchRef, options: PatchOptions) {
         self.scope = PatchScope::new(patch, options);
     }
 }

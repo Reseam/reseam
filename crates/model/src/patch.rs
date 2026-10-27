@@ -32,13 +32,40 @@ impl std::str::FromStr for PatchPreset {
     }
 }
 
+/// A patch's identity: the bundle that declares it and its id there. Text
+/// forms it as `<bundle>/<id>`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[boltffi::data]
+pub struct PatchRef {
+    pub bundle: String,
+    /// `<package>.<property>` of the public declaration; unique within the bundle.
+    pub id: String,
+}
+
+impl PatchRef {
+    /// The reference `<bundle>/<id>` names, if `text` has that form.
+    pub fn parse(text: &str) -> Option<Self> {
+        let (bundle, id) = text.split_once('/')?;
+        Some(Self {
+            bundle: bundle.to_owned(),
+            id: id.to_owned(),
+        })
+    }
+}
+
+impl std::fmt::Display for PatchRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.bundle, self.id)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct PatchSpec {
-    pub bundle: String,
-    /// `<package>.<property>` of the public declaration; unique within the bundle.
-    pub id: String,
+    #[serde(flatten)]
+    pub reference: PatchRef,
     /// What users see. Different patches may share a display name.
     pub name: String,
     /// Hidden patches are dependencies of other patches: never listed to
@@ -46,8 +73,8 @@ pub struct PatchSpec {
     pub hidden: bool,
     pub description: String,
     pub enabled_by_default: bool,
-    /// References (`<bundle>/<id>`) to the patches that run first.
-    pub dependencies: Vec<String>,
+    /// The patches that run first.
+    pub dependencies: Vec<PatchRef>,
     pub compatibility: Compatibility,
     pub options: Vec<OptionDeclaration>,
     /// Replaces the APK files the engine writes, before they are signed. A mount
@@ -58,10 +85,6 @@ pub struct PatchSpec {
 }
 
 impl PatchSpec {
-    pub fn reference(&self) -> String {
-        format!("{}/{}", self.bundle, self.id)
-    }
-
     /// Whether `preset` selects the patch for an app of `package`. Presets take
     /// the patches that declare the package, and a universal patch only when its
     /// author enables it by default. Version compatibility is not considered; it
@@ -84,8 +107,10 @@ mod tests {
 
     fn spec(compatibility: Compatibility, enabled_by_default: bool, hidden: bool) -> PatchSpec {
         PatchSpec {
-            bundle: "bundle".to_owned(),
-            id: "patch".to_owned(),
+            reference: PatchRef {
+                bundle: "bundle".to_owned(),
+                id: "patch".to_owned(),
+            },
             name: "Patch".to_owned(),
             hidden,
             description: String::new(),

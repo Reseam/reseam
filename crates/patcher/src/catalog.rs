@@ -4,29 +4,16 @@
 use std::collections::HashMap;
 
 use crate::error::{BundleError, PatcherError, Result};
-use crate::patch::PatchSpec;
+use crate::patch::{PatchRef, PatchSpec};
 
 /// Patch identities shared by planning and CLI options. A reference
 /// (`<bundle>/<id>`) resolves exactly; a bare ID or a display name must
 /// identify one patch across the loaded bundles for the target package.
 pub struct PatchCatalog<'a> {
     patches: &'a [&'a PatchSpec],
-    references: HashMap<Reference<'a>, usize>,
+    references: HashMap<&'a PatchRef, usize>,
     ids: HashMap<&'a str, Vec<usize>>,
     names: HashMap<&'a str, Vec<usize>>,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-struct Reference<'a> {
-    bundle: &'a str,
-    id: &'a str,
-}
-
-impl<'a> Reference<'a> {
-    fn parse(value: &'a str) -> Option<Self> {
-        let (bundle, id) = value.split_once('/')?;
-        Some(Self { bundle, id })
-    }
 }
 
 impl<'a> PatchCatalog<'a> {
@@ -34,25 +21,11 @@ impl<'a> PatchCatalog<'a> {
         let mut references = HashMap::with_capacity(patches.len());
         let mut ids: HashMap<&str, Vec<usize>> = HashMap::new();
         let mut names: HashMap<&str, Vec<usize>> = HashMap::new();
-        for (index, patch) in patches.iter().enumerate() {
-            let spec = patch;
-            if references
-                .insert(
-                    Reference {
-                        bundle: &spec.bundle,
-                        id: &spec.id,
-                    },
-                    index,
-                )
-                .is_some()
-            {
-                return Err(BundleError::DuplicatePatch {
-                    bundle: spec.bundle.clone(),
-                    id: spec.id.clone(),
-                }
-                .into());
+        for (index, spec) in patches.iter().enumerate() {
+            if references.insert(&spec.reference, index).is_some() {
+                return Err(BundleError::DuplicatePatch(spec.reference.clone()).into());
             }
-            ids.entry(&spec.id).or_default().push(index);
+            ids.entry(&spec.reference.id).or_default().push(index);
             if !spec.hidden {
                 names.entry(&spec.name).or_default().push(index);
             }
@@ -65,12 +38,13 @@ impl<'a> PatchCatalog<'a> {
         })
     }
 
-    pub(super) fn reference(&self, selector: &str) -> Option<usize> {
-        self.references.get(&Reference::parse(selector)?).copied()
+    /// The position of the patch `reference` names.
+    pub(crate) fn find(&self, reference: &PatchRef) -> Option<usize> {
+        self.references.get(reference).copied()
     }
 
     pub fn resolve(&self, selector: &str, package: Option<&str>) -> Result<usize> {
-        if let Some(index) = self.reference(selector) {
+        if let Some(index) = PatchRef::parse(selector).and_then(|reference| self.find(&reference)) {
             return Ok(index);
         }
         let named = self
@@ -100,7 +74,7 @@ impl<'a> PatchCatalog<'a> {
         }
         let mut references: Vec<_> = candidates
             .iter()
-            .map(|&index| self.patches[index].reference())
+            .map(|&index| self.patches[index].reference.to_string())
             .collect();
         references.sort_unstable();
         Err(PatcherError::InvalidSelection(format!(

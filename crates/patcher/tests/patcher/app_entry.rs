@@ -108,7 +108,7 @@ fn app_entry_fails_the_patch_when_the_manifest_names_no_application() {
     .unwrap();
     let status = &results
         .iter()
-        .find(|result| result.patch.ends_with(".appEntryHook"))
+        .find(|result| result.patch.id.ends_with(".appEntryHook"))
         .unwrap()
         .status;
     assert!(matches!(status, PatchStatus::Failed { .. }), "{status:?}");

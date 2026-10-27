@@ -7,8 +7,8 @@ use std::collections::HashSet;
 
 use anyhow::{Context, Result};
 use reseam_model::{
-    InspectRequest, InstallMethod, LogLevel, PatchOutcome, PatchOutput, PatchRequest, PatchResult,
-    PatchSelection, PatchStatus, RunEvent, SigningKeyFiles,
+    InspectRequest, InstallMethod, LogLevel, PatchOutcome, PatchOutput, PatchRef, PatchRequest,
+    PatchResult, PatchSelection, PatchStatus, RunEvent, SigningKeyFiles,
 };
 use reseam_sdk::{HostError, PreparedInspection};
 use tracing::{debug, error, info, warn};
@@ -80,27 +80,28 @@ fn applied(result: &PatchResult) -> bool {
 }
 
 /// Internal patches only show their problems unless debug logging is on.
-fn log_event(event: RunEvent, hidden: &HashSet<String>) {
+fn log_event(event: RunEvent, hidden: &HashSet<PatchRef>) {
     match event {
         RunEvent::Info { message } => info!(message),
         RunEvent::PatchStarted { patch } if hidden.contains(&patch) => {
-            debug!(patch, "patch started");
+            debug!(%patch, "patch started");
         }
-        RunEvent::PatchStarted { patch } => info!(patch, "patch started"),
+        RunEvent::PatchStarted { patch } => info!(%patch, "patch started"),
         RunEvent::PatchFinished { patch, status } => match status {
-            PatchStatus::Applied if hidden.contains(&patch) => debug!(patch, "patch applied"),
-            PatchStatus::Applied => info!(patch, "patch applied"),
-            PatchStatus::Skipped { reason } => warn!(patch, reason, "patch skipped"),
-            PatchStatus::Unmountable { reason } => info!(patch, reason, "patch left out of mount"),
-            PatchStatus::Failed { reason } => error!(patch, reason, "patch failed"),
+            PatchStatus::Applied if hidden.contains(&patch) => debug!(%patch, "patch applied"),
+            PatchStatus::Applied => info!(%patch, "patch applied"),
+            PatchStatus::Skipped { reason } => warn!(%patch, reason, "patch skipped"),
+            PatchStatus::Unmountable { reason } => info!(%patch, reason, "patch left out of mount"),
+            PatchStatus::Failed { reason } => error!(%patch, reason, "patch failed"),
         },
         RunEvent::PatchesReverted { patches } => {
+            let patches: Vec<_> = patches.iter().map(ToString::to_string).collect();
             info!(?patches, "patches undone to run again");
         }
         RunEvent::PatchLog(entry) => match entry.level {
-            LogLevel::Debug => debug!(patch = entry.patch, "{}", entry.message),
-            LogLevel::Info => info!(patch = entry.patch, "{}", entry.message),
-            LogLevel::Warn => warn!(patch = entry.patch, "{}", entry.message),
+            LogLevel::Debug => debug!(patch = %entry.patch, "{}", entry.message),
+            LogLevel::Info => info!(patch = %entry.patch, "{}", entry.message),
+            LogLevel::Warn => warn!(patch = %entry.patch, "{}", entry.message),
         },
     }
 }
@@ -152,7 +153,7 @@ pub(crate) fn request(args: &PatchRequestArgs, output: PatchOutput) -> PatchRequ
 pub(crate) fn run(
     request: PatchRequest,
     options: &[String],
-    mut emit: impl FnMut(RunEvent, &HashSet<String>),
+    mut emit: impl FnMut(RunEvent, &HashSet<PatchRef>),
 ) -> Result<PatchOutcome> {
     let prepared = PreparedInspection::open(&InspectRequest {
         apk_path: Some(request.apk_path.clone()),
@@ -160,12 +161,12 @@ pub(crate) fn run(
         bundle_paths: request.bundle_paths.clone(),
         trust: request.trust.clone(),
     })?;
-    let hidden: HashSet<String> = prepared
+    let hidden: HashSet<PatchRef> = prepared
         .metadata()
         .patches
         .iter()
         .filter(|patch| patch.spec.hidden)
-        .map(|patch| patch.spec.reference())
+        .map(|patch| patch.spec.reference.clone())
         .collect();
     let request = PatchRequest {
         selection: with_options(request.selection, options, &prepared)?,

@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use reseam_model::Problem;
+use reseam_model::{PatchRef, Problem};
 use thiserror::Error;
 
 use crate::bundle::BUNDLE_FORMAT_VERSION;
@@ -29,29 +29,23 @@ pub enum PatcherError {
     #[error("invalid file: {0}")]
     InvalidFile(String),
 
-    #[error("dependency cycle: {}", .0.join(" -> "))]
-    DependencyCycle(Vec<String>),
+    #[error("dependency cycle: {}", .0.iter().map(ToString::to_string).collect::<Vec<_>>().join(" -> "))]
+    DependencyCycle(Vec<PatchRef>),
 
     #[error(
-        "missing dependency: patch {patch} depends on {dependency}, which bundle '{bundle}' does not declare"
+        "missing dependency: patch {} depends on {}, which bundle '{}' does not declare",
+        .0.patch, .0.dependency, .0.dependency.bundle
     )]
-    MissingDependency {
-        patch: String,
-        dependency: String,
-        bundle: String,
-    },
+    MissingDependency(Box<Unresolved>),
 
     #[error(
-        "missing bundle: patch {patch} depends on {dependency}; load bundle '{bundle}' alongside"
+        "missing bundle: patch {} depends on {}; load bundle '{}' alongside",
+        .0.patch, .0.dependency, .0.dependency.bundle
     )]
-    MissingBundle {
-        patch: String,
-        dependency: String,
-        bundle: String,
-    },
+    MissingBundle(Box<Unresolved>),
 
     #[error("patch {0} runs in this plan, but its code was not loaded")]
-    NotLoaded(String),
+    NotLoaded(PatchRef),
 
     #[error("unknown patch: {0}")]
     UnknownPatch(String),
@@ -60,23 +54,23 @@ pub enum PatcherError {
     InvalidSelection(String),
 
     #[error("unknown option: patch {patch} has no option '{key}'")]
-    UnknownOption { patch: String, key: String },
+    UnknownOption { patch: PatchRef, key: String },
 
     #[error("invalid option value: {patch}.{key}: {reason}")]
     InvalidOptionValue {
-        patch: String,
+        patch: PatchRef,
         key: String,
         reason: String,
     },
 
     #[error("missing required option: {patch}.{key}")]
-    MissingRequiredOption { patch: String, key: String },
+    MissingRequiredOption { patch: PatchRef, key: String },
 
     #[error("app entry: {0}")]
     AppEntry(String),
 
     #[error("patch {patch} failed to rewrite the output: {reason}")]
-    RewriteOutput { patch: String, reason: String },
+    RewriteOutput { patch: PatchRef, reason: String },
 
     #[error("DEX error: {0}")]
     Dex(#[from] reseam_dex::DexError),
@@ -103,6 +97,13 @@ pub enum PatcherError {
     Zip(#[from] zip::result::ZipError),
 }
 
+/// A patch and a dependency of it that no loaded patch is.
+#[derive(Debug)]
+pub struct Unresolved {
+    pub patch: PatchRef,
+    pub dependency: PatchRef,
+}
+
 /// Why a bundle cannot be packed, signed, opened or loaded.
 #[derive(Debug, Error)]
 pub enum BundleError {
@@ -114,14 +115,10 @@ pub enum BundleError {
     EngineVersion(String),
     #[error("bundle version must not be empty")]
     EmptyVersion,
-    #[error("invalid patch identity {bundle}/{id} in bundle {name}")]
-    PatchIdentity {
-        name: String,
-        bundle: String,
-        id: String,
-    },
-    #[error("bundle '{bundle}' declares patch '{id}' more than once")]
-    DuplicatePatch { bundle: String, id: String },
+    #[error("invalid patch identity {patch} in bundle {bundle}")]
+    PatchIdentity { bundle: String, patch: PatchRef },
+    #[error("bundle '{}' declares patch '{}' more than once", .0.bundle, .0.id)]
+    DuplicatePatch(PatchRef),
     #[error("cannot open {}: {source}", path.display())]
     Archive {
         path: PathBuf,

@@ -102,7 +102,7 @@ fn kotlin_patch_failure(patch: &str, id: &str) -> PatchStatus {
     .unwrap();
     let result = results
         .iter()
-        .find(|r| r.patch.ends_with(id))
+        .find(|r| r.patch.id.ends_with(id))
         .unwrap_or_else(|| panic!("{id} not in results"));
     result.status.clone()
 }

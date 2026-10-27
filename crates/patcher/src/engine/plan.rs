@@ -93,7 +93,7 @@ impl ResolvedPlan {
         let enabled: HashSet<usize> = selection.enable.iter().map(lookup).collect::<Result<_>>()?;
         for &idx in &enabled {
             if let Some(missing) = &missing[idx] {
-                return Err(missing.error(specs[idx].reference()));
+                return Err(missing.error(&specs[idx].reference));
             }
         }
         let unavailable: Vec<Option<String>> = missing

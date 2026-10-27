@@ -12,7 +12,7 @@ use crate::error::{PatcherError, Result};
 use crate::log::PatchScope;
 use crate::options::PatchOptions;
 use crate::output::{OutputContext, WrittenApk};
-use crate::patch::{Patch, PatchPhase, PatchSpec};
+use crate::patch::{Patch, PatchPhase, PatchRef, PatchSpec};
 
 mod results;
 mod runner;
@@ -88,7 +88,7 @@ impl AppliedRun<'_> {
         let _bridge = crate::bridge::run_state::RunGuard::enter()?;
         for rewrite in &self.rewrites {
             let reference = rewrite.patch.reference();
-            let _span = info_span!("rewrite_output", patch = reference).entered();
+            let _span = info_span!("rewrite_output", patch = %reference).entered();
             let mut ctx =
                 OutputContext::new(apk, PatchScope::new(reference, rewrite.options.clone()));
             let outcome = guarded(|| rewrite.patch.invoke(PatchPhase::RewriteOutput(&mut ctx)));
@@ -128,20 +128,17 @@ fn loaded_code<'a>(
     plan: &ResolvedPlan,
     patches: &[&'a Patch],
 ) -> Result<Vec<Option<&'a Patch>>> {
-    let by_reference: HashMap<&str, &'a Patch> = patches
+    let by_reference: HashMap<&PatchRef, &'a Patch> = patches
         .iter()
         .map(|&patch| (patch.reference(), patch))
         .collect();
     specs
         .iter()
         .enumerate()
-        .map(|(idx, spec)| {
-            let reference = spec.reference();
-            match by_reference.get(reference.as_str()) {
-                Some(&patch) => Ok(Some(patch)),
-                None if plan.executes(idx) => Err(PatcherError::NotLoaded(reference)),
-                None => Ok(None),
-            }
+        .map(|(idx, spec)| match by_reference.get(&spec.reference) {
+            Some(&patch) => Ok(Some(patch)),
+            None if plan.executes(idx) => Err(PatcherError::NotLoaded(spec.reference.clone())),
+            None => Ok(None),
         })
         .collect()
 }

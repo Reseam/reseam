@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 
 use crate::error::{PatcherError, Result};
+use crate::patch::PatchRef;
 
 pub use reseam_model::{OptionDeclaration, OptionType, OptionValue};
 
@@ -34,7 +35,7 @@ impl PatchOptions {
 
     /// Checks `provided` against `declarations` and fills in defaults.
     pub fn resolve(
-        patch: &str,
+        patch: &PatchRef,
         declarations: &[OptionDeclaration],
         provided: Option<&Self>,
     ) -> Result<Self> {
@@ -44,7 +45,7 @@ impl PatchOptions {
             .find(|key| !declarations.iter().any(|decl| decl.key == **key))
         {
             return Err(PatcherError::UnknownOption {
-                patch: patch.to_string(),
+                patch: patch.clone(),
                 key: key.clone(),
             });
         }
@@ -57,7 +58,7 @@ impl PatchOptions {
                 Some(value) => value,
                 None if decl.required => {
                     return Err(PatcherError::MissingRequiredOption {
-                        patch: patch.to_string(),
+                        patch: patch.clone(),
                         key: decl.key.clone(),
                     });
                 }
@@ -65,7 +66,7 @@ impl PatchOptions {
             };
             if let Some(reason) = rejection(decl, value) {
                 return Err(PatcherError::InvalidOptionValue {
-                    patch: patch.to_owned(),
+                    patch: patch.clone(),
                     key: decl.key.clone(),
                     reason,
                 });
@@ -204,7 +205,11 @@ mod tests {
         ] {
             let mut provided = PatchOptions::default();
             provided.set("targets", value.clone());
-            let resolved = PatchOptions::resolve("bundle/patch", &[declaration], Some(&provided));
+            let resolved = PatchOptions::resolve(
+                &PatchRef::parse("bundle/patch").unwrap(),
+                &[declaration],
+                Some(&provided),
+            );
             match resolved {
                 Ok(options) => {
                     assert!(accepted, "{value:?}");

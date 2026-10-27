@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use thiserror::Error;
 
+use crate::PatchRef;
+
 /// The category of a failure reported across the host boundary.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Error, Deserialize)]
 #[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
@@ -33,8 +35,8 @@ pub enum Problem {
     UnreadableBundle { path: String },
     #[error("APK {path} could not be opened")]
     UnreadableApk { path: String },
-    #[error("{} patch(es) failed: {}", patches.len(), patches.join(", "))]
-    PatchesFailed { patches: Vec<String> },
+    #[error("{} patch(es) failed: {}", patches.len(), patches.iter().map(ToString::to_string).collect::<Vec<_>>().join(", "))]
+    PatchesFailed { patches: Vec<PatchRef> },
     #[error("input has {components} components; single-file output requires one")]
     SingleFileComponents { components: usize },
     #[error("unknown preset '{value}'; expected recommended, all or none")]

@@ -22,7 +22,7 @@ fn load_all(archive: BundleArchive) -> crate::error::Result<PatchBundle> {
     let ids = archive
         .patches()
         .iter()
-        .map(|spec| spec.id.clone())
+        .map(|spec| spec.reference.id.clone())
         .collect();
     archive.load(&ids)
 }
@@ -287,7 +287,7 @@ public final class Declarations {
         let bundle = load_all(archive).unwrap();
         assert_eq!(bundle.patches().len(), 1);
         assert_eq!(catalog[0], *bundle.patches()[0].spec());
-        assert_eq!(bundle.patches()[0].spec().id, "sample.aAlias");
+        assert_eq!(bundle.patches()[0].spec().reference.id, "sample.aAlias");
         let path = bundle._extracted.path().to_path_buf();
         let patches = bundle.into_patches();
         assert!(path.join("patches.jar").is_file());

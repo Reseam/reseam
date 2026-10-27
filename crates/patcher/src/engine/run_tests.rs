@@ -5,7 +5,9 @@ use super::*;
 use crate::context::ExtensionSet;
 use crate::engine::{Delivery, PatchSelection};
 use crate::error::PatcherError;
-use crate::patch::{ApkVersion, Compatibility, CompatiblePackage, PatchPreset, PatchSpec};
+use crate::patch::{
+    ApkVersion, Compatibility, CompatiblePackage, PatchPreset, PatchRef, PatchSpec,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Status {
@@ -30,13 +32,18 @@ impl From<&PatchStatus> for Status {
 
 fn declared(bundle: &str, id: &str, dependencies: &[&str]) -> PatchSpec {
     PatchSpec {
-        bundle: bundle.into(),
-        id: id.into(),
+        reference: PatchRef {
+            bundle: bundle.into(),
+            id: id.into(),
+        },
         name: id.into(),
         hidden: false,
         description: String::new(),
         enabled_by_default: true,
-        dependencies: dependencies.iter().map(|d| (*d).into()).collect(),
+        dependencies: dependencies
+            .iter()
+            .map(|d| PatchRef::parse(d).unwrap())
+            .collect(),
         compatibility: [CompatiblePackage {
             package: "com.example".into(),
             versions: Vec::new(),
@@ -72,7 +79,7 @@ fn statuses(
     validate(declarations, selection, Some(package), Some(version))
         .unwrap()
         .iter()
-        .map(|r| (r.patch.clone(), Status::from(&r.status)))
+        .map(|r| (r.patch.to_string(), Status::from(&r.status)))
         .collect()
 }
 
@@ -208,7 +215,9 @@ fn dependency_selection_stops_at_unavailable_or_incompatible_nodes() {
         ),
         covered(&[("middle", S), ("root", S)])
     );
-    middle.dependencies.push("missing/helper".into());
+    middle
+        .dependencies
+        .push(PatchRef::parse("missing/helper").unwrap());
     assert_eq!(
         statuses(
             &[&helper, &middle, &root],
@@ -237,7 +246,7 @@ fn reference_selection_disambiguates_bundles() {
         results
             .iter()
             .filter(|r| r.status == PatchStatus::Applied)
-            .map(|r| r.patch.as_str())
+            .map(|r| r.patch.to_string())
             .collect::<Vec<_>>(),
         ["official/helper", "fork/consumer"]
     );

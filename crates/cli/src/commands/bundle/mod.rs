@@ -6,7 +6,7 @@ mod fetch;
 use std::collections::HashSet;
 
 use anyhow::Result;
-use reseam_model::{Compatibility, InspectRequest, PatchMetadata};
+use reseam_model::{Compatibility, InspectRequest, PatchMetadata, PatchRef};
 use reseam_sdk::authoring::{BundleKey, manifest_info, pack};
 use reseam_sdk::inspect;
 use tracing::info;
@@ -69,7 +69,7 @@ pub fn run_bundle_list(command: &BundleListCommand) -> Result<()> {
         .patches
         .iter()
         .filter(|patch| patch.spec.hidden)
-        .map(|patch| patch.spec.reference())
+        .map(|patch| &patch.spec.reference)
         .collect();
     for (index, patch) in response
         .patches
@@ -91,7 +91,7 @@ pub fn run_bundle_list(command: &BundleListCommand) -> Result<()> {
     Ok(())
 }
 
-fn print_patch(index: usize, patch: &PatchMetadata, hidden: &HashSet<String>) {
+fn print_patch(index: usize, patch: &PatchMetadata, hidden: &HashSet<&PatchRef>) {
     let spec = &patch.spec;
     println!(
         "  {:>3}. [{}] {} - {}",
@@ -100,7 +100,7 @@ fn print_patch(index: usize, patch: &PatchMetadata, hidden: &HashSet<String>) {
         spec.name,
         spec.description
     );
-    println!("       id: {}", spec.id);
+    println!("       id: {}", spec.reference.id);
     match &spec.compatibility {
         Compatibility::Universal => println!("       packages: any app"),
         Compatibility::Packages { packages } => {
@@ -128,11 +128,11 @@ fn print_patch(index: usize, patch: &PatchMetadata, hidden: &HashSet<String>) {
             println!("       packages: {}", packages.join(", "));
         }
     }
-    let dependencies: Vec<&str> = spec
+    let dependencies: Vec<String> = spec
         .dependencies
         .iter()
-        .filter(|reference| !hidden.contains(*reference))
-        .map(String::as_str)
+        .filter(|reference| !hidden.contains(reference))
+        .map(ToString::to_string)
         .collect();
     if !dependencies.is_empty() {
         println!("       depends: {}", dependencies.join(", "));

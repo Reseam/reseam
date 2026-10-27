@@ -117,7 +117,7 @@ pub(crate) fn load_patches(
         .into_iter()
         .map(|LoadedPatch { spec, finalizes }| {
             let loader = Arc::clone(&loader);
-            let reference = spec.reference();
+            let reference = spec.reference.to_string();
             Patch::new(spec, finalizes, move |phase| {
                 let (phase, context) = match phase {
                     PatchPhase::Execute(context) => (Phase::Execute, context),

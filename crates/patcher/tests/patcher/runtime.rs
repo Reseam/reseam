@@ -7,7 +7,7 @@ use reseam_apk::ApkFile;
 use reseam_patcher::context::{ExtensionSet, PatchContext};
 use reseam_patcher::engine::{PatchSelection, PatchStatus};
 use reseam_patcher::options::OptionValue;
-use reseam_patcher::{Patch, PatchPreset};
+use reseam_patcher::{Patch, PatchPreset, PatchRef};
 
 fn manifest_contains_permission(apk: &ApkFile, permission: &str) -> bool {
     let manifest = apk.base().manifest();
@@ -53,7 +53,7 @@ fn kotlin_bundle_executes_against_runtime_api() {
 
     let statuses = results
         .iter()
-        .map(|result| (result.patch.as_str(), &result.status))
+        .map(|result| (result.patch.to_string(), &result.status))
         .collect::<std::collections::HashMap<_, _>>();
     assert_eq!(
         statuses.get("runtime-test-bundle/app.reseam.test.finalizeOwner"),
@@ -196,30 +196,37 @@ fn kotlin_patch_selection_respects_dependencies_and_required_options() {
         );
         match expected {
             SelectionOutcome::MissingBundle => assert!(matches!(result,
-                Err(PatcherError::MissingBundle { patch, dependency, bundle })
-                    if patch == "runtime-test-bundle/app.reseam.test.needsOtherBundle"
-                        && dependency == "other-bundle/app.reseam.other.helper"
-                        && bundle == "other-bundle")),
+                Err(PatcherError::MissingBundle(unresolved))
+                    if unresolved.patch.to_string() == "runtime-test-bundle/app.reseam.test.needsOtherBundle"
+                        && unresolved.dependency.to_string() == "other-bundle/app.reseam.other.helper")),
             SelectionOutcome::MissingOption => assert!(matches!(result,
                 Err(PatcherError::MissingRequiredOption { key, .. }) if key == "token")),
             SelectionOutcome::NotRun(id) => {
-                assert!(!result.unwrap().iter().any(|item| item.patch.ends_with(id)));
+                assert!(
+                    !result
+                        .unwrap()
+                        .iter()
+                        .any(|item| item.patch.id.ends_with(id))
+                );
             }
             SelectionOutcome::Applied(ids) => {
                 let results = result.unwrap();
                 let applied: Vec<_> = results
                     .iter()
                     .filter(|item| item.status == PatchStatus::Applied)
-                    .map(|item| item.patch.rsplit('.').next().unwrap())
+                    .map(|item| item.patch.id.rsplit('.').next().unwrap())
                     .collect();
                 assert_eq!(applied, ids);
                 if let Some(helper) = results.iter().find(|item| {
-                    item.patch.ends_with("internalHelper") && item.status == PatchStatus::Applied
+                    item.patch.id.ends_with("internalHelper") && item.status == PatchStatus::Applied
                 }) {
                     assert!(helper.hidden);
                     assert_eq!(
                         helper.required_by,
-                        ["runtime-test-bundle/app.reseam.test.usesInternal"]
+                        [
+                            PatchRef::parse("runtime-test-bundle/app.reseam.test.usesInternal")
+                                .unwrap()
+                        ]
                     );
                     assert_eq!(
                         apk.read_component_entry(0, "assets/internal-marker.txt")
@@ -269,7 +276,7 @@ fn same_named_patches_keep_independent_identity_options_dependencies_and_setting
     let applied: Vec<_> = results
         .iter()
         .filter(|r| r.status == PatchStatus::Applied)
-        .map(|r| r.patch.as_str())
+        .map(|r| r.patch.to_string())
         .collect();
     assert!(
         applied.iter().position(|id| *id == first).unwrap()
@@ -319,7 +326,9 @@ fn a_patch_taken_back_takes_back_what_it_registered_for_a_finalizer() {
         let status = |id: &str| {
             results
                 .iter()
-                .find(|result| result.patch == format!("runtime-test-bundle/app.reseam.test.{id}"))
+                .find(|result| {
+                    result.patch.to_string() == format!("runtime-test-bundle/app.reseam.test.{id}")
+                })
                 .map(|result| std::mem::discriminant(&result.status))
         };
         assert_eq!(

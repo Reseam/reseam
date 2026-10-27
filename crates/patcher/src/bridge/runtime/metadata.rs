@@ -19,7 +19,7 @@ use super::loader::PatchLoader;
 use crate::bundle::manifest::is_slug;
 use crate::error::Result;
 use crate::options::{OptionDeclaration, OptionType, OptionValue};
-use crate::patch::{CompatiblePackage, Patch, PatchSpec};
+use crate::patch::{CompatiblePackage, Patch, PatchRef, PatchSpec};
 
 pub(in crate::bridge) fn read_patch(
     env: &mut Env<'_>,
@@ -46,11 +46,17 @@ pub(in crate::bridge) fn read_patch(
                         "patch {id} depends on a bundle named '{other}'; bundle names are lowercase letters, digits, and hyphens"
                     )));
                 }
-                return Ok(format!("{other}/{}", string(env, dependency, "getId")?));
+                return Ok(PatchRef {
+                    bundle: other,
+                    id: string(env, dependency, "getId")?,
+                });
             }
             for candidate in all {
                 if env.is_same_object(candidate.object.as_ref(), dependency)? {
-                    return Ok(format!("{bundle}/{}", candidate.declaration));
+                    return Ok(PatchRef {
+                        bundle: bundle.to_owned(),
+                        id: candidate.declaration.clone(),
+                    });
                 }
             }
             Err(jvm_err(format!(
@@ -69,9 +75,11 @@ pub(in crate::bridge) fn read_patch(
     let options_list = object(env, patch, "getOptions", "()Ljava/util/List;")?;
     let options = map_list(env, &options_list, "options", read_option)?;
     let spec = PatchSpec {
-        bundle: bundle.to_owned(),
         name: name.unwrap_or_else(|| id.clone()),
-        id,
+        reference: PatchRef {
+            bundle: bundle.to_owned(),
+            id,
+        },
         hidden,
         description: string(env, patch, "getDescription")?,
         enabled_by_default: !hidden && boolean(env, patch, "getEnabled")?,

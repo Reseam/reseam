@@ -5,8 +5,8 @@ use std::collections::VecDeque;
 
 use super::super::PatchStatus;
 use crate::catalog::PatchCatalog;
-use crate::error::{PatcherError, Result};
-use crate::patch::PatchSpec;
+use crate::error::{PatcherError, Result, Unresolved};
+use crate::patch::{PatchRef, PatchSpec};
 
 /// The selection roots and the dependencies they need. A dependency is desired
 /// only while an applicable, enabled patch needs it. Selection roots remain
@@ -39,8 +39,7 @@ pub(super) fn desired_patches(
 }
 
 pub(super) struct MissingDependency {
-    dependency: String,
-    bundle: String,
+    dependency: PatchRef,
     availability: BundleAvailability,
 }
 
@@ -50,20 +49,14 @@ enum BundleAvailability {
 }
 
 impl MissingDependency {
-    pub(super) fn error(&self, patch: String) -> PatcherError {
-        let (dependency, bundle) = (self.dependency.clone(), self.bundle.clone());
-        if matches!(self.availability, BundleAvailability::Loaded) {
-            PatcherError::MissingDependency {
-                patch,
-                dependency,
-                bundle,
-            }
-        } else {
-            PatcherError::MissingBundle {
-                patch,
-                dependency,
-                bundle,
-            }
+    pub(super) fn error(&self, patch: &PatchRef) -> PatcherError {
+        let unresolved = Box::new(Unresolved {
+            patch: patch.clone(),
+            dependency: self.dependency.clone(),
+        });
+        match self.availability {
+            BundleAvailability::Loaded => PatcherError::MissingDependency(unresolved),
+            BundleAvailability::Missing => PatcherError::MissingBundle(unresolved),
         }
     }
 
@@ -71,12 +64,12 @@ impl MissingDependency {
         if matches!(self.availability, BundleAvailability::Loaded) {
             format!(
                 "depends on {}, which bundle '{}' does not declare",
-                self.dependency, self.bundle
+                self.dependency, self.dependency.bundle
             )
         } else {
             format!(
                 "depends on {}; load bundle '{}' alongside",
-                self.dependency, self.bundle
+                self.dependency, self.dependency.bundle
             )
         }
     }
@@ -94,12 +87,13 @@ pub(super) fn dependency_edges(specs: &[&PatchSpec], index: &PatchCatalog<'_>) -
     let mut missing: Vec<Option<MissingDependency>> = (0..specs.len()).map(|_| None).collect();
     for (idx, spec) in specs.iter().enumerate() {
         for dependency in &spec.dependencies {
-            let Some(dependency_idx) = index.reference(dependency) else {
-                let bundle = dependency.split_once('/').map_or("", |(bundle, _)| bundle);
+            let Some(dependency_idx) = index.find(dependency) else {
                 missing[idx].get_or_insert_with(|| MissingDependency {
                     dependency: dependency.clone(),
-                    bundle: bundle.to_owned(),
-                    availability: if specs.iter().any(|spec| spec.bundle == bundle) {
+                    availability: if specs
+                        .iter()
+                        .any(|spec| spec.reference.bundle == dependency.bundle)
+                    {
                         BundleAvailability::Loaded
                     } else {
                         BundleAvailability::Missing
@@ -138,7 +132,7 @@ pub(super) fn topological_order(
     if order.len() != specs.len() {
         let names = (0..specs.len())
             .filter(|&i| in_degree[i] > 0)
-            .map(|i| specs[i].reference())
+            .map(|i| specs[i].reference.clone())
             .collect();
         return Err(PatcherError::DependencyCycle(names));
     }

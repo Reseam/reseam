@@ -11,7 +11,7 @@ fn adding(
     runs: Arc<Mutex<Vec<String>>>,
     extra: impl Fn(&mut PatchContext<'_>) -> Result<()> + Send + Sync + 'static,
 ) -> Patch {
-    let id = declaration.id.clone();
+    let id = declaration.reference.id.clone();
     Patch::new(declaration, false, move |phase| {
         let PatchPhase::Execute(ctx) = phase else {
             unreachable!("fixture patches only execute");
@@ -64,7 +64,7 @@ fn run_patches(delivery: Delivery, patches: &[&Patch], runs: &Arc<Mutex<Vec<Stri
         patches,
         |event| {
             if let RunEvent::PatchesReverted { patches } = event {
-                reverted.extend(patches);
+                reverted.extend(patches.iter().map(ToString::to_string));
             }
         },
     )
@@ -73,7 +73,7 @@ fn run_patches(delivery: Delivery, patches: &[&Patch], runs: &Arc<Mutex<Vec<Stri
     Outcome {
         results: results
             .iter()
-            .map(|result| (result.patch.clone(), Status::from(&result.status)))
+            .map(|result| (result.patch.to_string(), Status::from(&result.status)))
             .collect(),
         runs: runs.lock().unwrap().clone(),
         reverted,

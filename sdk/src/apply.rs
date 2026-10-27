@@ -44,7 +44,7 @@ fn executed_patches(archives: &[TrustedArchive], plan: &ResolvedPlan) -> Vec<Has
                 .iter()
                 .zip(positions.by_ref())
                 .filter(|&(_, idx)| plan.executes(idx))
-                .map(|(spec, _)| spec.id.clone())
+                .map(|(spec, _)| spec.reference.id.clone())
                 .collect()
         })
         .collect()

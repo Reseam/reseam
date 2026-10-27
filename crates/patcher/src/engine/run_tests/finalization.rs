@@ -13,7 +13,7 @@ enum Failure {
 }
 
 fn hooked(declaration: PatchSpec, failure: Failure, events: Arc<Mutex<Vec<String>>>) -> Patch {
-    let id = declaration.id.clone();
+    let id = declaration.reference.id.clone();
     Patch::new(declaration, true, move |phase| {
         let (name, fails) = match phase {
             PatchPhase::Execute(_) => ("execute", matches!(failure, Failure::Execute)),

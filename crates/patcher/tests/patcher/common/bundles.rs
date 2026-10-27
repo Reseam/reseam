@@ -109,9 +109,9 @@ pub fn run_one_patch(ctx: &mut PatchContext<'_>, patches: &[&Patch], name: &str,
         },
     )
     .unwrap();
-    let applied = results
-        .iter()
-        .find(|result| result.patch == format!("runtime-test-bundle/app.reseam.test.{id}"));
+    let applied = results.iter().find(|result| {
+        result.patch.to_string() == format!("runtime-test-bundle/app.reseam.test.{id}")
+    });
     assert!(
         matches!(
             applied.map(|result| &result.status),
@@ -135,7 +135,7 @@ pub fn load_all(path: &Path) -> reseam_patcher::bundle::PatchBundle {
     let ids = archive
         .patches()
         .iter()
-        .map(|spec| spec.id.clone())
+        .map(|spec| spec.reference.id.clone())
         .collect();
     archive.load(&ids).unwrap()
 }

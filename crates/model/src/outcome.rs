@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::{LogEntry, PatchMetrics};
+use crate::{LogEntry, PatchMetrics, PatchRef};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -23,17 +23,17 @@ pub enum RunEvent {
         message: String,
     },
     PatchStarted {
-        patch: String,
+        patch: PatchRef,
     },
     PatchLog(LogEntry),
     PatchFinished {
-        patch: String,
+        patch: PatchRef,
         status: PatchStatus,
     },
     /// Finished patches whose results no longer hold: a patch that ran before
     /// them could not apply, so the run went back to before it. They run again.
     PatchesReverted {
-        patches: Vec<String>,
+        patches: Vec<PatchRef>,
     },
 }
 
@@ -58,13 +58,12 @@ impl PatchArtifact {
 #[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
 pub struct PatchResult {
-    /// `<bundle>/<id>`.
-    pub patch: String,
+    pub patch: PatchRef,
     /// Internal patches run as dependencies and are never listed to users.
     pub hidden: bool,
-    /// References of the running patches that pulled this one in, empty when
-    /// it was asked for directly.
-    pub required_by: Vec<String>,
+    /// The running patches that pulled this one in, empty when it was asked
+    /// for directly.
+    pub required_by: Vec<PatchRef>,
     pub status: PatchStatus,
     pub logs: Vec<LogEntry>,
 }

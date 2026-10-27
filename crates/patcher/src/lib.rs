@@ -15,7 +15,8 @@ pub mod output;
 pub mod patch;
 
 pub use crate::patch::{
-    ApkVersion, Compatibility, CompatiblePackage, Patch, PatchPhase, PatchPreset, PatchSpec,
+    ApkVersion, Compatibility, CompatiblePackage, Patch, PatchPhase, PatchPreset, PatchRef,
+    PatchSpec,
 };
 pub use reseam_apk;
 

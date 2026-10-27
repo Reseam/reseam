@@ -161,10 +161,10 @@ impl BundleArchive {
             .manifest
             .patches
             .iter()
-            .filter(|spec| patches.contains(&spec.id))
+            .filter(|spec| patches.contains(&spec.reference.id))
             .collect();
-        loaded_specs.sort_by(|a, b| a.id.cmp(&b.id));
-        declared.sort_by(|a, b| a.id.cmp(&b.id));
+        loaded_specs.sort_by(|a, b| a.reference.cmp(&b.reference));
+        declared.sort_by(|a, b| a.reference.cmp(&b.reference));
         if loaded_specs != declared {
             return Err(BundleError::CatalogMismatch.into());
         }

@@ -4,7 +4,7 @@
 use super::super::plan::CHANGES_MANIFEST;
 use super::super::{PatchResult, PatchStatus, ResolvedPlan, RunEvent};
 use crate::log::LogEntry;
-use crate::patch::{Patch, PatchSpec};
+use crate::patch::{Patch, PatchRef, PatchSpec};
 
 pub(super) struct Run<'a> {
     specs: &'a [&'a PatchSpec],
@@ -44,7 +44,7 @@ impl<'a> Run<'a> {
         }
         let skipped = |reason: String| Some(PatchStatus::Skipped { reason });
         for &dependency in plan.dependencies(idx) {
-            let name = self.specs[dependency].reference();
+            let name = &self.specs[dependency].reference;
             match self.results[dependency]
                 .as_ref()
                 .map(|result| &result.status)
@@ -118,11 +118,11 @@ impl<'a> Run<'a> {
     ) {
         let spec = self.specs[idx];
         self.results[idx] = Some(PatchResult {
-            patch: spec.reference(),
+            patch: spec.reference.clone(),
             hidden: spec.hidden,
             required_by: plan
                 .required_by(idx)
-                .map(|dependent| self.specs[dependent].reference())
+                .map(|dependent| self.specs[dependent].reference.clone())
                 .collect(),
             status,
             logs,
@@ -147,7 +147,7 @@ impl<'a> Run<'a> {
     /// Takes back the results of `first` and every patch settled after it, and
     /// every finalization, which all came after it. Returns the patches that
     /// had been reported finished.
-    pub(super) fn revert_from(&mut self, plan: &ResolvedPlan, first: usize) -> Vec<String> {
+    pub(super) fn revert_from(&mut self, plan: &ResolvedPlan, first: usize) -> Vec<PatchRef> {
         let start = self
             .settled
             .iter()
@@ -159,7 +159,7 @@ impl<'a> Run<'a> {
                 continue;
             }
             if self.reported[idx].take().is_some() {
-                reverted.push(self.specs[idx].reference());
+                reverted.push(self.specs[idx].reference.clone());
             }
             self.results[idx] = None;
             self.finalized[idx] = false;

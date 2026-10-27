@@ -15,7 +15,7 @@ pub(super) fn with_options(
         let invalid = || anyhow!("invalid option '{raw}': expected PATCH.KEY=VALUE");
         let (lhs, value) = raw.split_once('=').ok_or_else(invalid)?;
         let (patch, key) = option_target(prepared, lhs)?;
-        let reference = patch.spec.reference();
+        let reference = patch.spec.reference.to_string();
         let declaration = patch
             .spec
             .options
