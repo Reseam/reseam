@@ -3,6 +3,7 @@
 
 pub(crate) mod branch;
 pub(crate) mod catalogue;
+pub(crate) mod codec;
 pub(crate) mod operands;
 mod query;
 pub(crate) mod stream;
@@ -22,6 +23,12 @@ pub struct RegList {
 }
 
 impl RegList {
+    /// The first `len` of `registers`; `len` is at most five.
+    pub(crate) fn new(mut registers: [u8; 5], len: u8) -> Self {
+        registers[usize::from(len)..].fill(0);
+        Self { registers, len }
+    }
+
     /// Returns an error when the list exceeds the compact format's five registers.
     pub fn try_from_iter(registers: impl IntoIterator<Item = u8>) -> crate::Result<Self> {
         let mut args = Self::default();
@@ -106,7 +113,7 @@ pub struct FillArrayPayloadData {
 }
 
 macro_rules! define_instructions {
-    ($($variant:ident [$($shape:tt)*] [$($definition:tt)*] => $opname:ident $opcode:expr, $units:tt; [$($register:ident: $reg_type:ident $kind:ident $access:ident ($max:expr)),*]; $args:ident; [$($index:ident: $id_type:ident $pool:ident $at:literal $index_width:ident),*];)*) => {
+    ($($variant:ident [$($shape:tt)*] [$($definition:tt)*] => $opname:ident $opcode:expr, $units:tt; [$($register:ident: $reg_type:ident $kind:ident $access:ident ($max:expr)),*]; $args:ident; [$($index:ident: $id_type:ident $pool:ident $at:literal $index_width:ident),*]; $format:ident($($slot:ident),*);)*) => {
         /// DEX instructions. Register and index widths are checked during serialization;
         /// opaque code units are retained exactly when no supported opcode describes them.
         #[derive(Debug, Clone, PartialEq, Eq)]

@@ -46,8 +46,3 @@ pub fn parse_file(
     let mmap = unsafe { reseam_storage::map_file(&file) }.map_err(crate::error::DexError::Io)?;
     parse_bytes(crate::DexBytes::from_mmap(Arc::new(mmap)), opts)
 }
-
-/// Decodes `insns_size` DEX code units starting at `start` in a byte buffer.
-/// Truncated or malformed encodings fail; unknown opcodes retain all their
-/// original code units. Pool indices are resolved by the owning DEX file.
-pub use code::decode_instructions;

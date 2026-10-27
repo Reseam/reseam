@@ -13,7 +13,7 @@ use crate::options::ParseOptions;
 use crate::read::annotation::read_annotations_directory;
 use crate::read::class::RawClassDef;
 use crate::read::class::read_class_skeleton_at;
-use crate::read::code::payload::{HandlerEvent, walk_handler_list};
+use crate::read::code::handlers::{HandlerEvent, walk_handler_list};
 use crate::read::debug::read_debug_info;
 use crate::read::encoded_value::read_encoded_array_with_opts;
 use crate::read::type_list::read_type_list;

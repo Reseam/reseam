@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::opcodes::{FILL_ARRAY_DATA_PAYLOAD, PACKED_SWITCH_PAYLOAD, SPARSE_SWITCH_PAYLOAD};
+use smallvec::SmallVec;
+
+use super::Instruction;
+use super::codec::{decode_onto, has_literal};
 use super::query::opcode_units;
 use crate::error::{Result, malformed, require_len};
 use crate::model::{FieldIdx, MethodIdx, Pool, StringIdx, TypeIdx};
@@ -61,21 +65,15 @@ impl RawInstruction {
         Some((operand.pool, operand.read(buf, self.unit_off)))
     }
 
-    /// The literal of a `const*` or `*-int/lit*` instruction, with the same
-    /// value [`crate::instruction::Instruction::literal`] reports for
-    /// its decoded form.
+    /// The literal of a `const*` or `*-int/lit*` instruction, as
+    /// [`Instruction::literal`](super::Instruction::literal) reports it once decoded.
     pub fn literal(&self, buf: &[u8]) -> Option<i64> {
-        let at = |units: usize| self.unit_off + units * 2;
-        Some(match self.opcode {
-            0x12 => i64::from(((u16_at(buf, at(0)) >> 12) as u8 as i8) << 4 >> 4),
-            0x13 | 0x16 | 0xd0..=0xd7 => i64::from(u16_at(buf, at(1)) as i16),
-            0x15 => i64::from(u16_at(buf, at(1)) as i16) << 16,
-            0x19 => i64::from(u16_at(buf, at(1)) as i16) << 48,
-            0x14 | 0x17 => i64::from(u32_at(buf, at(1)) as i32),
-            0x18 => i64::from(u32_at(buf, at(1))) | i64::from(u32_at(buf, at(3))) << 32,
-            0xd8..=0xe2 => i64::from((u16_at(buf, at(1)) >> 8) as i8),
-            _ => return None,
-        })
+        if !has_literal(self.opcode) {
+            return None;
+        }
+        let mut decoded = SmallVec::<[Instruction; 1]>::new();
+        decode_onto(buf, self, &mut decoded).ok()?;
+        decoded.pop()?.literal()
     }
 }
 #[derive(Debug, Clone, Copy)]
@@ -101,7 +99,7 @@ impl IndexOperand {
 }
 
 macro_rules! define_index_operands {
-    ($($variant:ident [$($shape:tt)*] [$($definition:tt)*] => $opname:ident $opcode:expr, $units:tt; [$($register:ident: $reg_type:ident $kind:ident $access:ident ($max:expr)),*]; $args:ident; [$($index:ident: $id_type:ident $pool:ident $at:literal $index_width:ident),*];)*) => {
+    ($($variant:ident [$($shape:tt)*] [$($definition:tt)*] => $opname:ident $opcode:expr, $units:tt; [$($register:ident: $reg_type:ident $kind:ident $access:ident ($max:expr)),*]; $args:ident; [$($index:ident: $id_type:ident $pool:ident $at:literal $index_width:ident),*]; $format:ident($($slot:ident),*);)*) => {
         pub(crate) fn index_operands(opcode: u8) -> &'static [IndexOperand] {
             const OPERANDS: [&[IndexOperand]; 256] = {
                 let mut operands = [&[] as &[IndexOperand]; 256];

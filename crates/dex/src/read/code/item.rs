@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::decode::decode_instructions;
-use super::payload::read_tries_and_handlers;
+use super::handlers::read_tries_and_handlers;
 use crate::error::Result;
+use crate::instruction::codec::decode_instructions;
 use crate::model::code::CodeItem;
 use crate::options::ParseOptions;
 use crate::read::{u16_at, u32_at};

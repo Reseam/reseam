@@ -6,7 +6,7 @@ use crate::encoding::leb128::{write_sleb128, write_uleb128, write_uleb128p1};
 use crate::error::{Result, require_len};
 use crate::instruction::stream::{index_operands, walk_instructions};
 use crate::options::ParseOptions;
-use crate::read::code::payload::{HandlerEvent, handler_index, walk_handler_list};
+use crate::read::code::handlers::{HandlerEvent, handler_index, walk_handler_list};
 use crate::read::debug::walk_debug_info;
 
 /// How copying a file code item went: copied with its indices remapped in

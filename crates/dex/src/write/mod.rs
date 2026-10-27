@@ -23,7 +23,6 @@ pub(crate) mod encoded_value;
 pub(crate) mod finalize;
 mod hidden_api;
 mod ids;
-pub(crate) mod instruction_writer;
 pub(crate) mod intern;
 pub(crate) mod layout;
 pub(crate) mod part;
@@ -243,7 +242,3 @@ impl<S: DexSink> DexWriter<S> {
         self.sink.patch(offset, &v.to_le_bytes());
     }
 }
-
-/// Encodes a sequence of DEX instructions as code units. Operands that exceed
-/// their encoding fail. Pool indices must already belong to the owning DEX.
-pub use instruction_writer::encode_instructions;

@@ -63,7 +63,7 @@ pub(super) fn opcode_metadata() -> (String, String) {
         ($variant:ident, $definition:tt, $name:ident, $variable:tt, $result:ident) => {};
     }
     macro_rules! rows {
-        ($($variant:ident [$($shape:tt)*] [$($definition:tt)*] => $name:ident $opcode:expr, $units:tt; [$($register:ident:$rt:ident $kind:ident $access:ident ($max:expr)),*]; $args:ident; [$($index:ident:$it:ident $pool:ident $at:literal $width:ident),*];)*) => {{
+        ($($variant:ident [$($shape:tt)*] [$($definition:tt)*] => $name:ident $opcode:expr, $units:tt; [$($register:ident:$rt:ident $kind:ident $access:ident ($max:expr)),*]; $args:ident; [$($index:ident:$it:ident $pool:ident $at:literal $width:ident),*]; $format:ident($($slot:ident),*);)*) => {{
             let mut result = Vec::new();
             $(fixed!($variant, [$($definition)*], $name, $units, result);)*
             result

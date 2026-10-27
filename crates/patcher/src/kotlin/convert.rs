@@ -181,7 +181,7 @@ macro_rules! validate_arguments {
 }
 
 macro_rules! define_bridge {
-    ($($native:ident [$($pattern:tt)*] [$($definition:tt)*] => $name:ident $opcode:expr,$units:tt; [$($reg:ident:$rt:ident $kind:ident $access:ident ($max:expr)),*]; $args:ident; [$($index:ident:$it:ident $pool:ident $at:literal $width:ident),*];)*) => {
+    ($($native:ident [$($pattern:tt)*] [$($definition:tt)*] => $name:ident $opcode:expr,$units:tt; [$($reg:ident:$rt:ident $kind:ident $access:ident ($max:expr)),*]; $args:ident; [$($index:ident:$it:ident $pool:ident $at:literal $width:ident),*]; $format:ident($($slot:ident),*);)*) => {
         pub fn dex_to_kotlin(insn: &D, dex: &DexFile, dex_index: Option<usize>) -> reseam_dex::Result<Instruction> {
             Ok(match insn {
                 $(D::$native $($pattern)* => shape!(export_shape,(insn,dex,dex_index,$native,$opcode),[$($definition)*]),)*

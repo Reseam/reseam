@@ -47,6 +47,7 @@ pub use file::container::{
     MaterializationStats, MemoryBreakdown, MultiDexContainer, estimated_ir_bytes,
 };
 pub use file::{ClassTable, DexFile, HiddenApiData, IdTable, StringPool};
+pub use instruction::codec::{decode_instructions, encode_instructions};
 pub use instruction::operands::RegisterKind;
 pub use instruction::{
     FillArrayPayloadData, Instruction, PackedSwitchData, RegList, SparseSwitchData,
@@ -74,7 +75,6 @@ pub use options::{
     WriteOptions,
 };
 pub use read::class::{ClassSkeleton, MemberCounts, MethodHeader};
-pub use read::decode_instructions;
 pub use read::parse;
 pub use read::parse::parse_container_with_bytes;
 pub use read::parse_bytes;
@@ -87,6 +87,6 @@ pub use search::inspect::{MethodSummary, summarize_resident};
 pub use search::pattern::{InstructionPattern, OpcodeMatcher};
 pub use search::view::{InstructionHit, InstructionSite, MethodHit, MethodView};
 pub use write::{
-    DexPart, Spooled, WriteLayout, encode_instructions, split_to_fit, write_class,
-    write_container_spooled, write_spooled,
+    DexPart, Spooled, WriteLayout, split_to_fit, write_class, write_container_spooled,
+    write_spooled,
 };

@@ -68,6 +68,25 @@ impl Pool {
     ];
 }
 
+macro_rules! from_index {
+    ($($idx:ident),*) => {$(
+        impl From<u32> for $idx {
+            fn from(index: u32) -> Self {
+                Self(index)
+            }
+        }
+    )*};
+}
+from_index!(
+    StringIdx,
+    TypeIdx,
+    FieldIdx,
+    MethodIdx,
+    ProtoIdx,
+    MethodHandleIdx,
+    CallSiteIdx
+);
+
 /// One value for each id pool.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct PerPool<T>([T; 7]);
