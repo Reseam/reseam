@@ -117,15 +117,7 @@ internal class SettingsFiles(
     }
 
     private fun Json.setting(setting: Setting<*>) = obj {
-        field(
-            "type",
-            when (setting) {
-                is ToggleSetting -> "toggle"
-                is TextSetting -> "text"
-                is FolderSetting -> "folder"
-                is ChoiceSetting -> "choice"
-            },
-        )
+        field("type", setting.kind.tag)
         field("key", setting.key)
         field("title") { text(setting.title) }
         field("summary") { text(setting.summary) }

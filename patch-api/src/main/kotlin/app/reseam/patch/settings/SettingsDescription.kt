@@ -49,22 +49,9 @@ private fun Json.group(type: Class<*>) {
 private fun Json.setting(setting: Setting<*>) = obj {
     field("property", setting.property)
     field("key", setting.key)
-    when (setting) {
-        is ToggleSetting -> {
-            field("type", "toggle")
-            field("default", setting.default)
-        }
-        is TextSetting -> {
-            field("type", "text")
-            field("default", setting.default)
-        }
-        is FolderSetting -> {
-            field("type", "folder")
-            field("default", setting.default)
-        }
-        is ChoiceSetting -> {
-            field("type", "choice")
-            field("default", setting.default)
-        }
+    field("valueClass", setting.kind.runtimeValue)
+    when (val default = setting.default) {
+        is Boolean -> field("default", default)
+        is String -> field("default", default)
     }
 }

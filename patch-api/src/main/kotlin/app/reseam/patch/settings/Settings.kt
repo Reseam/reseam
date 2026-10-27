@@ -13,6 +13,7 @@ import kotlin.properties.ReadOnlyProperty
  * [key] is unique within the bundle; other bundles keep their own settings.
  */
 sealed class Setting<T>(
+    internal val kind: SettingKind,
     val key: String,
     internal val property: String,
     val title: StringRef,
@@ -21,6 +22,14 @@ sealed class Setting<T>(
     val icon: Vector?,
 ) {
     override fun toString() = key
+}
+
+/** How the app runtime knows a setting: its schema tag and its value class. */
+internal enum class SettingKind(val tag: String, val runtimeValue: String) {
+    TOGGLE("toggle", "ToggleValue"),
+    TEXT("text", "TextValue"),
+    FOLDER("folder", "FolderValue"),
+    CHOICE("choice", "ChoiceValue"),
 }
 
 /** While this toggle is on, every toggle in [covers] reads as on and cannot be changed. */
@@ -33,7 +42,7 @@ internal constructor(
     default: Boolean,
     icon: Vector?,
     val covers: List<ToggleSetting>,
-) : Setting<Boolean>(key, property, title, summary, default, icon)
+) : Setting<Boolean>(SettingKind.TOGGLE, key, property, title, summary, default, icon)
 
 /** [multiline] lets the value hold one entry per line. */
 class TextSetting
@@ -45,7 +54,7 @@ internal constructor(
     default: String,
     val multiline: Boolean,
     icon: Vector?,
-) : Setting<String>(key, property, title, summary, default, icon)
+) : Setting<String>(SettingKind.TEXT, key, property, title, summary, default, icon)
 
 class FolderSetting
 internal constructor(
@@ -55,7 +64,7 @@ internal constructor(
     summary: StringRef?,
     default: String,
     icon: Vector?,
-) : Setting<String>(key, property, title, summary, default, icon)
+) : Setting<String>(SettingKind.FOLDER, key, property, title, summary, default, icon)
 
 class ChoiceSetting
 internal constructor(
@@ -66,7 +75,7 @@ internal constructor(
     default: String,
     val choices: List<Choice>,
     icon: Vector?,
-) : Setting<String>(key, property, title, summary, default, icon) {
+) : Setting<String>(SettingKind.CHOICE, key, property, title, summary, default, icon) {
     init {
         require(choices.any { it.value == default }) {
             "Choice setting '$key' defaults to '$default', which is not a choice"

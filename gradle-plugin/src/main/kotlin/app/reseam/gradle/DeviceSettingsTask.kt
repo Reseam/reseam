@@ -6,7 +6,6 @@ package app.reseam.gradle
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.boolean
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
@@ -30,17 +29,9 @@ private data class GroupDescription(
 private data class SettingDescription(
     val property: String,
     val key: String,
-    val type: SettingType,
+    val valueClass: String,
     val default: JsonPrimitive,
 )
-
-@Serializable
-private enum class SettingType(val value: String) {
-    @SerialName("toggle") TOGGLE("ToggleValue"),
-    @SerialName("text") TEXT("TextValue"),
-    @SerialName("folder") FOLDER("FolderValue"),
-    @SerialName("choice") CHOICE("ChoiceValue"),
-}
 
 /** Generates, for each settings group, the extension-side object of the same name. */
 internal abstract class DeviceSettingsTask : DefaultTask() {
@@ -72,7 +63,7 @@ internal abstract class DeviceSettingsTask : DefaultTask() {
             writer.line()
         }
         settings
-            .map { it.type.value }
+            .map { it.valueClass }
             .distinct()
             .sorted()
             .forEach { writer.line("import app.reseam.runtime.$it") }
@@ -80,10 +71,10 @@ internal abstract class DeviceSettingsTask : DefaultTask() {
         writer.block("object $name") {
             for (setting in settings) {
                 val default =
-                    if (setting.type == SettingType.TOGGLE) setting.default.boolean.toString()
-                    else kotlinString(setting.default.content)
+                    if (setting.default.isString) kotlinString(setting.default.content)
+                    else setting.default.content
                 line(
-                    "@JvmField val ${setting.property} = ${setting.type.value}(" +
+                    "@JvmField val ${setting.property} = ${setting.valueClass}(" +
                         "${kotlinString(bundle.get())}, ${kotlinString(setting.key)}, $default)"
                 )
             }
