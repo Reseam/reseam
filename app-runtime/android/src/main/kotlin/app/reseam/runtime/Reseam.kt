@@ -73,3 +73,5 @@ object Reseam {
 
 private const val OPEN_ACTION = "app.reseam.settings.OPEN"
 private const val SCHEME = "reseam-settings"
+
+internal const val LOG_TAG = "ReseamSettings"
