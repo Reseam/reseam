@@ -10,10 +10,10 @@ use std::ops::Range;
 
 use reseam_storage::Bytes;
 
-use super::entry::{self, ResEntry};
+use super::entry::{self, EntryValue, ResEntry};
 use crate::buf::{read_u16_le, read_u32_le, require_len};
 use crate::error::{Result, invalid};
-use crate::value::ResValue;
+use crate::res_value::ResValue;
 
 const HEADER_LEN: usize = 20;
 const NO_ENTRY: u32 = 0xFFFF_FFFF;
@@ -147,8 +147,8 @@ impl ResType {
         if let Some(entry) = self.overlay.get(&(i as u32)) {
             return Ok(entry.as_ref().map(|entry| {
                 let value = match entry.value {
-                    super::EntryValue::Simple(value) => Some(value),
-                    super::EntryValue::Complex { .. } => None,
+                    EntryValue::Simple(value) => Some(value),
+                    EntryValue::Complex { .. } => None,
                 };
                 (entry.key, value)
             }));
@@ -164,13 +164,6 @@ impl ResType {
         self.len = self.len.max(i + 1);
         self.overlay.insert(u32::from(index), entry);
         Ok(())
-    }
-
-    /// Appends an entry, returning its index. A full 16-bit index space is an error.
-    pub fn push(&mut self, entry: Option<ResEntry>) -> Result<usize> {
-        let i = self.len;
-        self.set(i, entry)?;
-        Ok(i)
     }
 
     pub(crate) fn pad_to(&mut self, len: usize) {

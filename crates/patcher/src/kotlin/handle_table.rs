@@ -4,7 +4,7 @@
 use super::handles::record_failure;
 use crate::context::{ClassLocation, MethodLocation};
 use crate::error::{PatcherError, Result as PatcherResult};
-use reseam_apk::reseam_dex::MethodKind;
+use reseam_dex::MethodKind;
 use reseam_journal::Savepoint;
 use std::sync::atomic::{AtomicU32, Ordering};
 

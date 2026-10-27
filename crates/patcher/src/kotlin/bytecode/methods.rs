@@ -14,8 +14,8 @@ use crate::kotlin::link::{link_descriptors, link_instructions, proto_types};
 use crate::kotlin::types::NewMethod;
 use boltffi::export;
 use frame::prepare_flag_frame;
-use reseam_apk::reseam_dex::MethodKind;
-use reseam_apk::reseam_dex::{
+use reseam_dex::MethodKind;
+use reseam_dex::{
     AccessFlags, CatchHandler as DexCatchHandler, ClassDef, EncodedMethod, TryItem as DexTryItem,
     TypedCatch as DexTypedCatch,
 };
@@ -52,7 +52,7 @@ pub fn add_method(c: u32, method: NewMethod) -> u32 {
         } else {
             let incoming = logged(
                 "method frame",
-                crate::kotlin::invoke::incoming_words(&method.proto, flags),
+                super::registers::incoming_words(&method.proto, flags),
             )?;
             if incoming != method.ins_size {
                 return Err(format!(
@@ -97,65 +97,40 @@ pub fn add_method(c: u32, method: NewMethod) -> u32 {
                                                 addr: catch.addr,
                                             })
                                         })
-                                        .collect::<reseam_apk::reseam_dex::Result<_>>()?,
+                                        .collect::<reseam_dex::Result<_>>()?,
                                     catch_all_addr: handler.catch_all_addr,
                                 })
                             })
-                            .collect::<reseam_apk::reseam_dex::Result<_>>()?;
+                            .collect::<reseam_dex::Result<_>>()?;
                         code.set_exception_handlers(tries, handlers)
                     },
                 ),
             )?;
             Some(assembly.code)
         };
-        let kind = method_kind(flags);
         let encoded = EncodedMethod {
             method: method_idx,
             access_flags: flags,
             code: code.map(Arc::new),
         };
-        Ok(push_method(
+        Ok(Some(push_method(
             logged("add method", dex.class_mut(loc.class_idx))?,
             loc,
             encoded,
-            kind,
-        ))
+        )))
     })
     .unwrap_or(0)
 }
 
-fn method_kind(flags: AccessFlags) -> MethodKind {
-    if flags.intersects(AccessFlags::STATIC | AccessFlags::CONSTRUCTOR | AccessFlags::PRIVATE) {
-        MethodKind::Direct
-    } else {
-        MethodKind::Virtual
-    }
-}
-
-fn push_method(
-    class: &mut ClassDef,
-    loc: ClassLocation,
-    method: EncodedMethod,
-    kind: MethodKind,
-) -> Option<u32> {
+fn push_method(class: &mut ClassDef, loc: ClassLocation, method: EncodedMethod) -> u32 {
     crate::kotlin::handles::changed();
-    if kind == MethodKind::Virtual {
-        class.add_virtual_method(method);
-    } else {
-        class.add_direct_method(method);
-    }
-    let data = class.class_data.as_ref()?;
-    let list = if kind == MethodKind::Virtual {
-        &data.virtual_methods
-    } else {
-        &data.direct_methods
-    };
-    Some(alloc_method(MethodLocation {
+    let (kind, method_idx) = class.add_method(method);
+    alloc_method(MethodLocation {
         dex_idx: loc.dex_idx,
         class_idx: loc.class_idx,
-        method_idx: list.len() - 1,
+        method_idx,
         kind,
-    }))
+    })
 }
 
 #[export]
@@ -165,11 +140,7 @@ pub fn remove_method(m: u32) {
         let Some(data) = class.class_data.as_mut() else {
             return Ok(None);
         };
-        let list = if loc.kind == MethodKind::Virtual {
-            &mut data.virtual_methods
-        } else {
-            &mut data.direct_methods
-        };
+        let list = data.methods_mut(loc.kind);
         let Some(method) = list.get(loc.method_idx).map(|entry| entry.method) else {
             return Ok(None);
         };
@@ -206,21 +177,15 @@ pub fn set_method_access_flags(
             .class_data
             .as_mut()
             .expect("method was resolved in class data");
-        let source = match loc.kind {
-            MethodKind::Direct => &mut data.direct_methods,
-            MethodKind::Virtual => &mut data.virtual_methods,
-        };
-        let method = source
+        let method = data
+            .methods_mut(loc.kind)
             .get_mut(loc.method_idx)
             .expect("resolved method retains its slot");
         method.access_flags = flags;
-        let kind = method_kind(flags);
+        let kind = MethodKind::of(flags);
         if kind != loc.kind {
-            let method = source.remove(loc.method_idx);
-            let destination = match kind {
-                MethodKind::Direct => &mut data.direct_methods,
-                MethodKind::Virtual => &mut data.virtual_methods,
-            };
+            let method = data.methods_mut(loc.kind).remove(loc.method_idx);
+            let destination = data.methods_mut(kind);
             let new = MethodLocation {
                 kind,
                 method_idx: destination.len(),
@@ -261,12 +226,11 @@ pub fn clone_method(m: u32, new_name: Option<String>) -> u32 {
             dex_idx: loc.dex_idx,
             class_idx: loc.class_idx,
         };
-        Ok(push_method(
+        Ok(Some(push_method(
             logged("clone method", dex.class_mut(loc.class_idx))?,
             class_loc,
             cloned,
-            loc.kind,
-        ))
+        )))
     })
     .unwrap_or(0)
 }

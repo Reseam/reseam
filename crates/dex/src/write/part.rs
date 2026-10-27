@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::MAX_POOL_SIZE;
+use fixedbitset::FixedBitSet;
+
 use crate::error::{Result, invalid};
 use crate::file::DexFile;
-use crate::references::{self as refs, Bodies, RefSink, pool_len};
-use crate::types::Pool;
-use crate::types::method_handle::MethodHandleMember;
+use crate::model::{PerPool, Pool};
+use crate::options::MAX_POOL_SIZE;
+use crate::references::{self as refs, Bodies, RefSink};
 
 /// Classes of one DEX that are written together, with every pool entry
 /// they reach.
@@ -25,7 +26,7 @@ impl DexPart {
 /// Splits `dex` into parts that each fit the id limits, keeping its classes
 /// in table order. `None` when the file fits as it is.
 pub fn split_to_fit(dex: &DexFile) -> Result<Option<Vec<DexPart>>> {
-    if !overflows(|pool| pool_len(dex, pool)) {
+    if !overflows(|pool| dex.pool_len(pool)) {
         return Ok(None);
     }
     let mut parts = Vec::new();
@@ -80,60 +81,44 @@ pub(crate) fn overflows(len: impl Fn(Pool) -> usize) -> bool {
 
 #[derive(Debug, Clone)]
 pub(crate) struct PoolSet {
-    bits: [Vec<u64>; 7],
-    counts: [usize; 7],
+    members: PerPool<FixedBitSet>,
+    counts: PerPool<usize>,
 }
 
 impl PoolSet {
     fn new(dex: &DexFile) -> Self {
         Self {
-            bits: Pool::ALL.map(|pool| vec![0; pool_len(dex, pool).div_ceil(64)]),
-            counts: [0; 7],
+            members: PerPool::from_fn(|pool| FixedBitSet::with_capacity(dex.pool_len(pool))),
+            counts: PerPool::default(),
         }
     }
 
     pub(crate) fn len(&self, pool: Pool) -> usize {
-        self.counts[pool as usize]
+        self.counts[pool]
     }
 
     pub(crate) fn members(&self, pool: Pool) -> impl Iterator<Item = u32> + '_ {
-        self.bits[pool as usize]
-            .iter()
-            .enumerate()
-            .flat_map(|(word_idx, &word)| {
-                let mut word = word;
-                std::iter::from_fn(move || {
-                    (word != 0).then(|| {
-                        let bit = word.trailing_zeros();
-                        word &= word - 1;
-                        (word_idx * 64) as u32 + bit
-                    })
-                })
-            })
+        self.members[pool].ones().map(|index| index as u32)
     }
 
     pub(crate) fn contains(&self, pool: Pool, index: u32) -> bool {
-        self.bits[pool as usize]
-            .get(index as usize / 64)
-            .is_some_and(|word| word & (1 << (index % 64)) != 0)
+        self.members[pool].contains(index as usize)
     }
 
     fn overflows(&self) -> bool {
         overflows(|pool| self.len(pool))
     }
 
+    /// Adds an in-bounds index; whether it was absent.
     fn insert(&mut self, pool: Pool, idx: u32) -> bool {
-        let (word, bit) = (idx as usize / 64, 1u64 << (idx % 64));
-        let slot = &mut self.bits[pool as usize][word];
-        let new = *slot & bit == 0;
-        *slot |= bit;
-        self.counts[pool as usize] += usize::from(new);
+        let new = !self.members[pool].put(idx as usize);
+        self.counts[pool] += usize::from(new);
         new
     }
 
     fn remove(&mut self, pool: Pool, idx: u32) {
-        self.bits[pool as usize][idx as usize / 64] &= !(1u64 << (idx % 64));
-        self.counts[pool as usize] -= 1;
+        self.members[pool].set(idx as usize, false);
+        self.counts[pool] -= 1;
     }
 }
 
@@ -200,7 +185,7 @@ impl RefSink for Packer<'_> {
         if self.error.is_some() {
             return;
         }
-        if idx as usize >= pool_len(self.dex, pool) {
+        if idx as usize >= self.dex.pool_len(pool) {
             self.error = Some(invalid(
                 "pool reference",
                 format!("{pool:?} index {idx} is out of bounds"),
@@ -211,41 +196,8 @@ impl RefSink for Packer<'_> {
             return;
         }
         self.added.push((pool, idx));
-        let dex = self.dex;
-        match pool {
-            Pool::String => {}
-            Pool::Type => self.add(Pool::String, dex.types.get(idx as usize).0),
-            Pool::Proto => {
-                let proto = dex.prototypes.get(idx as usize);
-                self.add(Pool::String, proto.shorty.0);
-                self.add(Pool::Type, proto.return_type.0);
-                for param in &proto.parameters {
-                    self.add(Pool::Type, param.0);
-                }
-            }
-            Pool::Field => {
-                let field = dex.fields.get(idx as usize);
-                self.add(Pool::Type, field.class.0);
-                self.add(Pool::Type, field.type_.0);
-                self.add(Pool::String, field.name.0);
-            }
-            Pool::Method => {
-                let method = dex.methods.get(idx as usize);
-                self.add(Pool::Type, method.class.0);
-                self.add(Pool::Proto, method.proto.0);
-                self.add(Pool::String, method.name.0);
-            }
-            Pool::CallSite => match dex.call_sites.get(idx as usize) {
-                Ok(site) => refs::call_site(self, &site),
-                Err(error) => self.error = Some(error),
-            },
-            Pool::MethodHandle => match dex.method_handles.get(idx as usize) {
-                Err(error) => self.error = Some(error),
-                Ok(handle) => match handle.member {
-                    MethodHandleMember::Field(field) => self.add(Pool::Field, field.0),
-                    MethodHandleMember::Method(method) => self.add(Pool::Method, method.0),
-                },
-            },
+        if let Err(error) = refs::id_entry(self, self.dex, pool, idx) {
+            self.error = Some(error);
         }
     }
 }

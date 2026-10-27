@@ -4,11 +4,11 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use reseam_dex::{MultiDexContainer, ParseOptions};
+use reseam_dex::{Loading, ParseOptions, Verification};
+use reseam_storage::ScratchDir;
 use tracing::{info, instrument};
 
-use super::{ApkComponent, ApkFile, ComponentIndex, DexOrigin, DexSource};
-use crate::dex;
+use super::{ApkComponent, ApkFile, DexSet};
 use crate::error::{Result, invalid};
 
 impl ApkFile {
@@ -31,36 +31,27 @@ impl ApkFile {
             .chain(splits.iter().map(AsRef::as_ref))
             .map(|path| ApkComponent::open(path, opts.classes))
             .collect::<Result<_>>()?;
-        components.sort_by_key(|component| component.manifest().split_name().is_some());
-        Self::from_components(components, opts)
+        order_components(&mut components)?;
+        Self::from_components(components, opts, None)
     }
 
+    /// A session over components [`order_components`] put in order. It owns
+    /// `scratch`, the directory a container's components were extracted to.
     pub(crate) fn from_components(
         mut components: Vec<ApkComponent>,
         opts: ParseOptions,
+        scratch: Option<ScratchDir>,
     ) -> Result<Self> {
-        validate_components(&components)?;
-        let mut dex = MultiDexContainer::default();
-        let mut dex_origins = Vec::new();
-        for (index, component) in components.iter_mut().enumerate() {
-            if opts.classes == reseam_dex::types::header::Loading::Eager {
+        if opts.classes == Loading::Eager {
+            for component in &mut components {
                 component.resources()?;
-            }
-            for (name, file) in dex::load_dex(component.archive(), opts)? {
-                dex.add_dex(file);
-                dex_origins.push(DexOrigin {
-                    component: ComponentIndex(index),
-                    name,
-                    kind: DexSource::Archive,
-                });
             }
         }
         let apk = Self {
             options: opts,
+            dex: DexSet::load(&components, opts)?,
             components,
-            dex,
-            dex_origins,
-            scratch: None,
+            _scratch: scratch,
             journal: reseam_journal::Journal::default(),
         };
         info!(
@@ -76,7 +67,6 @@ impl ApkFile {
     /// Patch-time inspection defers class and debug decoding and accepts stale
     /// DEX checksums and signatures, as repacked APKs commonly carry them.
     pub fn patch_options() -> ParseOptions {
-        use reseam_dex::types::header::{Loading, Verification};
         ParseOptions {
             classes: Loading::Deferred,
             debug_info: Loading::Deferred,
@@ -88,7 +78,10 @@ impl ApkFile {
     }
 }
 
-pub(crate) fn validate_components(components: &[ApkComponent]) -> Result<()> {
+/// Puts the base first and checks the set: one base with a package name, and
+/// splits with unique nonempty names that match its package and version code.
+pub(crate) fn order_components(components: &mut [ApkComponent]) -> Result<()> {
+    components.sort_by_key(|component| component.manifest().split_name().is_some());
     let base = components
         .first()
         .ok_or_else(|| invalid("apk set", "no base APK"))?

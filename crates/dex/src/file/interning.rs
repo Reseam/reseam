@@ -3,8 +3,10 @@
 
 use super::DexFile;
 use crate::error::{Result, invalid_descriptor};
-use crate::types::{
-    FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx, TypeList,
+use crate::model::method_handle::{CallSiteItem, MethodHandle};
+use crate::model::{
+    CallSiteIdx, FieldId, FieldIdx, MethodHandleIdx, MethodId, MethodIdx, ProtoIdx, Prototype,
+    StringIdx, TypeIdx, TypeList,
 };
 
 impl DexFile {
@@ -30,20 +32,13 @@ impl DexFile {
     }
 
     pub fn intern_proto(&mut self, descriptor: &str) -> Result<ProtoIdx> {
-        use crate::util::descriptor::{parse_method_descriptor, shorty_from_parts};
+        use crate::model::descriptor::{parse_method_descriptor, shorty_from_parts};
 
-        let (param_strs, ret_str) = parse_method_descriptor(descriptor)
-            .ok_or_else(|| invalid_descriptor("method descriptor", descriptor))?;
-        let existing = self.find_type_idx(ret_str).and_then(|return_type| {
-            let parameters = param_strs
-                .iter()
-                .map(|param| self.find_type_idx(param))
-                .collect::<Option<TypeList>>()?;
-            self.find_proto_idx(return_type, &parameters)
-        });
-        if let Some(idx) = existing {
+        if let Some(idx) = self.find_proto(descriptor) {
             return Ok(idx);
         }
+        let (param_strs, ret_str) = parse_method_descriptor(descriptor)
+            .ok_or_else(|| invalid_descriptor("method descriptor", descriptor))?;
 
         let index = u32::try_from(self.prototypes.len())
             .map_err(|_| crate::error::invalid("prototype pool", "too many prototypes"))?;
@@ -103,8 +98,38 @@ impl DexFile {
         }) as u32))
     }
 
+    /// The method handle equal to `handle`, appended when the pool has none.
+    /// Only the entries in `candidates` are compared when it is given.
+    pub fn intern_method_handle(
+        &mut self,
+        handle: MethodHandle,
+        candidates: Option<&[MethodHandleIdx]>,
+    ) -> Result<MethodHandleIdx> {
+        let candidates = candidates.map(|c| c.iter().map(|idx| idx.0));
+        if let Some(index) = self.method_handles.find(&handle, candidates)? {
+            return Ok(MethodHandleIdx(index as u32));
+        }
+        self.touch();
+        Ok(MethodHandleIdx(self.method_handles.push(handle) as u32))
+    }
+
+    /// The call site equal to `site`, appended when the pool has none. Only
+    /// the entries in `candidates` are compared when it is given.
+    pub fn intern_call_site(
+        &mut self,
+        site: CallSiteItem,
+        candidates: Option<&[CallSiteIdx]>,
+    ) -> Result<CallSiteIdx> {
+        let candidates = candidates.map(|c| c.iter().map(|idx| idx.0));
+        if let Some(index) = self.call_sites.find(&site, candidates)? {
+            return Ok(CallSiteIdx(index as u32));
+        }
+        self.touch();
+        Ok(CallSiteIdx(self.call_sites.push(site) as u32))
+    }
+
     pub(crate) fn validate_type_descriptor(kind: &'static str, descriptor: &str) -> Result<()> {
-        if crate::util::descriptor::is_type_descriptor(descriptor) {
+        if crate::model::descriptor::is_type_descriptor(descriptor) {
             return Ok(());
         }
 

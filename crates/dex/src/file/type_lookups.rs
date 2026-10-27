@@ -5,7 +5,7 @@ use std::sync::{Mutex, PoisonError};
 
 use rustc_hash::FxHashMap;
 
-use crate::types::TypeIdx;
+use crate::model::TypeIdx;
 
 /// Remembered descriptor lookups. Type ids are only ever appended, so a found
 /// index stays valid, and a miss holds until the type table grows.

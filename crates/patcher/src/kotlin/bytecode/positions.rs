@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use boltffi::export;
-use reseam_apk::reseam_dex::{DexFile, Instruction as DexInsn};
+use reseam_dex::{DexFile, Instruction as DexInsn};
 
 use super::lookup::{opcode_patterns, query_opcode};
 use crate::kotlin::handles::{checked, with_code};

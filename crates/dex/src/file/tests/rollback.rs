@@ -4,6 +4,7 @@
 use reseam_journal::Savepoint;
 
 use super::*;
+use crate::{RefKey, RefQuery};
 
 #[test]
 fn rollback_returns_a_dex_to_each_savepoint() {
@@ -16,7 +17,7 @@ fn rollback_returns_a_dex_to_each_savepoint() {
             let method = dex.intern_method(name, "run", "()V").unwrap();
             dex.class_mut(class)
                 .unwrap()
-                .add_direct_method(crate::EncodedMethod {
+                .add_method(crate::EncodedMethod {
                     method,
                     access_flags: AccessFlags::PUBLIC | AccessFlags::STATIC,
                     code: Some(std::sync::Arc::new(
@@ -31,7 +32,7 @@ fn rollback_returns_a_dex_to_each_savepoint() {
     let mut dex = crate::parse(
         &bytes,
         ParseOptions {
-            classes: crate::types::header::Loading::Deferred,
+            classes: crate::options::Loading::Deferred,
             ..ParseOptions::default()
         },
     )
@@ -75,7 +76,7 @@ fn searches_find_a_class_a_rollback_returned_to_its_file_record() {
     built
         .class_mut(class)
         .unwrap()
-        .add_direct_method(crate::EncodedMethod {
+        .add_method(crate::EncodedMethod {
             method,
             access_flags: AccessFlags::PUBLIC | AccessFlags::STATIC,
             code: Some(std::sync::Arc::new(
@@ -98,7 +99,7 @@ fn searches_find_a_class_a_rollback_returned_to_its_file_record() {
     let mut dex = crate::parse(
         &bytes,
         ParseOptions {
-            classes: crate::types::header::Loading::Deferred,
+            classes: crate::options::Loading::Deferred,
             ..ParseOptions::default()
         },
     )

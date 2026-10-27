@@ -4,8 +4,7 @@
 use std::collections::HashSet;
 
 use reseam_apk::ApkFile;
-use reseam_apk::reseam_dex::estimated_ir_bytes;
-use reseam_apk::reseam_dex::write::{LinkPolicy, MetadataPolicy, WriteOptions};
+use reseam_dex::{LinkPolicy, MetadataPolicy, WriteOptions, estimated_ir_bytes};
 use reseam_model::{ApplyDiagnostics, MaterializationStats, MemoryBreakdown, PatchPhase, RunEvent};
 use reseam_patcher::bundle::PatchBundle;
 use reseam_patcher::context::{ExtensionSet, PatchContext};

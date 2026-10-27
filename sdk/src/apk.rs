@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use reseam_apk::{ApkComponent, ApkFile, ContainerBundle, ContainerFormat};
+use reseam_apk::{ApkComponent, ApkFile, ContainerFormat, open_container};
 use reseam_model::{ApkMetadata, ApplicationIcon};
 
 use crate::error::{HostError, Result};
@@ -24,21 +24,22 @@ impl OpenedApk {
             path: apk_path.to_owned(),
             source,
         };
-        let bundle = ContainerBundle::open(apk_path).map_err(apk_error)?;
-        if bundle.is_some() && !split_paths.is_empty() {
-            return Err(HostError::InvalidRequest(
-                "split files cannot be combined with an APKM/XAPK container",
-            ));
-        }
-        let format = bundle.as_ref().map(ContainerBundle::format);
-        let apk = match bundle {
-            Some(bundle) => bundle.into_apk(ApkFile::patch_options()),
-            None => ApkFile::open_split(apk_path, split_paths, ApkFile::patch_options()),
-        }
-        .map_err(apk_error)?;
+        let options = ApkFile::patch_options();
+        let (bundle, apk) = match open_container(apk_path, options).map_err(apk_error)? {
+            Some(_) if !split_paths.is_empty() => {
+                return Err(HostError::InvalidRequest(
+                    "split files cannot be combined with an APKM/XAPK container",
+                ));
+            }
+            Some((format, apk)) => (Some(format), apk),
+            None => (
+                None,
+                ApkFile::open_split(apk_path, split_paths, options).map_err(apk_error)?,
+            ),
+        };
         Ok(Self {
             apk,
-            bundle: format,
+            bundle,
             input: apk_path.to_owned(),
         })
     }

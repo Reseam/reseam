@@ -5,7 +5,7 @@ mod metadata;
 mod rollback;
 
 use super::*;
-use crate::types::access_flags::AccessFlags;
+use crate::model::access_flags::AccessFlags;
 
 fn write(dex: &DexFile) -> crate::Result<Vec<u8>> {
     read(&crate::write_spooled(dex, None)?.0)
@@ -56,7 +56,7 @@ fn write_orders_superclasses_and_interfaces_across_storage_modes() {
             let mut dex = crate::parse(
                 &bytes,
                 ParseOptions {
-                    classes: crate::types::header::Loading::Deferred,
+                    classes: crate::options::Loading::Deferred,
                     ..ParseOptions::default()
                 },
             )
@@ -105,7 +105,7 @@ fn write_rejects_cyclic_and_duplicate_class_definitions() {
 
 #[test]
 fn write_keeps_hidden_api_flags_with_reordered_classes() {
-    use crate::types::class::EncodedField;
+    use crate::model::class::EncodedField;
     use crate::{ClassHiddenApiFlags, HiddenApiData, HiddenApiFlags};
 
     let mut dex = DexFile::new(DexHeader::new(crate::DexVersion::V035));
@@ -310,8 +310,8 @@ fn container_members_are_finalized_after_layout_and_require_complete_input() {
     let mut damaged = bytes.clone();
     damaged[members[1].header.header_offset as usize] = 0;
     let options = ParseOptions {
-        checksum: crate::types::header::Verification::Skip,
-        signature: crate::types::header::Verification::Skip,
+        checksum: crate::options::Verification::Skip,
+        signature: crate::options::Verification::Skip,
         ..ParseOptions::default()
     };
     assert!(crate::parse_container(&damaged, options).is_err());

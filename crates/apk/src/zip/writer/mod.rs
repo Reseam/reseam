@@ -6,7 +6,7 @@ mod input;
 mod output;
 mod records;
 
-pub(crate) use input::{Encoding, Source};
+pub(crate) use input::Source;
 
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
@@ -15,18 +15,20 @@ use flate2::Crc;
 
 use crate::entry::is_native_library;
 use crate::error::{Result, invalid};
-use crate::zip::COPY_BUFFER;
+use crate::zip::{COPY_BUFFER, Compression};
 use output::Output;
-use records::{DosTime, EntryHeader, Method, zip32};
+use records::{EntryHeader, zip32};
 
 const OUTPUT_BUFFER: usize = 64 << 10;
-const REGULAR_FILE: u32 = 0o100_000;
+/// zlib's default level, for entries other than rewritten DEX.
+pub(crate) const DEFAULT_LEVEL: u32 = 6;
 
-/// An APK being written. Entry data moves between files in the kernel where
-/// the platform allows; the central directory keeps one name and a few
-/// fields per entry.
-pub(crate) struct Writer {
-    out: Output,
+/// A ZIP being written: an APK, or a single-entry archive. Entry data moves
+/// between files in the kernel where the platform allows; the central
+/// directory keeps one name and a few fields per entry.
+pub(crate) struct Writer<W: Write + Seek> {
+    out: Output<W>,
+    level: u32,
     buffer: Box<[u8]>,
     entries: Vec<Entry>,
     header: Vec<u8>,
@@ -38,13 +40,15 @@ struct Entry {
     offset: u32,
 }
 
-impl Writer {
-    pub(crate) fn new(output: File) -> Self {
+impl<W: Write + Seek> Writer<W> {
+    /// A writer deflating the entries it is given uncompressed at `level`.
+    pub(crate) fn new(output: W, level: u32) -> Self {
         Self {
             out: Output {
                 file: BufWriter::with_capacity(OUTPUT_BUFFER, output),
                 position: 0,
             },
+            level,
             buffer: vec![0; COPY_BUFFER].into_boxed_slice(),
             entries: Vec::new(),
             header: Vec::new(),
@@ -61,26 +65,13 @@ impl Writer {
     ) -> Result<()> {
         let entry = archive.by_index_raw(index)?;
         let name: Box<str> = entry.name().into();
-        let (compressed, size) = EntryHeader::sizes(entry.compressed_size(), entry.size())?;
-        let header = EntryHeader {
-            method: Method::of(entry.compression())?,
-            modified: entry
-                .last_modified()
-                .map_or(DosTime::EPOCH, |time| DosTime {
-                    time: time.timepart(),
-                    date: time.datepart(),
-                }),
-            crc: entry.crc32(),
-            compressed,
-            size,
-            unix_mode: entry.unix_mode().unwrap_or(0o644) | REGULAR_FILE,
-        };
+        let header = EntryHeader::of(&entry)?;
         let data = entry
             .data_start()
             .ok_or_else(|| invalid("zip entry", format!("{name}: missing data offset")))?;
         drop(entry);
         self.begin(name, header)?;
-        self.copy_range(source, data, u64::from(compressed))
+        self.copy_range(source, data, u64::from(header.compressed))
     }
 
     /// Copies the single entry of a ZIP a DEX worker wrote, returning its CRC-32.
@@ -97,38 +88,25 @@ impl Writer {
         let (compressed, size) = EntryHeader::sizes(len, len)?;
         self.begin(
             name.into(),
-            new_entry(Method::Stored, crc, compressed, size),
+            EntryHeader::new(Compression::Stored, crc, compressed, size),
         )?;
         self.copy_range(file, 0, len)
     }
 
-    pub(crate) fn write_bytes(
-        &mut self,
-        name: &str,
-        bytes: &[u8],
-        encoding: Encoding,
-    ) -> Result<()> {
-        self.write_data(name, bytes, encoding)
-    }
-
-    pub(crate) fn write_file(&mut self, name: &str, file: &File, encoding: Encoding) -> Result<()> {
-        self.write_data(name, file, encoding)
-    }
-
     /// Writes an entry whose CRC-32 and compressed size are known only once
     /// its data is written, then completes its local header.
-    fn write_data(
+    pub(crate) fn write(
         &mut self,
         name: &str,
         source: &(impl Source + ?Sized),
-        encoding: Encoding,
+        compression: Compression,
     ) -> Result<()> {
         let len = source.len()?;
-        let offset = self.begin(name.into(), new_entry(encoding.method(), 0, 0, 0))?;
+        let offset = self.begin(name.into(), EntryHeader::new(compression, 0, 0, 0))?;
         let start = self.out.position;
-        let crc = match encoding {
-            Encoding::Stored => self.copy_checksummed(source, len)?,
-            Encoding::Deflated { level } => deflate::deflate(source, len, level, &mut self.out)?,
+        let crc = match compression {
+            Compression::Stored => self.copy_checksummed(source, len)?,
+            Compression::Deflated => deflate::deflate(source, len, self.level, &mut self.out)?,
         };
         let (compressed, size) = EntryHeader::sizes(self.out.position - start, len)?;
         let header = &mut self.entries.last_mut().expect("the entry was begun").header;
@@ -155,7 +133,7 @@ impl Writer {
         Ok(crc)
     }
 
-    pub(crate) fn finish(mut self) -> Result<File> {
+    pub(crate) fn finish(mut self) -> Result<W> {
         let start = self.out.position;
         for entry in &self.entries {
             self.header.clear();
@@ -204,8 +182,8 @@ impl Writer {
     fn begin(&mut self, name: Box<str>, header: EntryHeader) -> Result<u64> {
         let offset = self.out.position;
         let alignment = match header.method {
-            Method::Stored => entry_alignment(&name),
-            Method::Deflated => 1,
+            Compression::Stored => entry_alignment(&name),
+            Compression::Deflated => 1,
         };
         header.local(&name, offset, alignment, &mut self.header);
         self.out.write_all(&self.header)?;
@@ -215,17 +193,6 @@ impl Writer {
             offset: zip32(offset, "entry offset")?,
         });
         Ok(offset)
-    }
-}
-
-fn new_entry(method: Method, crc: u32, compressed: u32, size: u32) -> EntryHeader {
-    EntryHeader {
-        method,
-        modified: DosTime::EPOCH,
-        crc,
-        compressed,
-        size,
-        unix_mode: 0o644 | REGULAR_FILE,
     }
 }
 

@@ -15,7 +15,7 @@ pub(crate) use hermes::hermes_imports;
 pub use search::{FieldRefQuery, MethodRefQuery};
 
 use reseam_apk::ApkFile;
-use reseam_apk::reseam_dex::{ClassSkeleton, CodeItem, DexFile, EncodedMethod, MethodKind};
+use reseam_dex::{ClassSkeleton, CodeItem, DexFile, EncodedMethod, MethodKind};
 
 use crate::log::{LogEntry, PatchLog};
 use crate::options::PatchOptions;
@@ -114,12 +114,7 @@ pub fn method_mut(
     let Some(data) = dex.class_mut(m.class_idx)?.class_data.as_mut() else {
         return Ok(None);
     };
-    let list = if m.kind == MethodKind::Virtual {
-        &mut data.virtual_methods
-    } else {
-        &mut data.direct_methods
-    };
-    Ok(list.get_mut(m.method_idx))
+    Ok(data.methods_mut(m.kind).get_mut(m.method_idx))
 }
 
 pub fn code_mut(

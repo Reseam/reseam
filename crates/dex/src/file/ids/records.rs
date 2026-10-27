@@ -1,13 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::cmp::Ordering;
-use std::hash::{Hash, Hasher};
-
 use super::IdRecord;
 use crate::error::Result;
-use crate::read::{read_u32, u16_at, u32_at};
-use crate::types::{FieldId, MethodId, ProtoIdx, Prototype, StringIdx, TypeIdx, TypeList};
+use crate::model::{FieldId, MethodId, ProtoIdx, Prototype, StringIdx, TypeIdx, TypeList};
+use crate::read::type_list::{read_type_list, validate_type_list};
+use crate::read::{u16_at, u32_at};
 
 fn check(buf: &[u8], off: usize, size: usize) -> Result<()> {
     crate::error::require_len(buf, off, size, "id table entry")
@@ -15,6 +13,7 @@ fn check(buf: &[u8], off: usize, size: usize) -> Result<()> {
 
 impl IdRecord for StringIdx {
     const SIZE: usize = 4;
+    type Key<'a> = u32;
 
     fn read(buf: &[u8], off: usize) -> Self {
         StringIdx(u32_at(buf, off))
@@ -24,17 +23,14 @@ impl IdRecord for StringIdx {
         check(buf, off, Self::SIZE)
     }
 
-    fn key_cmp(&self, other: &Self) -> Ordering {
-        self.0.cmp(&other.0)
-    }
-
-    fn key_hash<H: Hasher>(&self, state: &mut H) {
-        self.0.hash(state);
+    fn key(&self) -> u32 {
+        self.0
     }
 }
 
 impl IdRecord for Prototype {
     const SIZE: usize = 12;
+    type Key<'a> = (TypeIdx, &'a [TypeIdx]);
 
     fn read(buf: &[u8], off: usize) -> Self {
         let params_off = u32_at(buf, off + 8) as usize;
@@ -59,20 +55,14 @@ impl IdRecord for Prototype {
         Ok(())
     }
 
-    fn key_cmp(&self, other: &Self) -> Ordering {
-        self.return_type
-            .cmp(&other.return_type)
-            .then_with(|| self.parameters.cmp(&other.parameters))
-    }
-
-    fn key_hash<H: Hasher>(&self, state: &mut H) {
-        self.return_type.hash(state);
-        self.parameters.hash(state);
+    fn key(&self) -> (TypeIdx, &[TypeIdx]) {
+        (self.return_type, &self.parameters)
     }
 }
 
 impl IdRecord for FieldId {
     const SIZE: usize = 8;
+    type Key<'a> = &'a Self;
 
     fn read(buf: &[u8], off: usize) -> Self {
         FieldId {
@@ -86,17 +76,14 @@ impl IdRecord for FieldId {
         check(buf, off, Self::SIZE)
     }
 
-    fn key_cmp(&self, other: &Self) -> Ordering {
-        self.cmp(other)
-    }
-
-    fn key_hash<H: Hasher>(&self, state: &mut H) {
-        self.hash(state);
+    fn key(&self) -> &Self {
+        self
     }
 }
 
 impl IdRecord for MethodId {
     const SIZE: usize = 8;
+    type Key<'a> = &'a Self;
 
     fn read(buf: &[u8], off: usize) -> Self {
         MethodId {
@@ -110,24 +97,7 @@ impl IdRecord for MethodId {
         check(buf, off, Self::SIZE)
     }
 
-    fn key_cmp(&self, other: &Self) -> Ordering {
-        self.cmp(other)
+    fn key(&self) -> &Self {
+        self
     }
-
-    fn key_hash<H: Hasher>(&self, state: &mut H) {
-        self.hash(state);
-    }
-}
-
-pub(crate) fn read_type_list(buf: &[u8], off: usize) -> TypeList {
-    let size = u32_at(buf, off) as usize;
-    (0..size)
-        .map(|i| TypeIdx(u32::from(u16_at(buf, off + 4 + i * 2))))
-        .collect()
-}
-
-pub(crate) fn validate_type_list(buf: &[u8], off: usize) -> Result<()> {
-    let size = read_u32(buf, off)? as usize;
-    crate::error::require_array(buf, off + 4, size, 2, "type list")?;
-    Ok(())
 }

@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 mod boltffi;
 mod browser;
+mod dex_codec;
 mod framework;
 mod models;
 mod patch_api;
@@ -40,6 +41,9 @@ enum Cmd {
     Release { version: String },
     /// Fails unless the tag names the workspace version.
     CheckTag { tag: String },
+    /// Checks that decoding then encoding every method of each DEX, or of each
+    /// `classes*.dex` in an APK, reproduces its code units.
+    DexRoundTrip { paths: Vec<PathBuf> },
     /// Generates framework resource metadata from Android SDK platform 36, revision 2.
     FrameworkAttributes {
         #[arg(long)]
@@ -83,6 +87,7 @@ fn main() -> Result<()> {
         }
         Cmd::Release { version } => version::tag(&version)?,
         Cmd::CheckTag { tag } => version::check_tag(&tag)?,
+        Cmd::DexRoundTrip { paths } => dex_codec::round_trip(&paths)?,
         Cmd::FrameworkAttributes { android_jar } => framework::generate(&android_jar)?,
     }
     Ok(())

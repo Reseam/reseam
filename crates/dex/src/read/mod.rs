@@ -10,6 +10,7 @@ pub(crate) mod encoded_value;
 pub(crate) mod header;
 pub(crate) mod hidden_api;
 pub mod parse;
+pub(crate) mod type_list;
 
 pub(crate) use bytes::{i32_at, read_u8, read_u16, read_u32, u16_at, u32_at};
 pub use parse::parse;
@@ -33,7 +34,7 @@ use tracing::debug;
 /// ```
 pub fn parse_file(
     path: impl AsRef<std::path::Path>,
-    opts: crate::types::header::ParseOptions,
+    opts: crate::options::ParseOptions,
 ) -> crate::error::Result<crate::file::DexFile> {
     use std::sync::Arc;
 
@@ -43,10 +44,5 @@ pub fn parse_file(
     let file = std::fs::File::open(path).map_err(crate::error::DexError::Io)?;
     // SAFETY: The caller must not mutate the file while the mapping is live.
     let mmap = unsafe { reseam_storage::map_file(&file) }.map_err(crate::error::DexError::Io)?;
-    parse_bytes(crate::file::DexBytes::from_mmap(Arc::new(mmap)), opts)
+    parse_bytes(crate::DexBytes::from_mmap(Arc::new(mmap)), opts)
 }
-
-/// Decodes `insns_size` DEX code units starting at `start` in a byte buffer.
-/// Truncated or malformed encodings fail; unknown opcodes retain all their
-/// original code units. Pool indices are resolved by the owning DEX file.
-pub use code::decode_instructions;

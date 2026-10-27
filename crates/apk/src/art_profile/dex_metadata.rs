@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::io::{Cursor, Write};
+use std::io::Cursor;
 use std::path::Path;
 
 use tracing::warn;
@@ -11,7 +11,9 @@ use super::{BaselineProfile, METADATA_ENTRY, PROFILE_ENTRY};
 use crate::axml::AxmlDocument;
 use crate::entry::MANIFEST_ENTRY;
 use crate::error::Result;
+use crate::zip::Compression;
 use crate::zip::reader;
+use crate::zip::writer::{DEFAULT_LEVEL, Writer};
 
 /// The dex metadata (`.dm`) file for installing `apk` as the base APK on a
 /// device running API level `sdk`. Written into the install session next to
@@ -48,11 +50,7 @@ pub fn dex_metadata(apk: &Path, sdk: u32) -> Result<Option<Vec<u8>>> {
             return Ok(None);
         }
     };
-    let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
-    zip.start_file(
-        "primary.prof",
-        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored),
-    )?;
-    zip.write_all(&primary)?;
+    let mut zip = Writer::new(Cursor::new(Vec::new()), DEFAULT_LEVEL);
+    zip.write("primary.prof", primary.as_slice(), Compression::Stored)?;
     Ok(Some(zip.finish()?.into_inner()))
 }

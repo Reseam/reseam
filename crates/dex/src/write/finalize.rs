@@ -3,7 +3,8 @@
 
 use super::plan::WritePlan;
 use crate::error::Result;
-use crate::types::class::NO_INDEX;
+use crate::model::Pool;
+use crate::model::class::NO_INDEX;
 use sha1::Digest;
 use zlib_rs::adler32::{adler32, adler32_combine};
 
@@ -83,11 +84,11 @@ fn write_header<S: DexSink>(
     w.patch_u32(base + 0x30, 0);
     w.patch_u32(base + 0x34, data.map);
     for (index, (count, offset)) in [
-        (plan.string_count(), ids.strings),
-        (plan.type_count(), ids.types),
-        (plan.proto_count(), ids.prototypes),
-        (plan.field_count(), ids.fields),
-        (plan.method_count(), ids.methods),
+        (plan.count(Pool::String), ids.strings),
+        (plan.count(Pool::Type), ids.types),
+        (plan.count(Pool::Proto), ids.prototypes),
+        (plan.count(Pool::Field), ids.fields),
+        (plan.count(Pool::Method), ids.methods),
         (plan.classes.len(), ids.classes),
     ]
     .into_iter()

@@ -12,6 +12,7 @@ reseam-storage = { workspace = true }
 reseam-journal = { workspace = true }
 thiserror = { workspace = true }
 bitflags  = { workspace = true }
+fixedbitset = { workspace = true }
 smallvec  = { workspace = true, features = ["union"] }
 rustc-hash = { workspace = true }
 sha1      = { workspace = true }

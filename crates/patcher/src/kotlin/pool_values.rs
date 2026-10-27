@@ -6,7 +6,7 @@ use super::types::{
     AnnotationElement, AnnotationValue, CallSiteRef, EncodedVal, FieldHandleRef, HandleRef,
     MethodHandleRef,
 };
-use reseam_apk::reseam_dex::{self, DexFile};
+use reseam_dex::{self, DexFile};
 
 use super::convert::{invalid, resolve_field_ref, resolve_method_ref};
 
@@ -28,8 +28,8 @@ pub(super) fn export_handle(
     dex_index: Option<usize>,
     index: reseam_dex::MethodHandleIdx,
 ) -> reseam_dex::Result<HandleRef> {
-    use reseam_dex::types::method_handle::MethodHandleMember;
-    let handle = dex.method_handles().get(index.0 as usize)?;
+    use reseam_dex::MethodHandleMember;
+    let handle = dex.method_handle(index)?;
     Ok(match handle.member {
         MethodHandleMember::Field(field) => HandleRef::Field(FieldHandleRef {
             origin: pool_origin(dex_index, index.0)?,
@@ -49,7 +49,7 @@ pub(super) fn import_handle(
     dex_index: Option<usize>,
     handle: &HandleRef,
 ) -> reseam_dex::Result<reseam_dex::MethodHandleIdx> {
-    use reseam_dex::types::method_handle::{MethodHandle, MethodHandleMember, MethodHandleType};
+    use reseam_dex::{MethodHandle, MethodHandleMember, MethodHandleType};
     let origin = match handle {
         HandleRef::Field(value) => value.origin,
         HandleRef::Method(value) => value.origin,
@@ -81,14 +81,18 @@ pub(super) fn import_handle(
         handle_type,
         member,
     };
-    Ok(reseam_dex::MethodHandleIdx(intern_pool(
-        dex.method_handles_mut(),
-        handle,
+    import_pooled(
+        dex,
         origin,
         dex_index,
         super::handles::PoolKind::Handle,
-        MethodHandle::eq,
-    )?))
+        |dex, candidates| {
+            let candidates: Option<Vec<_>> =
+                candidates.map(|c| c.into_iter().map(reseam_dex::MethodHandleIdx).collect());
+            Ok(dex.intern_method_handle(handle, candidates.as_deref())?.0)
+        },
+    )
+    .map(reseam_dex::MethodHandleIdx)
 }
 
 pub(super) fn export_call_site(
@@ -96,7 +100,7 @@ pub(super) fn export_call_site(
     dex_index: Option<usize>,
     index: reseam_dex::CallSiteIdx,
 ) -> reseam_dex::Result<CallSiteRef> {
-    let site = dex.call_sites().get(index.0 as usize)?;
+    let site = dex.call_site(index)?;
     Ok(CallSiteRef {
         origin: pool_origin(dex_index, index.0)?,
         bootstrap: export_handle(dex, dex_index, site.bootstrap_method)?,
@@ -126,102 +130,48 @@ pub(super) fn import_call_site(
             .map(|value| import_value(dex, dex_index, value))
             .collect::<reseam_dex::Result<_>>()?,
     };
-    Ok(reseam_dex::CallSiteIdx(intern_pool(
-        dex.call_sites_mut(),
-        site,
+    import_pooled(
+        dex,
         origin,
         dex_index,
         super::handles::PoolKind::CallSite,
-        call_site_eq,
-    )?))
+        |dex, candidates| {
+            let candidates: Option<Vec<_>> =
+                candidates.map(|c| c.into_iter().map(reseam_dex::CallSiteIdx).collect());
+            Ok(dex.intern_call_site(site, candidates.as_deref())?.0)
+        },
+    )
+    .map(reseam_dex::CallSiteIdx)
 }
 
-fn intern_pool<T: reseam_dex::file::FileRecord>(
-    table: &mut reseam_dex::file::FileTable<T>,
-    value: T,
+/// Interns an entry imported from `origin` into the DEX at `destination`,
+/// comparing it only with where it may already be there: its own index when
+/// it stays in its DEX, and where an earlier import copied it. An entry with
+/// no origin is compared with every entry.
+fn import_pooled(
+    dex: &mut DexFile,
     origin: Option<PoolOrigin>,
     destination: Option<usize>,
     kind: super::handles::PoolKind,
-    equal: impl Fn(&T, &T) -> bool,
+    intern: impl FnOnce(&mut DexFile, Option<Vec<u32>>) -> reseam_dex::Result<u32>,
 ) -> reseam_dex::Result<u32> {
     let destination = destination
         .map(u32::try_from)
         .transpose()
         .map_err(|_| invalid("DEX index exceeds 32 bits"))?;
     let origin = origin.filter(|_| destination.is_some());
-    let existing = if let (Some(origin), Some(destination)) = (origin, destination) {
-        let original = (origin.dex_index == destination).then_some(origin.index);
-        let copied = super::handles::copied_pool(origin, destination, kind);
-        original
+    let candidates = origin.zip(destination).map(|(origin, destination)| {
+        (origin.dex_index == destination)
+            .then_some(origin.index)
             .into_iter()
-            .chain(copied)
-            .try_fold(None, |existing, index| {
-                if existing.is_some() {
-                    return Ok(existing);
-                }
-                table
-                    .get(index as usize)
-                    .map(|candidate| equal(&candidate, &value).then_some(index))
-            })?
-    } else {
-        table
-            .iter()
-            .enumerate()
-            .find_map(|(index, candidate)| match candidate {
-                Ok(candidate) if equal(&candidate, &value) => {
-                    Some(u32::try_from(index).map_err(|_| invalid("pool exceeds 32 bits")))
-                }
-                Ok(_) => None,
-                Err(error) => Some(Err(error)),
-            })
-            .transpose()?
-    };
-    let index = match existing {
-        Some(index) => index,
-        None => u32::try_from(table.push(value)).map_err(|_| invalid("pool exceeds 32 bits"))?,
-    };
-    if let Some(origin) = origin
-        && let Some(destination) = destination
-    {
+            .chain(super::handles::copied_pool(origin, destination, kind))
+            .collect()
+    });
+    let index = intern(dex, candidates)?;
+    if let Some((origin, destination)) = origin.zip(destination) {
         super::handles::remember_pool(origin, destination, kind, index);
     }
     Ok(index)
-}
-
-fn call_site_eq(left: &reseam_dex::CallSiteItem, right: &reseam_dex::CallSiteItem) -> bool {
-    left.bootstrap_method == right.bootstrap_method
-        && left.method_name == right.method_name
-        && left.method_type == right.method_type
-        && values_eq(&left.extra_arguments, &right.extra_arguments)
-}
-
-fn values_eq(left: &[reseam_dex::EncodedValue], right: &[reseam_dex::EncodedValue]) -> bool {
-    left.len() == right.len()
-        && left
-            .iter()
-            .zip(right)
-            .all(|(left, right)| value_eq(left, right))
-}
-
-fn value_eq(left: &reseam_dex::EncodedValue, right: &reseam_dex::EncodedValue) -> bool {
-    use reseam_dex::EncodedValue as V;
-    match (left, right) {
-        (V::Float(left), V::Float(right)) => left.to_bits() == right.to_bits(),
-        (V::Double(left), V::Double(right)) => left.to_bits() == right.to_bits(),
-        (V::Array(left), V::Array(right)) => values_eq(left, right),
-        (V::Annotation(left), V::Annotation(right)) => {
-            left.type_ == right.type_
-                && left.elements.len() == right.elements.len()
-                && left
-                    .elements
-                    .iter()
-                    .zip(&right.elements)
-                    .all(|(left, right)| {
-                        left.name == right.name && value_eq(&left.value, &right.value)
-                    })
-        }
-        _ => left == right,
-    }
 }
 
 pub(super) fn export_value(
@@ -275,7 +225,7 @@ pub(super) fn import_value(
     value: &EncodedVal,
 ) -> reseam_dex::Result<reseam_dex::EncodedValue> {
     use reseam_dex::EncodedValue as V;
-    use reseam_dex::types::encoded_value::{EncodedAnnotation, EncodedAnnotationElement};
+    use reseam_dex::{EncodedAnnotation, EncodedAnnotationElement};
     Ok(match value {
         EncodedVal::Null => V::Null,
         EncodedVal::BoolVal(v) => V::Boolean(*v),

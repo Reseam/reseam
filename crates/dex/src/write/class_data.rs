@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::DexWriter;
-use super::code::{ClassLayout, MethodLayout};
 use super::sink::DexSink;
-use crate::types::class::EncodedField;
+use crate::model::class::EncodedField;
+use crate::model::map::TYPE_CLASS_DATA_ITEM;
+use crate::read::class::{ClassSkeleton, MethodHeader};
 
 pub(crate) fn write_class_data_items<S: DexSink>(
     w: &mut DexWriter<S>,
-    layouts: &[Option<ClassLayout>],
+    layouts: &[Option<ClassSkeleton>],
 ) {
     let class_data_start = w.pos();
     let mut class_data_item_count = 0u32;
@@ -23,16 +24,14 @@ pub(crate) fn write_class_data_items<S: DexSink>(
             w.class_data_offsets.push(0);
         }
     }
-    if class_data_item_count > 0 {
-        w.map_entries.push(crate::types::map::MapItem {
-            type_code: crate::types::map::TYPE_CLASS_DATA_ITEM,
-            size: class_data_item_count,
-            offset: class_data_start,
-        });
-    }
+    w.map_section(
+        TYPE_CLASS_DATA_ITEM,
+        class_data_start,
+        class_data_item_count,
+    );
 }
 
-fn write_class_data<S: DexSink>(w: &mut DexWriter<S>, layout: &ClassLayout) {
+fn write_class_data<S: DexSink>(w: &mut DexWriter<S>, layout: &ClassSkeleton) {
     w.write_uleb128(layout.static_fields.len() as u32);
     w.write_uleb128(layout.instance_fields.len() as u32);
     w.write_uleb128(layout.direct_methods.len() as u32);
@@ -53,7 +52,7 @@ fn write_fields<S: DexSink>(w: &mut DexWriter<S>, fields: &[EncodedField]) {
     }
 }
 
-fn write_methods<S: DexSink>(w: &mut DexWriter<S>, methods: &[MethodLayout]) {
+fn write_methods<S: DexSink>(w: &mut DexWriter<S>, methods: &[MethodHeader]) {
     let mut prev_idx = 0u32;
     for m in methods {
         w.write_uleb128(m.method.0 - prev_idx);

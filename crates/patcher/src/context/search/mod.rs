@@ -6,10 +6,10 @@ mod methods;
 
 use super::{InstructionLocation, MethodLocation, PatchContext};
 use crate::error::Result;
-use reseam_apk::reseam_dex::{DexFile, InstructionSite, MethodHit};
+use reseam_dex::{DexFile, InstructionSite, MethodHit};
 use tracing::debug;
 
-type DexResult<T> = reseam_apk::reseam_dex::Result<T>;
+type DexResult<T> = reseam_dex::Result<T>;
 
 impl PatchContext<'_> {
     pub(super) fn scan_all<T>(

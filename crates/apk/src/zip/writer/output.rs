@@ -1,18 +1,17 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::fs::File;
 use std::io::{self, BufWriter, Seek, SeekFrom, Write};
 
 use crate::error::Result;
 
 /// The output file and how much of it is written.
-pub(super) struct Output {
-    pub(super) file: BufWriter<File>,
+pub(super) struct Output<W: Write + Seek> {
+    pub(super) file: BufWriter<W>,
     pub(super) position: u64,
 }
 
-impl Write for Output {
+impl<W: Write + Seek> Write for Output<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let written = self.file.write(buf)?;
         self.position += written as u64;
@@ -24,7 +23,7 @@ impl Write for Output {
     }
 }
 
-impl Output {
+impl<W: Write + Seek> Output<W> {
     /// Overwrites bytes written earlier at `offset`.
     pub(super) fn patch(&mut self, offset: u64, bytes: &[u8]) -> Result<()> {
         self.file.flush()?;

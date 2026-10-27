@@ -8,9 +8,11 @@ pub use self::part::{DexPart, split_to_fit};
 pub use self::sink::{DexSink, SpoolSink, Spooled};
 use crate::error::Result;
 use crate::file::DexFile;
-use crate::types::encoded_value::EncodedValue;
-use crate::types::header::DexVersion;
-use crate::types::map::MapItem;
+use crate::model::Pool;
+use crate::model::encoded_value::EncodedValue;
+use crate::model::header::DexVersion;
+use crate::model::map::MapItem;
+use crate::options::{LinkPolicy, MAX_POOL_SIZE, WriteOptions};
 
 pub(crate) mod annotations;
 pub(crate) mod class_data;
@@ -19,54 +21,17 @@ pub(crate) mod debug;
 pub(crate) mod encoded_arrays;
 pub(crate) mod encoded_value;
 pub(crate) mod finalize;
-pub(crate) mod instruction_writer;
+mod hidden_api;
+mod ids;
 pub(crate) mod intern;
 pub(crate) mod layout;
-pub(crate) mod orchestration;
 pub(crate) mod part;
 pub(crate) mod plan;
 pub(crate) mod raw_code;
+pub(crate) mod remap;
+pub(crate) mod sections;
 pub(crate) mod sink;
-pub(crate) mod sort;
-
-/// Selection of metadata to emit, independent of how it was loaded.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum MetadataPolicy {
-    #[default]
-    Preserve,
-    Omit,
-    /// Omit metadata from this DEX's original mapping, retaining imported or authored metadata.
-    OmitOriginal,
-}
-
-impl MetadataPolicy {
-    pub(crate) fn keeps<T: crate::types::metadata::MetadataItem>(
-        self,
-        metadata: &crate::types::metadata::Metadata<T>,
-        original: Option<&crate::file::DexBytes>,
-    ) -> bool {
-        match self {
-            Self::Preserve => true,
-            Self::Omit => false,
-            Self::OmitOriginal => !metadata.belongs_to(original),
-        }
-    }
-}
-
-/// Opaque link bytes cannot be relocated after pool and section layout changes.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum LinkPolicy {
-    #[default]
-    Reject,
-    Omit,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct WriteOptions {
-    pub debug_info: MetadataPolicy,
-    pub annotations: MetadataPolicy,
-    pub link_data: LinkPolicy,
-}
+mod type_lists;
 
 pub(crate) fn is_default_value(v: &EncodedValue) -> bool {
     matches!(
@@ -128,23 +93,14 @@ fn validate_link_policy(plan: &plan::WritePlan<'_>) -> Result<()> {
     Ok(())
 }
 
-pub const MAX_POOL_SIZE: usize = 1 << 16;
-
 fn validate_index_limits(plan: &plan::WritePlan<'_>) -> Result<()> {
-    let checks: &[(&str, usize)] = &[
-        ("type_ids", plan.type_count()),
-        ("proto_ids", plan.proto_count()),
-        ("field_ids", plan.field_count()),
-        ("method_ids", plan.method_count()),
-        ("call_site_ids", plan.call_site_count()),
-        ("method_handle_ids", plan.method_handle_count()),
-    ];
-    for &(name, count) in checks {
+    for pool in Pool::ALL.into_iter().filter(|&pool| pool != Pool::String) {
+        let count = plan.count(pool);
         if count > MAX_POOL_SIZE {
             return Err(crate::error::invalid(
                 "dex",
                 format!(
-                    "{name} count {count} exceeds maximum {MAX_POOL_SIZE} — \
+                    "{pool:?} id count {count} exceeds maximum {MAX_POOL_SIZE}; \
                      split into multiple DEX files"
                 ),
             ));
@@ -207,7 +163,7 @@ pub(crate) struct DexWriter<S: DexSink> {
     pub(crate) header_base: u32,
     pub(crate) version: DexVersion,
     pub(crate) options: WriteOptions,
-    pub(crate) original: Option<crate::file::DexBytes>,
+    pub(crate) original: Option<crate::DexBytes>,
 }
 
 impl<S: DexSink> DexWriter<S> {
@@ -226,6 +182,31 @@ impl<S: DexSink> DexWriter<S> {
 
     pub(crate) fn pos(&self) -> u32 {
         self.sink.pos()
+    }
+
+    /// Lists a section of `size` items at `offset` in the map; an empty
+    /// section is not listed.
+    pub(crate) fn map_section(&mut self, type_code: u16, offset: u32, size: u32) {
+        if size > 0 {
+            self.map_entries.push(MapItem {
+                type_code,
+                size,
+                offset,
+            });
+        }
+    }
+
+    /// Writes a section of `size` items and lists it in the map, returning where it starts.
+    pub(crate) fn section(
+        &mut self,
+        type_code: u16,
+        size: usize,
+        write: impl FnOnce(&mut Self),
+    ) -> u32 {
+        let offset = self.pos();
+        write(self);
+        self.map_section(type_code, offset, size as u32);
+        offset
     }
 
     pub(crate) fn write(&mut self, bytes: &[u8]) {
@@ -261,7 +242,3 @@ impl<S: DexSink> DexWriter<S> {
         self.sink.patch(offset, &v.to_le_bytes());
     }
 }
-
-/// Encodes a sequence of DEX instructions as code units. Operands that exceed
-/// their encoding fail. Pool indices must already belong to the owning DEX.
-pub use instruction_writer::encode_instructions;

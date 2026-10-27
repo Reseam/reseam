@@ -4,8 +4,8 @@
 use std::sync::Arc;
 
 use boltffi::export;
-use reseam_apk::reseam_dex::types::code_rewrite::InstructionExpansion;
-use reseam_apk::reseam_dex::{AccessFlags, CodeItem, Instruction as DexInsn};
+use reseam_dex::InstructionExpansion;
+use reseam_dex::{AccessFlags, CodeItem, EarlyReturn, Instruction as DexInsn};
 
 use crate::kotlin::convert::kotlin_to_dex;
 use crate::kotlin::handles::{code_mut, method_mut, with_method_mut};
@@ -59,7 +59,7 @@ pub fn replace_body(
         let proto = dex.proto_descriptor(&dex.proto(dex.method_id(id).proto));
         let incoming = logged(
             "replacement frame",
-            crate::kotlin::invoke::incoming_words(&proto, flags),
+            super::registers::incoming_words(&proto, flags),
         )?;
         let code = logged(
             "replace body",
@@ -80,9 +80,7 @@ pub fn replace_body(
     outcome.ok_or_else(|| format!("method handle {m} could not be replaced"))
 }
 
-pub(super) fn edit_mapping(
-    mapping: reseam_apk::reseam_dex::types::code_rewrite::InstructionMap,
-) -> Result<MethodEdit, String> {
+pub(super) fn edit_mapping(mapping: reseam_dex::InstructionMap) -> Result<MethodEdit, String> {
     fn indices(values: &[usize]) -> Result<Vec<u32>, String> {
         values
             .iter()
@@ -166,38 +164,30 @@ pub fn remove_instructions(m: u32, index: u32, count: u32) -> Result<MethodEdit,
     result.ok_or_else(|| format!("method handle {m} could not be edited"))
 }
 
-#[export]
-pub fn return_early(m: u32) {
+fn return_early_with(m: u32, value: EarlyReturn) {
     with_method_mut(m, |dex, loc| {
         Ok(logged("access method", method_mut(dex, loc))?
-            .and_then(reseam_apk::reseam_dex::EncodedMethod::code_mut)
-            .map(CodeItem::return_early))
+            .and_then(reseam_dex::EncodedMethod::code_mut)
+            .map(|code| code.return_early(value)))
     });
+}
+
+#[export]
+pub fn return_early(m: u32) {
+    return_early_with(m, EarlyReturn::Void);
 }
 
 #[export]
 pub fn return_early_int(m: u32, value: i32) {
-    with_method_mut(m, |dex, loc| {
-        Ok(logged("access method", method_mut(dex, loc))?
-            .and_then(reseam_apk::reseam_dex::EncodedMethod::code_mut)
-            .map(|code| code.return_early_int(value)))
-    });
+    return_early_with(m, EarlyReturn::Int(value));
 }
 
 #[export]
 pub fn return_early_object_null(m: u32) {
-    with_method_mut(m, |dex, loc| {
-        Ok(logged("access method", method_mut(dex, loc))?
-            .and_then(reseam_apk::reseam_dex::EncodedMethod::code_mut)
-            .map(|code| code.return_early_object(0)))
-    });
+    return_early_with(m, EarlyReturn::Null);
 }
 
 #[export]
 pub fn return_early_wide(m: u32, value: i64) {
-    with_method_mut(m, |dex, loc| {
-        Ok(logged("access method", method_mut(dex, loc))?
-            .and_then(reseam_apk::reseam_dex::EncodedMethod::code_mut)
-            .map(|code| code.return_early_wide(value)))
-    });
+    return_early_with(m, EarlyReturn::Wide(value));
 }

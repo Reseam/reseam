@@ -3,7 +3,7 @@
 
 use super::plan::WritePlan;
 use crate::file::DexFile;
-use crate::types::{MethodIdx, TypeIdx};
+use crate::model::{MethodIdx, Pool, TypeIdx};
 
 /// Where the types, methods and classes of a source [`DexFile`] landed in one
 /// written DEX. Source indices are those of the in-memory pools, which keep
@@ -33,14 +33,23 @@ impl WriteLayout {
     }
 
     pub(crate) fn of(plan: WritePlan<'_>) -> Self {
-        let type_count = plan.type_count() as u32;
-        let method_count = plan.method_count() as u32;
+        let type_count = plan.count(Pool::Type) as u32;
+        let method_count = plan.count(Pool::Method) as u32;
         let class_types = plan
             .class_order
             .iter()
             .map(|&class| plan.dex.classes.header(class).class_type)
             .collect();
-        let (types, methods) = plan.remap.map(|remap| (remap.type_, remap.method)).unzip();
+        let (types, methods) = plan
+            .remap
+            .map(|remap| {
+                let mut tables = remap.into_tables();
+                (
+                    std::mem::take(&mut tables[Pool::Type]),
+                    std::mem::take(&mut tables[Pool::Method]),
+                )
+            })
+            .unzip();
         Self {
             types,
             methods,

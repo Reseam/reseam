@@ -3,17 +3,20 @@
 
 use super::code::read_code_item;
 use super::encoded_value::read_encoded_array_with_opts;
+use super::type_list::{read_type_list, validate_type_list};
 use crate::encoding::leb128::read_uleb128;
 use crate::error::Result;
-use crate::file::{RawClassDef, read_type_list, validate_type_list};
-use crate::types::access_flags::AccessFlags;
-use crate::types::class::{ClassData, ClassDef, EncodedField, EncodedMethod};
-use crate::types::header::ParseOptions;
-use crate::types::{FieldIdx, MethodIdx};
+use crate::model::access_flags::AccessFlags;
+use crate::model::class::{
+    ClassData, ClassDef, ClassHeader, EncodedField, EncodedMethod, MethodKind, NO_INDEX,
+};
+use crate::model::{FieldIdx, MethodIdx};
+use crate::model::{StringIdx, TypeIdx};
+use crate::options::ParseOptions;
 
 /// Decodes one `class_def_item` record into a resident [`ClassDef`].
 pub fn read_class_def(
-    source: &crate::file::DexBytes,
+    source: &crate::DexBytes,
     raw: RawClassDef,
     opts: ParseOptions,
 ) -> Result<ClassDef> {
@@ -24,11 +27,11 @@ pub fn read_class_def(
         validate_type_list(buf, off)?;
         read_type_list(buf, off)
     } else {
-        crate::types::TypeList::new()
+        crate::model::TypeList::new()
     };
     let annotations = (raw.annotations_off != 0)
         .then(|| {
-            crate::types::metadata::Metadata::from_source(
+            crate::model::metadata::Metadata::from_source(
                 source,
                 raw.annotations_off,
                 opts,
@@ -79,6 +82,15 @@ pub struct MemberCounts {
     pub virtual_methods: u32,
     pub static_fields: u32,
     pub instance_fields: u32,
+}
+
+impl MemberCounts {
+    pub fn methods(&self, kind: MethodKind) -> u32 {
+        match kind {
+            MethodKind::Direct => self.direct_methods,
+            MethodKind::Virtual => self.virtual_methods,
+        }
+    }
 }
 
 pub(crate) struct ClassDataCursor<'a> {
@@ -165,15 +177,10 @@ pub struct ClassSkeleton {
 }
 
 impl ClassSkeleton {
-    pub fn method(
-        &self,
-        method_pos: usize,
-        kind: crate::types::class::MethodKind,
-    ) -> Option<&MethodHeader> {
-        if kind == crate::types::class::MethodKind::Virtual {
-            self.virtual_methods.get(method_pos)
-        } else {
-            self.direct_methods.get(method_pos)
+    pub fn methods(&self, kind: MethodKind) -> &[MethodHeader] {
+        match kind {
+            MethodKind::Direct => &self.direct_methods,
+            MethodKind::Virtual => &self.virtual_methods,
         }
     }
 }
@@ -205,7 +212,7 @@ pub fn read_class_skeleton_at(buf: &[u8], off: usize, opts: ParseOptions) -> Res
 }
 
 pub fn read_class_data(
-    source: &crate::file::DexBytes,
+    source: &crate::DexBytes,
     off: u32,
     opts: ParseOptions,
 ) -> Result<ClassData> {
@@ -231,4 +238,47 @@ pub fn read_class_data(
         direct_methods: decode(skeleton.direct_methods)?,
         virtual_methods: decode(skeleton.virtual_methods)?,
     })
+}
+
+pub(crate) const RECORD_SIZE: usize = 32;
+
+/// A `class_def_item` as stored in the file.
+#[derive(Debug, Clone, Copy)]
+pub struct RawClassDef {
+    pub class_type: u32,
+    pub access_flags: u32,
+    pub superclass: u32,
+    pub interfaces_off: u32,
+    pub source_file: u32,
+    pub annotations_off: u32,
+    pub class_data_off: u32,
+    pub static_values_off: u32,
+}
+
+impl RawClassDef {
+    pub(crate) fn read(buf: &[u8], off: usize) -> Self {
+        let word = |i: usize| {
+            let o = off + i * 4;
+            u32::from_le_bytes([buf[o], buf[o + 1], buf[o + 2], buf[o + 3]])
+        };
+        Self {
+            class_type: word(0),
+            access_flags: word(1),
+            superclass: word(2),
+            interfaces_off: word(3),
+            source_file: word(4),
+            annotations_off: word(5),
+            class_data_off: word(6),
+            static_values_off: word(7),
+        }
+    }
+
+    pub fn header(&self) -> ClassHeader {
+        ClassHeader {
+            class_type: TypeIdx(self.class_type),
+            access_flags: AccessFlags::from_bits_retain(self.access_flags),
+            superclass: (self.superclass != NO_INDEX).then_some(TypeIdx(self.superclass)),
+            source_file: (self.source_file != NO_INDEX).then_some(StringIdx(self.source_file)),
+        }
+    }
 }

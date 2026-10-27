@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::RefSink;
-use crate::types::Pool;
-use crate::types::annotation::{AnnotationItem, AnnotationsDirectory};
-use crate::types::debug::{DebugBytecode, DebugInfo};
-use crate::types::encoded_value::EncodedValue;
-use crate::types::instruction::Instruction;
-use crate::types::method_handle::CallSiteItem;
+use crate::error::Result;
+use crate::file::DexFile;
+use crate::instruction::Instruction;
+use crate::model::Pool;
+use crate::model::annotation::{AnnotationItem, AnnotationsDirectory};
+use crate::model::debug::{DebugBytecode, DebugInfo};
+use crate::model::encoded_value::EncodedValue;
+use crate::model::method_handle::{CallSiteItem, MethodHandleMember};
 
 pub(crate) fn call_site(sink: &mut impl RefSink, call_site: &CallSiteItem) {
     sink.add(Pool::MethodHandle, call_site.bootstrap_method.0);
@@ -16,6 +18,41 @@ pub(crate) fn call_site(sink: &mut impl RefSink, call_site: &CallSiteItem) {
     for arg in &call_site.extra_arguments {
         encoded_value(sink, arg);
     }
+}
+
+/// The references of entry `idx` of `pool`.
+pub(crate) fn id_entry(sink: &mut impl RefSink, dex: &DexFile, pool: Pool, idx: u32) -> Result<()> {
+    let at = idx as usize;
+    match pool {
+        Pool::String => {}
+        Pool::Type => sink.add(Pool::String, dex.types.get(at).0),
+        Pool::Proto => {
+            let proto = dex.prototypes.get(at);
+            sink.add(Pool::String, proto.shorty.0);
+            sink.add(Pool::Type, proto.return_type.0);
+            for parameter in &proto.parameters {
+                sink.add(Pool::Type, parameter.0);
+            }
+        }
+        Pool::Field => {
+            let field = dex.fields.get(at);
+            sink.add(Pool::Type, field.class.0);
+            sink.add(Pool::Type, field.type_.0);
+            sink.add(Pool::String, field.name.0);
+        }
+        Pool::Method => {
+            let method = dex.methods.get(at);
+            sink.add(Pool::Type, method.class.0);
+            sink.add(Pool::Proto, method.proto.0);
+            sink.add(Pool::String, method.name.0);
+        }
+        Pool::CallSite => call_site(sink, &*dex.call_sites.get(at)?),
+        Pool::MethodHandle => match dex.method_handles.get(at)?.member {
+            MethodHandleMember::Field(field) => sink.add(Pool::Field, field.0),
+            MethodHandleMember::Method(method) => sink.add(Pool::Method, method.0),
+        },
+    }
+    Ok(())
 }
 
 pub(crate) fn instruction(sink: &mut impl RefSink, instruction: &Instruction) {

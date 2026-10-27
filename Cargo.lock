@@ -924,6 +924,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3e0f1c7c3a72c66fd80abe965175f7523475c0489a87d3ff9d6e8c87d87a9d2d"
 
 [[package]]
+name = "fixedbitset"
+version = "0.5.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
+
+[[package]]
 name = "flate2"
 version = "1.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1855,6 +1861,7 @@ name = "reseam-dex"
 version = "0.32.0"
 dependencies = [
  "bitflags 2.13.1",
+ "fixedbitset",
  "pretty_assertions",
  "rayon",
  "reseam-journal",
@@ -1909,6 +1916,7 @@ dependencies = [
  "jni",
  "libloading 0.9.0",
  "reseam-apk",
+ "reseam-dex",
  "reseam-hermes",
  "reseam-journal",
  "reseam-model",
@@ -1934,6 +1942,7 @@ dependencies = [
  "hex",
  "libc",
  "reseam-apk",
+ "reseam-dex",
  "reseam-model",
  "reseam-patcher",
  "reseam-sign",
@@ -3133,6 +3142,7 @@ dependencies = [
  "hex",
  "memmap2",
  "reseam-apk",
+ "reseam-dex",
  "reseam-model",
  "semver",
  "serde",

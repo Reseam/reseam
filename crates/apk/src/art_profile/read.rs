@@ -2,90 +2,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::collections::BTreeMap;
-use std::io::Read;
 
-use super::write::{METADATA_MAGIC, METADATA_V002, PROFILE_MAGIC, PROFILE_V010};
-use super::{BaselineProfile, DexMetadata, DexProfile, MethodFlags};
-use crate::buf::{read_u16_le, read_u32_le, slice};
+use super::SECTION;
+use super::cursor::Cursor;
+use super::{
+    BaselineProfile, DexMetadata, DexProfile, METADATA_MAGIC, METADATA_V002, MethodFlags,
+    PROFILE_MAGIC, PROFILE_V010,
+};
 use crate::error::{Result, invalid, malformed};
 
-const SECTION: &str = "baseline profile";
 const INLINE_CACHE_MISSING_TYPES: u8 = 6;
 const INLINE_CACHE_MEGAMORPHIC: u8 = 7;
-
-struct Cursor<'a> {
-    buf: &'a [u8],
-    pos: usize,
-}
-
-impl<'a> Cursor<'a> {
-    fn new(buf: &'a [u8]) -> Self {
-        Self { buf, pos: 0 }
-    }
-
-    fn bytes(&mut self, len: usize) -> Result<&'a [u8]> {
-        let bytes = slice(self.buf, self.pos, len, SECTION)?;
-        self.pos += len;
-        Ok(bytes)
-    }
-
-    fn u8(&mut self) -> Result<u8> {
-        Ok(self.bytes(1)?[0])
-    }
-
-    fn u16(&mut self) -> Result<u16> {
-        let value = read_u16_le(self.buf, self.pos, SECTION)?;
-        self.pos += 2;
-        Ok(value)
-    }
-
-    fn u32(&mut self) -> Result<u32> {
-        let value = read_u32_le(self.buf, self.pos, SECTION)?;
-        self.pos += 4;
-        Ok(value)
-    }
-
-    fn string(&mut self, len: usize) -> Result<String> {
-        let at = self.pos;
-        String::from_utf8(self.bytes(len)?.to_vec())
-            .map_err(|_| malformed(SECTION, at, "profile key is not UTF-8"))
-    }
-
-    fn ascending(&mut self, count: usize) -> Result<Vec<u32>> {
-        let mut last = 0u32;
-        (0..count)
-            .map(|_| {
-                last += u32::from(self.u16()?);
-                Ok(last)
-            })
-            .collect()
-    }
-
-    /// The zlib block that follows a `count, inflated size, deflated size` header.
-    fn inflated(&mut self, inflated: u32, deflated: u32) -> Result<Vec<u8>> {
-        let at = self.pos;
-        let mut body = Vec::with_capacity(inflated as usize);
-        flate2::read::ZlibDecoder::new(self.bytes(deflated as usize)?).read_to_end(&mut body)?;
-        if body.len() != inflated as usize || self.pos != self.buf.len() {
-            return Err(malformed(SECTION, at, "compressed body size mismatch"));
-        }
-        Ok(body)
-    }
-
-    fn header(&mut self, magic: [u8; 4], version: [u8; 4]) -> Result<()> {
-        if self.bytes(4)? != magic {
-            return Err(malformed(SECTION, 0, "bad magic"));
-        }
-        let found = self.bytes(4)?;
-        if found != version {
-            return Err(invalid(
-                SECTION,
-                format!("unsupported version {}", String::from_utf8_lossy(found)),
-            ));
-        }
-        Ok(())
-    }
-}
 
 impl BaselineProfile {
     /// Parses a version 010 `baseline.prof` and, when given, the version 002
@@ -141,7 +68,7 @@ impl BaselineProfile {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
-        if body.pos != body.buf.len() {
+        if !body.is_at_end() {
             return Err(malformed(SECTION, body.pos, "trailing profile data"));
         }
         if let Some(metadata) = metadata {

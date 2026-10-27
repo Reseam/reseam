@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::error::{Result, buffer_exhausted, invalid_leb128};
-use crate::types::header::ParseOptions;
+use crate::options::ParseOptions;
 
 pub fn read_uleb128(buf: &[u8], pos: usize, opts: ParseOptions) -> Result<(u32, usize)> {
     let mut value: u32 = 0;
@@ -13,7 +13,7 @@ pub fn read_uleb128(buf: &[u8], pos: usize, opts: ParseOptions) -> Result<(u32, 
         let byte = *buf.get(at).ok_or_else(|| buffer_exhausted("leb128", at))?;
         value |= u32::from(byte & 0x7F) << (i * 7);
         if byte & 0x80 == 0 {
-            if !(opts.leb128 == crate::types::header::Validation::Permissive)
+            if !(opts.leb128 == crate::options::Validation::Permissive)
                 && i + 1 != minimal_uleb128_len(value)
             {
                 return Err(invalid_leb128(pos));
@@ -38,7 +38,7 @@ pub fn read_sleb128(buf: &[u8], pos: usize, opts: ParseOptions) -> Result<(i32, 
                 value |= !0u32 << shift;
             }
             let value = value as i32;
-            if !(opts.leb128 == crate::types::header::Validation::Permissive)
+            if !(opts.leb128 == crate::options::Validation::Permissive)
                 && i + 1 != minimal_sleb128_len(value)
             {
                 return Err(invalid_leb128(pos));

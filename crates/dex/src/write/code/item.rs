@@ -3,9 +3,9 @@
 
 use crate::encoding::leb128::{write_sleb128, write_uleb128};
 use crate::error::Result;
-use crate::types::code::CodeItem;
+use crate::instruction::codec::encode_instructions;
+use crate::model::code::CodeItem;
 use crate::write::DexWriter;
-use crate::write::instruction_writer::encode_instructions;
 use crate::write::sink::DexSink;
 
 pub(super) fn write_code_item<S: DexSink>(w: &mut DexWriter<S>, code: &CodeItem) -> Result<()> {

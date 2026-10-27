@@ -82,7 +82,7 @@ pub enum PatcherError {
     RewriteOutput { patch: String, reason: String },
 
     #[error("DEX error: {0}")]
-    Dex(#[from] reseam_apk::reseam_dex::DexError),
+    Dex(#[from] reseam_dex::DexError),
 
     #[error("Hermes error: {0}")]
     Hermes(#[from] reseam_hermes::HermesError),

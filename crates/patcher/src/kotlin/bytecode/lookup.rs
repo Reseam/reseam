@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use reseam_apk::reseam_dex::MethodKind;
+use reseam_dex::MethodKind;
 
 use crate::error::{PatcherError, Result as PatcherResult};
 use crate::kotlin::handles::checked;
 use boltffi::export;
-use reseam_apk::reseam_dex::{DexFile, EncodedField, InstructionPattern, TypeIdx};
+use reseam_dex::{DexFile, EncodedField, InstructionPattern, TypeIdx};
 
 use crate::context::{ClassLocation, MethodLocation};
 use crate::kotlin::handles::{
@@ -178,42 +178,39 @@ pub fn class_methods_by_name(c: u32, name: String) -> Vec<u32> {
         let Some(name) = dex.strings().find(&name) else {
             return Vec::new();
         };
-        let mut result = Vec::new();
-        let mut collect =
-            |kind, methods: &mut dyn Iterator<Item = reseam_apk::reseam_dex::MethodIdx>| {
-                result.extend(
-                    methods
-                        .enumerate()
-                        .filter(|(_, method)| dex.method_id(*method).name == name)
-                        .map(|(method_idx, _)| {
-                            alloc_method(MethodLocation {
-                                dex_idx: location.dex_idx,
-                                class_idx: location.class_idx,
-                                method_idx,
-                                kind,
-                            })
-                        }),
-                );
-            };
-        if let Some(class) = dex.classes().resident(location.class_idx) {
-            if let Some(data) = class.class_data.as_ref() {
-                collect(
-                    MethodKind::Direct,
-                    &mut data.direct_methods.iter().map(|method| method.method),
-                );
-                collect(
-                    MethodKind::Virtual,
-                    &mut data.virtual_methods.iter().map(|method| method.method),
-                );
+        let methods = |kind| -> Vec<reseam_dex::MethodIdx> {
+            if let Some(class) = dex.classes().resident(location.class_idx) {
+                class.class_data.as_ref().map_or_else(Vec::new, |data| {
+                    data.methods(kind)
+                        .iter()
+                        .map(|method| method.method)
+                        .collect()
+                })
+            } else {
+                checked(dex.class_skeleton(location.class_idx)).map_or_else(Vec::new, |skeleton| {
+                    skeleton
+                        .methods(kind)
+                        .iter()
+                        .map(|method| method.method)
+                        .collect()
+                })
             }
-        } else if let Some(skeleton) = checked(dex.class_skeleton(location.class_idx)) {
-            collect(
-                MethodKind::Direct,
-                &mut skeleton.direct_methods.iter().map(|method| method.method),
-            );
-            collect(
-                MethodKind::Virtual,
-                &mut skeleton.virtual_methods.iter().map(|method| method.method),
+        };
+        let mut result = Vec::new();
+        for kind in MethodKind::ALL {
+            result.extend(
+                methods(kind)
+                    .into_iter()
+                    .enumerate()
+                    .filter(|(_, method)| dex.method_id(*method).name == name)
+                    .map(|(method_idx, _)| {
+                        alloc_method(MethodLocation {
+                            dex_idx: location.dex_idx,
+                            class_idx: location.class_idx,
+                            method_idx,
+                            kind,
+                        })
+                    }),
             );
         }
         result
@@ -224,13 +221,8 @@ fn method_handles(c: u32, kind: MethodKind) -> Vec<u32> {
     let Some(class) = class_location(c) else {
         return Vec::new();
     };
-    let count = with_ctx(|ctx| checked(ctx.read_class_counts(class))).map_or(0, |counts| {
-        if kind == MethodKind::Virtual {
-            counts.virtual_methods
-        } else {
-            counts.direct_methods
-        }
-    });
+    let count = with_ctx(|ctx| checked(ctx.read_class_counts(class)))
+        .map_or(0, |counts| counts.methods(kind));
     alloc_methods((0..count as usize).map(|method_idx| MethodLocation {
         dex_idx: class.dex_idx,
         class_idx: class.class_idx,

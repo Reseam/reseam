@@ -3,7 +3,7 @@
 
 use crate::kotlin::handles::checked;
 use boltffi::export;
-use reseam_apk::reseam_dex::{AccessFlags, DexFile};
+use reseam_dex::{AccessFlags, DexFile};
 
 use crate::context::ClassLocation;
 use crate::kotlin::handles::{

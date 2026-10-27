@@ -6,8 +6,8 @@ use std::borrow::Cow;
 use std::ops::Range;
 
 use super::ANDROID_NS;
+use crate::res_value::ResValue;
 use crate::string_pool::{StringEncoding, StringPool};
-use crate::value::ResValue;
 
 /// A binary XML document as its flat event stream. Names and string values
 /// are indices into `string_pool`; `resource_ids[i]` is the framework
@@ -73,14 +73,34 @@ impl NodeMetadata {
     }
 }
 
+/// An attribute of a start element. A string value's raw text index follows
+/// its typed value, so the value changes only through [`Self::set_value`].
 #[derive(Debug, Clone)]
 pub struct AxmlAttribute {
-    pub namespace: Option<u32>,
-    pub name: u32,
-    pub raw_value: Option<u32>,
-    pub value: ResValue,
+    pub(super) namespace: Option<u32>,
+    pub(super) name: u32,
+    pub(super) raw_value: Option<u32>,
+    pub(super) value: ResValue,
+    /// The attribute as parsed, including any bytes past the 20 Android reads.
     pub(super) encoded: Vec<u8>,
-    pub(super) roles: [bool; 3],
+    pub(super) roles: AttributeRoles,
+}
+
+bitflags::bitflags! {
+    /// The special attributes a start element names by index.
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+    pub(super) struct AttributeRoles: u8 {
+        const ID = 1;
+        const CLASS = 1 << 1;
+        const STYLE = 1 << 2;
+    }
+}
+
+impl AttributeRoles {
+    /// Each role with the offset of its 1-based attribute index in a start
+    /// element's extension; 0 there means no attribute has the role.
+    pub(super) const FIELDS: [(Self, usize); 3] =
+        [(Self::ID, 14), (Self::CLASS, 16), (Self::STYLE, 18)];
 }
 
 impl AxmlDocument {
@@ -95,25 +115,6 @@ impl AxmlDocument {
         }
     }
 
-    /// Constructs a document over a validated string pool and event stream.
-    pub fn from_parts(
-        string_pool: StringPool,
-        resource_ids: Vec<u32>,
-        elements: Vec<AxmlEvent>,
-    ) -> crate::Result<Self> {
-        for string in string_pool.iter() {
-            string?;
-        }
-        Ok(Self {
-            string_pool,
-            resource_ids,
-            elements,
-            header: Vec::new(),
-            resource_header: Vec::new(),
-            suffix: NodeMetadata::default(),
-        })
-    }
-
     pub fn string_pool(&self) -> &StringPool {
         &self.string_pool
     }
@@ -125,65 +126,6 @@ impl AxmlDocument {
     }
     pub fn events(&self) -> &[AxmlEvent] {
         &self.elements
-    }
-
-    /// Inserts event nodes at a boundary. Document pools cannot be inserted
-    /// through this operation. Out-of-range boundaries are errors.
-    pub fn insert_events(
-        &mut self,
-        position: usize,
-        events: impl IntoIterator<Item = AxmlEvent>,
-    ) -> crate::Result<()> {
-        if position > self.elements.len() {
-            return Err(crate::error::invalid(
-                "axml edit",
-                "insertion boundary is outside the document",
-            ));
-        }
-        let events = events.into_iter().collect::<Vec<_>>();
-        if events
-            .iter()
-            .any(|event| matches!(event, AxmlEvent::StringPool | AxmlEvent::ResourceMap))
-        {
-            return Err(crate::error::invalid(
-                "axml edit",
-                "cannot insert a document pool as a node",
-            ));
-        }
-        self.elements.splice(position..position, events);
-        Ok(())
-    }
-
-    /// Removes a complete element subtree, transferring its original metadata
-    /// with it. An absent or unterminated element is an error.
-    pub fn detach_element(&mut self, start: usize) -> crate::Result<Vec<AxmlEvent>> {
-        let end = self.find_end_element(start).ok_or_else(|| {
-            crate::error::invalid("axml edit", "element is absent or unterminated")
-        })?;
-        Ok(self.elements.drain(start..=end).collect())
-    }
-
-    /// Edits an element's attributes while retaining its node metadata. The
-    /// callback may intern strings and bind names but must not move event nodes.
-    /// Returns `None` if the index is not an element or the callback removes it.
-    pub fn edit_attributes<R>(
-        &mut self,
-        index: usize,
-        edit: impl FnOnce(&mut Self, &mut Vec<AxmlAttribute>) -> R,
-    ) -> Option<R> {
-        let AxmlEvent::StartElement { attributes, .. } = self.elements.get_mut(index)? else {
-            return None;
-        };
-        let mut attributes = std::mem::take(attributes);
-        let result = edit(self, &mut attributes);
-        let Some(AxmlEvent::StartElement {
-            attributes: slot, ..
-        }) = self.elements.get_mut(index)
-        else {
-            return None;
-        };
-        *slot = attributes;
-        Some(result)
     }
 
     pub fn string(&self, index: u32) -> Option<Cow<'_, str>> {
@@ -203,14 +145,6 @@ impl AxmlDocument {
             .get(name as usize)
             .copied()
             .filter(|&id| id != 0)
-    }
-
-    pub(crate) fn bind_resource_id(&mut self, name: u32, res_id: u32) {
-        let index = name as usize;
-        if self.resource_ids.len() <= index {
-            self.resource_ids.resize(index + 1, 0);
-        }
-        self.resource_ids[index] = res_id;
     }
 
     /// The URI index of the declared Android framework namespace.
@@ -235,8 +169,20 @@ impl AxmlAttribute {
             raw_value: value.string_index(),
             value,
             encoded: Vec::new(),
-            roles: [false; 3],
+            roles: AttributeRoles::empty(),
         }
+    }
+
+    pub fn namespace(&self) -> Option<u32> {
+        self.namespace
+    }
+
+    pub fn name(&self) -> u32 {
+        self.name
+    }
+
+    pub fn value(&self) -> ResValue {
+        self.value
     }
 
     pub fn set_value(&mut self, value: ResValue) {

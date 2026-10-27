@@ -1,20 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::io::Write;
-
+use super::SECTION;
+use super::encode::{deflate, header, u16_len, write_ascending, write_deflated, write_key};
 use super::{
-    BaselineProfile, DexMetadata, DexProfile, EMBEDDED_ENTRY, METADATA_ENTRY, MethodFlags,
-    PROFILE_ENTRY,
+    BaselineProfile, DexMetadata, DexProfile, EMBEDDED_ENTRY, METADATA_ENTRY, METADATA_MAGIC,
+    METADATA_V002, MethodFlags, PROFILE_ENTRY, PROFILE_MAGIC, PROFILE_V010, PROFILE_V015,
 };
 use crate::buf::{write_u16, write_u32};
 use crate::error::{Result, invalid};
-
-pub(super) const PROFILE_MAGIC: [u8; 4] = *b"pro\0";
-pub(super) const PROFILE_V010: [u8; 4] = *b"010\0";
-const PROFILE_V015: [u8; 4] = *b"015\0";
-pub(super) const METADATA_MAGIC: [u8; 4] = *b"prm\0";
-pub(super) const METADATA_V002: [u8; 4] = *b"002\0";
 
 const SECTION_DEX_FILES: u32 = 0;
 const SECTION_CLASSES: u32 = 2;
@@ -97,10 +91,7 @@ fn profile_v010(dex: &[DexProfile], key: impl Fn(&DexProfile) -> String) -> Resu
         body.extend_from_slice(&method_bitmap(profile, &flags));
     }
     let mut out = header(PROFILE_MAGIC, PROFILE_V010);
-    out.push(
-        u8::try_from(dex.len())
-            .map_err(|_| invalid("baseline profile", "more than 255 DEX files"))?,
-    );
+    out.push(u8::try_from(dex.len()).map_err(|_| invalid(SECTION, "more than 255 DEX files"))?);
     write_deflated(&mut out, &body)?;
     Ok(out)
 }
@@ -161,14 +152,10 @@ fn profile_v015(dex: &[DexProfile], key: impl Fn(&DexProfile) -> String) -> Resu
     Ok(out)
 }
 
-fn header(magic: [u8; 4], version: [u8; 4]) -> Vec<u8> {
-    [magic, version].concat()
-}
-
 fn metadata(profile: &DexProfile) -> Result<&DexMetadata> {
     profile.metadata.as_ref().ok_or_else(|| {
         invalid(
-            "baseline profile",
+            SECTION,
             format!("{} has no baseline.profm entry", profile.name),
         )
     })
@@ -198,36 +185,4 @@ fn method_bitmap(profile: &DexProfile, flags: &[MethodFlags]) -> Vec<u8> {
         }
     }
     bitmap
-}
-
-fn write_ascending(out: &mut Vec<u8>, values: &[u32]) {
-    let mut last = 0;
-    for &value in values {
-        write_u16(out, (value - last) as u16);
-        last = value;
-    }
-}
-
-fn write_key(out: &mut Vec<u8>, key: &str) -> Result<()> {
-    write_u16(out, u16_len(key.len())?);
-    out.extend_from_slice(key.as_bytes());
-    Ok(())
-}
-
-fn write_deflated(out: &mut Vec<u8>, body: &[u8]) -> Result<()> {
-    let deflated = deflate(body)?;
-    write_u32(out, body.len() as u32);
-    write_u32(out, deflated.len() as u32);
-    out.extend_from_slice(&deflated);
-    Ok(())
-}
-
-fn deflate(data: &[u8]) -> Result<Vec<u8>> {
-    let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
-    encoder.write_all(data)?;
-    Ok(encoder.finish()?)
-}
-
-fn u16_len(len: usize) -> Result<u16> {
-    u16::try_from(len).map_err(|_| invalid("baseline profile", format!("{len} exceeds 65535")))
 }

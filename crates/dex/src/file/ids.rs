@@ -2,45 +2,38 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::cmp::Ordering;
-use std::hash::Hasher;
-
-use rustc_hash::{FxHashMap, FxHasher};
-use smallvec::SmallVec;
+use std::hash::Hash;
 
 mod records;
 
-pub(crate) use records::{read_type_list, validate_type_list};
-
-use super::DexBytes;
+use super::sorted_index::{SortedIndex, hash_of};
+use crate::DexBytes;
 use crate::error::Result;
 
 /// A fixed-size id-table record that can be read straight from the buffer.
 ///
-/// Records compare and hash by their DEX sort key, which is what the format
+/// Records sort and hash by their DEX sort key, which is what the format
 /// orders the table by and what lookups search for.
 pub trait IdRecord: Clone {
     const SIZE: usize;
+    type Key<'a>: Ord + Hash
+    where
+        Self: 'a;
 
     fn read(buf: &[u8], off: usize) -> Self;
     fn validate(buf: &[u8], off: usize) -> Result<()>;
-    fn key_cmp(&self, other: &Self) -> Ordering;
-    fn key_hash<H: Hasher>(&self, state: &mut H);
+    fn key(&self) -> Self::Key<'_>;
 }
 
 /// An id table left in the file: records are decoded on access, and only the
 /// entries interned after parse are owned.
-///
-/// The leading `sorted_len` entries are in DEX sort order (the format
-/// requires it), so lookups binary-search them; entries after that are found
-/// through a small hash index.
 #[derive(Debug, Clone)]
 pub struct IdTable<T> {
     raw: Option<DexBytes>,
     off: usize,
     raw_len: usize,
     tail: Vec<T>,
-    sorted_len: usize,
-    index: FxHashMap<u64, SmallVec<[u32; 1]>>,
+    index: SortedIndex,
 }
 
 impl<T> Default for IdTable<T> {
@@ -50,8 +43,7 @@ impl<T> Default for IdTable<T> {
             off: 0,
             raw_len: 0,
             tail: Vec::new(),
-            sorted_len: 0,
-            index: FxHashMap::default(),
+            index: SortedIndex::default(),
         }
     }
 }
@@ -71,17 +63,25 @@ impl<T: IdRecord> IdTable<T> {
             raw_len: count,
             ..Self::default()
         };
-        table.rebuild_index();
+        table.index = SortedIndex::new(
+            count,
+            |i| key_order(&table.get(i - 1), &table.get(i)) == Ordering::Less,
+            |i| hash_of(table.get(i).key()),
+        );
         Ok(table)
     }
 
     pub fn from_vec(tail: Vec<T>) -> Self {
-        let mut table = Self {
+        let index = SortedIndex::new(
+            tail.len(),
+            |i| key_order(&tail[i - 1], &tail[i]) == Ordering::Less,
+            |i| hash_of(tail[i].key()),
+        );
+        Self {
             tail,
+            index,
             ..Self::default()
-        };
-        table.rebuild_index();
-        table
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -114,44 +114,29 @@ impl<T: IdRecord> IdTable<T> {
 
     pub fn push(&mut self, record: T) -> usize {
         let i = self.len();
-        self.index
-            .entry(hash_key(&record))
-            .or_default()
-            .push(i as u32);
+        self.index.push(hash_of(record.key()), i);
         self.tail.push(record);
         i
     }
 
     /// Drops the entries pushed after the table held `len`.
     pub(crate) fn truncate(&mut self, len: usize) {
-        assert!(
-            len >= self.raw_len.max(self.sorted_len),
-            "only pushed entries are truncated"
-        );
-        for i in len..self.len() {
-            let hash = hash_key(&self.tail[i - self.raw_len]);
-            let slots = self
-                .index
-                .get_mut(&hash)
-                .expect("pushed entries are indexed");
-            slots.retain(|slot| *slot as usize != i);
-            if slots.is_empty() {
-                self.index.remove(&hash);
-            }
-        }
+        assert!(len >= self.raw_len, "only pushed entries are truncated");
+        self.index.truncate(len..self.len(), |i| {
+            hash_of(self.tail[i - self.raw_len].key())
+        });
         self.tail.truncate(len - self.raw_len);
     }
 
     /// Index of the entry whose sort key equals `probe`'s.
     pub fn find(&self, probe: &T) -> Option<usize> {
-        if let Ok(i) = self.binary_search(probe) {
-            return Some(i);
-        }
         self.index
-            .get(&hash_key(probe))?
-            .iter()
-            .map(|&i| i as usize)
-            .find(|&i| self.get(i).key_cmp(probe) == Ordering::Equal)
+            .search(|i| key_order(&self.get(i), probe))
+            .or_else(|| {
+                self.index
+                    .appended(hash_of(probe.key()))
+                    .find(|&i| key_order(&self.get(i), probe) == Ordering::Equal)
+            })
     }
 
     /// Indices of the entries in one contiguous run of the sort order, as
@@ -162,68 +147,30 @@ impl<T: IdRecord> IdTable<T> {
         &'a self,
         locate: impl Fn(&T) -> Ordering + 'a,
     ) -> impl Iterator<Item = usize> + 'a {
-        let start = self.partition_point(|entry| locate(entry) == Ordering::Less);
-        let end = self.partition_point(|entry| locate(entry) != Ordering::Greater);
+        let start = self
+            .index
+            .partition_point(|i| locate(&self.get(i)) == Ordering::Less);
+        let end = self
+            .index
+            .partition_point(|i| locate(&self.get(i)) != Ordering::Greater);
         (start..end).chain(
-            (self.sorted_len..self.len()).filter(move |&i| locate(&self.get(i)) == Ordering::Equal),
+            (self.index.sorted_len()..self.len())
+                .filter(move |&i| locate(&self.get(i)) == Ordering::Equal),
         )
     }
 
     /// Whether every entry is already in DEX sort order.
     pub fn is_sorted(&self) -> bool {
-        self.sorted_len == self.len()
+        self.index.sorted_len() == self.len()
     }
 
     /// How many leading entries are in DEX sort order.
     pub(crate) fn sorted_len(&self) -> usize {
-        self.sorted_len
+        self.index.sorted_len()
     }
 
     pub fn heap_bytes(&self) -> u64 {
-        (self.tail.len() * size_of::<T>() + self.index.len() * 24) as u64
-    }
-
-    fn partition_point(&self, before: impl Fn(&T) -> bool) -> usize {
-        let mut lo = 0usize;
-        let mut hi = self.sorted_len;
-        while lo < hi {
-            let mid = lo + (hi - lo) / 2;
-            if before(&self.get(mid)) {
-                lo = mid + 1;
-            } else {
-                hi = mid;
-            }
-        }
-        lo
-    }
-
-    fn binary_search(&self, probe: &T) -> std::result::Result<usize, usize> {
-        let mut lo = 0usize;
-        let mut hi = self.sorted_len;
-        while lo < hi {
-            let mid = lo + (hi - lo) / 2;
-            match self.get(mid).key_cmp(probe) {
-                Ordering::Less => lo = mid + 1,
-                Ordering::Greater => hi = mid,
-                Ordering::Equal => return Ok(mid),
-            }
-        }
-        Err(lo)
-    }
-
-    fn rebuild_index(&mut self) {
-        let len = self.len();
-        self.sorted_len = (1..len)
-            .find(|&i| self.get(i - 1).key_cmp(&self.get(i)) != Ordering::Less)
-            .unwrap_or(len);
-        let mut index: FxHashMap<u64, SmallVec<[u32; 1]>> = FxHashMap::default();
-        for i in self.sorted_len..len {
-            index
-                .entry(hash_key(&self.get(i)))
-                .or_default()
-                .push(i as u32);
-        }
-        self.index = index;
+        (self.tail.len() * size_of::<T>() + self.index.heap_bytes()) as u64
     }
 
     fn raw_bytes(&self) -> &[u8] {
@@ -234,8 +181,6 @@ impl<T: IdRecord> IdTable<T> {
     }
 }
 
-fn hash_key<T: IdRecord>(record: &T) -> u64 {
-    let mut hasher = FxHasher::default();
-    record.key_hash(&mut hasher);
-    hasher.finish()
+fn key_order<'a, T: IdRecord>(a: &'a T, b: &'a T) -> Ordering {
+    a.key().cmp(&b.key())
 }

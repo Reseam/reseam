@@ -2,88 +2,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::encoding::leb128::write_uleb128;
-use crate::types::encoded_value::{EncodedAnnotation, EncodedValue};
+use crate::model::encoded_value::{EncodedAnnotation, EncodedValue};
 
 pub fn write_encoded_value(buf: &mut Vec<u8>, value: &EncodedValue) {
     let tag = value.kind() as u8;
     match value {
-        EncodedValue::Byte(v) => {
-            buf.push(tag);
-            buf.push(*v as u8);
-        }
-        EncodedValue::Short(v) => {
-            let raw = i64::from(*v).to_le_bytes();
-            let bytes = signed_bytes(&raw);
-            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(bytes);
-        }
-        EncodedValue::Char(v) => {
-            let raw = u64::from(*v).to_le_bytes();
-            let bytes = unsigned_bytes(&raw);
-            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(bytes);
-        }
-        EncodedValue::Int(v) => {
-            let raw = i64::from(*v).to_le_bytes();
-            let bytes = signed_bytes(&raw);
-            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(bytes);
-        }
-        EncodedValue::Long(v) => {
-            let raw = v.to_le_bytes();
-            let bytes = signed_bytes(&raw);
-            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(bytes);
-        }
-        EncodedValue::Float(v) => {
-            let raw = v.to_le_bytes();
-            let bytes = strip_right_zeros_float(&raw);
-            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(bytes);
-        }
-        EncodedValue::Double(v) => {
-            let raw = v.to_le_bytes();
-            let bytes = strip_right_zeros_float(&raw);
-            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(bytes);
-        }
-        EncodedValue::MethodType(idx) => {
-            let raw = u64::from(idx.0).to_le_bytes();
-            let bytes = unsigned_bytes(&raw);
-            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(bytes);
-        }
-        EncodedValue::MethodHandle(idx) => {
-            let raw = u64::from(idx.0).to_le_bytes();
-            let bytes = unsigned_bytes(&raw);
-            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(bytes);
-        }
-        EncodedValue::String(idx) => {
-            let raw = u64::from(idx.0).to_le_bytes();
-            let bytes = unsigned_bytes(&raw);
-            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(bytes);
-        }
-        EncodedValue::Type(idx) => {
-            let raw = u64::from(idx.0).to_le_bytes();
-            let bytes = unsigned_bytes(&raw);
-            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(bytes);
-        }
+        EncodedValue::Byte(v) => buf.extend([tag, *v as u8]),
+        EncodedValue::Short(v) => write_sized(buf, tag, signed_bytes(&i64::from(*v).to_le_bytes())),
+        EncodedValue::Int(v) => write_sized(buf, tag, signed_bytes(&i64::from(*v).to_le_bytes())),
+        EncodedValue::Long(v) => write_sized(buf, tag, signed_bytes(&v.to_le_bytes())),
+        EncodedValue::Char(v) => write_unsigned(buf, tag, u64::from(*v)),
+        EncodedValue::Float(v) => write_sized(buf, tag, strip_right_zeros_float(&v.to_le_bytes())),
+        EncodedValue::Double(v) => write_sized(buf, tag, strip_right_zeros_float(&v.to_le_bytes())),
+        EncodedValue::MethodType(idx) => write_unsigned(buf, tag, u64::from(idx.0)),
+        EncodedValue::MethodHandle(idx) => write_unsigned(buf, tag, u64::from(idx.0)),
+        EncodedValue::String(idx) => write_unsigned(buf, tag, u64::from(idx.0)),
+        EncodedValue::Type(idx) => write_unsigned(buf, tag, u64::from(idx.0)),
         EncodedValue::Field(idx) | EncodedValue::Enum(idx) => {
-            let raw = u64::from(idx.0).to_le_bytes();
-            let bytes = unsigned_bytes(&raw);
-            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(bytes);
+            write_unsigned(buf, tag, u64::from(idx.0));
         }
-        EncodedValue::Method(idx) => {
-            let raw = u64::from(idx.0).to_le_bytes();
-            let bytes = unsigned_bytes(&raw);
-            buf.push(tag | (((bytes.len() - 1) as u8) << 5));
-            buf.extend_from_slice(bytes);
-        }
-
+        EncodedValue::Method(idx) => write_unsigned(buf, tag, u64::from(idx.0)),
         EncodedValue::Array(values) => {
             buf.push(tag);
             write_encoded_array(buf, values);
@@ -92,13 +30,19 @@ pub fn write_encoded_value(buf: &mut Vec<u8>, value: &EncodedValue) {
             buf.push(tag);
             write_encoded_annotation(buf, ann);
         }
-        EncodedValue::Null => {
-            buf.push(tag);
-        }
-        EncodedValue::Boolean(v) => {
-            buf.push(tag | (u8::from(*v) << 5));
-        }
+        EncodedValue::Null => buf.push(tag),
+        EncodedValue::Boolean(v) => buf.push(tag | (u8::from(*v) << 5)),
     }
+}
+
+/// A value whose byte count, less one, goes in the header's argument bits.
+fn write_sized(buf: &mut Vec<u8>, tag: u8, bytes: &[u8]) {
+    buf.push(tag | (((bytes.len() - 1) as u8) << 5));
+    buf.extend_from_slice(bytes);
+}
+
+fn write_unsigned(buf: &mut Vec<u8>, tag: u8, value: u64) {
+    write_sized(buf, tag, unsigned_bytes(&value.to_le_bytes()));
 }
 
 pub fn write_encoded_array(buf: &mut Vec<u8>, values: &[EncodedValue]) {

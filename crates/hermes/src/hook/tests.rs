@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use reseam_storage::Bytes;
-
+use crate::HermesError;
 use crate::code::{BlockId, Code, Condition, HookKind, Operand, Place, SlotId, Statement};
-use crate::{Editor, FunctionIndex, HermesImage};
+use crate::error::Unsupported;
+use crate::fixtures::{BUNDLED, LITERALS, function, host, image, written};
 
 /// Code that reads every kind of operand, branches and calls an export.
 fn exercising(module: crate::ModuleId, kind: HookKind) -> Code {
@@ -58,81 +58,49 @@ fn exercising(module: crate::ModuleId, kind: HookKind) -> Code {
 fn rollback_returns_the_bundle_to_each_savepoint() {
     use reseam_journal::Savepoint;
 
-    let host = HermesImage::parse(Bytes::from_slice(include_bytes!("../../fixtures/host.hbc")))
-        .expect("host fixture parses");
-    let module = HermesImage::parse(Bytes::from_slice(include_bytes!(
-        "../../fixtures/bundled.hbc"
-    )))
-    .expect("module fixture parses");
-    let index = FunctionIndex::build(&host.file()).expect("host indexes");
-    let greet = index
-        .find_function(&host.file(), Some("greet"), &[], None)
-        .expect("fixture function exists");
-    let mut editor = Editor::new(host.file());
-    let written = |editor: &mut Editor<'_>| {
-        let mut output = Vec::new();
-        editor.write(&mut output).expect("file writes");
-        output
-    };
-    let original = written(&mut editor);
+    let module = image(BUNDLED);
+    let mut editor = host();
+    let greet = function(&editor, "greet");
+    let original = written(&editor);
 
     let outer = Savepoint::FIRST;
-    editor.edits.open_savepoint(outer);
-    let id = editor
-        .link(&index, &module.file(), &[])
-        .expect("module links");
+    editor.open_savepoint(outer);
+    let id = editor.link(&module.file(), &[]).expect("module links");
     editor
-        .hook(
-            &index,
-            greet,
-            HookKind::Before,
-            &exercising(id, HookKind::Before),
-        )
+        .hook(greet, HookKind::Before, &exercising(id, HookKind::Before))
         .expect("hook applies");
-    let after_outer = written(&mut editor);
+    let after_outer = written(&editor);
 
     let inner = outer.next();
-    editor.edits.open_savepoint(inner);
+    editor.open_savepoint(inner);
     for kind in [HookKind::After, HookKind::Replace] {
         editor
-            .hook(&index, greet, kind, &exercising(id, kind))
+            .hook(greet, kind, &exercising(id, kind))
             .expect("hook applies");
     }
     editor
-        .link(&index, &module.file(), &[])
+        .link(&module.file(), &[])
         .expect("module links again");
 
-    editor.edits.rollback_to(inner);
-    assert_eq!(written(&mut editor), after_outer);
-    editor.edits.rollback_to(outer);
-    assert_eq!(written(&mut editor), original);
-    assert!(editor.edits.is_empty());
+    editor.rollback_to(inner);
+    assert_eq!(written(&editor), after_outer);
+    editor.rollback_to(outer);
+    assert_eq!(written(&editor), original);
+    assert!(!editor.is_edited());
 }
 
 #[test]
 fn hooked_functions_jump_only_to_their_own_instructions() {
-    let host = HermesImage::parse(Bytes::from_slice(include_bytes!("../../fixtures/host.hbc")))
-        .expect("host fixture parses");
-    let module = HermesImage::parse(Bytes::from_slice(include_bytes!(
-        "../../fixtures/bundled.hbc"
-    )))
-    .expect("module fixture parses");
-    let index = FunctionIndex::build(&host.file()).expect("host indexes");
-    let greet = index
-        .find_function(&host.file(), Some("greet"), &[], None)
-        .expect("fixture function exists");
-    let mut editor = Editor::new(host.file());
-    let id = editor
-        .link(&index, &module.file(), &[])
-        .expect("module links");
+    let module = image(BUNDLED);
+    let mut editor = host();
+    let greet = function(&editor, "greet");
+    let id = editor.link(&module.file(), &[]).expect("module links");
     for kind in [HookKind::Before, HookKind::After, HookKind::Replace] {
         editor
-            .hook(&index, greet, kind, &exercising(id, kind))
+            .hook(greet, kind, &exercising(id, kind))
             .unwrap_or_else(|error| panic!("{kind:?} hook applies: {error}"));
     }
-    let mut output = Vec::new();
-    editor.write(&mut output).expect("hooked file writes");
-    let hooked = HermesImage::parse(Bytes::from_vec(output)).expect("hooked file parses");
+    let hooked = image(&written(&editor));
     let file = hooked.file();
     for id in 0..file.function_count() {
         let function = file
@@ -145,14 +113,7 @@ fn hooked_functions_jump_only_to_their_own_instructions() {
             .collect();
         let end = function.body_range().len() as i64;
         for inst in &code {
-            for (operand, value) in inst.operands() {
-                if !operand.kind.is_address() {
-                    continue;
-                }
-                let relative = match operand.kind.width() {
-                    1 => i64::from(value as u8 as i8),
-                    _ => i64::from(value as u32 as i32),
-                };
+            for (_, relative) in inst.jumps() {
                 let target = i64::from(inst.offset.expect("decoded")) + relative;
                 assert!(
                     starts.contains(&target) || target == end,
@@ -161,5 +122,42 @@ fn hooked_functions_jump_only_to_their_own_instructions() {
                 );
             }
         }
+    }
+}
+
+fn calling(module: crate::ModuleId, export: &str) -> Code {
+    Code {
+        blocks: vec![vec![Statement::Call {
+            into: SlotId(0),
+            module,
+            export: export.into(),
+            arguments: vec![Operand::Param(0)],
+        }]],
+    }
+}
+
+#[test]
+fn hooks_reach_the_exports_link_returns() {
+    let greet = function(&host(), "greet");
+    let modules: [(&[u8], &[&str]); 2] = [
+        (LITERALS, &["rows", "render"]),
+        (BUNDLED, &["isEnabled", "withProperty"]),
+    ];
+    for (bytes, exports) in modules {
+        let module = image(bytes);
+        let mut editor = host();
+        let id = editor.link(&module.file(), &[]).expect("module links");
+        for export in exports {
+            editor
+                .hook(greet, HookKind::Before, &calling(id, export))
+                .unwrap_or_else(|error| panic!("{export} is exported: {error}"));
+        }
+        assert!(matches!(
+            editor.hook(greet, HookKind::Before, &calling(id, "missing")),
+            Err(HermesError::Unsupported {
+                reason: Unsupported::Export(_),
+                ..
+            })
+        ));
     }
 }

@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result, bail, ensure};
 use reseam_apk::ResourceTable;
-use reseam_apk::reseam_dex::file::DexBytes;
 use reseam_apk::resources::{EntryValue, MapEntry};
+use reseam_dex::DexBytes;
 use sha2::{Digest, Sha256};
 
 // Android SDK platforms;android-36, revision 2. Hash the decompressed resource
@@ -73,7 +73,7 @@ pub fn generate(android_jar: &Path) -> Result<()> {
     }
     let output = format_catalogue(&table, &resources, &attributes)?;
     let destination =
-        crate::paths::workspace_root().join("crates/apk/src/axml/android_attrs/data.rs");
+        crate::paths::workspace_root().join("crates/apk/src/axml/android_attrs/generated/mod.rs");
     fs::create_dir_all(destination.parent().context("framework output directory")?)?;
     fs::write(destination, output)?;
     Ok(())

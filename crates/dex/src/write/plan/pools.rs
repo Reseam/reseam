@@ -5,26 +5,15 @@ use std::cmp::Ordering;
 
 use super::DexPart;
 use crate::file::DexFile;
-use crate::references::pool_len;
-use crate::types::{FieldId, MethodId, Pool, StringIdx, TypeIdx};
-use crate::write::sort::RemapTables;
-
-pub(crate) struct PoolOrder {
-    pub string: Vec<u32>,
-    pub type_: Vec<u32>,
-    pub proto: Vec<u32>,
-    pub field: Vec<u32>,
-    pub method: Vec<u32>,
-    pub call_site: Vec<u32>,
-    pub method_handle: Vec<u32>,
-}
+use crate::model::{FieldId, MethodId, PerPool, Pool, StringIdx, TypeIdx};
+use crate::write::remap::Remap;
 
 /// The order a DEX's pools are written in and how each source index maps to
-/// it; `None` for both when every pool is written whole and already in order.
+/// it; `None` when every pool is written whole and already in order.
 pub(super) fn order_pools(
     dex: &DexFile,
     part: Option<&DexPart>,
-) -> (Option<PoolOrder>, Option<RemapTables>) {
+) -> Option<(PerPool<Vec<u32>>, Remap)> {
     let compact = part.is_some();
     let candidates = |pool| pool_candidates(dex, part, pool);
 
@@ -60,7 +49,7 @@ pub(super) fn order_pools(
     });
     let proto_remap = protos.as_deref().map(|o| remap_of(o, dex.prototypes.len()));
     let map_proto =
-        |i: crate::types::ProtoIdx| proto_remap.as_ref().map_or(i.0, |r| r[i.0 as usize]);
+        |i: crate::model::ProtoIdx| proto_remap.as_ref().map_or(i.0, |r| r[i.0 as usize]);
 
     let fields =
         (compact || !dex.fields.is_sorted() || type_remap.is_some() || string_remap.is_some())
@@ -102,22 +91,19 @@ pub(super) fn order_pools(
             &method_remap,
         ]);
 
-    let (order, remap) = if already_sorted {
-        (None, None)
-    } else {
-        let order = PoolOrder {
-            string: strings.unwrap_or_else(|| candidates(Pool::String)),
-            type_: types.unwrap_or_else(|| candidates(Pool::Type)),
-            proto: protos.unwrap_or_else(|| candidates(Pool::Proto)),
-            field: fields.unwrap_or_else(|| candidates(Pool::Field)),
-            method: methods.unwrap_or_else(|| candidates(Pool::Method)),
-            call_site: candidates(Pool::CallSite),
-            method_handle: candidates(Pool::MethodHandle),
-        };
-        let remap = pool_remap(dex, &order);
-        (Some(order), Some(remap))
-    };
-    (order, remap)
+    if already_sorted {
+        return None;
+    }
+    let mut ordered = [strings, types, protos, fields, methods, None, None];
+    let order = PerPool::from_fn(|pool| {
+        ordered[pool as usize]
+            .take()
+            .unwrap_or_else(|| candidates(pool))
+    });
+    let remap = Remap::new(PerPool::from_fn(|pool| {
+        remap_of(&order[pool], dex.pool_len(pool))
+    }));
+    Some((order, remap))
 }
 
 fn remap_of(order: &[u32], len: usize) -> Vec<u32> {
@@ -135,19 +121,7 @@ fn is_identity(remap: &[u32]) -> bool {
 fn pool_candidates(dex: &DexFile, part: Option<&DexPart>, pool: Pool) -> Vec<u32> {
     match part {
         Some(part) => part.pools.members(pool).collect(),
-        None => (0..pool_len(dex, pool) as u32).collect(),
-    }
-}
-
-fn pool_remap(dex: &DexFile, order: &PoolOrder) -> RemapTables {
-    RemapTables {
-        string: remap_of(&order.string, dex.strings.len()),
-        type_: remap_of(&order.type_, dex.types.len()),
-        proto: remap_of(&order.proto, dex.prototypes.len()),
-        field: remap_of(&order.field, dex.fields.len()),
-        method: remap_of(&order.method, dex.methods.len()),
-        call_site: remap_of(&order.call_site, dex.call_sites.len()),
-        method_handle: remap_of(&order.method_handle, dex.method_handles.len()),
+        None => (0..dex.pool_len(pool) as u32).collect(),
     }
 }
 

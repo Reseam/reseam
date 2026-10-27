@@ -8,7 +8,7 @@ use crate::kotlin::handles::{method_ref, with_class_mut, with_method_mut};
 use crate::kotlin::link::{link_descriptors, value_types};
 use crate::kotlin::types::AnnotationItem;
 use boltffi::export;
-use reseam_apk::reseam_dex::{
+use reseam_dex::{
     AnnotationElement as DexAnnotationElement, AnnotationItem as DexAnnotationItem,
     AnnotationVisibility, DexFile,
 };
@@ -97,14 +97,14 @@ fn annotation_item(
     item: &AnnotationItem,
     dex: &mut DexFile,
     dex_index: usize,
-) -> reseam_apk::reseam_dex::Result<DexAnnotationItem> {
+) -> reseam_dex::Result<DexAnnotationItem> {
     Ok(DexAnnotationItem {
         visibility: match item.visibility {
             1 => AnnotationVisibility::Runtime,
             2 => AnnotationVisibility::System,
             0 => AnnotationVisibility::Build,
             value => {
-                return Err(reseam_apk::reseam_dex::DexError::Invalid {
+                return Err(reseam_dex::DexError::Invalid {
                     section: "annotation visibility",
                     reason: format!("unknown value {value}"),
                 });
@@ -120,6 +120,6 @@ fn annotation_item(
                     value: import_value(dex, Some(dex_index), &element.value)?,
                 })
             })
-            .collect::<reseam_apk::reseam_dex::Result<_>>()?,
+            .collect::<reseam_dex::Result<_>>()?,
     })
 }

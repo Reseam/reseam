@@ -7,7 +7,7 @@ use crate::kotlin::handles::with_class_mut;
 use crate::kotlin::link::{link_descriptors, value_types};
 use crate::kotlin::types::{EncodedVal, NewField};
 use boltffi::export;
-use reseam_apk::reseam_dex::{AccessFlags, DexFile, EncodedField, EncodedValue, FieldIdx};
+use reseam_dex::{AccessFlags, DexFile, EncodedField, EncodedValue, FieldIdx};
 
 #[export]
 pub fn add_field(c: u32, field: NewField) {

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use reseam_apk::reseam_dex::{CodeItem, DexFile, EncodedMethod, Instruction, MethodKind};
+use reseam_dex::{CodeItem, DexFile, EncodedMethod, Instruction};
 
 use super::{
     changed, checked, class_location, method_changed, method_location, record_failure, with_ctx,
@@ -86,10 +86,5 @@ pub(crate) fn log_mutation<R>(
 
 pub(crate) fn method_ref(dex: &DexFile, m: MethodLocation) -> Option<&EncodedMethod> {
     let data = dex.classes().resident(m.class_idx)?.class_data.as_ref()?;
-    let list = if m.kind == MethodKind::Virtual {
-        &data.virtual_methods
-    } else {
-        &data.direct_methods
-    };
-    list.get(m.method_idx)
+    data.methods(m.kind).get(m.method_idx)
 }

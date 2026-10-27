@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::header::read_header_at;
+use crate::DexBytes;
 use crate::error::Result;
-use crate::file::{ClassTable, DexBytes, DexFile, FileTable, IdTable, StringPool};
+use crate::file::{ClassTable, DexFile, FileTable, HiddenApiData, IdTable, StringPool};
+use crate::options::ParseOptions;
 use crate::read::{read_u16, read_u32};
-use crate::types::header::ParseOptions;
 use tracing::{debug, instrument};
 
 #[instrument(level = "debug", skip(buf), fields(buffer_len = buf.len(), classes = ?opts.classes))]
@@ -47,10 +48,9 @@ pub fn parse_container_with_bytes(raw: DexBytes, opts: ParseOptions) -> Result<V
 
     let mut magic = [0u8; 8];
     magic.copy_from_slice(&buf[..8]);
-    let version = crate::types::header::DexVersion::from_magic(magic);
+    let version = crate::model::header::DexVersion::from_magic(magic);
 
-    let is_container =
-        version.is_some_and(super::super::types::header::DexVersion::is_container_format);
+    let is_container = version.is_some_and(crate::model::header::DexVersion::is_container_format);
     if !is_container {
         let dex = parse_single_with_raw(raw, opts, None)?;
         return Ok(vec![dex]);
@@ -147,15 +147,15 @@ fn parse_single_with_raw(
     if header.version.supports_hidden_api()
         && let Some((off, _)) = hidden_api_off
     {
-        dex.hidden_api = Some(super::hidden_api::read_hidden_api(
+        dex.hidden_api = Some(HiddenApiData::from_raw(
             raw.clone(),
             off as usize,
-            &dex,
+            &dex.classes,
             opts,
         )?);
     }
 
-    if !(opts.classes == crate::types::header::Loading::Deferred) {
+    if !(opts.classes == crate::options::Loading::Deferred) {
         dex.classes.materialize_all(opts)?;
         for class in dex.classes.iter_resident() {
             crate::references::validate_class(&dex, class)?;

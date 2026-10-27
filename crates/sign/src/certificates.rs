@@ -1,27 +1,29 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use crate::block::{BLOCK_ID_V2, BLOCK_ID_V3, Reader, find_pair};
 use crate::error::{Result, invalid};
-use crate::signing_block::{self, BLOCK_ID_V2, BLOCK_ID_V3, Reader};
+use crate::zip_layout;
 
 /// Reads each signer's leaf certificate, choosing v3 when present, otherwise v2.
 /// Unsigned and JAR-only signed archives return an empty list. Malformed block
 /// envelopes, pair framing and certificate framing are errors; signatures and
 /// certificate trust are not verified by this extraction operation.
 pub fn signer_certificates(apk: &[u8]) -> Result<Vec<Vec<u8>>> {
-    let Some(block) = signing_block::block(apk)? else {
+    let range = zip_layout::sections(apk)?.signing_block();
+    if range.is_empty() {
         return Ok(Vec::new());
-    };
-    let v3 = signing_block::find_pair(block, BLOCK_ID_V3);
-    let signers = match v3 {
+    }
+    let block = &apk[range.start as usize..range.end as usize];
+    let signers = match find_pair(block, BLOCK_ID_V3) {
         Ok(Some(signers)) => signers,
-        Ok(None) => match signing_block::find_pair(block, BLOCK_ID_V2)? {
+        Ok(None) => match find_pair(block, BLOCK_ID_V2)? {
             Some(signers) => signers,
             None => return Ok(Vec::new()),
         },
         Err(error) => {
             // Android can use v2 when a later malformed pair prevents locating v3.
-            let Some(signers) = signing_block::find_pair(block, BLOCK_ID_V2)? else {
+            let Some(signers) = find_pair(block, BLOCK_ID_V2)? else {
                 return Err(error);
             };
             signers

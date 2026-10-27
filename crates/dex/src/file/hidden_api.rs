@@ -4,25 +4,14 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 
-use super::DexBytes;
-use crate::error::Result;
-use crate::types::TypeIdx;
-use crate::types::header::ParseOptions;
-use crate::types::hidden_api::ClassHiddenApiFlags;
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct FlagClass {
-    pub data_offset: u32,
-    pub flags_offset: usize,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct FlagSource {
-    pub bytes: DexBytes,
-    pub end: usize,
-    pub options: ParseOptions,
-    pub classes: Vec<(TypeIdx, FlagClass)>,
-}
+use super::ClassTable;
+use crate::DexBytes;
+use crate::error::{Result, invalid, require_len};
+use crate::model::TypeIdx;
+use crate::model::hidden_api::ClassHiddenApiFlags;
+use crate::options::ParseOptions;
+use crate::read::hidden_api::{FlagClass, FlagSource, read_class_flags};
+use crate::read::read_u32;
 
 /// Hidden-API member flags keyed by their class and member identities.
 /// Source records remain file-backed; each lookup decodes at most one class.
@@ -33,12 +22,67 @@ pub struct HiddenApiData {
 }
 
 impl HiddenApiData {
-    pub(crate) fn from_source(mut source: FlagSource) -> Self {
-        source.classes.sort_unstable_by_key(|&(type_, _)| type_);
-        Self {
+    /// Indexes the item at `offset` by class type and validates every class's flags.
+    pub(crate) fn from_raw(
+        bytes: DexBytes,
+        offset: usize,
+        classes: &ClassTable,
+        options: ParseOptions,
+    ) -> Result<Self> {
+        let buf = bytes.as_bytes();
+        let size = read_u32(buf, offset)? as usize;
+        let table_size = classes
+            .len()
+            .checked_add(1)
+            .and_then(|count| count.checked_mul(4))
+            .ok_or_else(|| invalid("hidden API", "table size overflow"))?;
+        if size < table_size {
+            return Err(invalid(
+                "hidden API",
+                "item is smaller than its class offset table",
+            ));
+        }
+        require_len(buf, offset, size, "hidden API")?;
+        let mut indexed = Vec::new();
+        for i in 0..classes.len() {
+            let relative = read_u32(buf, offset + 4 + i * 4)? as usize;
+            if relative == 0 {
+                continue;
+            }
+            if relative > size {
+                return Err(invalid(
+                    "hidden API",
+                    "class flag offset is outside item data",
+                ));
+            }
+            let definition = classes
+                .raw_def(i)
+                .expect("hidden API records are indexed before classes are materialized");
+            if definition.class_data_off == 0 {
+                continue;
+            }
+            indexed.push((
+                definition.header().class_type,
+                FlagClass {
+                    data_offset: definition.class_data_off,
+                    flags_offset: offset + relative,
+                },
+            ));
+        }
+        indexed.sort_unstable_by_key(|&(type_, _)| type_);
+        let source = FlagSource {
+            bytes,
+            end: offset + size,
+            options,
+            classes: indexed,
+        };
+        for &(_, class) in &source.classes {
+            read_class_flags(&source, class)?;
+        }
+        Ok(Self {
             source: Some(source),
             owned: BTreeMap::new(),
-        }
+        })
     }
 
     #[cfg(test)]
@@ -64,7 +108,6 @@ impl HiddenApiData {
         else {
             return Ok(None);
         };
-        crate::read::hidden_api::read_class_flags(source, source.classes[index].1)
-            .map(|flags| Some(Cow::Owned(flags)))
+        read_class_flags(source, source.classes[index].1).map(|flags| Some(Cow::Owned(flags)))
     }
 }

@@ -1,21 +1,19 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-mod class_access;
 mod class_ops;
 mod classes;
-pub mod container;
 pub(crate) mod hidden_api;
+pub(crate) mod memory;
 pub use hidden_api::HiddenApiData;
 mod ids;
 mod interning;
 mod items;
-pub use items::{FileRecord, FileTable};
+pub(crate) use items::FileTable;
 mod lookup;
-mod pattern;
 mod pools;
-mod ref_index;
-mod scan;
+mod sorted_index;
+mod static_values;
 mod strings;
 #[cfg(test)]
 mod tests;
@@ -23,23 +21,16 @@ mod type_lookups;
 mod undo;
 mod version;
 
-pub use classes::{ClassHeader, ClassTable, RawClassDef};
+use crate::DexBytes;
+use crate::search::index::{PoolKeys, RefIndex};
+pub use classes::ClassTable;
 pub use ids::{IdRecord, IdTable};
-pub(crate) use ids::{read_type_list, validate_type_list};
-use ref_index::RefIndex;
-pub use ref_index::{RefKey, RefQuery};
-pub use reseam_storage::Bytes as DexBytes;
 pub use strings::StringPool;
 
-use crate::types::header::{DexHeader, ParseOptions};
-use crate::types::method_handle::{CallSiteItem, MethodHandle};
-use crate::types::{FieldId, MethodId, Prototype, StringIdx};
-
-pub use pattern::{InstructionPattern, OpcodeMatcher};
-pub use scan::{
-    InstructionHit, InstructionSite, MemberCounts, MethodHit, MethodSummary, MethodView,
-    summarize_resident,
-};
+use crate::model::header::DexHeader;
+use crate::model::method_handle::{CallSiteItem, MethodHandle};
+use crate::model::{FieldId, MethodId, Prototype, StringIdx};
+use crate::options::ParseOptions;
 
 /// A DEX file whose tables are views over the mapped file. Nothing is decoded
 /// until it is read, and only what a patch mutates becomes resident.
@@ -60,7 +51,7 @@ pub struct DexFile {
     ref_index: std::sync::OnceLock<RefIndex>,
     type_lookups: type_lookups::TypeLookups,
     dirty: bool,
-    write_options: crate::write::WriteOptions,
+    write_options: crate::options::WriteOptions,
     journal: reseam_journal::Journal<undo::DexPart, undo::DexUndo>,
 }
 
@@ -82,7 +73,7 @@ impl DexFile {
             ref_index: std::sync::OnceLock::new(),
             type_lookups: type_lookups::TypeLookups::default(),
             dirty: false,
-            write_options: crate::write::WriteOptions::default(),
+            write_options: crate::options::WriteOptions::default(),
             journal: reseam_journal::Journal::default(),
         }
     }
@@ -101,12 +92,12 @@ impl DexFile {
         }
     }
 
-    pub fn write_options(&self) -> crate::write::WriteOptions {
+    pub fn write_options(&self) -> crate::options::WriteOptions {
         self.write_options
     }
 
     /// Changes serialization policy and marks the DEX dirty when it changes.
-    pub fn set_write_options(&mut self, options: crate::write::WriteOptions) {
+    pub fn set_write_options(&mut self, options: crate::options::WriteOptions) {
         if self.write_options != options {
             self.touch();
             self.journal.record(undo::DexPart::WriteOptions, || {
@@ -150,5 +141,28 @@ impl DexFile {
             tracing::debug!(file_size = self.header.file_size, "dex marked dirty");
         }
         self.dirty = true;
+    }
+
+    pub(crate) fn ref_index(&self) -> crate::error::Result<&RefIndex> {
+        if let Some(index) = self.ref_index.get() {
+            return Ok(index);
+        }
+        let keys = PoolKeys::new(self.methods.len(), self.fields.len(), self.strings.len());
+        let index = RefIndex::build(&self.classes, keys, self.parse_options)?;
+        self.release_pages();
+        Ok(self.ref_index.get_or_init(|| index))
+    }
+
+    /// Drops the search caches: the reference index, the cached references of
+    /// resident classes and remembered type lookups. The next search builds
+    /// them again.
+    pub fn release_search_caches(&mut self) {
+        self.ref_index.take();
+        self.classes.release_refs();
+        self.type_lookups.clear();
+    }
+
+    pub fn ref_index_heap_bytes(&self) -> u64 {
+        self.ref_index.get().map_or(0, RefIndex::heap_bytes)
     }
 }

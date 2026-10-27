@@ -7,8 +7,8 @@ use std::ops::Range;
 use rayon::prelude::*;
 use ring::digest::{Context, SHA256};
 
-use super::signer;
 use crate::error::{Result, invalid, io_at};
+use crate::zip_layout::patch_cd_offset;
 
 pub(super) const DIGEST_LEN: usize = 32;
 const CHUNK_SIZE: usize = 1 << 20;
@@ -24,7 +24,7 @@ pub(super) fn content_digest(
     contents_len: u32,
 ) -> Result<Digest> {
     // Android hashes the EOCD with the offset it would have without the signing block.
-    let eocd = signer::patch_cd_offset(eocd, contents_len);
+    let eocd = patch_cd_offset(eocd, contents_len);
     contents.extend(central_dir);
     contents.extend(chunk_digests(&eocd));
     let count = u32::try_from(contents.len())

@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 
 use super::ClassTable;
-use crate::types::TypeIdx;
+use crate::model::TypeIdx;
 
 #[derive(Debug, Clone)]
 pub(super) struct TypeIndex {

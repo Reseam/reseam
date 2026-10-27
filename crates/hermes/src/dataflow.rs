@@ -3,10 +3,10 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
-use crate::Function;
 use crate::error::{Result, invalid};
-use crate::opcode::{Instruction, Op, OperandKind};
-use crate::parse::switch_table;
+use crate::function::Function;
+use crate::opcode::{Instruction, Op};
+use crate::switch::switch_table;
 
 /// Values known to be held by registers, by register number.
 pub(crate) type Registers<V> = BTreeMap<u32, V>;
@@ -49,13 +49,36 @@ pub(crate) fn register_states<V: Copy + Eq>(
             flow(&mut states, &mut work, next, &after);
         }
         for handler in handlers.iter().filter(|h| h.covers(offset)) {
-            let next = *indices
-                .get(&handler.target)
-                .ok_or_else(|| invalid(offset as usize, "invalid exception target"))?;
+            let next = *indices.get(&handler.target).ok_or_else(|| {
+                invalid(
+                    function.header.offset as usize + handler.target as usize,
+                    "exception target is not an instruction",
+                )
+            })?;
             flow(&mut states, &mut work, next, &thrown);
         }
     }
     Ok(states)
+}
+
+/// Follows register values through `code` in order, ignoring control flow. `step` sees each
+/// instruction with the values known before it and gives the value it leaves in its first operand
+/// register; every other register the instruction writes becomes unknown.
+pub(crate) fn straight_line<V>(
+    code: &[Instruction],
+    mut step: impl FnMut(&Instruction, &Registers<V>) -> Result<Option<V>>,
+) -> Result<()> {
+    let mut registers = Registers::new();
+    for inst in code {
+        let value = step(inst, &registers)?;
+        for written in inst.written_registers() {
+            registers.remove(&written);
+        }
+        if let Some(value) = value {
+            registers.insert(inst.values[0] as u32, value);
+        }
+    }
+    Ok(())
 }
 
 /// Merges `state` into the entry state of `next`, queueing it when that changes.
@@ -86,22 +109,17 @@ fn successors(
     let inst = &code[index];
     let origin = i64::from(inst.offset.expect("analysed instructions are decoded"));
     let mut result = Vec::new();
+    let start = function.header.offset as usize;
     let mut add = |relative: i64| -> Result<()> {
         let target = u32::try_from(origin + relative)
-            .map_err(|_| invalid(origin as usize, "branch target out of range"))?;
-        result.push(
-            *indices
-                .get(&target)
-                .ok_or_else(|| invalid(target as usize, "branch outside instructions"))?,
-        );
+            .ok()
+            .and_then(|target| indices.get(&target))
+            .ok_or_else(|| invalid(start + origin as usize, "branch outside instructions"))?;
+        result.push(*target);
         Ok(())
     };
-    for (operand, value) in inst.operands() {
-        match operand.kind {
-            OperandKind::Addr8 => add(i64::from(value as i8))?,
-            OperandKind::Addr32 => add(i64::from(value as i32))?,
-            _ => {}
-        }
+    for (_, relative) in inst.jumps() {
+        add(relative)?;
     }
     if let Some(table) = switch_table(function, inst)? {
         for (_, target) in table.entries() {

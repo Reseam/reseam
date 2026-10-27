@@ -2,73 +2,27 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::class::read_class_skeleton_at;
-use super::read_u32;
+use crate::DexBytes;
 use crate::encoding::leb128::read_uleb128;
-use crate::error::{Result, invalid, require_len};
-use crate::file::hidden_api::{FlagClass, FlagSource};
-use crate::file::{DexBytes, DexFile, HiddenApiData};
-use crate::types::header::ParseOptions;
-use crate::types::hidden_api::{ClassHiddenApiFlags, HiddenApiFlags};
+use crate::error::Result;
+use crate::model::TypeIdx;
+use crate::model::hidden_api::{ClassHiddenApiFlags, HiddenApiFlags};
+use crate::options::ParseOptions;
 
-pub(crate) fn read_hidden_api(
-    raw: DexBytes,
-    offset: usize,
-    dex: &DexFile,
-    options: ParseOptions,
-) -> Result<HiddenApiData> {
-    let buf = raw.as_bytes();
-    let size = read_u32(buf, offset)? as usize;
-    let table_size = dex
-        .classes
-        .len()
-        .checked_add(1)
-        .and_then(|count| count.checked_mul(4))
-        .ok_or_else(|| invalid("hidden API", "table size overflow"))?;
-    if size < table_size {
-        return Err(invalid(
-            "hidden API",
-            "item is smaller than its class offset table",
-        ));
-    }
-    require_len(buf, offset, size, "hidden API")?;
-    let end = offset + size;
-    let mut classes = Vec::new();
-    for i in 0..dex.classes.len() {
-        let relative = read_u32(buf, offset + 4 + i * 4)? as usize;
-        if relative == 0 {
-            continue;
-        }
-        if relative > size {
-            return Err(invalid(
-                "hidden API",
-                "class flag offset is outside item data",
-            ));
-        }
-        let definition = dex
-            .classes
-            .raw_def(i)
-            .expect("hidden API records are indexed before classes are materialized");
-        if definition.class_data_off == 0 {
-            continue;
-        }
-        classes.push((
-            definition.header().class_type,
-            FlagClass {
-                data_offset: definition.class_data_off,
-                flags_offset: offset + relative,
-            },
-        ));
-    }
-    let source = FlagSource {
-        bytes: raw,
-        end,
-        options,
-        classes,
-    };
-    for &(_, class) in &source.classes {
-        read_class_flags(&source, class)?;
-    }
-    Ok(HiddenApiData::from_source(source))
+/// Where one class's member flags start, and the class data listing its members.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct FlagClass {
+    pub data_offset: u32,
+    pub flags_offset: usize,
+}
+
+/// A `hiddenapi_class_data_item` left in the file, its classes sorted by type.
+#[derive(Debug, Clone)]
+pub(crate) struct FlagSource {
+    pub bytes: DexBytes,
+    pub end: usize,
+    pub options: ParseOptions,
+    pub classes: Vec<(TypeIdx, FlagClass)>,
 }
 
 pub(crate) fn read_class_flags(

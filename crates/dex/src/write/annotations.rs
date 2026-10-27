@@ -8,211 +8,191 @@ use super::plan::WritePlan;
 use super::sink::DexSink;
 use crate::encoding::leb128::write_uleb128;
 use crate::error::Result;
+use crate::model::annotation::{AnnotationItem, AnnotationsDirectory};
+use crate::model::map::{
+    TYPE_ANNOTATION_ITEM, TYPE_ANNOTATION_SET_ITEM, TYPE_ANNOTATION_SET_REF_LIST,
+    TYPE_ANNOTATIONS_DIRECTORY_ITEM,
+};
 
-struct PendingClassAnnData {
-    class_ann_set: Option<usize>,
-    field_ann: Vec<(u32, usize)>,
-    method_ann: Vec<(u32, usize)>,
-    param_ann: Vec<(u32, usize)>,
+/// A class's annotations directory, its sets and lists named by interned index.
+struct Directory {
+    class: Option<usize>,
+    fields: Vec<(u32, usize)>,
+    methods: Vec<(u32, usize)>,
+    parameters: Vec<(u32, usize)>,
 }
 
+/// Annotation items, sets and parameter lists, each written once however
+/// many members share it. Items stream out as they are first seen; sets and
+/// lists are written after them, since they point at items.
+struct AnnotationInterner {
+    items: StreamInterner,
+    sets: ByteInterner,
+    ref_lists: Vec<Vec<Option<usize>>>,
+    encoded: Vec<u8>,
+}
+
+impl AnnotationInterner {
+    fn directory<S: DexSink>(
+        &mut self,
+        w: &mut DexWriter<S>,
+        dir: &AnnotationsDirectory,
+    ) -> Result<Directory> {
+        let class = (!dir.class.is_empty())
+            .then(|| self.set(w, &dir.class))
+            .transpose()?;
+        let fields = dir
+            .fields
+            .iter()
+            .map(|(field, items)| Ok((field.0, self.set(w, items)?)))
+            .collect::<Result<_>>()?;
+        let methods = dir
+            .methods
+            .iter()
+            .map(|(method, items)| Ok((method.0, self.set(w, items)?)))
+            .collect::<Result<_>>()?;
+        let mut parameters = Vec::with_capacity(dir.parameters.len());
+        for (method, params) in &dir.parameters {
+            let list = params
+                .iter()
+                .map(|items| (!items.is_empty()).then(|| self.set(w, items)).transpose())
+                .collect::<Result<_>>()?;
+            parameters.push((method.0, self.ref_lists.len()));
+            self.ref_lists.push(list);
+        }
+        Ok(Directory {
+            class,
+            fields,
+            methods,
+            parameters,
+        })
+    }
+
+    fn set<S: DexSink>(&mut self, w: &mut DexWriter<S>, items: &[AnnotationItem]) -> Result<usize> {
+        let mut key = Vec::with_capacity(items.len() * 4);
+        for item in items {
+            self.encoded.clear();
+            self.encoded.push(item.visibility.to_u8());
+            write_uleb128(&mut self.encoded, item.type_.0);
+            write_uleb128(&mut self.encoded, item.elements.len() as u32);
+            for element in &item.elements {
+                write_uleb128(&mut self.encoded, element.name.0);
+                write_encoded_value(&mut self.encoded, &element.value);
+            }
+            let offset = self.items.intern(&mut w.sink, &self.encoded)?;
+            key.extend_from_slice(&offset.to_le_bytes());
+        }
+        self.sets.intern(&key)
+    }
+}
+
+/// Writes every class's annotations, returning each class's directory
+/// offset, zero for a class without one.
 pub(crate) fn write_annotations<S: DexSink>(
     w: &mut DexWriter<S>,
     plan: &WritePlan<'_>,
 ) -> Result<Vec<u32>> {
-    let ann_items_start = w.pos();
-    let mut items = StreamInterner::default();
-    let mut sets = ByteInterner::new()?;
-    let mut annotation_ref_lists: Vec<Vec<Option<usize>>> = Vec::new();
-    let mut encoded = Vec::new();
-    let mut pending_class_ann_datas = Vec::with_capacity(plan.classes.len());
-
-    for k in 0..plan.classes.len() {
-        if let Some(ann_dir) = plan.class_annotations(k)? {
-            let mut cad = PendingClassAnnData {
-                class_ann_set: None,
-                field_ann: Vec::new(),
-                method_ann: Vec::new(),
-                param_ann: Vec::new(),
-            };
-
-            if !ann_dir.class.is_empty() {
-                cad.class_ann_set = Some(intern_annotation_set(
-                    w,
-                    &ann_dir.class,
-                    &mut items,
-                    &mut sets,
-                    &mut encoded,
-                )?);
-            }
-
-            for (field_idx, anns) in &ann_dir.fields {
-                let set_idx = intern_annotation_set(w, anns, &mut items, &mut sets, &mut encoded)?;
-                cad.field_ann.push((field_idx.0, set_idx));
-            }
-
-            for (method_idx, anns) in &ann_dir.methods {
-                let set_idx = intern_annotation_set(w, anns, &mut items, &mut sets, &mut encoded)?;
-                cad.method_ann.push((method_idx.0, set_idx));
-            }
-
-            for (method_idx, param_anns) in &ann_dir.parameters {
-                let mut set_idxs = Vec::new();
-                for anns in param_anns {
-                    if anns.is_empty() {
-                        set_idxs.push(None);
-                    } else {
-                        let set_idx =
-                            intern_annotation_set(w, anns, &mut items, &mut sets, &mut encoded)?;
-                        set_idxs.push(Some(set_idx));
-                    }
-                }
-                let ref_list_idx = annotation_ref_lists.len();
-                annotation_ref_lists.push(set_idxs);
-                cad.param_ann.push((method_idx.0, ref_list_idx));
-            }
-
-            pending_class_ann_datas.push(Some(cad));
-        } else {
-            pending_class_ann_datas.push(None);
-        }
-    }
-
-    if items.len() > 0 {
-        w.map_entries.push(crate::types::map::MapItem {
-            type_code: crate::types::map::TYPE_ANNOTATION_ITEM,
-            size: items.len() as u32,
-            offset: ann_items_start,
-        });
-    }
-
-    let annotation_set_offsets = write_sets(w, &sets)?;
-
-    let mut annotation_ref_list_offsets = Vec::with_capacity(annotation_ref_lists.len());
-    if !annotation_ref_lists.is_empty() {
-        w.align(4);
-        let annotation_set_ref_first_off = w.pos();
-        for ref_list in &annotation_ref_lists {
-            let ref_list_off = w.pos();
-            w.write_u32(ref_list.len() as u32);
-            for set_idx in ref_list {
-                let set_off = set_idx.map_or(0, |idx| annotation_set_offsets[idx]);
-                w.write_u32(set_off);
-            }
-            annotation_ref_list_offsets.push(ref_list_off);
-        }
-        w.map_entries.push(crate::types::map::MapItem {
-            type_code: crate::types::map::TYPE_ANNOTATION_SET_REF_LIST,
-            size: annotation_ref_lists.len() as u32,
-            offset: annotation_set_ref_first_off,
-        });
-    }
-
-    Ok(write_directories(
-        w,
-        pending_class_ann_datas,
-        &annotation_set_offsets,
-        &annotation_ref_list_offsets,
-    ))
+    let items_start = w.pos();
+    let mut interner = AnnotationInterner {
+        items: StreamInterner::default(),
+        sets: ByteInterner::new()?,
+        ref_lists: Vec::new(),
+        encoded: Vec::new(),
+    };
+    let directories = (0..plan.classes.len())
+        .map(|k| {
+            plan.class_annotations(k)?
+                .map(|dir| interner.directory(w, &dir))
+                .transpose()
+        })
+        .collect::<Result<Vec<_>>>()?;
+    w.map_section(
+        TYPE_ANNOTATION_ITEM,
+        items_start,
+        interner.items.len() as u32,
+    );
+    let sets = write_sets(w, &interner.sets)?;
+    let ref_lists = write_ref_lists(w, &interner.ref_lists, &sets);
+    Ok(write_directories(w, directories, &sets, &ref_lists))
 }
 
 fn write_sets<S: DexSink>(w: &mut DexWriter<S>, sets: &ByteInterner) -> Result<Vec<u32>> {
-    let mut annotation_set_offsets = Vec::with_capacity(sets.len());
-    if !sets.is_empty() {
-        w.align(4);
-        let annotation_set_first_off = w.pos();
-        for set_idx in 0..sets.len() {
-            let mut set = Vec::new();
-            sets.get(set_idx, &mut set)?;
-            let set_off = w.pos();
-            w.write_u32((set.len() / 4) as u32);
-            for item_off in set.as_chunks::<4>().0 {
-                w.write_u32(u32::from_le_bytes(*item_off));
-            }
-            annotation_set_offsets.push(set_off);
-        }
-        w.map_entries.push(crate::types::map::MapItem {
-            type_code: crate::types::map::TYPE_ANNOTATION_SET_ITEM,
-            size: sets.len() as u32,
-            offset: annotation_set_first_off,
-        });
+    if sets.is_empty() {
+        return Ok(Vec::new());
     }
+    w.align(4);
+    let start = w.pos();
+    let mut offsets = Vec::with_capacity(sets.len());
+    let mut set = Vec::new();
+    for index in 0..sets.len() {
+        sets.get(index, &mut set)?;
+        offsets.push(w.pos());
+        w.write_u32((set.len() / 4) as u32);
+        w.write(&set);
+    }
+    w.map_section(TYPE_ANNOTATION_SET_ITEM, start, sets.len() as u32);
+    Ok(offsets)
+}
 
-    Ok(annotation_set_offsets)
+fn write_ref_lists<S: DexSink>(
+    w: &mut DexWriter<S>,
+    lists: &[Vec<Option<usize>>],
+    sets: &[u32],
+) -> Vec<u32> {
+    if lists.is_empty() {
+        return Vec::new();
+    }
+    w.align(4);
+    let start = w.pos();
+    let offsets = lists
+        .iter()
+        .map(|list| {
+            let offset = w.pos();
+            w.write_u32(list.len() as u32);
+            for set in list {
+                w.write_u32(set.map_or(0, |set| sets[set]));
+            }
+            offset
+        })
+        .collect();
+    w.map_section(TYPE_ANNOTATION_SET_REF_LIST, start, lists.len() as u32);
+    offsets
 }
 
 fn write_directories<S: DexSink>(
     w: &mut DexWriter<S>,
-    pending_class_ann_datas: Vec<Option<PendingClassAnnData>>,
-    annotation_set_offsets: &[u32],
-    annotation_ref_list_offsets: &[u32],
+    directories: Vec<Option<Directory>>,
+    sets: &[u32],
+    ref_lists: &[u32],
 ) -> Vec<u32> {
-    let mut class_ann_datas = Vec::with_capacity(pending_class_ann_datas.len());
-    let annotation_dir_count = pending_class_ann_datas
-        .iter()
-        .filter(|cad| cad.is_some())
-        .count() as u32;
-    if annotation_dir_count > 0 {
-        w.align(4);
-        let annotation_dir_first_off = w.pos();
-        for cad in pending_class_ann_datas {
-            if let Some(cad) = cad {
-                let dir_off = w.pos();
-                w.write_u32(
-                    cad.class_ann_set
-                        .map_or(0, |idx| annotation_set_offsets[idx]),
-                );
-                w.write_u32(cad.field_ann.len() as u32);
-                w.write_u32(cad.method_ann.len() as u32);
-                w.write_u32(cad.param_ann.len() as u32);
-                for (member, set) in cad.field_ann.into_iter().chain(cad.method_ann) {
-                    w.write_u32(member);
-                    w.write_u32(annotation_set_offsets[set]);
-                }
-                for (member, list) in cad.param_ann {
-                    w.write_u32(member);
-                    w.write_u32(annotation_ref_list_offsets[list]);
-                }
-                class_ann_datas.push(dir_off);
-            } else {
-                class_ann_datas.push(0);
+    let count = directories.iter().flatten().count();
+    if count == 0 {
+        return vec![0; directories.len()];
+    }
+    w.align(4);
+    let start = w.pos();
+    let offsets = directories
+        .into_iter()
+        .map(|directory| {
+            let Some(directory) = directory else {
+                return 0;
+            };
+            let offset = w.pos();
+            w.write_u32(directory.class.map_or(0, |set| sets[set]));
+            w.write_u32(directory.fields.len() as u32);
+            w.write_u32(directory.methods.len() as u32);
+            w.write_u32(directory.parameters.len() as u32);
+            for (member, set) in directory.fields.into_iter().chain(directory.methods) {
+                w.write_u32(member);
+                w.write_u32(sets[set]);
             }
-        }
-        w.map_entries.push(crate::types::map::MapItem {
-            type_code: crate::types::map::TYPE_ANNOTATIONS_DIRECTORY_ITEM,
-            size: annotation_dir_count,
-            offset: annotation_dir_first_off,
-        });
-    } else {
-        class_ann_datas.resize(pending_class_ann_datas.len(), 0);
-    }
-
-    class_ann_datas
-}
-
-fn serialize_annotation_item(out: &mut Vec<u8>, item: &crate::types::annotation::AnnotationItem) {
-    out.clear();
-    out.push(item.visibility.to_u8());
-    write_uleb128(out, item.type_.0);
-    write_uleb128(out, item.elements.len() as u32);
-    for elem in &item.elements {
-        write_uleb128(out, elem.name.0);
-        write_encoded_value(out, &elem.value);
-    }
-}
-
-fn intern_annotation_set<S: DexSink>(
-    w: &mut DexWriter<S>,
-    annotations: &[crate::types::annotation::AnnotationItem],
-    items: &mut StreamInterner,
-    sets: &mut ByteInterner,
-    encoded: &mut Vec<u8>,
-) -> Result<usize> {
-    let mut key = Vec::with_capacity(annotations.len() * 4);
-    for item in annotations {
-        serialize_annotation_item(encoded, item);
-        let offset = items.intern(&mut w.sink, encoded)?;
-        key.extend_from_slice(&offset.to_le_bytes());
-    }
-    sets.intern(&key)
+            for (member, list) in directory.parameters {
+                w.write_u32(member);
+                w.write_u32(ref_lists[list]);
+            }
+            offset
+        })
+        .collect();
+    w.map_section(TYPE_ANNOTATIONS_DIRECTORY_ITEM, start, count as u32);
+    offsets
 }

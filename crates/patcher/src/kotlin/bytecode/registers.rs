@@ -5,12 +5,29 @@ use std::sync::Arc;
 
 use crate::kotlin::handles::record_failure;
 use boltffi::export;
-use reseam_apk::reseam_dex::{self as dex, AccessFlags};
+use reseam_dex::{self as dex, AccessFlags};
 
 use crate::kotlin::handles::{code_mut, method_mut, with_code, with_instruction, with_method_mut};
 use crate::kotlin::types::{MethodEdit, RegisterWriters};
 
 use super::logged;
+
+/// The register words a method with prototype `proto` and these flags is entered with.
+pub(super) fn incoming_words(proto: &str, flags: AccessFlags) -> dex::Result<u16> {
+    let receiver = if flags.contains(AccessFlags::STATIC) {
+        dex::Receiver::Absent
+    } else {
+        dex::Receiver::Present
+    };
+    let words: u32 = dex::argument_kinds(proto, receiver)?
+        .into_iter()
+        .map(|kind| u32::from(kind.words()))
+        .sum();
+    u16::try_from(words).map_err(|_| dex::DexError::Invalid {
+        section: "invoke",
+        reason: "incoming register words exceed 65535".into(),
+    })
+}
 
 pub(super) fn incoming_types(
     dex: &dex::DexFile,
@@ -55,13 +72,7 @@ pub fn grow_local_registers(
         let incoming = incoming_types(dex, id, flags);
         let indices = logged(
             "grow method registers",
-            dex::types::register_allocation::grow_registers(
-                &mut code,
-                additional_locals,
-                &incoming,
-                &protected,
-                dex,
-            ),
+            dex::grow_registers(&mut code, additional_locals, &incoming, &protected, dex),
         );
         logged("restore method code", method_mut(dex, loc))?
             .expect("frame growth leaves the method slot in place")

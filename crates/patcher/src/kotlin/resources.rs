@@ -197,7 +197,7 @@ pub fn res_add_in(
         let parsed = if res_type == "string" {
             ResValue::string(res.table_mut().add_global_string(&value))
         } else {
-            match axml::infer_value(&value, Some(res)) {
+            match axml::parse_value(&value, None, Some(res)) {
                 Ok(AttributeValue::Value(parsed)) => parsed,
                 Ok(AttributeValue::Text) => return Ok(None),
                 Err(error) => return Err(error.to_string()),
