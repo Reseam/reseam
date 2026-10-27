@@ -21,7 +21,11 @@ pub trait IdRecord: Clone {
         Self: 'a;
 
     fn read(buf: &[u8], off: usize) -> Self;
-    fn validate(buf: &[u8], off: usize) -> Result<()>;
+    /// Checks what the record at `off` refers to; its table has already
+    /// bounds-checked the record itself.
+    fn validate(_buf: &[u8], _off: usize) -> Result<()> {
+        Ok(())
+    }
     fn key(&self) -> Self::Key<'_>;
 }
 

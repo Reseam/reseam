@@ -7,20 +7,12 @@ use crate::model::{FieldId, MethodId, ProtoIdx, Prototype, StringIdx, TypeIdx, T
 use crate::read::type_list::{read_type_list, validate_type_list};
 use reseam_bytes::{u16_at, u32_at};
 
-fn check(buf: &[u8], off: usize, size: usize) -> Result<()> {
-    Ok(reseam_bytes::require_len(buf, off, size, "id table entry")?)
-}
-
 impl IdRecord for StringIdx {
     const SIZE: usize = 4;
     type Key<'a> = u32;
 
     fn read(buf: &[u8], off: usize) -> Self {
         StringIdx(u32_at(buf, off))
-    }
-
-    fn validate(buf: &[u8], off: usize) -> Result<()> {
-        check(buf, off, Self::SIZE)
     }
 
     fn key(&self) -> u32 {
@@ -47,7 +39,6 @@ impl IdRecord for Prototype {
     }
 
     fn validate(buf: &[u8], off: usize) -> Result<()> {
-        check(buf, off, Self::SIZE)?;
         let params_off = u32_at(buf, off + 8);
         if params_off != 0 {
             validate_type_list(buf, params_off as usize)?;
@@ -72,10 +63,6 @@ impl IdRecord for FieldId {
         }
     }
 
-    fn validate(buf: &[u8], off: usize) -> Result<()> {
-        check(buf, off, Self::SIZE)
-    }
-
     fn key(&self) -> &Self {
         self
     }
@@ -91,10 +78,6 @@ impl IdRecord for MethodId {
             proto: ProtoIdx(u32::from(u16_at(buf, off + 2))),
             name: StringIdx(u32_at(buf, off + 4)),
         }
-    }
-
-    fn validate(buf: &[u8], off: usize) -> Result<()> {
-        check(buf, off, Self::SIZE)
     }
 
     fn key(&self) -> &Self {
