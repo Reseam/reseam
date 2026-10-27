@@ -3,7 +3,8 @@
 
 use boltffi::export;
 
-use super::handles::{record_failure, with_patch};
+use super::phase::with_patch;
+use super::run_state::record_failure;
 use crate::error::Result;
 use crate::options::{OptionValue, PatchOptions};
 

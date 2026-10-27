@@ -5,7 +5,8 @@ use boltffi::export;
 use reseam_dex::{DexFile, Instruction as DexInsn};
 
 use super::lookup::{opcode_patterns, query_opcode};
-use crate::kotlin::handles::{checked, with_code};
+use crate::kotlin::handles::with_code;
+use crate::kotlin::run_state::checked;
 
 fn position(m: u32, start: u32, matches: impl Fn(&DexFile, &DexInsn) -> bool) -> Option<u32> {
     with_code(m, |dex, code| {

@@ -10,7 +10,7 @@ use reseam_journal::Savepoint;
 use reseam_storage::ScratchDir;
 use serde::{Deserialize, Serialize};
 
-use super::handles::{ContextGuard, RunningBundle};
+use super::phase::{ContextGuard, RunningBundle};
 use super::savepoints::SavepointAction;
 use crate::bundle::BundleInfo;
 use crate::bundle::index::Declaration;

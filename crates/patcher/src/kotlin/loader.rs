@@ -11,10 +11,10 @@ use jni::objects::{Global, JClass, JObject, JObjectArray, JValue, JValueOwned};
 use jni::refs::IntoAuto;
 use jni::{Env, jni_sig, jni_str};
 
-use super::handles::RunningBundle;
 use super::jvm::{self, jvm_err};
 use super::metadata::{object, read_patch, string};
 use super::patch::load_class;
+use super::phase::RunningBundle;
 use crate::bundle::BundleInfo;
 use crate::bundle::index::{Declaration, MemberKind};
 use crate::error::Result;

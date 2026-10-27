@@ -3,7 +3,7 @@
 
 use boltffi::export;
 
-use super::handles::with_patch;
+use super::phase::with_patch;
 
 #[export]
 pub fn log_info(msg: String) {

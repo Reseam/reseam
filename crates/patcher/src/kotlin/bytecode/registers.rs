@@ -3,11 +3,12 @@
 
 use std::sync::Arc;
 
-use crate::kotlin::handles::record_failure;
+use crate::kotlin::run_state::record_failure;
 use boltffi::export;
 use reseam_dex::{self as dex, AccessFlags};
 
-use crate::kotlin::handles::{code_mut, method_mut, with_code, with_instruction, with_method_mut};
+use crate::context::{code_mut, method_mut};
+use crate::kotlin::handles::{with_code, with_instruction, with_method_mut};
 use crate::kotlin::types::{MethodEdit, RegisterWriters};
 
 use super::logged;
@@ -81,7 +82,7 @@ pub fn grow_local_registers(
         mapping.register_shift = additional_locals;
         Ok(Some(mapping))
     });
-    crate::kotlin::handles::check_call()?;
+    crate::kotlin::run_state::check_call()?;
     outcome.ok_or_else(|| format!("method handle {m} could not grow"))
 }
 

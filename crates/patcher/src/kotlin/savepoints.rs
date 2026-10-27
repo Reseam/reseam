@@ -3,7 +3,7 @@
 
 use reseam_journal::Savepoint;
 
-use super::{handles, pool_copies};
+use super::{changes, handles, pool_copies};
 use crate::error::Result as PatcherResult;
 
 /// What the engine asks of the run state at a savepoint.
@@ -32,7 +32,7 @@ pub(crate) fn release_savepoint(savepoint: Savepoint) -> PatcherResult<()> {
 pub(crate) fn rollback_to(savepoint: Savepoint) -> PatcherResult<()> {
     handles::with_handles(|handles| handles.rollback_to(savepoint));
     pool_copies::rollback_to(savepoint);
-    handles::changed();
+    changes::changed();
     runtime_savepoint(SavepointAction::Rollback, savepoint)
 }
 

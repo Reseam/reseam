@@ -123,7 +123,7 @@ pub fn add_method(c: u32, method: NewMethod) -> u32 {
 }
 
 fn push_method(class: &mut ClassDef, loc: ClassLocation, method: EncodedMethod) -> u32 {
-    crate::kotlin::handles::changed();
+    crate::kotlin::changes::changed();
     let (kind, method_idx) = class.add_method(method);
     alloc_method(MethodLocation {
         dex_idx: loc.dex_idx,
@@ -160,7 +160,7 @@ pub fn set_method_access_flags(
     m: u32,
     flags: u32,
 ) -> Result<Option<crate::kotlin::types::MethodEdit>, String> {
-    crate::kotlin::handles::changed();
+    crate::kotlin::changes::changed();
     let outcome = with_method_mut(m, |dex, loc| {
         let flags = AccessFlags::from_bits_retain(flags);
         let method = logged("access method", crate::context::method_mut(dex, loc))?
@@ -196,7 +196,7 @@ pub fn set_method_access_flags(
         }
         Ok(Some(mapping))
     });
-    crate::kotlin::handles::check_call()?;
+    crate::kotlin::run_state::check_call()?;
     outcome.ok_or_else(|| format!("method handle {m} could not be changed"))
 }
 

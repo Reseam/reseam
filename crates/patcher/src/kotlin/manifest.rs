@@ -9,8 +9,8 @@ use reseam_apk::axml::android_attrs::android_attr_res_id;
 use reseam_apk::{AxmlDocument, ResValue};
 
 use super::files::with_component;
-use super::handles::record_failure;
 use super::manifest_text::text_value;
+use super::run_state::record_failure;
 use super::xml::{self, Nodes};
 
 fn read<R>(component: Option<String>, f: impl FnOnce(&AxmlDocument) -> R) -> Option<R> {
@@ -154,7 +154,7 @@ fn set_attribute(
 #[export]
 pub fn manifest_get_document(component: Option<String>) -> Option<u32> {
     with_component(component, |_, index| {
-        super::handles::checked(xml::open_manifest(index).map(Some))
+        super::run_state::checked(xml::open_manifest(index).map(Some))
     })
     .flatten()
 }

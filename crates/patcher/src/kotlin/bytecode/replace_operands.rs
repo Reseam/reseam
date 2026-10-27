@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::logged;
-use crate::kotlin::handles::checked;
-use crate::kotlin::handles::{code_mut, log_mutation, method_location, with_ctx, with_method_mut};
+use crate::context::code_mut;
+use crate::kotlin::handles::{log_mutation, method_location, with_method_mut};
 use crate::kotlin::link::link_method;
+use crate::kotlin::phase::with_ctx;
+use crate::kotlin::run_state::checked;
 use crate::kotlin::types::MethodRef;
 use boltffi::export;
 use reseam_dex::{Instruction as DexInsn, MethodIdx};
@@ -48,7 +50,7 @@ pub fn replace_literals(m: u32, old: i64, new: i64, all: bool) -> u32 {
     let Some(location) = method_location(m) else {
         return 0;
     };
-    crate::kotlin::handles::method_changed(m);
+    crate::kotlin::changes::method_changed(m);
     with_ctx(|ctx| {
         let (count, first_error, skipped) = {
             let Some(dex) = checked(ctx.class_dex_mut(location.dex_idx, location.class_idx)) else {

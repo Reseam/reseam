@@ -3,7 +3,8 @@
 
 use super::*;
 use crate::context::PatchContext;
-use crate::kotlin::handles::{ContextGuard, RunGuard, RunningBundle, check_invocation};
+use crate::kotlin::phase::{ContextGuard, RunningBundle};
+use crate::kotlin::run_state::{RunGuard, check_invocation};
 use crate::kotlin::xml_attributes::{xml_get_attribute, xml_set_attribute};
 use crate::kotlin::xml_documents::{xml_close, xml_open};
 use crate::kotlin::xml_tree::{

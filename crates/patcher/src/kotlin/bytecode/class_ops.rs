@@ -1,15 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::kotlin::handles::checked;
+use crate::kotlin::run_state::checked;
 use boltffi::export;
 use reseam_dex::{AccessFlags, DexFile};
 
 use crate::context::ClassLocation;
-use crate::kotlin::handles::{
-    alloc_class, changed, class_location, forget_class, with_class_mut, with_ctx,
-};
+use crate::kotlin::changes::changed;
+use crate::kotlin::handles::{alloc_class, class_location, forget_class, with_class_mut};
 use crate::kotlin::link::link_descriptors;
+use crate::kotlin::phase::with_ctx;
 
 use super::logged;
 

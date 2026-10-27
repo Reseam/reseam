@@ -1,12 +1,75 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use std::cell::RefCell;
+
 use reseam_dex::{CodeItem, DexFile, EncodedMethod, Instruction};
 
-use super::{
-    changed, checked, class_location, method_changed, method_location, record_failure, with_ctx,
-};
+use super::table::HandleTable;
 use crate::context::{ClassLocation, MethodLocation, PatchContext};
+use crate::kotlin::changes::{changed, method_changed};
+use crate::kotlin::phase::with_ctx;
+use crate::kotlin::run_state::{checked, fail, record_failure};
+
+thread_local! {
+    static HANDLES: RefCell<HandleTable> = RefCell::new(HandleTable::default());
+}
+
+pub(crate) fn reset() {
+    HANDLES.with(|handles| *handles.borrow_mut() = HandleTable::default());
+}
+
+pub(crate) fn with_handles<R>(f: impl FnOnce(&mut HandleTable) -> R) -> R {
+    HANDLES.with(|handles| f(&mut handles.borrow_mut()))
+}
+
+pub(crate) fn alloc_method(location: MethodLocation) -> u32 {
+    with_handles(|handles| handles.alloc_method(location))
+}
+
+pub(crate) fn alloc_methods(locations: impl IntoIterator<Item = MethodLocation>) -> Vec<u32> {
+    with_handles(|handles| {
+        locations
+            .into_iter()
+            .map(|location| handles.alloc_method(location))
+            .collect()
+    })
+}
+
+pub(crate) fn alloc_class(location: ClassLocation) -> u32 {
+    with_handles(|handles| handles.alloc_class(location))
+}
+
+pub(crate) fn method_location(handle: u32) -> Option<MethodLocation> {
+    let location = with_handles(|handles| handles.get_method(handle));
+    if location.is_none() {
+        record_failure(format!("invalid or removed method handle {handle}"));
+    }
+    location
+}
+
+pub(crate) fn class_location(handle: u32) -> Option<ClassLocation> {
+    let location = with_handles(|handles| handles.get_class(handle));
+    if location.is_none() {
+        record_failure(format!("invalid or removed class handle {handle}"));
+    }
+    location
+}
+
+pub(crate) fn forget_method(location: MethodLocation) {
+    with_handles(|handles| handles.forget_method(location));
+    changed();
+}
+
+pub(crate) fn relocate_method(old: MethodLocation, new: MethodLocation) {
+    with_handles(|handles| handles.relocate_method(old, new));
+    changed();
+}
+
+pub(crate) fn forget_class(location: ClassLocation) {
+    with_handles(|handles| handles.forget_class(location));
+    changed();
+}
 
 fn with_method<R>(handle: u32, f: impl FnOnce(&DexFile, &EncodedMethod) -> Option<R>) -> Option<R> {
     let location = method_location(handle)?;
@@ -78,8 +141,7 @@ pub(crate) fn log_mutation<R>(
     result: Result<Option<R>, String>,
 ) -> Option<R> {
     result.unwrap_or_else(|message| {
-        record_failure(&message);
-        ctx.log().warn(message);
+        fail(ctx, message);
         None
     })
 }

@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::handles::with_ctx;
+use super::phase::with_ctx;
 use super::types::{CallSiteRef, EncodedVal, FieldRef, HandleRef, Instruction, MethodRef};
 
 pub(super) fn proto_types(proto: &str) -> Vec<&str> {
     let Some((parameters, returns)) = reseam_dex::parse_method_descriptor(proto) else {
-        super::handles::record_failure(format!("invalid method descriptor: {proto}"));
+        super::run_state::record_failure(format!("invalid method descriptor: {proto}"));
         return Vec::new();
     };
     parameters
@@ -93,7 +93,7 @@ pub(super) fn link_descriptors<'a>(descriptors: impl IntoIterator<Item = &'a str
         let before = ctx.dex().len();
         ctx.link_types(descriptors);
         if ctx.dex().len() != before {
-            super::handles::changed();
+            super::changes::changed();
         }
     });
 }

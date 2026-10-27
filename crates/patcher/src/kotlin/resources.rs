@@ -8,7 +8,7 @@ use reseam_apk::axml::{self, AttributeValue};
 use reseam_apk::{ResValue, ResourceScope, ResourceTable};
 
 use super::files::with_component;
-use super::handles::with_ctx;
+use super::phase::with_ctx;
 use super::types::{ResourceRef, ResourceScalar, StyleItem};
 use crate::context::PatchContext;
 
@@ -57,7 +57,7 @@ pub fn res_component_names() -> Vec<String> {
 
 #[export]
 pub fn res_component_for(res_type: String, res_name: String) -> Result<Option<String>, String> {
-    crate::kotlin::handles::with_ctx_result(|ctx| {
+    crate::kotlin::phase::with_ctx_result(|ctx| {
         let found = ctx
             .apk_mut()
             .find_resource(&res_type, &res_name)
@@ -68,7 +68,7 @@ pub fn res_component_for(res_type: String, res_name: String) -> Result<Option<St
 
 #[export]
 pub fn res_component_for_id(res_id: u32) -> Result<Option<String>, String> {
-    crate::kotlin::handles::with_ctx_result(|ctx| {
+    crate::kotlin::phase::with_ctx_result(|ctx| {
         let found = ctx
             .apk_mut()
             .find_resource_by_id(res_id)
@@ -84,7 +84,7 @@ pub fn res_id(
     res_name: String,
 ) -> Result<Option<u32>, String> {
     match component {
-        None => crate::kotlin::handles::with_ctx_result(|ctx| {
+        None => crate::kotlin::phase::with_ctx_result(|ctx| {
             ctx.apk_mut()
                 .find_resource(&res_type, &res_name)
                 .map_err(|error| error.to_string())
@@ -110,7 +110,7 @@ pub fn res_exists(
 #[export]
 pub fn res_get_string(component: Option<String>, name: String) -> Result<Option<String>, String> {
     match component {
-        None => crate::kotlin::handles::with_ctx_result(|ctx| {
+        None => crate::kotlin::phase::with_ctx_result(|ctx| {
             ctx.apk_mut()
                 .string_resource(&name)
                 .map_err(|error| error.to_string())
@@ -131,7 +131,7 @@ pub fn res_set_string(
     value: String,
 ) -> Result<bool, String> {
     match component {
-        None => crate::kotlin::handles::with_ctx_result(|ctx| {
+        None => crate::kotlin::phase::with_ctx_result(|ctx| {
             ctx.apk_mut()
                 .set_string_resource(&name, &value)
                 .map_err(|error| error.to_string())
@@ -150,7 +150,7 @@ pub fn res_get_string_by_id(
     res_id: u32,
 ) -> Result<Option<String>, String> {
     match component {
-        None => crate::kotlin::handles::with_ctx_result(|ctx| {
+        None => crate::kotlin::phase::with_ctx_result(|ctx| {
             ctx.apk_mut()
                 .string_resource_by_id(res_id)
                 .map_err(|error| error.to_string())
@@ -171,7 +171,7 @@ pub fn res_set_string_by_id(
     value: String,
 ) -> Result<bool, String> {
     match component {
-        None => crate::kotlin::handles::with_ctx_result(|ctx| {
+        None => crate::kotlin::phase::with_ctx_result(|ctx| {
             ctx.apk_mut()
                 .set_string_resource_by_id(res_id, &value)
                 .map_err(|error| error.to_string())

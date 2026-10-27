@@ -8,7 +8,8 @@ use boltffi::export;
 use reseam_apk::Compression;
 use reseam_apk::axml::{AxmlDocument, AxmlEvent, is_compiled_axml};
 
-use super::handles::{bundle_path, checked, record_failure, with_ctx};
+use super::phase::{bundle_path, with_ctx};
+use super::run_state::{checked, record_failure};
 use super::xml_attributes::find_attribute;
 use crate::context::PatchContext;
 
@@ -238,7 +239,8 @@ pub(super) fn inject(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kotlin::handles::{ContextGuard, RunGuard, RunningBundle};
+    use crate::kotlin::phase::{ContextGuard, RunningBundle};
+    use crate::kotlin::run_state::RunGuard;
 
     #[test]
     fn original_apk_ranges_are_bounded_and_report_invalid_requests() {

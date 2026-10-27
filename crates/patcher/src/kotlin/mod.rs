@@ -9,10 +9,10 @@
 #[cfg(target_os = "android")]
 pub mod android_host;
 mod bytecode;
+mod changes;
 mod convert;
 mod files;
-mod handle_table;
-pub(crate) mod handles;
+mod handles;
 mod hermes;
 mod identity;
 mod instruction_types;
@@ -31,10 +31,12 @@ mod options;
 mod output;
 #[cfg(feature = "kotlin")]
 mod patch;
+mod phase;
 mod pool_copies;
 mod pool_values;
 mod resource_files;
 mod resources;
+pub(crate) mod run_state;
 pub(crate) mod savepoints;
 pub mod types;
 mod xml;

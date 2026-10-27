@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::kotlin::handles::with_ctx;
+use crate::kotlin::phase::with_ctx;
 use boltffi::export;
 
 #[export]

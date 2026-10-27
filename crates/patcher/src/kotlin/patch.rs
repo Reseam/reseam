@@ -6,8 +6,8 @@ use std::sync::Arc;
 use jni::objects::{Global, JClass, JObject, JValue};
 use jni::{Env, jni_sig, jni_str};
 
-use super::handles::{ContextGuard, OutputGuard};
 use super::jvm::{self, jvm_err};
+use super::phase::{ContextGuard, OutputGuard};
 use super::savepoints::SavepointAction;
 use crate::context::PatchContext;
 use crate::error::Result;
@@ -80,7 +80,7 @@ fn call_with_runtime(
     loader: &JObject<'_>,
     method: &str,
 ) -> Result<()> {
-    let run = super::handles::kotlin_run(|| {
+    let run = super::run_state::kotlin_run(|| {
         let class = load_class(env, loader, "app.reseam.patch.PatchRun")?;
         let class = JClass::cast_local(env, class)?;
         let object = env.new_object(class, jni_sig!("()V"), &[])?;
@@ -125,7 +125,7 @@ fn call_phase(
 /// Tells the run's patch runtime about `savepoint`. Before a patch creates the
 /// runtime there is nothing to tell; it opens the savepoints open then.
 pub(super) fn savepoint(action: SavepointAction, savepoint: Savepoint) -> Result<()> {
-    let Some(run) = super::handles::existing_kotlin_run() else {
+    let Some(run) = super::run_state::existing_kotlin_run() else {
         return Ok(());
     };
     jvm::get_or_init()?.attach_current_thread(|env| {

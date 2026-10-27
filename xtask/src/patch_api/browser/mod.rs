@@ -15,7 +15,7 @@ use super::registration;
 
 mod kotlin;
 
-const REVISION_SUFFIX: &str = "_handles_mutation_revision";
+const REVISION_SUFFIX: &str = "_changes_mutation_revision";
 
 /// One entry of `methods.json`, which the browser workers dispatch native calls by.
 #[derive(Serialize)]

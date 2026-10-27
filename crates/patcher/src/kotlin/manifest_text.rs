@@ -25,7 +25,7 @@ pub(super) fn text_value(text: &str, attr: Option<u32>) -> Result<TextValue, Str
     if !text.starts_with(['@', '?']) {
         return text_value_in(text, attr, None);
     }
-    super::handles::with_ctx_result(|ctx| {
+    super::phase::with_ctx_result(|ctx| {
         ctx.apk_mut()
             .with_resource_scope(0, |scope| text_value_in(text, attr, scope))
             .map_err(|error| error.to_string())?

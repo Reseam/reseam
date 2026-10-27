@@ -3,7 +3,7 @@
 
 use boltffi::{data, export};
 
-use super::handles::with_running_bundle;
+use super::phase::with_running_bundle;
 
 /// The bundle whose patch is running and the engine running it.
 #[data]

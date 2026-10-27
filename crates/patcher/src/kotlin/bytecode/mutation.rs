@@ -7,8 +7,9 @@ use boltffi::export;
 use reseam_dex::InstructionExpansion;
 use reseam_dex::{AccessFlags, CodeItem, EarlyReturn, Instruction as DexInsn};
 
+use crate::context::{code_mut, method_mut};
 use crate::kotlin::convert::kotlin_to_dex;
-use crate::kotlin::handles::{code_mut, method_mut, with_method_mut};
+use crate::kotlin::handles::with_method_mut;
 use crate::kotlin::link::link_instructions;
 use crate::kotlin::types::{Instruction, MethodEdit};
 
@@ -32,7 +33,7 @@ fn edit_code<R>(
             .ok_or_else(|| format!("method handle {m} has no code"))?;
         f(code, insns).map(Some)
     });
-    crate::kotlin::handles::check_call()?;
+    crate::kotlin::run_state::check_call()?;
     result.ok_or_else(|| format!("method handle {m} could not be edited"))
 }
 
@@ -76,7 +77,7 @@ pub fn replace_body(
             .remove(AccessFlags::NATIVE | AccessFlags::ABSTRACT);
         Ok(Some(()))
     });
-    crate::kotlin::handles::check_call()?;
+    crate::kotlin::run_state::check_call()?;
     outcome.ok_or_else(|| format!("method handle {m} could not be replaced"))
 }
 
@@ -160,7 +161,7 @@ pub fn remove_instructions(m: u32, index: u32, count: u32) -> Result<MethodEdit,
         )?)
         .map(Some)
     });
-    crate::kotlin::handles::check_call()?;
+    crate::kotlin::run_state::check_call()?;
     result.ok_or_else(|| format!("method handle {m} could not be edited"))
 }
 

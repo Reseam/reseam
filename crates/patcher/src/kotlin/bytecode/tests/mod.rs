@@ -8,7 +8,8 @@ use super::{
     search,
 };
 use crate::context::PatchContext;
-use crate::kotlin::handles::{ContextGuard, RunGuard, RunningBundle};
+use crate::kotlin::phase::{ContextGuard, RunningBundle};
+use crate::kotlin::run_state::RunGuard;
 use crate::kotlin::types::{Instruction, NewMethod, SimpleInsn};
 
 mod bridge;
@@ -32,7 +33,7 @@ fn fixture_method(name: String, proto: String, registers_size: u16, ins_size: u1
 }
 
 fn fixture_class(dex: u32, descriptor: &str) -> u32 {
-    crate::kotlin::handles::with_ctx(|ctx| {
+    crate::kotlin::phase::with_ctx(|ctx| {
         ctx.dex_file_mut(dex as usize)
             .unwrap()
             .create_class(descriptor, AccessFlags::PUBLIC, Some("Ljava/lang/Object;"))

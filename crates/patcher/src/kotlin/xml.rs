@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::handles::checked;
+use super::run_state::checked;
 use boltffi::export;
 use reseam_apk::axml::{self, AxmlEvent};
 
@@ -117,7 +117,7 @@ pub fn xml_tag_name(doc: u32, element: u32) -> String {
 
 #[export]
 pub fn xml_compile(text: String) -> Result<u32, String> {
-    let document = super::handles::try_with_ctx(|ctx| {
+    let document = super::phase::try_with_ctx(|ctx| {
         ctx.apk_mut()
             .with_resource_scope(0, |scope| axml::build_document(&text, scope))
     })

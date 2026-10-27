@@ -85,7 +85,7 @@ pub(super) fn import_handle(
         dex,
         origin,
         dex_index,
-        super::handles::PoolKind::Handle,
+        super::pool_copies::PoolKind::Handle,
         |dex, candidates| {
             let candidates: Option<Vec<_>> =
                 candidates.map(|c| c.into_iter().map(reseam_dex::MethodHandleIdx).collect());
@@ -134,7 +134,7 @@ pub(super) fn import_call_site(
         dex,
         origin,
         dex_index,
-        super::handles::PoolKind::CallSite,
+        super::pool_copies::PoolKind::CallSite,
         |dex, candidates| {
             let candidates: Option<Vec<_>> =
                 candidates.map(|c| c.into_iter().map(reseam_dex::CallSiteIdx).collect());
@@ -152,7 +152,7 @@ fn import_pooled(
     dex: &mut DexFile,
     origin: Option<PoolOrigin>,
     destination: Option<usize>,
-    kind: super::handles::PoolKind,
+    kind: super::pool_copies::PoolKind,
     intern: impl FnOnce(&mut DexFile, Option<Vec<u32>>) -> reseam_dex::Result<u32>,
 ) -> reseam_dex::Result<u32> {
     let destination = destination
@@ -164,12 +164,12 @@ fn import_pooled(
         (origin.dex_index == destination)
             .then_some(origin.index)
             .into_iter()
-            .chain(super::handles::copied_pool(origin, destination, kind))
+            .chain(super::pool_copies::copied_pool(origin, destination, kind))
             .collect()
     });
     let index = intern(dex, candidates)?;
     if let Some((origin, destination)) = origin.zip(destination) {
-        super::handles::remember_pool(origin, destination, kind, index);
+        super::pool_copies::remember_pool(origin, destination, kind, index);
     }
     Ok(index)
 }

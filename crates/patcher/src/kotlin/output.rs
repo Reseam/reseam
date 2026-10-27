@@ -5,7 +5,8 @@ use std::path::{Component, Path};
 
 use boltffi::export;
 
-use super::handles::{bundle_path, checked, with_output};
+use super::phase::{bundle_path, with_output};
+use super::run_state::checked;
 use crate::error::{PatcherError, Result};
 
 #[export]

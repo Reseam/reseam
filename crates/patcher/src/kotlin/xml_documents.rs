@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::files::with_component;
-use super::handles::{HandleSpace, checked};
+use super::handles::HandleSpace;
+use super::run_state::checked;
 use crate::context::PatchContext;
 use boltffi::export;
 use reseam_apk::axml::AxmlDocument;
@@ -115,7 +116,7 @@ pub(super) fn with_read<R>(
             .as_mut()
             .ok_or_else(|| format!("closed XML document {handle}"))?;
         match open.source {
-            Source::Manifest { component } => super::handles::with_ctx_result(|ctx| {
+            Source::Manifest { component } => super::phase::with_ctx_result(|ctx| {
                 let component = ctx
                     .apk()
                     .component(component)
@@ -147,7 +148,7 @@ pub(super) fn with_edit<R>(
             .as_mut()
             .ok_or_else(|| format!("closed XML document {handle}"))?;
         open.dirty = true;
-        super::handles::with_ctx_result(|ctx| {
+        super::phase::with_ctx_result(|ctx| {
             // Move the model for this operation so resource-scope resolution can borrow
             // the APK. There is one model, restored even when an FFI operation unwinds.
             let mut document = match open.source {
@@ -258,7 +259,7 @@ pub fn xml_close(handle: u32) {
                 .expect("files own their XML model")
                 .serialize()
                 .map_err(|e| e.to_string())?;
-            super::handles::try_with_ctx(|ctx| {
+            super::phase::try_with_ctx(|ctx| {
                 ctx.inject_file(component, &path, bytes, Compression::Deflated)
             })
             .flatten()

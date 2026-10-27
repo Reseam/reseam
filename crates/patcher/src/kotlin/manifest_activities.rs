@@ -10,9 +10,9 @@ use reseam_apk::axml::android_attrs::{
 use reseam_apk::{AxmlDocument, ResValue};
 
 use super::files::with_component;
-use super::handles::record_failure;
 use super::manifest::{edit, warn};
 use super::manifest_text::text_value;
+use super::run_state::record_failure;
 use super::xml::{self, Nodes};
 
 fn find_activity(m: &AxmlDocument, name: &str) -> Result<usize, String> {

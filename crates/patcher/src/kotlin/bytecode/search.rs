@@ -1,15 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::kotlin::handles::checked;
+use crate::kotlin::run_state::checked;
 use boltffi::export;
 use reseam_dex::{DexFile, Instruction as DexInsn};
 
 use crate::context::{FieldRefQuery, InstructionLocation, MethodRefQuery};
 use crate::kotlin::convert::{self, dex_to_kotlin};
 use crate::kotlin::handles::{
-    alloc_method, alloc_methods, method_location, with_code, with_ctx, with_instruction,
+    alloc_method, alloc_methods, method_location, with_code, with_instruction,
 };
+use crate::kotlin::phase::with_ctx;
 use crate::kotlin::types::{FieldRef, Instruction, InstructionHit, MethodRef};
 
 #[export]

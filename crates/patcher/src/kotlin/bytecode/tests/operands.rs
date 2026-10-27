@@ -98,7 +98,7 @@ fn authored_raw_pool_references_survive_pure_lowering_and_insertion() {
     let handles = example_handles("RawReferences");
     registers::grow_local_registers(handles.method, 1, vec![]).unwrap();
     let intern = |pool: fn(&mut DexFile) -> u32| {
-        crate::kotlin::handles::with_ctx(|ctx| pool(ctx.dex_file_mut(0).unwrap()))
+        crate::kotlin::phase::with_ctx(|ctx| pool(ctx.dex_file_mut(0).unwrap()))
     };
     let references = [
         (

@@ -10,7 +10,8 @@ use reseam_hermes::{
     Statement,
 };
 
-use super::handles::{HandleSpace, bundle_path, with_ctx_result};
+use super::handles::HandleSpace;
+use super::phase::{bundle_path, with_ctx_result};
 use crate::context::{PatchContext, hermes_imports};
 
 #[derive(Default)]

@@ -4,14 +4,16 @@
 use reseam_dex::MethodKind;
 
 use crate::error::{PatcherError, Result as PatcherResult};
-use crate::kotlin::handles::checked;
+use crate::kotlin::run_state::checked;
 use boltffi::export;
 use reseam_dex::{DexFile, EncodedField, InstructionPattern, TypeIdx};
 
 use crate::context::{ClassLocation, MethodLocation};
+use crate::kotlin::changes::changed;
 use crate::kotlin::handles::{
-    alloc_class, alloc_method, alloc_methods, changed, class_location, method_location, with_ctx,
+    alloc_class, alloc_method, alloc_methods, class_location, method_location,
 };
+use crate::kotlin::phase::with_ctx;
 use crate::kotlin::types::{ClassInfo, EncodedVal, FieldInfo, MethodInfo};
 
 #[export]
@@ -21,7 +23,7 @@ pub fn app_entry_hook() -> Result<u32, String> {
         clippy::redundant_closure_for_method_calls,
         reason = "the closure accepts every context lifetime"
     )]
-    crate::kotlin::handles::try_with_ctx(|ctx| ctx.app_entry_hook())
+    crate::kotlin::phase::try_with_ctx(|ctx| ctx.app_entry_hook())
         .flatten()
         .map(alloc_method)
         .map_err(|e| e.to_string())
