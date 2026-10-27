@@ -5,19 +5,17 @@ use std::ops::Range;
 
 use reseam_storage::Bytes;
 
-use super::document::AttributeRoles;
+mod element;
+
 use super::{
-    AxmlAttribute, AxmlDocument, AxmlEvent, CHUNK_END_ELEMENT, CHUNK_END_NAMESPACE,
-    CHUNK_RESOURCE_IDS, CHUNK_START_ELEMENT, CHUNK_START_NAMESPACE, CHUNK_TEXT, CHUNK_XML_DOCUMENT,
-    NONE, NodeMetadata,
+    AxmlDocument, AxmlEvent, CHUNK_END_ELEMENT, CHUNK_END_NAMESPACE, CHUNK_RESOURCE_IDS,
+    CHUNK_START_ELEMENT, CHUNK_START_NAMESPACE, CHUNK_TEXT, CHUNK_XML_DOCUMENT, NONE, NodeMetadata,
 };
 use crate::buf::{read_u16_le, read_u32_le, require_len};
 use crate::chunk;
-use crate::error::{Result, invalid, malformed};
+use crate::error::{Result, invalid};
 use crate::res_value::ResValue;
 use crate::string_pool::{CHUNK_STRING_POOL, StringPool};
-
-pub(super) const ATTRIBUTE_LEN: usize = 20;
 
 impl AxmlDocument {
     pub fn parse(data: &[u8]) -> Result<Self> {
@@ -110,7 +108,7 @@ fn parse_node(kind: u16, body: &[u8], at: usize, metadata: NodeMetadata) -> Resu
                 }
             }
         }
-        CHUNK_START_ELEMENT => parse_start_element(body, at, metadata)?,
+        CHUNK_START_ELEMENT => element::parse_start_element(body, at, metadata)?,
         CHUNK_END_ELEMENT => {
             node_header(body, at)?;
             require_len(body, at, 8, "axml end element")?;
@@ -133,75 +131,14 @@ fn parse_node(kind: u16, body: &[u8], at: usize, metadata: NodeMetadata) -> Resu
     })
 }
 
-fn node_header(body: &[u8], header_size: usize) -> Result<()> {
+pub(super) fn node_header(body: &[u8], header_size: usize) -> Result<()> {
     if header_size < 16 {
         return Err(invalid("axml node", "header is shorter than 16 bytes"));
     }
     require_len(body, 0, header_size, "axml node")
 }
 
-fn parse_start_element(
-    body: &[u8],
-    header_size: usize,
-    metadata: NodeMetadata,
-) -> Result<AxmlEvent> {
-    node_header(body, header_size)?;
-    require_len(body, header_size, ATTRIBUTE_LEN, "axml start element")?;
-    let namespace = optional(read_u32_le(body, header_size, "axml start element")?);
-    let name = read_u32_le(body, header_size + 4, "axml start element")?;
-    let attr_start = read_u16_le(body, header_size + 8, "axml start element")? as usize;
-    let attr_size = match read_u16_le(body, header_size + 10, "axml start element")? as usize {
-        0 => ATTRIBUTE_LEN,
-        size if size < ATTRIBUTE_LEN => {
-            return Err(malformed(
-                "axml start element",
-                metadata.range.start + header_size + 10,
-                "attribute stride is smaller than 20 bytes",
-            ));
-        }
-        size => size,
-    };
-    let attr_count = read_u16_le(body, header_size + 12, "axml start element")? as usize;
-    let attrs_offset = header_size + attr_start;
-    let attrs_len = attr_count
-        .checked_mul(attr_size)
-        .ok_or_else(|| invalid("axml attributes", "attribute data size overflows"))?;
-    require_len(body, attrs_offset, attrs_len, "axml attributes")?;
-    let roles = AttributeRoles::FIELDS
-        .iter()
-        .map(|&(role, offset)| {
-            Ok((
-                role,
-                read_u16_le(body, header_size + offset, "axml attribute index")?,
-            ))
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let attributes = (0..attr_count)
-        .map(|i| {
-            let at = attrs_offset + i * attr_size;
-            let mut attr = AxmlAttribute::new(
-                optional(read_u32_le(body, at, "axml attribute")?),
-                read_u32_le(body, at + 4, "axml attribute")?,
-                ResValue::read(body, at + 12, "axml attribute")?,
-            );
-            attr.raw_value = optional(read_u32_le(body, at + 8, "axml attribute")?);
-            attr.encoded = body[at..at + attr_size].to_vec();
-            attr.roles = roles
-                .iter()
-                .filter(|&&(_, index)| usize::from(index) == i + 1)
-                .fold(AttributeRoles::empty(), |roles, &(role, _)| roles | role);
-            Ok(attr)
-        })
-        .collect::<Result<_>>()?;
-    Ok(AxmlEvent::StartElement {
-        metadata,
-        namespace,
-        name,
-        attributes,
-    })
-}
-
-fn optional(value: u32) -> Option<u32> {
+pub(super) fn optional(value: u32) -> Option<u32> {
     (value != NONE).then_some(value)
 }
 

@@ -40,3 +40,5 @@ const CHUNK_START_ELEMENT: u16 = 0x0102;
 const CHUNK_END_ELEMENT: u16 = 0x0103;
 const CHUNK_TEXT: u16 = 0x0104;
 const NONE: u32 = 0xFFFF_FFFF;
+/// The attribute record Android reads; parsed records may carry more.
+const ATTRIBUTE_LEN: usize = 20;
