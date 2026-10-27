@@ -8,6 +8,7 @@
 mod allocate;
 mod emit;
 mod lifetimes;
+mod planned;
 mod program;
 
 use allocate::{Frame, Unallocated};

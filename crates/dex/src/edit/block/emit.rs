@@ -4,7 +4,8 @@
 use std::collections::BTreeMap;
 
 use super::allocate::Plan;
-use super::program::{Planned, Program};
+use super::planned::Planned;
+use super::program::Program;
 use crate::edit::forms::{move_register, narrowed};
 use crate::edit::invoke::{Invocation, InvokeForm, invoke_encoding};
 use crate::edit::relocate::{BranchDestination, InstructionExpansion, assemble};

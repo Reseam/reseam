@@ -5,7 +5,8 @@ use fixedbitset::FixedBitSet;
 
 use super::BlockRegister;
 use super::lifetimes::Temporary;
-use super::program::{Planned, Program};
+use super::planned::Planned;
+use super::program::Program;
 use crate::edit::invoke::{Invocation, InvokeForm};
 use crate::edit::liveness::RegisterLiveness;
 use crate::error::{DexError, Result, invalid};

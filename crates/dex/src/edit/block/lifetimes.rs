@@ -4,7 +4,7 @@
 use fixedbitset::FixedBitSet;
 
 use super::BlockRegister;
-use super::program::Planned;
+use super::planned::Planned;
 use crate::error::{Result, invalid};
 use crate::instruction::operands::{Access, RegisterKind};
 
