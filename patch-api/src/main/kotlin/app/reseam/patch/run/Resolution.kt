@@ -4,7 +4,6 @@
 package app.reseam.patch.run
 
 import app.reseam.patch.MatchReport
-import app.reseam.patch.SearchMatchReport
 
 internal class Resolution<R : Any>(val value: R, val report: MatchReport) {
     companion object {
@@ -12,7 +11,7 @@ internal class Resolution<R : Any>(val value: R, val report: MatchReport) {
         fun <R : Any> direct(value: R, name: String, winner: String) =
             Resolution(
                 value,
-                SearchMatchReport(name, winner, 1, listOf("resolved directly"), emptyList()),
+                MatchReport(name, winner, 1, listOf("resolved directly"), emptyList()),
             )
     }
 }

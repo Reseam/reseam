@@ -6,6 +6,7 @@ package app.reseam.patch.emit
 import app.reseam.patch.Capture
 import app.reseam.patch.CodeScope
 import app.reseam.patch.dex.Method
+import app.reseam.patch.dex.growLocals
 
 internal enum class InsertionBranches {
     KEEP_ORIGINAL_TARGET,

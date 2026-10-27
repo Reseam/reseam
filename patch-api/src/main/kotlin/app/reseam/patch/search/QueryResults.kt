@@ -4,7 +4,6 @@
 package app.reseam.patch.search
 
 import app.reseam.patch.MatchReport
-import app.reseam.patch.SearchMatchReport
 import app.reseam.patch.dex.Method
 import app.reseam.patch.proto
 import app.reseam.patch.types.MethodRef
@@ -39,7 +38,7 @@ internal class Evaluated<T>(
     private val reasons: (Scored<T>) -> List<String>,
 ) {
     fun report(debugName: String?, winner: Scored<T>): MatchReport =
-        SearchMatchReport(
+        MatchReport(
             debugName ?: "anonymous",
             describe(winner.value),
             considered,
@@ -51,7 +50,7 @@ internal class Evaluated<T>(
         )
 
     fun noMatchReport(debugName: String?): MatchReport =
-        SearchMatchReport(
+        MatchReport(
             debugName ?: "anonymous",
             "<no match>",
             considered,

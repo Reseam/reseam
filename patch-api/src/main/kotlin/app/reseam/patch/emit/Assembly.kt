@@ -28,7 +28,7 @@ internal fun CodeEmitter.build(): List<Instruction> {
             val allocation =
                 tempAllocations.getValue((value.register as Register.Temporary).allocation)
             if (allocation.stageIncoming)
-                builder.moveTyped(
+                builder.move(
                     checkNotNull(allocation.baseRegister),
                     replacementLocals + offset,
                     value.type,

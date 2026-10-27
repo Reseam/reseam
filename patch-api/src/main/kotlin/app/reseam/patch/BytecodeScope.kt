@@ -11,6 +11,7 @@ import app.reseam.patch.dex.returnType
 import app.reseam.patch.native.findInstructionsByString
 import app.reseam.patch.native.findInstructionsByStringContains
 import app.reseam.patch.native.findInstructionsByStringPrefix
+import app.reseam.patch.native.instructionStringRef
 import app.reseam.patch.run.ActiveRuntime
 import app.reseam.patch.types.InstructionHit
 import app.reseam.patch.types.MethodRef
@@ -55,7 +56,7 @@ class BytecodeScope internal constructor() {
 
     private fun replaceLoaded(hits: List<InstructionHit>, transform: (String) -> String?): Int =
         hits
-            .mapNotNull { Method(it.method).stringRef(it.index.toInt()) }
+            .mapNotNull { instructionStringRef(it.method, it.index) }
             .distinct()
             .sumOf { old ->
                 transform(old)?.takeIf { it != old }?.let { replaceAllStrings(old, it) } ?: 0

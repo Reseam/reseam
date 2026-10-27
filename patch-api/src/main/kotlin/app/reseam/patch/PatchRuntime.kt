@@ -19,14 +19,7 @@ import java.util.IdentityHashMap
  * What a patch sees while it runs. Constructed by the engine for each `execute` and
  * `afterDependents` call and passed as the receiver.
  */
-class PatchRuntime() {
-    internal var run = PatchRun()
-        private set
-
-    internal constructor(run: PatchRun) : this() {
-        this.run = run
-    }
-
+class PatchRuntime internal constructor(internal val run: PatchRun) {
     val manifest: ManifestScope = ManifestScope()
     val resources: ResourceScope = ResourceScope()
     val bytecode: BytecodeScope = BytecodeScope()

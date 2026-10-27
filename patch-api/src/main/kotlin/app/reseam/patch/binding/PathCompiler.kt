@@ -69,8 +69,6 @@ internal class PathQueryCompiler(
 
     override fun field(target: FieldTarget) = read(target.ref)
 
-    override fun instanceField(type: String) = field(type)
-
     override fun instanceField(typeAnyOf: List<String>) {
         val owner = requireCurrentType()
         val ownerClass = index.requireClass(owner)

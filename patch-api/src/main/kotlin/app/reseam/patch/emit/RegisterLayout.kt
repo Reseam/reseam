@@ -3,6 +3,7 @@
 
 package app.reseam.patch.emit
 
+import app.reseam.patch.dex.contiguousFreeRegisters
 import app.reseam.patch.dex.descriptor
 import app.reseam.patch.dex.registerWordCount
 import app.reseam.patch.native.invokeScratchWords
@@ -142,8 +143,7 @@ internal fun CodeEmitter.allocateTemp(
         replacementLocals = end
         return base
     }
-    val registers =
-        method.findContiguousFreeRegisters(insertIndex ?: 0, words, usedRegisters.toList())
+    val registers = method.contiguousFreeRegisters(insertIndex ?: 0, words, usedRegisters.toList())
     if (registers.size == words && registers.last() <= allocation.constraint.maxRegister)
         return registers.first()
     available(incomingBase + savedGrowth, incomingBase + plannedLocalGrowth)?.let {

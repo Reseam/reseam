@@ -10,7 +10,7 @@ import app.reseam.patch.types.Instruction
  * register above v15) into `invoke-kind/range`, moving the arguments into scratch registers when
  * they are not consecutive.
  */
-fun lowerInvokes(
+internal fun lowerInvokes(
     insns: List<Instruction>,
     scratch: (wordCount: Int) -> List<Int>,
 ): List<Instruction> {
@@ -33,7 +33,7 @@ fun lowerInvokes(
     return app.reseam.patch.native.lowerInstructions(insns, spans)
 }
 
-val Opcode.rangeVariant: Opcode?
+internal val Opcode.rangeVariant: Opcode?
     get() =
         when (this) {
             Opcode.INVOKE_VIRTUAL -> Opcode.INVOKE_VIRTUAL_RANGE
@@ -53,4 +53,22 @@ internal fun contiguousUnusedRegisters(
     return (0..registerCount - wordCount)
         .map { start -> (start until start + wordCount).toList() }
         .firstOrNull { candidate -> candidate.none { it in excluded } }
+}
+
+internal fun Method.lowerInvokesAt(index: Int, insns: List<Instruction>): List<Instruction> {
+    val reserved = insns.flatMap { it.referencedRegisters }.toSet()
+    return lowerInvokes(insns) { wordCount ->
+        contiguousFreeRegisters(index, wordCount, reserved.toList())
+    }
+}
+
+internal fun Method.lowerInvokesForBody(
+    insns: List<Instruction>,
+    targetRegistersSize: Int,
+): List<Instruction> {
+    val reserved = insns.flatMap { it.referencedRegisters }.toSet()
+    return lowerInvokes(insns) { wordCount ->
+        contiguousUnusedRegisters(targetRegistersSize, reserved, wordCount)
+            ?: error("no $wordCount consecutive scratch registers available to lower invoke")
+    }
 }

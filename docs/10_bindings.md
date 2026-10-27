@@ -12,7 +12,7 @@ val post = bind("post") {
         owner(onPostClicked.owner)
         nearestObjectReadBeforeString("post_clicked")
     }
-    string("videoUrl") {
+    member("videoUrl") {
         member("attributes")
         listGetter("videos") {
             rankBy("callers followed by cast") { callSitesFollowedByCast(VIDEO) }
@@ -25,7 +25,7 @@ val post = bind("post") {
 ```
 
 - **The source** (`fromField`, `fromMethod`, or `fromClass`) finds the class the path starts from.
-- **Members** (`string`, `objectValue`, `intValue`, `context`, `bind`) are named paths. Each step reads a field, calls a method, casts, or takes a list element.
+- **Members** (`member`, `bind`) are named paths. Each step reads a field, calls a method, casts, or takes a list element.
 
 Use it in a code block:
 

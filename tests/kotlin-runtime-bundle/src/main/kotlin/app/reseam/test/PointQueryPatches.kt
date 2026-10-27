@@ -4,11 +4,11 @@
 package app.reseam.test
 
 import app.reseam.patch.*
-import app.reseam.patch.dex.Opcode
 import app.reseam.patch.dex.literal
 import app.reseam.patch.types.MethodRef
 
-private val queryHost = klass("com.example.PointQueryHost")
+internal val queryHost = klass("com.example.PointQueryHost")
+
 private val deferredSingle =
     queryHost
         .method("copied")
@@ -18,7 +18,7 @@ private val deferredSingle =
         }
         .single()
 
-private object PointObserver : ExtClass("com.example.PointObserver") {
+internal object PointObserver : ExtClass("com.example.PointObserver") {
     val take by static(Type.Int)
     val replacement by static(Type.Int)
     val wrong by static(Type.String)
@@ -187,12 +187,14 @@ val pointQueries =
             check(mismatch.isFailure)
             // Selection is completed before the first hook changes the frame and inserts invokes.
             var growFrame = true
-            duplicates.forEach {
+            duplicates.all.forEach { point ->
                 if (growFrame) {
-                    method.reserveLocal("force relocation", Type.Long)
+                    point.method.reserveLocal("force relocation", Type.Long)
                     growFrame = false
                 }
-                captureArgumentAs("value", 0).before { call(PointObserver.take, capture("value")) }
+                point.captureArgumentAs("value", 0).before {
+                    call(PointObserver.take, capture("value"))
+                }
             }
             val combined =
                 queryHost
@@ -212,111 +214,5 @@ val pointQueries =
                     .index == 2
             )
             files.write("assets/point-queries.txt", report.joinToString("\n").encodeToByteArray())
-        }
-    }
-
-val pointRedirects =
-    patch("point-redirects") {
-        compatibleWith("com.example.test")
-        enabledByDefault(false)
-        execute {
-            fun call(name: String) =
-                queryHost.method(name).point { invokeStatic { name("compute") } }
-            val consumed = call("usedResult")
-            check(runCatching { consumed.redirectTo(PointObserver.replacement) }.isFailure)
-            val unused = call("unusedResult")
-            for (target in
-                listOf(
-                    PointObserver.wrong,
-                    PointObserver.instance,
-                    PointObserver.concealed,
-                    PointObserver.absent,
-                )) {
-                check(runCatching { unused.redirectTo(target) }.isFailure) { "accepted $target" }
-            }
-            unused.redirectTo(PointObserver.replacement)
-            val wide = queryHost.method("wide").points { invokeVirtual { name("take") } }.single()
-            wide.redirectTo(PointObserver.consume)
-            val superCall = queryHost.method("superCall").point { invoke(Opcode.INVOKE_SUPER) }
-            check(runCatching { superCall.redirectTo(PointObserver.consume) }.isFailure)
-            // Global and point redirects must reject the same consumed-result mismatch.
-            check(
-                runCatching {
-                    bytecode.redirectCalls(
-                        MethodRef("Lcom/example/PointObserver;", "compute", "(I)I"),
-                        PointObserver.replacement,
-                    )
-                }
-                    .isFailure
-            )
-            val count =
-                bytecode.redirectCalls(
-                    MethodRef("Lcom/example/PointObserver;", "take", "(I)V"),
-                    PointObserver.replacement,
-                )
-            check(count == 11) { "redirected $count" }
-            check(
-                bytecode.redirectCalls(
-                    MethodRef("Lcom/example/PointObserver;", "take", "(I)V"),
-                    PointObserver.replacement,
-                ) == 0
-            )
-            check(
-                klass("com.example.ExtensionCaller")
-                    .method("call")
-                    .point { invokeStatic { name("take") } }
-                    .index == 0
-            )
-        }
-    }
-
-private val prefixedRoutes = methods("prefixedRoutes") { stringsStartingWith("reel/") }
-
-val stringPrefixQueries =
-    patch("string-prefix-queries") {
-        compatibleWith("com.example.test")
-        enabledByDefault(false)
-        execute {
-            check(prefixedRoutes.all.map { it.name }.toSet() == setOf("watch", "create"))
-            check(
-                klass("com.example.Routes")
-                    .methods {
-                        stringsStartingWith("reel/")
-                        name("embedded")
-                    }
-                    .all
-                    .isEmpty()
-            )
-            check(
-                methods {
-                    stringsStartingWith("reel/")
-                    includeExtensions()
-                }
-                    .all
-                    .size == 3
-            )
-            check(methods { stringsStartingWith("absent/") }.all.isEmpty())
-            check(runCatching { methods { stringsStartingWith("") }.all }.isFailure)
-        }
-    }
-
-val high16Literals =
-    patch("high16-literals") {
-        compatibleWith("com.example.test")
-        enabledByDefault(false)
-        execute {
-            for ((name, before, after) in
-                listOf(
-                    Triple("positive", 67108864L, 134217728L),
-                    Triple("negative", -65536L, -131072L),
-                    Triple("wide", 1L shl 60, Long.MIN_VALUE),
-                )) {
-                val target = method { literals(before) }
-                check(target.name == name)
-                check(target.point { literal(before) }.instruction.literal == before)
-                check(target.method.replaceLiteral(before, after))
-                check(target.point { literal(after) }.instruction.literal == after)
-                check(method { literals(after) }.name == name)
-            }
         }
     }

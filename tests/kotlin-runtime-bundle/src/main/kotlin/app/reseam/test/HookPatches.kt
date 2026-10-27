@@ -17,7 +17,7 @@ import app.reseam.patch.skipWhen
 val afterEntryValues =
     fixturePatch("after-entry-values") {
         val target = klass("com.example.HookTarget")
-        check(target.method("invokeGrowth").method.growLocalRegisters(10))
+        repeat(5) { target.method("invokeGrowth").reserveLocal("growth$it", Type.Long) }
         target.method("invokeGrowth").after {
             callStatic("com.example.Observer", "entry", "(I)V", param(3))
         }

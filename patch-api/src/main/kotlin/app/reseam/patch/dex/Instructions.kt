@@ -7,7 +7,7 @@ import app.reseam.patch.types.FieldRef
 import app.reseam.patch.types.Instruction
 import app.reseam.patch.types.MethodRef
 
-val Instruction.opcodeValue: Int
+internal val Instruction.opcodeValue: Int
     get() =
         when (this) {
             is Instruction.Simple -> field0.opcode.toInt()
@@ -75,7 +75,7 @@ val Instruction.literal: Long?
         }
     }
 
-val Instruction.codeUnitSize: Int
+internal val Instruction.codeUnitSize: Int
     get() =
         when (this) {
             is Instruction.PackedSwitchData -> 4 + 2 * field0.targets.size

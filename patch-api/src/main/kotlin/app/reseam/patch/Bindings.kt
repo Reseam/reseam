@@ -60,13 +60,8 @@ interface BindingQuery {
     /** The path from the input value to the bound object. */
     fun raw(block: PathQuery.() -> Unit)
 
-    fun objectValue(name: String, block: PathQuery.() -> Unit)
-
-    fun string(name: String, block: PathQuery.() -> Unit)
-
-    fun context(name: String, block: PathQuery.() -> Unit)
-
-    fun intValue(name: String, block: PathQuery.() -> Unit)
+    /** A member whose value is the path from the input value, read with [BindingTarget.member]. */
+    fun member(name: String, block: PathQuery.() -> Unit)
 
     /** A member whose value is another binding's root when the path does not say otherwise. */
     fun bind(name: String, target: BindingTarget, block: PathQuery.() -> Unit)
@@ -98,8 +93,6 @@ interface PathQuery {
     fun field(name: String, block: FieldLocator.() -> Unit)
 
     fun field(target: FieldTarget)
-
-    fun instanceField(type: String)
 
     fun instanceField(typeAnyOf: List<String>)
 

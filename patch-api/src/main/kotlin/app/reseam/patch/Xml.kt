@@ -24,7 +24,7 @@ import app.reseam.patch.native.xmlSetAttribute
 import app.reseam.patch.native.xmlSetAttributeRef
 import app.reseam.patch.native.xmlTagName
 
-class XmlDocument(val handle: UInt) : AutoCloseable {
+class XmlDocument internal constructor(internal val handle: UInt) : AutoCloseable {
     private var closed = false
     val root: XmlElement
         get() = XmlElement(handle, xmlRoot(handle))
@@ -70,7 +70,7 @@ class XmlDocument(val handle: UInt) : AutoCloseable {
     }
 }
 
-class XmlElement(val doc: UInt, val handle: UInt) {
+class XmlElement internal constructor(internal val doc: UInt, internal val handle: UInt) {
     val tag: String
         get() = xmlTagName(doc, handle)
 

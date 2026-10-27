@@ -6,7 +6,6 @@ package app.reseam.patch.search
 import app.reseam.patch.MatchReport
 import app.reseam.patch.PatchRuntime
 import app.reseam.patch.RankScope
-import app.reseam.patch.SearchMatchReport
 import app.reseam.patch.dex.Opcode
 import app.reseam.patch.run.Resolution
 
@@ -84,7 +83,7 @@ internal abstract class QuerySpec<T : Any, S : RankScope>(private val kind: Stri
     fun resolveAll(runtime: PatchRuntime, debugName: String?): Resolution<List<T>> {
         val evaluated = evaluate(runtime, plan(runtime).narrowedPool())
         val report =
-            SearchMatchReport(
+            MatchReport(
                 debugName ?: "anonymous",
                 "${evaluated.accepted.size} $kind(s)",
                 evaluated.considered,

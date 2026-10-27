@@ -45,8 +45,6 @@ internal constructor(
     val all: List<PointTarget>
         get() = resolved
 
-    fun forEach(block: PointTarget.() -> Unit) = all.forEach(block)
-
     /** Require exactly one point, when used, with all matching locations in the diagnostic. */
     fun single(): PointTarget {
         val selection = this
@@ -109,7 +107,7 @@ private fun pointsIn(
                 }
         Resolution(
             points,
-            SearchMatchReport(
+            MatchReport(
                 label,
                 "${points.size} points",
                 considered,

@@ -24,18 +24,12 @@ abstract class Target<R : Any>(val debugName: String?) {
     override fun toString(): String = label
 }
 
-interface MatchReport {
-    val name: String
-    val winner: String
-    val considered: Int
-    val reasons: List<String>
-    val nearMisses: List<String>
-}
-
-internal data class SearchMatchReport(
-    override val name: String,
-    override val winner: String,
-    override val considered: Int,
-    override val reasons: List<String>,
-    override val nearMisses: List<String>,
-) : MatchReport
+/** Why a target resolved as it did: what won, how many candidates were searched, and why. */
+class MatchReport
+internal constructor(
+    val name: String,
+    val winner: String,
+    val considered: Int,
+    val reasons: List<String>,
+    val nearMisses: List<String>,
+)

@@ -4,13 +4,13 @@
 package app.reseam.patch.search
 
 import app.reseam.patch.dex.Method
-import app.reseam.patch.dex.methodRef
 import app.reseam.patch.dex.parameterTypes
 import app.reseam.patch.dex.returnType
 import app.reseam.patch.native.countFollowingCheckCast
 import app.reseam.patch.native.fieldReferences
 import app.reseam.patch.native.findCallsMatching
 import app.reseam.patch.native.findFieldAccessesMatching
+import app.reseam.patch.native.instructionMethodRef
 import app.reseam.patch.native.methodReferences
 import app.reseam.patch.run.Memos
 import app.reseam.patch.types.FieldRef
@@ -55,7 +55,7 @@ internal class References(memos: Memos, private val index: SearchIndex) {
                 )
                 .filter { hit ->
                     !spec.needsPostFilter ||
-                        Method(hit.method).methodRef(hit.index.toInt())?.let(spec::matches) == true
+                        instructionMethodRef(hit.method, hit.index)?.let(spec::matches) == true
                 }
                 .mapTo(linkedSetOf()) { it.method }
         }

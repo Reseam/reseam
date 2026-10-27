@@ -28,7 +28,7 @@ internal fun CodeEmitter.invoke(opcode: Opcode, ref: MethodRef, args: List<Value
     if (returnType == Type.Void) return Value(this, Register.Void, Type.Void)
     val dest = allocTemp(registerWordCount(returnType))
     op(writes = listOf(dest)) { b, r ->
-        b.moveResultTyped(byte(r(dest), "move-result"), returnType)
+        b.moveResult(byte(r(dest), "move-result"), returnType)
     }
     return Value(this, dest, returnType)
 }
@@ -88,7 +88,7 @@ internal fun CodeEmitter.readField(value: Value, field: FieldRef): ValueRef {
     val dest = allocTemp(registerWordCount(field.fieldType), RegisterConstraint.LOW)
     val obj = value.asLow()
     op(reads = listOf(obj.register), writes = listOf(dest)) { b, r ->
-        b.igetTyped(low(r(dest), "iget A"), low(r(obj.register), "iget B"), field)
+        b.iget(low(r(dest), "iget A"), low(r(obj.register), "iget B"), field)
     }
     return Value(this, dest, field.fieldType, source = field)
 }
@@ -108,7 +108,7 @@ internal fun CodeEmitter.writeField(value: Value, field: FieldRef, newValue: Val
     val src = newValue.asLow()
     val obj = value.asLow()
     op(reads = listOf(src.register, obj.register)) { b, r ->
-        b.iputTyped(low(r(src.register), "iput A"), low(r(obj.register), "iput B"), field)
+        b.iput(low(r(src.register), "iput A"), low(r(obj.register), "iput B"), field)
     }
 }
 
@@ -178,14 +178,14 @@ internal fun CodeEmitter.constZero(dest: Register, type: String) {
 
 internal fun CodeEmitter.moveValue(dest: Register, src: Register, type: String) {
     op(reads = listOf(src), writes = listOf(dest)) { b, r ->
-        b.moveTyped(r(dest), r(src), type)
+        b.move(r(dest), r(src), type)
     }
 }
 
 internal fun CodeEmitter.readStatic(field: FieldRef): Value {
     access.requireField(field)
     val dest = allocTemp(registerWordCount(field.fieldType))
-    op(writes = listOf(dest)) { b, r -> b.sgetTyped(byte(r(dest), "sget"), field) }
+    op(writes = listOf(dest)) { b, r -> b.sget(byte(r(dest), "sget"), field) }
     return Value(this, dest, field.fieldType, source = field)
 }
 
@@ -197,7 +197,7 @@ internal fun CodeEmitter.writeStatic(field: FieldRef, value: Value) {
         "write ${field.definingClass}->${field.name}",
     )
     val src = value.asByte()
-    op(reads = listOf(src.register)) { b, r -> b.sputTyped(byte(r(src.register), "sput"), field) }
+    op(reads = listOf(src.register)) { b, r -> b.sput(byte(r(src.register), "sput"), field) }
 }
 
 /** A new instance of [owner], built by its constructor of [ctorProto]. */

@@ -134,10 +134,10 @@ val longGoto =
                 2,
                 0,
                 buildInstructions {
-                    const4(0, 0)
+                    constInt(0, 0)
                     goto("end")
                     repeat(130) { nop() }
-                    const4(0, 1)
+                    constInt(0, 1)
                     label("end")
                     returnValue(0)
                 },

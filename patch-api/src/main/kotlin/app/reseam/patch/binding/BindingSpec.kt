@@ -47,19 +47,7 @@ internal class BindingSpec : BindingQuery {
         rawBlock = block
     }
 
-    override fun objectValue(name: String, block: PathQuery.() -> Unit) {
-        memberBlocks[name] = block to null
-    }
-
-    override fun string(name: String, block: PathQuery.() -> Unit) {
-        memberBlocks[name] = block to null
-    }
-
-    override fun context(name: String, block: PathQuery.() -> Unit) {
-        memberBlocks[name] = block to null
-    }
-
-    override fun intValue(name: String, block: PathQuery.() -> Unit) {
+    override fun member(name: String, block: PathQuery.() -> Unit) {
         memberBlocks[name] = block to null
     }
 

@@ -41,7 +41,7 @@ val instructionShapeQueries =
         val owner = bytecode.findClass("com.example.ShapeHolder")!!
         val changed = orderedShape.method
         check(changed.info.instructionCount > 1u)
-        changed.alwaysReturn()
+        orderedShape.alwaysReturn()
         check(changed.instructionCount == 1)
         check(
             methods {

@@ -90,11 +90,10 @@ internal class EmittedCode(val emitter: CodeEmitter) : CodeScope {
             Value(this, slot.register, slot.type)
         }
 
-    override fun int(value: Int): ValueRef =
-        constant(Type.Int, if (value == 0) ValueType.Zero else ValueType.Known(Type.Int)) { b, dest
-            ->
-            b.constInt(dest, value)
-        }
+    override fun int(value: Int): ValueRef {
+        val type = if (value == 0) ValueType.Zero else ValueType.Known(Type.Int)
+        return constant(Type.Int, type) { b, dest -> b.constInt(dest, value) }
+    }
 
     override fun long(value: Long): ValueRef =
         constant(Type.Long) { b, dest -> b.constLong(dest, value) }
