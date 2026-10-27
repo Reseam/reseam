@@ -6,9 +6,10 @@ use std::path::Path;
 use reseam_apk::{ContainerFormat, ScratchDir};
 use reseam_model::{PatchArtifact, PatchOutput, Problem, SigningKeyFiles};
 
-use super::{apk, apk_metadata, publish, zip};
+use super::{apk, apk_metadata, publish};
 use crate::apk::OpenedApk;
 use crate::output::resolve_output;
+use reseam_fixtures::zip;
 
 #[test]
 fn containers_and_plain_apks_use_the_same_output_pipeline() {

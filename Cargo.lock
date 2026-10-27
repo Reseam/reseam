@@ -1813,6 +1813,7 @@ dependencies = [
  "quick-xml",
  "rayon",
  "reseam-dex",
+ "reseam-fixtures",
  "reseam-journal",
  "reseam-model",
  "reseam-sign",
@@ -1873,6 +1874,13 @@ dependencies = [
  "thiserror",
  "tracing",
  "zlib-rs",
+]
+
+[[package]]
+name = "reseam-fixtures"
+version = "0.32.0"
+dependencies = [
+ "zip",
 ]
 
 [[package]]
@@ -1943,6 +1951,7 @@ dependencies = [
  "libc",
  "reseam-apk",
  "reseam-dex",
+ "reseam-fixtures",
  "reseam-model",
  "reseam-patcher",
  "reseam-sign",
@@ -1952,7 +1961,6 @@ dependencies = [
  "thiserror",
  "tracing",
  "windows-sys 0.61.2",
- "zip",
 ]
 
 [[package]]

@@ -9,6 +9,7 @@ members = [
     "crates/model",
     "crates/apk",
     "crates/sign",
+    "crates/fixtures",
     "crates/patcher",
     "sdk",
     "sdk/native",
@@ -68,6 +69,7 @@ reseam-dex     = { path = "crates/dex" }
 reseam-hermes  = { path = "crates/hermes" }
 reseam-apk     = { path = "crates/apk" }
 reseam-sign    = { path = "crates/sign" }
+reseam-fixtures = { path = "crates/fixtures" }
 reseam-patcher = { path = "crates/patcher", default-features = false }
 reseam-sdk     = { path = "sdk", default-features = false }
 

@@ -10,10 +10,11 @@ use reseam_model::{
     Trust,
 };
 
-use super::{apk, zip};
+use super::apk;
 use crate::bundles::trusted_archives;
 use crate::inputs::Inputs;
 use crate::trust::TrustStore;
+use reseam_fixtures::zip;
 
 fn catalog_manifest() -> String {
     format!(

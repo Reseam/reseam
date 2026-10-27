@@ -1,57 +1,39 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::fs::File;
-use std::io::Write;
 use std::path::Path;
 
-use crate::common::archive::write_apk;
 use crate::common::manifest::manifest_bytes;
 use reseam_apk::{
     ApkError, ApkFile, ApkWriteOptions, Compression, ContainerFormat, open_container,
 };
 
-struct Entry<'a> {
-    name: &'a str,
-    data: &'a [u8],
-    compression: zip::CompressionMethod,
+fn write_container(path: &Path, entries: &[(&str, &[u8])], compression: zip::CompressionMethod) {
+    let options = zip::write::SimpleFileOptions::default().compression_method(compression);
+    std::fs::write(path, reseam_fixtures::zip_with(entries, options)).expect("container fixture");
 }
 
-fn write_container(path: &Path, entries: &[Entry<'_>]) {
-    let mut writer = zip::ZipWriter::new(File::create(path).expect("container fixture"));
-    for entry in entries {
-        writer
-            .start_file(
-                entry.name,
-                zip::write::SimpleFileOptions::default().compression_method(entry.compression),
-            )
-            .expect("container entry");
-        writer.write_all(entry.data).expect("container bytes");
-    }
-    writer.finish().expect("container fixture");
-}
-
+/// Each manifest's APK, also written to `dir` as `<index>.apk`.
 fn fixture_apks(dir: &Path, manifests: &[(&str, Vec<u8>)]) -> Vec<Vec<u8>> {
     manifests
         .iter()
         .enumerate()
         .map(|(index, (_, manifest))| {
-            let path = dir.join(format!("{index}.apk"));
-            write_apk(&path, manifest, &[("assets/data.txt", b"original")]);
-            std::fs::read(path).expect("APK fixture")
+            let apk = reseam_fixtures::apk(manifest, &[("assets/data.txt", b"original")]);
+            std::fs::write(dir.join(format!("{index}.apk")), &apk).expect("APK fixture");
+            apk
         })
         .collect()
 }
 
-fn candidate_entries<'a>(manifests: &'a [(&str, Vec<u8>)], apks: &'a [Vec<u8>]) -> Vec<Entry<'a>> {
+fn candidate_entries<'a>(
+    manifests: &'a [(&'a str, Vec<u8>)],
+    apks: &'a [Vec<u8>],
+) -> Vec<(&'a str, &'a [u8])> {
     manifests
         .iter()
         .zip(apks)
-        .map(|((name, _), bytes)| Entry {
-            name,
-            data: bytes,
-            compression: zip::CompressionMethod::Stored,
-        })
+        .map(|((name, _), bytes)| (*name, bytes.as_slice()))
         .collect()
 }
 
@@ -76,10 +58,9 @@ fn containers_classify_extract_and_transfer_their_lifetime_to_a_session() {
             ];
             let apks = fixture_apks(dir.path(), &manifests);
             let mut entries = candidate_entries(&manifests, &apks);
-            for entry in &mut entries { entry.compression = compression; }
-            entries.push(Entry { name: case.metadata_name, data: case.metadata, compression });
+            entries.push((case.metadata_name, case.metadata));
             let input = dir.path().join(format!("app.{}", case.extension));
-            write_container(&input, &entries);
+            write_container(&input, &entries, compression);
             let (format, mut apk) = open_container(&input, ApkFile::patch_options())
                 .expect("extract")
                 .expect("container");
@@ -105,15 +86,18 @@ fn an_apk_manifest_takes_precedence_over_embedded_metadata_and_extension() {
     let dir = tempfile::tempdir().expect("fixture");
     for extension in ["apk", "apkm", "xapk"] {
         let path = dir.path().join(format!("app.{extension}"));
-        write_apk(
+        std::fs::write(
             &path,
-            &manifest_bytes("base", None),
-            &[
-                ("info.json", br#"{"apkm_version":5}"#),
-                ("manifest.json", br#"{"xapk_version":2}"#),
-                ("embedded.apk", b"asset"),
-            ],
-        );
+            reseam_fixtures::apk(
+                &manifest_bytes("base", None),
+                &[
+                    ("info.json", br#"{"apkm_version":5}"#),
+                    ("manifest.json", br#"{"xapk_version":2}"#),
+                    ("embedded.apk", b"asset"),
+                ],
+            ),
+        )
+        .expect("fixture APK");
         assert!(
             open_container(&path, ApkFile::patch_options())
                 .expect("open")
@@ -159,7 +143,11 @@ fn explicit_and_contained_sets_enforce_the_same_manifest_identity_rules() {
         let dir = tempfile::tempdir().expect("fixture");
         let apks = fixture_apks(dir.path(), &manifests);
         let input = dir.path().join("app.apkm");
-        write_container(&input, &candidate_entries(&manifests, &apks));
+        write_container(
+            &input,
+            &candidate_entries(&manifests, &apks),
+            zip::CompressionMethod::Stored,
+        );
         assert!(matches!(
             open_container(&input, ApkFile::patch_options()),
             Err(ApkError::Invalid { .. })
@@ -192,13 +180,9 @@ fn container_metadata_must_describe_the_complete_set_without_overriding_manifest
         let apks = fixture_apks(dir.path(), &manifests);
         let metadata = serde_json::to_vec(&metadata).expect("metadata fixture");
         let mut entries = candidate_entries(&manifests, &apks);
-        entries.push(Entry {
-            name: "manifest.json",
-            data: &metadata,
-            compression: zip::CompressionMethod::Stored,
-        });
+        entries.push(("manifest.json", &metadata));
         let input = dir.path().join("app.xapk");
-        write_container(&input, &entries);
+        write_container(&input, &entries, zip::CompressionMethod::Stored);
         assert!(matches!(
             open_container(&input, ApkFile::patch_options()),
             Err(ApkError::Invalid { .. })
@@ -219,7 +203,11 @@ fn unsafe_names_and_expansion_payloads_cannot_be_materialized() {
         let manifests = [(name, manifest_bytes("base", None))];
         let apks = fixture_apks(dir.path(), &manifests);
         let input = dir.path().join("app.apkm");
-        write_container(&input, &candidate_entries(&manifests, &apks));
+        write_container(
+            &input,
+            &candidate_entries(&manifests, &apks),
+            zip::CompressionMethod::Stored,
+        );
         assert!(matches!(
             open_container(&input, ApkFile::patch_options()),
             Err(ApkError::Invalid { .. })
@@ -237,14 +225,7 @@ fn extraction_checks_payload_integrity_before_opening_an_apk() {
         zip::CompressionMethod::Deflated,
     ] {
         let path = dir.path().join("app.apkm");
-        write_container(
-            &path,
-            &[Entry {
-                name: "base.apk",
-                data: &apks[0],
-                compression,
-            }],
-        );
+        write_container(&path, &[("base.apk", &apks[0])], compression);
         let mut bytes = std::fs::read(&path).expect("fixture");
         let mut archive = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).expect("fixture");
         let offset = archive

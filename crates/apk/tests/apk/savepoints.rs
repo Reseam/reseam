@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::common::TestResult;
-use crate::common::archive::write_apk;
 use crate::common::dex::{dex_bytes, empty_dex, minimal_dex_bytes};
 use crate::common::manifest::manifest_bytes;
 use crate::common::session::{lazy, mutable_resource_table_bytes};
@@ -16,16 +15,19 @@ fn rollback_returns_the_session_to_each_savepoint() -> TestResult {
 
     let dir = tempfile::tempdir()?;
     let dex = minimal_dex_bytes();
-    write_apk(
-        &dir.path().join("app.apk"),
-        &manifest_bytes("original", None),
-        &[
-            ("classes.dex", &dex),
-            ("classes2.dex", &dex),
-            ("resources.arsc", &mutable_resource_table_bytes()),
-            ("assets/kept.txt", b"kept"),
-        ],
-    );
+    std::fs::write(
+        dir.path().join("app.apk"),
+        reseam_fixtures::apk(
+            &manifest_bytes("original", None),
+            &[
+                ("classes.dex", &dex),
+                ("classes2.dex", &dex),
+                ("resources.arsc", &mutable_resource_table_bytes()),
+                ("assets/kept.txt", b"kept"),
+            ],
+        ),
+    )
+    .expect("fixture APK");
     let mut apk = Apk::open(dir.path().join("app.apk"), lazy())?;
     let mut written = 0;
     let mut entries = |apk: &mut Apk| -> Entries {

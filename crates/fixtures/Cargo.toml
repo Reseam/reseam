@@ -1,0 +1,13 @@
+[package]
+name = "reseam-fixtures"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Archives the workspace's tests build as input"
+
+[dependencies]
+zip = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::common::archive::write_apk;
-
 use crate::common::tables::{config, package, res_type, simple, strings};
 use reseam_apk::{
     ApkFile, ApplicationIcon, IconLayer, ResValue, ResourceScope, ResourceTable, axml,
@@ -112,7 +110,7 @@ fn application_presentation_resolves_labels_and_bitmap_or_adaptive_icons() {
         entries.push(("resources.arsc", &resources));
         let dir = tempfile::tempdir().expect("fixture");
         let path = dir.path().join("app.apk");
-        write_apk(&path, &manifest, &entries);
+        std::fs::write(&path, reseam_fixtures::apk(&manifest, &entries)).expect("fixture APK");
         let mut apk = ApkFile::open(&path, ParseOptions::default()).expect("fixture");
         assert_eq!(
             apk.application_label().expect("label").as_deref(),
