@@ -23,6 +23,8 @@ mod link;
 mod loader;
 mod log_host;
 mod manifest;
+mod manifest_activities;
+mod manifest_text;
 #[cfg(feature = "kotlin")]
 mod metadata;
 mod options;
@@ -39,6 +41,7 @@ mod xml;
 mod xml_attributes;
 mod xml_documents;
 mod xml_nodes;
+mod xml_tree;
 
 #[cfg(feature = "kotlin")]
 pub(crate) use loader::load_patches;

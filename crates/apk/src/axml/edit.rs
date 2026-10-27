@@ -26,6 +26,22 @@ impl AxmlDocument {
         }
     }
 
+    /// Sets the `android:` attribute with framework id `res_id`, or adds it as
+    /// `name` where aapt would write it; false when `index` is not an element.
+    pub fn put_android_attribute(
+        &mut self,
+        index: usize,
+        name: &str,
+        res_id: u32,
+        value: ResValue,
+    ) -> bool {
+        if self.set_attribute(index, res_id, value) {
+            return true;
+        }
+        let attr = self.make_attribute(name, res_id, value);
+        self.add_attribute(index, attr)
+    }
+
     pub fn add_attribute(&mut self, index: usize, attr: AxmlAttribute) -> bool {
         self.edit_attributes(index, |document, attributes| {
             document.insert_attribute(attributes, attr);
