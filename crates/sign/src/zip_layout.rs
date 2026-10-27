@@ -7,6 +7,7 @@ use std::ops::Range;
 
 use crate::block::{self, BlockEnvelope};
 use crate::error::{Result, invalid, io_at};
+use reseam_bytes::{u16_at, u32_at};
 
 const EOCD_SIGNATURE: &[u8; 4] = b"PK\x05\x06";
 const EOCD_MIN_LEN: usize = 22;
@@ -103,7 +104,7 @@ fn find_eocd(tail: &[u8]) -> Result<usize> {
         .rev()
         .find(|&offset| {
             let record = &tail[offset..offset + EOCD_MIN_LEN];
-            let comment_len = u16::from_le_bytes([record[20], record[21]]) as usize;
+            let comment_len = usize::from(u16_at(record, 20));
             &record[..4] == EOCD_SIGNATURE && offset + EOCD_MIN_LEN + comment_len == tail.len()
         })
         .ok_or_else(|| invalid("apk", "EOCD not found"))
@@ -111,8 +112,8 @@ fn find_eocd(tail: &[u8]) -> Result<usize> {
 
 /// The central directory the EOCD record at file offset `eocd_offset` names.
 fn central_directory(eocd: &[u8], eocd_offset: u64) -> Result<Range<u64>> {
-    let start = u64::from(le_u32(eocd, EOCD_CD_OFFSET_FIELD.start));
-    let size = u64::from(le_u32(eocd, EOCD_CD_SIZE_FIELD));
+    let start = u64::from(u32_at(eocd, EOCD_CD_OFFSET_FIELD.start));
+    let size = u64::from(u32_at(eocd, EOCD_CD_SIZE_FIELD));
     let available = eocd_offset
         .checked_sub(start)
         .ok_or_else(|| invalid("apk", "central directory offset past EOCD"))?;
@@ -127,14 +128,6 @@ pub(crate) fn patch_cd_offset(eocd: &[u8], cd_offset: u32) -> Vec<u8> {
     let mut patched = eocd.to_vec();
     patched[EOCD_CD_OFFSET_FIELD].copy_from_slice(&cd_offset.to_le_bytes());
     patched
-}
-
-fn le_u32(data: &[u8], offset: usize) -> u32 {
-    u32::from_le_bytes(
-        data[offset..offset + 4]
-            .try_into()
-            .expect("ZIP field has four bytes"),
-    )
 }
 
 pub(crate) fn write_at(mut file: &File, offset: u64, bytes: &[u8]) -> Result<()> {

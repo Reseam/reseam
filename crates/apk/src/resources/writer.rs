@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::{RES_TABLE_TYPE, ResPackage, ResourceTable, TABLE_HEADER_LEN, TableChunk};
-use crate::buf::write_u32;
 use crate::chunk::write_header;
 use crate::error::{Result, invalid};
+use reseam_bytes::write_u32;
 use std::io::Write;
 
 impl ResourceTable {

@@ -6,7 +6,7 @@ use crate::error::Result;
 use crate::instruction::codec::decode_instructions;
 use crate::model::code::CodeItem;
 use crate::options::ParseOptions;
-use crate::read::{u16_at, u32_at};
+use reseam_bytes::{u16_at, u32_at};
 
 use crate::model::metadata::Metadata;
 
@@ -14,7 +14,7 @@ use crate::model::metadata::Metadata;
 pub fn read_code_item(source: &crate::DexBytes, off: u32, opts: ParseOptions) -> Result<CodeItem> {
     let buf = source.as_bytes();
     let base = off as usize;
-    crate::error::require_len(buf, base, 16, "code item")?;
+    reseam_bytes::require_len(buf, base, 16, "code item")?;
     let registers_size = u16_at(buf, base);
     let ins_size = u16_at(buf, base + 2);
     let outs_size = u16_at(buf, base + 4);

@@ -7,9 +7,9 @@ use super::{
     AxmlDocument, AxmlEvent, CHUNK_END_ELEMENT, CHUNK_END_NAMESPACE, CHUNK_RESOURCE_IDS,
     CHUNK_START_ELEMENT, CHUNK_START_NAMESPACE, CHUNK_TEXT, CHUNK_XML_DOCUMENT, NONE, NodeMetadata,
 };
-use crate::buf::write_u32;
 use crate::chunk::{self, write_header};
 use crate::error::{Result, invalid};
+use reseam_bytes::write_u32;
 
 impl AxmlDocument {
     pub fn serialize(&self) -> Result<Vec<u8>> {

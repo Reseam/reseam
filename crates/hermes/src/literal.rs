@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::HermesFile;
-use crate::bytes::read_u32;
 use crate::error::{HermesError, Result, invalid};
 use crate::layout::Section;
 use crate::string::StringId;
+use reseam_bytes::u32_at;
 
 /// The value type of a run in a literal buffer (`SerializedLiteralGenerator` tags).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -121,7 +121,7 @@ pub(crate) fn shape_keys<'a>(file: &HermesFile<'a>, shape: u32) -> Result<Vec<Li
     read_literals(
         file,
         Section::Keys,
-        read_u32(entry, 0)? as usize,
-        read_u32(entry, 4)? as usize,
+        u32_at(entry, 0) as usize,
+        u32_at(entry, 4) as usize,
     )
 }

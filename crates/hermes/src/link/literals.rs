@@ -4,11 +4,11 @@
 use std::collections::BTreeMap;
 
 use crate::HermesFile;
-use crate::bytes::read_u32;
 use crate::edit::Edits;
 use crate::error::{HermesError, Result, invalid};
 use crate::layout::Section;
 use crate::literal::{Literal, MAX_RUN, read_literals};
+use reseam_bytes::u32_at;
 
 /// A linked module's literal buffer, copied per reference. Hermes shares
 /// byte-identical literal sequences, so a reference may start inside another
@@ -95,7 +95,7 @@ pub(super) fn copy_shapes(
         edits.section_size(app, Section::Keys) as u32,
     );
     for entry in module.section(Section::Shapes).as_chunks::<8>().0 {
-        let offset = keys.relocate(read_u32(entry, 0)?, read_u32(entry, 4)?)?;
+        let offset = keys.relocate(u32_at(entry, 0), u32_at(entry, 4))?;
         edits.append(Section::Shapes, &offset.to_le_bytes());
         edits.append(Section::Shapes, &entry[4..]);
     }
@@ -115,7 +115,7 @@ pub(super) fn copy_storage(
     ] {
         let base = edits.section_size(app, storage) as u32;
         for entry in module.section(table).as_chunks::<8>().0 {
-            let offset = read_u32(entry, 0)?
+            let offset = u32_at(entry, 0)
                 .checked_add(base)
                 .ok_or(HermesError::Limit("four GiB of literal storage"))?;
             edits.append(table, &offset.to_le_bytes());

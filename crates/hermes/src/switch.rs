@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::bytes::{align, slice};
+use crate::bytes::align;
 use crate::error::{Result, invalid};
 use crate::function::Function;
 use crate::opcode::{Instruction, Op};
 use crate::string::StringId;
+use reseam_bytes::slice;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SwitchKind {
@@ -84,6 +85,6 @@ pub(crate) fn switch_table<'a>(
         kind,
         operand,
         offset,
-        bytes: slice(function.source, offset, size)?,
+        bytes: slice(function.source, offset, size, "switch table")?,
     }))
 }

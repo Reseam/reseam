@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use reseam_bytes::u32_at;
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
@@ -17,7 +18,6 @@ use crate::encoding::mutf8::{decode_mutf8_lossy, encode_mutf8, utf16_len, utf16_
 use crate::error::{Result, invalid, invalid_mutf8};
 use crate::model::StringIdx;
 use crate::options::ParseOptions;
-use crate::read::u32_at;
 
 /// The string table left in the file: raw entries are read through the
 /// `string_ids` table on access, and only strings added after parse are owned.

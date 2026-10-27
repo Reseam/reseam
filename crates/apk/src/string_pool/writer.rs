@@ -4,8 +4,8 @@
 use super::{
     CHUNK_STRING_POOL, FLAG_UTF8, HEADER_LEN, StringEncoding, StringPool, UTF8_LENGTH_MASK,
 };
-use crate::buf::{read_u32_le, write_u16, write_u32};
 use crate::error::{Result, invalid};
+use reseam_bytes::{read_u32, write_u16, write_u32};
 use std::io::Write;
 use std::ops::Range;
 
@@ -30,7 +30,7 @@ impl StringPool {
         let mut offsets = Vec::with_capacity(count);
         for i in 0..count as u32 {
             if (i as usize) < self.raw_len && !self.overrides.contains_key(&i) {
-                offsets.push(read_u32_le(
+                offsets.push(read_u32(
                     data,
                     self.offsets_start + i as usize * 4,
                     "string offset",
@@ -125,7 +125,7 @@ impl PoolPlan<'_> {
         } else {
             data[pool.chunk.start..pool.offsets_start].to_vec()
         };
-        let flags = read_u32_le(&header, 16, "string pool flags")? & !1;
+        let flags = read_u32(&header, 16, "string pool flags")? & !1;
         header[4..8].copy_from_slice(
             &u32::try_from(self.size)
                 .map_err(|_| invalid("string pool", "pool exceeds 4 GiB"))?

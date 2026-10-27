@@ -4,12 +4,12 @@
 //! The switch and array-data payloads that a nop opcode unit introduces.
 
 use super::encode::split32;
-use crate::error::{Result, invalid, malformed, require_len};
+use crate::error::{Result, invalid, malformed};
 use crate::instruction::opcodes::{
     FILL_ARRAY_DATA_PAYLOAD, PACKED_SWITCH_PAYLOAD, SPARSE_SWITCH_PAYLOAD,
 };
 use crate::instruction::{FillArrayPayloadData, Instruction, PackedSwitchData, SparseSwitchData};
-use crate::read::{i32_at, u16_at, u32_at};
+use reseam_bytes::{i32_at, require_len, u16_at, u32_at};
 
 /// The payload whose identifier starts at byte `at`, or `None` when the unit
 /// there identifies no payload.

@@ -38,6 +38,8 @@ pub enum HermesError {
         parameters: Option<u32>,
         count: usize,
     },
+    #[error(transparent)]
+    Truncated(#[from] reseam_bytes::Truncated),
     #[error("Hermes output: {0}")]
     Io(#[from] std::io::Error),
 }

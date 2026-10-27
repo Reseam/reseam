@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::{HEADER_LEN, NAME_UNITS, PackageChunk, ResPackage};
-use crate::buf::{read_u16_le, read_u32_le, require_len};
 use crate::chunk;
 use crate::error::{Result, malformed};
 use crate::resources::{RES_TABLE_TYPE_SPEC, RES_TABLE_TYPE_TYPE, ResType, TypeSpec};
 use crate::string_pool::StringPool;
+use reseam_bytes::{read_u16, read_u32, require_len};
 use reseam_storage::Bytes;
 use std::ops::Range;
 
@@ -18,17 +18,17 @@ impl ResPackage {
     ) -> Result<Self> {
         let buf = &data.as_bytes()[chunk.clone()];
         require_len(buf, 0, header_size.max(284), "resource package")?;
-        let id = read_u32_le(buf, 8, "resource package")?;
+        let id = read_u32(buf, 8, "resource package")?;
         let mut name = [0; NAME_UNITS];
         for (i, unit) in name.iter_mut().enumerate() {
-            *unit = read_u16_le(buf, 12 + i * 2, "package name")?;
+            *unit = read_u16(buf, 12 + i * 2, "package name")?;
         }
-        let type_strings_offset = read_u32_le(buf, 268, "resource package")? as usize;
-        let last_public_type = read_u32_le(buf, 272, "resource package")?;
-        let key_strings_offset = read_u32_le(buf, 276, "resource package")? as usize;
-        let last_public_key = read_u32_le(buf, 280, "resource package")?;
+        let type_strings_offset = read_u32(buf, 268, "resource package")? as usize;
+        let last_public_type = read_u32(buf, 272, "resource package")?;
+        let key_strings_offset = read_u32(buf, 276, "resource package")? as usize;
+        let last_public_key = read_u32(buf, 280, "resource package")?;
         let type_id_offset = if header_size >= HEADER_LEN {
-            read_u32_le(buf, 284, "resource package")?
+            read_u32(buf, 284, "resource package")?
         } else {
             0
         };

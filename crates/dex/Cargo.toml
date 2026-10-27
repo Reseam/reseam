@@ -8,6 +8,7 @@ license = "AGPL-3.0-or-later"
 readme = "README.md"
 
 [dependencies]
+reseam-bytes = { workspace = true }
 reseam-storage = { workspace = true }
 reseam-journal = { workspace = true }
 thiserror = { workspace = true }

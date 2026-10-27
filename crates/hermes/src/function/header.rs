@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::flags::FunctionFlags;
-use crate::bytes::slice;
 use crate::error::{Result, invalid};
+use reseam_bytes::slice;
 
 pub(crate) const SMALL_HEADER_SIZE: usize = 12;
 pub(crate) const LARGE_HEADER_SIZE: usize = 37;
@@ -93,9 +93,10 @@ pub(crate) struct FunctionHeader {
 
 impl FunctionHeader {
     pub(crate) fn decode(source: &[u8], position: usize) -> Result<Self> {
-        let small: &[u8; SMALL_HEADER_SIZE] = slice(source, position, SMALL_HEADER_SIZE)?
-            .try_into()
-            .expect("slice has the small header size");
+        let small: &[u8; SMALL_HEADER_SIZE] =
+            slice(source, position, SMALL_HEADER_SIZE, "function header")?
+                .try_into()
+                .expect("slice has the small header size");
         if small[FLAGS] & FunctionFlags::OVERFLOWED != 0 {
             return Self::decode_large(
                 source,
@@ -113,7 +114,7 @@ impl FunctionHeader {
     }
 
     fn decode_large(source: &[u8], large: usize) -> Result<Self> {
-        let data = slice(source, large, LARGE_HEADER_SIZE)?;
+        let data = slice(source, large, LARGE_HEADER_SIZE, "function header")?;
         let fields = std::array::from_fn(|index| match index.checked_sub(WORDS) {
             Some(byte) => u32::from(data[WORDS * 4 + byte]),
             None => u32::from_le_bytes(

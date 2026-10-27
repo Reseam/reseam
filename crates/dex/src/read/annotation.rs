@@ -9,7 +9,7 @@ use crate::model::annotation::{
 use crate::model::metadata::MetadataItem;
 use crate::model::{FieldIdx, MethodIdx};
 use crate::options::ParseOptions;
-use crate::read::{read_u8, read_u32};
+use reseam_bytes::{read_u8, read_u32};
 
 pub fn read_annotations_directory(
     buf: &[u8],
@@ -17,18 +17,18 @@ pub fn read_annotations_directory(
     opts: ParseOptions,
 ) -> Result<AnnotationsDirectory> {
     let base = off as usize;
-    let class_annotations_off = read_u32(buf, base)?;
-    let fields_size = read_u32(buf, base + 4)? as usize;
-    let methods_size = read_u32(buf, base + 8)? as usize;
-    let params_size = read_u32(buf, base + 12)? as usize;
+    let class_annotations_off = read_u32(buf, base, "annotations directory")?;
+    let fields_size = read_u32(buf, base + 4, "annotations directory")? as usize;
+    let methods_size = read_u32(buf, base + 8, "annotations directory")? as usize;
+    let params_size = read_u32(buf, base + 12, "annotations directory")? as usize;
 
     let mut pos = base + 16;
 
     let mut field_annotations =
         Vec::with_capacity(fields_size.min(buf.len().saturating_sub(pos) / 8));
     for _ in 0..fields_size {
-        let field_idx = FieldIdx(read_u32(buf, pos)?);
-        let ann_off = read_u32(buf, pos + 4)?;
+        let field_idx = FieldIdx(read_u32(buf, pos, "annotations directory")?);
+        let ann_off = read_u32(buf, pos + 4, "annotations directory")?;
         pos += 8;
         let anns = read_annotation_set(buf, ann_off, opts)?;
         field_annotations.push((field_idx, anns));
@@ -37,8 +37,8 @@ pub fn read_annotations_directory(
     let mut method_annotations =
         Vec::with_capacity(methods_size.min(buf.len().saturating_sub(pos) / 8));
     for _ in 0..methods_size {
-        let method_idx = MethodIdx(read_u32(buf, pos)?);
-        let ann_off = read_u32(buf, pos + 4)?;
+        let method_idx = MethodIdx(read_u32(buf, pos, "annotations directory")?);
+        let ann_off = read_u32(buf, pos + 4, "annotations directory")?;
         pos += 8;
         let anns = read_annotation_set(buf, ann_off, opts)?;
         method_annotations.push((method_idx, anns));
@@ -47,8 +47,8 @@ pub fn read_annotations_directory(
     let mut parameter_annotations =
         Vec::with_capacity(params_size.min(buf.len().saturating_sub(pos) / 8));
     for _ in 0..params_size {
-        let method_idx = MethodIdx(read_u32(buf, pos)?);
-        let ann_off = read_u32(buf, pos + 4)?;
+        let method_idx = MethodIdx(read_u32(buf, pos, "annotations directory")?);
+        let ann_off = read_u32(buf, pos + 4, "annotations directory")?;
         pos += 8;
         let param_anns = read_annotation_set_ref_list(buf, ann_off, opts)?;
         parameter_annotations.push((method_idx, param_anns));
@@ -74,10 +74,10 @@ pub fn read_annotation_set(
     opts: ParseOptions,
 ) -> Result<Vec<AnnotationItem>> {
     let base = off as usize;
-    let size = read_u32(buf, base)? as usize;
+    let size = read_u32(buf, base, "annotation set")? as usize;
     let mut items = Vec::with_capacity(size.min(buf.len().saturating_sub(base + 4) / 4));
     for i in 0..size {
-        let item_off = read_u32(buf, base + 4 + i * 4)?;
+        let item_off = read_u32(buf, base + 4 + i * 4, "annotation set")?;
         items.push(read_annotation_item(buf, item_off, opts)?);
     }
     Ok(items)
@@ -89,10 +89,10 @@ fn read_annotation_set_ref_list(
     opts: ParseOptions,
 ) -> Result<Vec<Vec<AnnotationItem>>> {
     let base = off as usize;
-    let size = read_u32(buf, base)? as usize;
+    let size = read_u32(buf, base, "annotation set ref list")? as usize;
     let mut result = Vec::with_capacity(size.min(buf.len().saturating_sub(base + 4) / 4));
     for i in 0..size {
-        let set_off = read_u32(buf, base + 4 + i * 4)?;
+        let set_off = read_u32(buf, base + 4 + i * 4, "annotation set ref list")?;
         if set_off != 0 {
             result.push(read_annotation_set(buf, set_off, opts)?);
         } else {

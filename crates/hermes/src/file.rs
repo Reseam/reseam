@@ -4,11 +4,11 @@
 use std::ops::Range;
 
 use crate::FunctionId;
-use crate::bytes::{read_u32, slice};
 use crate::error::{HermesError, Result, invalid};
 use crate::function::{Function, FunctionHeader, SMALL_HEADER_SIZE};
 use crate::layout::{Field, OPTIONS_OFFSET, Section};
 use crate::string::{KindRun, StringEntry, StringId, StringKind, StringValue};
+use reseam_bytes::{read_u32, slice, u32_at};
 
 /// A validated, borrowed execution-form HBC file. Construction accepts only
 /// version 98. Trailing epilogues and all original padding are preserved.
@@ -45,7 +45,7 @@ impl<'a> HermesFile<'a> {
     }
 
     pub(crate) fn field(&self, field: Field) -> u32 {
-        read_u32(self.source, field as usize).expect("parsing checked the header size")
+        u32_at(self.source, field as usize)
     }
 
     pub(crate) fn options(&self) -> u8 {
@@ -76,11 +76,12 @@ impl<'a> HermesFile<'a> {
         length: usize,
     ) -> Result<&'a [u8]> {
         let range = &self.sections[section as usize];
-        slice(
+        Ok(slice(
             &self.source[..range.end],
             range.start.saturating_add(offset),
             length,
-        )
+            "Hermes section",
+        )?)
     }
 
     pub(crate) fn kind_runs(&self) -> impl Iterator<Item = KindRun> + use<'a> {
@@ -107,7 +108,12 @@ impl<'a> HermesFile<'a> {
             self.source,
             self.sections[Section::Functions as usize].start + id.0 as usize * SMALL_HEADER_SIZE,
         )?;
-        slice(self.source, header.offset as usize, header.size as usize)?;
+        slice(
+            self.source,
+            header.offset as usize,
+            header.size as usize,
+            "function body",
+        )?;
         if header.name >= self.string_count() {
             return Err(invalid(
                 header.offset as usize,
@@ -125,20 +131,22 @@ impl<'a> HermesFile<'a> {
         if id.0 >= self.string_count() {
             return Err(HermesError::NoString(id.0));
         }
-        let (offset, length, encoding) =
-            match StringEntry::decode(read_u32(self.section(Section::Strings), id.0 as usize * 4)?)
-            {
-                StringEntry::Inline {
-                    offset,
-                    length,
-                    encoding,
-                } => (offset, length, encoding),
-                StringEntry::Overflow { index, encoding } => {
-                    let position = index as usize * Section::Overflow.stride();
-                    let entry = self.section_bytes(Section::Overflow, position, 8)?;
-                    (read_u32(entry, 0)?, read_u32(entry, 4)?, encoding)
-                }
-            };
+        let (offset, length, encoding) = match StringEntry::decode(read_u32(
+            self.section(Section::Strings),
+            id.0 as usize * 4,
+            "string table",
+        )?) {
+            StringEntry::Inline {
+                offset,
+                length,
+                encoding,
+            } => (offset, length, encoding),
+            StringEntry::Overflow { index, encoding } => {
+                let position = index as usize * Section::Overflow.stride();
+                let entry = self.section_bytes(Section::Overflow, position, 8)?;
+                (u32_at(entry, 0), u32_at(entry, 4), encoding)
+            }
+        };
         let size = (length as usize)
             .checked_mul(encoding.unit_size())
             .ok_or_else(|| {

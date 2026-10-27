@@ -20,10 +20,14 @@ Docs for patch authors and the CLI are at [reseam.app/docs](https://reseam.app/d
 
 | Path | |
 |---|---|
+| `crates/bytes` | bounds-checked little-endian fields of binary formats |
 | `crates/storage` | file-backed bytes and temporary storage |
+| `crates/journal` | savepoints and undo records for state a patch run may take back |
 | `crates/dex` | DEX parser, editor, and writer |
+| `crates/hermes` | Hermes bytecode parser, editor, linker, and writer |
 | `crates/apk` | APKs, split sets, APKM/XAPK, manifest, resources |
 | `crates/sign` | APK Signature Scheme v2 signing |
+| `crates/fixtures` | archives the workspace's tests build as input |
 | `crates/model` | requests, results, events, and errors shared by every host |
 | `crates/patcher` | bundles, patch planning and execution, the Kotlin bridge |
 | `crates/cli` | the `reseam` command |
@@ -31,6 +35,7 @@ Docs for patch authors and the CLI are at [reseam.app/docs](https://reseam.app/d
 | `sdk-kotlin/` | the `reseam-sdk` Kotlin package for Android and JVM apps |
 | `patch-api/` | the `reseam-patch-sdk` Kotlin API patches are written against |
 | `gradle-plugin/` | the Gradle plugin that builds bundles |
+| `app-runtime/` | the runtime patched apps carry: settings, their screens, and the bundle registry |
 | `browser/` | `@reseam/browser`, the engine for web pages |
 | `xtask/` | code generation, packaging, and releases (`cargo xtask`) |
 

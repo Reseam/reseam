@@ -6,7 +6,7 @@ use crate::DexBytes;
 use crate::error::Result;
 use crate::file::{ClassTable, DexFile, FileTable, HiddenApiData, IdTable, StringPool};
 use crate::options::ParseOptions;
-use crate::read::{read_u16, read_u32};
+use reseam_bytes::{read_u16, read_u32};
 use tracing::{debug, instrument};
 
 #[instrument(level = "debug", skip(buf), fields(buffer_len = buf.len(), classes = ?opts.classes))]
@@ -84,7 +84,7 @@ fn parse_single_with_raw(
 ) -> Result<DexFile> {
     let buf = raw.as_bytes();
     let header = read_header_at(buf, header_off.unwrap_or(0), opts)?;
-    crate::error::require_len(
+    reseam_bytes::require_len(
         raw.as_bytes(),
         0,
         header.container_size as usize,
@@ -111,7 +111,7 @@ fn parse_single_with_raw(
 
     dex.raw = Some(raw.clone());
     let map_off = header.map_off as usize;
-    let map_size = read_u32(buf, map_off)? as usize;
+    let map_size = read_u32(buf, map_off, "map list")? as usize;
 
     crate::error::require_array(buf, map_off + 4, map_size, 12, "map list")?;
 
@@ -121,9 +121,9 @@ fn parse_single_with_raw(
 
     for i in 0..map_size {
         let entry = map_off + 4 + i * 12;
-        let type_code = read_u16(buf, entry)?;
-        let size = read_u32(buf, entry + 4)?;
-        let offset = read_u32(buf, entry + 8)?;
+        let type_code = read_u16(buf, entry, "map list")?;
+        let size = read_u32(buf, entry + 4, "map list")?;
+        let offset = read_u32(buf, entry + 8, "map list")?;
 
         match type_code {
             0x0007 => call_site_off = Some((offset, size)),

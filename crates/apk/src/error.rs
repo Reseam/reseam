@@ -5,13 +5,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ApkError {
-    #[error("truncated {section} at offset {offset:#x}: need {needed} bytes, have {available}")]
-    Truncated {
-        section: &'static str,
-        offset: usize,
-        needed: usize,
-        available: usize,
-    },
+    #[error(transparent)]
+    Truncated(#[from] reseam_bytes::Truncated),
 
     #[error("malformed {section} at offset {offset:#x}: {reason}")]
     Malformed {
@@ -51,20 +46,6 @@ pub enum ApkError {
 }
 
 pub type Result<T> = std::result::Result<T, ApkError>;
-
-pub(crate) fn truncated(
-    section: &'static str,
-    offset: usize,
-    needed: usize,
-    available: usize,
-) -> ApkError {
-    ApkError::Truncated {
-        section,
-        offset,
-        needed,
-        available,
-    }
-}
 
 pub(crate) fn malformed(
     section: &'static str,

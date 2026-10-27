@@ -5,7 +5,7 @@ use crate::error::{Result, malformed};
 use crate::instruction::catalogue::instruction_catalogue;
 use crate::instruction::stream::{RawInstruction, instruction_stream};
 use crate::instruction::{Instruction, RegList};
-use crate::read::{u16_at, u32_at};
+use reseam_bytes::{u16_at, u32_at};
 
 /// Decodes `insns_size` code units starting at byte `start` of `buf`.
 /// Truncated or malformed encodings fail; unknown opcodes keep all their

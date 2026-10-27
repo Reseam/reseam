@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::{COMPLEX_LEN, EntryValue, FLAG_COMPACT, FLAG_COMPLEX, ResEntry, SIMPLE_LEN};
-use crate::buf::{write_u16, write_u32};
+use reseam_bytes::{write_u16, write_u32};
 
 pub(in crate::resources) fn serialize_entry(out: &mut Vec<u8>, entry: &ResEntry) {
     match &entry.value {

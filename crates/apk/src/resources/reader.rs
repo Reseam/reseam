@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use reseam_bytes::{read_u16, require_len};
 use reseam_storage::Bytes;
 
 use super::{
     RES_TABLE_PACKAGE_TYPE, RES_TABLE_TYPE, ResPackage, ResourceTable, TABLE_HEADER_LEN, TableChunk,
 };
-use crate::buf::{read_u16_le, require_len};
 use crate::chunk;
 use crate::error::{Result, invalid};
 use crate::string_pool::{CHUNK_STRING_POOL, StringEncoding, StringPool};
@@ -15,14 +15,14 @@ impl ResourceTable {
     pub fn parse(data: Bytes) -> Result<Self> {
         let buf = data.as_bytes();
         require_len(buf, 0, TABLE_HEADER_LEN, "resource table")?;
-        let kind = read_u16_le(buf, 0, "resource table")?;
+        let kind = read_u16(buf, 0, "resource table")?;
         if kind != RES_TABLE_TYPE {
             return Err(invalid(
                 "resource table",
                 format!("expected 0x0002, got 0x{kind:04x}"),
             ));
         }
-        let header_size = read_u16_le(buf, 2, "resource table")? as usize;
+        let header_size = read_u16(buf, 2, "resource table")? as usize;
         let end = chunk::chunk_end(buf, 0)?;
         if header_size < TABLE_HEADER_LEN || header_size > end {
             return Err(invalid("resource table", "invalid header size"));

@@ -11,7 +11,7 @@ use crate::model::class::{ClassData, EncodedField, EncodedMethod, MethodKind};
 use crate::read::class::{
     ClassDataCursor, ClassSkeleton, MemberCounts, MethodHeader, read_class_skeleton_at,
 };
-use crate::read::{read_u16, read_u32};
+use reseam_bytes::{read_u16, read_u32};
 
 /// A method's identity and frame shape, read without decoding its code.
 #[derive(Debug, Clone, Copy)]
@@ -56,10 +56,10 @@ impl DexFile {
         if header.code_off != 0 {
             let buf = self.raw_bytes(header.code_off)?;
             let base = header.code_off as usize;
-            summary.registers_size = read_u16(buf, base)?;
-            summary.ins_size = read_u16(buf, base + 2)?;
-            summary.outs_size = read_u16(buf, base + 4)?;
-            let insns_size = read_u32(buf, base + 12)? as usize;
+            summary.registers_size = read_u16(buf, base, "code item")?;
+            summary.ins_size = read_u16(buf, base + 2, "code item")?;
+            summary.outs_size = read_u16(buf, base + 4, "code item")?;
+            let insns_size = read_u32(buf, base + 12, "code item")? as usize;
             summary.instruction_count = count_instructions(buf, base + 16, insns_size)?;
         }
         Ok(summary)

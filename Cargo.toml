@@ -2,6 +2,7 @@
 resolver = "3"
 exclude = ["vendor/boltffi_macros"]
 members = [
+    "crates/bytes",
     "crates/storage",
     "crates/journal",
     "crates/dex",
@@ -62,6 +63,7 @@ large_include_file = "warn"
 
 [workspace.dependencies]
 # Internal crates
+reseam-bytes   = { path = "crates/bytes" }
 reseam-storage = { path = "crates/storage" }
 reseam-journal = { path = "crates/journal" }
 reseam-model = { path = "crates/model" }

@@ -3,10 +3,10 @@
 
 //! Profile fields as [`super::cursor::Cursor`] reads them back.
 
+use reseam_bytes::{write_u16, write_u32};
 use std::io::Write;
 
 use super::SECTION;
-use crate::buf::{write_u16, write_u32};
 use crate::error::{Result, invalid};
 
 pub(super) fn header(magic: [u8; 4], version: [u8; 4]) -> Vec<u8> {

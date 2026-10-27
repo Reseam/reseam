@@ -4,9 +4,10 @@
 use std::ops::Range;
 
 use crate::FunctionId;
-use crate::bytes::{align, read_u32, slice};
+use crate::bytes::align;
 use crate::error::{Result, invalid};
 use crate::string::StringId;
+use reseam_bytes::{read_u32, slice, u32_at};
 
 mod flags;
 mod header;
@@ -76,19 +77,19 @@ impl Function<'_> {
             return Ok(Vec::new());
         };
         let position = align(large + LARGE_HEADER_SIZE);
-        let count = read_u32(self.source, position)? as usize;
+        let count = read_u32(self.source, position, "exception table")? as usize;
         let size = count
             .checked_mul(EXCEPTION_HANDLER_SIZE)
             .ok_or_else(|| invalid(position, "exception table overflow"))?;
-        slice(self.source, position + 4, size)?
+        slice(self.source, position + 4, size, "exception table")?
             .as_chunks::<EXCEPTION_HANDLER_SIZE>()
             .0
             .iter()
             .map(|entry| {
                 Ok(ExceptionHandler {
-                    start: read_u32(entry, 0)?,
-                    end: read_u32(entry, 4)?,
-                    target: read_u32(entry, 8)?,
+                    start: u32_at(entry, 0),
+                    end: u32_at(entry, 4),
+                    target: u32_at(entry, 8),
                 })
             })
             .collect()

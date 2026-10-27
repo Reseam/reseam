@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::literals::Literals;
-use crate::bytes::read_u32;
 use crate::error::{HermesError, Result, invalid};
 use crate::opcode::{IdKind, Instruction, Op};
+use reseam_bytes::u32_at;
 
 /// IDs of one kind in a linked module: `count` of them, moved to start at `base`.
 #[derive(Clone, Copy)]
@@ -77,8 +77,8 @@ pub(super) fn literal_count(
     let shape = |index: u64| {
         shapes
             .get(index as usize)
-            .map(|entry| read_u32(entry, 4))
-            .ok_or_else(|| invalid(at, "shape ID out of range"))?
+            .map(|entry| u32_at(entry, 4))
+            .ok_or_else(|| invalid(at, "shape ID out of range"))
     };
     Ok(match inst.op {
         Op::NewArrayWithBuffer | Op::NewArrayWithBufferLong => Some(inst.values[2] as u32),

@@ -5,13 +5,13 @@ mod reader;
 mod writer;
 pub(super) use writer::TypePlan;
 
+use reseam_bytes::{read_u16, read_u32, require_len};
 use std::collections::BTreeMap;
 use std::ops::Range;
 
 use reseam_storage::Bytes;
 
 use super::entry::{self, EntryValue, ResEntry};
-use crate::buf::{read_u16_le, read_u32_le, require_len};
 use crate::error::{Result, invalid};
 use crate::res_value::ResValue;
 
@@ -131,11 +131,11 @@ impl ResType {
             .ok_or_else(|| invalid("res entry", "entry offset overflows address space"))?;
         let chunk = &self.data.as_bytes()[..self.chunk.end];
         require_len(chunk, pos, 8, "res entry")?;
-        let flags = read_u16_le(chunk, pos + 2, "res entry")?;
+        let flags = read_u16(chunk, pos + 2, "res entry")?;
         let key = if flags & entry::FLAG_COMPACT != 0 {
-            u32::from(read_u16_le(chunk, pos, "compact res entry")?)
+            u32::from(read_u16(chunk, pos, "compact res entry")?)
         } else {
-            read_u32_le(chunk, pos + 4, "res entry")?
+            read_u32(chunk, pos + 4, "res entry")?
         };
         Ok(Some(key))
     }
@@ -177,7 +177,7 @@ impl ResType {
         let data = self.data.as_bytes();
         Ok(match &self.offsets {
             EntryOffsets::Dense32 => {
-                let offset = read_u32_le(
+                let offset = read_u32(
                     data,
                     self.chunk.start + self.header_size + i * 4,
                     "res type offset",
@@ -185,7 +185,7 @@ impl ResType {
                 (offset != NO_ENTRY).then_some(offset)
             }
             EntryOffsets::Dense16 => {
-                let offset = read_u16_le(
+                let offset = read_u16(
                     data,
                     self.chunk.start + self.header_size + i * 2,
                     "res type offset",

@@ -6,10 +6,10 @@ use std::collections::BTreeSet;
 use super::remap::literal_count;
 use super::*;
 use crate::FunctionId;
-use crate::bytes::read_u32;
 use crate::fixtures::{HOST, LITERALS, host, image, written};
 use crate::literal::{Literal, read_literals};
 use crate::opcode::{IdKind, Instruction};
+use reseam_bytes::u32_at;
 
 /// A literal as text and bytes, comparable across files whose string IDs differ.
 #[derive(Debug, PartialEq)]
@@ -101,8 +101,7 @@ fn linked_literals_read_back_the_values_and_keys_of_the_module() {
             if let (Some(from), Some(to)) =
                 (operand(source, IdKind::Shape), operand(copy, IdKind::Shape))
             {
-                let key =
-                    |shapes: &[[u8; 8]], index: u64| read_u32(&shapes[index as usize], 0).unwrap();
+                let key = |shapes: &[[u8; 8]], index: u64| u32_at(&shapes[index as usize], 0);
                 assert_eq!(
                     values(
                         &module_file,

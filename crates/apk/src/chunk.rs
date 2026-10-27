@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use reseam_bytes::{read_u16, read_u32, require_len, write_u16, write_u32};
 use std::ops::Range;
 
-use crate::buf::{read_u16_le, read_u32_le, require_len, write_u16, write_u32};
 use crate::error::{Result, malformed};
 
 pub(crate) const HEADER_LEN: usize = 8;
@@ -25,9 +25,9 @@ pub(crate) fn chunks(buf: &[u8], range: Range<usize>, section: &'static str) -> 
     let mut out = Vec::new();
     let mut pos = range.start;
     while range.end - pos >= HEADER_LEN {
-        let kind = read_u16_le(buf, pos, section)?;
-        let header_size = read_u16_le(buf, pos + 2, section)? as usize;
-        let size = read_u32_le(buf, pos + 4, section)? as usize;
+        let kind = read_u16(buf, pos, section)?;
+        let header_size = read_u16(buf, pos + 2, section)? as usize;
+        let size = read_u32(buf, pos + 4, section)? as usize;
         let Some(end) = pos.checked_add(size).filter(|&end| {
             end <= range.end
                 && size >= HEADER_LEN
@@ -48,7 +48,7 @@ pub(crate) fn chunks(buf: &[u8], range: Range<usize>, section: &'static str) -> 
 
 pub(crate) fn chunk_end(buf: &[u8], offset: usize) -> Result<usize> {
     require_len(buf, offset, HEADER_LEN, "chunk header")?;
-    let size = read_u32_le(buf, offset + 4, "chunk header")? as usize;
+    let size = read_u32(buf, offset + 4, "chunk header")? as usize;
     let Some(end) = offset
         .checked_add(size)
         .filter(|&end| end <= buf.len() && size >= HEADER_LEN)

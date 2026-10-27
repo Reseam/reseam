@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::opcodes::{FILL_ARRAY_DATA_PAYLOAD, PACKED_SWITCH_PAYLOAD, SPARSE_SWITCH_PAYLOAD};
+use reseam_bytes::{require_len, u16_at, u32_at};
 use smallvec::SmallVec;
 
 use super::Instruction;
 use super::codec::{decode_onto, has_literal};
 use super::query::opcode_units;
-use crate::error::{Result, malformed, require_len};
+use crate::error::{Result, malformed};
 use crate::model::{FieldIdx, MethodIdx, Pool, StringIdx, TypeIdx};
-use crate::read::{u16_at, u32_at};
 
 /// One instruction located in a code item's instruction stream.
 #[derive(Debug, Clone, Copy)]

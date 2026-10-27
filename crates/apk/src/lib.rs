@@ -4,7 +4,6 @@
 mod apk_file;
 pub mod art_profile;
 pub mod axml;
-mod buf;
 mod chunk;
 pub mod compression;
 mod container;

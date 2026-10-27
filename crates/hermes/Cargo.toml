@@ -6,6 +6,7 @@ rust-version.workspace = true
 description = "Borrowed Hermes bytecode parsing, linking, and editing"
 
 [dependencies]
+reseam-bytes.workspace = true
 reseam-storage.workspace = true
 reseam-journal.workspace = true
 thiserror.workspace = true

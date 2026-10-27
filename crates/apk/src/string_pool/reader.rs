@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::{FLAG_UTF8, HEADER_LEN, StringEncoding, StringPool, UTF8_LENGTH_MASK};
-use crate::buf::{read_u16_le, read_u32_le, require_len};
 use crate::error::{Result, invalid, malformed};
+use reseam_bytes::{read_u16, read_u32, require_len};
 use reseam_storage::Bytes;
 use std::borrow::Cow;
 use std::ops::Range;
@@ -12,15 +12,15 @@ impl StringPool {
     pub(crate) fn parse(data: &Bytes, chunk: Range<usize>) -> Result<Self> {
         let buf = &data.as_bytes()[chunk.clone()];
         require_len(buf, 0, HEADER_LEN, "string pool")?;
-        let header_size = read_u16_le(buf, 2, "string pool")? as usize;
+        let header_size = read_u16(buf, 2, "string pool")? as usize;
         if header_size < HEADER_LEN {
             return Err(malformed("string pool", 2, "header is too short"));
         }
-        let string_count = read_u32_le(buf, 8, "string pool")? as usize;
-        let style_count = read_u32_le(buf, 12, "string pool")? as usize;
-        let flags = read_u32_le(buf, 16, "string pool")?;
-        let strings_start = read_u32_le(buf, 20, "string pool")? as usize;
-        let styles_start = read_u32_le(buf, 24, "string pool")? as usize;
+        let string_count = read_u32(buf, 8, "string pool")? as usize;
+        let style_count = read_u32(buf, 12, "string pool")? as usize;
+        let flags = read_u32(buf, 16, "string pool")?;
+        let strings_start = read_u32(buf, 20, "string pool")? as usize;
+        let styles_start = read_u32(buf, 24, "string pool")? as usize;
         require_len(
             buf,
             header_size,
@@ -89,7 +89,7 @@ impl StringPool {
 
     fn raw_at(&self, i: usize) -> Result<(&[u8], usize)> {
         let data = self.data.as_bytes();
-        let offset = read_u32_le(data, self.offsets_start + i * 4, "string offset")? as usize;
+        let offset = read_u32(data, self.offsets_start + i * 4, "string offset")? as usize;
         let abs = self
             .strings_start
             .checked_add(offset)
@@ -156,9 +156,9 @@ fn decode_len_u8(data: &[u8], pos: &mut usize) -> Result<usize> {
 
 fn utf16_span(data: &[u8], offset: usize) -> Result<(usize, usize)> {
     let mut pos = offset;
-    let first = read_u16_le(data, pos, "utf16 length")?;
+    let first = read_u16(data, pos, "utf16 length")?;
     let char_count = if first & 0x8000 != 0 {
-        let next = read_u16_le(data, pos + 2, "utf16 length")? as usize;
+        let next = read_u16(data, pos + 2, "utf16 length")? as usize;
         pos += 4;
         (((first & 0x7FFF) as usize) << 16) | next
     } else {
