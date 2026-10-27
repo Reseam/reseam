@@ -1,44 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-#[path = "common/archive.rs"]
-mod archive;
-#[path = "common/dex.rs"]
-mod dex_fixture;
-#[path = "common/manifest.rs"]
-mod manifest;
-use archive::write_apk;
-use dex_fixture::{dex_bytes, minimal_dex_bytes};
-use manifest::manifest_bytes;
-use reseam_apk::resources::ResPackage;
-use reseam_apk::{
-    ApkFile as Apk, ApkWriteOptions as WriteOptions, Compression, ResourceTable, StringEncoding,
-    StringPool,
-};
-use reseam_dex::{DexFile, DexHeader, DexVersion, Loading, ParseOptions};
+use crate::common::TestResult;
+use crate::common::archive::write_apk;
+use crate::common::dex::{dex_bytes, empty_dex, minimal_dex_bytes};
+use crate::common::manifest::manifest_bytes;
+use crate::common::session::{lazy, mutable_resource_table_bytes};
+use reseam_apk::{ApkFile as Apk, ApkWriteOptions as WriteOptions, Compression};
 use reseam_journal::Savepoint;
 use std::fs::File;
-
-type TestResult = Result<(), Box<dyn std::error::Error>>;
-
-fn empty_dex() -> DexFile {
-    DexFile::new(DexHeader::new(DexVersion::V035))
-}
-
-fn resource_table_bytes() -> Vec<u8> {
-    let strings = || StringPool::new(Vec::new(), StringEncoding::Utf8);
-    ResourceTable::new(
-        strings(),
-        vec![ResPackage::new(
-            0x7F,
-            "com.example.test",
-            strings(),
-            strings(),
-        )],
-    )
-    .serialize()
-    .expect("resource fixture")
-}
 
 #[test]
 fn rollback_returns_the_session_to_each_savepoint() -> TestResult {
@@ -52,15 +22,11 @@ fn rollback_returns_the_session_to_each_savepoint() -> TestResult {
         &[
             ("classes.dex", &dex),
             ("classes2.dex", &dex),
-            ("resources.arsc", &resource_table_bytes()),
+            ("resources.arsc", &mutable_resource_table_bytes()),
             ("assets/kept.txt", b"kept"),
         ],
     );
-    let options = ParseOptions {
-        classes: Loading::Deferred,
-        ..ParseOptions::default()
-    };
-    let mut apk = Apk::open(dir.path().join("app.apk"), options)?;
+    let mut apk = Apk::open(dir.path().join("app.apk"), lazy())?;
     let mut written = 0;
     let mut entries = |apk: &mut Apk| -> Entries {
         written += 1;

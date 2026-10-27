@@ -166,13 +166,6 @@ impl ResType {
         Ok(())
     }
 
-    /// Appends an entry, returning its index. A full 16-bit index space is an error.
-    pub fn push(&mut self, entry: Option<ResEntry>) -> Result<usize> {
-        let i = self.len;
-        self.set(i, entry)?;
-        Ok(i)
-    }
-
     pub(crate) fn pad_to(&mut self, len: usize) {
         self.len = self.len.max(len);
     }

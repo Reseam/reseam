@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use super::tables::{package, strings};
 use super::{archive::write_apk, manifest::manifest_bytes};
-use reseam_apk::resources::ResPackage;
-use reseam_apk::{ApkFile, ResourceTable, StringPool};
+use reseam_apk::{ApkFile, ResourceTable};
 use reseam_dex::ParseOptions;
 use std::fs::File;
 use std::path::Path;
@@ -17,25 +17,18 @@ pub fn lazy() -> ParseOptions {
     }
 }
 
-pub fn empty_strings() -> StringPool {
-    StringPool::new(Vec::new(), reseam_apk::StringEncoding::Utf8)
-}
-
+/// A table without packages, which nothing can be added to.
 pub fn resource_table_bytes() -> Vec<u8> {
-    ResourceTable::new(empty_strings(), Vec::new())
+    ResourceTable::new(strings(&[]), Vec::new())
         .serialize()
         .expect("serialize resources")
 }
 
+/// A table with one empty package.
 pub fn mutable_resource_table_bytes() -> Vec<u8> {
     ResourceTable::new(
-        empty_strings(),
-        vec![ResPackage::new(
-            0x7F,
-            "com.example.test",
-            empty_strings(),
-            empty_strings(),
-        )],
+        strings(&[]),
+        vec![package("com.example.test", &[], &[], [])],
     )
     .serialize()
     .expect("serialize mutable resources")

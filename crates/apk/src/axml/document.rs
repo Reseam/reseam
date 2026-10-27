@@ -115,25 +115,6 @@ impl AxmlDocument {
         }
     }
 
-    /// Constructs a document over a validated string pool and event stream.
-    pub fn from_parts(
-        string_pool: StringPool,
-        resource_ids: Vec<u32>,
-        elements: Vec<AxmlEvent>,
-    ) -> crate::Result<Self> {
-        for string in string_pool.iter() {
-            string?;
-        }
-        Ok(Self {
-            string_pool,
-            resource_ids,
-            elements,
-            header: Vec::new(),
-            resource_header: Vec::new(),
-            suffix: NodeMetadata::default(),
-        })
-    }
-
     pub fn string_pool(&self) -> &StringPool {
         &self.string_pool
     }

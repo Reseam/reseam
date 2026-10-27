@@ -1,75 +1,33 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-#[path = "common/archive.rs"]
-mod archive;
-use archive::write_apk;
+use crate::common::archive::write_apk;
 
-use reseam_apk::resources::{EntryValue, ResEntry, ResPackage, ResType, TypeSpec};
+use crate::common::tables::{config, package, res_type, simple, strings};
 use reseam_apk::{
-    ApkFile, ApplicationIcon, IconLayer, ResValue, ResourceScope, ResourceTable, StringPool, axml,
+    ApkFile, ApplicationIcon, IconLayer, ResValue, ResourceScope, ResourceTable, axml,
 };
 use reseam_dex::ParseOptions;
 
-fn strings(values: &[&str]) -> StringPool {
-    StringPool::new(
-        values.iter().map(ToString::to_string).collect(),
-        reseam_apk::StringEncoding::Utf8,
-    )
-}
-
-fn config(language: Option<&[u8; 2]>, density: u16) -> Vec<u8> {
-    let mut config = vec![0u8; 48];
-    config[0..4].copy_from_slice(&48u32.to_le_bytes());
-    if let Some(language) = language {
-        config[8..10].copy_from_slice(language);
-    }
-    config[14..16].copy_from_slice(&density.to_le_bytes());
-    config
-}
-
-fn entries(id: u8, config: Vec<u8>, entries: &[(usize, ResValue)]) -> ResType {
-    let mut res_type = ResType::new(id, config);
-    for &(key, value) in entries {
-        res_type
-            .set(
-                key,
-                Some(ResEntry {
-                    flags: 0,
-                    key: key as u32,
-                    value: EntryValue::Simple(value),
-                }),
-            )
-            .expect("resource fixture entry");
-    }
-    res_type
-}
-
 fn resources() -> ResourceTable {
-    let mut package = ResPackage::new(
-        0x7F,
-        "com.example.test",
-        strings(&["string", "mipmap", "color"]),
-        strings(&["app_name", "ic_launcher", "bg", "fg"]),
-    );
-    package.add_type_spec(TypeSpec::new(1, vec![0]));
-    package.add_type_spec(TypeSpec::new(2, vec![0, 0, 0]));
-    package.add_type_spec(TypeSpec::new(3, vec![0, 0, 0, 0]));
-    let string = ResValue::string;
-    for res_type in [
-        entries(1, config(None, 0), &[(0, string(0))]),
-        entries(1, config(Some(b"fr"), 0), &[(0, string(1))]),
-        entries(2, config(None, 240), &[(1, string(2)), (2, string(5))]),
-        entries(2, config(None, 480), &[(1, string(3)), (2, string(6))]),
-        entries(2, config(None, 0xFFFE), &[(1, string(4))]),
-        entries(
+    let string = |key, index| Some(simple(key, ResValue::STRING, index));
+    let types = [
+        res_type(1, config(None, 0), [string(0, 0)]),
+        res_type(1, config(Some(b"fr"), 0), [string(0, 1)]),
+        res_type(2, config(None, 240), [None, string(1, 2), string(2, 5)]),
+        res_type(2, config(None, 480), [None, string(1, 3), string(2, 6)]),
+        res_type(2, config(None, 0xFFFE), [None, string(1, 4)]),
+        res_type(
             3,
             config(None, 0),
-            &[(3, ResValue::new(ResValue::INT_COLOR_ARGB8, 0xFF11_2233))],
+            [
+                None,
+                None,
+                None,
+                Some(simple(3, ResValue::INT_COLOR_ARGB8, 0xFF11_2233)),
+            ],
         ),
-    ] {
-        package.add_type(res_type);
-    }
+    ];
     ResourceTable::new(
         strings(&[
             "Example",
@@ -80,7 +38,12 @@ fn resources() -> ResourceTable {
             "res/mipmap-hdpi/bg.png",
             "res/mipmap-xxhdpi/bg.png",
         ]),
-        vec![package],
+        vec![package(
+            "com.example.test",
+            &["string", "mipmap", "color"],
+            &["app_name", "ic_launcher", "bg", "fg"],
+            types,
+        )],
     )
 }
 

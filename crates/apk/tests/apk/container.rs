@@ -1,17 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-#[path = "common/archive.rs"]
-mod archive;
-#[path = "common/manifest.rs"]
-mod manifest;
-
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
-use archive::write_apk;
-use manifest::manifest_bytes;
+use crate::common::archive::write_apk;
+use crate::common::manifest::manifest_bytes;
 use reseam_apk::{
     ApkError, ApkFile, ApkWriteOptions, Compression, ContainerFormat, open_container,
 };

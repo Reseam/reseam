@@ -84,10 +84,6 @@ impl ResourceTable {
         &self.packages
     }
 
-    pub fn global_strings(&self) -> &StringPool {
-        &self.global_strings
-    }
-
     pub fn get_string(&self, index: u32) -> Result<Option<Cow<'_, str>>> {
         self.global_strings.get(index)
     }
