@@ -4,7 +4,6 @@
 package app.reseam.gradle
 
 import java.io.File
-import java.util.zip.ZipFile
 import org.objectweb.asm.AnnotationVisitor
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.ClassVisitor
@@ -39,18 +38,11 @@ internal class KotlinRelocation(
 
     /** Writes the classes of [inputs], directories or jars, relocated into [output]. */
     fun relocate(inputs: Iterable<File>, output: File) {
-        for (input in inputs) {
-            if (input.isDirectory) {
-                input.classFiles().forEach { write(it.readBytes(), output) }
-            } else if (input.isFile && input.extension == "jar") {
-                ZipFile(input).use { jar ->
-                    jar.entries()
-                        .asSequence()
-                        .filter { isClass(it.name) }
-                        .forEach { entry ->
-                            write(jar.getInputStream(entry).use { it.readBytes() }, output)
-                        }
-                }
+        for (input in inputs.filter { it.isDirectory || it.isFile && it.extension == "jar" }) {
+            libraryClasses(input) { classes ->
+                classes
+                    .filter { isClass(it.path) }
+                    .forEach { entry -> write(entry.read { it.readBytes() }, output) }
             }
         }
     }

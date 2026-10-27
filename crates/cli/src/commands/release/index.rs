@@ -6,13 +6,13 @@ use reseam_model::PatchSpec;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
-pub(super) struct Index {
+pub(crate) struct Index {
     bundle: Publisher,
     releases: Vec<Entry>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub(super) struct Publisher {
+pub(crate) struct Publisher {
     pub name: String,
     pub author: String,
     pub description: String,
@@ -23,7 +23,7 @@ pub(super) struct Publisher {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub(super) struct Entry {
+pub(crate) struct Entry {
     pub version: String,
     pub created_at: String,
     pub description: String,
@@ -40,6 +40,35 @@ impl Index {
 
     pub fn homepage(&self) -> Option<&str> {
         self.bundle.homepage.as_deref()
+    }
+
+    pub fn name(&self) -> &str {
+        &self.bundle.name
+    }
+
+    /// The signer the publisher declares, in lowercase hex.
+    pub fn public_key(&self) -> Option<String> {
+        self.bundle
+            .public_key
+            .as_deref()
+            .map(str::to_ascii_lowercase)
+    }
+
+    /// The release named `version`; a leading `v` on either name is ignored.
+    pub fn release(&self, version: &str) -> Result<&Entry> {
+        let wanted = unprefixed(version);
+        let mut matching = self
+            .releases
+            .iter()
+            .filter(|release| unprefixed(&release.version) == wanted);
+        let release = matching
+            .next()
+            .with_context(|| format!("the index has no release {wanted}"))?;
+        ensure!(
+            matching.next().is_none(),
+            "the index lists release {wanted} more than once"
+        );
+        Ok(release)
     }
 
     pub fn add(previous: Option<Self>, publisher: Publisher, entry: Entry) -> Result<Self> {
@@ -79,6 +108,11 @@ impl Index {
     pub fn to_json(&self) -> Result<String> {
         Ok(serde_json::to_string_pretty(self)? + "\n")
     }
+}
+
+/// A version without the `v` that tags often carry.
+pub(crate) fn unprefixed(version: &str) -> &str {
+    version.strip_prefix('v').unwrap_or(version)
 }
 
 #[cfg(test)]

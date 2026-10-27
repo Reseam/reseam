@@ -6,14 +6,14 @@ use serde::de::DeserializeOwned;
 use ureq::http::{Response, StatusCode};
 use ureq::{Agent, Body, ResponseExt};
 
-pub(super) fn agent() -> Agent {
+pub(crate) fn agent() -> Agent {
     Agent::config_builder()
         .http_status_as_error(false)
         .build()
         .into()
 }
 
-pub(super) fn checked(response: Result<Response<Body>, ureq::Error>) -> Result<Response<Body>> {
+pub(crate) fn checked(response: Result<Response<Body>, ureq::Error>) -> Result<Response<Body>> {
     let mut response = response?;
     if response.status().is_success() {
         return Ok(response);
@@ -24,7 +24,7 @@ pub(super) fn checked(response: Result<Response<Body>, ureq::Error>) -> Result<R
     bail!("{uri} returned {status}: {}", body.trim())
 }
 
-pub(super) fn json<T: DeserializeOwned>(
+pub(crate) fn json<T: DeserializeOwned>(
     response: Result<Response<Body>, ureq::Error>,
 ) -> Result<T> {
     let mut response = checked(response)?;
@@ -35,7 +35,7 @@ pub(super) fn json<T: DeserializeOwned>(
         .with_context(|| format!("{uri} returned unexpected JSON"))
 }
 
-pub(super) fn text_if_found(
+pub(crate) fn text_if_found(
     response: Result<Response<Body>, ureq::Error>,
 ) -> Result<Option<String>> {
     let response = response?;

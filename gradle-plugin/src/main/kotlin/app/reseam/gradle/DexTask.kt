@@ -4,13 +4,10 @@
 package app.reseam.gradle
 
 import java.io.File
-import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
-import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
-import org.gradle.api.Project
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.FileCollection
@@ -90,65 +87,6 @@ internal abstract class DexTask @Inject constructor(private val exec: ExecOperat
             libraries,
             outDir,
             intermediate.listFiles().orEmpty().filter { it.extension == "dex" },
-        )
-    }
-}
-
-/**
- * Copies the classes of [jar] to [copy]. d8 reads a jar's `.dex` entries as program input too, and
- * refuses a jar with both, so a library that ships DEX files as resources would not dex.
- */
-private fun classesOf(jar: File, copy: File): File {
-    ZipFile(jar).use { zip ->
-        ZipOutputStream(copy.outputStream()).use { out ->
-            zip.entries()
-                .asSequence()
-                .filter { !it.isDirectory && it.name.endsWith(".class") }
-                .forEach { entry ->
-                    out.putNextEntry(ZipEntry(entry.name))
-                    zip.getInputStream(entry).use { it.copyTo(out) }
-                    out.closeEntry()
-                }
-        }
-    }
-    return copy
-}
-
-internal fun File.classFiles(): Sequence<File> =
-    walkTopDown().filter { it.isFile && it.extension == "class" }
-
-internal fun FileCollection.classFiles(): List<File> =
-    files.filter(File::isDirectory).flatMap { it.classFiles() }
-
-internal fun recreate(dir: File) {
-    if (dir.exists() && !dir.deleteRecursively())
-        throw org.gradle.api.GradleException("cannot remove $dir")
-    if (!dir.mkdirs() && !dir.isDirectory)
-        throw org.gradle.api.GradleException("cannot create $dir")
-}
-
-internal fun Project.d8Classpath(): FileCollection =
-    objects
-        .fileCollection()
-        .from(
-            configurations.detachedConfiguration(dependencies.create("com.android.tools:r8:9.4.27"))
-        )
-
-internal fun ExecOperations.d8(
-    compiler: FileCollection,
-    libraries: FileCollection,
-    output: File,
-    inputs: List<File>,
-    vararg options: String,
-) {
-    javaexec {
-        classpath = compiler
-        mainClass.set("com.android.tools.r8.D8")
-        args(
-            listOf("--release", "--min-api", MIN_API.toString(), "--output", output.absolutePath) +
-                options +
-                libraries.files.flatMap { listOf("--lib", it.absolutePath) } +
-                inputs.map { it.absolutePath }
         )
     }
 }

@@ -7,7 +7,6 @@ import java.io.File
 import java.io.InputStream
 import java.nio.file.Files
 import java.util.Locale
-import java.util.zip.ZipFile
 import kotlinx.serialization.encodeToString
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
@@ -52,26 +51,11 @@ internal abstract class PatchIndexTask : DefaultTask() {
     @TaskAction
     fun run() {
         val classes = linkedMapOf<String, ClassHeader>()
-        val own = readJar(jar.get().asFile)
+        val own = readLibrary(jar.get().asFile)
         libraries.files
             .sortedBy { it.path }
             .forEach { library ->
-                val headers =
-                    if (library.isDirectory) {
-                        library
-                            .walkTopDown()
-                            .onFail { file, error ->
-                                throw GradleException(
-                                    "cannot read compiled classes in $file",
-                                    error,
-                                )
-                            }
-                            .filter { it.isFile && it.extension == "class" }
-                            .associate { file ->
-                                file.inputStream().use { readClass(it, file.path) }
-                            }
-                    } else readJar(library)
-                headers.forEach { (name, header) -> classes.putIfAbsent(name, header) }
+                readLibrary(library).forEach { (name, header) -> classes.putIfAbsent(name, header) }
             }
         classes.putAll(own)
         fun isPatch(type: String, visited: Set<String> = emptySet()): Boolean =
@@ -127,18 +111,11 @@ internal abstract class PatchIndexTask : DefaultTask() {
         file.writeText(bundleJson.encodeToString(declarations))
     }
 
-    private fun readJar(file: File): Map<String, ClassHeader> =
-        ZipFile(file).use { jar ->
-            jar.entries()
-                .asSequence()
-                .filter {
-                    !it.isDirectory &&
-                        it.name.endsWith(".class") &&
-                        !it.name.startsWith("META-INF/")
-                }
-                .associate { entry ->
-                    jar.getInputStream(entry).use { readClass(it, "${entry.name} in $file") }
-                }
+    private fun readLibrary(file: File): Map<String, ClassHeader> =
+        libraryClasses(file) { classes ->
+            classes
+                .filter { !it.path.startsWith("META-INF/") }
+                .associate { entry -> entry.read { readClass(it, entry.location) } }
         }
 
     private fun readClass(stream: InputStream, location: String): Pair<String, ClassHeader> {

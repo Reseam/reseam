@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+mod fetch;
+
 use std::collections::HashSet;
 
 use anyhow::Result;
@@ -9,6 +11,7 @@ use reseam_sdk::authoring::{BundleKey, manifest_info, pack};
 use reseam_sdk::inspect;
 use tracing::info;
 
+pub use self::fetch::run_bundle_fetch;
 use super::create_parent;
 use crate::app::{
     BundleKeygenCommand, BundleListCommand, BundleManifestCommand, BundlePackCommand,

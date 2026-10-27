@@ -3,8 +3,8 @@
 
 mod directory;
 mod forge;
-mod http;
-mod index;
+pub(super) mod http;
+pub(super) mod index;
 mod notes;
 mod publish;
 mod s3;

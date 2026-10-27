@@ -118,6 +118,8 @@ pub enum BundleCommands {
     /// Validate a staging manifest and print its bundle metadata as JSON.
     Manifest(BundleManifestCommand),
     List(BundleListCommand),
+    /// Download a release from a published index and verify it against the index signer.
+    Fetch(BundleFetchCommand),
 }
 
 #[derive(Args)]
@@ -160,6 +162,21 @@ pub struct BundleListCommand {
     /// Include payload filenames and the packing engine version.
     #[arg(long, conflicts_with = "json")]
     pub verbose: bool,
+}
+
+#[derive(Args)]
+pub struct BundleFetchCommand {
+    /// The release index (`patches.json`) URL; `file:` URLs read from disk.
+    #[arg(long)]
+    pub index: String,
+    #[arg(long)]
+    pub version: String,
+    /// Fail unless the index names this public key.
+    #[arg(long, value_name = "PUBLIC_KEY_HEX")]
+    pub signer: Option<String>,
+    /// The folder that keeps fetched bundles; a verified copy already there is reused.
+    #[arg(long, default_value = ".")]
+    pub to: PathBuf,
 }
 
 #[derive(Subcommand)]

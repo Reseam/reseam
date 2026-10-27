@@ -15,7 +15,8 @@ use reseam_model::Trust;
 use crate::app::TrustArgs;
 
 pub use bundle::{
-    run_bundle_keygen, run_bundle_list, run_bundle_manifest, run_bundle_pack, run_bundle_pubkey,
+    run_bundle_fetch, run_bundle_keygen, run_bundle_list, run_bundle_manifest, run_bundle_pack,
+    run_bundle_pubkey,
 };
 pub use info::run_info;
 pub use patch::run_patch;

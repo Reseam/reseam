@@ -3,12 +3,16 @@
 
 package app.reseam.gradle
 
+import kotlinx.serialization.Serializable
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.file.DuplicatesStrategy
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.Sync
 import org.gradle.api.tasks.bundling.Jar
+
+/** What `reseam bundle manifest` prints, as far as the build reads it. */
+@Serializable private data class ManifestInfo(val name: String)
 
 internal class ReseamBundlePlugin : Plugin<Project> {
     override fun apply(project: Project) {
@@ -26,7 +30,7 @@ internal class ReseamBundlePlugin : Plugin<Project> {
                 }
                 .standardOutput
                 .asText
-                .map { bundleJson.decodeFromString<BundleMetadata>(it).name }
+                .map { bundleJson.decodeFromString<ManifestInfo>(it).name }
         project.extensions.create("reseamBundle", ReseamBundleInfo::class.java).name.set(bundleName)
         val version =
             project.providers

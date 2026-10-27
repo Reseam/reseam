@@ -17,29 +17,20 @@ dependencies {
     implementation("org.ow2.asm:asm:9.10")
     implementation("org.ow2.asm:asm-commons:9.10")
     implementation("org.jetbrains.kotlin:kotlin-metadata-jvm:${libs.versions.kotlin.get()}")
+    testImplementation(kotlin("test"))
 }
 
 kotlin {
     jvmToolchain(17)
 }
 
-val indexBindings =
-    tasks.register<JavaExec>("generatePatchIndexBindings") {
-        description = "Checks the engine's bindings against the patch index serialization model."
-        classpath = sourceSets.main.get().runtimeClasspath
-        mainClass.set("app.reseam.gradle.PatchIndexFormatKt")
-        val bindings = rootProject.file("crates/patcher/src/bundle/index.rs")
-        inputs.file(bindings)
-        args(bindings.absolutePath)
-        systemProperty(
-            "reseam.updateIndexBindings",
-            providers.systemProperty("reseam.updateIndexBindings").getOrElse("false"),
-        )
-    }
-
-tasks.check { dependsOn(indexBindings) }
-
-tasks.jar { dependsOn(indexBindings) }
+tasks.test {
+    useJUnitPlatform()
+    systemProperty(
+        "reseam.patchIndexFixture",
+        rootProject.file("crates/patcher/tests/fixtures/patch-index.json").absolutePath,
+    )
+}
 
 gradlePlugin {
     plugins {

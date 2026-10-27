@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.gradle.api.Project
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
@@ -15,6 +16,7 @@ import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
+import org.gradle.api.tasks.TaskProvider
 
 /** Where a module's string table is generated and read. */
 abstract class ReseamStringsExtension {
@@ -143,4 +145,28 @@ internal abstract class StringsTask : DefaultTask() {
             .toString()
 
     private fun simpleName() = objectName.get().substringAfterLast('.')
+}
+
+/** Registers the string table of a module with `src/main/strings`, or returns `null`. */
+internal fun Project.registerStrings(): TaskProvider<StringsTask>? {
+    val sources = layout.projectDirectory.dir("src/main/strings")
+    if (!sources.asFile.isDirectory) return null
+    val strings = extensions.create("reseamStrings", ReseamStringsExtension::class.java)
+    strings.tableId.convention(strings.objectName.map { it.substringAfterLast('.') })
+    if (inBundle()) {
+        strings.assetDirectory.convention(
+            bundleInfo().name.zip(strings.tableId) { bundle, table ->
+                "reseam/$bundle/strings/$table"
+            }
+        )
+    }
+    return tasks.register("generateStrings", StringsTask::class.java) {
+        this.sources.set(sources)
+        objectName.set(strings.objectName)
+        tableId.set(strings.tableId)
+        assetDirectory.set(strings.assetDirectory)
+        json.set(layout.buildDirectory.dir("generated/reseam/strings/json"))
+        device.set(layout.buildDirectory.dir("generated/reseam/strings/device"))
+        host.set(layout.buildDirectory.dir("generated/reseam/strings/host"))
+    }
 }

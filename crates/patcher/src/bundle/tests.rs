@@ -356,3 +356,11 @@ public final class Declarations {
         assert!(load_all(archive).is_err());
     }
 }
+
+#[cfg(feature = "bridge")]
+#[test]
+fn the_patch_index_round_trips_the_fixture_the_gradle_plugin_writes() {
+    let fixture = include_str!("../../tests/fixtures/patch-index.json").trim();
+    let declarations: Vec<index::Declaration> = serde_json::from_str(fixture).unwrap();
+    assert_eq!(serde_json::to_string(&declarations).unwrap(), fixture);
+}

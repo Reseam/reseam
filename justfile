@@ -8,7 +8,7 @@ check:
     cargo xtask runtime
     cargo fmt --all --check
     cargo clippy --workspace --all-targets -- -D warnings
-    {{ gradle }} spotlessCheck :reseam-sdk:compileKotlinJvm :reseam-patch-sdk:checkKotlinAbi
+    {{ gradle }} spotlessCheck :reseam-sdk:compileKotlinJvm :reseam-patch-sdk:checkKotlinAbi :reseam-gradle-plugin:test
     cargo test --workspace --no-fail-fast
     bun install --cwd browser --frozen-lockfile
     bun run --cwd browser engine

@@ -1,6 +1,6 @@
 ---
 title: Bundle
-description: Create signing keys, pack bundles, and list what is inside one.
+description: Create signing keys, pack bundles, list what is inside one, and fetch published releases.
 ---
 
 # `reseam bundle`
@@ -38,6 +38,23 @@ Shows the bundle's name, author, signer (and whether you trust it), and every pa
 | `--json` | print everything as JSON |
 
 Listing reads the bundle's signed metadata and never runs its code, so `--trust` is optional. Without it, the signer shows as untrusted.
+
+## `reseam bundle fetch`
+
+```bash
+reseam bundle fetch --index https://patches.example.com/patches.json --version 1.4.0 --to bundles
+```
+
+Downloads a release named in a published index and prints the path of the bundle file. The Gradle build calls it for `bundle(index = ..., version = ...)`.
+
+| Flag | |
+|---|---|
+| `--index <url>` | the release index; `file:` URLs read from disk |
+| `--version <version>` | the release; a leading `v` is ignored |
+| `--signer <key>` | fail unless the index names this public key |
+| `--to <folder>` | where the bundle is kept, as `<name>-<version>.reseam`; defaults to the current folder |
+
+The bundle must be signed by the key the index names, with the name and version the index lists. A file already in the folder that passes these checks is not downloaded again.
 
 ## `reseam bundle pack`
 

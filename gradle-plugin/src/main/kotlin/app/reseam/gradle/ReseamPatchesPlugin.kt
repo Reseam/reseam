@@ -3,7 +3,6 @@
 
 package app.reseam.gradle
 
-import java.util.zip.ZipFile
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.file.DuplicatesStrategy
@@ -109,33 +108,7 @@ internal class ReseamPatchesPlugin : Plugin<Project> {
                 )
                 // Dependencies may themselves be fat jars. Match actual host classes
                 // rather than packages: kotlin-reflect also lives under kotlin/.
-                doFirst {
-                    val provided =
-                        hostRuntime.files.flatMap { library ->
-                            if (library.isDirectory) {
-                                library
-                                    .walkTopDown()
-                                    .onFail { file, error ->
-                                        throw org.gradle.api.GradleException(
-                                            "cannot read host runtime classes in $file",
-                                            error,
-                                        )
-                                    }
-                                    .filter { it.isFile && it.extension == "class" }
-                                    .map { it.relativeTo(library).invariantSeparatorsPath }
-                                    .toList()
-                            } else {
-                                ZipFile(library).use { jar ->
-                                    jar.entries()
-                                        .asSequence()
-                                        .filter { !it.isDirectory && it.name.endsWith(".class") }
-                                        .map { it.name }
-                                        .toList()
-                                }
-                            }
-                        }
-                    exclude(provided)
-                }
+                doFirst { exclude(classPaths(hostRuntime.files)) }
             }
         val dex =
             project.tasks.register("patchDex", DexTask::class.java) {
