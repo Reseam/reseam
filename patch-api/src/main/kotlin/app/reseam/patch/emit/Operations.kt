@@ -113,15 +113,21 @@ internal fun CodeEmitter.cast(value: Value, type: String): ValueRef {
         "check-cast requires reference types"
     }
     access.requireClass(type)
-    emit(template { checkCast(0, type) }, value)
-    return value.retyped(
-        type,
-        when (value.assignableType) {
-            ValueType.Null,
-            ValueType.Zero -> ValueType.Null
-            is ValueType.Known -> ValueType.Known(type)
-        },
-    )
+    // check-cast narrows the register it runs on, so cast a copy: a parameter or capture keeps
+    // its type for the method code around the block.
+    val cast =
+        temporary(
+            type,
+            assignableType =
+                when (value.assignableType) {
+                    ValueType.Null,
+                    ValueType.Zero -> ValueType.Null
+                    is ValueType.Known -> ValueType.Known(type)
+                },
+        )
+    move(cast, value)
+    emit(template { checkCast(0, type) }, cast)
+    return cast
 }
 
 internal fun CodeEmitter.instanceOf(value: Value, type: String): Value {

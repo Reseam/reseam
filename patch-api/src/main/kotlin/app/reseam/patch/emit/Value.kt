@@ -35,10 +35,6 @@ internal class Value(
     val operand: CodeOperand
         get() = CodeOperand(checkNotNull(register) { "a void value has no register" }, type)
 
-    /** This value's register, holding a value of [type]. */
-    fun retyped(type: String, assignableType: ValueType): Value =
-        Value(emitter, register, type, assignableType = assignableType)
-
     override fun assign(value: ValueRef) {
         require(source == null) {
             "cannot assign to the value read from ${source!!.definingClass}->${source.name}: it is a copy; " +

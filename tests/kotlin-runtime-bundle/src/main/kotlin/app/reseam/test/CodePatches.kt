@@ -34,6 +34,11 @@ val whenInstanceOfBranch =
         }
     }
 
+val castParameter =
+    fixturePatch("cast-parameter") {
+        skipHost.method("typed").before { whenNotNull(param(0).cast("java.lang.String")) {} }
+    }
+
 val replaceBothReturn =
     fixturePatch("replace-both-return") {
         anchorHost.method("replaced").replace {

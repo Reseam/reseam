@@ -24,6 +24,26 @@ fn when_instance_of_branches_on_the_runtime_type() {
 }
 
 #[test]
+fn a_cast_leaves_the_parameter_it_casts_unchanged() {
+    use reseam_dex::Instruction;
+
+    let (_apk_dir, mut apk) = open_dex_apk(&[dex!("instance_branch")]);
+    apply_fixture(&mut apk, "cast-parameter", "castParameter");
+    let code = patched_code(&apk, "Lcom/example/SkipHost;", "typed");
+    let incoming = code.registers_size() - code.ins_size();
+    let casts: Vec<u16> = code
+        .instructions()
+        .iter()
+        .filter_map(|instruction| match instruction {
+            Instruction::CheckCast { ref_, .. } => Some(u16::from(*ref_)),
+            _ => None,
+        })
+        .collect();
+    assert!(!casts.is_empty());
+    assert!(casts.iter().all(|&register| register < incoming));
+}
+
+#[test]
 fn point_before_runs_on_branches_into_the_instruction() {
     const OWNER: &str = "Lcom/example/SkipHost;";
 
