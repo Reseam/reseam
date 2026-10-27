@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-@file:Suppress("unused")
-
 package app.reseam.patch.dex
 
 import app.reseam.patch.types.Branch0Insn
@@ -22,23 +20,20 @@ import app.reseam.patch.types.RegStringInsn
 import app.reseam.patch.types.RegTypeInsn
 import app.reseam.patch.types.SimpleInsn
 
+/**
+ * Builds instructions named after their Dalvik mnemonics. Where Dalvik has several encodings of one
+ * operation, the builder picks the one the operands need: by register width for moves and
+ * constants, by type for field accesses, results and moves.
+ */
 class InstructionBuilder {
     private val insns = mutableListOf<Instruction>()
-    private val labels = mutableMapOf<String, Int>()
-    private val branchFixups = mutableListOf<BranchFixup>()
+    private val labels = BranchLabels()
 
-    private class BranchFixup(
-        val index: Int,
-        val label: String,
-        val rebuild: (Int) -> Instruction,
-    )
-
-    fun label(name: String) {
-        labels[name] = insns.size
-    }
+    /** Marks the next instruction as the target of branches to [name]. */
+    fun label(name: String) = labels.mark(name, insns.size)
 
     fun add(insn: Instruction) {
-        insns.add(insn)
+        insns += insn
     }
 
     fun nop() = add(Instruction.Simple(SimpleInsn(Opcode.NOP.value.toUShort())))
@@ -51,35 +46,16 @@ class InstructionBuilder {
 
     fun returnObject(reg: Int) = reg1(Opcode.RETURN_OBJECT, reg)
 
-    fun const4(dest: Int, value: Int) = literal(Opcode.CONST_4, dest, value.toLong())
+    fun constInt(dest: Int, value: Int) {
+        val opcode = constIntOpcode(dest, value)
+        literal(
+            opcode,
+            dest,
+            if (opcode == Opcode.CONST_HIGH16) value.toLong() shr 16 else value.toLong(),
+        )
+    }
 
-    fun const16(dest: Int, value: Int) = literal(Opcode.CONST_16, dest, value.toLong())
-
-    fun const32(dest: Int, value: Int) = literal(Opcode.CONST, dest, value.toLong())
-
-    fun constHigh16(dest: Int, value: Int) = literal(Opcode.CONST_HIGH16, dest, value.toLong())
-
-    fun constWide16(dest: Int, value: Long) = literal(Opcode.CONST_WIDE_16, dest, value)
-
-    fun constWide32(dest: Int, value: Long) = literal(Opcode.CONST_WIDE_32, dest, value)
-
-    fun constWide(dest: Int, value: Long) = literal(Opcode.CONST_WIDE, dest, value)
-
-    /** The smallest `const` encoding that holds `value`. */
-    fun constInt(dest: Int, value: Int) =
-        when {
-            dest <= 15 && value in -8..7 -> const4(dest, value)
-            value in Short.MIN_VALUE..Short.MAX_VALUE -> const16(dest, value)
-            value and 0xFFFF == 0 -> constHigh16(dest, value shr 16)
-            else -> const32(dest, value)
-        }
-
-    fun constLong(dest: Int, value: Long) =
-        when {
-            value in Short.MIN_VALUE..Short.MAX_VALUE -> constWide16(dest, value)
-            value in Int.MIN_VALUE..Int.MAX_VALUE -> constWide32(dest, value)
-            else -> constWide(dest, value)
-        }
+    fun constLong(dest: Int, value: Long) = literal(constLongOpcode(value), dest, value)
 
     fun constString(dest: Int, value: String) =
         add(
@@ -90,64 +66,13 @@ class InstructionBuilder {
 
     fun constClass(dest: Int, descriptor: String) = type(Opcode.CONST_CLASS, dest, 0, descriptor)
 
-    fun move(dest: Int, src: Int) = reg2(Opcode.MOVE, dest, src)
+    /** Copies a value of [type] from [src] to [dest]. */
+    fun move(dest: Int, src: Int, type: String) = reg2(moveOpcode(dest, src, type), dest, src)
 
-    fun moveFrom16(dest: Int, src: Int) = reg2(Opcode.MOVE_FROM16, dest, src)
-
-    fun move16(dest: Int, src: Int) = reg2(Opcode.MOVE_16, dest, src)
-
-    fun moveWide(dest: Int, src: Int) = reg2(Opcode.MOVE_WIDE, dest, src)
-
-    fun moveWideFrom16(dest: Int, src: Int) = reg2(Opcode.MOVE_WIDE_FROM16, dest, src)
-
-    fun moveWide16(dest: Int, src: Int) = reg2(Opcode.MOVE_WIDE_16, dest, src)
-
-    fun moveObject(dest: Int, src: Int) = reg2(Opcode.MOVE_OBJECT, dest, src)
-
-    fun moveObjectFrom16(dest: Int, src: Int) = reg2(Opcode.MOVE_OBJECT_FROM16, dest, src)
-
-    fun moveObject16(dest: Int, src: Int) = reg2(Opcode.MOVE_OBJECT_16, dest, src)
-
-    fun moveResult(dest: Int) = reg1(Opcode.MOVE_RESULT, dest)
-
-    fun moveResultWide(dest: Int) = reg1(Opcode.MOVE_RESULT_WIDE, dest)
-
-    fun moveResultObject(dest: Int) = reg1(Opcode.MOVE_RESULT_OBJECT, dest)
+    /** Stores the result of the preceding invoke, of [type], in [dest]. */
+    fun moveResult(dest: Int, type: String) = reg1(moveResultOpcode(type), dest)
 
     fun moveException(dest: Int) = reg1(Opcode.MOVE_EXCEPTION, dest)
-
-    /** A move whose encoding fits the registers and whose kind matches `type`. */
-    fun moveTyped(dest: Int, src: Int, type: String) {
-        val wide = registerWordCount(type) == 2
-        val reference = isReferenceType(type)
-        when {
-            dest <= 15 && src <= 15 ->
-                when {
-                    wide -> moveWide(dest, src)
-                    reference -> moveObject(dest, src)
-                    else -> move(dest, src)
-                }
-            dest <= 0xFF ->
-                when {
-                    wide -> moveWideFrom16(dest, src)
-                    reference -> moveObjectFrom16(dest, src)
-                    else -> moveFrom16(dest, src)
-                }
-            else ->
-                when {
-                    wide -> moveWide16(dest, src)
-                    reference -> moveObject16(dest, src)
-                    else -> move16(dest, src)
-                }
-        }
-    }
-
-    fun moveResultTyped(dest: Int, type: String) =
-        when {
-            isReferenceType(type) -> moveResultObject(dest)
-            registerWordCount(type) == 2 -> moveResultWide(dest)
-            else -> moveResult(dest)
-        }
 
     fun invokeVirtual(owner: String, name: String, proto: String, vararg registers: Int) =
         invoke(Opcode.INVOKE_VIRTUAL, MethodRef(owner, name, proto), registers.toList())
@@ -187,117 +112,17 @@ class InstructionBuilder {
             )
         )
 
-    fun iget(dest: Int, obj: Int, field: FieldRef) = field(Opcode.IGET, dest, obj, field)
+    fun iget(dest: Int, obj: Int, field: FieldRef) =
+        field(fieldOpcode(Opcode.IGET, field.fieldType), dest, obj, field)
 
-    fun igetWide(dest: Int, obj: Int, field: FieldRef) = field(Opcode.IGET_WIDE, dest, obj, field)
+    fun iput(src: Int, obj: Int, field: FieldRef) =
+        field(fieldOpcode(Opcode.IPUT, field.fieldType), src, obj, field)
 
-    fun igetObject(dest: Int, obj: Int, field: FieldRef) =
-        field(Opcode.IGET_OBJECT, dest, obj, field)
+    fun sget(dest: Int, field: FieldRef) =
+        field(fieldOpcode(Opcode.SGET, field.fieldType), dest, 0, field)
 
-    fun igetBoolean(dest: Int, obj: Int, field: FieldRef) =
-        field(Opcode.IGET_BOOLEAN, dest, obj, field)
-
-    fun igetByte(dest: Int, obj: Int, field: FieldRef) = field(Opcode.IGET_BYTE, dest, obj, field)
-
-    fun igetChar(dest: Int, obj: Int, field: FieldRef) = field(Opcode.IGET_CHAR, dest, obj, field)
-
-    fun igetShort(dest: Int, obj: Int, field: FieldRef) = field(Opcode.IGET_SHORT, dest, obj, field)
-
-    fun iput(src: Int, obj: Int, field: FieldRef) = field(Opcode.IPUT, src, obj, field)
-
-    fun iputWide(src: Int, obj: Int, field: FieldRef) = field(Opcode.IPUT_WIDE, src, obj, field)
-
-    fun iputObject(src: Int, obj: Int, field: FieldRef) = field(Opcode.IPUT_OBJECT, src, obj, field)
-
-    fun iputBoolean(src: Int, obj: Int, field: FieldRef) =
-        field(Opcode.IPUT_BOOLEAN, src, obj, field)
-
-    fun iputByte(src: Int, obj: Int, field: FieldRef) = field(Opcode.IPUT_BYTE, src, obj, field)
-
-    fun iputChar(src: Int, obj: Int, field: FieldRef) = field(Opcode.IPUT_CHAR, src, obj, field)
-
-    fun iputShort(src: Int, obj: Int, field: FieldRef) = field(Opcode.IPUT_SHORT, src, obj, field)
-
-    fun sget(dest: Int, field: FieldRef) = field(Opcode.SGET, dest, 0, field)
-
-    fun sgetWide(dest: Int, field: FieldRef) = field(Opcode.SGET_WIDE, dest, 0, field)
-
-    fun sgetObject(dest: Int, field: FieldRef) = field(Opcode.SGET_OBJECT, dest, 0, field)
-
-    fun sgetBoolean(dest: Int, field: FieldRef) = field(Opcode.SGET_BOOLEAN, dest, 0, field)
-
-    fun sgetByte(dest: Int, field: FieldRef) = field(Opcode.SGET_BYTE, dest, 0, field)
-
-    fun sgetChar(dest: Int, field: FieldRef) = field(Opcode.SGET_CHAR, dest, 0, field)
-
-    fun sgetShort(dest: Int, field: FieldRef) = field(Opcode.SGET_SHORT, dest, 0, field)
-
-    fun sput(src: Int, field: FieldRef) = field(Opcode.SPUT, src, 0, field)
-
-    fun sputWide(src: Int, field: FieldRef) = field(Opcode.SPUT_WIDE, src, 0, field)
-
-    fun sputObject(src: Int, field: FieldRef) = field(Opcode.SPUT_OBJECT, src, 0, field)
-
-    fun sputBoolean(src: Int, field: FieldRef) = field(Opcode.SPUT_BOOLEAN, src, 0, field)
-
-    fun sputByte(src: Int, field: FieldRef) = field(Opcode.SPUT_BYTE, src, 0, field)
-
-    fun sputChar(src: Int, field: FieldRef) = field(Opcode.SPUT_CHAR, src, 0, field)
-
-    fun sputShort(src: Int, field: FieldRef) = field(Opcode.SPUT_SHORT, src, 0, field)
-
-    /** The `iget` variant for a field of `type`, chosen by the field's type. */
-    fun igetTyped(dest: Int, obj: Int, field: FieldRef) =
-        when (field.fieldType) {
-            "J",
-            "D" -> igetWide(dest, obj, field)
-            "Z" -> igetBoolean(dest, obj, field)
-            "B" -> igetByte(dest, obj, field)
-            "C" -> igetChar(dest, obj, field)
-            "S" -> igetShort(dest, obj, field)
-            "I",
-            "F" -> iget(dest, obj, field)
-            else -> igetObject(dest, obj, field)
-        }
-
-    fun iputTyped(src: Int, obj: Int, field: FieldRef) =
-        when (field.fieldType) {
-            "J",
-            "D" -> iputWide(src, obj, field)
-            "Z" -> iputBoolean(src, obj, field)
-            "B" -> iputByte(src, obj, field)
-            "C" -> iputChar(src, obj, field)
-            "S" -> iputShort(src, obj, field)
-            "I",
-            "F" -> iput(src, obj, field)
-            else -> iputObject(src, obj, field)
-        }
-
-    fun sgetTyped(dest: Int, field: FieldRef) =
-        when (field.fieldType) {
-            "J",
-            "D" -> sgetWide(dest, field)
-            "Z" -> sgetBoolean(dest, field)
-            "B" -> sgetByte(dest, field)
-            "C" -> sgetChar(dest, field)
-            "S" -> sgetShort(dest, field)
-            "I",
-            "F" -> sget(dest, field)
-            else -> sgetObject(dest, field)
-        }
-
-    fun sputTyped(src: Int, field: FieldRef) =
-        when (field.fieldType) {
-            "J",
-            "D" -> sputWide(src, field)
-            "Z" -> sputBoolean(src, field)
-            "B" -> sputByte(src, field)
-            "C" -> sputChar(src, field)
-            "S" -> sputShort(src, field)
-            "I",
-            "F" -> sput(src, field)
-            else -> sputObject(src, field)
-        }
+    fun sput(src: Int, field: FieldRef) =
+        field(fieldOpcode(Opcode.SPUT, field.fieldType), src, 0, field)
 
     fun newInstance(dest: Int, descriptor: String) = type(Opcode.NEW_INSTANCE, dest, 0, descriptor)
 
@@ -315,21 +140,11 @@ class InstructionBuilder {
     fun instanceOf(dest: Int, ref: Int, descriptor: String) =
         type(Opcode.INSTANCE_OF, dest, ref, descriptor)
 
-    fun goto(label: String) {
-        val idx = insns.size
-        insns.add(Instruction.Branch0(Branch0Insn(Opcode.GOTO.value.toUShort(), 0)))
-        branchFixups.add(
-            BranchFixup(idx, label) { offset ->
-                val opcode =
-                    when (offset) {
-                        in -128..127 -> Opcode.GOTO
-                        in -32768..32767 -> Opcode.GOTO_16
-                        else -> Opcode.GOTO_32
-                    }
-                Instruction.Branch0(Branch0Insn(opcode.value.toUShort(), offset))
-            }
-        )
-    }
+    /** A `goto` the engine widens when its label is out of an 8-bit offset's reach. */
+    fun goto(label: String) =
+        branch(label) { offset ->
+            Instruction.Branch0(Branch0Insn(Opcode.GOTO.value.toUShort(), offset))
+        }
 
     fun ifEqz(reg: Int, label: String) = branch1(Opcode.IF_EQZ, reg, label)
 
@@ -377,12 +192,6 @@ class InstructionBuilder {
 
     fun remInt(dest: Int, left: Int, right: Int) = reg3(Opcode.REM_INT, dest, left, right)
 
-    fun andIntLit16(dest: Int, src: Int, literal: Int) =
-        literal(Opcode.AND_INT_LIT16, dest, literal.toLong(), src)
-
-    fun andIntLit8(dest: Int, src: Int, literal: Int) =
-        literal(Opcode.AND_INT_LIT8, dest, literal.toLong(), src)
-
     fun reg1(opcode: Opcode, reg: Int) =
         add(Instruction.Reg1(Reg1Insn(opcode.value.toUShort(), reg.toUShort())))
 
@@ -418,44 +227,27 @@ class InstructionBuilder {
         )
 
     fun build(): List<Instruction> {
-        val codeUnitOffsets = IntArray(insns.size + 1)
-        var cumulative = 0
-        for (i in insns.indices) {
-            codeUnitOffsets[i] = cumulative
-            cumulative += insns[i].codeUnitSize
-        }
-        codeUnitOffsets[insns.size] = cumulative
-        for (fixup in branchFixups) {
-            val labelIdx = labels[fixup.label] ?: error("undefined label: '${fixup.label}'")
-            insns[fixup.index] =
-                fixup.rebuild(codeUnitOffsets[labelIdx] - codeUnitOffsets[fixup.index])
-        }
+        labels.resolve(insns)
         return insns.toList()
     }
 
-    private fun branch1(opcode: Opcode, reg: Int, label: String) {
-        val idx = insns.size
-        insns.add(Instruction.Branch(BranchInsn(opcode.value.toUShort(), reg.toUShort(), 0)))
-        branchFixups.add(
-            BranchFixup(idx, label) { offset ->
-                Instruction.Branch(BranchInsn(opcode.value.toUShort(), reg.toUShort(), offset))
-            }
-        )
+    private fun branch(label: String, encode: (offset: Int) -> Instruction) {
+        labels.branch(insns.size, label, encode)
+        insns += encode(0)
     }
 
-    private fun branch2(opcode: Opcode, regA: Int, regB: Int, label: String) {
-        val idx = insns.size
-        insns.add(
+    private fun branch1(opcode: Opcode, reg: Int, label: String) =
+        branch(label) { offset ->
+            Instruction.Branch(BranchInsn(opcode.value.toUShort(), reg.toUShort(), offset))
+        }
+
+    private fun branch2(opcode: Opcode, regA: Int, regB: Int, label: String) =
+        branch(label) { offset ->
             Instruction.Branch2(
-                Branch2Insn(opcode.value.toUShort(), regA.toUShort(), regB.toUShort(), 0)
+                Branch2Insn(opcode.value.toUShort(), regA.toUShort(), regB.toUShort(), offset)
             )
-        )
-        branchFixups.add(
-            BranchFixup(idx, label) { offset ->
-                Instruction.Branch2(
-                    Branch2Insn(opcode.value.toUShort(), regA.toUShort(), regB.toUShort(), offset)
-                )
-            }
-        )
-    }
+        }
 }
+
+fun buildInstructions(block: InstructionBuilder.() -> Unit): List<Instruction> =
+    InstructionBuilder().apply(block).build()

@@ -5,7 +5,6 @@
 
 package app.reseam.patch.dex
 
-import app.reseam.patch.ActiveRuntime
 import app.reseam.patch.native.addClassAnnotation
 import app.reseam.patch.native.addField
 import app.reseam.patch.native.addFieldAnnotation
@@ -23,6 +22,7 @@ import app.reseam.patch.native.setFieldAccessFlags
 import app.reseam.patch.native.setStaticFieldValue
 import app.reseam.patch.native.setSuperclass
 import app.reseam.patch.native.superclassChain
+import app.reseam.patch.run.ActiveRuntime
 import app.reseam.patch.types.AnnotationItem
 import app.reseam.patch.types.ClassInfo
 import app.reseam.patch.types.EncodedVal
@@ -35,7 +35,7 @@ import app.reseam.patch.types.NewMethod
 @JvmInline
 value class DexClass(val handle: UInt) {
     val info: ClassInfo
-        get() = ActiveRuntime.current.classInfo(handle)
+        get() = ActiveRuntime.current.run.cache.classInfo(handle)
 
     val descriptor: String
         get() = info.descriptor
@@ -78,6 +78,14 @@ value class DexClass(val handle: UInt) {
         classMethodsByName(handle, name).asSequence().map(::Method).firstOrNull {
             proto == null || it.proto == proto
         }
+
+    internal fun instanceFieldOfType(type: String): FieldRef {
+        val matches = instanceFields.filter { it.fieldType == type }
+        require(matches.size == 1) {
+            "Expected exactly one instance field of type $type on $descriptor, found ${matches.size}"
+        }
+        return matches.single().ref
+    }
 
     fun field(name: String): FieldRef? =
         fields

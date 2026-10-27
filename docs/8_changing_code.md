@@ -33,7 +33,7 @@ execute {
 
 On a [point](7_points.md), `before { }` and `after { }` place code just before or just after that instruction.
 
-Shortcuts for common cases: `alwaysReturn(true)`, `alwaysReturnNull()`, `replaceAllStrings(old, new)`, `replaceAllLiterals(old, new)`.
+Shortcuts for common cases: `alwaysReturn(true)` and `alwaysReturnNull()` replace the body with a constant return.
 
 > [!WARNING]
 > The Kotlin in a code block runs once, while patching, and each call adds instructions. A Kotlin `if` chooses what to add; it is not a branch in the app. Use `whenTrue` and the other branches below.

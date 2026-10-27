@@ -17,13 +17,3 @@ repositories {
         ))
     .name
     .set("reseam-test")
-
-// This fixture exercises the internal JNI bridge as well as the authoring API.
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-    compilerOptions.freeCompilerArgs.add(
-        libraries.elements.map { classpath ->
-            val sdk = classpath.single { it.asFile.name.startsWith("reseam-patch-sdk-") }
-            "-Xfriend-paths=${sdk.asFile.absolutePath}"
-        }
-    )
-}

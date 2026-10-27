@@ -4,6 +4,7 @@
 package app.reseam.patch
 
 import app.reseam.patch.dex.Opcode
+import app.reseam.patch.dex.arguments
 import app.reseam.patch.dex.buildInstructions
 import app.reseam.patch.dex.descriptor
 import app.reseam.patch.dex.invokeRegisters
@@ -11,6 +12,10 @@ import app.reseam.patch.dex.methodRef
 import app.reseam.patch.dex.opcode
 import app.reseam.patch.dex.parameterTypes
 import app.reseam.patch.dex.returnType
+import app.reseam.patch.emit.Access
+import app.reseam.patch.emit.ValueType
+import app.reseam.patch.emit.requireArgumentTypes
+import app.reseam.patch.search.isAssignableType
 import app.reseam.patch.types.Instruction
 
 /** Redirect this invoke to a static extension, passing the receiver first for instance calls. */

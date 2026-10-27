@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-@file:Suppress("unused")
-
 package app.reseam.patch
 
 import app.reseam.patch.native.componentNames
@@ -131,3 +129,11 @@ class ManifestScope internal constructor(private val componentName: String? = nu
 
     fun <T> edit(block: XmlDocument.() -> T): T = document().use(block)
 }
+
+/** A manifest attribute such as `@0x7f1400a0` as a resource id. */
+fun resourceRef(value: String): UInt? =
+    when {
+        value.startsWith("@0x") -> value.removePrefix("@0x").toUIntOrNull(16)
+        value.startsWith("@ref/0x") -> value.removePrefix("@ref/0x").toUIntOrNull(16)
+        else -> null
+    }

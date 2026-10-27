@@ -3,7 +3,6 @@
 
 package app.reseam.patch.settings
 
-import app.reseam.patch.ActiveRuntime
 import app.reseam.patch.CodeScope
 import app.reseam.patch.ExtClass
 import app.reseam.patch.ExtJsModule
@@ -14,6 +13,7 @@ import app.reseam.patch.ValueRef
 import app.reseam.patch.XmlElement
 import app.reseam.patch.dex.AccessFlags
 import app.reseam.patch.method
+import app.reseam.patch.run.ActiveRuntime
 import app.reseam.patch.types.HermesModule
 import app.reseam.patch.types.RunningBundleInfo
 

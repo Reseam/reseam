@@ -3,12 +3,12 @@
 
 package app.reseam.patch.settings
 
-import app.reseam.patch.ActiveRuntime
 import app.reseam.patch.CompatiblePackage
 import app.reseam.patch.PatchDeclaration
 import app.reseam.patch.PatchRuntime
 import app.reseam.patch.ReseamPatch
 import app.reseam.patch.appEntry
+import app.reseam.patch.run.ActiveRuntime
 
 /**
  * The internal patch that gives one app the running bundle's settings screen. Patches register

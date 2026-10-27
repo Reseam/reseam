@@ -11,8 +11,9 @@ import app.reseam.patch.MethodTarget
 import app.reseam.patch.Otherwise
 import app.reseam.patch.PointTarget
 import app.reseam.patch.Type
-import app.reseam.patch.after
-import app.reseam.patch.before
+import app.reseam.patch.after as ungatedAfter
+import app.reseam.patch.before as ungatedBefore
+import app.reseam.patch.dex.isReferenceType
 import app.reseam.patch.skipWhen
 
 /** Runs `block` in the app when the running bundle's toggle is on. */
@@ -39,48 +40,57 @@ fun gate(setting: ToggleSetting, block: GateScope.() -> Unit) = GateScope(settin
 
 /** Hooks that run only while a [gate]'s setting is on. Each mirrors the ungated hook. */
 class GateScope internal constructor(val setting: ToggleSetting) {
-    fun MethodTarget.before(block: CodeScope.() -> Unit) = beforeOn(setting, block)
+    fun MethodTarget.before(block: CodeScope.() -> Unit) = ungatedBefore {
+        whenEnabled(setting, block)
+    }
 
-    fun MethodTarget.after(block: CodeScope.() -> Unit) = afterOn(setting, block)
+    fun MethodTarget.after(block: CodeScope.() -> Unit) = ungatedAfter {
+        whenEnabled(setting, block)
+    }
 
-    fun PointTarget.before(block: CodeScope.() -> Unit) = beforeOn(setting, block)
+    fun PointTarget.before(block: CodeScope.() -> Unit) = ungatedBefore {
+        whenEnabled(setting, block)
+    }
 
-    fun PointTarget.after(block: CodeScope.() -> Unit) = afterOn(setting, block)
+    fun PointTarget.after(block: CodeScope.() -> Unit) = ungatedAfter {
+        whenEnabled(setting, block)
+    }
 
     /** Skips the call at the point; the call's result must be unused. */
     fun PointTarget.skip() = skipWhen { valueOf(setting) }
 
-    fun MethodTarget.alwaysReturn() = returnOn(setting, Type.Void) { returnVoid() }
+    fun MethodTarget.alwaysReturn() = returning(Type.Void) { returnVoid() }
 
     fun MethodTarget.alwaysReturnNull() {
-        require(returnType.startsWith("L") || returnType.startsWith("[")) {
+        require(isReferenceType(returnType)) {
             "the ${setting.key} gate returns null, but $descriptor returns $returnType"
         }
-        beforeOn(setting) { returnNull() }
+        before { returnNull() }
     }
 
     fun MethodTarget.alwaysReturn(value: Boolean) =
-        returnOn(setting, Type.Boolean) { if (value) returnTrue() else returnFalse() }
+        returning(Type.Boolean) { if (value) returnTrue() else returnFalse() }
 
-    fun MethodTarget.alwaysReturn(value: Int) =
-        returnOn(setting, Type.Int) { returnValue(int(value)) }
+    fun MethodTarget.alwaysReturn(value: Int) = returning(Type.Int) { returnValue(int(value)) }
 
-    fun MethodTarget.alwaysReturn(value: Long) =
-        returnOn(setting, Type.Long) { returnValue(long(value)) }
+    fun MethodTarget.alwaysReturn(value: Long) = returning(Type.Long) { returnValue(long(value)) }
 
     fun MethodTarget.alwaysReturn(value: String) =
-        returnOn(setting, Type.String) { returnValue(string(value)) }
+        returning(Type.String) { returnValue(string(value)) }
 
-    fun FunctionTarget.before(block: JsCodeScope.() -> Unit) = beforeOn(setting, block)
+    fun FunctionTarget.before(block: JsCodeScope.() -> Unit) = ungatedBefore {
+        whenEnabled(setting, block)
+    }
 
-    fun FunctionTarget.after(block: JsCodeScope.() -> Unit) = afterOn(setting, block)
+    fun FunctionTarget.after(block: JsCodeScope.() -> Unit) = ungatedAfter {
+        whenEnabled(setting, block)
+    }
 
     /** Runs [block] instead of the function; falling off its end returns `undefined`. */
-    fun FunctionTarget.replace(block: JsCodeScope.() -> Unit) =
-        beforeOn(setting) {
-            block()
-            returnUndefined()
-        }
+    fun FunctionTarget.replace(block: JsCodeScope.() -> Unit) = before {
+        block()
+        returnUndefined()
+    }
 
     fun FunctionTarget.alwaysReturn() = replace { returnUndefined() }
 
@@ -102,44 +112,15 @@ class GateScope internal constructor(val setting: ToggleSetting) {
         require(path.split('.').none(String::isEmpty)) {
             "setArgument needs property names separated by dots, got '$path'"
         }
-        beforeOn(setting) {
+        before {
             param(index).assign(AppRuntimeJs.withProperty(param(index), string(path), bool(value)))
         }
     }
-}
 
-private fun MethodTarget.beforeOn(setting: ToggleSetting, block: CodeScope.() -> Unit) = before {
-    whenEnabled(setting, block)
-}
-
-private fun MethodTarget.afterOn(setting: ToggleSetting, block: CodeScope.() -> Unit) = after {
-    whenEnabled(setting, block)
-}
-
-private fun PointTarget.beforeOn(setting: ToggleSetting, block: CodeScope.() -> Unit) = before {
-    whenEnabled(setting, block)
-}
-
-private fun PointTarget.afterOn(setting: ToggleSetting, block: CodeScope.() -> Unit) = after {
-    whenEnabled(setting, block)
-}
-
-private fun MethodTarget.returnOn(
-    setting: ToggleSetting,
-    type: String,
-    block: CodeScope.() -> Unit,
-) {
-    require(returnType == type) {
-        "the ${setting.key} gate returns $type, but $descriptor returns $returnType"
+    private fun MethodTarget.returning(type: String, block: CodeScope.() -> Unit) {
+        require(returnType == type) {
+            "the ${setting.key} gate returns $type, but $descriptor returns $returnType"
+        }
+        before(block)
     }
-    beforeOn(setting, block)
-}
-
-private fun FunctionTarget.beforeOn(setting: ToggleSetting, block: JsCodeScope.() -> Unit) =
-    before {
-        whenEnabled(setting, block)
-    }
-
-private fun FunctionTarget.afterOn(setting: ToggleSetting, block: JsCodeScope.() -> Unit) = after {
-    whenEnabled(setting, block)
 }
