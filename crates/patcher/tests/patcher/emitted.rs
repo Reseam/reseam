@@ -3,7 +3,7 @@
 
 use crate::common::apks::open_dex_apk;
 use crate::common::bundles::apply_fixture;
-use crate::common::code::{hook_calls, patched_code};
+use crate::common::code::{hook_calls, invoked_by, patched_code, read_method, written_dex};
 use crate::common::dex;
 
 #[test]
@@ -167,4 +167,31 @@ fn emitted_operands_reach_registers_their_encoding_cannot_name() {
         let (calls, _) = hook_calls(&code, &incoming);
         assert_eq!(calls.first() == Some(&vec![9]), entered, "{incoming:?}");
     }
+}
+
+#[test]
+fn an_added_method_gets_its_body_and_can_call_its_superclass() {
+    use reseam_dex::{AccessFlags, Instruction};
+
+    let (_directory, mut apk) = open_dex_apk(&[dex!("entry_app"), dex!("entry_base")]);
+    apply_fixture(&mut apk, "added-method", "addedMethod");
+    let dex = (0..2)
+        .map(|index| written_dex(&apk, index))
+        .find(|dex| dex.find_class_index("Lcom/example/App;").is_some())
+        .unwrap();
+    let method = read_method(&dex, "Lcom/example/App;", "reseamCallsBase").unwrap();
+    assert_eq!(
+        method.access_flags,
+        AccessFlags::PUBLIC | AccessFlags::FINAL
+    );
+    let code = method.code.as_deref().unwrap();
+    assert!(
+        code.instructions()
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::InvokeSuper { .. }))
+    );
+    assert_eq!(
+        invoked_by(&dex, "Lcom/example/App;", "reseamCallsBase"),
+        ["Lcom/example/AppBase;->onCreate"]
+    );
 }

@@ -4,6 +4,7 @@
 package app.reseam.test
 
 import app.reseam.patch.Type
+import app.reseam.patch.addMethod
 import app.reseam.patch.before
 import app.reseam.patch.invoke
 import app.reseam.patch.klass
@@ -142,4 +143,16 @@ val distantOperands =
                 callStatic("com.example.Observer", "entry", "(I)V", param(3))
             }
         }
+    }
+
+val addedMethod =
+    fixturePatch("added-method") {
+        val app = klass("com.example.App")
+        repeat(2) {
+            app.addMethod("reseamCallsBase", "()V") {
+                thisObject.callSuper("com.example.AppBase", "onCreate", "()V")
+                returnVoid()
+            }
+        }
+        check(app.classDef.methods.count { it.name == "reseamCallsBase" } == 1)
     }

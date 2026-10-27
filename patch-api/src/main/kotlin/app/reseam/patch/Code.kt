@@ -131,6 +131,9 @@ interface ValueRef {
 
     fun callInterface(owner: String, name: String, proto: String, vararg args: ValueRef): ValueRef
 
+    /** `super.name(args)` with this value as the receiver, as [owner]'s subclass calls it. */
+    fun callSuper(owner: String, name: String, proto: String, vararg args: ValueRef): ValueRef
+
     /** `List.size()` of this value. */
     fun size(): ValueRef
 

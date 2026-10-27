@@ -3,10 +3,12 @@
 
 package app.reseam.patch
 
+import app.reseam.patch.dex.AccessFlags
 import app.reseam.patch.dex.Method
 import app.reseam.patch.run.Resolution
 import app.reseam.patch.search.MethodQuerySpec
 import app.reseam.patch.types.MethodRef
+import app.reseam.patch.types.NewMethod
 
 class MethodTarget
 internal constructor(
@@ -134,4 +136,34 @@ fun ClassTarget.methods(
         inClass(owner, inherited)
         block()
     }
+}
+
+/**
+ * Method [name] [proto] of this class with [body] as its code. The class gains the method when it
+ * does not declare it yet, so patches that share a helper method can each define it.
+ */
+fun ClassTarget.addMethod(
+    name: String,
+    proto: String,
+    accessFlags: Int =
+        if (classDef.isInterface) AccessFlags.PUBLIC else AccessFlags.PUBLIC or AccessFlags.FINAL,
+    body: CodeScope.() -> Unit,
+): MethodTarget {
+    // Declared abstract, the method has no code until its body replaces it.
+    val method =
+        classDef.method(name, proto)
+            ?: classDef.addMethod(
+                NewMethod(
+                    name = name,
+                    proto = proto,
+                    accessFlags = (accessFlags or AccessFlags.ABSTRACT).toUInt(),
+                    registersSize = 0u,
+                    insSize = 0u,
+                    outsSize = 0u,
+                    instructions = emptyList(),
+                    tries = emptyList(),
+                    catchHandlers = emptyList(),
+                )
+            )
+    return MethodTarget.of(method, "$label.$name").also { it.replace(body) }
 }

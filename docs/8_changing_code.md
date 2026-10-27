@@ -35,6 +35,16 @@ On a [point](7_points.md), `before { }` and `after { }` place code just before o
 
 Shortcuts for common cases: `alwaysReturn(true)` and `alwaysReturnNull()` replace the body with a constant return.
 
+To give an app class a method of its own, add it with its body. Other hooks can then call it:
+
+```kotlin
+val seekHelper = playerClass.addMethod("reseam_seekTo", "(J)Z") {
+    returnValue(thisObject.call(seek, param(0)))
+}
+```
+
+A class that already declares the method keeps one copy, so patches that share a helper can each add it.
+
 > [!WARNING]
 > The Kotlin in a code block runs once, while patching, and each call adds instructions. A Kotlin `if` chooses what to add; it is not a branch in the app. Use `whenTrue` and the other branches below.
 
@@ -48,6 +58,7 @@ Shortcuts for common cases: `alwaysReturn(true)` and `alwaysReturnNull()` replac
 | `value.field(f)`, `staticField(f)` | read a field |
 | `value.set(f, v)`, `setStatic(f, v)` | write a field |
 | `value.cast(type)`, `newInstance(type)` | cast, or create an object |
+| `value.callSuper(owner, name, proto, args)` | call the superclass's version of a method |
 | `capture("name")`, `value.assign(v)` | read a captured value, or overwrite it |
 
 The [reference](reference.md#changing-methods) lists everything. A value belongs to the block that created it; using it in another block fails.

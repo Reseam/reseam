@@ -86,6 +86,7 @@ Generators, async functions, class constructors, `new.target`, direct `eval` and
 | `klass(debugName) { ClassQuery }` | The unique matching class, or the best candidate with `first()`. |
 | `ClassTarget.method(name, inherited = false) { MethodQuery }` | A method of the class by name, narrowed by the optional block. |
 | `ClassTarget.methods(debugName = null, inherited = false) { }` | Matching methods of the class. |
+| `ClassTarget.addMethod(name, proto, accessFlags) { CodeScope }` | Gives the class the method with that body, adding it unless the class already declares it. Flags default to public final, public on an interface. `MethodTarget`. |
 | `ClassTarget.field(name)` | A field by name. `FieldTarget`. |
 | `ClassTarget.enumConstant(name)` | The field holding the enum constant whose `name()` is `name`, even when obfuscation renamed it. `FieldTarget`. |
 | `ClassTarget.fieldOfType(type)` | The one instance field of that type. |
@@ -140,7 +141,7 @@ Generators, async functions, class constructors, `new.target`, direct `eval` and
 
 `CodeScope`: `thisObject`, `param(i)`, `paramOfType(type)`, `lastParam`, `result` (in a method's `after`), `capture(name)` (a `captureAs` value), `local(slot)`, `int`, `long`, `bool`, `string`, `nullObject`, `enumValue(type, name)` (a constant by its field name; see `ClassTarget.enumConstant` for obfuscated enums), `staticField(FieldTarget | FieldRef)`, `setStatic(FieldTarget | FieldRef, value)`, `newInstance(type, ctorProto = "()V", vararg args)`, `call(ExtMethod | MethodTarget, args)` (fails when the extension method does not exist or the argument count does not match), `ExtMethod(args)` (the same as `call` for a static extension method), `callStatic(owner, name, proto, args)`, `whenTrue`, `whenFalse`, `whenNull`, `whenNotNull`, `whenEqual`, `whenNotEqual`, `whenInstanceOf(value, type)` (each returns `Otherwise` with `otherwise { }`), `returnVoid`, `returnValue`, `returnTrue`, `returnFalse`, `returnNull`.
 
-`ValueRef`: `type`, `cast(type)`, `field(FieldTarget | FieldRef)`, `fieldOfType(type)`, `set(field, value)`, `assign(value)` (fails on a value read from a field), `call(ExtMethod | MethodTarget, args)`, `callVirtual(owner, name, proto, args)`, `callInterface(...)`, `size()`, `get(index)`, `plus`, `minus`.
+`ValueRef`: `type`, `cast(type)`, `field(FieldTarget | FieldRef)`, `fieldOfType(type)`, `set(field, value)`, `assign(value)` (fails on a value read from a field), `call(ExtMethod | MethodTarget, args)`, `callVirtual(owner, name, proto, args)`, `callInterface(...)`, `callSuper(...)`, `size()`, `get(index)`, `plus`, `minus`.
 
 | Symbol | Description |
 |---|---|

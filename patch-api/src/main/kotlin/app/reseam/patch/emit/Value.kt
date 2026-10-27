@@ -91,26 +91,24 @@ internal class Value(
         )
     }
 
-    override fun callVirtual(
-        owner: String,
-        name: String,
-        proto: String,
-        vararg args: ValueRef,
-    ): ValueRef =
-        emitter.invoke(
-            Opcode.INVOKE_VIRTUAL,
-            MethodRef(descriptorOf(owner), name, proto),
-            listOf(this) + args.map { it.builtBy(emitter) },
-        )
+    override fun callVirtual(owner: String, name: String, proto: String, vararg args: ValueRef) =
+        instanceCall(Opcode.INVOKE_VIRTUAL, owner, name, proto, args)
 
-    override fun callInterface(
+    override fun callInterface(owner: String, name: String, proto: String, vararg args: ValueRef) =
+        instanceCall(Opcode.INVOKE_INTERFACE, owner, name, proto, args)
+
+    override fun callSuper(owner: String, name: String, proto: String, vararg args: ValueRef) =
+        instanceCall(Opcode.INVOKE_SUPER, owner, name, proto, args)
+
+    private fun instanceCall(
+        opcode: Opcode,
         owner: String,
         name: String,
         proto: String,
-        vararg args: ValueRef,
+        args: Array<out ValueRef>,
     ): ValueRef =
         emitter.invoke(
-            Opcode.INVOKE_INTERFACE,
+            opcode,
             MethodRef(descriptorOf(owner), name, proto),
             listOf(this) + args.map { it.builtBy(emitter) },
         )

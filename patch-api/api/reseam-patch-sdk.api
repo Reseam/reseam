@@ -467,6 +467,8 @@ public final class app/reseam/patch/MethodTarget : app/reseam/patch/Target {
 }
 
 public final class app/reseam/patch/MethodTargetsKt {
+	public static final fun addMethod (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/functions/Function1;)Lapp/reseam/patch/MethodTarget;
+	public static synthetic fun addMethod$default (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/MethodTarget;
 	public static final fun method (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;)Lapp/reseam/patch/MethodTarget;
 	public static final fun method (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/MethodTarget;
 	public static synthetic fun method$default (Lapp/reseam/patch/ClassTarget;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/MethodTarget;
@@ -863,6 +865,7 @@ public abstract interface class app/reseam/patch/ValueRef {
 	public abstract fun call (Lapp/reseam/patch/ExtMethod;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
 	public abstract fun call (Lapp/reseam/patch/MethodTarget;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
 	public abstract fun callInterface (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
+	public abstract fun callSuper (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
 	public abstract fun callVirtual (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
 	public abstract fun cast (Ljava/lang/String;)Lapp/reseam/patch/ValueRef;
 	public abstract fun field (Lapp/reseam/patch/FieldTarget;)Lapp/reseam/patch/ValueRef;
