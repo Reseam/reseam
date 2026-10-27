@@ -1,11 +1,17 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import type { Endpoint, PacketKind } from './protocol';
 
 const HEADER = 24;
 const CHUNK = 1 << 20;
 const MAX_MESSAGE = 512 << 20;
 const WAIT_MS = 120_000;
-export type Packet = { kind: number; bytes: Uint8Array };
+export type Packet = { kind: PacketKind; bytes: Uint8Array };
+/**
+ * A port pair sharing one channel. The client posts requests on its port and reads replies from
+ * the channel; the server receives requests on its port and writes replies to the channel.
+ */
+export interface Link { channel: Channel; client: Endpoint; server: Endpoint }
 
 export class Channel {
   readonly control: Int32Array;
@@ -19,8 +25,9 @@ export class Channel {
     Atomics.notify(this.control, 0);
     Atomics.notify(this.control, 5);
   }
+  get closed(): boolean { return Atomics.load(this.control, 3) === 1; }
   private check(): void {
-    if (Atomics.load(this.control, 3)) throw new Error('Worker channel closed');
+    if (this.closed) throw new Error('Worker channel closed');
   }
   private waitSync(value: number, index = 0): void {
     this.check();
@@ -50,7 +57,7 @@ export class Channel {
     }
     this.check();
   }
-  private put(kind: number, bytes: Uint8Array, offset: number): { count: number; sequence: number } {
+  private put(kind: PacketKind, bytes: Uint8Array, offset: number): { count: number; sequence: number } {
     const count = Math.min(this.data.length, bytes.length - offset);
     this.data.set(bytes.subarray(offset, offset + count));
     Atomics.store(this.control, 1, count);
@@ -60,7 +67,7 @@ export class Channel {
     Atomics.notify(this.control, 0);
     return { count, sequence };
   }
-  sendSync(kind: number, bytes: Uint8Array): void {
+  sendSync(kind: PacketKind, bytes: Uint8Array): void {
     this.check();
     if (bytes.length > MAX_MESSAGE) throw new Error('Bridge message exceeds 512 MiB');
     let offset = 0;
@@ -75,7 +82,7 @@ export class Channel {
       }
     } while (offset < bytes.length);
   }
-  async send(kind: number, bytes: Uint8Array): Promise<void> {
+  async send(kind: PacketKind, bytes: Uint8Array): Promise<void> {
     this.check();
     if (bytes.length > MAX_MESSAGE) throw new Error('Bridge message exceeds 512 MiB');
     let offset = 0;
@@ -90,8 +97,8 @@ export class Channel {
       }
     } while (offset < bytes.length);
   }
-  private take(parts: Uint8Array[]): { kind: number; final: boolean } {
-    const kind = Atomics.load(this.control, 0);
+  private take(parts: Uint8Array[]): { kind: PacketKind; final: boolean } {
+    const kind: PacketKind = Atomics.load(this.control, 0);
     const count = Atomics.load(this.control, 1);
     if (count < 0 || count > this.data.length) throw new Error('Invalid bridge packet length');
     parts.push(this.data.slice(0, count));
@@ -106,7 +113,7 @@ export class Channel {
   receiveSync(): Packet {
     this.check();
     const parts: Uint8Array[] = [];
-    let kind = 0, total = 0;
+    let kind: PacketKind | 0 = 0, total = 0;
     for (;;) {
       while (!Atomics.load(this.control, 0)) this.waitSync(0);
       const part = this.take(parts);
@@ -120,7 +127,7 @@ export class Channel {
   async receive(): Promise<Packet> {
     this.check();
     const parts: Uint8Array[] = [];
-    let kind = 0, total = 0;
+    let kind: PacketKind | 0 = 0, total = 0;
     for (;;) {
       while (!Atomics.load(this.control, 0)) await this.waitAsync(0);
       const part = this.take(parts);
@@ -132,59 +139,15 @@ export class Channel {
     }
   }
 }
+export function link(): Link {
+  const channel = new Channel();
+  const { port1, port2 } = new MessageChannel();
+  return { channel, client: { port: port1, buffer: channel.buffer }, server: { port: port2, buffer: channel.buffer } };
+}
 function concat(parts: Uint8Array[], length: number): Uint8Array {
   if (parts.length === 1) return parts[0];
   const result = new Uint8Array(length);
   let offset = 0;
   for (const part of parts) { result.set(part, offset); offset += part.length; }
   return result;
-}
-
-// Binary buffers stay binary; only the small control envelope uses JSON.
-export function encode(value: unknown): Uint8Array {
-  const buffers: Uint8Array[] = [];
-  const text = new TextEncoder().encode(JSON.stringify(value, (_, item: unknown) => {
-    if (typeof item === 'bigint') return { $bigint: item.toString() };
-    if (ArrayBuffer.isView(item)) {
-      const bytes = new Uint8Array(item.buffer, item.byteOffset, item.byteLength);
-      const index = buffers.push(bytes) - 1;
-      return { $buffer: index };
-    }
-    return item;
-  }));
-  const length = 8 + text.length + buffers.reduce((sum, bytes) => sum + 4 + bytes.length, 0);
-  const result = new Uint8Array(length);
-  const view = new DataView(result.buffer);
-  view.setUint32(0, text.length, true);
-  view.setUint32(4, buffers.length, true);
-  result.set(text, 8);
-  let offset = 8 + text.length;
-  for (const bytes of buffers) {
-    view.setUint32(offset, bytes.length, true); offset += 4;
-    result.set(bytes, offset); offset += bytes.length;
-  }
-  return result;
-}
-export function decode<T = unknown>(bytes: Uint8Array): T {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  if (bytes.length < 8) throw new Error('Truncated bridge envelope');
-  const textLength = view.getUint32(0, true), count = view.getUint32(4, true);
-  if (textLength > bytes.length - 8 || count > 1_000_000) throw new Error('Invalid bridge envelope');
-  const buffers: Uint8Array[] = [];
-  let offset = 8 + textLength;
-  for (let i = 0; i < count; i++) {
-    if (offset + 4 > bytes.length) throw new Error('Truncated bridge buffer');
-    const length = view.getUint32(offset, true); offset += 4;
-    if (length > bytes.length - offset) throw new Error('Truncated bridge buffer');
-    buffers.push(bytes.subarray(offset, offset + length)); offset += length;
-  }
-  if (offset !== bytes.length) throw new Error('Trailing bridge bytes');
-  return JSON.parse(new TextDecoder().decode(bytes.subarray(8, 8 + textLength)), (_, item) => {
-    if (item && typeof item === 'object' && '$bigint' in item) return BigInt(item.$bigint);
-    if (item && typeof item === 'object' && '$buffer' in item) {
-      if (!Number.isInteger(item.$buffer) || !buffers[item.$buffer]) throw new Error('Invalid bridge buffer reference');
-      return buffers[item.$buffer];
-    }
-    return item;
-  }) as T;
 }

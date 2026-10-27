@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test';
-import { Channel, decode, encode } from '../src/channel';
+import { Channel } from '../src/channel';
+import { decode, encode } from '../src/envelope';
+import { PacketKind } from '../src/protocol';
 
 test('worker bridge preserves binary data and 64-bit values across repeated requests and chunk boundaries', async () => {
   const channel = new Channel();
@@ -11,9 +13,9 @@ test('worker bridge preserves binary data and 64-bit values across repeated requ
     for (let i = 0; i < sizes.length; i++) {
       const bytes = Uint8Array.from({ length: sizes[i] }, (_, j) => (j + i) % 251);
       const sequence = BigInt(i) + 9_223_372_036_854_770_000n;
-      await channel.send(1, encode({ bytes, sequence }));
+      await channel.send(PacketKind.NativeCall, encode({ bytes, sequence }));
       const response = await channel.receive();
-      expect(response.kind).toBe(2);
+      expect(response.kind).toBe(PacketKind.NativeResult);
       const value = decode<{ bytes: Uint8Array; sequence: bigint }>(response.bytes);
       expect(value.sequence).toBe(sequence);
       expect(value.bytes).toEqual(bytes);

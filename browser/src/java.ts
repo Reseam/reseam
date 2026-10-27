@@ -1,5 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import type { Endpoint, JvmRequest } from './protocol';
+import { INIT_TIMEOUT, WorkerRpc } from './rpc';
 import { runtime } from './runtime';
 
 export interface JavaOptions {
@@ -7,15 +9,14 @@ export interface JavaOptions {
   licenseKey?: string;
   profileBridge?: boolean;
 }
-interface Pending { resolve(): void; reject(error: Error): void }
+
+const REQUEST_TIMEOUT = 10_000;
 
 /** A reusable JVM with a fresh bundle class loader for every run. One session may lease it at a time. */
 export class JavaRuntime {
   readonly runtimeBase: string;
-  private worker?: Worker;
+  private worker?: WorkerRpc<JvmRequest>;
   private ready?: Promise<void>;
-  private readonly pending = new Map<number, Pending>();
-  private next = 1;
   private leased = false;
   private closed = false;
   private onFailure?: (error: Error) => void;
@@ -28,17 +29,10 @@ export class JavaRuntime {
   warmup(): Promise<void> {
     if (this.closed) return Promise.reject(new Error('Java runtime is closed'));
     if (this.ready) return this.ready;
-    const worker = new Worker(new URL('./jvm.worker.ts', import.meta.url));
+    const worker = new WorkerRpc<JvmRequest>(new Worker(new URL('./jvm.worker.ts', import.meta.url)), { onFailure: error => this.failed(error) });
     this.worker = worker;
-    worker.onerror = event => this.failed(new Error(event.message || 'Java worker crashed'));
-    worker.onmessage = event => {
-      const reply = event.data as { id: number; error?: string };
-      const pending = this.pending.get(reply.id);
-      if (!pending) return;
-      this.pending.delete(reply.id);
-      reply.error ? pending.reject(new Error(reply.error)) : pending.resolve();
-    };
-    this.ready = this.send('init', { licenseKey: this.options.licenseKey, profileBridge: this.options.profileBridge, runtimeBase: this.runtimeBase });
+    const { licenseKey, profileBridge } = this.options;
+    this.ready = worker.call({ type: 'init', runtimeBase: this.runtimeBase, licenseKey, profileBridge }, [], INIT_TIMEOUT);
     // A failed warmup can be retried with a fresh worker, never a partial JVM.
     void this.ready.catch(error => { if (this.worker === worker) this.failed(error); });
     return this.ready;
@@ -51,17 +45,17 @@ export class JavaRuntime {
     this.onFailure = onFailure;
   }
 
-  async connect(port: MessagePort, buffer: SharedArrayBuffer): Promise<void> {
+  async connect(endpoint: Endpoint): Promise<void> {
     if (!this.leased) throw new Error('Java runtime has no session');
     await this.warmup();
-    await this.send('connect', { port, buffer }, [port]);
+    await this.send({ type: 'connect', endpoint }, [endpoint.port]);
   }
 
   async release(discard: boolean): Promise<void> {
     this.onFailure = undefined;
     try {
       if (discard) this.reset(new Error('Java execution was interrupted'));
-      else if (this.worker) await this.send('disconnect');
+      else if (this.worker) await this.send({ type: 'disconnect' });
     } catch (error) {
       this.reset(error instanceof Error ? error : new Error(String(error)));
       throw error;
@@ -73,21 +67,9 @@ export class JavaRuntime {
     this.failed(new Error('Java runtime is closed'));
   }
 
-  private send(type: string, data: Record<string, unknown> = {}, transfer: Transferable[] = []): Promise<void> {
-    const worker = this.worker;
-    if (!worker) return Promise.reject(new Error('Java runtime is unavailable'));
-    const id = this.next++;
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error(`Java runtime ${type} timed out`));
-      }, type === 'init' ? 180_000 : 10_000);
-      this.pending.set(id, {
-        resolve: () => { clearTimeout(timeout); resolve(); },
-        reject: error => { clearTimeout(timeout); reject(error); },
-      });
-      worker.postMessage({ type, id, ...data }, transfer);
-    });
+  private send(request: JvmRequest, transfer: Transferable[] = []): Promise<void> {
+    if (!this.worker) return Promise.reject(new Error('Java runtime is unavailable'));
+    return this.worker.call(request, transfer, REQUEST_TIMEOUT);
   }
 
   private failed(error: Error): void {
@@ -96,8 +78,6 @@ export class JavaRuntime {
   }
 
   private reset(error: Error): void {
-    this.worker?.terminate(); this.worker = undefined; this.ready = undefined;
-    for (const pending of this.pending.values()) pending.reject(error);
-    this.pending.clear();
+    this.worker?.terminate(error); this.worker = undefined; this.ready = undefined;
   }
 }

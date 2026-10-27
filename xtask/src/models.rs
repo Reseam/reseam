@@ -13,7 +13,7 @@ use ts_rs::{Config, TS};
 type Declaration = fn(&Config) -> String;
 
 /// Every model type the browser package exchanges with the engine.
-const DECLARATIONS: [Declaration; 35] = [
+const DECLARATIONS: [Declaration; 36] = [
     declaration::<model::InspectRequest>,
     declaration::<model::InspectResponse>,
     declaration::<model::ApkMetadata>,
@@ -49,6 +49,7 @@ const DECLARATIONS: [Declaration; 35] = [
     declaration::<model::MaterializationStats>,
     declaration::<model::JvmHeapStats>,
     declaration::<model::Problem>,
+    declaration::<model::SdkError>,
 ];
 
 fn declaration<T: TS>(config: &Config) -> String {

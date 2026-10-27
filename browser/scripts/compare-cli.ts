@@ -77,7 +77,7 @@ try {
       await page.locator('#splits').setInputFiles((app.splits ?? []).map(path => resolve(path)));
       await page.locator('#bundles').setInputFiles(resolve(matrix.bundle));
       await page.locator('#key').setInputFiles(resolve(matrix.key)); await page.locator('#cert').setInputFiles(resolve(matrix.cert));
-      const result = await page.evaluate(async ({ selection, extra, trust, trace, profileBridge }) => {
+      const result = await page.evaluate(async ({ selection, extra, trust, profileBridge }) => {
         const selected = (id: string) => [...((document.getElementById(id) as HTMLInputElement).files ?? [])];
         const apk = selected('apk')[0], bundles = selected('bundles'), splits = selected('splits');
         const files = [...[apk, ...splits, ...bundles].map(file => ({ name: file.name, file })),
@@ -86,7 +86,7 @@ try {
         const started = performance.now();
         const Session = (window as any).BrowserSession;
         if (!Session) throw new Error('Build the comparison harness with bun run harness');
-        const session = await Session.open(files, { traceNative: trace, profileBridge, onEvent: (event: unknown) => console.log('event', JSON.stringify(event)) });
+        const session = await Session.open(files, { profileBridge, onEvent: (event: unknown) => console.log('event', JSON.stringify(event)) });
         try {
           const apkPath = '/input/' + apk.name, splitPaths = splits.map(file => '/input/' + file.name), bundlePaths = bundles.map(file => '/input/' + file.name);
           const inspection = await session.inspect({ apk_path: apkPath, split_paths: splitPaths, bundle_paths: bundlePaths });
@@ -103,7 +103,7 @@ try {
           }
           return { inspection, outcome, patchWallMs, totalWallMs: Math.round(performance.now() - started), wasmMemoryBytes: session.wasmMemoryBytes };
         } finally { await session.dispose(); }
-      }, { selection, extra: app.request ?? {}, trust: matrix.trust, trace: process.env.TRACE_NATIVE === '1', profileBridge: process.env.PROFILE_BRIDGE === '1' });
+      }, { selection, extra: app.request ?? {}, trust: matrix.trust, profileBridge: process.env.PROFILE_BRIDGE === '1' });
       row.browser = result;
       await Bun.write(resolve(directory, 'browser-result.json'), stringifyJson(result));
       const comparison = Bun.spawn(['python3', resolve(import.meta.dir, 'compare-apks.py'), nativeOutput, destination], { stdout: 'pipe', stderr: 'pipe' });

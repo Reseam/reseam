@@ -1,46 +1,37 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { WASI } from '@bjorn3/browser_wasi_shim';
-import { Channel, decode } from './channel';
-import { DiskDescriptor, DiskFile } from './storage';
-import type { EngineExports } from './native';
+import { type Channel, link } from './channel';
+import type { CompressionInit, Endpoint, StorageRequest } from './protocol';
+import { type WorkerEvents, WorkerRpc } from './rpc';
+import { loadRuntime } from './runtime';
 
-export interface CompressionConnection { port: MessagePort; buffer: SharedArrayBuffer }
+/** The workers that compress DEX entries for one session, each with its own storage connection. */
+export class CompressionWorkers {
+  private readonly workers: WorkerRpc<never>[] = [];
+  private readonly channels: Channel[] = [];
+  private closed = false;
 
-export class CompressionPool {
-  private readonly slots: { port: MessagePort; channel: Channel; output?: DiskFile; name?: string }[];
-  memoryBytes = 0;
-  constructor(connections: CompressionConnection[], private readonly wasi: WASI, private readonly exports: () => EngineExports) {
-    this.slots = connections.map(connection => ({ port: connection.port, channel: new Channel(connection.buffer) }));
+  /** Starts `count` workers and returns the endpoints the engine submits jobs to. */
+  async start(count: number, runtimeBase: string, storage: WorkerRpc<StorageRequest>, events: WorkerEvents): Promise<Endpoint[]> {
+    const module = await WebAssembly.compile(await loadRuntime(runtimeBase, 'reseam_browser_compression.wasm'));
+    const endpoints: Endpoint[] = [];
+    for (let index = 0; index < count; index++) {
+      if (this.closed) throw new Error('Browser patch session is closed');
+      const worker = new WorkerRpc<never>(new Worker(new URL('./compression.worker.ts', import.meta.url)), events);
+      this.workers.push(worker);
+      const files = link(), jobs = link();
+      this.channels.push(files.channel, jobs.channel);
+      await storage.call({ type: 'connect', endpoint: files.server }, [files.server.port]);
+      const init: CompressionInit = { type: 'init', module, storage: files.client, jobs: jobs.server };
+      await worker.start(init, [files.client.port, jobs.server.port]);
+      endpoints.push(jobs.client);
+    }
+    return endpoints;
   }
-  readonly imports = {
-    workers: (): number => this.slots.length,
-    submit: (inputFd: number, outputFd: number, pointer: number, length: number, level: bigint): number => {
-      const index = this.slots.findIndex(slot => !slot.output);
-      if (index < 0) throw new Error('Compression queue exceeded its capacity');
-      const input = this.file(inputFd), output = this.file(outputFd);
-      const name = new TextDecoder().decode(new Uint8Array(this.exports().memory.buffer, pointer, length));
-      const slot = this.slots[index];
-      slot.output = output; slot.name = name;
-      slot.port.postMessage({ input: input.id, output: output.id, length: input.size, name, level });
-      return index;
-    },
-    finish: (ticket: number): number => {
-      const slot = this.slots[ticket];
-      if (!slot?.output) throw new Error('Unknown compression job');
-      const packet = slot.channel.receiveSync();
-      if (packet.kind !== 5) throw new Error('Unexpected compression reply');
-      const response = decode<{ size: bigint; memoryBytes: number; error?: string }>(packet.bytes);
-      if (response.error) throw new Error(`Compressing ${slot.name}: ${response.error}`);
-      slot.output.writtenExternally(response.size);
-      this.memoryBytes = Math.max(this.memoryBytes, response.memoryBytes * this.slots.length);
-      slot.output = undefined; slot.name = undefined;
-      return 0;
-    },
-  };
-  private file(fd: number): DiskFile {
-    const descriptor = this.wasi.fds[fd];
-    if (!(descriptor instanceof DiskDescriptor) || !(descriptor.file instanceof DiskFile)) throw new Error('Compression requires a scratch file descriptor');
-    return descriptor.file;
+
+  close(reason: Error): void {
+    this.closed = true;
+    for (const channel of this.channels) channel.close();
+    for (const worker of this.workers) worker.terminate(reason);
   }
 }

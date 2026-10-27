@@ -1,7 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import type { NativeFailure } from './protocol';
+
+/** One entry of the generated `methods.json`; types are JVM descriptors after the browser long transport. */
 export interface NativeMethod { name: string; export: string; parameters: string[]; bufferLengths: Record<string, number>; returns: string }
 export type EngineExports = { memory: WebAssembly.Memory } & Record<string, WebAssembly.ExportValue>;
+export type NativeOutcome = { value: unknown } | { error: Uint8Array; kind: NativeFailure };
+type Allocations = number[];
+
+const ELEMENT_WIDTHS: Record<string, number> = { '[J': 8, '[I': 4, '[S': 2 };
+
 export function fn(exports: EngineExports, name: string): (...args: (number | bigint)[]) => number | bigint {
   const value = exports[name];
   if (typeof value !== 'function') throw new Error(`Engine is missing ${name}`);
@@ -23,33 +31,42 @@ export function read(exports: EngineExports, pointer: number): Uint8Array {
   return new Uint8Array(exports.memory.buffer, pointer + 8, length).slice();
 }
 export function free(exports: EngineExports, pointer: number): void { fn(exports, 'reseam_buffer_free')(pointer); }
-export function callNative(exports: EngineExports, method: NativeMethod, args: unknown[]): unknown {
+
+function binaryArgument(exports: EngineExports, type: string, value: unknown, allocations: Allocations): number {
+  if (value === null) return 0;
+  if (!(value instanceof Uint8Array)) throw new Error('Expected binary native argument');
+  const pointer = alloc(exports, value, ELEMENT_WIDTHS[type] ?? 1);
+  allocations.push(pointer);
+  return pointer;
+}
+function scalarArgument(type: string, value: unknown): number | bigint {
+  if (type === 'J') return BigInt(value as bigint);
+  if (type === 'Z') return value ? 1 : 0;
+  if (typeof value !== 'number') throw new Error('Expected numeric native argument');
+  return value;
+}
+function argument(exports: EngineExports, type: string, value: unknown, allocations: Allocations): number | bigint {
+  return type.startsWith('[') || type.startsWith('L') ? binaryArgument(exports, type, value, allocations) : scalarArgument(type, value);
+}
+function returned(exports: EngineExports, type: string, result: number | bigint): unknown {
+  if (type.startsWith('[')) {
+    const pointer = Number(result);
+    try { return read(exports, pointer); } finally { free(exports, pointer); }
+  }
+  return type === 'Z' ? !!result : type === 'V' ? null : result;
+}
+
+/** Calls a bridge export with JVM-shaped arguments; a recorded JNI exception becomes the outcome. */
+export function callNative(exports: EngineExports, method: NativeMethod, args: unknown[]): NativeOutcome {
   if (args.length !== method.parameters.length) throw new Error(`Invalid arguments to ${method.name}`);
-  const allocations: number[] = [];
+  const allocations: Allocations = [];
   fn(exports, 'reseam_bridge_reset')();
   try {
-    const values = args.map((value, index) => {
-      const type = method.parameters[index];
-      if (type.startsWith('[') || type.startsWith('L')) {
-        if (value === null) return 0;
-        if (!(value instanceof Uint8Array)) throw new Error('Expected binary native argument');
-        const width = type === '[J' ? 8 : type === '[I' ? 4 : type === '[S' ? 2 : 1;
-        const pointer = alloc(exports, value, width); allocations.push(pointer); return pointer;
-      }
-      if (type === 'J') return BigInt(value as bigint);
-      if (type === 'Z') return value ? 1 : 0;
-      if (typeof value !== 'number') throw new Error('Expected numeric native argument');
-      return value;
-    });
+    const values = args.map((value, index) => argument(exports, method.parameters[index], value, allocations));
     const result = fn(exports, method.export)(...values);
-    const error = Number(fn(exports, 'reseam_bridge_error')());
-    const kind = Number(fn(exports, 'reseam_bridge_error_kind')());
-    if (kind) return { error: read(exports, error), kind };
-    if (method.returns.startsWith('[')) {
-      const pointer = Number(result);
-      try { return { value: read(exports, pointer) }; } finally { free(exports, pointer); }
-    }
-    return { value: method.returns === 'Z' ? !!result : method.returns === 'V' ? null : result };
+    const kind = Number(fn(exports, 'reseam_bridge_error_kind')()) as NativeFailure | 0;
+    if (kind) return { error: read(exports, Number(fn(exports, 'reseam_bridge_error')())), kind };
+    return { value: returned(exports, method.returns, result) };
   } finally {
     for (const pointer of allocations) free(exports, pointer);
     fn(exports, 'reseam_bridge_reset')();

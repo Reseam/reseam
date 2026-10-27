@@ -279,3 +279,4 @@ export type Problem =
   | { type: 'single_file_components'; components: number }
   | { type: 'unknown_preset'; value: string }
   | { type: 'other' };
+export type SdkError = { problem: Problem; message: string };
