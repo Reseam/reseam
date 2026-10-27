@@ -10,11 +10,13 @@ mod release;
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use reseam_sdk::TrustStore;
+use reseam_model::Trust;
 
 use crate::app::TrustArgs;
 
-pub use bundle::{run_bundle_keygen, run_bundle_list, run_bundle_pack, run_bundle_pubkey};
+pub use bundle::{
+    run_bundle_keygen, run_bundle_list, run_bundle_manifest, run_bundle_pack, run_bundle_pubkey,
+};
 pub use info::run_info;
 pub use patch::run_patch;
 pub use perf::{run_perf, run_perf_worker};
@@ -32,7 +34,9 @@ fn create_parent(path: &Path) -> Result<()> {
 }
 
 impl TrustArgs {
-    fn store(&self) -> Result<TrustStore> {
-        TrustStore::from_hex(&self.trust).context("invalid --trust")
+    fn trust(&self) -> Trust {
+        Trust {
+            keys: self.trust.clone(),
+        }
     }
 }

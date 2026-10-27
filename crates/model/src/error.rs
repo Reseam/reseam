@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use thiserror::Error;
 
-/// Failures in model validation and engine problems reported across the host boundary.
+/// The category of a failure reported across the host boundary.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Error, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[boltffi::data]
@@ -30,25 +30,8 @@ pub enum Problem {
     UnreadableApk { path: String },
     #[error("{} patch(es) failed: {}", patches.len(), patches.join(", "))]
     PatchesFailed { patches: Vec<String> },
-
-    #[error("option {key}: expected {expected:?}, got {actual:?}")]
-    OptionType {
-        key: String,
-        expected: crate::OptionType,
-        actual: crate::OptionType,
-    },
-    #[error("option {key}: '{value}' is not in [{}]", allowed.join(", "))]
-    OptionChoice {
-        key: String,
-        value: String,
-        allowed: Vec<String>,
-    },
     #[error("input has {components} components; single-file output requires one")]
     SingleFileComponents { components: usize },
-    #[error("APK has no package name")]
-    MissingPackage,
-    #[error("incompatible package: {package}")]
-    IncompatiblePackage { package: String },
     #[error("unknown preset '{value}'; expected recommended, all or none")]
     UnknownPreset { value: String },
     #[error("internal error")]
@@ -77,4 +60,12 @@ pub struct SdkError {
     pub message: String,
 }
 
-pub type Result<T> = std::result::Result<T, Problem>;
+impl SdkError {
+    /// A failure the host boundary itself detects, outside any engine operation.
+    pub fn other(message: impl Into<String>) -> Self {
+        Self {
+            problem: Problem::Other,
+            message: message.into(),
+        }
+    }
+}

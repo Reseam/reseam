@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::super::plan::CHANGES_MANIFEST;
-use super::super::{PatchResult, PatchStatus, ProgressEvent, ResolvedPlan};
+use super::super::{PatchResult, PatchStatus, ResolvedPlan, RunEvent};
 use crate::log::LogEntry;
 use crate::patch::{Patch, PatchSpec};
 
@@ -86,7 +86,7 @@ impl<'a> Run<'a> {
         idx: usize,
         status: PatchStatus,
         logs: Vec<LogEntry>,
-        observer: &mut impl FnMut(ProgressEvent),
+        observer: &mut impl FnMut(RunEvent),
     ) {
         self.settled.push(idx);
         self.execution_logs[idx] = logs.len();
@@ -103,7 +103,7 @@ impl<'a> Run<'a> {
         idx: usize,
         status: PatchStatus,
         logs: Vec<LogEntry>,
-        observer: &mut impl FnMut(ProgressEvent),
+        observer: &mut impl FnMut(RunEvent),
     ) {
         self.set_result(plan, idx, status, logs);
         self.report(idx, observer);
@@ -133,7 +133,7 @@ impl<'a> Run<'a> {
         &mut self,
         idx: usize,
         logs: Vec<LogEntry>,
-        observer: &mut impl FnMut(ProgressEvent),
+        observer: &mut impl FnMut(RunEvent),
     ) {
         self.result_mut(idx).logs.extend(logs);
         self.finalized[idx] = true;
@@ -183,7 +183,7 @@ impl<'a> Run<'a> {
     }
 
     /// Reports the patch finished unless it already was with this status.
-    fn report(&mut self, idx: usize, observer: &mut impl FnMut(ProgressEvent)) {
+    fn report(&mut self, idx: usize, observer: &mut impl FnMut(RunEvent)) {
         let result = self.results[idx]
             .as_ref()
             .expect("a reported patch has a result");
@@ -191,7 +191,7 @@ impl<'a> Run<'a> {
             return;
         }
         self.reported[idx] = Some(result.status.clone());
-        observer(ProgressEvent::Finished {
+        observer(RunEvent::PatchFinished {
             patch: result.patch.clone(),
             status: result.status.clone(),
         });

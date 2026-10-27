@@ -82,6 +82,7 @@ impl<'a> PatchIndex<'a> {
             .copied()
             .filter(|&index| {
                 self.patches[index]
+                    .compatibility
                     .package_incompatibility(package)
                     .is_none()
             })

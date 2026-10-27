@@ -68,6 +68,4 @@ impl Patch {
     }
 }
 
-pub use reseam_model::{
-    ApkVersion, Compatibility, CompatiblePackage, PatchPreset, PatchSpec, is_slug,
-};
+pub use reseam_model::{ApkVersion, Compatibility, CompatiblePackage, PatchPreset, PatchSpec};

@@ -1,8 +1,55 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::LogEntry;
+use crate::{LogEntry, PatchMetrics};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[boltffi::data]
+pub struct PatchOutcome {
+    pub output: PatchArtifact,
+    pub results: Vec<PatchResult>,
+    pub metrics: PatchMetrics,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+#[boltffi::data]
+pub enum RunEvent {
+    Info {
+        message: String,
+    },
+    PatchStarted {
+        patch: String,
+    },
+    PatchLog(LogEntry),
+    PatchFinished {
+        patch: String,
+        status: PatchStatus,
+    },
+    /// Finished patches whose results no longer hold: a patch that ran before
+    /// them could not apply, so the run went back to before it. They run again.
+    PatchesReverted {
+        patches: Vec<String>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[boltffi::data]
+pub enum PatchArtifact {
+    SingleFile { path: String },
+    SplitDir { path: String },
+}
+
+impl PatchArtifact {
+    pub fn path(&self) -> &Path {
+        match self {
+            Self::SingleFile { path } | Self::SplitDir { path } => Path::new(path),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[boltffi::data]
@@ -40,22 +87,5 @@ pub enum PatchStatus {
     },
     Failed {
         reason: String,
-    },
-}
-
-#[derive(Debug, Clone)]
-#[boltffi::data]
-pub enum ProgressEvent {
-    Started {
-        patch: String,
-    },
-    Log(LogEntry),
-    Finished {
-        patch: String,
-        status: PatchStatus,
-    },
-    /// Finished patches whose results no longer hold; they run again.
-    Reverted {
-        patches: Vec<String>,
     },
 }

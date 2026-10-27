@@ -7,7 +7,7 @@ use std::panic::{self, AssertUnwindSafe};
 use tracing::{info, info_span};
 
 use super::plan::unmountable_status;
-use super::{PatchResult, PatchStatus, ProgressEvent, ResolvedPlan};
+use super::{PatchResult, PatchStatus, ResolvedPlan, RunEvent};
 use crate::context::PatchContext;
 use crate::error::{PatcherError, Result};
 use crate::log::LogEntry;
@@ -38,7 +38,7 @@ pub fn apply_patches<'p>(
     specs: &[&PatchSpec],
     mut plan: ResolvedPlan,
     patches: &[&'p Patch],
-    mut observer: impl FnMut(ProgressEvent),
+    mut observer: impl FnMut(RunEvent),
 ) -> Result<AppliedRun<'p>> {
     #[cfg(feature = "bridge")]
     let _bridge = crate::kotlin::handles::RunGuard::enter()?;
@@ -65,7 +65,7 @@ pub fn apply_patches<'p>(
                 code[idx].expect("loaded_code holds the code of every patch the plan executes");
             let savepoint = savepoints.open(ctx, idx)?;
             ctx.begin_patch(&reference, plan.options(idx).clone());
-            observer(ProgressEvent::Started {
+            observer(RunEvent::PatchStarted {
                 patch: reference.clone(),
             });
             let (status, logs) = invoke(ctx, &plan, patch, Stage::Execute, &mut observer);
@@ -174,7 +174,7 @@ impl AppliedRun<'_> {
     pub fn rewrite_output(
         &mut self,
         apk: &mut WrittenApk,
-        mut observer: impl FnMut(ProgressEvent),
+        mut observer: impl FnMut(RunEvent),
     ) -> Result<()> {
         #[cfg(feature = "bridge")]
         let _bridge = crate::kotlin::handles::RunGuard::enter()?;
@@ -185,7 +185,7 @@ impl AppliedRun<'_> {
             let outcome = guarded(|| rewrite.patch.invoke(PatchPhase::RewriteOutput(&mut ctx)));
             let logs = ctx.take_log_entries();
             for log in &logs {
-                observer(ProgressEvent::Log(log.clone()));
+                observer(RunEvent::PatchLog(log.clone()));
             }
             self.results[rewrite.result].logs.extend(logs);
             outcome.map_err(|reason| PatcherError::RewriteOutput {
@@ -225,7 +225,7 @@ fn invoke(
     plan: &ResolvedPlan,
     patch: &Patch,
     stage: Stage,
-    observer: &mut impl FnMut(ProgressEvent),
+    observer: &mut impl FnMut(RunEvent),
 ) -> (PatchStatus, Vec<LogEntry>) {
     let manifest = ctx.apk().manifest_revision();
     let outcome = guarded(|| {
@@ -236,7 +236,7 @@ fn invoke(
     });
     let logs = ctx.take_log_entries();
     for log in &logs {
-        observer(ProgressEvent::Log(log.clone()));
+        observer(RunEvent::PatchLog(log.clone()));
     }
     let status = match outcome {
         Ok(()) if plan.delivery().forbids_manifest_edit(manifest, ctx) => unmountable_status(),
@@ -268,7 +268,7 @@ fn leave_out(
     idx: usize,
     status: PatchStatus,
     logs: Vec<LogEntry>,
-    observer: &mut impl FnMut(ProgressEvent),
+    observer: &mut impl FnMut(RunEvent),
 ) -> Result<()> {
     plan.exclude(idx, status.clone());
     if let Some((first, savepoint)) =
@@ -277,7 +277,7 @@ fn leave_out(
         savepoints.rollback(ctx, savepoint)?;
         let patches = run.revert_from(plan, first);
         if !patches.is_empty() {
-            observer(ProgressEvent::Reverted { patches });
+            observer(RunEvent::PatchesReverted { patches });
         }
     }
     run.finish_excluded(plan, idx, status, logs, observer);

@@ -74,16 +74,12 @@ impl PreparedInspection {
 
 impl PreparedInspection {
     fn consumed() -> SdkError {
-        SdkError {
-            problem: reseam_model::Problem::Other,
-            message: "Prepared inspection is consumed; open another inspection".into(),
-        }
+        SdkError::other("Prepared inspection is consumed; open another inspection")
     }
 
     fn prepared(&self) -> Result<MutexGuard<'_, Option<reseam_sdk::PreparedInspection>>, SdkError> {
-        self.prepared.lock().map_err(|_| SdkError {
-            problem: reseam_model::Problem::Other,
-            message: "Prepared inspection was interrupted by a panic; close and reopen it".into(),
+        self.prepared.lock().map_err(|_| {
+            SdkError::other("Prepared inspection was interrupted by a panic; close and reopen it")
         })
     }
 }
@@ -133,9 +129,8 @@ impl ApkInspection {
 
 impl ApkInspection {
     fn opened(&self) -> Result<MutexGuard<'_, reseam_sdk::ApkInspection>, SdkError> {
-        self.opened.lock().map_err(|_| SdkError {
-            problem: reseam_model::Problem::Other,
-            message: "APK inspection was interrupted by a panic; close and reopen it".into(),
+        self.opened.lock().map_err(|_| {
+            SdkError::other("APK inspection was interrupted by a panic; close and reopen it")
         })
     }
 }
@@ -175,11 +170,11 @@ pub fn decode_patch_metadata(json: String) -> Result<Vec<PatchMetadata>, SdkErro
 }
 
 fn to_json<T: Serialize>(value: &T) -> Result<String, SdkError> {
-    serde_json::to_string(value).map_err(|error| reseam_sdk::sdk_error(&error))
+    serde_json::to_string(value).map_err(|error| SdkError::other(error.to_string()))
 }
 
 fn from_json<T: DeserializeOwned>(json: &str) -> Result<T, SdkError> {
-    serde_json::from_str(json).map_err(|error| reseam_sdk::sdk_error(&error))
+    serde_json::from_str(json).map_err(|error| SdkError::other(error.to_string()))
 }
 
 /// Android apps install their class loader before loading bundles; it becomes

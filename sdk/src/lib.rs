@@ -2,31 +2,30 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! Host-facing API for inspecting APKs and bundles and running typed patch requests.
+//! The request, response and error types are in `reseam-model`.
 
+mod apk;
+mod apply;
+pub mod authoring;
+mod bundles;
 mod error;
-mod inspect;
+mod inputs;
+mod inspection;
 mod install;
 mod memory;
 mod metrics;
 mod output;
+mod publish;
 mod run;
 mod trust;
 
-pub use error::{HostError, Problem, SdkError, sdk_error};
-pub use inspect::{ApkInspection, PreparedInspection, inspect, inspect_apk};
+pub use apk::ApkInspection;
+pub use error::HostError;
+pub use inspection::{PreparedInspection, inspect};
 pub use install::dex_metadata;
-pub use reseam_apk::{ApplicationIcon, IconLayer};
-pub use reseam_model::{
-    ApkMetadata, BundleMetadata, InspectRequest, InspectResponse, PatchArtifact, PatchMetadata,
-    PatchOutcome, PatchOutput, PatchRequest, RunEvent, SigningKeyFiles,
-};
-pub use reseam_model::{InstallMethod, OptionValue, PatchPreset, PatchSelection, Trust};
-
-pub use metrics::{ApplyDiagnostics, PatchMetrics, PatchPhase, PatchPhaseMetrics};
 #[cfg(target_os = "android")]
 pub use reseam_patcher::kotlin::android_host::install_class_loader;
-pub use run::{patch, patch_with_selection};
-pub use trust::TrustStore;
+pub use run::patch;
 
 #[cfg(test)]
 mod tests;

@@ -2,15 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::collections::BTreeMap;
-use std::io::{BufWriter, Write};
+use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use reseam_apk::Compression;
-use reseam_hermes::{
-    Code, Editor, Edits, FunctionId, FunctionIndex, HermesFile, HermesImage, HookKind, Import,
-    ModuleId,
-};
+use reseam_hermes::{Code, Editor, FunctionId, HermesFile, HookKind, Import, ModuleId};
 use reseam_storage::Bytes;
 
 use super::PatchContext;
@@ -20,9 +17,8 @@ use crate::error::{PatcherError, Result};
 const BUNDLE: &str = "assets/index.android.bundle";
 
 pub(super) struct HermesSession {
-    image: HermesImage,
-    index: FunctionIndex,
-    edits: Option<Edits>,
+    pub(super) editor: Editor,
+    /// The modules linked so far, linked once each.
     modules: BTreeMap<ModuleSource, ModuleId>,
 }
 
@@ -33,41 +29,8 @@ pub(super) enum ModuleSource {
 }
 
 impl HermesSession {
-    pub(super) fn open_savepoint(&mut self, savepoint: reseam_journal::Savepoint) {
-        self.edits_mut().open_savepoint(savepoint);
-    }
-
-    pub(super) fn release_savepoint(&mut self, savepoint: reseam_journal::Savepoint) {
-        self.edits_mut().release_savepoint(savepoint);
-    }
-
-    pub(super) fn rollback_to(&mut self, savepoint: reseam_journal::Savepoint) {
-        self.edits_mut().rollback_to(savepoint);
-    }
-
     pub(super) fn forget_module(&mut self, source: &ModuleSource) {
         self.modules.remove(source);
-    }
-
-    fn edits_mut(&mut self) -> &mut Edits {
-        self.edits
-            .as_mut()
-            .expect("a session holds its edits outside an edit")
-    }
-
-    fn edit<T>(
-        &mut self,
-        action: impl FnOnce(&mut Editor<'_>, &FunctionIndex) -> Result<T>,
-    ) -> Result<T> {
-        let file = self.image.file();
-        let edits = self
-            .edits
-            .take()
-            .expect("a session holds its edits outside an edit");
-        let mut editor = Editor::resume(file, edits)?;
-        let outcome = action(&mut editor, &self.index);
-        self.edits = Some(editor.into_edits());
-        outcome
     }
 }
 
@@ -77,16 +40,12 @@ impl PatchContext<'_> {
             let source = self.apk.map_component_entry(0, BUNDLE)?.ok_or_else(|| {
                 PatcherError::NotFound(format!("base APK Hermes bundle {BUNDLE}"))
             })?;
-            let image = HermesImage::parse(Bytes::from_mmap(Arc::new(source)))?;
-            let index = FunctionIndex::build(&image.file())?;
-            let mut edits = Editor::new(image.file()).into_edits();
+            let mut editor = Editor::new(Bytes::from_mmap(Arc::new(source)))?;
             self.journal
                 .savepoints()
-                .for_each(|savepoint| edits.open_savepoint(savepoint));
+                .for_each(|savepoint| editor.open_savepoint(savepoint));
             self.hermes = Some(HermesSession {
-                image,
-                index,
-                edits: Some(edits),
+                editor,
                 modules: BTreeMap::new(),
             });
         }
@@ -94,7 +53,7 @@ impl PatchContext<'_> {
     }
 
     pub(crate) fn hermes_version(&mut self) -> Result<u32> {
-        Ok(self.hermes_session()?.image.file().version())
+        Ok(self.hermes_session()?.editor.version())
     }
 
     pub(crate) fn hermes_find(
@@ -103,10 +62,10 @@ impl PatchContext<'_> {
         strings: &[&str],
         parameters: Option<u32>,
     ) -> Result<FunctionId> {
-        let session = self.hermes_session()?;
-        Ok(session
-            .index
-            .find_function(&session.image.file(), name, strings, parameters)?)
+        Ok(self
+            .hermes_session()?
+            .editor
+            .find_function(name, strings, parameters)?)
     }
 
     /// Links a bundle's JavaScript extension compiled to Hermes bytecode, with every app module
@@ -141,9 +100,8 @@ impl PatchContext<'_> {
         if let Some(&id) = session.modules.get(&source) {
             return Ok(id);
         }
-        let module = bytes(session.image.file().version())?;
-        let module_file = HermesFile::parse(&module)?;
-        let id = session.edit(|editor, index| Ok(editor.link(index, &module_file, imports)?))?;
+        let module = bytes(session.editor.version())?;
+        let id = session.editor.link(&HermesFile::parse(&module)?, imports)?;
         session.modules.insert(source.clone(), id);
         self.journal
             .record(super::undo::Part::Module(source.clone()), || {
@@ -158,8 +116,7 @@ impl PatchContext<'_> {
         kind: HookKind,
         code: &Code,
     ) -> Result<()> {
-        self.hermes_session()?
-            .edit(|editor, index| Ok(editor.hook(index, function, kind, code)?))
+        Ok(self.hermes_session()?.editor.hook(function, kind, code)?)
     }
 
     /// Writes the bundle back when a patch changed it.
@@ -167,16 +124,11 @@ impl PatchContext<'_> {
         let Some(session) = &mut self.hermes else {
             return Ok(());
         };
-        if session.edits.as_ref().is_none_or(Edits::is_empty) {
+        if !session.editor.is_edited() {
             return Ok(());
         }
         let mut file = reseam_storage::temporary_file()?;
-        session.edit(|editor, _| {
-            let mut output = BufWriter::new(&mut file);
-            editor.write(&mut output)?;
-            output.flush()?;
-            Ok(())
-        })?;
+        session.editor.write(BufWriter::new(&mut file))?;
         self.apk
             .inject_file_spooled(0, BUNDLE, file, Compression::Stored)?;
         Ok(())
