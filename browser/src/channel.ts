@@ -7,6 +7,8 @@ const CHUNK = 1 << 20;
 const MAX_MESSAGE = 512 << 20;
 const WAIT_MS = 120_000;
 export type Packet = { kind: PacketKind; bytes: Uint8Array };
+/** A control word a transfer waits on until it changes from `value`. */
+type Wait = { value: number; index: number };
 /**
  * A port pair sharing one channel. The client posts requests on its port and reads replies from
  * the channel; the server receives requests on its port and writes replies to the channel.
@@ -29,7 +31,7 @@ export class Channel {
   private check(): void {
     if (this.closed) throw new Error('Worker channel closed');
   }
-  private waitSync(value: number, index = 0): void {
+  private waitSync(value: number, index: number): void {
     this.check();
     if (Atomics.wait(this.control, index, value, WAIT_MS) === 'timed-out') {
       this.close();
@@ -37,7 +39,7 @@ export class Channel {
     }
     this.check();
   }
-  private async waitAsync(value: number, index = 0): Promise<void> {
+  private async waitAsync(value: number, index: number): Promise<void> {
     this.check();
     const atomics = Atomics as typeof Atomics & {
       waitAsync?: (array: Int32Array, index: number, value: number, timeout: number) => { value: Promise<string> | string };
@@ -68,34 +70,53 @@ export class Channel {
     return { count, sequence };
   }
   sendSync(kind: PacketKind, bytes: Uint8Array): void {
-    this.check();
-    if (bytes.length > MAX_MESSAGE) throw new Error('Bridge message exceeds 512 MiB');
-    let offset = 0;
-    do {
-      while (Atomics.load(this.control, 0)) this.waitSync(Atomics.load(this.control, 0));
-      const { count, sequence } = this.put(kind, bytes, offset);
-      offset += count;
-      for (;;) {
-        const ack = Atomics.load(this.control, 5);
-        if (ack === sequence) break;
-        this.waitSync(ack, 5);
-      }
-    } while (offset < bytes.length);
+    this.runSync(this.sending(kind, bytes));
   }
   async send(kind: PacketKind, bytes: Uint8Array): Promise<void> {
+    await this.run(this.sending(kind, bytes));
+  }
+  receiveSync(): Packet {
+    return this.runSync(this.receiving());
+  }
+  receive(): Promise<Packet> {
+    return this.run(this.receiving());
+  }
+  private runSync<T>(steps: Generator<Wait, T>): T {
+    for (let step = steps.next(); ; step = steps.next()) {
+      if (step.done) return step.value;
+      this.waitSync(step.value.value, step.value.index);
+    }
+  }
+  private async run<T>(steps: Generator<Wait, T>): Promise<T> {
+    for (let step = steps.next(); ; step = steps.next()) {
+      if (step.done) return step.value;
+      await this.waitAsync(step.value.value, step.value.index);
+    }
+  }
+  private *sending(kind: PacketKind, bytes: Uint8Array): Generator<Wait, void> {
     this.check();
     if (bytes.length > MAX_MESSAGE) throw new Error('Bridge message exceeds 512 MiB');
     let offset = 0;
     do {
-      while (Atomics.load(this.control, 0)) await this.waitAsync(Atomics.load(this.control, 0));
+      for (let pending; (pending = Atomics.load(this.control, 0));) yield { value: pending, index: 0 };
       const { count, sequence } = this.put(kind, bytes, offset);
       offset += count;
-      for (;;) {
-        const ack = Atomics.load(this.control, 5);
-        if (ack === sequence) break;
-        await this.waitAsync(ack, 5);
-      }
+      for (let ack; (ack = Atomics.load(this.control, 5)) !== sequence;) yield { value: ack, index: 5 };
     } while (offset < bytes.length);
+  }
+  private *receiving(): Generator<Wait, Packet> {
+    this.check();
+    const parts: Uint8Array[] = [];
+    let kind: PacketKind | 0 = 0, total = 0;
+    for (;;) {
+      while (!Atomics.load(this.control, 0)) yield { value: 0, index: 0 };
+      const part = this.take(parts);
+      if (kind && kind !== part.kind) throw new Error('Interleaved bridge packet');
+      kind = part.kind;
+      total += parts.at(-1)!.length;
+      if (total > MAX_MESSAGE) throw new Error('Bridge message exceeds 512 MiB');
+      if (part.final) return { kind, bytes: concat(parts, total) };
+    }
   }
   private take(parts: Uint8Array[]): { kind: PacketKind; final: boolean } {
     const kind: PacketKind = Atomics.load(this.control, 0);
@@ -109,34 +130,6 @@ export class Channel {
     Atomics.notify(this.control, 0);
     Atomics.notify(this.control, 5);
     return { kind, final };
-  }
-  receiveSync(): Packet {
-    this.check();
-    const parts: Uint8Array[] = [];
-    let kind: PacketKind | 0 = 0, total = 0;
-    for (;;) {
-      while (!Atomics.load(this.control, 0)) this.waitSync(0);
-      const part = this.take(parts);
-      if (kind && kind !== part.kind) throw new Error('Interleaved bridge packet');
-      kind = part.kind;
-      total += parts.at(-1)!.length;
-      if (total > MAX_MESSAGE) throw new Error('Bridge message exceeds 512 MiB');
-      if (part.final) return { kind, bytes: concat(parts, total) };
-    }
-  }
-  async receive(): Promise<Packet> {
-    this.check();
-    const parts: Uint8Array[] = [];
-    let kind: PacketKind | 0 = 0, total = 0;
-    for (;;) {
-      while (!Atomics.load(this.control, 0)) await this.waitAsync(0);
-      const part = this.take(parts);
-      if (kind && kind !== part.kind) throw new Error('Interleaved bridge packet');
-      kind = part.kind;
-      total += parts.at(-1)!.length;
-      if (total > MAX_MESSAGE) throw new Error('Bridge message exceeds 512 MiB');
-      if (part.final) return { kind, bytes: concat(parts, total) };
-    }
   }
 }
 export function link(): Link {
