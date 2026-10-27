@@ -1812,7 +1812,9 @@ dependencies = [
  "flate2",
  "quick-xml",
  "rayon",
+ "reseam-bytes",
  "reseam-dex",
+ "reseam-fixtures",
  "reseam-journal",
  "reseam-model",
  "reseam-sign",
@@ -1832,6 +1834,13 @@ name = "reseam-browser-compression"
 version = "0.32.0"
 dependencies = [
  "reseam-apk",
+]
+
+[[package]]
+name = "reseam-bytes"
+version = "0.32.0"
+dependencies = [
+ "thiserror",
 ]
 
 [[package]]
@@ -1864,6 +1873,7 @@ dependencies = [
  "fixedbitset",
  "pretty_assertions",
  "rayon",
+ "reseam-bytes",
  "reseam-journal",
  "reseam-storage",
  "rustc-hash",
@@ -1876,10 +1886,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "reseam-fixtures"
+version = "0.32.0"
+dependencies = [
+ "zip",
+]
+
+[[package]]
 name = "reseam-hermes"
 version = "0.32.0"
 dependencies = [
  "rayon",
+ "reseam-bytes",
  "reseam-journal",
  "reseam-storage",
  "rustc-hash",
@@ -1943,6 +1961,7 @@ dependencies = [
  "libc",
  "reseam-apk",
  "reseam-dex",
+ "reseam-fixtures",
  "reseam-model",
  "reseam-patcher",
  "reseam-sign",
@@ -1952,7 +1971,6 @@ dependencies = [
  "thiserror",
  "tracing",
  "windows-sys 0.61.2",
- "zip",
 ]
 
 [[package]]
@@ -1985,6 +2003,7 @@ dependencies = [
  "flate2",
  "rayon",
  "rcgen",
+ "reseam-bytes",
  "reseam-storage",
  "ring",
  "tempfile",

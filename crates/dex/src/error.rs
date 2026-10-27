@@ -4,13 +4,8 @@
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum DexError {
-    #[error("truncated {section} at offset {offset:#x}: need {needed} bytes, have {available}")]
-    Truncated {
-        section: &'static str,
-        offset: usize,
-        needed: usize,
-        available: usize,
-    },
+    #[error(transparent)]
+    Truncated(#[from] reseam_bytes::Truncated),
 
     #[error("malformed {section} at offset {offset:#x}: {reason}")]
     Malformed {
@@ -43,20 +38,6 @@ pub enum DexError {
 
 pub type Result<T> = std::result::Result<T, DexError>;
 
-pub(crate) fn truncated(
-    section: &'static str,
-    offset: usize,
-    needed: usize,
-    available: usize,
-) -> DexError {
-    DexError::Truncated {
-        section,
-        offset,
-        needed,
-        available,
-    }
-}
-
 pub(crate) fn malformed(
     section: &'static str,
     offset: usize,
@@ -83,23 +64,6 @@ pub(crate) fn unsupported(feature: &'static str, detail: impl Into<String>) -> D
     }
 }
 
-pub(crate) fn require_len(
-    buf: &[u8],
-    offset: usize,
-    needed: usize,
-    section: &'static str,
-) -> Result<()> {
-    if offset.checked_add(needed).is_none_or(|end| end > buf.len()) {
-        return Err(truncated(
-            section,
-            offset,
-            needed,
-            buf.len().saturating_sub(offset),
-        ));
-    }
-    Ok(())
-}
-
 pub(crate) fn require_array(
     buf: &[u8],
     offset: usize,
@@ -110,21 +74,17 @@ pub(crate) fn require_array(
     let bytes = count
         .checked_mul(width)
         .ok_or_else(|| malformed(section, offset, "array size overflow"))?;
-    require_len(buf, offset, bytes, section)
-}
-
-pub(crate) fn slice<'a>(
-    buf: &'a [u8],
-    offset: usize,
-    len: usize,
-    section: &'static str,
-) -> Result<&'a [u8]> {
-    require_len(buf, offset, len, section)?;
-    Ok(&buf[offset..offset + len])
+    Ok(reseam_bytes::require_len(buf, offset, bytes, section)?)
 }
 
 pub(crate) fn buffer_exhausted(section: &'static str, offset: usize) -> DexError {
-    truncated(section, offset, 1, 0)
+    reseam_bytes::Truncated {
+        section,
+        offset,
+        needed: 1,
+        available: 0,
+    }
+    .into()
 }
 
 pub(crate) fn invalid_leb128(offset: usize) -> DexError {

@@ -25,7 +25,7 @@ class ToggleValue(bundle: String, key: String, default: Boolean) :
         }
 }
 
-class TextValue(bundle: String, key: String, default: String) :
+open class TextValue(bundle: String, key: String, default: String) :
     SettingValue<String>(bundle, key, default) {
     override var value: String
         get() = Reseam.getString(bundle, key, default)
@@ -34,14 +34,7 @@ class TextValue(bundle: String, key: String, default: String) :
         }
 }
 
-class FolderValue(bundle: String, key: String, default: String) :
-    SettingValue<String>(bundle, key, default) {
-    override var value: String
-        get() = Reseam.getString(bundle, key, default)
-        set(value) {
-            Reseam.bundle(bundle).settings.setString(key, value)
-        }
-
+class FolderValue(bundle: String, key: String, default: String) : TextValue(bundle, key, default) {
     /**
      * Opens the system folder picker over [activity]. The folder the user picks becomes the value,
      * then [onPicked] runs on the main thread; it does not run when the user cancels.

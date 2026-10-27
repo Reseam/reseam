@@ -9,7 +9,7 @@ use crate::model::method_handle::{
 };
 use crate::model::{FieldIdx, MethodIdx};
 use crate::options::ParseOptions;
-use crate::read::{read_u16, read_u32};
+use reseam_bytes::{read_u32, u16_at};
 use std::borrow::Cow;
 
 /// A record whose encoded representation may reference variable-size data.
@@ -143,10 +143,10 @@ impl FileRecord for MethodHandle {
     const SIZE: usize = 8;
     fn read(buf: &[u8], offset: usize, _: u32, _: ParseOptions) -> Result<Self> {
         require_array(buf, offset, 1, Self::SIZE, "method handle")?;
-        let value = read_u16(buf, offset)?;
+        let value = u16_at(buf, offset);
         let handle_type =
             MethodHandleType::from_u16(value).ok_or_else(|| invalid_method_handle_type(value))?;
-        let index = u32::from(read_u16(buf, offset + 4)?);
+        let index = u32::from(u16_at(buf, offset + 4));
         let member = if handle_type.is_field() {
             MethodHandleMember::Field(FieldIdx(index))
         } else {
@@ -162,7 +162,7 @@ impl FileRecord for MethodHandle {
 impl FileRecord for CallSiteItem {
     const SIZE: usize = 4;
     fn read(buf: &[u8], offset: usize, index: u32, options: ParseOptions) -> Result<Self> {
-        let offset = read_u32(buf, offset)? as usize;
+        let offset = read_u32(buf, offset, "call site id")? as usize;
         let (mut values, _) =
             crate::read::encoded_value::read_encoded_array_with_opts(buf, offset, options)?;
         let [

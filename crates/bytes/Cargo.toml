@@ -1,0 +1,12 @@
+[package]
+name = "reseam-bytes"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Little-endian fields of binary formats: bounds-checked reads and appends"
+
+[dependencies]
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

@@ -7,7 +7,7 @@ use crate::instruction::stream::{RawInstruction, walk_instructions};
 use crate::model::access_flags::AccessFlags;
 use crate::model::class::MethodKind;
 use crate::model::{FieldIdx, MethodIdx, StringIdx, TypeIdx};
-use crate::read::read_u32;
+use reseam_bytes::read_u32;
 
 /// One instruction as a search sees it: the opcode and the pool reference or
 /// literal it carries, from decoded IR or straight from code units.
@@ -103,7 +103,7 @@ impl MethodView<'_> {
             }
             Code::Raw { buf, code_off } => {
                 let base = *code_off as usize;
-                let insns_size = read_u32(buf, base + 12)? as usize;
+                let insns_size = read_u32(buf, base + 12, "code item")? as usize;
                 walk_instructions(buf, base + 16, insns_size, |insn| {
                     visit(InstructionRef::Raw { buf, insn: *insn })
                 })

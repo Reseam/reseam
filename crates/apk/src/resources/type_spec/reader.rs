@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::{HEADER_LEN, TypeSpec};
-use crate::buf::{read_u32_le, require_len};
 use crate::error::{Result, invalid};
+use reseam_bytes::{read_u32, require_len};
 use reseam_storage::Bytes;
 use std::ops::Range;
 
@@ -18,7 +18,7 @@ impl TypeSpec {
         if header_size < HEADER_LEN {
             return Err(invalid("type spec", "header is shorter than 16 bytes"));
         }
-        let entry_count = read_u32_le(buf, 12, "type spec")? as usize;
+        let entry_count = read_u32(buf, 12, "type spec")? as usize;
         require_len(
             buf,
             header_size,

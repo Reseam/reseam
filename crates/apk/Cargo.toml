@@ -7,6 +7,7 @@ description = "APK container support for Reseam: ZIP, AXML, resources, and DEX e
 readme = "README.md"
 
 [dependencies]
+reseam-bytes = { workspace = true }
 reseam-storage = { workspace = true }
 reseam-journal = { workspace = true }
 reseam-model = { workspace = true }
@@ -25,6 +26,7 @@ tracing    = { workspace = true }
 tempfile   = { workspace = true }
 
 [dev-dependencies]
+reseam-fixtures = { workspace = true }
 reseam-sign = { workspace = true }
 
 [lints]

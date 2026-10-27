@@ -18,7 +18,7 @@ use crate::error::{Result, invalid};
 use crate::zip::Compression;
 use crate::zip::writer::{DEFAULT_LEVEL, Writer};
 use dex_stream::{DexEntry, DexEntryStream};
-pub(super) use jobs::{DexJob, DexMember};
+pub(super) use jobs::DexJob;
 use layout::{EntrySource, PlannedEntry, plan};
 use profile::ProfileRewrite;
 

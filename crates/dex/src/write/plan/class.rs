@@ -46,9 +46,7 @@ impl WritePlan<'_> {
                 .annotations
                 .as_deref()
                 .filter(|metadata| {
-                    self.options
-                        .annotations
-                        .keeps(metadata, self.dex.raw.as_ref())
+                    metadata.kept_by(self.options.annotations, self.dex.raw.as_ref())
                 })
                 .map(|metadata| {
                     let dir = metadata.read()?;

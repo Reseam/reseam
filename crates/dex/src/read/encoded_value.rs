@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::encoding::leb128::read_uleb128;
-use crate::error::{Result, invalid_encoded_value_type, malformed, slice};
+use crate::error::{Result, invalid_encoded_value_type, malformed};
 use crate::model::MethodHandleIdx;
 use crate::model::encoded_value::{
     EncodedAnnotation, EncodedAnnotationElement, EncodedValue, ValueKind,
 };
 use crate::model::{FieldIdx, MethodIdx, ProtoIdx, StringIdx, TypeIdx};
 use crate::options::ParseOptions;
-use crate::read::read_u8;
+use reseam_bytes::{read_u8, slice};
 
 pub fn read_encoded_value_with_opts(
     buf: &[u8],

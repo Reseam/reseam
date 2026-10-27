@@ -4,9 +4,9 @@
 use super::{node_header, optional};
 use crate::axml::document::AttributeRoles;
 use crate::axml::{ATTRIBUTE_LEN, AxmlAttribute, AxmlEvent, NodeMetadata};
-use crate::buf::{read_u16_le, read_u32_le, require_len};
 use crate::error::{Result, invalid, malformed};
 use crate::res_value::ResValue;
+use reseam_bytes::{read_u16, read_u32, require_len};
 
 /// A start element and its attributes, each keeping its encoded bytes and
 /// the special roles the element gives it.
@@ -17,10 +17,10 @@ pub(super) fn parse_start_element(
 ) -> Result<AxmlEvent> {
     node_header(body, header_size)?;
     require_len(body, header_size, ATTRIBUTE_LEN, "axml start element")?;
-    let namespace = optional(read_u32_le(body, header_size, "axml start element")?);
-    let name = read_u32_le(body, header_size + 4, "axml start element")?;
-    let attr_start = read_u16_le(body, header_size + 8, "axml start element")? as usize;
-    let attr_size = match read_u16_le(body, header_size + 10, "axml start element")? as usize {
+    let namespace = optional(read_u32(body, header_size, "axml start element")?);
+    let name = read_u32(body, header_size + 4, "axml start element")?;
+    let attr_start = read_u16(body, header_size + 8, "axml start element")? as usize;
+    let attr_size = match read_u16(body, header_size + 10, "axml start element")? as usize {
         0 => ATTRIBUTE_LEN,
         size if size < ATTRIBUTE_LEN => {
             return Err(malformed(
@@ -31,7 +31,7 @@ pub(super) fn parse_start_element(
         }
         size => size,
     };
-    let attr_count = read_u16_le(body, header_size + 12, "axml start element")? as usize;
+    let attr_count = read_u16(body, header_size + 12, "axml start element")? as usize;
     let attrs_offset = header_size + attr_start;
     let attrs_len = attr_count
         .checked_mul(attr_size)
@@ -42,7 +42,7 @@ pub(super) fn parse_start_element(
         .map(|&(role, offset)| {
             Ok((
                 role,
-                read_u16_le(body, header_size + offset, "axml attribute index")?,
+                read_u16(body, header_size + offset, "axml attribute index")?,
             ))
         })
         .collect::<Result<Vec<_>>>()?;
@@ -50,11 +50,11 @@ pub(super) fn parse_start_element(
         .map(|i| {
             let at = attrs_offset + i * attr_size;
             let mut attr = AxmlAttribute::new(
-                optional(read_u32_le(body, at, "axml attribute")?),
-                read_u32_le(body, at + 4, "axml attribute")?,
+                optional(read_u32(body, at, "axml attribute")?),
+                read_u32(body, at + 4, "axml attribute")?,
                 ResValue::read(body, at + 12, "axml attribute")?,
             );
-            attr.raw_value = optional(read_u32_le(body, at + 8, "axml attribute")?);
+            attr.raw_value = optional(read_u32(body, at + 8, "axml attribute")?);
             attr.encoded = body[at..at + attr_size].to_vec();
             attr.roles = roles
                 .iter()

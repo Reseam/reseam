@@ -3,8 +3,8 @@
 
 mod text;
 
-use crate::buf::slice;
 use crate::error::Result;
+use reseam_bytes::slice;
 
 /// A `Res_value`: a type byte and 32 bits whose meaning the type gives.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

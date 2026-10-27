@@ -7,8 +7,8 @@ use super::{
     BaselineProfile, DexMetadata, DexProfile, EMBEDDED_ENTRY, METADATA_ENTRY, METADATA_MAGIC,
     METADATA_V002, MethodFlags, PROFILE_ENTRY, PROFILE_MAGIC, PROFILE_V010, PROFILE_V015,
 };
-use crate::buf::{write_u16, write_u32};
 use crate::error::{Result, invalid};
+use reseam_bytes::{write_u16, write_u32};
 
 const SECTION_DEX_FILES: u32 = 0;
 const SECTION_CLASSES: u32 = 2;

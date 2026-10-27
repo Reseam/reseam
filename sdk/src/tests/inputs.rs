@@ -6,8 +6,9 @@ use reseam_model::{
     InstallMethod, PatchOutput, PatchRequest, PatchSelection, Problem, SdkError, Trust,
 };
 
-use super::{apk, apk_metadata, zip};
+use super::{apk, apk_metadata};
 use crate::{HostError, patch};
+use reseam_fixtures::zip;
 
 #[test]
 fn an_unreadable_resource_table_is_an_unreadable_apk() {

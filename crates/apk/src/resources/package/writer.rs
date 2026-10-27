@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::{HEADER_LEN, PackageChunk, ResPackage};
-use crate::buf::{write_u16, write_u32};
 use crate::chunk::write_header;
 use crate::error::Result;
 use crate::resources::res_type::TypePlan;
 use crate::resources::{RES_TABLE_PACKAGE_TYPE, ResType};
 use crate::string_pool::PoolPlan;
+use reseam_bytes::{write_u16, write_u32};
 use std::io::Write;
 
 impl ResPackage {

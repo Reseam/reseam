@@ -3,19 +3,12 @@
 
 use std::collections::HashSet;
 
-use reseam_dex::DexPart;
-
 use super::super::component::EntryEdit;
-use super::super::dex_set::{DexIndex, DexSource};
+use super::super::dex_set::{DexIndex, DexMember, DexSource};
 use super::super::{ApkFile, ComponentIndex};
 use crate::entry::{EntryName, next_free_dex_name};
 use crate::error::Result;
 use crate::zip::Compression;
-
-pub(in crate::apk_file) struct DexMember {
-    pub dex_index: DexIndex,
-    pub part: Option<DexPart>,
-}
 
 /// One DEX entry to serialize, stored the way its component stores DEX.
 pub(in crate::apk_file) struct DexJob {

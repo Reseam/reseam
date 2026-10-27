@@ -47,7 +47,7 @@ internal class SettingsPanel : Application.ActivityLifecycleCallbacks, Component
         if (state is PanelState.Visible) return
         val activity = resumed.get()
         if (activity == null) {
-            Log.e(TAG, "Cannot open settings: no screen of the app is in the foreground")
+            Log.e(LOG_TAG, "Cannot open settings: no screen of the app is in the foreground")
             return
         }
         val before = opened ?: bundle.settings.snapshot()
@@ -126,5 +126,3 @@ internal class SettingsPanel : Application.ActivityLifecycleCallbacks, Component
 
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
 }
-
-private const val TAG = "ReseamSettings"

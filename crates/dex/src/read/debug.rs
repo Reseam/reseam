@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::encoding::leb128::{read_sleb128, read_uleb128, read_uleb128p1};
-use crate::error::{Result, require_len};
+use crate::error::Result;
 use crate::model::debug::{DebugBytecode, DebugInfo};
 use crate::model::metadata::MetadataItem;
 use crate::model::{Pool, StringIdx, TypeIdx};
 use crate::options::ParseOptions;
+use reseam_bytes::require_len;
 
 pub(crate) enum DebugEvent {
     LineStart(u32),

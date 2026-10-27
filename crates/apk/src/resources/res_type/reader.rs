@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::{EntryOffsets, FLAG_OFFSET16, FLAG_SPARSE, HEADER_LEN, ResType};
-use crate::buf::{read_u16_le, read_u32_le, require_len};
 use crate::error::{Result, invalid, malformed};
+use reseam_bytes::{read_u16, read_u32, require_len};
 use reseam_storage::Bytes;
 use std::collections::BTreeMap;
 use std::ops::Range;
@@ -18,8 +18,8 @@ impl ResType {
         if header_size < HEADER_LEN {
             return Err(malformed("res type", chunk.start, "header is too short"));
         }
-        let entry_count = read_u32_le(buf, 12, "res type")? as usize;
-        let entries_start = read_u32_le(buf, 16, "res type")? as usize;
+        let entry_count = read_u32(buf, 12, "res type")? as usize;
+        let entries_start = read_u32(buf, 16, "res type")? as usize;
         if entries_start > buf.len() {
             return Err(malformed(
                 "res type",
@@ -64,7 +64,7 @@ impl ResType {
                 if *count == 0 {
                     0
                 } else {
-                    usize::from(read_u16_le(
+                    usize::from(read_u16(
                         buf,
                         header_size + (count - 1) * 4,
                         "res sparse index",

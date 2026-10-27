@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use reseam_bytes::{read_u16, read_u32, slice};
 use std::io::Read;
 
 use super::SECTION;
-use crate::buf::{read_u16_le, read_u32_le, slice};
 use crate::error::{Result, invalid, malformed};
 
 /// Profile fields read in order, little-endian.
@@ -33,13 +33,13 @@ impl<'a> Cursor<'a> {
     }
 
     pub(super) fn u16(&mut self) -> Result<u16> {
-        let value = read_u16_le(self.buf, self.pos, SECTION)?;
+        let value = read_u16(self.buf, self.pos, SECTION)?;
         self.pos += 2;
         Ok(value)
     }
 
     pub(super) fn u32(&mut self) -> Result<u32> {
-        let value = read_u32_le(self.buf, self.pos, SECTION)?;
+        let value = read_u32(self.buf, self.pos, SECTION)?;
         self.pos += 4;
         Ok(value)
     }

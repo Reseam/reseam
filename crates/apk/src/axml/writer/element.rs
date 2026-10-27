@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use reseam_bytes::read_u16;
 use std::borrow::Cow;
 
 use super::{finalize_node, node_bytes};
 use crate::axml::document::AttributeRoles;
 use crate::axml::{ATTRIBUTE_LEN, AxmlAttribute, CHUNK_START_ELEMENT, NONE, NodeMetadata};
-use crate::buf::read_u16_le;
 use crate::error::{Result, invalid};
 
 /// A start element, its original bytes when nothing about it changed.
@@ -21,12 +21,12 @@ pub(super) fn encode_start_element<'a>(
     let attr_start = if original.is_empty() {
         20
     } else {
-        read_u16_le(original, at + 8, "axml attribute start")? as usize
+        read_u16(original, at + 8, "axml attribute start")? as usize
     };
     let raw_stride = if original.is_empty() {
         ATTRIBUTE_LEN
     } else {
-        read_u16_le(original, at + 10, "axml attribute stride")? as usize
+        read_u16(original, at + 10, "axml attribute stride")? as usize
     };
     let stride = attributes
         .iter()
@@ -38,7 +38,7 @@ pub(super) fn encode_start_element<'a>(
     let count = if original.is_empty() {
         0
     } else {
-        read_u16_le(original, at + 12, "axml attribute count")? as usize
+        read_u16(original, at + 12, "axml attribute count")? as usize
     };
     let mut encoded = Vec::with_capacity(attributes.len() * stride);
     for attr in attributes {

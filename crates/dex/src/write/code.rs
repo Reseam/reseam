@@ -234,7 +234,7 @@ impl CodeEmitter {
             w.align(4);
             let off = w.pos();
             w.write(&self.code_buf);
-            let debug_off = crate::read::u32_at(buf, code_off as usize + 8);
+            let debug_off = reseam_bytes::u32_at(buf, code_off as usize + 8);
             let item = if debug_off != 0 && w.options.debug_info == MetadataPolicy::Preserve {
                 self.scratch.clear();
                 copy_debug_info(buf, debug_off, remap, opts, &mut self.scratch)?;
@@ -259,7 +259,7 @@ impl CodeEmitter {
         if code
             .debug_info
             .as_ref()
-            .is_some_and(|metadata| !w.options.debug_info.keeps(metadata, w.original.as_ref()))
+            .is_some_and(|metadata| !metadata.kept_by(w.options.debug_info, w.original.as_ref()))
         {
             code.debug_info = None;
         }
@@ -277,7 +277,7 @@ impl CodeEmitter {
         let item = code
             .debug_info
             .as_ref()
-            .filter(|metadata| w.options.debug_info.keeps(metadata, w.original.as_ref()))
+            .filter(|metadata| metadata.kept_by(w.options.debug_info, w.original.as_ref()))
             .map(|debug| {
                 self.scratch.clear();
                 super::debug::write_debug_info(&mut self.scratch, debug.read()?.as_ref());

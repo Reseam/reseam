@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::{FLAG_OFFSET16, FLAG_SPARSE, HEADER_LEN, NO_ENTRY, ResType};
-use crate::buf::write_u32;
 use crate::chunk::write_header;
 use crate::error::{Result, invalid};
 use crate::resources::{RES_TABLE_TYPE_TYPE, entry};
+use reseam_bytes::write_u32;
 use std::io::Write;
 impl ResType {
     pub(in crate::resources) fn plan(&self) -> Result<TypePlan<'_>> {

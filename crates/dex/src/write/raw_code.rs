@@ -3,11 +3,12 @@
 
 use super::remap::Remap;
 use crate::encoding::leb128::{write_sleb128, write_uleb128, write_uleb128p1};
-use crate::error::{Result, require_len};
+use crate::error::Result;
 use crate::instruction::stream::{index_operands, walk_instructions};
 use crate::options::ParseOptions;
 use crate::read::code::handlers::{HandlerEvent, handler_index, walk_handler_list};
 use crate::read::debug::walk_debug_info;
+use reseam_bytes::require_len;
 
 /// How copying a file code item went: copied with its indices remapped in
 /// place, or not, because a remapped index outgrows its 16-bit operand.
@@ -26,7 +27,7 @@ pub(crate) fn copy_code_item(
     let base = code_off as usize;
     require_len(buf, base, 16, "code item")?;
     let tries_size = u16::from_le_bytes([buf[base + 6], buf[base + 7]]) as usize;
-    let insns_size = crate::read::u32_at(buf, base + 12) as usize;
+    let insns_size = reseam_bytes::u32_at(buf, base + 12) as usize;
     let insns_start = base + 16;
     crate::error::require_array(buf, insns_start, insns_size, 2, "code item instructions")?;
 
@@ -116,7 +117,7 @@ fn remap_operands(opcode: u8, remap: &Remap, insn: &mut [u8]) -> Result<bool> {
     for operand in index_operands(opcode) {
         let at = operand.at;
         if matches!(operand.width, crate::instruction::stream::IndexWidth::U32) {
-            let old = crate::read::u32_at(insn, at);
+            let old = reseam_bytes::u32_at(insn, at);
             insn[at..at + 4].copy_from_slice(&remap.index(operand.pool, old)?.to_le_bytes());
             continue;
         }

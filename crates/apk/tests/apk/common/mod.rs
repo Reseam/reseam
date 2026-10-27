@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-pub mod archive;
 pub mod dex;
 pub mod documents;
 pub mod manifest;

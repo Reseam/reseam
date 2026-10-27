@@ -8,6 +8,8 @@ use reseam_dex::{CodeItem, DexFile, DexHeader, DexVersion, EncodedValue, Instruc
 use reseam_dex::{DebugBytecode, DebugInfo};
 use reseam_dex::{EncodedField, EncodedMethod};
 
+pub type TestResult = Result<(), Box<dyn std::error::Error>>;
+
 pub fn write(dex: &DexFile) -> reseam_dex::Result<Vec<u8>> {
     let (spooled, _) = reseam_dex::write_spooled(dex, None)?;
     let mut bytes = Vec::new();

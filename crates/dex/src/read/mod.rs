@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 pub(crate) mod annotation;
-mod bytes;
 pub(crate) mod class;
 pub(crate) mod code;
 pub(crate) mod debug;
@@ -12,7 +11,6 @@ pub(crate) mod hidden_api;
 pub mod parse;
 pub(crate) mod type_list;
 
-pub(crate) use bytes::{i32_at, read_u8, read_u16, read_u32, u16_at, u32_at};
 pub use parse::parse;
 pub use parse::parse_bytes;
 pub use parse::parse_container;

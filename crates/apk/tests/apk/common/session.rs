@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use super::manifest::manifest_bytes;
 use super::tables::{package, strings};
-use super::{archive::write_apk, manifest::manifest_bytes};
 use reseam_apk::{ApkFile, ResourceTable};
 use reseam_dex::ParseOptions;
 use std::fs::File;
@@ -55,27 +55,27 @@ pub struct Session {
 impl Session {
     pub fn single(entries: &[(&str, &[u8])]) -> Self {
         let dir = tempfile::tempdir().expect("fixture directory");
-        write_apk(
-            &dir.path().join("app.apk"),
-            &manifest_bytes("original", None),
-            entries,
-        );
+        std::fs::write(
+            dir.path().join("app.apk"),
+            reseam_fixtures::apk(&manifest_bytes("original", None), entries),
+        )
+        .expect("fixture APK");
         let apk = ApkFile::open(dir.path().join("app.apk"), lazy()).expect("fixture APK");
         Self { dir, apk }
     }
 
     pub fn split(base: &[(&str, &[u8])], split: &[(&str, &[u8])], options: ParseOptions) -> Self {
         let dir = tempfile::tempdir().expect("fixture directory");
-        write_apk(
-            &dir.path().join("base.apk"),
-            &manifest_bytes("1.0-base", None),
-            base,
-        );
-        write_apk(
-            &dir.path().join("split.apk"),
-            &manifest_bytes("1.0-split", Some("feature")),
-            split,
-        );
+        std::fs::write(
+            dir.path().join("base.apk"),
+            reseam_fixtures::apk(&manifest_bytes("1.0-base", None), base),
+        )
+        .expect("fixture APK");
+        std::fs::write(
+            dir.path().join("split.apk"),
+            reseam_fixtures::apk(&manifest_bytes("1.0-split", Some("feature")), split),
+        )
+        .expect("fixture APK");
         let apk = ApkFile::open_split(
             dir.path().join("base.apk"),
             &[dir.path().join("split.apk")],

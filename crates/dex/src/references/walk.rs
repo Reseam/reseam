@@ -4,7 +4,7 @@
 use super::RefSink;
 use super::items::{annotations_dir, debug_info, encoded_value, instruction};
 use crate::DexFile;
-use crate::error::{Result, require_len};
+use crate::error::Result;
 use crate::instruction::stream::{index_operands, walk_instructions};
 use crate::model::class::{ClassDef, ClassHeader};
 use crate::model::code::CodeItem;
@@ -17,6 +17,7 @@ use crate::read::code::handlers::{HandlerEvent, walk_handler_list};
 use crate::read::debug::read_debug_info;
 use crate::read::encoded_value::read_encoded_array_with_opts;
 use crate::read::type_list::read_type_list;
+use reseam_bytes::require_len;
 
 /// Whether a class walk also visits the bodies of its methods.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,11 +47,11 @@ pub(crate) fn class(
     bodies: Bodies,
 ) -> Result<()> {
     class_header(sink, ClassHeader::of(class), &class.interfaces);
-    if let Some(annotations) = class.annotations.as_ref().filter(|metadata| {
-        dex.write_options()
-            .annotations
-            .keeps(metadata, dex.raw.as_ref())
-    }) {
+    if let Some(annotations) = class
+        .annotations
+        .as_ref()
+        .filter(|metadata| metadata.kept_by(dex.write_options().annotations, dex.raw.as_ref()))
+    {
         annotations_dir(sink, annotations.read()?.as_ref());
     }
     let Some(data) = &class.class_data else {
@@ -130,7 +131,7 @@ fn raw_code_item(
     options: crate::options::WriteOptions,
 ) -> Result<()> {
     require_len(buf, base, 16, "code item")?;
-    let word = |at: usize| crate::read::u32_at(buf, at);
+    let word = |at: usize| reseam_bytes::u32_at(buf, at);
     let tries_size = u16::from_le_bytes([buf[base + 6], buf[base + 7]]) as usize;
     let debug_off = word(base + 8);
     let insns_size = word(base + 12) as usize;
@@ -170,11 +171,11 @@ pub(crate) fn code_item(sink: &mut impl RefSink, code: &CodeItem, dex: &DexFile)
             sink.add(Pool::Type, catch.exception_type.0);
         }
     }
-    if let Some(debug) = code.debug_info.as_ref().filter(|metadata| {
-        dex.write_options()
-            .debug_info
-            .keeps(metadata, dex.raw.as_ref())
-    }) {
+    if let Some(debug) = code
+        .debug_info
+        .as_ref()
+        .filter(|metadata| metadata.kept_by(dex.write_options().debug_info, dex.raw.as_ref()))
+    {
         debug_info(sink, debug.read()?.as_ref());
     }
     Ok(())

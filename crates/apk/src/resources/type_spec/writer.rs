@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::{HEADER_LEN, TypeSpec};
-use crate::buf::{write_u16, write_u32};
 use crate::chunk::write_header;
 use crate::error::Result;
 use crate::resources::RES_TABLE_TYPE_SPEC;
+use reseam_bytes::{write_u16, write_u32};
 use std::io::Write;
 
 impl TypeSpec {

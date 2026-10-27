@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use reseam_bytes::read_u32;
 use reseam_storage::Bytes;
 
 use super::reader::document_body;
@@ -8,7 +9,6 @@ use super::{
     AxmlDocument, CHUNK_RESOURCE_IDS, CHUNK_START_ELEMENT, CHUNK_START_NAMESPACE,
     android_attr_res_id,
 };
-use crate::buf::read_u32_le;
 use crate::chunk;
 use crate::error::{Result, invalid};
 use crate::string_pool::{CHUNK_STRING_POOL, StringPool};
@@ -32,7 +32,7 @@ impl AxmlDocument {
                 CHUNK_RESOURCE_IDS => {
                     let body = &data[chunk.range.clone()];
                     for pos in (chunk.header_size..body.len()).step_by(4) {
-                        if ids.contains(&read_u32_le(body, pos, "axml resource ids")?) {
+                        if ids.contains(&read_u32(body, pos, "axml resource ids")?) {
                             return Ok(true);
                         }
                     }

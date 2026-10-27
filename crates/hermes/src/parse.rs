@@ -4,11 +4,12 @@
 use std::ops::Range;
 
 use crate::FunctionId;
-use crate::bytes::{align, read_u32, slice};
+use crate::bytes::align;
 use crate::error::{HermesError, Result, invalid};
 use crate::file::HermesFile;
 use crate::layout::{FOOTER_SIZE, Field, HEADER_SIZE, MAGIC, Section, VERSION};
 use crate::string::{StringId, StringKind};
+use reseam_bytes::{read_u32, require_len, slice, u32_at};
 
 impl<'a> HermesFile<'a> {
     /// Parses without copying file data. All structured sections, string
@@ -57,13 +58,13 @@ impl<'a> HermesFile<'a> {
             for entry in self.section(table).as_chunks::<8>().0 {
                 self.section_bytes(
                     storage,
-                    read_u32(entry, 0)? as usize,
-                    read_u32(entry, 4)? as usize,
+                    u32_at(entry, 0) as usize,
+                    u32_at(entry, 4) as usize,
                 )?;
             }
         }
         for entry in self.section(Section::Shapes).as_chunks::<8>().0 {
-            self.section_bytes(Section::Keys, read_u32(entry, 0)? as usize, 0)?;
+            self.section_bytes(Section::Keys, u32_at(entry, 0) as usize, 0)?;
         }
         Ok(())
     }
@@ -97,22 +98,22 @@ impl<'a> HermesFile<'a> {
 
 /// Checks the header and finds each section, which must end before the debug information.
 fn sections(source: &[u8]) -> Result<[Range<usize>; 15]> {
-    if slice(source, 0, 8)? != MAGIC.to_le_bytes() {
+    if slice(source, 0, 8, "header")? != MAGIC.to_le_bytes() {
         return Err(HermesError::Magic);
     }
-    let version = read_u32(source, Field::Version as usize)?;
+    let version = read_u32(source, Field::Version as usize, "header")?;
     if version != VERSION {
         return Err(HermesError::Version(version));
     }
-    slice(source, 0, HEADER_SIZE)?;
-    let header = |field: Field| read_u32(source, field as usize);
-    let length = header(Field::FileLength)? as usize;
+    require_len(source, 0, HEADER_SIZE, "header")?;
+    let header = |field: Field| u32_at(source, field as usize);
+    let length = header(Field::FileLength) as usize;
     if length < HEADER_SIZE + FOOTER_SIZE || length > source.len() {
         return Err(invalid(Field::FileLength as usize, "invalid file length"));
     }
     let footer = length - FOOTER_SIZE;
-    let functions = header(Field::FunctionCount)?;
-    if functions == 0 || header(Field::GlobalFunction)? >= functions {
+    let functions = header(Field::FunctionCount);
+    if functions == 0 || header(Field::GlobalFunction) >= functions {
         return Err(invalid(
             Field::GlobalFunction as usize,
             "invalid global function",
@@ -122,14 +123,14 @@ fn sections(source: &[u8]) -> Result<[Range<usize>; 15]> {
     let mut sections = std::array::from_fn(|_| 0..0);
     for section in Section::ALL {
         cursor = align(cursor);
-        let size = (header(section.count())? as usize)
+        let size = (header(section.count()) as usize)
             .checked_mul(section.stride())
             .ok_or_else(|| invalid(cursor, "section size overflow"))?;
-        slice(&source[..footer], cursor, size)?;
+        require_len(&source[..footer], cursor, size, "Hermes section")?;
         sections[section as usize] = cursor..cursor + size;
         cursor += size;
     }
-    let debug = header(Field::DebugInfoOffset)? as usize;
+    let debug = header(Field::DebugInfoOffset) as usize;
     if debug < cursor || debug > footer {
         return Err(invalid(
             Field::DebugInfoOffset as usize,

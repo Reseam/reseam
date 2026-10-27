@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::encoding::leb128::{read_sleb128, read_uleb128};
-use crate::error::{Result, invalid_offset, require_len};
+use crate::error::{Result, invalid_offset};
 use crate::model::TypeIdx;
 use crate::model::code::{CatchHandler, TryItem, TypedCatch};
 use crate::options::ParseOptions;
-use crate::read::{u16_at, u32_at};
+use reseam_bytes::{require_len, u16_at, u32_at};
 
 pub(crate) enum HandlerEvent {
     Count(u32),

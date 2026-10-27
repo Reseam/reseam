@@ -1,17 +1,17 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use reseam_bytes::{read_u32, require_len};
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 use super::ClassTable;
 use crate::DexBytes;
-use crate::error::{Result, invalid, require_len};
+use crate::error::{Result, invalid};
 use crate::model::TypeIdx;
 use crate::model::hidden_api::ClassHiddenApiFlags;
 use crate::options::ParseOptions;
 use crate::read::hidden_api::{FlagClass, FlagSource, read_class_flags};
-use crate::read::read_u32;
 
 /// Hidden-API member flags keyed by their class and member identities.
 /// Source records remain file-backed; each lookup decodes at most one class.
@@ -30,7 +30,7 @@ impl HiddenApiData {
         options: ParseOptions,
     ) -> Result<Self> {
         let buf = bytes.as_bytes();
-        let size = read_u32(buf, offset)? as usize;
+        let size = read_u32(buf, offset, "hidden api")? as usize;
         let table_size = classes
             .len()
             .checked_add(1)
@@ -45,7 +45,7 @@ impl HiddenApiData {
         require_len(buf, offset, size, "hidden API")?;
         let mut indexed = Vec::new();
         for i in 0..classes.len() {
-            let relative = read_u32(buf, offset + 4 + i * 4)? as usize;
+            let relative = read_u32(buf, offset + 4 + i * 4, "hidden api")? as usize;
             if relative == 0 {
                 continue;
             }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use reseam_bytes::read_u32;
 use std::ops::Range;
 
 use rayon::prelude::*;
@@ -12,7 +13,6 @@ use crate::file::ClassTable;
 use crate::instruction::stream::walk_instructions;
 use crate::options::ParseOptions;
 use crate::read::class::read_class_skeleton_at;
-use crate::read::read_u32;
 
 /// Classes one parallel task walks.
 const CHUNK: usize = 64;
@@ -189,7 +189,7 @@ impl MethodRefs {
         self.pool.clear();
         self.literals.clear();
         let base = code_off as usize;
-        let insns_size = read_u32(buf, base + 12)? as usize;
+        let insns_size = read_u32(buf, base + 12, "code item")? as usize;
         let mut outside = None;
         walk_instructions(buf, base + 16, insns_size, |insn| {
             if let Some((pool, id)) = insn.member_or_string_ref(buf) {

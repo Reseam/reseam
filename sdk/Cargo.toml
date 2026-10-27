@@ -32,9 +32,9 @@ kotlin = ["reseam-patcher/kotlin"]
 browser = ["reseam-patcher/browser"]
 
 [dev-dependencies]
+reseam-fixtures = { workspace = true }
 ed25519-dalek = { workspace = true }
 serde_json = { workspace = true }
-zip = { workspace = true }
 
 [lints]
 workspace = true

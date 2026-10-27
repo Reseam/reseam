@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::error::{
-    Result, checksum_mismatch, invalid, invalid_magic, require_len, signature_mismatch, slice,
-    truncated, unsupported,
+    Result, checksum_mismatch, invalid, invalid_magic, signature_mismatch, unsupported,
 };
 use crate::model::header::{DexHeader, DexVersion};
 use crate::options::ParseOptions;
-use crate::read::u32_at;
+use reseam_bytes::{require_len, slice, u32_at};
 
 pub fn read_header_at(buf: &[u8], header_off: usize, opts: ParseOptions) -> Result<DexHeader> {
     require_len(buf, header_off, 112, "dex header")?;
@@ -73,13 +72,11 @@ pub fn read_header_at(buf: &[u8], header_off: usize, opts: ParseOptions) -> Resu
     let logical_end = header_off
         .checked_add(file_size as usize)
         .filter(|&end| end <= buf.len())
-        .ok_or_else(|| {
-            truncated(
-                "dex file",
-                header_off,
-                file_size as usize,
-                buf.len() - header_off,
-            )
+        .ok_or(reseam_bytes::Truncated {
+            section: "dex file",
+            offset: header_off,
+            needed: file_size as usize,
+            available: buf.len() - header_off,
         })?;
 
     if version.is_container_format()

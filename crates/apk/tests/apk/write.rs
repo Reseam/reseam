@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::common::TestResult;
-use crate::common::archive;
 use crate::common::dex::minimal_dex_bytes;
 use crate::common::manifest::manifest_bytes;
 use crate::common::session::*;
@@ -86,7 +85,7 @@ fn manifest_edits_preserve_untouched_payload_bytes_and_archive_metadata() -> Tes
                     .map(|(name, bytes)| (*name, bytes.as_slice())),
             )
             .collect();
-        archive::write_with_options(&path, &packed, options);
+        std::fs::write(&path, reseam_fixtures::zip_with(&packed, options))?;
         let mut apk = Apk::open(&path, lazy())?;
         apk.base_mut().manifest_mut().set_version_name("edited");
         let output = apk.write_to(dir.path().join("out"), WriteOptions::default())?;

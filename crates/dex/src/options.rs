@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::DexBytes;
-use crate::model::metadata::{Metadata, MetadataItem};
-
 /// Entries an id pool other than strings can hold: its indices are 16-bit.
 pub const MAX_POOL_SIZE: usize = 1 << 16;
 
@@ -59,20 +56,6 @@ pub enum MetadataPolicy {
     Omit,
     /// Omit metadata from this DEX's original mapping, retaining imported or authored metadata.
     OmitOriginal,
-}
-
-impl MetadataPolicy {
-    pub(crate) fn keeps<T: MetadataItem>(
-        self,
-        metadata: &Metadata<T>,
-        original: Option<&DexBytes>,
-    ) -> bool {
-        match self {
-            Self::Preserve => true,
-            Self::Omit => false,
-            Self::OmitOriginal => !metadata.belongs_to(original),
-        }
-    }
 }
 
 /// Opaque link bytes cannot be relocated after pool and section layout changes.

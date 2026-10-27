@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use reseam_bytes::{read_u16, read_u32, require_len};
 use std::ops::Range;
 
 use reseam_storage::Bytes;
@@ -11,7 +12,6 @@ use super::{
     AxmlDocument, AxmlEvent, CHUNK_END_ELEMENT, CHUNK_END_NAMESPACE, CHUNK_RESOURCE_IDS,
     CHUNK_START_ELEMENT, CHUNK_START_NAMESPACE, CHUNK_TEXT, CHUNK_XML_DOCUMENT, NONE, NodeMetadata,
 };
-use crate::buf::{read_u16_le, read_u32_le, require_len};
 use crate::chunk;
 use crate::error::{Result, invalid};
 use crate::res_value::ResValue;
@@ -52,8 +52,8 @@ impl AxmlDocument {
                 CHUNK_RESOURCE_IDS if resource_header.is_empty() => {
                     resource_ids = (at..body.len())
                         .step_by(4)
-                        .map(|pos| read_u32_le(body, pos, "axml resource ids"))
-                        .collect::<Result<_>>()?;
+                        .map(|pos| read_u32(body, pos, "axml resource ids"))
+                        .collect::<reseam_bytes::Result<_>>()?;
                     resource_header = body[..at].to_vec();
                     AxmlEvent::ResourceMap
                 }
@@ -92,8 +92,8 @@ fn parse_node(kind: u16, body: &[u8], at: usize, metadata: NodeMetadata) -> Resu
         CHUNK_START_NAMESPACE | CHUNK_END_NAMESPACE => {
             node_header(body, at)?;
             require_len(body, at, 8, "axml namespace")?;
-            let prefix = optional(read_u32_le(body, at, "axml namespace")?);
-            let uri = read_u32_le(body, at + 4, "axml namespace")?;
+            let prefix = optional(read_u32(body, at, "axml namespace")?);
+            let uri = read_u32(body, at + 4, "axml namespace")?;
             if kind == CHUNK_START_NAMESPACE {
                 AxmlEvent::StartNamespace {
                     metadata,
@@ -114,8 +114,8 @@ fn parse_node(kind: u16, body: &[u8], at: usize, metadata: NodeMetadata) -> Resu
             require_len(body, at, 8, "axml end element")?;
             AxmlEvent::EndElement {
                 metadata,
-                namespace: optional(read_u32_le(body, at, "axml end element")?),
-                name: read_u32_le(body, at + 4, "axml end element")?,
+                namespace: optional(read_u32(body, at, "axml end element")?),
+                name: read_u32(body, at + 4, "axml end element")?,
             }
         }
         CHUNK_TEXT => {
@@ -123,7 +123,7 @@ fn parse_node(kind: u16, body: &[u8], at: usize, metadata: NodeMetadata) -> Resu
             require_len(body, at, 12, "axml text")?;
             AxmlEvent::Text {
                 metadata,
-                text: read_u32_le(body, at, "axml text")?,
+                text: read_u32(body, at, "axml text")?,
                 value: ResValue::read(body, at + 4, "axml text")?,
             }
         }
@@ -135,7 +135,7 @@ pub(super) fn node_header(body: &[u8], header_size: usize) -> Result<()> {
     if header_size < 16 {
         return Err(invalid("axml node", "header is shorter than 16 bytes"));
     }
-    require_len(body, 0, header_size, "axml node")
+    Ok(require_len(body, 0, header_size, "axml node")?)
 }
 
 pub(super) fn optional(value: u32) -> Option<u32> {
@@ -144,14 +144,14 @@ pub(super) fn optional(value: u32) -> Option<u32> {
 
 pub(super) fn document_body(data: &[u8]) -> Result<Range<usize>> {
     require_len(data, 0, chunk::HEADER_LEN, "axml document")?;
-    let kind = read_u16_le(data, 0, "axml document")?;
+    let kind = read_u16(data, 0, "axml document")?;
     if kind != CHUNK_XML_DOCUMENT {
         return Err(invalid(
             "axml document",
             format!("expected XML document, got 0x{kind:04x}"),
         ));
     }
-    let header_size = read_u16_le(data, 2, "axml document")? as usize;
+    let header_size = read_u16(data, 2, "axml document")? as usize;
     let end = chunk::chunk_end(data, 0)?;
     if header_size < chunk::HEADER_LEN || header_size > end {
         return Err(invalid("axml document", "invalid header size"));

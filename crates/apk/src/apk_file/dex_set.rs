@@ -5,11 +5,10 @@ use std::sync::Arc;
 
 use rayon::prelude::*;
 use reseam_dex::{
-    DexFile, MaterializationStats, MemoryBreakdown, ParseOptions, Spooled, WriteLayout,
+    DexFile, DexPart, MaterializationStats, MemoryBreakdown, ParseOptions, Spooled, WriteLayout,
 };
 use reseam_storage::{Bytes, MappedFile};
 
-use super::write::DexMember;
 use super::{ApkComponent, ComponentIndex};
 use crate::entry::EntryName;
 use crate::error::Result;
@@ -44,6 +43,12 @@ pub(super) enum DexSource {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(super) struct DexIndex(pub(super) usize);
+
+/// A DEX, or one part of it, that an output entry holds.
+pub(super) struct DexMember {
+    pub dex_index: DexIndex,
+    pub part: Option<DexPart>,
+}
 
 impl DexSet {
     /// Every DEX of `components` in load order: components in order, and within
