@@ -7,7 +7,8 @@ use super::{changes, handles, pool_copies};
 use crate::error::Result as PatcherResult;
 
 /// What the engine asks of the run state at a savepoint.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(super) enum SavepointAction {
     Open,
     Release,

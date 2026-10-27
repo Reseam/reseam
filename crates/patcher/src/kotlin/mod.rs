@@ -10,8 +10,14 @@
 pub mod android_host;
 mod bytecode;
 mod changes;
+#[cfg(feature = "kotlin")]
+mod class_loader;
 mod components;
 mod convert;
+#[cfg(all(feature = "kotlin", not(target_os = "android")))]
+mod desktop;
+#[cfg(feature = "kotlin")]
+mod discovery;
 mod encoded_values;
 mod files;
 mod handles;
@@ -19,6 +25,8 @@ mod hermes;
 mod identity;
 mod instruction_types;
 mod invocations;
+#[cfg(feature = "kotlin")]
+mod jni_values;
 #[cfg(feature = "kotlin")]
 pub(crate) mod jvm;
 mod link;

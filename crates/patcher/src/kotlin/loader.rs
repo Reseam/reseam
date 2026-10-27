@@ -1,48 +1,38 @@
 // SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use reseam_storage::ScratchDir;
-
-use jni::objects::{Global, JClass, JObject, JObjectArray, JValue, JValueOwned};
+use jni::objects::{Global, JClass, JObject};
 use jni::refs::IntoAuto;
 use jni::{Env, jni_sig, jni_str};
+use reseam_storage::ScratchDir;
 
+use super::class_loader::create_class_loader;
+use super::discovery::read_declarations;
 use super::jvm::{self, jvm_err};
-use super::metadata::{object, read_patch, string};
+use super::metadata::read_patch;
 use super::patch::load_class;
-use super::phase::RunningBundle;
+use super::phase::LoadedBundle;
 use crate::bundle::BundleInfo;
-use crate::bundle::index::{Declaration, MemberKind};
+use crate::bundle::index::Declaration;
 use crate::error::Result;
 use crate::patch::Patch;
 
 const PATCH_INTERFACE: &str = "app.reseam.patch.ReseamPatch";
 const EXTERNAL_PATCH: &str = "app.reseam.patch.ExternalPatch";
 
+/// A bundle's patch class loader; closed when its last patch drops.
 pub(super) struct PatchLoader {
     reference: Global<JObject<'static>>,
-    name: String,
-    version: String,
-    license: String,
-    directory: Arc<ScratchDir>,
+    pub(super) bundle: LoadedBundle,
 }
 
 impl PatchLoader {
     pub(super) fn reference(&self) -> &JObject<'static> {
         self.reference.as_ref()
-    }
-
-    pub(super) fn running(&self) -> RunningBundle {
-        RunningBundle {
-            name: self.name.clone(),
-            version: self.version.clone(),
-            license: self.license.clone(),
-            directory: self.directory.path().to_path_buf(),
-        }
     }
 }
 
@@ -81,11 +71,6 @@ impl Drop for PatchLoader {
     }
 }
 
-pub(super) struct Found {
-    pub(super) object: Global<JObject<'static>>,
-    pub(super) declaration: String,
-}
-
 /// Loads the patches `declarations` names, by declaring class. Only those
 /// classes are initialized, so patches left out never run any code.
 pub(crate) fn load_patches(
@@ -103,10 +88,7 @@ pub(crate) fn load_patches(
             let loader = create_class_loader(env, jars)?;
             let retained_loader = Arc::new(PatchLoader {
                 reference: env.new_global_ref(&loader)?,
-                name: bundle.name.clone(),
-                version: bundle.version.clone(),
-                license: bundle.license.clone(),
-                directory,
+                bundle: LoadedBundle::new(bundle, directory),
             });
             let loader = retained_loader.reference.as_ref();
             register_natives(env, loader)?;
@@ -177,219 +159,4 @@ fn register_natives(_env: &mut Env<'_>, _loader: &JObject<'_>) -> Result<()> {
     Err(jvm_err(
         "patch loading is unavailable in a binding metadata build",
     ))
-}
-
-fn retain_patch(
-    env: &Env<'_>,
-    found: &mut Vec<Found>,
-    object: &JObject<'_>,
-    id: &str,
-) -> Result<()> {
-    for seen in found.iter_mut() {
-        if env
-            .is_same_object(seen.object.as_ref(), object)
-            .map_err(|error| jvm_err(format!("compare patch {id}: {error}")))?
-        {
-            if id < seen.declaration.as_str() {
-                id.clone_into(&mut seen.declaration);
-            }
-            return Ok(());
-        }
-    }
-    found.push(Found {
-        object: env
-            .new_global_ref(object)
-            .map_err(|error| jvm_err(format!("retain patch {id}: {error}")))?,
-        declaration: id.to_owned(),
-    });
-    Ok(())
-}
-
-// Reflection order determines the input order of independent patches. Only indexed
-// members are invoked; reflection also checks accessibility and invocation arguments.
-fn read_declarations(
-    env: &mut Env<'_>,
-    class: &JClass<'_>,
-    declarations: &[Declaration],
-    patch_class: &JClass<'_>,
-    external_class: &JClass<'_>,
-    found: &mut Vec<Found>,
-) -> Result<()> {
-    let mut seen = HashSet::new();
-    for kind in [MemberKind::Field, MemberKind::Method] {
-        let (getter, signature) = match kind {
-            MemberKind::Field => ("getFields", "()[Ljava/lang/reflect/Field;"),
-            MemberKind::Method => ("getMethods", "()[Ljava/lang/reflect/Method;"),
-        };
-        let members = {
-            let members = object(env, class, getter, signature)?;
-            JObjectArray::<JObject<'_>>::cast_local(env, members)?
-        };
-        let count = members.len(env)?;
-        for index in 0..count {
-            jvm::with_frame(env, |env| {
-                let member = members.get_element(env, index)?;
-                if kind == MemberKind::Method
-                    && env
-                        .call_method(&member, jni_str!("getParameterCount"), jni_sig!("()I"), &[])
-                        .and_then(JValueOwned::i)?
-                        != 0
-                {
-                    return Ok(());
-                }
-                let owner = object(env, &member, "getDeclaringClass", "()Ljava/lang/Class;")?;
-                let name = string(env, &member, "getName")?;
-                let owner = string(env, &owner, "getName")?;
-                let Some((index, declaration)) =
-                    declarations.iter().enumerate().find(|(_, declaration)| {
-                        declaration.kind == kind
-                            && declaration.member == name
-                            && declaration.owner == owner
-                    })
-                else {
-                    return Ok(());
-                };
-                if !seen.insert(index) {
-                    return Ok(());
-                }
-                let value = match kind {
-                    MemberKind::Field => env.call_method(
-                        &member,
-                        jni_str!("get"),
-                        jni_sig!("(Ljava/lang/Object;)Ljava/lang/Object;"),
-                        &[JValue::Object(&JObject::null())],
-                    ),
-                    MemberKind::Method => env.call_method(
-                        &member,
-                        jni_str!("invoke"),
-                        jni_sig!("(Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;"),
-                        &[
-                            JValue::Object(&JObject::null()),
-                            JValue::Object(&JObject::null()),
-                        ],
-                    ),
-                }
-                .and_then(JValueOwned::l)
-                .map_err(|error| {
-                    jvm_err(format!(
-                        "patch declaration {} ({}.{}): {error}",
-                        declaration.id, declaration.class_name, declaration.member
-                    ))
-                })?;
-                if value.is_null() || !env.is_instance_of(&value, patch_class)? {
-                    return Err(jvm_err(format!(
-                        "patch declaration {} did not return a ReseamPatch",
-                        declaration.id
-                    )));
-                }
-                if !env.is_instance_of(&value, external_class)? {
-                    retain_patch(env, found, &value, &declaration.id)?;
-                }
-                Ok(())
-            })?;
-        }
-    }
-    if seen.len() != declarations.len() {
-        return Err(jvm_err(
-            "indexed patch member is absent from its declaration class",
-        ));
-    }
-    Ok(())
-}
-
-#[cfg(not(target_os = "android"))]
-fn create_class_loader<'a>(env: &mut Env<'a>, jars: &[PathBuf]) -> Result<JObject<'a>> {
-    let url_class = env.find_class(jni_str!("java/net/URL"))?;
-    let urls = env.new_object_array(
-        i32::try_from(jars.len()).map_err(jvm_err)?,
-        &url_class,
-        JObject::null(),
-    )?;
-    for (i, jar) in jars.iter().enumerate() {
-        let path = jar
-            .to_str()
-            .ok_or_else(|| jvm_err(format!("jar path is not Unicode: {}", jar.display())))?;
-        let url: JObject<'_> = env
-            .with_local_frame_returning_local::<_, JObject<'_>, jni::errors::Error>(8, |env| {
-                let path = env.new_string(path)?;
-                let file = env.new_object(
-                    jni_str!("java/io/File"),
-                    jni_sig!("(Ljava/lang/String;)V"),
-                    &[JValue::Object(&path)],
-                )?;
-                let uri = env
-                    .call_method(&file, jni_str!("toURI"), jni_sig!("()Ljava/net/URI;"), &[])?
-                    .l()?;
-                env.call_method(&uri, jni_str!("toURL"), jni_sig!("()Ljava/net/URL;"), &[])?
-                    .l()
-            })
-            .map_err(|error: jni::errors::Error| {
-                jvm_err(format!("jar URL for {}: {error}", jar.display()))
-            })?;
-        let url = url.auto();
-        urls.set_element(env, i, &url)
-            .map_err(|error| jvm_err(format!("set jar URL[{i}]: {error}")))?;
-    }
-    env.new_object(
-        jni_str!("java/net/URLClassLoader"),
-        jni_sig!("([Ljava/net/URL;)V"),
-        &[JValue::Object(&urls)],
-    )
-    .map_err(|e| jvm_err(format!("URLClassLoader: {e}")))
-}
-
-#[cfg(target_os = "android")]
-fn create_class_loader<'a>(env: &mut Env<'a>, jars: &[PathBuf]) -> Result<JObject<'a>> {
-    for jar in jars {
-        let mut archive = zip::ZipArchive::new(std::fs::File::open(jar)?)?;
-        archive.by_name("classes.dex").map_err(|error| {
-            jvm_err(format!(
-                "Android patch jar {} has no classes.dex: {error}",
-                jar.display()
-            ))
-        })?;
-    }
-    let parent = super::android_host::configured_class_loader(env)?;
-    let dex_paths = jars
-        .iter()
-        .map(|jar| {
-            jar.to_str()
-                .ok_or_else(|| jvm_err(format!("jar path is not Unicode: {}", jar.display())))
-        })
-        .collect::<Result<Vec<_>>>()?
-        .join(":");
-    let optimized_dir = jars
-        .first()
-        .and_then(|jar| jar.parent())
-        .map(|dir| dir.join("dex-cache"))
-        .ok_or_else(|| jvm_err("no patch jars available for Android DexClassLoader"))?;
-    std::fs::create_dir_all(&optimized_dir).map_err(|e| {
-        jvm_err(format!(
-            "create DexClassLoader optimized directory {}: {e}",
-            optimized_dir.display()
-        ))
-    })?;
-    let dex_path = env
-        .new_string(dex_paths)
-        .map_err(|e| jvm_err(format!("DexClassLoader dexPath: {e}")))?;
-    let optimized_path = env
-        .new_string(
-            optimized_dir
-                .to_str()
-                .ok_or_else(|| jvm_err("DexClassLoader optimized directory is not Unicode"))?,
-        )
-        .map_err(|e| jvm_err(format!("DexClassLoader optimizedDirectory: {e}")))?;
-    env.new_object(
-        jni_str!("dalvik/system/DexClassLoader"),
-        jni_sig!(
-            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/ClassLoader;)V"
-        ),
-        &[
-            JValue::Object(&dex_path),
-            JValue::Object(&optimized_path),
-            JValue::Object(&JObject::null()),
-            JValue::Object(&parent),
-        ],
-    )
-    .map_err(|e| jvm_err(format!("DexClassLoader: {e}")))
 }

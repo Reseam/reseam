@@ -24,7 +24,6 @@ use crate::patch::{Patch, PatchSpec};
 
 pub use archive::BundleArchive;
 pub use key::BundleKey;
-pub(crate) use pack::copy_hashed;
 pub use pack::pack;
 
 pub const BUNDLE_MIMETYPE: &str = "application/vnd.reseam.bundle";

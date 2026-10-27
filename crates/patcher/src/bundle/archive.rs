@@ -12,13 +12,13 @@ use reseam_storage::ScratchDir;
 use tracing::info;
 use zip::ZipArchive;
 
-use super::copy_hashed;
 use super::{
     BUNDLE_MIMETYPE, BundleInfo, BundleManifest, CONTROL_ENTRIES, ManifestHeader, PatchBundle,
     PayloadKind, bundle_error, check_engine, check_info, payload_kind,
 };
 use crate::error::Result;
 use crate::patch::PatchSpec;
+use reseam_storage::copy_hashed;
 
 /// A bundle whose manifest signature and format version have been checked.
 /// Payload hashes are checked when the payload is read by [`Self::load`].

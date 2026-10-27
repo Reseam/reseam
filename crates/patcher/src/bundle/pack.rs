@@ -3,12 +3,11 @@
 
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::{Read, Seek, Write};
+use std::io::{Seek, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use reseam_storage::ScratchDir;
-use sha2::{Digest, Sha256};
+use reseam_storage::{ScratchDir, copy_hashed};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
@@ -221,18 +220,4 @@ fn resource_paths(dir: &Path, prefix: &str, paths: &mut BTreeMap<String, PathBuf
         }
     }
     Ok(())
-}
-
-pub(crate) fn copy_hashed(reader: &mut impl Read, writer: &mut impl Write) -> Result<[u8; 32]> {
-    let mut hash = Sha256::new();
-    let mut buffer = [0u8; 16 * 1024];
-    loop {
-        let size = reader.read(&mut buffer)?;
-        if size == 0 {
-            break;
-        }
-        writer.write_all(&buffer[..size])?;
-        hash.update(&buffer[..size]);
-    }
-    Ok(hash.finalize().into())
 }

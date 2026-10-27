@@ -10,7 +10,7 @@ use reseam_journal::Savepoint;
 use reseam_storage::ScratchDir;
 use serde::{Deserialize, Serialize};
 
-use super::phase::{ContextGuard, RunningBundle};
+use super::phase::{ContextGuard, LoadedBundle};
 use super::savepoints::SavepointAction;
 use crate::bundle::BundleInfo;
 use crate::bundle::index::Declaration;
@@ -35,17 +35,9 @@ enum Request<'a> {
     },
     Savepoint {
         handle: u32,
-        action: Action,
+        action: SavepointAction,
         savepoint: u32,
     },
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "snake_case")]
-enum Action {
-    Open,
-    Release,
-    Rollback,
 }
 
 thread_local! {
@@ -58,11 +50,7 @@ pub(super) fn savepoint(action: SavepointAction, savepoint: Savepoint) -> Result
     for handle in LOADERS.with(|loaders| loaders.borrow().clone()) {
         call(&Request::Savepoint {
             handle,
-            action: match action {
-                SavepointAction::Open => Action::Open,
-                SavepointAction::Release => Action::Release,
-                SavepointAction::Rollback => Action::Rollback,
-            },
+            action,
             savepoint: savepoint.id(),
         })?;
     }
@@ -90,10 +78,7 @@ struct LoadedPatch {
 
 struct Loader {
     handle: u32,
-    name: String,
-    version: String,
-    license: String,
-    directory: Arc<ScratchDir>,
+    bundle: LoadedBundle,
 }
 
 impl Drop for Loader {
@@ -125,10 +110,7 @@ pub(crate) fn load_patches(
     LOADERS.with(|loaders| loaders.borrow_mut().push(loaded.handle));
     let loader = Arc::new(Loader {
         handle: loaded.handle,
-        name: bundle.name.clone(),
-        version: bundle.version.clone(),
-        license: bundle.license.clone(),
-        directory,
+        bundle: LoadedBundle::new(bundle, directory),
     });
     Ok(loaded
         .patches
@@ -146,15 +128,7 @@ pub(crate) fn load_patches(
                         )));
                     }
                 };
-                let guard = ContextGuard::enter(
-                    context,
-                    RunningBundle {
-                        name: loader.name.clone(),
-                        version: loader.version.clone(),
-                        license: loader.license.clone(),
-                        directory: loader.directory.path().to_path_buf(),
-                    },
-                )?;
+                let guard = ContextGuard::enter(context, loader.bundle.running())?;
                 let result = call(&Request::Invoke {
                     handle: loader.handle,
                     patch: &reference,

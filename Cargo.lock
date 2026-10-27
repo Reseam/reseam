@@ -2000,6 +2000,7 @@ version = "0.32.0"
 dependencies = [
  "libc",
  "memmap2",
+ "sha2",
  "tempfile",
  "windows-sys 0.61.2",
 ]

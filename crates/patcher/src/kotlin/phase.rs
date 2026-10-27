@@ -6,9 +6,16 @@
 
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
+#[cfg(any(feature = "kotlin", feature = "browser"))]
+use std::sync::Arc;
+
+#[cfg(any(feature = "kotlin", feature = "browser"))]
+use reseam_storage::ScratchDir;
 
 use super::run_state::{checked, clear_failure, record_failure, take_failure};
 use super::xml;
+#[cfg(any(feature = "kotlin", feature = "browser"))]
+use crate::bundle::BundleInfo;
 use crate::context::PatchContext;
 use crate::error::{PatcherError, Result as PatcherResult};
 use crate::log::PatchLog;
@@ -27,6 +34,36 @@ pub(crate) struct RunningBundle {
     pub(crate) version: String,
     pub(crate) license: String,
     pub(crate) directory: PathBuf,
+}
+
+/// A loaded bundle's identity and extracted files, held by its patches.
+#[cfg(any(feature = "kotlin", feature = "browser"))]
+pub(crate) struct LoadedBundle {
+    name: String,
+    version: String,
+    license: String,
+    directory: Arc<ScratchDir>,
+}
+
+#[cfg(any(feature = "kotlin", feature = "browser"))]
+impl LoadedBundle {
+    pub(crate) fn new(info: &BundleInfo, directory: Arc<ScratchDir>) -> Self {
+        Self {
+            name: info.name.clone(),
+            version: info.version.clone(),
+            license: info.license.clone(),
+            directory,
+        }
+    }
+
+    pub(crate) fn running(&self) -> RunningBundle {
+        RunningBundle {
+            name: self.name.clone(),
+            version: self.version.clone(),
+            license: self.license.clone(),
+            directory: self.directory.path().to_path_buf(),
+        }
+    }
 }
 
 #[cfg(test)]

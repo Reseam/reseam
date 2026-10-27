@@ -37,7 +37,7 @@ impl KotlinCallback {
     }
 
     fn invoke_with_context(&self, ctx: &mut PatchContext<'_>, method: &str) -> Result<()> {
-        let guard = ContextGuard::enter(ctx, self.loader.running())?;
+        let guard = ContextGuard::enter(ctx, self.loader.bundle.running())?;
         let outcome = jvm::get_or_init()?.attach_current_thread(|env| {
             jvm::with_frame(env, |env| {
                 call_with_runtime(env, self.object.as_ref(), self.loader.reference(), method)
@@ -48,7 +48,7 @@ impl KotlinCallback {
     }
 
     fn invoke_with_output(&self, ctx: &mut OutputContext<'_>) -> Result<()> {
-        let guard = OutputGuard::enter(ctx, self.loader.running())?;
+        let guard = OutputGuard::enter(ctx, self.loader.bundle.running())?;
         let outcome = jvm::get_or_init()?.attach_current_thread(|env| {
             jvm::with_frame(env, |env| {
                 let class = load_class(
@@ -115,11 +115,7 @@ fn call_phase(
         jni_sig!("(Lapp/reseam/patch/ReseamPatch;)V"),
         &[JValue::Object(patch)],
     );
-    match (call, jvm::take_pending_exception(env)?) {
-        (_, Some(exception)) => Err(jvm_err(format!("{method}({class}): {exception}"))),
-        (Err(e), None) => Err(jvm_err(format!("{method}({class}): {e}"))),
-        (Ok(_), None) => Ok(()),
-    }
+    jvm::outcome(env, call, &format!("{method}({class})")).map(drop)
 }
 
 /// Tells the run's patch runtime about `savepoint`. Before a patch creates the
@@ -152,11 +148,7 @@ fn call_savepoint(
         jni_sig!("(I)V"),
         &[JValue::Int(savepoint.id() as i32)],
     );
-    match (call, jvm::take_pending_exception(env)?) {
-        (_, Some(exception)) => Err(jvm_err(format!("PatchRun savepoint: {exception}"))),
-        (Err(e), None) => Err(jvm_err(format!("PatchRun savepoint: {e}"))),
-        (Ok(_), None) => Ok(()),
-    }
+    jvm::outcome(env, call, "PatchRun savepoint").map(drop)
 }
 
 pub(super) fn load_class<'a>(
