@@ -29,12 +29,15 @@ pub(super) fn prepare_flag_frame(
         None
     } else {
         let types = super::super::registers::incoming_types(dex, method, previous);
-        let mut mapping = super::super::mutation::edit_mapping(logged(
-            "grow receiver frame",
-            reseam_dex::grow_registers(code, growth, &types, &[], dex),
-        )?)?;
-        mapping.register_shift = growth;
-        Some(mapping)
+        let base = code.registers_size() - code.ins_size();
+        Some(super::super::mutation::growth_mapping(
+            base,
+            growth,
+            logged(
+                "grow receiver frame",
+                reseam_dex::grow_registers(code, growth, &types, &[], dex),
+            )?,
+        )?)
     };
     logged(
         "change method frame",

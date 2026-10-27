@@ -3,12 +3,11 @@
 
 use std::sync::Arc;
 
-use crate::bridge::run_state::record_failure;
 use boltffi::export;
 use reseam_dex::{self as dex, AccessFlags};
 
 use crate::bridge::dex::types::{MethodEdit, RegisterWriters};
-use crate::bridge::handles::{with_code, with_instruction, with_method_mut};
+use crate::bridge::handles::{with_code, with_method_mut};
 use crate::context::{code_mut, method_mut};
 
 use super::logged;
@@ -71,6 +70,7 @@ pub fn grow_local_registers(
             .map(Arc::unwrap_or_clone)
             .ok_or_else(|| format!("method handle {m} has no code"))?;
         let incoming = incoming_types(dex, id, flags);
+        let base = code.registers_size() - code.ins_size();
         let indices = logged(
             "grow method registers",
             dex::grow_registers(&mut code, additional_locals, &incoming, &protected, dex),
@@ -78,9 +78,7 @@ pub fn grow_local_registers(
         logged("restore method code", method_mut(dex, loc))?
             .expect("frame growth leaves the method slot in place")
             .code = Some(Arc::new(code));
-        let mut mapping = super::mutation::edit_mapping(indices?)?;
-        mapping.register_shift = additional_locals;
-        Ok(Some(mapping))
+        super::mutation::growth_mapping(base, additional_locals, indices?).map(Some)
     });
     crate::bridge::run_state::check_call()?;
     outcome.ok_or_else(|| format!("method handle {m} could not grow"))
@@ -94,27 +92,6 @@ pub fn find_free_register(m: u32, at_index: u32, exclude: Vec<u16>) -> Option<u1
 }
 
 #[export]
-pub fn find_free_registers(m: u32, at_index: u32, count: u32, exclude: Vec<u16>) -> Vec<u16> {
-    with_code(m, |_, code| {
-        dex::find_free_registers(code, at_index as usize, count as usize, &exclude)
-    })
-    .unwrap_or_default()
-}
-
-#[export]
-pub fn find_contiguous_free_registers(
-    m: u32,
-    at_index: u32,
-    count: u32,
-    exclude: Vec<u16>,
-) -> Vec<u16> {
-    with_code(m, |_, code| {
-        dex::find_contiguous_free_registers(code, at_index as usize, count as usize, &exclude)
-    })
-    .unwrap_or_default()
-}
-
-#[export]
 pub fn register_writers(m: u32, index: u32, register: u16) -> Option<RegisterWriters> {
     with_code(m, |_, code| {
         let (indices, from_entry) = dex::reaching_definitions(code, index as usize, register)?;
@@ -122,26 +99,5 @@ pub fn register_writers(m: u32, index: u32, register: u16) -> Option<RegisterWri
             indices: indices.into_iter().map(|index| index as u32).collect(),
             from_entry,
         })
-    })
-}
-
-#[export]
-pub fn instruction_register(m: u32, index: u32, position: u32) -> u16 {
-    with_instruction(m, index, |_, instruction| {
-        instruction.registers_used().get(position as usize).copied()
-    })
-    .unwrap_or_else(|| {
-        record_failure(format!(
-            "method {m} instruction {index} has no register operand {position}"
-        ));
-        0
-    })
-}
-
-#[export]
-pub fn instruction_wide_literal(m: u32, index: u32) -> i64 {
-    with_instruction(m, index, |_, instruction| instruction.literal()).unwrap_or_else(|| {
-        record_failure(format!("method {m} instruction {index} has no literal"));
-        0
     })
 }

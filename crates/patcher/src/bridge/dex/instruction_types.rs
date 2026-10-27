@@ -231,16 +231,12 @@ pub enum Instruction {
     Raw(Vec<u8>),
 }
 
-#[data]
-#[derive(Debug, Clone)]
-pub struct ScratchSpan {
-    pub instruction_index: u32,
-    pub registers: Vec<u16>,
-}
-
+/// How an edit moved a method's code: where each original instruction went and, when the frame
+/// grew, by how many registers it moved those at or above `register_base`.
 #[data]
 #[derive(Debug, Clone)]
 pub struct MethodEdit {
+    pub register_base: u16,
     pub register_shift: u16,
     pub starts: Vec<u32>,
     pub instructions: Vec<u32>,
@@ -275,4 +271,72 @@ impl Instruction {
             _ => return None,
         })
     }
+}
+
+/// Where an operand of emitted code lives.
+#[data]
+#[derive(Debug, Clone, Copy)]
+pub enum CodeRegister {
+    /// A value the code computes, in a register the engine chooses.
+    Temporary(u32),
+    /// A register of the method as it is now.
+    Fixed(u16),
+    /// The incoming register word at this offset, as the method was entered.
+    Parameter(u16),
+    /// The value the return the code runs before returns.
+    Returned,
+}
+
+#[data]
+#[derive(Debug, Clone)]
+pub struct CodeOperand {
+    pub register: CodeRegister,
+    pub type_descriptor: String,
+}
+
+/// An instruction of emitted code. Its own registers are placeholders: its register operands,
+/// in encoding order, are `operands`, and a call's are its arguments. A branch goes to the
+/// label `target`.
+#[data]
+#[derive(Debug, Clone)]
+pub struct CodeInstruction {
+    pub template: Instruction,
+    pub operands: Vec<CodeOperand>,
+    #[boltffi::default(None)]
+    pub target: Option<u32>,
+}
+
+#[data]
+#[derive(Debug, Clone)]
+#[cfg_attr(
+    target_pointer_width = "64",
+    expect(
+        clippy::large_enum_variant,
+        reason = "BoltFFI cannot carry a boxed payload across the bridge"
+    )
+)]
+pub enum CodeStep {
+    Label(u32),
+    Instruction(CodeInstruction),
+}
+
+/// Where emitted code goes in its method.
+#[data]
+#[derive(Debug, Clone, Copy)]
+pub enum CodePlacement {
+    /// Before the instruction at this index; branches to it skip the code.
+    Before(u32),
+    /// Before the instruction at this index, on every path to it.
+    OnEveryPath(u32),
+    /// Before each return, reading parameters as the method was entered.
+    BeforeReturns,
+    /// As the whole body.
+    Body,
+}
+
+#[data]
+#[derive(Debug, Clone)]
+pub enum CodeEdit {
+    Grow(MethodEdit),
+    Insert(MethodEdit),
 }

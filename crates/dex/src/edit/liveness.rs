@@ -9,49 +9,12 @@ use crate::model::code::CodeItem;
 /// The lowest register no live value occupies before instruction `at_index`,
 /// other than those in `exclude`.
 pub fn find_free_register(code: &CodeItem, at_index: usize, exclude: &[u16]) -> Option<u16> {
-    free_registers(code, at_index, exclude).next()
-}
-
-/// The `count` lowest free registers before instruction `at_index`.
-pub fn find_free_registers(
-    code: &CodeItem,
-    at_index: usize,
-    count: usize,
-    exclude: &[u16],
-) -> Option<Vec<u16>> {
-    let free: Vec<u16> = free_registers(code, at_index, exclude)
-        .take(count)
-        .collect();
-    (free.len() == count).then_some(free)
-}
-
-/// The lowest run of `count` consecutive free registers before instruction `at_index`.
-pub fn find_contiguous_free_registers(
-    code: &CodeItem,
-    at_index: usize,
-    count: usize,
-    exclude: &[u16],
-) -> Option<Vec<u16>> {
-    let mut run: Vec<u16> = Vec::with_capacity(count);
-    for register in free_registers(code, at_index, exclude) {
-        if run.len() == count {
-            break;
-        }
-        if run.last().is_some_and(|&last| last + 1 != register) {
-            run.clear();
-        }
-        run.push(register);
-    }
-    (run.len() == count).then_some(run)
-}
-
-fn free_registers(code: &CodeItem, at_index: usize, exclude: &[u16]) -> impl Iterator<Item = u16> {
     let liveness = RegisterLiveness::new(code);
     let excluded: FixedBitSet = exclude
         .iter()
         .map(|&register| usize::from(register))
         .collect();
-    (0..code.registers_size).filter(move |&register| {
+    (0..code.registers_size).find(|&register| {
         !liveness.is_live(at_index, register) && !excluded.contains(usize::from(register))
     })
 }

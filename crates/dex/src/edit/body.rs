@@ -8,13 +8,13 @@ use crate::error::{Result, invalid};
 use crate::instruction::Instruction;
 use crate::model::code::CodeItem;
 
-/// The value a body replaced by [`CodeItem::return_early`] returns.
+/// Where a branch to an instruction goes once code is inserted before it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EarlyReturn {
-    Void,
-    Int(i32),
-    Null,
-    Wide(i64),
+pub enum IncomingBranches {
+    /// Past the inserted code, to the instruction, as before the insertion.
+    Skip,
+    /// Into the inserted code, which then runs on every path to the instruction.
+    Enter,
 }
 
 impl CodeItem {
@@ -83,6 +83,15 @@ impl CodeItem {
         index: usize,
         insns: &[Instruction],
     ) -> Result<InstructionMap> {
+        self.insert(index, insns, IncomingBranches::Skip)
+    }
+
+    pub(super) fn insert(
+        &mut self,
+        index: usize,
+        insns: &[Instruction],
+        branches: IncomingBranches,
+    ) -> Result<InstructionMap> {
         self.ensure_index(index, self.instructions.len() + 1)?;
         let mut inserted = insns.to_vec();
         if insns.iter().map(Instruction::code_units).sum::<u32>() % 2 != 0
@@ -93,7 +102,10 @@ impl CodeItem {
         let mut entries = self.rewrite_entries();
         let tail = if let Some(entry) = entries.get_mut(index) {
             entry.before = inserted;
-            entry.target = BoundaryTarget::Body;
+            entry.target = match branches {
+                IncomingBranches::Skip => BoundaryTarget::Body,
+                IncomingBranches::Enter => BoundaryTarget::Prefix,
+            };
             Vec::new()
         } else {
             inserted
@@ -132,37 +144,6 @@ impl CodeItem {
         self.catch_handlers.clear();
         self.debug_info = None;
         self.outs_size = self.compute_outs_size();
-    }
-
-    /// Replaces the body with an immediate return of `value`, staged in v0.
-    pub fn return_early(&mut self, value: EarlyReturn) {
-        let (body, words) = match value {
-            EarlyReturn::Void => (vec![Instruction::ReturnVoid], 0),
-            EarlyReturn::Int(value) => (
-                vec![
-                    Instruction::Const { dest: 0, value },
-                    Instruction::Return { src: 0 },
-                ],
-                1,
-            ),
-            EarlyReturn::Null => (
-                vec![
-                    Instruction::Const { dest: 0, value: 0 },
-                    Instruction::ReturnObject { src: 0 },
-                ],
-                1,
-            ),
-            EarlyReturn::Wide(value) => (
-                vec![
-                    Instruction::ConstWide { dest: 0, value },
-                    Instruction::ReturnWide { src: 0 },
-                ],
-                2,
-            ),
-        };
-        self.set_instructions(body);
-        self.registers_size = self.ins_size.max(words);
-        self.outs_size = 0;
     }
 
     fn ensure_index(&self, index: usize, bound: usize) -> Result<()> {

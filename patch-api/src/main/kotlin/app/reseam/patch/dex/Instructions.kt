@@ -66,26 +66,4 @@ val Instruction.typeRef: String?
         }
 
 val Instruction.literal: Long?
-    get() {
-        val bits = (this as? Instruction.RegLiteral)?.field0?.literal ?: return null
-        return when (opcode) {
-            Opcode.CONST_HIGH16 -> bits.toInt().shl(16).toLong()
-            Opcode.CONST_WIDE_HIGH16 -> bits shl 48
-            else -> bits
-        }
-    }
-
-internal val Instruction.codeUnitSize: Int
-    get() =
-        when (this) {
-            is Instruction.PackedSwitchData -> 4 + 2 * field0.targets.size
-            is Instruction.SparseSwitchData -> 2 + 4 * field0.keys.size
-            is Instruction.FillArrayData -> 4 + (field0.data.size + 1) / 2
-            is Instruction.Raw -> {
-                require(field0.isNotEmpty() && field0.size % 2 == 0) {
-                    "raw instructions require complete code units"
-                }
-                field0.size / 2
-            }
-            else -> OpcodeWidths.units(opcodeValue)
-        }
+    get() = (this as? Instruction.RegLiteral)?.field0?.literal

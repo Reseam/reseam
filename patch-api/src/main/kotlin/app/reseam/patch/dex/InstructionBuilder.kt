@@ -23,14 +23,11 @@ import app.reseam.patch.types.SimpleInsn
 /**
  * Builds instructions named after their Dalvik mnemonics. Where Dalvik has several encodings of one
  * operation, the builder picks the one the operands need: by register width for moves and
- * constants, by type for field accesses, results and moves.
+ * constants, by type for field accesses, results and moves. A branch takes its displacement in code
+ * units; the engine widens one whose target it moves out of reach.
  */
 class InstructionBuilder {
     private val insns = mutableListOf<Instruction>()
-    private val labels = BranchLabels()
-
-    /** Marks the next instruction as the target of branches to [name]. */
-    fun label(name: String) = labels.mark(name, insns.size)
 
     fun add(insn: Instruction) {
         insns += insn
@@ -46,14 +43,7 @@ class InstructionBuilder {
 
     fun returnObject(reg: Int) = reg1(Opcode.RETURN_OBJECT, reg)
 
-    fun constInt(dest: Int, value: Int) {
-        val opcode = constIntOpcode(dest, value)
-        literal(
-            opcode,
-            dest,
-            if (opcode == Opcode.CONST_HIGH16) value.toLong() shr 16 else value.toLong(),
-        )
-    }
+    fun constInt(dest: Int, value: Int) = literal(constIntOpcode(dest, value), dest, value.toLong())
 
     fun constLong(dest: Int, value: Long) = literal(constLongOpcode(value), dest, value)
 
@@ -140,35 +130,32 @@ class InstructionBuilder {
     fun instanceOf(dest: Int, ref: Int, descriptor: String) =
         type(Opcode.INSTANCE_OF, dest, ref, descriptor)
 
-    /** A `goto` the engine widens when its label is out of an 8-bit offset's reach. */
-    fun goto(label: String) =
-        branch(label) { offset ->
-            Instruction.Branch0(Branch0Insn(Opcode.GOTO.value.toUShort(), offset))
-        }
+    fun goto(offset: Int) =
+        add(Instruction.Branch0(Branch0Insn(Opcode.GOTO.value.toUShort(), offset)))
 
-    fun ifEqz(reg: Int, label: String) = branch1(Opcode.IF_EQZ, reg, label)
+    fun ifEqz(reg: Int, offset: Int) = branch1(Opcode.IF_EQZ, reg, offset)
 
-    fun ifNez(reg: Int, label: String) = branch1(Opcode.IF_NEZ, reg, label)
+    fun ifNez(reg: Int, offset: Int) = branch1(Opcode.IF_NEZ, reg, offset)
 
-    fun ifLtz(reg: Int, label: String) = branch1(Opcode.IF_LTZ, reg, label)
+    fun ifLtz(reg: Int, offset: Int) = branch1(Opcode.IF_LTZ, reg, offset)
 
-    fun ifGez(reg: Int, label: String) = branch1(Opcode.IF_GEZ, reg, label)
+    fun ifGez(reg: Int, offset: Int) = branch1(Opcode.IF_GEZ, reg, offset)
 
-    fun ifGtz(reg: Int, label: String) = branch1(Opcode.IF_GTZ, reg, label)
+    fun ifGtz(reg: Int, offset: Int) = branch1(Opcode.IF_GTZ, reg, offset)
 
-    fun ifLez(reg: Int, label: String) = branch1(Opcode.IF_LEZ, reg, label)
+    fun ifLez(reg: Int, offset: Int) = branch1(Opcode.IF_LEZ, reg, offset)
 
-    fun ifEq(regA: Int, regB: Int, label: String) = branch2(Opcode.IF_EQ, regA, regB, label)
+    fun ifEq(regA: Int, regB: Int, offset: Int) = branch2(Opcode.IF_EQ, regA, regB, offset)
 
-    fun ifNe(regA: Int, regB: Int, label: String) = branch2(Opcode.IF_NE, regA, regB, label)
+    fun ifNe(regA: Int, regB: Int, offset: Int) = branch2(Opcode.IF_NE, regA, regB, offset)
 
-    fun ifLt(regA: Int, regB: Int, label: String) = branch2(Opcode.IF_LT, regA, regB, label)
+    fun ifLt(regA: Int, regB: Int, offset: Int) = branch2(Opcode.IF_LT, regA, regB, offset)
 
-    fun ifGe(regA: Int, regB: Int, label: String) = branch2(Opcode.IF_GE, regA, regB, label)
+    fun ifGe(regA: Int, regB: Int, offset: Int) = branch2(Opcode.IF_GE, regA, regB, offset)
 
-    fun ifGt(regA: Int, regB: Int, label: String) = branch2(Opcode.IF_GT, regA, regB, label)
+    fun ifGt(regA: Int, regB: Int, offset: Int) = branch2(Opcode.IF_GT, regA, regB, offset)
 
-    fun ifLe(regA: Int, regB: Int, label: String) = branch2(Opcode.IF_LE, regA, regB, label)
+    fun ifLe(regA: Int, regB: Int, offset: Int) = branch2(Opcode.IF_LE, regA, regB, offset)
 
     fun throwValue(reg: Int) = reg1(Opcode.THROW, reg)
 
@@ -226,27 +213,17 @@ class InstructionBuilder {
             )
         )
 
-    fun build(): List<Instruction> {
-        labels.resolve(insns)
-        return insns.toList()
-    }
+    fun build(): List<Instruction> = insns.toList()
 
-    private fun branch(label: String, encode: (offset: Int) -> Instruction) {
-        labels.branch(insns.size, label, encode)
-        insns += encode(0)
-    }
+    private fun branch1(opcode: Opcode, reg: Int, offset: Int) =
+        add(Instruction.Branch(BranchInsn(opcode.value.toUShort(), reg.toUShort(), offset)))
 
-    private fun branch1(opcode: Opcode, reg: Int, label: String) =
-        branch(label) { offset ->
-            Instruction.Branch(BranchInsn(opcode.value.toUShort(), reg.toUShort(), offset))
-        }
-
-    private fun branch2(opcode: Opcode, regA: Int, regB: Int, label: String) =
-        branch(label) { offset ->
+    private fun branch2(opcode: Opcode, regA: Int, regB: Int, offset: Int) =
+        add(
             Instruction.Branch2(
                 Branch2Insn(opcode.value.toUShort(), regA.toUShort(), regB.toUShort(), offset)
             )
-        }
+        )
 }
 
 fun buildInstructions(block: InstructionBuilder.() -> Unit): List<Instruction> =

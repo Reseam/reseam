@@ -5,76 +5,78 @@ package app.reseam.patch.emit
 
 import app.reseam.patch.Capture
 import app.reseam.patch.dex.AccessFlags
+import app.reseam.patch.dex.InstructionBuilder
 import app.reseam.patch.dex.Method
+import app.reseam.patch.dex.buildInstructions
 import app.reseam.patch.dex.isSet
-import app.reseam.patch.dex.parameterTypes
-import app.reseam.patch.dex.registerWordCount
-import app.reseam.patch.method
-import app.reseam.patch.run.ActiveRuntime
+import app.reseam.patch.dex.opcode
+import app.reseam.patch.types.CodeInstruction
+import app.reseam.patch.types.CodePlacement
+import app.reseam.patch.types.CodeRegister
+import app.reseam.patch.types.CodeStep
+import app.reseam.patch.types.FieldRef
+import app.reseam.patch.types.Instruction
 
-internal class CodeEmitter
-private constructor(
+@JvmInline internal value class Label(val id: UInt)
+
+/**
+ * The code a patch writes in a block, recorded over temporaries for the engine to place at
+ * [placement]: the engine chooses their registers and the encodings that reach them.
+ */
+internal class CodeEmitter(
     internal val method: Method,
-    internal val insertIndex: Int?,
-    internal val mode: EmissionMode,
+    internal val placement: CodePlacement,
     internal val captures: List<Capture>,
-    internal val returned: Capture? = null,
-    internal val entrySnapshots: MutableMap<Int, EntrySnapshot>? = null,
 ) {
-    internal val ops = mutableListOf<Op>()
-    internal val usedRegisters = mutableSetOf<Int>()
-    internal var nextTempId = 0
-    internal var plannedLocalGrowth = 0
-    internal var replacementLocals = MIN_REPLACEMENT_LOCALS
-    internal var maxOutRegisters = 0
-    internal var labelCounter = 0
-    internal val tempAllocations = mutableMapOf<TemporaryId, TempAllocation>()
-    internal val entryValues = mutableMapOf<Int, Value>()
-    internal val invokes = mutableListOf<InvokeAllocation>()
-    internal val lowCopies = mutableMapOf<Register, Value>()
-
-    companion object {
-        fun forInsertion(
-            method: Method,
-            index: Int,
-            captures: List<Capture>,
-            returned: Capture? = null,
-            entrySnapshots: MutableMap<Int, EntrySnapshot>? = null,
-        ) =
-            CodeEmitter(
-                method,
-                index,
-                mode = EmissionMode.INSERTION,
-                captures = captures,
-                returned = returned,
-                entrySnapshots = entrySnapshots,
-            )
-
-        fun forReplacement(method: Method) =
-            CodeEmitter(
-                method,
-                insertIndex = null,
-                mode = EmissionMode.REPLACEMENT,
-                captures = emptyList(),
-            )
-    }
+    internal val steps = mutableListOf<CodeStep>()
+    private var temporaries = 0u
+    private var labels = 0u
 
     internal val info = method.info
     internal val access = Access(info.classDescriptor)
-    internal val reservedLocals =
-        if (mode == EmissionMode.REPLACEMENT) emptyList()
-        else ActiveRuntime.current.edits.reserved(method)
     internal val isStaticMethod = AccessFlags.STATIC.isSet(info.accessFlags)
-    internal val incomingWords =
-        if (mode == EmissionMode.REPLACEMENT)
-            method.parameterTypes.sumOf(::registerWordCount) + if (isStaticMethod) 0 else 1
-        else method.insSize
-    internal val originalRegistersSize =
-        if (mode == EmissionMode.REPLACEMENT) MIN_REPLACEMENT_LOCALS + incomingWords
-        else method.registersSize
-    internal val incomingBase =
-        if (mode == EmissionMode.REPLACEMENT) MIN_REPLACEMENT_LOCALS
-        else method.registersSize - incomingWords
 
     val code = EmittedCode(this)
+
+    fun temporary(
+        type: String,
+        source: FieldRef? = null,
+        assignableType: ValueType = ValueType.Known(type),
+    ): Value = Value(this, CodeRegister.Temporary(temporaries++), type, source, assignableType)
+
+    /** The incoming register word at [offset], holding a value of [type]. */
+    fun parameter(offset: Int, type: String): Value =
+        Value(this, CodeRegister.Parameter(offset.toUShort()), type)
+
+    fun fixed(register: Int, type: String): Value =
+        Value(this, CodeRegister.Fixed(register.toUShort()), type)
+
+    fun label(): Label = Label(labels++)
+
+    /**
+     * Records [template], an instruction whose registers are placeholders for [operands] in
+     * encoding order, or for its arguments when it is a call. A branch goes to [target].
+     */
+    fun emit(template: Instruction, vararg operands: Value, target: Label? = null) =
+        emitAt(steps.size, template, *operands, target = target)
+
+    fun emitAt(index: Int, template: Instruction, vararg operands: Value, target: Label? = null) {
+        steps.add(
+            index,
+            CodeStep.Instruction(
+                CodeInstruction(template, operands.map { it.operand }, target?.id)
+            ),
+        )
+    }
+
+    fun place(label: Label) {
+        steps += CodeStep.Label(label.id)
+    }
 }
+
+/** The one instruction [build] writes, as a template whose registers [CodeEmitter.emit] fills. */
+internal fun template(build: InstructionBuilder.() -> Unit): Instruction =
+    buildInstructions(build).single()
+
+internal val CodeStep.fallsThrough: Boolean
+    get() = this !is CodeStep.Instruction || field0.template.opcode?.endsFlow != true

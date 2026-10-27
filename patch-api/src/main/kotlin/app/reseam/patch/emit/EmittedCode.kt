@@ -18,7 +18,10 @@ import app.reseam.patch.dex.descriptor
 import app.reseam.patch.dex.isStatic
 import app.reseam.patch.dex.parameterTypes
 import app.reseam.patch.dex.registerWordCount
+import app.reseam.patch.dex.returnType
 import app.reseam.patch.method
+import app.reseam.patch.types.CodePlacement
+import app.reseam.patch.types.CodeRegister
 import app.reseam.patch.types.FieldRef
 import app.reseam.patch.types.MethodRef
 
@@ -30,7 +33,7 @@ internal class EmittedCode(val emitter: CodeEmitter) : CodeScope {
                 require(!isStaticMethod) {
                     "thisObject is not available in static ${info.descriptor}"
                 }
-                incomingValue(0, info.classDescriptor)
+                parameter(0, info.classDescriptor)
             }
 
     override fun param(index: Int): ValueRef =
@@ -41,7 +44,7 @@ internal class EmittedCode(val emitter: CodeEmitter) : CodeScope {
             }
             val offset =
                 (if (isStaticMethod) 0 else 1) + params.take(index).sumOf(::registerWordCount)
-            incomingValue(offset, params[index])
+            parameter(offset, params[index])
         }
 
     override fun paramOfType(type: String): ValueRef =
@@ -58,12 +61,10 @@ internal class EmittedCode(val emitter: CodeEmitter) : CodeScope {
     override val result: ValueRef
         get() =
             with(emitter) {
-                val capture =
-                    returned
-                        ?: error(
-                            "result exists only in a method-level after hook of a non-void method, not in ${info.descriptor}"
-                        )
-                Value(this, capture.register, capture.type)
+                require(placement == CodePlacement.BeforeReturns && info.returnType != Type.Void) {
+                    "result exists only in a method-level after hook of a non-void method, not in ${info.descriptor}"
+                }
+                Value(this, CodeRegister.Returned, info.returnType)
             }
 
     override fun capture(name: String): ValueRef =
@@ -73,12 +74,12 @@ internal class EmittedCode(val emitter: CodeEmitter) : CodeScope {
                     ?: error(
                         "No capture named '$name' here; available: ${captures.joinToString { it.name }.ifEmpty { "none" }}"
                     )
-            Value(this, capture.register, capture.type)
+            fixed(capture.register, capture.type)
         }
 
     override fun local(slot: MethodLocal): ValueRef =
         with(emitter) {
-            require(mode != EmissionMode.REPLACEMENT) {
+            require(placement != CodePlacement.Body) {
                 "$slot is a register of the original body, which this block replaces"
             }
             require(!slot.lost) {
@@ -87,35 +88,31 @@ internal class EmittedCode(val emitter: CodeEmitter) : CodeScope {
             require(slot.method.handle == method.handle) {
                 "$slot is a local of another method, not ${info.descriptor}"
             }
-            Value(this, slot.register, slot.type)
+            fixed(slot.register, slot.type)
         }
 
     override fun int(value: Int): ValueRef {
         val type = if (value == 0) ValueType.Zero else ValueType.Known(Type.Int)
-        return constant(Type.Int, type) { b, dest -> b.constInt(dest, value) }
+        return constant(Type.Int, type) { constInt(0, value) }
     }
 
-    override fun long(value: Long): ValueRef =
-        constant(Type.Long) { b, dest -> b.constLong(dest, value) }
+    override fun long(value: Long): ValueRef = constant(Type.Long) { constLong(0, value) }
 
     override fun bool(value: Boolean): ValueRef =
-        constant(Type.Boolean) { b, dest -> b.constInt(dest, if (value) 1 else 0) }
+        constant(Type.Boolean) { constInt(0, if (value) 1 else 0) }
 
-    override fun string(value: String): ValueRef =
-        constant(Type.String) { b, dest -> b.constString(dest, value) }
+    override fun string(value: String): ValueRef = constant(Type.String) { constString(0, value) }
 
     override val nullObject: ValueRef
-        get() = constant(Type.Object, ValueType.Null) { b, dest -> b.constInt(dest, 0) }
+        get() = constant(Type.Object, ValueType.Null) { constInt(0, 0) }
 
     private fun constant(
         type: String,
         assignableType: ValueType = ValueType.Known(type),
-        load: (InstructionBuilder, dest: Int) -> Unit,
+        load: InstructionBuilder.() -> Unit,
     ): Value =
-        with(emitter) {
-            val dest = allocTemp(registerWordCount(type))
-            op(writes = listOf(dest)) { b, r -> load(b, byte(r(dest), "const")) }
-            Value(this, dest, type, assignableType = assignableType)
+        emitter.temporary(type, assignableType = assignableType).also {
+            emitter.emit(template(load), it)
         }
 
     override fun enumValue(type: String, name: String): ValueRef =

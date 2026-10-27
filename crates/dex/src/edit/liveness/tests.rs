@@ -5,9 +5,7 @@ use crate::TypeIdx;
 use crate::instruction::Instruction;
 use crate::model::code::CodeItem;
 
-use super::{
-    find_contiguous_free_registers, find_free_register, find_free_registers, reaching_definitions,
-};
+use super::{find_free_register, reaching_definitions};
 
 fn code(instructions: Vec<Instruction>, registers_size: u16) -> CodeItem {
     CodeItem {
@@ -29,8 +27,6 @@ fn free_register_queries_respect_live_values_and_exclusions() {
         at: usize,
         excluded: Vec<u16>,
         first: u16,
-        free: Vec<u16>,
-        contiguous: Vec<u16>,
     }
     for case in [
         Case {
@@ -47,8 +43,6 @@ fn free_register_queries_respect_live_values_and_exclusions() {
             at: 1,
             excluded: vec![],
             first: 1,
-            free: vec![1, 3],
-            contiguous: vec![3, 4],
         },
         Case {
             instructions: vec![
@@ -59,8 +53,6 @@ fn free_register_queries_respect_live_values_and_exclusions() {
             at: 1,
             excluded: vec![1],
             first: 2,
-            free: vec![2, 3],
-            contiguous: vec![2, 3],
         },
         Case {
             instructions: vec![
@@ -75,22 +67,12 @@ fn free_register_queries_respect_live_values_and_exclusions() {
             at: 0,
             excluded: vec![],
             first: 0,
-            free: vec![0, 3],
-            contiguous: vec![3, 4],
         },
     ] {
         let code = code(case.instructions, case.size);
         assert_eq!(
             find_free_register(&code, case.at, &case.excluded),
             Some(case.first)
-        );
-        assert_eq!(
-            find_free_registers(&code, case.at, 2, &case.excluded),
-            Some(case.free)
-        );
-        assert_eq!(
-            find_contiguous_free_registers(&code, case.at, 2, &case.excluded),
-            Some(case.contiguous)
         );
     }
 }
@@ -132,8 +114,6 @@ fn keeps_both_words_of_incoming_wide_values_live() {
     );
     code.ins_size = 4;
     assert_eq!(find_free_register(&code, 0, &[]), None);
-    assert_eq!(find_free_registers(&code, 0, 1, &[]), None);
-    assert_eq!(find_contiguous_free_registers(&code, 0, 1, &[]), None);
     assert_eq!(find_free_register(&code, 1, &[]), Some(0));
 }
 

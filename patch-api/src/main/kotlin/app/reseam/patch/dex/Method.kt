@@ -16,7 +16,6 @@ import app.reseam.patch.native.indexOfFirstMethodCall
 import app.reseam.patch.native.indexOfFirstReversed
 import app.reseam.patch.native.indexOfFirstString
 import app.reseam.patch.native.indexOfOpcodeSequence
-import app.reseam.patch.native.insertBeforeInstruction
 import app.reseam.patch.native.insertInstructions
 import app.reseam.patch.native.removeInstructions
 import app.reseam.patch.native.removeMethod
@@ -33,7 +32,6 @@ import app.reseam.patch.types.AnnotationItem
 import app.reseam.patch.types.Instruction
 import app.reseam.patch.types.MethodInfo
 import app.reseam.patch.types.MethodRef
-import app.reseam.patch.types.Occurrences
 
 /** A method in the app's bytecode, identified by an engine handle valid for the running patch. */
 @JvmInline
@@ -86,25 +84,19 @@ value class Method(val handle: UInt) {
         get() = info.dexIndex.toInt()
 
     fun replaceBody(registersSize: Int, outsSize: Int, insns: List<Instruction>) {
-        replaceBody(
-            handle,
-            registersSize.toUShort(),
-            outsSize.toUShort(),
-            lowerInvokesForBody(insns, registersSize),
-        )
+        replaceBody(handle, registersSize.toUShort(), outsSize.toUShort(), insns)
         edits?.bodyReplaced(handle)
     }
 
     fun insertInstructions(index: Int, insns: List<Instruction>) {
         require(index >= 0) { "instruction index must be nonnegative" }
-        val mapping = insertInstructions(handle, index.toUInt(), lowerInvokesAt(index, insns))
+        val mapping = insertInstructions(handle, index.toUInt(), insns)
         edits?.relocated(handle, mapping, EditKind.INSERT)
     }
 
     fun replaceInstruction(index: Int, insn: Instruction) {
         require(index >= 0) { "instruction index must be nonnegative" }
-        val lowered = lowerInvokesAt(index, listOf(insn))
-        val mapping = replaceInstruction(handle, index.toUInt(), lowered)
+        val mapping = replaceInstruction(handle, index.toUInt(), listOf(insn))
         edits?.relocated(handle, mapping, EditKind.REPLACE)
     }
 
@@ -114,11 +106,9 @@ value class Method(val handle: UInt) {
         edits?.relocated(handle, mapping, EditKind.REMOVE, index until index + count)
     }
 
-    fun replaceAllStrings(old: String, new: String): Int =
-        replaceStrings(handle, old, new, Occurrences.ALL).toInt()
+    fun replaceAllStrings(old: String, new: String): Int = replaceStrings(handle, old, new).toInt()
 
-    fun replaceAllLiterals(old: Long, new: Long): Int =
-        replaceLiterals(handle, old, new, Occurrences.ALL).toInt()
+    fun replaceAllLiterals(old: Long, new: Long): Int = replaceLiterals(handle, old, new).toInt()
 
     fun replaceMethodCall(index: Int, target: MethodRef): Boolean =
         replaceMethodCall(handle, index.toUInt(), target.definingClass, target.name, target.proto)
@@ -174,12 +164,6 @@ value class Method(val handle: UInt) {
 
     fun ensureOutsSize(minOutsSize: Int) = ensureOutsSize(handle, minOutsSize.toUShort())
 
-    internal fun insertOnEveryPath(index: Int, insns: List<Instruction>) {
-        val lowered = lowerInvokesAt(index, insns)
-        val mapping = insertBeforeInstruction(handle, index.toUInt(), lowered)
-        edits?.relocated(handle, mapping, EditKind.INSERT)
-    }
-
     fun findFreeRegister(atIndex: Int, exclude: List<Int> = emptyList()): Int =
         findFreeRegister(
                 handle,
@@ -189,12 +173,8 @@ value class Method(val handle: UInt) {
             ?.toInt() ?: error("No free register at $descriptor[$atIndex]")
 
     fun setAccessFlags(flags: Int) {
-        val base = registersSize - insSize
         val mapping = setMethodAccessFlags(handle, flags.toUInt())
-        if (mapping != null) {
-            edits?.grewRegisters(handle, base, mapping.registerShift.toInt())
-            edits?.relocated(handle, mapping, EditKind.GROW)
-        }
+        if (mapping != null) edits?.grew(handle, mapping)
         if (
             AccessFlags.NATIVE.isSet(flags.toUInt()) || AccessFlags.ABSTRACT.isSet(flags.toUInt())
         ) {

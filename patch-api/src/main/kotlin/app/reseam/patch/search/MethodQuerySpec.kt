@@ -16,6 +16,8 @@ import app.reseam.patch.dex.Opcode
 import app.reseam.patch.dex.descriptor
 import app.reseam.patch.dex.parameterTypes
 import app.reseam.patch.dex.returnType
+import app.reseam.patch.types.FieldPattern
+import app.reseam.patch.types.MethodPattern
 import app.reseam.patch.types.MethodRef
 
 internal enum class MethodScope {
@@ -52,9 +54,9 @@ internal class MethodQuerySpec : QuerySpec<Method, MethodRankScope>("method"), M
 
     val calls = mutableListOf<() -> MethodRef>()
     val calledBy = mutableListOf<MethodTarget>()
-    val callMatches = mutableListOf<MethodRefMatchSpec>()
+    val callMatches = mutableListOf<MethodPattern>()
     val callPredicates = mutableListOf<MethodRef.() -> Boolean>()
-    val accessMatches = mutableListOf<FieldRefMatchSpec>()
+    val accessMatches = mutableListOf<FieldPattern>()
     val opcodes = mutableListOf<Opcode>()
     val opcodeSequences = mutableListOf<List<Opcode?>>()
     val predicates = mutableListOf<Method.() -> Boolean>()
@@ -114,16 +116,16 @@ internal class MethodQuerySpec : QuerySpec<Method, MethodRankScope>("method"), M
     }
 
     override fun calls(block: MethodRefMatch.() -> Unit) {
-        val spec = MethodRefMatchSpec().apply(block)
+        val pattern = MethodRefMatchSpec().apply(block).pattern
         require(
-            spec.owner != null ||
-                spec.name != null ||
-                spec.returnType != null ||
-                spec.parameters != null
+            pattern.owner != null ||
+                pattern.name != null ||
+                pattern.returnType != null ||
+                pattern.parameters != null
         ) {
             "calls requires an owner, name, return type, or parameter signature"
         }
-        callMatches += spec
+        callMatches += pattern
     }
 
     override fun calledBy(target: MethodTarget) {
@@ -131,11 +133,11 @@ internal class MethodQuerySpec : QuerySpec<Method, MethodRankScope>("method"), M
     }
 
     override fun accesses(block: FieldRefMatch.() -> Unit) {
-        val spec = FieldRefMatchSpec().apply(block)
-        require(spec.owner != null || spec.name != null || spec.fieldType != null) {
+        val pattern = FieldRefMatchSpec().apply(block).pattern
+        require(pattern.owner != null || pattern.name != null || pattern.fieldType != null) {
             "accesses requires an owner, name, or type"
         }
-        accessMatches += spec
+        accessMatches += pattern
     }
 
     override fun callsMethod(predicate: MethodRef.() -> Boolean) {

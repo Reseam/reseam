@@ -15,70 +15,29 @@ import app.reseam.patch.dex.isStatic
 import app.reseam.patch.dex.registerWordCount
 import app.reseam.patch.method
 import app.reseam.patch.run.ActiveRuntime
+import app.reseam.patch.types.CodeOperand
+import app.reseam.patch.types.CodeRegister
 import app.reseam.patch.types.FieldRef
 import app.reseam.patch.types.MethodRef
 
 internal class Value(
     val emitter: CodeEmitter,
-    val register: Register,
+    private val register: CodeRegister?,
     override val type: String,
     internal val source: FieldRef? = null,
     assignableType: ValueType = ValueType.Known(type),
 ) : ValueRef {
-    constructor(
-        emitter: CodeEmitter,
-        register: Int,
-        type: String,
-    ) : this(emitter, Register.Physical(register), type)
-
     var assignableType: ValueType = assignableType
         private set
 
     val wordCount: Int = registerWordCount(type)
 
-    fun registerWords(): List<Register> =
-        (0 until wordCount).map { word ->
-            when (register) {
-                is Register.Physical -> Register.Physical(register.index + word)
-                is Register.Temporary -> register.copy(word = register.word + word)
-                Register.Void -> error("a void value has no register")
-            }
-        }
+    val operand: CodeOperand
+        get() = CodeOperand(checkNotNull(register) { "a void value has no register" }, type)
 
-    fun asLow(): Value = fitted(RegisterConstraint.LOW)
-
-    fun asByte(): Value = fitted(RegisterConstraint.BYTE)
-
-    private fun fitted(constraint: RegisterConstraint): Value {
-        val allocation =
-            (register as? Register.Temporary)?.let {
-                emitter.tempAllocations.getValue(it.allocation)
-            }
-        val incoming = allocation?.incomingOffset
-        if (
-            incoming != null &&
-                emitter.incomingBase + incoming + wordCount - 1 <= constraint.maxRegister
-        ) {
-            if (constraint.maxRegister < allocation.constraint.maxRegister)
-                allocation.constraint = constraint
-            return this
-        }
-        if (emitter.registerFits(register, wordCount, constraint)) return this
-        if (allocation != null && allocation.entryOffset == null && incoming == null) {
-            allocation.constraint = constraint
-            return this
-        }
-        emitter.lowCopies[register]
-            ?.takeIf { it.type == type && emitter.registerFits(it.register, wordCount, constraint) }
-            ?.let {
-                return it
-            }
-        val dest = emitter.allocTemp(wordCount, constraint)
-        emitter.moveValue(dest, register, type)
-        return Value(emitter, dest, type, assignableType = assignableType).also {
-            if (allocation == null || incoming != null) emitter.lowCopies[register] = it
-        }
-    }
+    /** This value's register, holding a value of [type]. */
+    fun retyped(type: String, assignableType: ValueType): Value =
+        Value(emitter, register, type, assignableType = assignableType)
 
     override fun assign(value: ValueRef) {
         require(source == null) {
@@ -87,8 +46,7 @@ internal class Value(
         }
         val newValue = value.builtBy(emitter)
         requireAssignableType(newValue.assignableType, type, "assignment")
-        emitter.lowCopies.remove(register)
-        emitter.moveValue(register, newValue.register, type)
+        emitter.move(this, newValue)
         assignableType = ValueType.Known(type)
     }
 

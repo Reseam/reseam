@@ -200,6 +200,24 @@ impl CodeItem {
     }
 }
 
+/// Lays out a standalone block whose branches name the expansion they go to, widening each
+/// branch its layout puts out of reach.
+pub(super) fn assemble(
+    expansions: Vec<InstructionExpansion>,
+    targets: &BTreeMap<usize, BranchDestination>,
+) -> Result<Vec<Instruction>> {
+    let original = Addresses::of(
+        &expansions
+            .iter()
+            .map(|expansion| expansion.instruction.clone())
+            .collect::<Vec<_>>(),
+    );
+    let entries = expansions.into_iter().map(RewriteEntry::from).collect();
+    let mut rewrite = Rewrite::new(entries, Vec::new(), targets, &original)?;
+    let layout = rewrite.stabilize()?;
+    rewrite.emit(&layout)
+}
+
 fn units(instructions: &[Instruction]) -> u32 {
     instructions.iter().map(Instruction::code_units).sum()
 }

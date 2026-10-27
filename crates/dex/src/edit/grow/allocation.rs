@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::invoke::lower_invoke;
-use super::widen::{move_register, narrowed, widen};
+use super::widen::widen;
 use crate::DexFile;
+use crate::edit::forms::{move_register, narrowed_move};
 use crate::edit::liveness::RegisterLiveness;
 use crate::edit::register_types::RegisterTypes;
 use crate::edit::relocate::InstructionExpansion;
@@ -75,7 +76,7 @@ impl Allocation<'_> {
         } else {
             self.stage_operands(&mut expansion, types)?;
         }
-        expansion.instruction = narrowed(expansion.instruction);
+        expansion.instruction = narrowed_move(expansion.instruction);
         Ok(expansion)
     }
 

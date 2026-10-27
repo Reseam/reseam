@@ -6,8 +6,8 @@ package app.reseam.patch.emit
 import app.reseam.patch.className
 import app.reseam.patch.dex.AccessFlags
 import app.reseam.patch.dex.isSet
+import app.reseam.patch.native.isAssignable
 import app.reseam.patch.run.ActiveRuntime
-import app.reseam.patch.search.isAssignableType
 import app.reseam.patch.types.FieldRef
 import app.reseam.patch.types.MethodRef
 
@@ -53,7 +53,7 @@ internal class Access(private val from: String) {
         require(
             samePackage(declaringClass) ||
                 AccessFlags.PUBLIC.isSet(flags) ||
-                (AccessFlags.PROTECTED.isSet(flags) && isAssignableType(from, declaringClass))
+                (AccessFlags.PROTECTED.isSet(flags) && isAssignable(from, declaringClass))
         ) {
             "$name is package-private, so ${className(from)} in another package cannot reach it"
         }

@@ -6,6 +6,7 @@ mod dex;
 mod extensions;
 mod files;
 mod hermes;
+mod hierarchy;
 mod search;
 mod undo;
 

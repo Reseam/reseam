@@ -41,7 +41,7 @@ fn pool_operands_survive_copying_between_dex_files() {
     fixtures::duplicate_call_site(&mut context, source);
     let guard =
         ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned())).unwrap();
-    mutation::set_instructions(methods[1], search::get_instructions(methods[0])).unwrap();
+    mutation::replace_body(methods[1], 4, 4, search::get_instructions(methods[0])).unwrap();
     for &method in &methods {
         let instructions = search::get_instructions(method);
         let Instruction::RegProto(proto) = &instructions[0] else {
@@ -76,7 +76,7 @@ fn pool_operands_survive_copying_between_dex_files() {
         };
         assert_eq!(zero.to_bits(), (-0.0_f64).to_bits());
     }
-    mutation::set_instructions(methods[0], search::get_instructions(methods[0])).unwrap();
+    mutation::replace_body(methods[0], 4, 4, search::get_instructions(methods[0])).unwrap();
     guard.finish().unwrap();
     for dex in [0, 1] {
         assert_eq!(context.dex_file(dex).unwrap().call_sites().len(), 2);
@@ -84,7 +84,7 @@ fn pool_operands_survive_copying_between_dex_files() {
 }
 
 #[test]
-fn authored_raw_pool_references_survive_pure_lowering_and_insertion() {
+fn authored_raw_pool_references_survive_insertion() {
     enum Reference {
         String,
         Type,
@@ -114,20 +114,18 @@ fn authored_raw_pool_references_survive_pure_lowering_and_insertion() {
     for (reference, (opcode, index)) in references {
         let index = u16::try_from(index).unwrap().to_le_bytes();
         let raw = Instruction::Raw(vec![opcode, 0, index[0], index[1]]);
-        let lowered = assembly::lower_instructions(vec![raw], vec![]).unwrap();
         let guard =
             ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned()))
                 .unwrap();
-        mutation::insert_instructions(handles.method, 0, lowered).unwrap();
-        match reference {
-            Reference::String => assert_eq!(
-                search::instruction_string_ref(handles.method, 0).as_deref(),
-                Some("held string")
-            ),
-            Reference::Type => assert_eq!(
-                search::instruction_type_ref(handles.method, 0).as_deref(),
-                Some("LHeldType;")
-            ),
+        mutation::insert_instructions(handles.method, 0, vec![raw]).unwrap();
+        match (reference, &search::get_instructions(handles.method)[0]) {
+            (Reference::String, Instruction::RegString(load)) => {
+                assert_eq!(load.value, "held string");
+            }
+            (Reference::Type, Instruction::RegType(load)) => {
+                assert_eq!(load.type_descriptor, "LHeldType;");
+            }
+            _ => panic!("the raw reference changed its operand shape"),
         }
         guard.finish().unwrap();
     }

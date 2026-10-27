@@ -50,10 +50,10 @@ internal fun MethodQuerySpec.rejection(value: Method, runtime: PatchRuntime): St
         }
     )
         return "caller mismatch"
-    if (callMatches.any { !index.references.matchesCall(value, it) }) return "no matching call"
+    if (callMatches.any { index.references.callsIn(value, it).isEmpty() }) return "no matching call"
     if (callPredicates.any { predicate -> index.references.methodRefsOf(value).none(predicate) })
         return "no matching call"
-    if (accessMatches.any { !index.references.matchesAccess(value, it) })
+    if (accessMatches.any { index.references.accessesIn(value, it).isEmpty() })
         return "no matching field access"
     if (opcodes.any { !index.seeds.hasOpcode(value, it) }) return "opcode mismatch"
     if (opcodeSequences.any { value.indexOfOpcodeSequence(*it.toTypedArray()) == null })

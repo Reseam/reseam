@@ -3,7 +3,7 @@
 
 package app.reseam.patch.dex
 
-/** The smallest `const` encoding of [value] into [dest]; `const/high16` holds the high half. */
+/** The smallest `const` encoding of [value] into [dest]. */
 internal fun constIntOpcode(dest: Int, value: Int): Opcode =
     when {
         dest <= 15 && value in -8..7 -> Opcode.CONST_4

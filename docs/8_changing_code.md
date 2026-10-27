@@ -128,7 +128,7 @@ It starts as zero or null when the method begins.
 ## Things to know
 
 - A point's `before { }` also runs when a branch jumps to that instruction. Its `after { }` does not: a branch that jumps straight to the next instruction skips it. For code that must run on every path, use `before { }` on a later point, or the method's `after { }`.
-- Added code that needs more registers than the surrounding instructions can address fails with `Cannot allocate ... registers`. Move that logic into an [extension](11_extensions.md).
+- Added code that needs more registers than the surrounding instructions can address fails with `... needs a free register at or below v...`. Move that logic into an [extension](11_extensions.md).
 - Reading a field gives a copy. Write it back with `set`, not `assign`.
 - Access is checked: calling a private method of another class fails while patching.
 

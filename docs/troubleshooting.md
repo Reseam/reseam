@@ -32,7 +32,7 @@ A value was created in one code block and used in another. Recreate it in the bl
 **`the method body was replaced under it`**
 A point was used after its method's body was replaced. Use the point before replacing, or don't replace the body.
 
-**`Cannot allocate ... registers`**
+**`... needs a free register at or below v...`**
 The code you added needs more registers than the instructions around it can address. Move the logic into an [extension](11_extensions.md) and call it.
 
 **`... is not defined by the app or any extension in the bundle`**

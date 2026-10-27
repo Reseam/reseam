@@ -67,15 +67,24 @@ pub fn split_surface(output: &Path) -> Result<()> {
     values.push_str(&source[native_end..values_end]);
     values = owned_kotlin_types(&values);
     for name in [
+        "CodeInstruction",
+        "CodeOperand",
+        "FieldPattern",
         "InstructionHit",
+        "MethodEdit",
+        "MethodPattern",
         "RegisterWriters",
         "ResourceScalar",
-        "ScratchSpan",
-        "MethodEdit",
     ] {
         values = values.replace(
             &format!("\ndata class {name}("),
             &format!("\ninternal data class {name}("),
+        );
+    }
+    for name in ["CodeEdit", "CodePlacement", "CodeRegister", "CodeStep"] {
+        values = values.replace(
+            &format!("\nsealed class {name} {{"),
+            &format!("\ninternal sealed class {name} {{"),
         );
     }
     let values_path = output.join("app/reseam/patch/types");

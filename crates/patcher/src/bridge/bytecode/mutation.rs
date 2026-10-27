@@ -4,8 +4,7 @@
 use std::sync::Arc;
 
 use boltffi::export;
-use reseam_dex::InstructionExpansion;
-use reseam_dex::{AccessFlags, CodeItem, EarlyReturn, Instruction as DexInsn};
+use reseam_dex::{AccessFlags, CodeItem, Instruction as DexInsn};
 
 use crate::bridge::dex::convert::kotlin_to_dex;
 use crate::bridge::dex::link::link_instructions;
@@ -38,14 +37,6 @@ fn edit_code<R>(
 }
 
 #[export]
-pub fn set_instructions(m: u32, insns: Vec<Instruction>) -> Result<(), String> {
-    edit_code(m, &insns, |code, insns| {
-        code.set_instructions(insns);
-        Ok(())
-    })
-}
-
-#[export]
 pub fn replace_body(
     m: u32,
     registers_size: u16,
@@ -64,11 +55,10 @@ pub fn replace_body(
         )?;
         let code = logged(
             "replace body",
-            super::assembly::assemble(insns, Vec::new(), dex, Some(loc.dex_idx), |code, _| {
+            super::assembly::assemble(insns, dex, Some(loc.dex_idx), |code, _| {
                 code.set_register_frame(registers_size, incoming, outs_size)
             }),
-        )?
-        .code;
+        )?;
         let method = logged("replace method", method_mut(dex, loc))?
             .expect("assembly leaves the method slot in place");
         method.code = Some(Arc::new(code));
@@ -81,6 +71,20 @@ pub fn replace_body(
     outcome.ok_or_else(|| format!("method handle {m} could not be replaced"))
 }
 
+/// How an edit that left the frame as it was moved the method's instructions.
+/// How growing the frame by `registers` locals at `base` moved the method's instructions.
+pub(super) fn growth_mapping(
+    base: u16,
+    registers: u16,
+    mapping: reseam_dex::InstructionMap,
+) -> Result<MethodEdit, String> {
+    Ok(MethodEdit {
+        register_base: base,
+        register_shift: registers,
+        ..edit_mapping(mapping)?
+    })
+}
+
 pub(super) fn edit_mapping(mapping: reseam_dex::InstructionMap) -> Result<MethodEdit, String> {
     fn indices(values: &[usize]) -> Result<Vec<u32>, String> {
         values
@@ -91,6 +95,7 @@ pub(super) fn edit_mapping(mapping: reseam_dex::InstructionMap) -> Result<Method
             .collect()
     }
     Ok(MethodEdit {
+        register_base: 0,
         register_shift: 0,
         starts: indices(mapping.starts())?,
         instructions: indices(mapping.instructions())?,
@@ -108,30 +113,6 @@ pub fn insert_instructions(
         edit_mapping(logged(
             "insert instructions",
             code.insert_instructions(index as usize, &insns),
-        )?)
-    })
-}
-
-#[export]
-pub fn insert_before_instruction(
-    m: u32,
-    index: u32,
-    insns: Vec<Instruction>,
-) -> Result<MethodEdit, String> {
-    edit_code(m, &insns, |code, insns| {
-        let mut expansions: Vec<InstructionExpansion> = code
-            .instructions()
-            .iter()
-            .cloned()
-            .map(Into::into)
-            .collect();
-        let expansion = expansions
-            .get_mut(index as usize)
-            .ok_or_else(|| format!("instruction index {index} outside body"))?;
-        expansion.before = insns;
-        edit_mapping(logged(
-            "insert before instruction",
-            code.rewrite_instructions(expansions, &std::collections::BTreeMap::new()),
         )?)
     })
 }
@@ -163,32 +144,4 @@ pub fn remove_instructions(m: u32, index: u32, count: u32) -> Result<MethodEdit,
     });
     crate::bridge::run_state::check_call()?;
     result.ok_or_else(|| format!("method handle {m} could not be edited"))
-}
-
-fn return_early_with(m: u32, value: EarlyReturn) {
-    with_method_mut(m, |dex, loc| {
-        Ok(logged("access method", method_mut(dex, loc))?
-            .and_then(reseam_dex::EncodedMethod::code_mut)
-            .map(|code| code.return_early(value)))
-    });
-}
-
-#[export]
-pub fn return_early(m: u32) {
-    return_early_with(m, EarlyReturn::Void);
-}
-
-#[export]
-pub fn return_early_int(m: u32, value: i32) {
-    return_early_with(m, EarlyReturn::Int(value));
-}
-
-#[export]
-pub fn return_early_object_null(m: u32) {
-    return_early_with(m, EarlyReturn::Null);
-}
-
-#[export]
-pub fn return_early_wide(m: u32, value: i64) {
-    return_early_with(m, EarlyReturn::Wide(value));
 }

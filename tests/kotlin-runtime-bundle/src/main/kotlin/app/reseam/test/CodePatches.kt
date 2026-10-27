@@ -5,11 +5,11 @@ package app.reseam.test
 
 import app.reseam.patch.Type
 import app.reseam.patch.before
-import app.reseam.patch.dex.buildInstructions
 import app.reseam.patch.invoke
 import app.reseam.patch.klass
 import app.reseam.patch.method
 import app.reseam.patch.replace
+import app.reseam.patch.reserveLocal
 
 val embeddedStrings =
     fixturePatch("embedded-strings") {
@@ -127,19 +127,19 @@ val constantForms =
 
 val longGoto =
     fixturePatch("long-goto") {
-        klass("com.example.ConstantHost")
-            .method("small")
-            .method
-            .replaceBody(
-                2,
-                0,
-                buildInstructions {
-                    constInt(0, 0)
-                    goto("end")
-                    repeat(130) { nop() }
-                    constInt(0, 1)
-                    label("end")
-                    returnValue(0)
-                },
-            )
+        klass("com.example.ConstantHost").method("small").replace {
+            whenTrue(param(0)) {} otherwise { repeat(130) { int(1) } }
+            returnValue(int(0))
+        }
+    }
+
+val distantOperands =
+    fixturePatch("distant-operands") {
+        val target = klass("com.example.HookTarget").method("invokeGrowth")
+        repeat(4) { target.reserveLocal("distance$it", Type.Long) }
+        target.before {
+            whenEqual(param(1), param(2)) {
+                callStatic("com.example.Observer", "entry", "(I)V", param(3))
+            }
+        }
     }

@@ -11,7 +11,6 @@ import app.reseam.patch.descriptor
 import app.reseam.patch.dex.Method
 import app.reseam.patch.dex.Opcode
 import app.reseam.patch.dex.descriptor
-import app.reseam.patch.dex.fieldRef
 import app.reseam.patch.dex.literal
 import app.reseam.patch.dex.methodRef
 import app.reseam.patch.dex.opcode
@@ -19,6 +18,7 @@ import app.reseam.patch.dex.returnType
 import app.reseam.patch.dex.stringValue
 import app.reseam.patch.dex.typeRef
 import app.reseam.patch.proto
+import app.reseam.patch.run.ActiveRuntime
 import app.reseam.patch.search.FieldRefMatchSpec
 import app.reseam.patch.search.MethodRefMatchSpec
 import app.reseam.patch.types.Instruction
@@ -58,6 +58,9 @@ internal fun findSequence(
 
 internal class PointMatchSpec(private val method: Method) : PointMatch {
     private val origins by lazy { ArgumentOrigins(method) }
+    private val references
+        get() = ActiveRuntime.current.index.references
+
     val diagnostics: List<String>
         get() = if (usesOrigins) origins.diagnostics.toList() else emptyList()
 
@@ -103,10 +106,11 @@ internal class PointMatchSpec(private val method: Method) : PointMatch {
     }
 
     override fun invoke(vararg opcodes: Opcode, block: MethodRefMatch.() -> Unit) {
-        val match = MethodRefMatchSpec().apply(block)
-        insn {
+        val pattern = MethodRefMatchSpec().apply(block).pattern
+        add { insns, i ->
+            val opcode = insns[i].opcode
             (opcodes.isEmpty() && opcode?.isInvoke == true || opcode in opcodes) &&
-                methodRef?.let(match::matches) == true
+                i in references.callsIn(method, pattern)
         }
     }
 
@@ -129,8 +133,8 @@ internal class PointMatchSpec(private val method: Method) : PointMatch {
     }
 
     override fun field(block: FieldRefMatch.() -> Unit) {
-        val match = FieldRefMatchSpec().apply(block)
-        insn { fieldRef?.let(match::matches) == true }
+        val pattern = FieldRefMatchSpec().apply(block).pattern
+        add { _, i -> i in references.accessesIn(method, pattern) }
     }
 
     override fun argument(index: Int, block: PointMatch.() -> Unit) {

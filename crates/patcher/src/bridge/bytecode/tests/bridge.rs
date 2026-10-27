@@ -16,15 +16,6 @@ fn bridge_queries_distinguish_absence_from_invalid_requests() {
     type Request = fn(&ExampleHandles);
     let cases: &[(bool, Request)] = &[
         (false, |handles| {
-            registers::instruction_register(handles.method, 1, 0);
-        }),
-        (false, |handles| {
-            registers::instruction_register(handles.method, 0, 0);
-        }),
-        (false, |handles| {
-            registers::instruction_wide_literal(handles.method, 0);
-        }),
-        (false, |handles| {
             fields::set_static_field_value(
                 handles.class,
                 "missing".into(),
@@ -33,12 +24,6 @@ fn bridge_queries_distinguish_absence_from_invalid_requests() {
         }),
         (false, |handles| {
             annotations::add_field_annotation(handles.class, "missing".into(), annotation());
-        }),
-        (true, |handles| {
-            search::instruction_type_ref(handles.method, 0);
-        }),
-        (false, |handles| {
-            search::instruction_type_ref(handles.method, 1);
         }),
         (false, |_handles| {
             lookup::find_methods_by_opcodes(vec![i32::MAX]);
@@ -108,7 +93,7 @@ fn invalid_instruction_operands_fail_the_callback() {
         let guard =
             ContextGuard::enter(&mut context, RunningBundle::at(directory.path().to_owned()))
                 .unwrap();
-        assert!(mutation::set_instructions(method, vec![instruction]).is_err());
+        assert!(mutation::replace_body(method, 32, 0, vec![instruction]).is_err());
         assert!(guard.finish().is_err());
     }
 }
