@@ -44,7 +44,7 @@ internal constructor(
     internal companion object {
         fun of(method: Method, debugName: String? = null): MethodTarget =
             MethodTarget(debugName) {
-                Resolution(method, wrapped(debugName ?: method.descriptor, method.descriptor))
+                Resolution.direct(method, debugName ?: method.descriptor, method.descriptor)
             }
     }
 }
@@ -101,7 +101,7 @@ internal constructor(
     internal companion object {
         fun of(classDef: DexClass, debugName: String? = null): ClassTarget =
             ClassTarget(debugName) {
-                Resolution(classDef, wrapped(debugName ?: classDef.descriptor, classDef.descriptor))
+                Resolution.direct(classDef, debugName ?: classDef.descriptor, classDef.descriptor)
             }
     }
 }
@@ -128,25 +128,13 @@ internal constructor(
     internal companion object {
         fun of(ref: FieldRef, debugName: String? = null): FieldTarget =
             FieldTarget(debugName) {
-                Resolution(
-                    ref,
-                    wrapped(
-                        debugName ?: "${ref.definingClass}.${ref.name}",
-                        "${ref.definingClass}.${ref.name}:${ref.fieldType}",
-                    ),
-                )
+                resolvedField(debugName ?: "${ref.definingClass}.${ref.name}", ref)
             }
     }
 }
 
-internal fun wrapped(name: String, winner: String): MatchReport =
-    SearchMatchReport(
-        name,
-        winner,
-        considered = 1,
-        reasons = listOf("resolved directly"),
-        nearMisses = emptyList(),
-    )
+internal fun resolvedField(name: String, ref: FieldRef): Resolution<FieldRef> =
+    Resolution.direct(ref, name, "${ref.definingClass}.${ref.name}:${ref.fieldType}")
 
 /**
  * The one method satisfying the query. More than one match is an error unless the query ranks or
@@ -168,18 +156,18 @@ fun methods(debugName: String? = null, block: MethodQuery.() -> Unit): MethodsTa
  */
 fun methodTarget(debugName: String, resolve: PatchRuntime.() -> Method): MethodTarget =
     MethodTarget(debugName) { runtime ->
-        runtime.resolve().let { Resolution(it, wrapped(debugName, it.descriptor)) }
+        runtime.resolve().let { Resolution.direct(it, debugName, it.descriptor) }
     }
 
 fun classTarget(debugName: String, resolve: PatchRuntime.() -> DexClass): ClassTarget =
     ClassTarget(debugName) { runtime ->
-        runtime.resolve().let { Resolution(it, wrapped(debugName, it.descriptor)) }
+        runtime.resolve().let { Resolution.direct(it, debugName, it.descriptor) }
     }
 
 fun fieldTarget(debugName: String, resolve: PatchRuntime.() -> FieldRef): FieldTarget =
     FieldTarget(debugName) { runtime ->
         runtime.resolve().let {
-            Resolution(it, wrapped(debugName, "${it.definingClass}.${it.name}:${it.fieldType}"))
+            resolvedField(debugName, it)
         }
     }
 
@@ -187,8 +175,8 @@ fun fieldTarget(debugName: String, resolve: PatchRuntime.() -> FieldRef): FieldT
 fun klass(name: String): ClassTarget {
     val desc = descriptor(name)
     return ClassTarget(className(desc)) { runtime ->
-        val found = runtime.index.classFor(desc) ?: error("Class not found: $desc")
-        Resolution(found, wrapped(className(desc), desc))
+        val found = runtime.index.requireClass(desc)
+        Resolution.direct(found, className(desc), desc)
     }
 }
 
@@ -243,7 +231,7 @@ fun MethodTarget.field(debugName: String? = null, block: FieldRefMatch.() -> Uni
                     "$label: expected one matching field in ${method.descriptor}, got ${matches.size}: " +
                         matches.joinToString { "${it.definingClass}.${it.name}" }
                 )
-        Resolution(ref, wrapped(label, "${ref.definingClass}.${ref.name}:${ref.fieldType}"))
+        resolvedField(label, ref)
     }
 }
 
@@ -253,10 +241,7 @@ fun ClassTarget.field(name: String): FieldTarget {
     return FieldTarget("${owner.label}.$name") { runtime ->
         val classDef = runtime.resolve(owner).value
         val ref = classDef.field(name) ?: error("${classDef.descriptor} has no field named $name")
-        Resolution(
-            ref,
-            wrapped("${owner.label}.$name", "${ref.definingClass}.${ref.name}:${ref.fieldType}"),
-        )
+        resolvedField("${owner.label}.$name", ref)
     }
 }
 
@@ -279,7 +264,7 @@ fun ClassTarget.enumConstant(name: String): FieldTarget {
         val ref =
             runtime.index.enumConstants(classDef)[name]
                 ?: error("${classDef.descriptor} has no enum constant named $name")
-        Resolution(ref, wrapped(label, "${ref.definingClass}.${ref.name}:${ref.fieldType}"))
+        resolvedField(label, ref)
     }
 }
 
@@ -288,18 +273,8 @@ fun ClassTarget.fieldOfType(type: String): FieldTarget {
     val owner = this
     val desc = descriptor(type)
     return FieldTarget("${owner.label}:${type}") { runtime ->
-        val classDef = runtime.resolve(owner).value
-        val matches = classDef.instanceFields.filter { it.fieldType == desc }
-        val field =
-            matches.singleOrNull()
-                ?: error(
-                    "Expected exactly one instance field of type $desc on ${classDef.descriptor}, found ${matches.size}"
-                )
-        val ref = FieldRef(field.classDescriptor, field.name, field.fieldType)
-        Resolution(
-            ref,
-            wrapped("${owner.label}:$type", "${ref.definingClass}.${ref.name}:${ref.fieldType}"),
-        )
+        val ref = runtime.resolve(owner).value.instanceFieldOfType(desc)
+        resolvedField("${owner.label}:$type", ref)
     }
 }
 

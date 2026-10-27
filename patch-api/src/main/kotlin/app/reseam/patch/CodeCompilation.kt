@@ -129,15 +129,6 @@ internal fun CodeEmitter.writeField(value: Value, field: FieldRef, newValue: Val
     }
 }
 
-internal fun CodeEmitter.uniqueField(owner: String, type: String): FieldRef {
-    val classDef = ActiveRuntime.current.index.classFor(owner) ?: error("Class not found: $owner")
-    val fields = classDef.instanceFields.filter { it.fieldType == type }
-    require(fields.size == 1) {
-        "Expected exactly one instance field of type $type on $owner, found ${fields.size}"
-    }
-    return FieldRef(owner, fields.single().name, type)
-}
-
 internal fun CodeEmitter.instanceInvokeKind(target: MethodTarget): Opcode {
     val info = target.method.info
     return when {

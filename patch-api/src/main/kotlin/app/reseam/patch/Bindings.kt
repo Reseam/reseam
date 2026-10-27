@@ -18,7 +18,7 @@ internal constructor(
 ) : Target<ResolvedBinding>(debugName) {
     override fun resolve(runtime: PatchRuntime): Resolution<ResolvedBinding> {
         val binding = BindingSpec().apply(block).compile(runtime, label)
-        return Resolution(binding, wrapped(label, binding.raw.resultType))
+        return Resolution.direct(binding, label, binding.raw.resultType)
     }
 
     /** The descriptor of the value a path starts from. */

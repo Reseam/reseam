@@ -55,7 +55,7 @@ import app.reseam.patch.types.MethodRef
 @JvmInline
 value class Method(val handle: UInt) {
     val info: MethodInfo
-        get() = ActiveRuntime.current.methodInfo(handle)
+        get() = ActiveRuntime.current.run.cache.methodInfo(handle)
 
     val classDef: DexClass
         get() =
@@ -84,7 +84,7 @@ value class Method(val handle: UInt) {
         get() = info.isStatic
 
     val instructions: List<Instruction>
-        get() = ActiveRuntime.current.instructions(handle)
+        get() = ActiveRuntime.current.run.cache.instructions(handle)
 
     val instructionCount: Int
         get() = info.instructionCount.toInt()

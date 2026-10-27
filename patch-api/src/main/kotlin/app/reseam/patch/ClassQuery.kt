@@ -99,7 +99,7 @@ internal class ClassQuerySpec : QuerySpec<DexClass, ClassRankScope>("class"), Cl
     }
 
     override fun prefetch(runtime: PatchRuntime, candidates: List<DexClass>) =
-        runtime.prefetchClasses(candidates.map { it.handle })
+        runtime.run.cache.prefetchClasses(candidates.map { it.handle })
 
     override fun rankScope(index: SearchIndex, value: DexClass) = ClassRankScopeImpl(index, value)
 

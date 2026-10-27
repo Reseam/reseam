@@ -80,7 +80,7 @@ private fun pointsIn(
                                 emptyList(),
                             )
                         PointTarget(label, owner) {
-                            Resolution(point, wrapped(label, "${method.descriptor}[$index]"))
+                            point.resolution(label)
                         }
                     }
                 }

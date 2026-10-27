@@ -138,9 +138,10 @@ class FunctionTarget internal constructor(debugName: String?, private val query:
         get() = debugName ?: query.name ?: "function with $query"
 
     override fun resolve(runtime: PatchRuntime): Resolution<UInt> =
-        Resolution(
+        Resolution.direct(
             hermesFindFunction(query.name, query.strings, query.parameters),
-            wrapped(label, query.toString()),
+            label,
+            query.toString(),
         )
 
     internal fun hook(kind: HermesHookKind, block: JsCodeScope.() -> Unit) =

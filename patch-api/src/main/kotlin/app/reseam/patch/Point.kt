@@ -126,10 +126,7 @@ internal constructor(
             val index =
                 origins.sites.singleOrNull()?.takeUnless { origins.entry || origins.unknown }
                     ?: error(writerMessage(label, point.method, point.index, register, origins))
-            Resolution(
-                point.at(runtime, label, index),
-                wrapped(label, "${point.method.descriptor}[$index]"),
-            )
+            point.at(runtime, label, index).resolution(label)
         }
     }
 
@@ -146,7 +143,7 @@ internal constructor(
                     ?: error(
                         "${base.label}: callee ${ref.definingClass}->${ref.name}${ref.proto} is not in the app"
                     )
-            Resolution(method, wrapped(debugName ?: "${base.label}.callee", method.descriptor))
+            Resolution.direct(method, debugName ?: "${base.label}.callee", method.descriptor)
         }
     }
 
@@ -158,13 +155,7 @@ internal constructor(
             val ref =
                 point.method.instructions[point.index].fieldRef
                     ?: error("${base.label}: instruction ${point.index} is not a field access")
-            Resolution(
-                ref,
-                wrapped(
-                    debugName ?: "${base.label}.field",
-                    "${ref.definingClass}.${ref.name}:${ref.fieldType}",
-                ),
-            )
+            resolvedField(debugName ?: "${base.label}.field", ref)
         }
     }
 
@@ -192,10 +183,7 @@ internal constructor(
                     ?: error(
                         "${base.label}: no instruction matched ${direction.label} {} from index ${point.index} in ${point.method.descriptor}"
                     )
-            Resolution(
-                point.at(runtime, base.label, index),
-                wrapped(base.label, "${point.method.descriptor}[$index]"),
-            )
+            point.at(runtime, base.label, index).resolution(base.label)
         }
     }
 }
@@ -211,10 +199,7 @@ fun MethodTarget.point(debugName: String? = null, block: PointMatch.() -> Unit):
             findSequence(method.instructions, spec.steps(), 0)
                 ?: error("$label: no instruction sequence matched in ${method.descriptor}")
         val anchor = runtime.edits.anchor(method, matched.last(), label)
-        Resolution(
-            ResolvedPoint(method, anchor, emptyList()),
-            wrapped(label, "${method.descriptor}[${matched.last()}]"),
-        )
+        ResolvedPoint(method, anchor, emptyList()).resolution(label)
     }
 }
 
@@ -242,6 +227,9 @@ internal constructor(
         get() = anchor.instruction
 
     internal fun withCaptures(captures: List<Capture>) = ResolvedPoint(method, anchor, captures)
+
+    internal fun resolution(label: String) =
+        Resolution.direct(this, label, "${method.descriptor}[$index]")
 
     internal fun at(runtime: PatchRuntime, label: String, index: Int) =
         ResolvedPoint(method, runtime.edits.anchor(method, index, label), captures)

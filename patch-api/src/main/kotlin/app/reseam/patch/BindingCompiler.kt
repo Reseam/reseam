@@ -13,6 +13,7 @@ import app.reseam.patch.dex.methodRef
 import app.reseam.patch.dex.opcode
 import app.reseam.patch.dex.returnType
 import app.reseam.patch.types.FieldRef
+import app.reseam.patch.types.Instruction
 import app.reseam.patch.types.MethodRef
 
 internal class BindingSpec : BindingQuery {
@@ -139,8 +140,7 @@ private class PathQueryCompiler(
     }
 
     override fun field(type: String) {
-        val owner = requireCurrentType()
-        val field = uniqueField(owner, descriptor(type))
+        val field = index.requireClass(requireCurrentType()).instanceFieldOfType(descriptor(type))
         steps += PathStep.FieldRead(field)
         currentType = field.fieldType
     }
@@ -162,7 +162,7 @@ private class PathQueryCompiler(
 
     override fun instanceField(typeAnyOf: List<String>) {
         val owner = requireCurrentType()
-        val ownerClass = index.classFor(owner) ?: error("Class not found: $owner")
+        val ownerClass = index.requireClass(owner)
         val wanted = typeAnyOf.map(::descriptor)
         val field =
             wanted.firstNotNullOfOrNull { candidate ->
@@ -176,7 +176,7 @@ private class PathQueryCompiler(
         object : SlotQuery {
             override fun firstInstanceOf(type: String) {
                 val owner = requireCurrentType()
-                val ownerClass = index.classFor(owner) ?: error("Class not found: $owner")
+                val ownerClass = index.requireClass(owner)
                 val slots =
                     ownerClass.instanceFields
                         .filter { it.fieldType == Type.Object }
@@ -190,8 +190,9 @@ private class PathQueryCompiler(
 
     override fun firstFieldRead() {
         val method = requireAnchorMethod()
+        val insns = method.instructions
         val found =
-            findObjectFieldRead(method, 0, owner = null)
+            insns.objectRead(insns.indices, owner = null)
                 ?: error("No object field read found in ${method.descriptor}")
         advance(found)
     }
@@ -199,20 +200,22 @@ private class PathQueryCompiler(
     override fun nextFieldRead(owner: String?) {
         val method = requireAnchorMethod()
         val expectedOwner = owner?.let(::descriptor) ?: anchorCursorType
+        val insns = method.instructions
         val found =
-            findObjectFieldRead(method, anchorIndex + 1, expectedOwner)
+            insns.objectRead(anchorIndex + 1 until insns.size, expectedOwner)
                 ?: error(
                     "No object field read found after index $anchorIndex in ${method.descriptor}"
                 )
         advance(found)
     }
 
-    private fun advance(found: Pair<Int, FieldRef>) {
-        if (rootType == null && steps.isEmpty()) rootType = found.second.definingClass
-        currentType = found.second.fieldType
-        anchorCursorType = found.second.fieldType
-        anchorIndex = found.first
-        steps += PathStep.FieldRead(found.second)
+    private fun advance(found: IndexedValue<FieldRef>) {
+        val (index, field) = found
+        if (rootType == null && steps.isEmpty()) rootType = field.definingClass
+        currentType = field.fieldType
+        anchorCursorType = field.fieldType
+        anchorIndex = index
+        steps += PathStep.FieldRead(field)
     }
 
     override fun nextInterfaceCall(returning: String?, returningObject: Boolean) {
@@ -264,7 +267,7 @@ private class PathQueryCompiler(
                 }
             }
             .block()
-        val ownerClass = index.classFor(owner) ?: error("Class not found: $owner")
+        val ownerClass = index.requireClass(owner)
         val candidates = ownerClass.methods.filter { it.proto == "()${Type.List}" }
         require(candidates.isNotEmpty()) { "No zero-arg List getters found on $owner" }
         val winner = candidates.maxBy { method ->
@@ -304,31 +307,6 @@ private class PathQueryCompiler(
 
     private fun requireAnchorMethod(): Method =
         anchorMethod ?: error("This path operation requires fromMethod()")
-
-    private fun uniqueField(owner: String, type: String): FieldRef {
-        val ownerClass = index.classFor(owner) ?: error("Class not found: $owner")
-        val matches = ownerClass.instanceFields.filter { it.fieldType == type }
-        require(matches.size == 1) {
-            "Expected exactly one field of type $type on $owner, found ${matches.size}"
-        }
-        return FieldRef(owner, matches.single().name, type)
-    }
-
-    private fun findObjectFieldRead(
-        method: Method,
-        start: Int,
-        owner: String?,
-    ): Pair<Int, FieldRef>? {
-        val insns = method.instructions
-        for (i in start until insns.size) {
-            val insn = insns[i]
-            if (insn.opcode != Opcode.IGET_OBJECT) continue
-            val field = insn.fieldRef ?: continue
-            if (owner != null && field.definingClass != owner) continue
-            return i to field
-        }
-        return null
-    }
 }
 
 private enum class ObjectReadScope {
@@ -373,26 +351,19 @@ private class FieldLocatorCompiler(
     fun resolveFromAnchor(label: String): FieldTarget {
         val owner =
             ownerDescriptor ?: defaultOwner ?: error("Field locator '$label' requires owner(...)")
-        val ownerClass = index.classFor(owner) ?: error("Class not found: $owner")
+        val ownerClass = index.requireClass(owner)
         nearestBeforeString?.let { needle ->
-            var best: Pair<FieldRef, Int>? = null
-            for (method in ownerClass.methods) {
-                val anchor = method.indexOfFirstString(needle) ?: continue
-                val insns = method.instructions
-                for (i in (anchor - 1) downTo 0) {
-                    val insn = insns[i]
-                    if (insn.opcode != Opcode.IGET_OBJECT) continue
-                    val field = insn.fieldRef ?: continue
-                    if (field.definingClass != owner) continue
-                    val distance = anchor - i
-                    if (best == null || distance < best.second) best = field to distance
-                    break
-                }
-            }
-            return FieldTarget.of(
-                best?.first ?: error("No object field read before '$needle' on $owner"),
-                label,
-            )
+            val nearest =
+                ownerClass.methods
+                    .mapNotNull { method ->
+                        val anchor = method.indexOfFirstString(needle) ?: return@mapNotNull null
+                        method.instructions.objectRead(anchor - 1 downTo 0, owner)?.let {
+                            anchor - it.index to it.value
+                        }
+                    }
+                    .minByOrNull { it.first }
+                    ?: error("No object field read before '$needle' on $owner")
+            return FieldTarget.of(nearest.second, label)
         }
         objectReadScope?.let { scope ->
             val fieldOwner =
@@ -400,15 +371,11 @@ private class FieldLocatorCompiler(
                     ObjectReadScope.DECLARING_CLASS -> owner
                     ObjectReadScope.ANY_CLASS -> null
                 }
-            for (method in ownerClass.methods) {
-                for (insn in method.instructions) {
-                    if (insn.opcode != Opcode.IGET_OBJECT) continue
-                    val field = insn.fieldRef ?: continue
-                    if (fieldOwner != null && field.definingClass != fieldOwner) continue
-                    return FieldTarget.of(field, label)
-                }
-            }
-            error("No object field read found on $owner")
+            val read =
+                ownerClass.methods.firstNotNullOfOrNull {
+                    it.instructions.let { insns -> insns.objectRead(insns.indices, fieldOwner) }
+                } ?: error("No object field read found on $owner")
+            return FieldTarget.of(read.value, label)
         }
         return resolveOnType(label)
     }
@@ -418,7 +385,7 @@ private class FieldLocatorCompiler(
             ownerDescriptor
                 ?: defaultOwner
                 ?: error("No owner type is available for field '$label'")
-        val ownerClass = index.classFor(owner) ?: error("Class not found: $owner")
+        val ownerClass = index.requireClass(owner)
         val candidates =
             ownerClass.instanceFields.map { field ->
                 FieldRef(owner, field.name, field.fieldType) to
@@ -435,4 +402,16 @@ private class FieldLocatorCompiler(
             }
         return FieldTarget.of(winner.first, label)
     }
+}
+
+/** The first `iget-object` at [indices] reading a field of [owner], or of any class when null. */
+private fun List<Instruction>.objectRead(
+    indices: IntProgression,
+    owner: String?,
+): IndexedValue<FieldRef>? = indices.firstNotNullOfOrNull { i ->
+    this[i]
+        .takeIf { it.opcode == Opcode.IGET_OBJECT }
+        ?.fieldRef
+        ?.takeIf { owner == null || it.definingClass == owner }
+        ?.let { IndexedValue(i, it) }
 }

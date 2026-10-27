@@ -211,7 +211,7 @@ internal constructor(
     val target: MethodTarget by lazy {
         MethodTarget("${className(owner)}.$name") { runtime ->
             val method = runtime.index.methodFor(ref) ?: error(missing(runtime))
-            Resolution(method, wrapped("${className(owner)}.$name", method.descriptor))
+            Resolution.direct(method, "${className(owner)}.$name", method.descriptor)
         }
     }
 

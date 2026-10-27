@@ -63,101 +63,77 @@ private sealed interface Seed {
 }
 
 internal class SearchIndex(private val cache: RunCache) {
-    private var classes: List<DexClass>? = null
-    private var methods: List<Method>? = null
-    private var sourceFiles: Map<String?, List<DexClass>>? = null
-    val allClasses: List<DexClass>
-        get() {
-            cache.synchronize()
-            return classes ?: getAllClasses().map(::DexClass).also { classes = it }
+    private val memos = mutableListOf<Memo<*, *>>()
+
+    /**
+     * Results the index keeps until the run's bytecode changes. A full change drops every memo; a
+     * method edit applies [onEdit], which drops what the edited methods' code made stale.
+     */
+    private inner class Memo<K, V>(private val onEdit: MutableMap<K, V>.(UIntArray) -> Unit = {}) {
+        private val entries = HashMap<K, V>()
+
+        init {
+            memos += this
         }
+
+        operator fun get(key: K): V? {
+            cache.synchronize()
+            return entries[key]
+        }
+
+        fun getOrPut(key: K, compute: () -> V): V {
+            cache.synchronize()
+            return entries.getOrPut(key, compute)
+        }
+
+        fun clear() = entries.clear()
+
+        fun edited(handles: UIntArray) = entries.onEdit(handles)
+    }
+
+    private fun <K, V> clearedOnEdit() = Memo<K, V> { clear() }
+
+    private val classList = Memo<Unit, List<DexClass>>()
+    private val methodList = Memo<Unit, List<Method>>()
+    private val classesBySourceFile = Memo<Unit, Map<String?, List<DexClass>>>()
+    private val classByDescriptor = Memo<String, DexClass?>()
+    private val methodBySignature = Memo<MethodSignature, Method?>()
+    private val methodsByClass = Memo<ClassMethods, List<Method>>()
+    private val inheritedByClass = Memo<ClassMethods, List<Method>>()
+    private val declarationSeeds = Memo<Seed, Set<UInt>>()
+    private val codeSeeds = clearedOnEdit<Seed, Set<UInt>>()
+    private val classesByString = clearedOnEdit<String, Set<DexClass>>()
+    private val classesByField = Memo<String, Set<DexClass>>()
+    private val subclasses = Memo<String, Set<DexClass>>()
+    private val implementers = Memo<String, Set<DexClass>>()
+    private val enumsByClass = clearedOnEdit<UInt, Map<String, FieldRef>>()
+    private val refsByMethod = Memo<UInt, List<MethodRef>> { it.forEach(::remove) }
+    private val fieldRefsByMethod = Memo<UInt, List<FieldRef>> { it.forEach(::remove) }
+    private val invokeSites = clearedOnEdit<MethodSignature, List<Pair<UInt, Int>>>()
+    private val castCounts = clearedOnEdit<CastQuery, Int>()
+    private val addedDex = Memo<Int, Boolean>()
+    private val matchingCalls = clearedOnEdit<MethodRefMatchSpec, Set<UInt>>()
+    private val matchingAccesses = clearedOnEdit<FieldRefMatchSpec, Set<UInt>>()
+
+    fun invalidate() = memos.forEach { it.clear() }
+
+    fun invalidateMethods(handles: UIntArray) = memos.forEach { it.edited(handles) }
+
+    val allClasses: List<DexClass>
+        get() = classList.getOrPut(Unit) { getAllClasses().map(::DexClass) }
 
     val allMethods: List<Method>
-        get() {
-            cache.synchronize()
-            return methods ?: allMethodHandles().map(::Method).also { methods = it }
-        }
-
-    private val classesBySourceFile: Map<String?, List<DexClass>>
-        get() {
-            cache.synchronize()
-            return sourceFiles
-                ?: run {
-                    cache.prefetchClasses(allClasses.map { it.handle })
-                    allClasses.groupBy { it.sourceFile }.also { sourceFiles = it }
-                }
-        }
-
-    private val classByDescriptor = HashMap<String, DexClass?>()
-    private val methodBySignature = HashMap<MethodSignature, Method?>()
-    private val methodsByClass = HashMap<ClassMethods, List<Method>>()
-    private val inheritedByClass = HashMap<ClassMethods, List<Method>>()
-    private val seeds = HashMap<Seed, Set<UInt>>()
-    private val classesByString = HashMap<String, Set<DexClass>>()
-    private val classesByField = HashMap<String, Set<DexClass>>()
-    private val subclasses = HashMap<String, Set<DexClass>>()
-    private val implementers = HashMap<String, Set<DexClass>>()
-    private val enumsByClass = HashMap<UInt, Map<String, FieldRef>>()
-    private val refsByMethod = HashMap<UInt, List<MethodRef>>()
-    private val fieldRefsByMethod = HashMap<UInt, List<FieldRef>>()
-    private val invokeSites = HashMap<MethodSignature, List<Pair<UInt, Int>>>()
-    private val castCounts = HashMap<CastQuery, Int>()
-    private val addedDex = HashMap<Int, Boolean>()
-
-    fun invalidate() {
-        classes = null
-        methods = null
-        sourceFiles = null
-        classByDescriptor.clear()
-        methodBySignature.clear()
-        methodsByClass.clear()
-        inheritedByClass.clear()
-        seeds.clear()
-        classesByString.clear()
-        classesByField.clear()
-        subclasses.clear()
-        implementers.clear()
-        enumsByClass.clear()
-        refsByMethod.clear()
-        fieldRefsByMethod.clear()
-        invokeSites.clear()
-        castCounts.clear()
-        addedDex.clear()
-        matchingCalls.clear()
-        matchingAccesses.clear()
-    }
-
-    fun invalidateMethods(handles: UIntArray) {
-        handles.forEach {
-            refsByMethod.remove(it)
-            fieldRefsByMethod.remove(it)
-        }
-        seeds.keys.removeAll {
-            it is Seed.Op ||
-                it is Seed.Ops ||
-                it is Seed.Strings ||
-                it is Seed.Prefix ||
-                it is Seed.Literal
-        }
-        classesByString.clear()
-        enumsByClass.clear()
-        invokeSites.clear()
-        castCounts.clear()
-        matchingCalls.clear()
-        matchingAccesses.clear()
-    }
-
-    private fun <K, V> cached(store: MutableMap<K, V>, key: K, compute: () -> V): V {
-        cache.synchronize()
-        return store.getOrPut(key, compute)
-    }
+        get() = methodList.getOrPut(Unit) { allMethodHandles().map(::Method) }
 
     /** True for a DEX the patcher linked in, which is every extension the bundle ships. */
     fun isExtensionDex(dexIndex: Int): Boolean =
-        cached(addedDex, dexIndex) { isAddedDex(dexIndex.toUInt()) }
+        addedDex.getOrPut(dexIndex) { isAddedDex(dexIndex.toUInt()) }
 
     fun classFor(descriptor: String): DexClass? =
-        cached(classByDescriptor, descriptor) { findClass(descriptor)?.let(::DexClass) }
+        classByDescriptor.getOrPut(descriptor) { findClass(descriptor)?.let(::DexClass) }
+
+    fun requireClass(descriptor: String): DexClass =
+        classFor(descriptor) ?: error("Class not found: $descriptor")
 
     fun methodFor(ref: MethodRef): Method? =
         methodFor(MethodSignature(ref.definingClass, ref.name, ref.proto))
@@ -167,7 +143,7 @@ internal class SearchIndex(private val cache: RunCache) {
      * declaration, else the nearest one it inherits.
      */
     fun methodFor(signature: MethodSignature): Method? =
-        cached(methodBySignature, signature) {
+        methodBySignature.getOrPut(signature) {
             val named = { methods: List<Method> ->
                 methods.firstOrNull { it.name == signature.name && it.proto == signature.proto }
             }
@@ -176,7 +152,7 @@ internal class SearchIndex(private val cache: RunCache) {
         }
 
     fun methodsInClass(descriptor: String, name: String? = null): List<Method> =
-        cached(methodsByClass, ClassMethods(descriptor, name)) {
+        methodsByClass.getOrPut(ClassMethods(descriptor, name)) {
             classFor(descriptor)
                 ?.let { classDef ->
                     if (name == null) classDef.methods
@@ -190,7 +166,7 @@ internal class SearchIndex(private val cache: RunCache) {
      * or a nearer ancestor overrides. Constructors and private declarations are not inherited.
      */
     fun inheritedMethods(descriptor: String, name: String? = null): List<Method> =
-        cached(inheritedByClass, ClassMethods(descriptor, name)) {
+        inheritedByClass.getOrPut(ClassMethods(descriptor, name)) {
             val seen =
                 methodsInClass(descriptor, name).mapTo(mutableSetOf()) { it.name to it.proto }
             classFor(descriptor)?.superclassChain.orEmpty().flatMap { ancestor ->
@@ -202,41 +178,44 @@ internal class SearchIndex(private val cache: RunCache) {
             }
         }
 
-    private fun seed(key: Seed, compute: () -> UIntArray): Set<UInt> =
-        cached(seeds, key) { compute().toCollection(linkedSetOf()) }
+    private fun seed(memo: Memo<Seed, Set<UInt>>, key: Seed, compute: () -> UIntArray) =
+        memo.getOrPut(key) { compute().toCollection(linkedSetOf()) }
 
-    fun methodsWithName(name: String) = seed(Seed.Name(name)) { findMethodsByName(name) }
+    fun methodsWithName(name: String) =
+        seed(declarationSeeds, Seed.Name(name)) { findMethodsByName(name) }
 
     fun methodsWithReturnType(type: String) =
-        seed(Seed.Returns(type)) { findMethodsByProto(type, null, null) }
+        seed(declarationSeeds, Seed.Returns(type)) { findMethodsByProto(type, null, null) }
 
     fun methodsWithExactParameters(types: List<String>) =
-        seed(Seed.Parameters(types.toList())) { findMethodsByProto(null, types, null) }
+        seed(declarationSeeds, Seed.Parameters(types.toList())) {
+            findMethodsByProto(null, types, null)
+        }
 
     fun methodsWithParameter(type: String) =
-        seed(Seed.Parameter(type)) { findMethodsByProto(null, null, type) }
+        seed(declarationSeeds, Seed.Parameter(type)) { findMethodsByProto(null, null, type) }
 
     fun methodsWithOpcode(opcode: Opcode) =
-        seed(Seed.Op(opcode)) { findMethodsByOpcodes(intArrayOf(opcode.value)) }
+        seed(codeSeeds, Seed.Op(opcode)) { findMethodsByOpcodes(intArrayOf(opcode.value)) }
 
     fun methodsWithOpcodeSequence(opcodes: List<Opcode?>) =
-        seed(Seed.Ops(opcodes.toList())) { findMethodsByOpcodes(opcodes.toPattern()) }
+        seed(codeSeeds, Seed.Ops(opcodes.toList())) { findMethodsByOpcodes(opcodes.toPattern()) }
 
     fun methodsWithStrings(values: List<String>): Set<UInt> {
         val key = values.distinct().sorted()
-        return seed(Seed.Strings(key)) { findMethodsByStrings(key) }
+        return seed(codeSeeds, Seed.Strings(key)) { findMethodsByStrings(key) }
     }
 
     fun methodsWithStringPrefix(prefix: String) =
-        seed(Seed.Prefix(prefix)) { findMethodsByStringPrefix(prefix) }
+        seed(codeSeeds, Seed.Prefix(prefix)) { findMethodsByStringPrefix(prefix) }
 
     fun methodsWithLiteral(value: Long) =
-        seed(Seed.Literal(value)) {
+        seed(codeSeeds, Seed.Literal(value)) {
             findInstructionsByLiteral(value).map { it.method }.toUIntArray()
         }
 
     fun classesWithString(value: String): Set<DexClass> =
-        cached(classesByString, value) {
+        classesByString.getOrPut(value) {
             methodsWithStrings(listOf(value))
                 .asSequence()
                 .map { Method(it).owner }
@@ -247,9 +226,15 @@ internal class SearchIndex(private val cache: RunCache) {
 
     /** An enum's constants by the name each passes to its constructor; empty for other classes. */
     fun enumConstants(classDef: DexClass): Map<String, FieldRef> =
-        cached(enumsByClass, classDef.handle) { readEnumConstants(classDef, this) }
+        enumsByClass.getOrPut(classDef.handle) { readEnumConstants(classDef, this) }
 
-    fun classesWithSourceFile(name: String): List<DexClass> = classesBySourceFile[name].orEmpty()
+    fun classesWithSourceFile(name: String): List<DexClass> =
+        classesBySourceFile
+            .getOrPut(Unit) {
+                cache.prefetchClasses(allClasses.map { it.handle })
+                allClasses.groupBy { it.sourceFile }
+            }[name]
+            .orEmpty()
 
     fun classesWithInstanceFieldType(type: String): Set<DexClass> =
         classesBy(classesByField, type, ::findClassesWithInstanceField)
@@ -261,22 +246,17 @@ internal class SearchIndex(private val cache: RunCache) {
         classesBy(implementers, type, ::findClassesImplementing)
 
     private fun classesBy(
-        store: HashMap<String, Set<DexClass>>,
+        memo: Memo<String, Set<DexClass>>,
         type: String,
         find: (String) -> UIntArray,
     ): Set<DexClass> =
-        cached(store, type) { find(type).map(::DexClass).toCollection(linkedSetOf()) }
+        memo.getOrPut(type) { find(type).map(::DexClass).toCollection(linkedSetOf()) }
 
-    private val matchingCalls = mutableMapOf<MethodRefMatchSpec, Set<UInt>>()
-
-    fun matchesCall(method: Method, spec: MethodRefMatchSpec): Boolean {
-        cache.synchronize()
-        return matchingCalls[spec]?.contains(method.handle)
-            ?: methodRefsOf(method).any(spec::matches)
-    }
+    fun matchesCall(method: Method, spec: MethodRefMatchSpec): Boolean =
+        matchingCalls[spec]?.contains(method.handle) ?: methodRefsOf(method).any(spec::matches)
 
     fun methodsCalling(spec: MethodRefMatchSpec): Set<UInt> =
-        cached(matchingCalls, spec) {
+        matchingCalls.getOrPut(spec) {
             findCallsMatching(
                     spec.owner,
                     spec.name,
@@ -292,16 +272,11 @@ internal class SearchIndex(private val cache: RunCache) {
                 .mapTo(linkedSetOf()) { it.method }
         }
 
-    private val matchingAccesses = mutableMapOf<FieldRefMatchSpec, Set<UInt>>()
-
-    fun matchesAccess(method: Method, spec: FieldRefMatchSpec): Boolean {
-        cache.synchronize()
-        return matchingAccesses[spec]?.contains(method.handle)
-            ?: fieldRefsOf(method).any(spec::matches)
-    }
+    fun matchesAccess(method: Method, spec: FieldRefMatchSpec): Boolean =
+        matchingAccesses[spec]?.contains(method.handle) ?: fieldRefsOf(method).any(spec::matches)
 
     fun methodsAccessing(spec: FieldRefMatchSpec): Set<UInt> =
-        cached(matchingAccesses, spec) {
+        matchingAccesses.getOrPut(spec) {
             findFieldAccessesMatching(spec.owner, spec.name, spec.fieldType).mapTo(linkedSetOf()) {
                 it.method
             }
@@ -320,12 +295,12 @@ internal class SearchIndex(private val cache: RunCache) {
         classDef.superclass == type || classDef.superclassChain.any { it.descriptor == type }
 
     fun methodRefsOf(method: Method): List<MethodRef> =
-        cached(refsByMethod, method.handle) {
+        refsByMethod.getOrPut(method.handle) {
             methodReferences(method.handle).distinct()
         }
 
     fun fieldRefsOf(method: Method): List<FieldRef> =
-        cached(fieldRefsByMethod, method.handle) { fieldReferences(method.handle) }
+        fieldRefsByMethod.getOrPut(method.handle) { fieldReferences(method.handle) }
 
     fun calleesOf(method: Method): List<Method> = methodRefsOf(method).mapNotNull(::methodFor)
 
@@ -335,28 +310,22 @@ internal class SearchIndex(private val cache: RunCache) {
     fun methodCalls(method: Method, ref: MethodRef): Boolean =
         methodCalls(method, MethodSignature(ref.definingClass, ref.name, ref.proto))
 
-    private fun methodCalls(method: Method, signature: MethodSignature): Boolean {
-        cache.synchronize()
-        return invokeSites[signature]?.any { it.first == method.handle }
+    private fun methodCalls(method: Method, signature: MethodSignature): Boolean =
+        invokeSites[signature]?.any { it.first == method.handle }
             ?: methodRefsOf(method).any {
                 MethodSignature(it.definingClass, it.name, it.proto) == signature
             }
-    }
 
-    fun methodHasStringPrefix(method: Method, prefix: String): Boolean {
-        cache.synchronize()
-        return seeds[Seed.Prefix(prefix)]?.contains(method.handle)
+    fun methodHasStringPrefix(method: Method, prefix: String): Boolean =
+        codeSeeds[Seed.Prefix(prefix)]?.contains(method.handle)
             ?: (indexOfFirstStringWithPrefix(method.handle, prefix) != null)
-    }
 
-    fun methodHasLiteral(method: Method, value: Long): Boolean {
-        cache.synchronize()
-        return seeds[Seed.Literal(value)]?.contains(method.handle) ?: method.containsLiteral(value)
-    }
+    fun methodHasLiteral(method: Method, value: Long): Boolean =
+        codeSeeds[Seed.Literal(value)]?.contains(method.handle) ?: method.containsLiteral(value)
 
     fun followedByCheckCast(target: Method, type: String, lookAhead: Int): Int {
         val signature = signatureOf(target)
-        return cached(castCounts, CastQuery(signature, type, lookAhead)) {
+        return castCounts.getOrPut(CastQuery(signature, type, lookAhead)) {
             countFollowingCheckCast(
                     invokeSitesFor(signature).map { (handle, index) ->
                         InstructionHit(handle, index.toUInt())
@@ -422,7 +391,7 @@ internal class SearchIndex(private val cache: RunCache) {
         MethodSignature(method.owner, method.name, method.proto)
 
     fun invokeSitesFor(signature: MethodSignature): List<Pair<UInt, Int>> =
-        cached(invokeSites, signature) {
+        invokeSites.getOrPut(signature) {
             val ref = MethodRef(signature.owner, signature.name, signature.proto)
             findCallsMatching(
                     ref.definingClass,

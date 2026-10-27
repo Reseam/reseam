@@ -252,7 +252,7 @@ internal class MethodQuerySpec : QuerySpec<Method, MethodRankScope>("method"), M
     }
 
     override fun prefetch(runtime: PatchRuntime, candidates: List<Method>) =
-        runtime.prefetchMethods(candidates.map { it.handle })
+        runtime.run.cache.prefetchMethods(candidates.map { it.handle })
 
     override fun rankScope(index: SearchIndex, value: Method) = MethodRankScopeImpl(index, value)
 

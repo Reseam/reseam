@@ -7,9 +7,6 @@ import app.reseam.patch.native.checkInvocation
 import app.reseam.patch.native.runningBundle
 import app.reseam.patch.settings.SettingsHost
 import app.reseam.patch.settings.SettingsSection
-import app.reseam.patch.types.ClassInfo
-import app.reseam.patch.types.Instruction
-import app.reseam.patch.types.MethodInfo
 import app.reseam.patch.types.RunningBundleInfo
 import java.util.IdentityHashMap
 
@@ -41,8 +38,6 @@ class PatchRuntime() {
     private val successful = mutableListOf<() -> Unit>()
     internal val index: SearchIndex
         get() = run.cache.index
-
-    internal fun synchronize() = run.cache.synchronize()
 
     internal fun afterSuccess(action: () -> Unit) {
         successful += action
@@ -85,16 +80,6 @@ class PatchRuntime() {
         log.debug("${target.label}: ${resolution.report.winner}")
         return resolution
     }
-
-    internal fun methodInfo(handle: UInt): MethodInfo = run.cache.methodInfo(handle)
-
-    internal fun classInfo(handle: UInt): ClassInfo = run.cache.classInfo(handle)
-
-    internal fun instructions(handle: UInt): List<Instruction> = run.cache.instructions(handle)
-
-    internal fun prefetchMethods(handles: Collection<UInt>) = run.cache.prefetchMethods(handles)
-
-    internal fun prefetchClasses(handles: Collection<UInt>) = run.cache.prefetchClasses(handles)
 }
 
 internal class PatchRun {
@@ -191,7 +176,16 @@ internal data class SearchMatchReport(
     override val nearMisses: List<String>,
 ) : MatchReport
 
-internal class Resolution<R : Any>(val value: R, val report: MatchReport)
+internal class Resolution<R : Any>(val value: R, val report: MatchReport) {
+    companion object {
+        /** A value named outright rather than searched for. */
+        fun <R : Any> direct(value: R, name: String, winner: String) =
+            Resolution(
+                value,
+                SearchMatchReport(name, winner, 1, listOf("resolved directly"), emptyList()),
+            )
+    }
+}
 
 /**
  * Something a patch looks for: resolved against the running patch's APK the first time it is used,

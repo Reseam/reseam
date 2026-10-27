@@ -253,23 +253,13 @@ private constructor(
         )
 
     override fun whenTrue(value: ValueRef, block: CodeScope.() -> Unit): Otherwise {
-        val register =
-            value.impl().also { requireZeroComparable(it.assignableType) }.asByte().register
-        return branch(block) { elseLabel ->
-            op(reads = listOf(register), target = elseLabel) { b, r ->
-                b.ifEqz(byte(r(register), "if-eqz"), elseLabel.name)
-            }
-        }
+        val tested = value.impl()
+        return branch(block) { ifZero(tested, it) }
     }
 
     override fun whenFalse(value: ValueRef, block: CodeScope.() -> Unit): Otherwise {
-        val register =
-            value.impl().also { requireZeroComparable(it.assignableType) }.asByte().register
-        return branch(block) { elseLabel ->
-            op(reads = listOf(register), target = elseLabel) { b, r ->
-                b.ifNez(byte(r(register), "if-nez"), elseLabel.name)
-            }
-        }
+        val tested = value.impl()
+        return branch(block) { ifNonZero(tested, it) }
     }
 
     override fun whenNull(value: ValueRef, block: CodeScope.() -> Unit): Otherwise {
@@ -299,12 +289,8 @@ private constructor(
         type: String,
         block: CodeScope.() -> Unit,
     ): Otherwise {
-        val isInstance = instanceOf(value.impl(), descriptorOf(type)).register
-        return branch(block) { elseLabel ->
-            op(reads = listOf(isInstance), target = elseLabel) { b, r ->
-                b.ifEqz(byte(r(isInstance), "if-eqz"), elseLabel.name)
-            }
-        }
+        val isInstance = instanceOf(value.impl(), descriptorOf(type))
+        return branch(block) { ifZero(isInstance, it) }
     }
 
     override fun returnVoid() {
@@ -422,7 +408,12 @@ private constructor(
         override fun field(ref: FieldRef): ValueRef = readField(this, ref)
 
         override fun fieldOfType(type: String): ValueRef =
-            readField(this, uniqueField(this.type, descriptorOf(type)))
+            readField(
+                this,
+                ActiveRuntime.current.index
+                    .requireClass(this.type)
+                    .instanceFieldOfType(descriptorOf(type)),
+            )
 
         override fun set(field: FieldTarget, value: ValueRef) =
             writeField(this, field.ref, value.impl())
