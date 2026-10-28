@@ -42,7 +42,7 @@ internal class SettingsSession(
     fun display(direction: Direction) {
         transition?.end()
         val previous = page
-        val next = settingsPage(bundle, ui, pageIds.last(), back, open)
+        val next = settingsPage(bundle, ui, pageIds.last(), back, open, ::toggleTheme)
         page = next
         frame.addView(next)
         // Insets reach only views attached when the window first lays out.
@@ -95,6 +95,11 @@ internal class SettingsSession(
                 if (light) visibility or flags else visibility and flags.inv()
         }
         display(Direction.NONE)
+    }
+
+    private fun toggleTheme() {
+        Appearance.toggle(dialog.context)
+        theme()
     }
 
     fun release() {

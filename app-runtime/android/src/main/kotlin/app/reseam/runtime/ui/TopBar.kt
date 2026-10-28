@@ -5,10 +5,11 @@ package app.reseam.runtime.ui
 
 import android.text.TextUtils
 import android.view.Gravity
+import android.view.View
 import android.widget.LinearLayout
 import app.reseam.runtime.RuntimeStrings
 
-class TopBar internal constructor(ui: Ui, title: CharSequence?, back: Runnable) :
+class TopBar internal constructor(private val ui: Ui, title: CharSequence?, back: Runnable) :
     LinearLayout(ui.context) {
     init {
         orientation = HORIZONTAL
@@ -32,5 +33,19 @@ class TopBar internal constructor(ui: Ui, title: CharSequence?, back: Runnable) 
                 marginStart = ui.px(Tokens.SPACE_SM)
             },
         )
+    }
+
+    /** Adds an icon button at the end, mirroring the back button. Returns this bar. */
+    fun action(
+        icon: VectorImage,
+        description: CharSequence?,
+        onClick: View.OnClickListener?,
+    ): TopBar {
+        setPaddingRelative(paddingStart, 0, ui.px(Tokens.SPACE_MD), 0)
+        addView(
+            ui.iconButton(icon, ui.colors.onSurface, description, onClick),
+            LayoutParams(ui.px(Tokens.TOUCH_TARGET), ui.px(Tokens.TOUCH_TARGET)),
+        )
+        return this
     }
 }

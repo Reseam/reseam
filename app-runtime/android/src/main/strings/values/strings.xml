@@ -16,6 +16,8 @@
     <string name="engine_license">Engine <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
     <string name="clear_search">Clear search</string>
     <string name="back">Back</string>
+    <string name="use_dark_theme">Use dark theme</string>
+    <string name="use_light_theme">Use light theme</string>
     <string name="backup">Backup</string>
     <string name="export_settings">Export settings</string>
     <string name="export_settings_summary">Save your settings to a file.</string>

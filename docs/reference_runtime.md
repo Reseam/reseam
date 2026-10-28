@@ -141,7 +141,7 @@ ui.dialog()
     .show()
 ```
 
-They follow Material 3, in the settings screen's current light or dark theme: the system's, or before Android 10 the app's own.
+They follow Material 3, in the settings screen's current light or dark theme: the one the user picked, and until they pick, the system's, or before Android 10 the app's own.
 
 ### `Ui`
 
@@ -209,6 +209,10 @@ An outlined text field, a `LinearLayout`.
 
 A screen's top bar, with a back button that runs `back`.
 
+| Member | Description |
+|---|---|
+| `action(icon: VectorImage, description: CharSequence?, onClick: View.OnClickListener?): TopBar` | An icon button at the end of the bar. Screen readers read `description`. |
+
 ### `BrandDialog.Builder`
 
 What `ui.dialog()` returns. Each setter returns the builder.
@@ -250,7 +254,7 @@ A vector image from your brand or a setting's icon, drawn at any size. Draw one 
 
 ### `Icons`
 
-Line icons the runtime's own screens use, which your components can use too: `ARROW_LEFT`, `CHEVRON_RIGHT`, `SEARCH`, `CLOSE`, `CHECK`, `RESET`, `UPLOAD`, and `DOWNLOAD`.
+Line icons the runtime's own screens use, which your components can use too: `ARROW_LEFT`, `CHEVRON_RIGHT`, `SEARCH`, `CLOSE`, `CHECK`, `RESET`, `SUN`, `MOON`, `UPLOAD`, and `DOWNLOAD`.
 
 ## Used by the runtime itself
 

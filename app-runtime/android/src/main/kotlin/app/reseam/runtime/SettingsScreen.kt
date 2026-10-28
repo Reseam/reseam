@@ -18,6 +18,7 @@ internal fun settingsPage(
     pageId: String,
     back: () -> Unit,
     open: (String) -> Unit,
+    toggleTheme: () -> Unit,
 ): View {
     val schema = bundle.schema
     val root = pageId.isEmpty()
@@ -26,14 +27,22 @@ internal fun settingsPage(
             setBackgroundColor(ui.colors.surface)
             // Hosts targeting API 35 draw edge to edge; keep the bar below the status bar.
             fitsSystemWindows = true
-            addView(
+            val topBar =
                 ui.topBar(
                     if (root) RuntimeStrings.settings
                     else schema.page(pageId).title.resolve(bundle.name),
                     Runnable(back),
-                ),
-                matchWidth(),
-            )
+                )
+            if (root) {
+                val dark = ui.theme.dark
+                topBar.action(
+                    if (dark) Icons.SUN else Icons.MOON,
+                    if (dark) RuntimeStrings.useLightTheme else RuntimeStrings.useDarkTheme,
+                ) {
+                    toggleTheme()
+                }
+            }
+            addView(topBar, matchWidth())
         }
     val body =
         vertical(ui).apply {
