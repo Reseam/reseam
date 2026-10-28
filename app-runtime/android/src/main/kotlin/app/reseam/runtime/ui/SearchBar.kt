@@ -38,6 +38,7 @@ class SearchBar internal constructor(ui: Ui, hint: CharSequence?) : LinearLayout
             setOnEditorActionListener { view, action, _ ->
                 if (action != EditorInfo.IME_ACTION_SEARCH) false
                 else {
+                    view.clearFocus()
                     ui.context
                         .getSystemService(InputMethodManager::class.java)
                         .hideSoftInputFromWindow(view.windowToken, 0)
