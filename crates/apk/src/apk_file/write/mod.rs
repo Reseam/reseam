@@ -141,11 +141,13 @@ impl ApkFile {
         for entry in plan {
             let result = match entry.source {
                 EntrySource::Archive(index) => {
-                    writer.copy_original(&mut source, &source_file, index)
+                    writer.copy_original(&mut source, &source_file, index, entry.name.as_str())
                 }
                 EntrySource::Dex(job) => entries.next().and_then(|written| {
                     let checksum = match written.entry {
-                        DexEntry::Deflated(file) => writer.copy_compressed(&file)?,
+                        DexEntry::Deflated(file) => {
+                            writer.copy_compressed(entry.name.as_str(), &file)?
+                        }
                         DexEntry::Stored { file, crc } => {
                             writer.write_stored(entry.name.as_str(), &file, crc)?;
                             crc

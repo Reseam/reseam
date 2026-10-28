@@ -10,7 +10,9 @@ use reseam_storage::Bytes;
 
 use super::{ApkComponent, EntryEdit, Resources, map_staged};
 use crate::axml::AxmlDocument;
-use crate::entry::{EntryName, MANIFEST_ENTRY, RESOURCES_ENTRY, dex_ordinal, is_native_library};
+use crate::entry::{
+    EntryName, MANIFEST_ENTRY, RESOURCES_ENTRY, dex_entry_names, dex_ordinal, is_native_library,
+};
 use crate::error::{Result, invalid};
 use crate::resources::ResourceTable;
 use crate::zip::Compression;
@@ -20,9 +22,11 @@ impl ApkComponent {
     /// Current entry names, in archive order followed by new entries in name
     /// order. DEX names allocated by the session are included.
     pub fn entry_names(&self) -> Vec<String> {
-        reader::entry_names(&self.archive)
-            .into_iter()
+        self.archive_entries
+            .iter()
+            .map(EntryName::as_str)
             .filter(|name| self.contains(name))
+            .map(String::from)
             .chain(
                 self.edits
                     .iter()
@@ -100,7 +104,10 @@ impl ApkComponent {
         let source = if reader::contains(&self.archive, name) {
             Some(name.to_owned())
         } else {
-            reader::dex_entry_names(&self.archive).into_iter().next()
+            dex_entry_names(&self.archive_entries)
+                .into_iter()
+                .next()
+                .map(|name| name.as_str().to_owned())
         };
         let stored = match source {
             Some(source) => reader::is_stored(&self.archive, &source)?,
@@ -117,15 +124,21 @@ impl ApkComponent {
         &self.archive
     }
 
+    /// The archive's entry names, each at its index in the archive.
+    pub(in crate::apk_file) fn archive_entries(&self) -> &[EntryName] {
+        &self.archive_entries
+    }
+
     pub(in crate::apk_file) fn edits(&self) -> &BTreeMap<EntryName, EntryEdit> {
         &self.edits
     }
 
     /// The DEX entry names the archive or the session already claims.
     pub(in crate::apk_file) fn reserved_dex_names(&self) -> impl Iterator<Item = &str> {
-        self.archive
-            .file_names()
-            .chain(self.edits.keys().map(EntryName::as_str))
+        self.archive_entries
+            .iter()
+            .chain(self.edits.keys())
+            .map(EntryName::as_str)
             .filter(|name| dex_ordinal(name).is_some())
     }
 

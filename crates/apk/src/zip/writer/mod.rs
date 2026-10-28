@@ -56,15 +56,16 @@ impl<W: Write + Seek> Writer<W> {
     }
 
     /// Copies entry `index` of `archive`, whose bytes `source` reads, as the
-    /// archive holds it. Stored data is realigned.
+    /// archive holds it, under `name`. Stored data is realigned.
     pub(crate) fn copy_original<R: Read + Seek>(
         &mut self,
         archive: &mut zip::ZipArchive<R>,
         source: &File,
         index: usize,
+        name: &str,
     ) -> Result<()> {
+        let name: Box<str> = name.into();
         let entry = archive.by_index_raw(index)?;
-        let name: Box<str> = entry.name().into();
         let header = EntryHeader::of(&entry)?;
         let data = entry
             .data_start()
@@ -74,11 +75,11 @@ impl<W: Write + Seek> Writer<W> {
         self.copy_range(source, data, u64::from(header.compressed))
     }
 
-    /// Copies the single entry of a ZIP a DEX worker wrote, returning its CRC-32.
-    pub(crate) fn copy_compressed(&mut self, file: &File) -> Result<u32> {
+    /// Copies the single entry of a ZIP a DEX worker wrote, as `name`, returning its CRC-32.
+    pub(crate) fn copy_compressed(&mut self, name: &str, file: &File) -> Result<u32> {
         let mut archive = zip::ZipArchive::new(BufReader::new(file))?;
         let crc = archive.by_index_raw(0)?.crc32();
-        self.copy_original(&mut archive, file, 0)?;
+        self.copy_original(&mut archive, file, 0, name)?;
         Ok(crc)
     }
 

@@ -36,6 +36,7 @@ pub struct ApkComponent {
     name: String,
     path: PathBuf,
     archive: Archive,
+    archive_entries: Vec<EntryName>,
     manifest: AxmlDocument,
     manifest_revision: u64,
     resources: Resources,
@@ -53,6 +54,7 @@ enum Resources {
 impl ApkComponent {
     pub(crate) fn open(path: &Path, loading: Loading) -> Result<Self> {
         let mut archive = reader::open_archive(path)?;
+        let archive_entries = reader::entry_names(&archive).map_err(|error| error.in_file(path))?;
         let manifest =
             (|| AxmlDocument::parse(&reader::read_entry(&mut archive, MANIFEST_ENTRY)?))()
                 .map_err(|error| error.in_entry(MANIFEST_ENTRY).in_file(path))?;
@@ -68,6 +70,7 @@ impl ApkComponent {
             name,
             path: path.to_path_buf(),
             archive,
+            archive_entries,
             manifest,
             manifest_revision: 0,
             resources,

@@ -198,3 +198,24 @@ fn stored_entry_ranges_must_fit_the_archive_before_mapping() -> TestResult {
     assert!(Apk::open(&path, lazy()).is_err());
     Ok(())
 }
+
+#[test]
+fn utf8_names_without_the_utf8_flag_read_and_write_as_android_reads_them() -> TestResult {
+    let name = "META-INF/services/\u{05c5}.x22";
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("app.apk");
+    std::fs::write(
+        &path,
+        reseam_fixtures::without_utf8_flags(&reseam_fixtures::apk(
+            &manifest_bytes("original", None),
+            &[(name, b"service")],
+        )),
+    )?;
+    let mut apk = Apk::open(&path, lazy())?;
+    assert!(apk.entry_names().iter().any(|entry| entry == name));
+    assert_eq!(apk.read_entry(name)?, Some(b"service".to_vec()));
+    let output = apk.write_to(dir.path().join("out"), WriteOptions::default())?;
+    let mut reopened = Apk::open(&output[0], lazy())?;
+    assert_eq!(reopened.read_entry(name)?, Some(b"service".to_vec()));
+    Ok(())
+}

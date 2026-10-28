@@ -91,7 +91,8 @@ fn detect_format(archive: &mut Archive, path: &Path) -> Result<Option<ContainerF
 
 fn apk_entries(archive: &Archive) -> Result<Vec<String>> {
     let mut entries = Vec::new();
-    for name in archive.file_names() {
+    for name in reader::entry_names(archive)? {
+        let name = name.as_str();
         let extension = Path::new(name).extension();
         if extension.is_some_and(|ext| ext.eq_ignore_ascii_case("obb")) {
             return Err(invalid(

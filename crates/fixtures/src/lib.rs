@@ -61,3 +61,31 @@ pub fn with_signing_block(apk: &[u8], pairs: &[(u32, &[u8])]) -> Vec<u8> {
     output[field..field + 4].copy_from_slice(&((cd_offset + block.len()) as u32).to_le_bytes());
     output
 }
+
+/// `zip` as tools that predate the UTF-8 flag write it: every entry's language encoding flag is
+/// cleared and its name bytes are unchanged. `zip` must have no ZIP comment.
+pub fn without_utf8_flags(zip: &[u8]) -> Vec<u8> {
+    const UTF8_NAME: u16 = 1 << 11;
+    let u16_at = |bytes: &[u8], at: usize| u16::from_le_bytes([bytes[at], bytes[at + 1]]);
+    let u32_at = |bytes: &[u8], at: usize| {
+        u32::from_le_bytes(bytes[at..at + 4].try_into().expect("u32")) as usize
+    };
+    let eocd = zip.len() - 22;
+    assert!(
+        zip[eocd..].starts_with(b"PK\x05\x06"),
+        "fixture ZIP has a ZIP comment"
+    );
+    let mut output = zip.to_vec();
+    let mut record = u32_at(zip, eocd + 16);
+    for _ in 0..u16_at(zip, eocd + 10) {
+        for flags in [record + 8, u32_at(zip, record + 42) + 6] {
+            let cleared = u16_at(zip, flags) & !UTF8_NAME;
+            output[flags..flags + 2].copy_from_slice(&cleared.to_le_bytes());
+        }
+        record += 46
+            + u16_at(zip, record + 28) as usize
+            + u16_at(zip, record + 30) as usize
+            + u16_at(zip, record + 32) as usize;
+    }
+    output
+}

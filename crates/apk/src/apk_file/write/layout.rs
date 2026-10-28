@@ -38,53 +38,45 @@ pub(super) fn plan<'a>(
         .filter(|(_, job)| job.component == index)
         .map(|(job_index, job)| (&job.name, job_index))
         .collect();
-    let names = component
-        .archive()
-        .file_names()
-        .map(EntryName::from)
-        .chain(
-            component
-                .edits()
-                .iter()
-                .filter(|(name, edit)| {
-                    !matches!(edit, EntryEdit::Dex | EntryEdit::Deleted)
-                        && !dex_jobs.contains_key(name)
-                        && !reader::contains(component.archive(), name.as_str())
-                })
-                .map(|(name, _)| name.clone()),
-        )
-        .chain(
-            jobs.iter()
-                .filter(|job| {
-                    job.component == index
-                        && !reader::contains(component.archive(), job.name.as_str())
-                })
-                .map(|job| job.name.clone()),
-        );
-    let mut entries: Vec<_> = names
-        .filter_map(|name| {
-            if matches!(
-                component.edits().get(name.as_str()),
-                Some(EntryEdit::Deleted)
-            ) || (signatures == SignaturePolicy::Strip && is_signature_entry(name.as_str()))
-                || (profile.is_some() && art_profile::ENTRIES.contains(&name.as_str()))
-            {
-                return None;
-            }
-            let source = if let Some(&job) = dex_jobs.get(&name) {
-                EntrySource::Dex(job)
-            } else if let Some(edit) = component.edits().get(name.as_str()) {
-                EntrySource::Edit(edit)
-            } else {
-                EntrySource::Archive(
-                    component
-                        .archive()
-                        .index_for_name(name.as_str())
-                        .expect("name came from the archive"),
-                )
+    let archived = component
+        .archive_entries()
+        .iter()
+        .enumerate()
+        .map(|(archive_index, name)| {
+            let source = match (dex_jobs.get(name), component.edits().get(name.as_str())) {
+                (Some(&job), _) => EntrySource::Dex(job),
+                (None, Some(edit)) => EntrySource::Edit(edit),
+                (None, None) => EntrySource::Archive(archive_index),
             };
-            Some(PlannedEntry { name, source })
+            (name.clone(), source)
+        });
+    let added_files = component
+        .edits()
+        .iter()
+        .filter(|(name, edit)| {
+            !matches!(edit, EntryEdit::Dex | EntryEdit::Deleted)
+                && !dex_jobs.contains_key(name)
+                && !reader::contains(component.archive(), name.as_str())
         })
+        .map(|(name, edit)| (name.clone(), EntrySource::Edit(edit)));
+    let added_dex = jobs
+        .iter()
+        .enumerate()
+        .filter(|(_, job)| {
+            job.component == index && !reader::contains(component.archive(), job.name.as_str())
+        })
+        .map(|(job_index, job)| (job.name.clone(), EntrySource::Dex(job_index)));
+    let mut entries: Vec<_> = archived
+        .chain(added_files)
+        .chain(added_dex)
+        .filter(|(name, _)| {
+            let name = name.as_str();
+            let deleted = matches!(component.edits().get(name), Some(EntryEdit::Deleted));
+            let stripped = signatures == SignaturePolicy::Strip && is_signature_entry(name);
+            let profiled = profile.is_some() && art_profile::ENTRIES.contains(&name);
+            !(deleted || stripped || profiled)
+        })
+        .map(|(name, source)| PlannedEntry { name, source })
         .collect();
     entries.sort_by_key(|entry| match entry.source {
         EntrySource::Dex(job) => Some(job),

@@ -51,6 +51,16 @@ pub fn dex_ordinal(name: &str) -> Option<u32> {
     }
 }
 
+/// The DEX entries among `names`, by ordinal.
+pub(crate) fn dex_entry_names(names: &[EntryName]) -> Vec<EntryName> {
+    let mut names: Vec<(u32, EntryName)> = names
+        .iter()
+        .filter_map(|name| Some((dex_ordinal(name.as_str())?, name.clone())))
+        .collect();
+    names.sort_unstable_by_key(|(ordinal, _)| *ordinal);
+    names.into_iter().map(|(_, name)| name).collect()
+}
+
 pub(crate) fn next_free_dex_name(used: &mut HashSet<EntryName>) -> EntryName {
     (1..=used.len() + 1)
         .map(|ordinal| {

@@ -10,7 +10,7 @@ use reseam_dex::{
 use reseam_storage::{Bytes, MappedFile};
 
 use super::{ApkComponent, ComponentIndex};
-use crate::entry::EntryName;
+use crate::entry::{EntryName, dex_entry_names};
 use crate::error::Result;
 use crate::zip::reader;
 
@@ -57,13 +57,13 @@ impl DexSet {
         let mut dex = Self::default();
         for (index, component) in components.iter().enumerate() {
             let archive = component.archive();
-            let entries = reader::dex_entry_names(archive)
+            let entries = dex_entry_names(component.archive_entries())
                 .into_par_iter()
                 .map(|name| {
-                    let members = reader::map_entry(&mut archive.clone(), &name)
+                    let members = reader::map_entry(&mut archive.clone(), name.as_str())
                         .and_then(|mapped| parse_entry(mapped, opts))
-                        .map_err(|error| error.in_entry(&name))?;
-                    Ok((EntryName::from(name), members))
+                        .map_err(|error| error.in_entry(name.as_str()))?;
+                    Ok((name, members))
                 })
                 .collect::<Result<Vec<_>>>()?;
             for (name, members) in entries {

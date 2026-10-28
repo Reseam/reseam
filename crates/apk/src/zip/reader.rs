@@ -7,7 +7,7 @@ use std::path::Path;
 
 use reseam_storage::file::FileReader;
 
-use crate::entry::dex_ordinal;
+use crate::entry::EntryName;
 use crate::error::{Result, invalid};
 
 pub(crate) type Archive = zip::ZipArchive<FileReader>;
@@ -17,19 +17,22 @@ pub(crate) fn open_archive(path: &Path) -> Result<Archive> {
         .map_err(|error: crate::ApkError| error.in_file(path))
 }
 
-pub(crate) fn entry_names(archive: &Archive) -> Vec<String> {
-    archive.file_names().map(String::from).collect()
+/// Entry names in archive order, as Android reads them: the stored bytes as UTF-8, whatever the
+/// language encoding flag says. The ZIP reader decodes unflagged names as CP437 instead, which
+/// turns any non-ASCII name into one the archive does not hold.
+pub(crate) fn entry_names(archive: &Archive) -> Result<Vec<EntryName>> {
+    let mut archive = archive.clone();
+    (0..archive.len())
+        .map(|index| {
+            let entry = archive.by_index_raw(index)?;
+            String::from_utf8(entry.name_raw().to_vec())
+                .map(EntryName::from)
+                .map_err(|_| invalid("zip entry", format!("{}: name is not UTF-8", entry.name())))
+        })
+        .collect()
 }
 
-pub(crate) fn dex_entry_names(archive: &Archive) -> Vec<String> {
-    let mut names: Vec<(u32, String)> = archive
-        .file_names()
-        .filter_map(|name| Some((dex_ordinal(name)?, name.into())))
-        .collect();
-    names.sort_unstable_by_key(|(ordinal, _)| *ordinal);
-    names.into_iter().map(|(_, name)| name).collect()
-}
-
+/// The archive is keyed by stored name bytes, so the names [`entry_names`] reads find their entries.
 pub(crate) fn contains(archive: &Archive, name: &str) -> bool {
     archive.index_for_name(name).is_some()
 }
