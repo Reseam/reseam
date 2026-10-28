@@ -207,7 +207,7 @@ settings(appSettings, section(mediaPage, ExampleStrings.sectionPlayback, AppSett
 
 ## Brand
 
-A brand decides how your settings screen and your branded components look. The screen follows the system's light or dark theme, so a brand has a color scheme for each:
+A brand decides how your settings screen and your branded components look. The screen follows the system's light or dark theme, and before Android 10, which has none, the app's own, so a brand has a color scheme for each:
 
 ```kotlin
 private object Files
@@ -288,7 +288,7 @@ ui.dialog()
     .show()
 ```
 
-`Ui` builds text in your brand's type roles, buttons, list rows in groups, switches, search bars, text fields, top bars, and dialogs, all in the system's current theme. See [Branded components](reference_runtime.md#branded-components).
+`Ui` builds text in your brand's type roles, buttons, list rows in groups, switches, search bars, text fields, top bars, and dialogs, all in the screen's current light or dark theme. See [Branded components](reference_runtime.md#branded-components).
 
 ## React Native apps
 

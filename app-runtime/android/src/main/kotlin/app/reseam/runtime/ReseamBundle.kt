@@ -34,7 +34,7 @@ class ReseamBundle internal constructor(app: Context, @JvmField val name: String
 
     val settings = Settings(app, name, schema)
 
-    /** Uses the system theme, or the host's declared light/dark theme before Android 10. */
+    /** Builds views in the bundle's brand and the current theme of Reseam's screens. */
     fun ui(context: Context): Ui = Ui(context, Theme.of(brand, context))
 
     /** Opens settings over the current screen. Callable from any thread. */

@@ -111,7 +111,7 @@ One bundle in the app, from `Reseam.bundle(name)`.
 |---|---|
 | `name: String` | The bundle's name. |
 | `settings: Settings` | Its stored settings. |
-| `ui(context: Context): Ui` | Builds [branded components](#branded-components) in the bundle's brand and the system's current light or dark theme. |
+| `ui(context: Context): Ui` | Builds [branded components](#branded-components) in the bundle's brand and the settings screen's current light or dark theme. |
 | `openSettings()` | Opens its settings over the current screen. It works from any thread. |
 
 ### `Settings`
@@ -141,7 +141,7 @@ ui.dialog()
     .show()
 ```
 
-They follow Material 3, in the system's current theme.
+They follow Material 3, in the settings screen's current light or dark theme: the system's, or before Android 10 the app's own.
 
 ### `Ui`
 

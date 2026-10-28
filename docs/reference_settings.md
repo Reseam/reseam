@@ -229,7 +229,7 @@ The app runtime's entry class, as an [`ExtClass`](reference_code.md#extclass), f
 
 ### `Brand`
 
-How your settings screen and [branded components](reference_runtime.md#branded-components) look. The screen follows the system's light or dark theme, so a brand has a color scheme for each.
+How your settings screen and [branded components](reference_runtime.md#branded-components) look. The screen follows the system's light or dark theme, and before Android 10, which has none, the app's own, so a brand has a color scheme for each.
 
 | Member | Description |
 |---|---|
