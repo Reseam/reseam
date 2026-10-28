@@ -3,12 +3,8 @@
 
 package app.reseam.runtime
 
-import android.graphics.Rect
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.inputmethod.InputMethodManager
-import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -123,29 +119,6 @@ internal fun settingsMessage(ui: Ui, text: String): TextView =
     ui.text(text, ui.type.bodyMedium, ui.colors.onSurfaceVariant).apply {
         setPadding(0, ui.px(Tokens.SPACE_LG), 0, ui.px(Tokens.SPACE_LG))
     }
-
-private class SettingsPageLayout(ui: Ui) : LinearLayout(ui.context) {
-    init {
-        orientation = VERTICAL
-        // Give initial focus somewhere to go other than the search editor.
-        isFocusableInTouchMode = true
-    }
-
-    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        val editor = findFocus() as? EditText
-        if (event.action == MotionEvent.ACTION_DOWN && editor != null) {
-            val bounds = Rect()
-            (editor.parent as View).getGlobalVisibleRect(bounds)
-            if (!bounds.contains(event.rawX.toInt(), event.rawY.toInt())) {
-                editor.clearFocus()
-                context
-                    .getSystemService(InputMethodManager::class.java)
-                    .hideSoftInputFromWindow(editor.windowToken, 0)
-            }
-        }
-        return super.dispatchTouchEvent(event)
-    }
-}
 
 private fun vertical(ui: Ui): LinearLayout =
     LinearLayout(ui.context).apply { orientation = LinearLayout.VERTICAL }

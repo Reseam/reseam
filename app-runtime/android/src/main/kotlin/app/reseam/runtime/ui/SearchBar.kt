@@ -35,13 +35,10 @@ class SearchBar internal constructor(ui: Ui, hint: CharSequence?) : LinearLayout
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             imeOptions = EditorInfo.IME_ACTION_SEARCH
             setPadding(ui.px(Tokens.SPACE_LG), 0, 0, 0)
-            setOnEditorActionListener { view, action, _ ->
+            setOnEditorActionListener { _, action, _ ->
                 if (action != EditorInfo.IME_ACTION_SEARCH) false
                 else {
-                    view.clearFocus()
-                    ui.context
-                        .getSystemService(InputMethodManager::class.java)
-                        .hideSoftInputFromWindow(view.windowToken, 0)
+                    dismiss()
                     true
                 }
             }
@@ -54,6 +51,14 @@ class SearchBar internal constructor(ui: Ui, hint: CharSequence?) : LinearLayout
         clear.visibility = GONE
         addView(clear, LayoutParams(ui.px(Tokens.TOUCH_TARGET), ui.px(Tokens.TOUCH_TARGET)))
         onQueryChange { clear.visibility = if (it.isEmpty()) GONE else VISIBLE }
+    }
+
+    /** Leaves the field and hides the keyboard, keeping the query. */
+    internal fun dismiss() {
+        field.clearFocus()
+        context
+            .getSystemService(InputMethodManager::class.java)
+            .hideSoftInputFromWindow(field.windowToken, 0)
     }
 
     fun interface OnQueryChangeListener {
