@@ -73,7 +73,9 @@ Media.videoUrl.implement { returnValue(media.member("videoUrl", param(0))) }
 
 The rest of your extension stays plain Kotlin, and only the app-specific part is emitted.
 
-If the patched app can call an `external` function that no applied patch implemented, the run fails and names the function. Functions nothing in the app can reach don't count, so one extension can hold functions for several patches, and users can still pick only some of those patches.
+An `external` function that no applied patch implemented throws `UnsatisfiedLinkError` when the app calls it. Make the patch that calls it depend on the patch that implements it.
+
+`external` also declares JNI functions from a native library your patch adds to the APK. No patch implements those, and Android links them when the app loads the library.
 
 ## The Kotlin standard library
 

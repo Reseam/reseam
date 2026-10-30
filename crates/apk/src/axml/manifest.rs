@@ -50,21 +50,6 @@ impl AxmlDocument {
         }
     }
 
-    /// The classes Android instantiates for the manifest: the application and
-    /// every activity, service, receiver, and provider, qualified.
-    pub fn component_classes(&self) -> Vec<String> {
-        const COMPONENTS: [&str; 5] =
-            ["application", "activity", "service", "receiver", "provider"];
-        (0..self.events().len())
-            .filter(|&index| {
-                self.element_name(index)
-                    .is_some_and(|name| COMPONENTS.contains(&name.as_ref()))
-            })
-            .filter_map(|index| self.attribute_string(self.attribute(index, ATTR_NAME)?))
-            .map(|name| self.qualified_class_name(&name))
-            .collect()
-    }
-
     pub fn min_sdk_version(&self) -> Option<u32> {
         let uses_sdk = self.find_element("uses-sdk")?;
         self.attribute(uses_sdk, ATTR_MIN_SDK_VERSION)?

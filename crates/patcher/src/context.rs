@@ -3,7 +3,6 @@
 
 mod app_entry;
 mod dex;
-mod extension_bodies;
 mod extensions;
 mod files;
 mod hermes;

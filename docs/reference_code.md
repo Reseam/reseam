@@ -197,7 +197,7 @@ The patch writes the body, with code only a patch can build, such as a [binding]
 Media.videoUrl.implement { returnValue(media.member("videoUrl", param(0))) }
 ```
 
-The run fails when the patched app can call an `external` function that no applied patch implemented.
+An `external` function that no applied patch implemented throws `UnsatisfiedLinkError` when the app calls it.
 
 ### `MemberDelegate`
 

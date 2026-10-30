@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::common::apks::open_dex_apk;
-use crate::common::bundles::{apply, loaded_test_bundle, run_one_patch};
+use crate::common::bundles::{loaded_test_bundle, run_one_patch};
 use crate::common::code::{dex_bytes, read_method};
 use crate::common::dex;
 use reseam_dex::{DexFile, DexHeader, DexVersion};
@@ -55,61 +55,41 @@ fn bodies_extension(dir: &Path) -> PathBuf {
 }
 
 #[test]
-fn native_extension_methods_the_app_can_reach_need_a_patch_to_implement_them() {
+fn external_functions_stay_native_unless_a_patch_implements_them() {
     use reseam_dex::AccessFlags;
-    use reseam_patcher::engine::PatchSelection;
-    use reseam_patcher::error::PatcherError;
 
     let dir = tempfile::tempdir().unwrap();
     let extension = bodies_extension(dir.path());
     let bundle = loaded_test_bundle();
     let patches: Vec<&Patch> = bundle.patches().iter().collect();
-    let context = |apk| {
-        PatchContext::new(
-            apk,
-            ExtensionSet::load(std::slice::from_ref(&extension)).unwrap(),
-        )
-    };
-
-    let (_unfilled_dir, mut apk) = open_dex_apk(&[dex!("entry_values")]);
-    let selection = PatchSelection {
-        enable: ["unfilled-bodies".to_owned()].into(),
-        ..Default::default()
-    };
-    match apply(&mut context(&mut apk), &patches, &selection) {
-        Err(PatcherError::UnimplementedExtensionMethods(methods)) => assert_eq!(
-            methods,
-            [
-                format!("{BODIES}->filled()V"),
-                format!("{BODIES}->missing()V")
-            ],
-            "the hook calls filled, and missing through entry; nothing calls unused"
-        ),
-        other => panic!(
-            "expected unimplemented methods, got {:?}",
-            other.map(|_| ())
-        ),
-    }
-
-    let (_filled_dir, mut apk) = open_dex_apk(&[dex!("entry_values")]);
-    run_one_patch(
-        &mut context(&mut apk),
-        &patches,
-        "filled-bodies",
-        "filledBodies",
-    );
-    let linked = apk
-        .dex()
-        .iter()
-        .find(|dex| dex.find_class_index(BODIES).is_some())
-        .unwrap();
-    for (name, native) in [("filled", false), ("missing", false), ("unused", true)] {
-        let method = read_method(linked, BODIES, name).unwrap();
-        assert_eq!(
-            method.access_flags.contains(AccessFlags::NATIVE),
-            native,
-            "{name}"
+    for (name, id, native) in [
+        // As a JNI function from a native library the bundle adds: no patch implements it.
+        ("unfilled-bodies", "unfilledBodies", [true, true, true]),
+        ("filled-bodies", "filledBodies", [false, false, true]),
+    ] {
+        let (_apk_dir, mut apk) = open_dex_apk(&[dex!("entry_values")]);
+        run_one_patch(
+            &mut PatchContext::new(
+                &mut apk,
+                ExtensionSet::load(std::slice::from_ref(&extension)).unwrap(),
+            ),
+            &patches,
+            name,
+            id,
         );
-        assert_eq!(method.code.is_some(), !native, "{name}");
+        let linked = apk
+            .dex()
+            .iter()
+            .find(|dex| dex.find_class_index(BODIES).is_some())
+            .unwrap();
+        for (method, native) in ["filled", "missing", "unused"].into_iter().zip(native) {
+            let method = read_method(linked, BODIES, method).unwrap();
+            assert_eq!(
+                method.access_flags.contains(AccessFlags::NATIVE),
+                native,
+                "{name}"
+            );
+            assert_eq!(method.code.is_some(), !native, "{name}");
+        }
     }
 }

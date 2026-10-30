@@ -58,9 +58,6 @@ An extension class or method a patch refers to doesn't exist. The extension modu
 **`… stream is closed`**, or **`… stream belongs to another callback`**
 A stream from `files.stream` or `files.sourceStream()` was read after it was closed, or kept past the block that opened it. Open it again where you read it.
 
-**`the patched app can call extension methods that no applied patch implemented: …`**
-An extension declares an `external` function that the patched app can reach, and no applied patch gives it a body. Enable the patch that implements it, or make the patch whose code leads there depend on that patch. See [Let a patch fill in a function](10_extensions.md#let-a-patch-fill-in-a-function).
-
 **`Option '<key>' has no value`**
 The option is optional, has no default, and the user set nothing. Read it with `options.getOrNull`, give it a default, or make it required.
 
@@ -82,6 +79,9 @@ Bundles only load on engines of their own release line. Rebuild the bundle with 
 
 **`NoClassDefFoundError` or `NoSuchMethodError`**
 Patched code calls a class or method that isn't there. Check that the extension is in the bundle, and that your stubs match the real app. An app class your extension implements, such as the app's `kotlin.jvm.functions.Function0`, must be stubbed so it keeps the app's name.
+
+**`UnsatisfiedLinkError` naming an extension function**
+The function is `external`, and no applied patch implemented it. Enable the patch that implements it, or make the patch whose code calls it depend on that one. For a JNI function, check that your patch adds the native library and that the app loads it. See [Let a patch fill in a function](10_extensions.md#let-a-patch-fill-in-a-function).
 
 **`VerifyError`, or `Rejecting class` in the log**
 Android refused the patched code. Code blocks shouldn't produce this, so [report it](https://git.reseam.app/reseam/reseam/issues) with the method and the patch. In [raw bytecode](13_bytecode.md), check the registers and types you used.

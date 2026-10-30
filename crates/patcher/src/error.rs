@@ -69,14 +69,6 @@ pub enum PatcherError {
     #[error("app entry: {0}")]
     AppEntry(String),
 
-    /// Native methods of linked extensions that the patched app can call, which
-    /// no applied patch gave a body.
-    #[error(
-        "the patched app can call extension methods that no applied patch implemented: {}",
-        .0.join(", ")
-    )]
-    UnimplementedExtensionMethods(Vec<String>),
-
     #[error("patch {patch} failed to rewrite the output: {reason}")]
     RewriteOutput { patch: PatchRef, reason: String },
 
