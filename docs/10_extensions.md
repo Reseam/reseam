@@ -58,20 +58,22 @@ A binding member is named after the export. Two overloads need different binding
 
 ## Let a patch fill in a function
 
-Some code can only be written while patching, because it depends on the app's obfuscated names, such as reading a field found with a [binding](12_bindings.md). Declare a placeholder in the extension, and call it like any other function:
+Some code can only be written while patching, because it depends on the app's obfuscated names, such as reading a field found with a [binding](12_bindings.md). Declare the function `external`, without a body, and call it like any other function:
 
 ```kotlin
 @Export
-fun videoUrl(media: Any?): String? = null
+external fun videoUrl(media: Any?): String?
 ```
 
-Then the patch replaces its body:
+Then the patch writes its body:
 
 ```kotlin
 Media.videoUrl.implement { returnValue(media.member("videoUrl", param(0))) }
 ```
 
 The rest of your extension stays plain Kotlin, and only the app-specific part is emitted.
+
+If the patched app can call an `external` function that no applied patch implemented, the run fails and names the function. Functions nothing in the app can reach don't count, so one extension can hold functions for several patches, and users can still pick only some of those patches.
 
 ## The Kotlin standard library
 

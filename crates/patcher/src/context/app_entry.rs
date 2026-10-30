@@ -68,7 +68,7 @@ impl PatchContext<'_> {
             return Ok(());
         }
         let name = self.application_class()?;
-        let descriptor = format!("L{};", name.replace('.', "/"));
+        let descriptor = reseam_dex::class_descriptor(&name);
         let application = self.find_class(&descriptor).ok_or_else(|| {
             app_entry_error(format!("Application class {descriptor} is not in the app"))
         })?;
@@ -93,11 +93,7 @@ impl PatchContext<'_> {
         let name = manifest.application_name().ok_or_else(|| {
             app_entry_error("the manifest names no <application android:name>, so there is no app entry point to hook")
         })?;
-        Ok(match manifest.package_name() {
-            Some(package) if name.starts_with('.') => format!("{package}{name}"),
-            Some(package) if !name.contains('.') => format!("{package}.{name}"),
-            _ => name.into_owned(),
-        })
+        Ok(manifest.qualified_class_name(&name))
     }
 
     fn class_dex(&mut self, class: ClassLocation) -> Result<&mut DexFile> {

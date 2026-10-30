@@ -6,6 +6,7 @@
 mod app_entry;
 mod common;
 mod emitted;
+mod extension_bodies;
 mod extensions;
 mod files;
 mod points;

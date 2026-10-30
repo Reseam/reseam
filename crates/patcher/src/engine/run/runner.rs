@@ -59,6 +59,7 @@ impl<'r, 'c, 'p: 'r, O: FnMut(RunEvent)> Runner<'r, 'c, 'p, O> {
         self.savepoints.release_all(self.ctx)?;
         self.ctx.bind_app_entry()?;
         self.ctx.finish_hermes()?;
+        self.ctx.check_extension_bodies()?;
         info!("patch application finished");
         let rewrites = self
             .plan

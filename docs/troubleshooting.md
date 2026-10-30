@@ -58,6 +58,9 @@ An extension class or method a patch refers to doesn't exist. The extension modu
 **`… stream is closed`**, or **`… stream belongs to another callback`**
 A stream from `files.stream` or `files.sourceStream()` was read after it was closed, or kept past the block that opened it. Open it again where you read it.
 
+**`the patched app can call extension methods that no applied patch implemented: …`**
+An extension declares an `external` function that the patched app can reach, and no applied patch gives it a body. Enable the patch that implements it, or make the patch whose code leads there depend on that patch. See [Let a patch fill in a function](10_extensions.md#let-a-patch-fill-in-a-function).
+
 **`Option '<key>' has no value`**
 The option is optional, has no default, and the user set nothing. Read it with `options.getOrNull`, give it a default, or make it required.
 

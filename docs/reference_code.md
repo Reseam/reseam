@@ -182,13 +182,13 @@ A method of an extension.
 | `isStatic: Boolean` | Whether it is static. |
 | `ref: MethodRef` | A reference to it. |
 | `target: MethodTarget` | The method as a target, so you can hook it like an app method. |
-| `implement(block: CodeScope.() -> Unit)` | Replaces the method's body with emitted code. |
+| `implement(block: CodeScope.() -> Unit)` | Replaces the method's body with emitted code. An `external` function gets the body it lacks. |
 
-`implement` lets an extension leave a function for a patch to fill in. The extension declares a placeholder, and calls it like any other function:
+`implement` lets an extension leave a function for a patch to fill in. The extension declares it `external`, and calls it like any other function:
 
 ```kotlin
 @Export
-fun videoUrl(media: Any?): String? = null
+external fun videoUrl(media: Any?): String?
 ```
 
 The patch writes the body, with code only a patch can build, such as a [binding](12_bindings.md):
@@ -196,6 +196,8 @@ The patch writes the body, with code only a patch can build, such as a [binding]
 ```kotlin
 Media.videoUrl.implement { returnValue(media.member("videoUrl", param(0))) }
 ```
+
+The run fails when the patched app can call an `external` function that no applied patch implemented.
 
 ### `MemberDelegate`
 

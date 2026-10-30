@@ -41,6 +41,11 @@ fn type_descriptor_len(desc: &str, position: TypePosition) -> Option<usize> {
     }
 }
 
+/// The descriptor of the class `name` names in Java form: `a.b.C$D` is `La/b/C$D;`.
+pub fn class_descriptor(name: &str) -> String {
+    format!("L{};", name.replace('.', "/"))
+}
+
 pub fn is_type_descriptor(desc: &str) -> bool {
     matches!(type_descriptor_len(desc, TypePosition::Return), Some(len) if len == desc.len())
 }

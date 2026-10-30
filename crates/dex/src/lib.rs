@@ -59,7 +59,7 @@ pub use model::annotation::{
 pub use model::class::{ClassData, ClassDef, ClassHeader, EncodedField, EncodedMethod, MethodKind};
 pub use model::code::{CatchHandler, CodeItem, TryItem, TypedCatch};
 pub use model::debug::{DebugBytecode, DebugInfo};
-pub use model::descriptor::{is_type_descriptor, parse_method_descriptor};
+pub use model::descriptor::{class_descriptor, is_type_descriptor, parse_method_descriptor};
 pub use model::encoded_value::{EncodedAnnotation, EncodedAnnotationElement, EncodedValue};
 pub use model::header::{DexHeader, DexVersion};
 pub use model::hidden_api::{ClassHiddenApiFlags, HiddenApiFlags};
