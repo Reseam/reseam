@@ -12,7 +12,7 @@ use std::sync::Arc;
 #[cfg(any(feature = "kotlin", feature = "browser"))]
 use reseam_storage::ScratchDir;
 
-use crate::bridge::apk::xml;
+use crate::bridge::apk::{file_streams, xml};
 use crate::bridge::run_state::{checked, clear_failure, record_failure, take_failure};
 #[cfg(any(feature = "kotlin", feature = "browser"))]
 use crate::bundle::BundleInfo;
@@ -104,6 +104,7 @@ impl Drop for ContextGuard<'_, '_> {
     fn drop(&mut self) {
         leave(&CTX_PTR);
         xml::reset();
+        file_streams::reset();
     }
 }
 

@@ -14,8 +14,15 @@ use crate::bridge::phase::bundle_path;
 use crate::bridge::run_state::{checked, record_failure};
 use crate::context::PatchContext;
 
-/// The largest range [`file_source_range`] reads at once.
-const SOURCE_RANGE_LIMIT: u32 = 1024 * 1024;
+/// The most one read of the APK source or of a file stream returns.
+const READ_LIMIT: u32 = 1024 * 1024;
+
+pub(super) fn check_read_length(length: u32) -> Result<(), String> {
+    if length > READ_LIMIT {
+        return Err("reads must not exceed one MiB".to_string());
+    }
+    Ok(())
+}
 
 #[export]
 pub fn file_list(component_name: Option<String>) -> Vec<String> {
@@ -99,9 +106,7 @@ pub fn file_source_range(
     offset: u64,
     length: u32,
 ) -> Result<Vec<u8>, String> {
-    if length > SOURCE_RANGE_LIMIT {
-        return Err("APK source reads must not exceed one MiB".to_string());
-    }
+    check_read_length(length)?;
     with_component(component_name, |ctx, index| {
         let source = component(ctx, index)
             .source()

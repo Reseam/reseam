@@ -159,7 +159,7 @@ impl ApkFile {
                     Ok(())
                 }),
                 EntrySource::Edit(EntryEdit::Staged { file, compression }) => {
-                    writer.write(entry.name.as_str(), file, *compression)
+                    writer.write(entry.name.as_str(), &**file, *compression)
                 }
                 EntrySource::Edit(EntryEdit::Manifest) => writer.write(
                     entry.name.as_str(),

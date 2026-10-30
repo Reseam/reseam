@@ -112,6 +112,30 @@ files.delete("assets/tracking.json")
 
 `files.copy` takes a file from your bundle's `resources/` folder, which [Bundle projects](15_bundles.md#layout) describes.
 
+### Large files
+
+`files.read` and `files.write` hold the whole file in memory. A large file, such as a native library or a bundled model, may not fit, especially when patching on a phone. Stream it instead:
+
+```kotlin
+files.stream("lib/arm64-v8a/libapp.so")?.use { input ->
+    val header = ByteArray(64)
+    DataInputStream(input).readFully(header)
+    log.info("ELF class ${header[4]}")
+}
+```
+
+`files.write` and `files.writeStored` also take an `InputStream`, and write everything it reads. A stream reads the file as it was when it opened, so you can write the file you are reading:
+
+```kotlin
+files.stream("assets/catalog.bin")?.use { input ->
+    files.write("assets/catalog.bin", InflaterInputStream(input))
+}
+```
+
+Close every stream before your block ends, which `use { }` does for you. If reading the stream you pass to `write` fails, the file stays as it was.
+
+`files.sourceStream()` reads the whole original APK. To read one file of it, use `files.stream`.
+
 ## App-wide replacements
 
 ```kotlin

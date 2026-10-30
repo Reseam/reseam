@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 mod access;
+mod owned;
 mod slots;
 mod space;
 mod table;
@@ -14,4 +15,4 @@ pub(super) use access::{
     method_location, method_ref, relocate_method, reset, with_class_mut, with_code, with_handles,
     with_instruction, with_method_mut,
 };
-pub(super) use space::HandleSpace;
+pub(super) use owned::OwnedHandles;

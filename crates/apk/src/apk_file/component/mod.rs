@@ -22,8 +22,9 @@ mod undo;
 
 /// How an entry differs from the archive the component was opened from.
 pub(in crate::apk_file) enum EntryEdit {
+    /// Readers opened on the file keep it after a later edit replaces it.
     Staged {
-        file: File,
+        file: Arc<File>,
         compression: Compression,
     },
     Manifest,

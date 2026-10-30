@@ -7,6 +7,7 @@ mod app_entry;
 mod common;
 mod emitted;
 mod extensions;
+mod files;
 mod points;
 mod queries;
 mod resources;

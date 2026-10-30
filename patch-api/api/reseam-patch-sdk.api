@@ -248,7 +248,10 @@ public final class app/reseam/patch/FileScope {
 	public final fun read (Ljava/lang/String;)[B
 	public final fun signers ()Ljava/util/List;
 	public final fun sourceStream ()Ljava/io/InputStream;
+	public final fun stream (Ljava/lang/String;)Ljava/io/InputStream;
+	public final fun write (Ljava/lang/String;Ljava/io/InputStream;)V
 	public final fun write (Ljava/lang/String;[B)V
+	public final fun writeStored (Ljava/lang/String;Ljava/io/InputStream;)V
 	public final fun writeStored (Ljava/lang/String;[B)V
 	public final fun xml (Ljava/lang/String;)Lapp/reseam/patch/XmlDocument;
 	public final fun xmlFilesWith ([Ljava/lang/String;)Ljava/util/List;

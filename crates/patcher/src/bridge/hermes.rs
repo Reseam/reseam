@@ -10,20 +10,14 @@ use reseam_hermes::{
     Statement,
 };
 
-use crate::bridge::handles::HandleSpace;
+use crate::bridge::handles::OwnedHandles;
 use crate::bridge::phase::{bundle_path, with_ctx_result};
 use crate::context::{PatchContext, hermes_imports};
 
-#[derive(Default)]
-struct Functions {
-    identities: HandleSpace,
-    entries: Vec<FunctionId>,
-}
-
-thread_local! { static FUNCTIONS: RefCell<Functions> = RefCell::default(); }
+thread_local! { static FUNCTIONS: RefCell<OwnedHandles<FunctionId>> = RefCell::default(); }
 
 pub(super) fn reset() {
-    FUNCTIONS.with(|f| *f.borrow_mut() = Functions::default());
+    FUNCTIONS.with(|f| *f.borrow_mut() = OwnedHandles::default());
 }
 
 #[export]
@@ -42,29 +36,15 @@ pub fn hermes_find_function(
         let id = ctx
             .hermes_find(name.as_deref(), &strings, parameters)
             .map_err(|e| e.to_string())?;
-        FUNCTIONS.with(|functions| {
-            let mut functions = functions.borrow_mut();
-            let slot = functions.entries.len();
-            let handle = functions
-                .identities
-                .allocate(slot)
-                .map_err(|e| e.to_string())?;
-            functions.entries.push(id);
-            Ok(handle)
-        })
+        FUNCTIONS.with(|functions| functions.borrow_mut().insert(id))
     })
 }
 
 fn function(handle: u32) -> Result<FunctionId, String> {
     FUNCTIONS.with(|functions| {
-        let functions = functions.borrow();
-        let slot = functions
-            .identities
-            .slot(handle)
-            .ok_or("stale Hermes function handle")?;
         functions
-            .entries
-            .get(slot)
+            .borrow()
+            .get(handle)
             .copied()
             .ok_or_else(|| "stale Hermes function handle".to_owned())
     })

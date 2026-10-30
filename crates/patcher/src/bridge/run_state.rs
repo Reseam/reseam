@@ -11,7 +11,7 @@ use std::sync::Arc;
 #[cfg(feature = "kotlin")]
 use jni::objects::{Global, JObject};
 
-use super::apk::xml;
+use super::apk::{file_streams, xml};
 use super::dex::pool_copies;
 use super::{changes, handles, hermes, phase};
 use crate::error::{PatcherError, Result as PatcherResult};
@@ -54,6 +54,7 @@ fn reset() {
     changes::reset();
     clear_failure();
     xml::reset();
+    file_streams::reset();
 }
 
 /// The run's Kotlin patch runtime, once a patch has created it.

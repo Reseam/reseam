@@ -16,7 +16,8 @@ mod string_pool;
 mod zip;
 
 pub use apk_file::{
-    ApkComponent, ApkFile, ApkWriteOptions, ApplicationIcon, DexSet, IconLayer, SignaturePolicy,
+    ApkComponent, ApkFile, ApkWriteOptions, ApplicationIcon, DexSet, EntryReader, IconLayer,
+    SignaturePolicy,
 };
 pub use axml::AxmlDocument;
 pub use container::{ContainerFormat, open_container};

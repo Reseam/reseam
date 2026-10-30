@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 pub(crate) mod components;
+pub(crate) mod file_streams;
 pub(crate) mod files;
 pub(crate) mod manifest;
 pub(crate) mod manifest_activities;

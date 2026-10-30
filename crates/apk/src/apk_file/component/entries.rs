@@ -3,12 +3,13 @@
 
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::{self, Write};
+use std::io;
 use std::sync::Arc;
 
 use reseam_storage::Bytes;
 
 use super::{ApkComponent, EntryEdit, Resources, map_staged};
+use crate::apk_file::EntryReader;
 use crate::axml::AxmlDocument;
 use crate::entry::{
     EntryName, MANIFEST_ENTRY, RESOURCES_ENTRY, dex_entry_names, dex_ordinal, is_native_library,
@@ -16,6 +17,7 @@ use crate::entry::{
 use crate::error::{Result, invalid};
 use crate::resources::ResourceTable;
 use crate::zip::Compression;
+use crate::zip::entry_data::EntryData;
 use crate::zip::reader::{self, Archive};
 
 impl ApkComponent {
@@ -75,7 +77,13 @@ impl ApkComponent {
         } else {
             compression
         };
-        self.set_edit(path.into(), EntryEdit::Staged { file, compression });
+        self.set_edit(
+            path.into(),
+            EntryEdit::Staged {
+                file: Arc::new(file),
+                compression,
+            },
+        );
         Ok(())
     }
 
@@ -142,28 +150,23 @@ impl ApkComponent {
             .filter(|name| dex_ordinal(name).is_some())
     }
 
-    pub(in crate::apk_file) fn copy_entry(
-        &mut self,
-        name: &str,
-        output: &mut impl Write,
-    ) -> Result<bool> {
+    /// The current bytes of entry `name`, or `None` when the component has no
+    /// such entry. DEX entries the session owns are read through it instead.
+    pub(in crate::apk_file) fn open_entry(&mut self, name: &str) -> Result<Option<EntryReader>> {
         if !self.contains(name) {
-            return Ok(false);
+            return Ok(None);
         }
-        match self.edits.get(name) {
-            Some(EntryEdit::Staged { file, .. }) => reseam_storage::copy_file(file, output)?,
-            Some(EntryEdit::Manifest) => output.write_all(&self.manifest.serialize()?)?,
-            Some(EntryEdit::Resources) => {
-                reseam_storage::copy_file(&self.resources_file()?, output)?;
-            }
+        Ok(Some(match self.edits.get(name) {
+            Some(EntryEdit::Staged { file, .. }) => EntryReader::file(Arc::clone(file))?,
+            Some(EntryEdit::Manifest) => EntryReader::memory(self.manifest.serialize()?),
+            Some(EntryEdit::Resources) => EntryReader::file(self.resources_file()?)?,
             Some(EntryEdit::Dex) => {
                 return Err(invalid("apk entry", "DEX entries are owned by the session"));
             }
-            _ => {
-                io::copy(&mut self.archive.by_name(name)?, output)?;
+            Some(EntryEdit::Deleted) | None => {
+                EntryReader::archive(EntryData::open(&mut self.archive, name)?)
             }
-        }
-        Ok(true)
+        }))
     }
 
     pub(in crate::apk_file) fn map_entry(
@@ -173,8 +176,9 @@ impl ApkComponent {
         match self.edits.get(name) {
             Some(EntryEdit::Staged { file, .. }) => Ok(Some(map_staged(file)?)),
             Some(EntryEdit::Manifest | EntryEdit::Resources | EntryEdit::Dex) => {
-                Ok(Some(reseam_storage::spool_mapped(|mut out| {
-                    self.copy_entry(name, &mut out).map(drop)
+                let mut entry = self.open_entry(name)?.expect("an edited entry exists");
+                Ok(Some(reseam_storage::spool_mapped(|out| {
+                    io::copy(&mut entry, out).map(drop)
                 })?))
             }
             None if reader::contains(&self.archive, name) => {

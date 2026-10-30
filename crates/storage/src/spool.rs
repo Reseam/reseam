@@ -30,19 +30,3 @@ pub fn spool_mapped<E: From<io::Error>>(
     // so nothing can change it while the mapping lives.
     Ok(unsafe { crate::map_file(&file)? })
 }
-
-/// Copies the whole of `file` to `output` without moving a cursor that other
-/// users of the file share.
-pub fn copy_file(file: &File, output: &mut impl Write) -> io::Result<()> {
-    #[cfg(not(target_os = "wasi"))]
-    let mut file = io::BufReader::new(crate::file::FileReader::new(file.try_clone()?)?);
-    #[cfg(target_os = "wasi")]
-    let mut file = {
-        // WASI has one engine thread and cannot clone file descriptors.
-        let mut source = file;
-        io::Seek::seek(&mut source, io::SeekFrom::Start(0))?;
-        io::BufReader::new(source)
-    };
-    io::copy(&mut file, output)?;
-    Ok(())
-}

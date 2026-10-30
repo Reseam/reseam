@@ -7,6 +7,7 @@ use std::path::Path;
 
 use reseam_storage::file::FileReader;
 
+use super::entry_data::EntryData;
 use crate::entry::EntryName;
 use crate::error::{Result, invalid};
 
@@ -37,31 +38,43 @@ pub(crate) fn contains(archive: &Archive, name: &str) -> bool {
     archive.index_for_name(name).is_some()
 }
 
-pub(crate) fn is_stored(archive: &Archive, name: &str) -> Result<bool> {
-    let index = archive
+pub(crate) fn index_of(archive: &Archive, name: &str) -> Result<usize> {
+    archive
         .index_for_name(name)
-        .ok_or_else(|| invalid("zip entry", format!("{name}: not in the archive")))?;
+        .ok_or_else(|| invalid("zip entry", format!("{name}: not in the archive")))
+}
+
+/// Where `entry`'s data starts in the archive.
+pub(crate) fn data_start<R: Read + ?Sized>(
+    entry: &zip::read::ZipFile<'_, R>,
+    name: &str,
+) -> Result<u64> {
+    entry
+        .data_start()
+        .ok_or_else(|| invalid("zip entry", format!("{name}: missing data offset")))
+}
+
+pub(crate) fn is_stored(archive: &Archive, name: &str) -> Result<bool> {
+    let index = index_of(archive, name)?;
     Ok(archive.clone().by_index_raw(index)?.compression() == zip::CompressionMethod::Stored)
 }
 
 pub(crate) fn read_entry(archive: &mut Archive, name: &str) -> Result<Vec<u8>> {
-    let mut entry = archive.by_name(name)?;
     let mut buf = Vec::new();
-    entry.read_to_end(&mut buf)?;
+    EntryData::open(archive, name)?.read_to_end(&mut buf)?;
     Ok(buf)
 }
 
 pub(crate) fn map_entry(archive: &mut Archive, name: &str) -> Result<reseam_storage::MappedFile> {
-    let file = archive.clone().into_inner();
-    let mut entry = archive.by_name(name)?;
-    if entry.compression() != zip::CompressionMethod::Stored {
+    if !is_stored(archive, name)? {
+        let mut entry = EntryData::open(archive, name)?;
         return Ok(reseam_storage::spool_mapped(|out| {
             io::copy(&mut entry, out).map(drop)
         })?);
     }
-    let offset = entry
-        .data_start()
-        .ok_or_else(|| invalid("zip entry", format!("{name}: missing data offset")))?;
+    let file = archive.clone().into_inner();
+    let entry = archive.by_index_raw(index_of(archive, name)?)?;
+    let offset = data_start(&entry, name)?;
     let size = entry.size();
     let archive_len = file.file().metadata()?.len();
     if offset.checked_add(size).is_none_or(|end| end > archive_len) {

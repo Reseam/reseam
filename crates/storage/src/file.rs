@@ -90,16 +90,14 @@ pub struct FileReader {
 }
 
 impl FileReader {
-    /// Creates an independent positional cursor over an open file. Clones
-    /// share the file descriptor and retain their own seek position. End-relative
-    /// seeks use the length observed here; the source must remain unchanged.
-    pub fn new(file: File) -> io::Result<Self> {
+    /// Creates an independent positional cursor over an open file, which other
+    /// holders of the `Arc` may share. Clones share the file descriptor and
+    /// retain their own seek position. End-relative seeks use the length
+    /// observed here; the source must remain unchanged.
+    pub fn new(file: impl Into<Arc<File>>) -> io::Result<Self> {
+        let file = file.into();
         let len = file.metadata()?.len();
-        Ok(Self {
-            file: Arc::new(file),
-            pos: 0,
-            len,
-        })
+        Ok(Self { file, pos: 0, len })
     }
 
     pub fn file(&self) -> &File {

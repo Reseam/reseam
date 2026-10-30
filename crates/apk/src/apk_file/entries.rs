@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::component::map_staged;
-use super::{ApkFile, ComponentIndex, dex_set};
+use super::{ApkFile, ComponentIndex, EntryReader, dex_set};
 use crate::entry::dex_ordinal;
-use crate::error::{Result, invalid};
+use crate::error::{ApkError, Result, invalid};
 use crate::zip::Compression;
-use std::io::Write;
+use std::io::Read;
 
 impl ApkFile {
     /// Adds or replaces a component entry. Format entries are parsed before
@@ -96,51 +96,49 @@ impl ApkFile {
         Ok(())
     }
 
-    /// Streams the current entry to `output`, including parsed edits and DEX
-    /// mutations. Returns `false` when absent. IO and serialization errors retain
-    /// the entry name. This does not allocate an entry-sized buffer.
-    /// Edited DEX containers retain every member in physical-entry order.
-    pub fn copy_entry(
+    /// Opens the current entry, including parsed edits and DEX mutations,
+    /// without loading it. Returns `None` when absent. Errors retain the entry
+    /// name, except read errors, which the caller sees as they come. Edited DEX
+    /// containers retain every member in physical-entry order.
+    pub fn open_component_entry(
         &mut self,
         component: usize,
         name: &str,
-        output: &mut impl Write,
-    ) -> Result<bool> {
-        self.copy_current(component, name, output)
+    ) -> Result<Option<EntryReader>> {
+        self.open_current(component, name)
             .map_err(|error| error.in_entry(name))
     }
 
-    fn copy_current(
-        &mut self,
-        component: usize,
-        name: &str,
-        output: &mut impl Write,
-    ) -> Result<bool> {
+    fn open_current(&mut self, component: usize, name: &str) -> Result<Option<EntryReader>> {
         let entry = self
             .components
             .get(component)
             .ok_or_else(|| invalid("apk", format!("no component at index {component}")))?;
         if !entry.contains(name) {
-            return Ok(false);
+            return Ok(None);
         }
         if let Some(spooled) = self.rewritten_dex_entry(ComponentIndex(component), name)? {
-            std::io::copy(&mut spooled.reader(), output)?;
-            return Ok(true);
+            return Ok(Some(EntryReader::file(spooled.into_file())?));
         }
-        self.components[component].copy_entry(name, output)
+        self.components[component].open_entry(name)
     }
 
-    /// Allocates the current, uncompressed entry bytes. Use `copy_entry` for
-    /// large payloads. Returns `None` when this component has no such entry.
+    /// Allocates the current, uncompressed entry bytes. Use
+    /// `open_component_entry` for large payloads. Returns `None` when this
+    /// component has no such entry.
     pub fn read_component_entry(
         &mut self,
         component: usize,
         name: &str,
     ) -> Result<Option<Vec<u8>>> {
+        let Some(mut entry) = self.open_component_entry(component, name)? else {
+            return Ok(None);
+        };
         let mut bytes = Vec::new();
-        Ok(self
-            .copy_entry(component, name, &mut bytes)?
-            .then_some(bytes))
+        entry
+            .read_to_end(&mut bytes)
+            .map_err(|error| ApkError::from(error).in_entry(name))?;
+        Ok(Some(bytes))
     }
 
     /// Reads the entry from the first component that contains it, base first.

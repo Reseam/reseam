@@ -14,8 +14,8 @@ use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use flate2::Crc;
 
 use crate::entry::is_native_library;
-use crate::error::{Result, invalid};
-use crate::zip::{COPY_BUFFER, Compression};
+use crate::error::Result;
+use crate::zip::{COPY_BUFFER, Compression, reader};
 use output::Output;
 use records::{EntryHeader, zip32};
 
@@ -67,9 +67,7 @@ impl<W: Write + Seek> Writer<W> {
         let name: Box<str> = name.into();
         let entry = archive.by_index_raw(index)?;
         let header = EntryHeader::of(&entry)?;
-        let data = entry
-            .data_start()
-            .ok_or_else(|| invalid("zip entry", format!("{name}: missing data offset")))?;
+        let data = reader::data_start(&entry, &name)?;
         drop(entry);
         self.begin(name, header)?;
         self.copy_range(source, data, u64::from(header.compressed))

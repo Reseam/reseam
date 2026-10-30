@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::bridge::apk::components::with_component;
-use crate::bridge::handles::HandleSpace;
+use crate::bridge::handles::OwnedHandles;
 use crate::bridge::run_state::checked;
 use crate::context::PatchContext;
 use boltffi::export;
@@ -28,43 +28,27 @@ struct OpenDoc {
     nodes: Nodes,
 }
 
-#[derive(Default)]
-struct Documents {
-    identities: HandleSpace,
-    slots: Vec<Option<OpenDoc>>,
-}
-
-impl Documents {
-    fn slot_mut(&mut self, handle: u32) -> Result<&mut Option<OpenDoc>, String> {
-        self.identities
-            .slot(handle)
-            .and_then(|slot| self.slots.get_mut(slot))
-            .ok_or_else(|| format!("invalid XML document {handle}"))
-    }
-}
-
-thread_local! { static DOCS: RefCell<Documents> = RefCell::new(Documents::default()); }
+thread_local! { static DOCS: RefCell<OwnedHandles<OpenDoc>> = RefCell::default(); }
 
 pub(in crate::bridge) fn reset() {
-    DOCS.with(|docs| *docs.borrow_mut() = Documents::default());
+    DOCS.with(|docs| *docs.borrow_mut() = OwnedHandles::default());
+}
+
+fn not_open(handle: u32) -> String {
+    format!("XML document {handle} is not open")
 }
 
 pub(in crate::bridge) fn finish() -> Result<(), String> {
     DOCS.with(|docs| {
-        let docs = docs.borrow();
-        if let Some((id, _)) = docs
-            .slots
+        match docs
+            .borrow()
             .iter()
-            .enumerate()
-            .filter_map(|(id, slot)| slot.as_ref().map(|open| (id, open)))
             .find(|(_, open)| open.dirty && open.source != Source::Memory)
         {
-            Err(format!(
-                "edited XML document {} has unclosed borrowers",
-                docs.identities.handle(id)
-            ))
-        } else {
-            Ok(())
+            Some((handle, _)) => Err(format!(
+                "edited XML document {handle} has unclosed borrowers"
+            )),
+            None => Ok(()),
         }
     })
 }
@@ -76,31 +60,22 @@ pub(in crate::bridge) fn open(
     DOCS.with(|docs| {
         let mut docs = docs.borrow_mut();
         if source != Source::Memory
-            && let Some((id, Some(existing))) = docs
-                .slots
-                .iter_mut()
-                .enumerate()
-                .find(|(_, slot)| slot.as_ref().is_some_and(|open| open.source == source))
+            && let Some((handle, existing)) =
+                docs.iter_mut().find(|(_, open)| open.source == source)
         {
             existing.borrowers = existing
                 .borrowers
                 .checked_add(1)
                 .ok_or("too many XML borrowers")?;
-            return Ok(docs.identities.handle(id));
+            return Ok(handle);
         }
-        let slot = docs.slots.len();
-        let id = docs
-            .identities
-            .allocate(slot)
-            .map_err(|error| error.to_string())?;
-        docs.slots.push(Some(OpenDoc {
+        docs.insert(OpenDoc {
             source,
             owned: document,
             borrowers: 1,
             dirty: false,
             nodes: Nodes::default(),
-        }));
-        Ok(id)
+        })
     })
 }
 
@@ -114,10 +89,7 @@ pub(in crate::bridge) fn with_read<R>(
 ) -> Result<R, String> {
     DOCS.with(|docs| {
         let mut docs = docs.borrow_mut();
-        let open = docs
-            .slot_mut(handle)?
-            .as_mut()
-            .ok_or_else(|| format!("closed XML document {handle}"))?;
+        let open = docs.get_mut(handle).ok_or_else(|| not_open(handle))?;
         match open.source {
             Source::Manifest { component } => crate::bridge::phase::with_ctx_result(|ctx| {
                 let component = ctx
@@ -146,10 +118,7 @@ pub(in crate::bridge) fn with_edit<R>(
 ) -> Result<R, String> {
     DOCS.with(|docs| {
         let mut docs = docs.borrow_mut();
-        let open = docs
-            .slot_mut(handle)?
-            .as_mut()
-            .ok_or_else(|| format!("closed XML document {handle}"))?;
+        let open = docs.get_mut(handle).ok_or_else(|| not_open(handle))?;
         open.dirty = true;
         crate::bridge::phase::with_ctx_result(|ctx| {
             // Move the model for this operation so resource-scope resolution can borrow
@@ -192,9 +161,8 @@ pub(in crate::bridge) fn edit_manifest<R>(
     DOCS.with(|docs| {
         let mut docs = docs.borrow_mut();
         let open = docs
-            .slots
             .iter_mut()
-            .flatten()
+            .map(|(_, open)| open)
             .find(|open| open.source == Source::Manifest { component });
         let mut unused = Nodes::default();
         let nodes = match open {
@@ -224,13 +192,8 @@ pub fn xml_open(component_name: Option<String>, path: String) -> Option<u32> {
             component,
             path: path.clone(),
         };
-        let existing = DOCS.with(|docs| {
-            docs.borrow()
-                .slots
-                .iter()
-                .flatten()
-                .any(|open| open.source == source)
-        });
+        let existing =
+            DOCS.with(|docs| docs.borrow().iter().any(|(_, open)| open.source == source));
         if existing {
             return open(source, None).map(Some);
         }
@@ -249,15 +212,12 @@ pub fn xml_open(component_name: Option<String>, path: String) -> Option<u32> {
 pub fn xml_close(handle: u32) {
     let result = DOCS.with(|docs| {
         let mut docs = docs.borrow_mut();
-        let slot = docs.slot_mut(handle)?;
-        let mut open = slot
-            .take()
-            .ok_or_else(|| format!("closed XML document {handle}"))?;
+        let open = docs.get_mut(handle).ok_or_else(|| not_open(handle))?;
         open.borrowers -= 1;
         if open.borrowers != 0 {
-            *slot = Some(open);
             return Ok(());
         }
+        let open = docs.remove(handle).expect("the document is open");
         if open.dirty
             && let Source::File { component, path } = open.source
         {

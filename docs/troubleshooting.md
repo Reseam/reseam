@@ -52,6 +52,12 @@ The code you added needs more registers than the instructions around it can reac
 **`… is not in the app or any extension`**, or **`… is not defined by the app or any extension in the bundle`**
 An extension class or method a patch refers to doesn't exist. The extension module may not be in the bundle, or the export was renamed. `reseam bundle list <bundle> --verbose` shows the bundle's DEX files.
 
+**`OutOfMemoryError` while reading or writing a file**
+`files.read` and `files.write` with a `ByteArray` hold the whole file in memory. Use `files.stream` and pass an `InputStream` to `files.write`, as [Large files](8_app_files.md#large-files) shows.
+
+**`… stream is closed`**, or **`… stream belongs to another callback`**
+A stream from `files.stream` or `files.sourceStream()` was read after it was closed, or kept past the block that opened it. Open it again where you read it.
+
 **`Option '<key>' has no value`**
 The option is optional, has no default, and the user set nothing. Read it with `options.getOrNull`, give it a default, or make it required.
 

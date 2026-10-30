@@ -152,8 +152,11 @@ The `files` of a running patch: every file in the APK.
 |---|---|
 | `list(): List<String>` | The path of every file. |
 | `read(path: String): ByteArray?` | A file's contents. |
+| `stream(path: String): InputStream?` | A file's contents as a stream, for files too large to read whole. It reads the file as it was when it opened, changes made so far included. Null when the file doesn't exist. Close it before your block ends. |
 | `write(path: String, data: ByteArray)` | Adds or replaces a file, compressed. |
+| `write(path: String, data: InputStream)` | Adds or replaces a file, compressed, with everything `data` reads, without holding it all in memory. When reading `data` fails, the file stays as it was. `data` stays open. |
 | `writeStored(path: String, data: ByteArray)` | Adds or replaces a file, uncompressed. Android needs some files stored this way, such as `resources.arsc` and native libraries it maps. |
+| `writeStored(path: String, data: InputStream)` | Adds or replaces a file, uncompressed, from a stream, as `write` does. |
 | `delete(path: String)` | Removes a file. |
 | `copy(bundlePath: String, apkPath: String)` | Copies a file from your bundle into the APK, compressed. Files you ship live in the project's `resources/` folder, so `bundlePath` is `resources/…`. A path that leads outside the bundle fails. |
 | `xml(path: String): XmlDocument` | Opens a compiled XML file. Close it yourself, with `use { }`. |

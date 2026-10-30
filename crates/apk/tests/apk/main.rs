@@ -8,6 +8,7 @@ mod compiler;
 mod container;
 mod dex_slots;
 mod entries;
+mod entry_readers;
 mod presentation;
 mod savepoints;
 mod string_pool;

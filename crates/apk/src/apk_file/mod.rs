@@ -7,6 +7,7 @@ mod dex_set;
 mod open;
 pub(crate) use open::order_components;
 mod entries;
+mod entry_reader;
 mod presentation;
 mod resources;
 mod undo;
@@ -17,6 +18,7 @@ use std::collections::HashSet;
 
 pub use component::ApkComponent;
 pub use dex_set::DexSet;
+pub use entry_reader::EntryReader;
 pub use presentation::{ApplicationIcon, IconLayer};
 pub use write::{ApkWriteOptions, SignaturePolicy};
 
