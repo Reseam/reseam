@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
+// SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // An app bundle's global code as Metro emits it: each module factory is registered with `__d`.

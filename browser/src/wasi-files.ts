@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
+// SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { Inode, Fd, wasi } from '@bjorn3/browser_wasi_shim';
 import { type InputReader, type StorageClient, StorageFailure } from './storage-client';

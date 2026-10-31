@@ -3,6 +3,7 @@
 *.apk
 *.md
 !README.md
+!CONTRIBUTING.md
 !RELEASING.md
 !STYLE.md
 !AGENTS.md

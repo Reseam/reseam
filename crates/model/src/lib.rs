@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
+// SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! Paths crossing the application boundary are UTF-8 strings; the engine validates

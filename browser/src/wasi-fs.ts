@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
+// SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { Directory, Inode, Fd } from '@bjorn3/browser_wasi_shim';
 import { mountPath, splitPath } from './paths';

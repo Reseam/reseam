@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Cossale <hello@auna.li>
+// SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::{COMPLEX_LEN, EntryValue, FLAG_COMPACT, FLAG_COMPLEX, ResEntry, SIMPLE_LEN};
