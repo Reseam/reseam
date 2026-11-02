@@ -123,3 +123,33 @@ fn resource_lookup_and_string_replacement_survive_serialization() -> TestResult 
     }
     Ok(())
 }
+
+#[test]
+fn entries_are_found_by_the_string_they_hold_and_named_by_id() -> TestResult {
+    let table = ResourceTable::parse(DexBytes::from_vec(make_test_arsc().serialize()?))?;
+    let entries = table.string_entries()?;
+
+    for (string, key) in [(0, "hello"), (1, "world")] {
+        let [found] = table
+            .find_entries_by_string(string)?
+            .try_into()
+            .expect("one entry");
+        assert_eq!(found.key_name, key);
+        assert_eq!(
+            entries.get(string),
+            [reseam_apk::resources::StringUse {
+                res_id: found.res_id,
+                qualifiers: String::new(),
+            }]
+        );
+        assert_eq!(
+            table
+                .resource_name(found.res_id)?
+                .map(|name| name.to_string()),
+            Some(format!("@string/{key}"))
+        );
+    }
+    assert!(entries.get(2).is_empty());
+    assert_eq!(table.resource_name(0x7f01_0005)?, None);
+    Ok(())
+}

@@ -74,6 +74,18 @@ To get an APK anyway, add `--leave-out-failed`. The output then leaves out the f
 reseam patch app.apk --bundle patches.reseam --trust <key> --leave-out-failed
 ```
 
+## Test builds
+
+`--trace` makes a test build that shows which of your patch's changes the app runs. Every place a patch changed the app's code logs a line each time the app runs it:
+
+```bash
+reseam patch app.apk --bundle patches.reseam --trust <key> --trace --output traced.apk
+adb install -r traced.apk
+adb logcat -v tag -s reseam-trace
+```
+
+Each line names the patch, the method, and the instruction where the change starts, counted as in a build without `--trace`. Targets match exactly what they match in a normal build. The extra calls slow down code that runs often, so don't give traced builds to users.
+
 ## Mount builds
 
 `--mount` builds output to bind-mount over the app installed on a rooted phone, which keeps its signature and data. Android keeps the installed app's manifest, so patches that edit the manifest are left out, and the patches that need them are skipped. When patching finds such a patch, the CLI patches again from the original APK without it.
@@ -106,4 +118,5 @@ reseam patch app.apk --bundle patches.reseam --trust <key> \
 | `--key <pk8>`, `--cert <der>` | signing key and certificate, together |
 | `--mount` | build for mounting over the installed app; leaves out patches that edit the manifest |
 | `--leave-out-failed` | write the output without failed patches and the patches that need them |
+| `--trace` | test build: log each place a patch changed the app's code when the app runs it |
 | `--dry-run` | check the bundles, selection, and options, without patching or writing |

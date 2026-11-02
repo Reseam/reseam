@@ -13,6 +13,8 @@ pub(crate) mod class_loader;
 pub(crate) mod desktop;
 #[cfg(feature = "kotlin")]
 pub(crate) mod discovery;
+#[cfg(all(feature = "kotlin", not(target_os = "android")))]
+pub(crate) mod inspector;
 #[cfg(feature = "kotlin")]
 pub(crate) mod jni_values;
 #[cfg(feature = "kotlin")]
@@ -21,6 +23,8 @@ pub(crate) mod jvm;
 pub(crate) mod loader;
 #[cfg(feature = "kotlin")]
 pub(crate) mod metadata;
+#[cfg(all(feature = "kotlin", not(target_os = "android")))]
+pub(crate) mod target_check;
 
 #[cfg(all(feature = "browser", not(feature = "kotlin")))]
 pub(crate) use browser::load_patches;

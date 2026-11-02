@@ -9,6 +9,8 @@ use super::super::logged;
 use super::super::mutation::{edit_mapping, growth_mapping};
 use super::{Code, Frame, kind};
 use crate::bridge::dex::types::{CodeEdit, CodeRegister};
+use crate::bridge::trace;
+use crate::context::Moved;
 
 impl Code<'_> {
     /// The code before each return, reading parameters as the method was entered: copied at
@@ -45,6 +47,7 @@ impl Code<'_> {
                 "add parameter copies",
                 dex::grow_registers(body, words, &self.incoming, &self.protected, self.dex),
             )?;
+            trace::moved(self.handle, &map, Moved::Rewrite);
             edits.push(CodeEdit::Grow(growth_mapping(base, words, map)?));
         }
         let protected: Vec<u16> = self
@@ -76,6 +79,7 @@ impl Code<'_> {
                 .map(|(offset, &kind)| dex::move_register(copies[offset], incoming + offset, kind))
                 .collect();
             let map = logged("copy parameters", body.insert_instructions(0, &moves))?;
+            trace::moved(self.handle, &map, Moved::Insertion);
             edits.push(CodeEdit::Insert(edit_mapping(map)?));
         }
         Ok(edits)

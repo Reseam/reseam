@@ -79,6 +79,7 @@ impl PatchResult {
 #[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[boltffi::data]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum PatchStatus {
     Applied,
     Skipped {

@@ -30,6 +30,7 @@ mod options;
 mod read;
 mod references;
 mod search;
+mod smali;
 mod write;
 
 pub use edit::block::{
@@ -85,7 +86,8 @@ pub use reseam_storage::Bytes as DexBytes;
 pub use search::index::{RefKey, RefQuery};
 pub use search::inspect::{MethodSummary, summarize_resident};
 pub use search::pattern::{InstructionPattern, OpcodeMatcher};
-pub use search::view::{InstructionHit, InstructionSite, MethodHit, MethodView};
+pub use search::view::{InstructionHit, InstructionRef, InstructionSite, MethodHit, MethodView};
+pub use smali::{DeclarationKind, SmaliLine, SmaliNames, access_keywords, disassemble};
 pub use write::{
     DexPart, Spooled, WriteLayout, split_to_fit, write_class, write_container_spooled,
     write_spooled,

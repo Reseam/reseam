@@ -37,6 +37,11 @@ pub struct PatchRequest {
     #[serde(default)]
     #[boltffi::default(false)]
     pub leave_out_failed: bool,
+    /// Logs each place a patch changed app code when the app runs it, under the
+    /// tag `reseam-trace`, so a test build shows which edits ran on the device.
+    #[serde(default)]
+    #[boltffi::default(false)]
+    pub trace: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

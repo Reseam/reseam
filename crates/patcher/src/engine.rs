@@ -5,6 +5,6 @@ mod plan;
 mod run;
 
 pub use plan::{Delivery, PatchSelection, ResolvedPlan};
-pub use run::{AppliedRun, apply_patches, validate_patches};
+pub use run::{AppliedRun, Trace, apply_patches, validate_patches};
 
 pub use reseam_model::{PatchResult, PatchStatus, RunEvent};

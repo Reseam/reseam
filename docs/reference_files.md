@@ -193,7 +193,7 @@ A document's elements are handles into it. Take the values you need out before t
 | `tag: String` | The element's tag. |
 | `parent: XmlElement?` | Its parent, or null for the root. |
 | `children: List<XmlElement>` | Its child elements. |
-| `get(attr: String): String?` | An attribute's value, written `element["android:label"]`. |
+| `get(attr: String): String?` | An attribute's value, written `element["android:label"]`, or null when the element has no such attribute. Strings come back as written. Other values come back as the text that sets them: references as `@0x7f1400a0`, dimensions as `16dp`, fractions as `50%`, colors as `#aarrggbb`, and numbers and booleans as written. |
 | `set(attr: String, value: String)` | Sets an attribute, written `element["android:label"] = "Settings"`. A prefixed name is bound to its resource id: `android:` through Android's own attributes, any other prefix through the app's, which the document must declare as a namespace. A name with no id fails the patch, since Android would ignore it. `value` is read as resource XML reads it, including enum and flag names such as `center` or `top\|start`. |
 | `setInt(attr: String, value: Int)` | Sets an attribute to a number. |
 | `setBool(attr: String, value: Boolean)` | Sets an attribute to a boolean. |

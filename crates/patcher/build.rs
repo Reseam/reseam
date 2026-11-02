@@ -9,6 +9,20 @@ use std::path::{Path, PathBuf};
 #[path = "../../build-support/java.rs"]
 mod java;
 
+/// The Kotlin version the patch runtime is compiled with, from the Gradle version catalog.
+fn export_kotlin_version(manifest_dir: &Path) -> Result<(), Box<dyn Error>> {
+    let catalog = manifest_dir.join("../../gradle/libs.versions.toml");
+    println!("cargo:rerun-if-changed={}", catalog.display());
+    let catalog: toml::Table = std::fs::read_to_string(&catalog)?.parse()?;
+    let version = catalog
+        .get("versions")
+        .and_then(|versions| versions.get("kotlin"))
+        .and_then(toml::Value::as_str)
+        .ok_or("gradle/libs.versions.toml names no [versions] kotlin")?;
+    println!("cargo:rustc-env=RESEAM_KOTLIN_VERSION={version}");
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=../../build-support/java.rs");
@@ -37,6 +51,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 "patch runtime jar {} is unavailable: {error}; run `cargo xtask runtime` before building desktop hosts", source.display()
             ))?;
         }
+        export_kotlin_version(&manifest_dir)?;
     }
     // BoltFFI reads Binding IR from a metadata build, which has no bridge yet.
     if env::var_os("BOLTFFI_BINDING_METADATA").is_some() {

@@ -13,6 +13,7 @@ pub mod dex;
 mod handles;
 pub(crate) mod hermes;
 pub(crate) mod identity;
+pub(crate) mod inspection;
 pub(crate) mod log_host;
 pub(crate) mod options;
 pub(crate) mod output;
@@ -20,5 +21,6 @@ mod phase;
 pub(crate) mod run_state;
 pub mod runtime;
 pub(crate) mod savepoints;
+pub(crate) mod trace;
 
 pub(crate) use runtime::load_patches;

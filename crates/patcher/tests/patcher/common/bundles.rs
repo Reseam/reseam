@@ -157,5 +157,6 @@ pub fn apply(
             code: ctx.apk().version_code(),
         },
     )?;
-    engine::apply_patches(ctx, &specs, plan, patches, |_| {}).map(engine::AppliedRun::into_results)
+    engine::apply_patches(ctx, &specs, plan, patches, engine::Trace::Off, |_| {})
+        .map(engine::AppliedRun::into_results)
 }

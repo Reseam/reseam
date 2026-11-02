@@ -1,13 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::borrow::Cow;
-
 use reseam_model::{
     InstallMethod, PatchArtifact, PatchOutcome, PatchPhase, PatchRequest, Problem, RunEvent,
 };
-use reseam_patcher::engine::{self, Delivery, PatchResult, PatchStatus, ResolvedPlan};
-use reseam_patcher::{ApkVersion, PatchSpec};
+use reseam_patcher::PatchSpec;
+use reseam_patcher::engine::{self, Delivery, PatchResult, PatchStatus, ResolvedPlan, Trace};
 
 use crate::apk::OpenedApk;
 use crate::apply::{apply, load_executed, release_for_writing};
@@ -74,19 +72,14 @@ fn execute(
 
     emit(info("Loading bundles".to_string()));
     let archives = trusted_archives(bundles, trust)?;
-    let package = opened.apk.package_name().map(Cow::into_owned);
-    let version_name = opened.apk.version_name().map(Cow::into_owned);
-    let version = ApkVersion {
-        name: version_name.as_deref(),
-        code: opened.apk.version_code(),
-    };
+    let identity = opened.identity();
     let specs: Vec<&PatchSpec> = archives.iter().flat_map(TrustedArchive::catalog).collect();
     let plan = ResolvedPlan::resolve(
         &specs,
         &request.selection,
         delivery(request.install_method),
-        package.as_deref(),
-        version,
+        identity.package.as_deref(),
+        identity.version(),
     )?;
 
     if request.dry_run {
@@ -106,7 +99,12 @@ fn execute(
     }
 
     let bundles = load_executed(archives, &plan, profiler)?;
-    let mut applied = apply(&mut opened, &bundles, plan, emit, profiler)?;
+    let trace = if request.trace {
+        Trace::Log
+    } else {
+        Trace::Off
+    };
+    let mut applied = apply(&mut opened, &bundles, plan, trace, emit, profiler)?;
     if !request.leave_out_failed {
         ensure_none_failed(applied.results())?;
     }

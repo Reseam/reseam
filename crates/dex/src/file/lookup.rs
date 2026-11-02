@@ -5,6 +5,7 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 
 use super::DexFile;
+use crate::model::access_flags::AccessFlags;
 use crate::model::descriptor::parse_method_descriptor;
 use crate::model::{
     FieldId, FieldIdx, MethodId, MethodIdx, ProtoIdx, Prototype, StringIdx, TypeIdx, TypeList,
@@ -24,6 +25,40 @@ impl DexFile {
         desc.push(')');
         desc.push_str(&self.type_descriptor(proto.return_type));
         desc
+    }
+
+    /// The method as smali and patches write it: `Lpkg/Owner;->name(Lpkg/Arg;)V`.
+    pub fn method_descriptor(&self, idx: MethodIdx) -> String {
+        let method = self.method_id(idx);
+        format!(
+            "{}->{}{}",
+            self.type_descriptor(method.class),
+            self.strings.get(method.name),
+            self.proto_descriptor(&self.proto(method.proto)),
+        )
+    }
+
+    /// The types of the registers a method with `flags` receives, receiver first.
+    pub fn incoming_types(&self, method: MethodIdx, flags: AccessFlags) -> Vec<TypeIdx> {
+        let id = self.method_id(method);
+        let proto = self.proto(id.proto);
+        let mut incoming = Vec::with_capacity(proto.parameters.len() + 1);
+        if !flags.contains(AccessFlags::STATIC) {
+            incoming.push(id.class);
+        }
+        incoming.extend(proto.parameters);
+        incoming
+    }
+
+    /// The field as smali and patches write it: `Lpkg/Owner;->name:I`.
+    pub fn field_descriptor(&self, idx: FieldIdx) -> String {
+        let field = self.field_id(idx);
+        format!(
+            "{}->{}:{}",
+            self.type_descriptor(field.class),
+            self.strings.get(field.name),
+            self.type_descriptor(field.type_),
+        )
     }
 
     pub fn find_class_index(&self, descriptor: &str) -> Option<usize> {
@@ -51,6 +86,11 @@ impl DexFile {
     /// The id of method `name` with prototype `proto` of class `class`, if the pools hold it.
     pub fn find_method(&self, class: TypeIdx, name: &str, proto: &str) -> Option<MethodIdx> {
         self.find_method_idx(class, self.strings.find(name)?, self.find_proto(proto)?)
+    }
+
+    /// The id of field `name` of type `type_` of class `class`, if the pools hold it.
+    pub fn find_field(&self, class: TypeIdx, name: &str, type_: &str) -> Option<FieldIdx> {
+        self.find_field_idx(class, self.strings.find(name)?, self.find_type_idx(type_)?)
     }
 
     pub(crate) fn find_proto_idx(&self, ret: TypeIdx, params: &[TypeIdx]) -> Option<ProtoIdx> {

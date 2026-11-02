@@ -1,11 +1,21 @@
 ---
 title: Bundle
-description: Create signing keys, pack bundles, list what is inside one, and fetch published releases.
+description: Start a bundle from the template, create signing keys, pack bundles, list what is inside one, and fetch published releases.
 ---
 
 # `reseam bundle`
 
-Most authors only call these through the Gradle build. They are useful for checking a bundle by hand.
+You start a bundle with `init` and make its signing key with `keygen`. The Gradle build calls the rest for you. They are useful for checking a bundle by hand.
+
+## `reseam bundle init`
+
+```bash
+reseam bundle init my-patches
+```
+
+Creates a bundle project in the folder `my-patches` from the newest [patch bundle template](https://git.reseam.app/reseam/patches-template), which it downloads. It names the bundle in `manifest.toml` and `settings.gradle.kts`, and sets the Reseam Gradle plugin to the version of the CLI you ran, so the bundle builds for the engine you test with.
+
+The name is the bundle's name everywhere, including in patch references like `my-patches/<patch id>`. It uses lowercase letters and digits, separated by single hyphens. The folder must not exist yet.
 
 ## `reseam bundle keygen`
 

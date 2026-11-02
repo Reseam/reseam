@@ -79,6 +79,17 @@ impl StringPool {
         }
     }
 
+    /// The string's UTF-16 code units exactly as the file holds them, unpaired
+    /// surrogates included, which [`Self::get`] replaces.
+    pub fn units(&self, idx: StringIdx) -> Vec<u16> {
+        let i = idx.0 as usize;
+        if i < self.raw_len {
+            mutf8_units(self.payload(self.raw_offset(i))).collect()
+        } else {
+            self.owned[i - self.raw_len].encode_utf16().collect()
+        }
+    }
+
     pub fn iter(&self) -> impl ExactSizeIterator<Item = Cow<'_, str>> {
         (0..self.len()).map(|i| self.get(StringIdx(i as u32)))
     }

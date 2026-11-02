@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
 use reseam_apk::{ApkComponent, ApkFile, ContainerFormat, open_container};
-use reseam_model::{ApkMetadata, ApplicationIcon};
+use reseam_model::{ApkMetadata, ApkVersion, ApplicationIcon};
 
 use crate::error::{HostError, Result};
 
@@ -68,10 +69,35 @@ impl OpenedApk {
         })
     }
 
-    fn error(&self, source: reseam_apk::ApkError) -> HostError {
+    /// The package and version a plan checks patches against.
+    pub(crate) fn identity(&self) -> AppIdentity {
+        AppIdentity {
+            package: self.apk.package_name().map(Cow::into_owned),
+            version_name: self.apk.version_name().map(Cow::into_owned),
+            version_code: self.apk.version_code(),
+        }
+    }
+
+    pub(crate) fn error(&self, source: reseam_apk::ApkError) -> HostError {
         HostError::Apk {
             path: self.input.clone(),
             source,
+        }
+    }
+}
+
+/// What an APK declares itself as, for checking patches against it.
+pub(crate) struct AppIdentity {
+    pub(crate) package: Option<String>,
+    version_name: Option<String>,
+    version_code: Option<i32>,
+}
+
+impl AppIdentity {
+    pub(crate) fn version(&self) -> ApkVersion<'_> {
+        ApkVersion {
+            name: self.version_name.as_deref(),
+            code: self.version_code,
         }
     }
 }

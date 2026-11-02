@@ -4,8 +4,11 @@
 use reseam_dex::{AccessFlags, DexFile};
 
 use super::logged;
+use crate::bridge::trace;
+use crate::context::Moved;
 
 pub(super) fn prepare_flag_frame(
+    handle: u32,
     dex: &DexFile,
     method: reseam_dex::MethodIdx,
     previous: AccessFlags,
@@ -14,6 +17,7 @@ pub(super) fn prepare_flag_frame(
 ) -> Result<Option<crate::bridge::dex::types::MethodEdit>, String> {
     if flags.intersects(AccessFlags::ABSTRACT | AccessFlags::NATIVE) {
         *code = None;
+        trace::code_removed(handle);
         return Ok(None);
     }
     let Some(code) = code.as_mut() else {
@@ -28,16 +32,14 @@ pub(super) fn prepare_flag_frame(
     let mapping = if growth == 0 {
         None
     } else {
-        let types = super::super::registers::incoming_types(dex, method, previous);
+        let types = dex.incoming_types(method, previous);
         let base = code.registers_size() - code.ins_size();
-        Some(super::super::mutation::growth_mapping(
-            base,
-            growth,
-            logged(
-                "grow receiver frame",
-                reseam_dex::grow_registers(code, growth, &types, &[], dex),
-            )?,
-        )?)
+        let map = logged(
+            "grow receiver frame",
+            reseam_dex::grow_registers(code, growth, &types, &[], dex),
+        )?;
+        trace::moved(handle, &map, Moved::Rewrite);
+        Some(super::super::mutation::growth_mapping(base, growth, map)?)
     };
     logged(
         "change method frame",

@@ -5,6 +5,7 @@ package app.reseam.patch
 
 import app.reseam.patch.dex.AccessFlags
 import app.reseam.patch.dex.Method
+import app.reseam.patch.inspect.TargetInspection
 import app.reseam.patch.run.Resolution
 import app.reseam.patch.search.MethodQuerySpec
 import app.reseam.patch.types.MethodRef
@@ -13,9 +14,13 @@ import app.reseam.patch.types.NewMethod
 class MethodTarget
 internal constructor(
     debugName: String?,
+    private val inspector: ((PatchRuntime) -> TargetInspection)? = null,
     private val resolver: (PatchRuntime) -> Resolution<Method>,
 ) : Target<Method>(debugName) {
     override fun resolve(runtime: PatchRuntime): Resolution<Method> = resolver(runtime)
+
+    override fun inspect(runtime: PatchRuntime): TargetInspection =
+        inspector?.invoke(runtime) ?: super.inspect(runtime)
 
     val method: Method
         get() = resolved
@@ -52,9 +57,23 @@ internal constructor(
 class MethodsTarget
 internal constructor(
     debugName: String?,
+    private val inspector: ((PatchRuntime) -> TargetInspection)? = null,
     private val resolver: (PatchRuntime) -> Resolution<List<Method>>,
 ) : Target<List<Method>>(debugName) {
     override fun resolve(runtime: PatchRuntime): Resolution<List<Method>> = resolver(runtime)
+
+    override fun inspect(runtime: PatchRuntime): TargetInspection =
+        inspector?.invoke(runtime) ?: super.inspect(runtime)
+
+    override fun inspection(resolution: Resolution<List<Method>>): TargetInspection =
+        TargetInspection(
+            matches = resolution.value.map { it.descriptor },
+            winner = null,
+            many = true,
+            considered = resolution.report.considered,
+            reasons = resolution.report.reasons,
+            nearMisses = emptyList(),
+        )
 
     val all: List<MethodTarget>
         get() = resolved.map { MethodTarget.of(it, debugName) }
@@ -91,13 +110,19 @@ internal constructor(
  * takes `first()`. The block runs when the target resolves, so it may read other targets.
  */
 fun method(debugName: String? = null, block: MethodQuery.() -> Unit): MethodTarget =
-    MethodTarget(debugName) { runtime ->
+    MethodTarget(
+        debugName,
+        inspector = { runtime -> MethodQuerySpec().apply(block).inspectOne(runtime, debugName) },
+    ) { runtime ->
         MethodQuerySpec().apply(block).resolveOne(runtime, debugName)
     }
 
 /** Every method satisfying the query, best ranked first. */
 fun methods(debugName: String? = null, block: MethodQuery.() -> Unit): MethodsTarget =
-    MethodsTarget(debugName) { runtime ->
+    MethodsTarget(
+        debugName,
+        inspector = { runtime -> MethodQuerySpec().apply(block).inspectAll(runtime, debugName) },
+    ) { runtime ->
         MethodQuerySpec().apply(block).resolveAll(runtime, debugName)
     }
 

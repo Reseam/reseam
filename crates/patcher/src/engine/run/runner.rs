@@ -57,6 +57,8 @@ impl<'r, 'c, 'p: 'r, O: FnMut(RunEvent)> Runner<'r, 'c, 'p, O> {
     pub(super) fn run(mut self) -> Result<AppliedRun<'p>> {
         while !(self.execute()? && self.finalize()?) {}
         self.savepoints.release_all(self.ctx)?;
+        #[cfg(feature = "bridge")]
+        crate::bridge::trace::insert(self.ctx)?;
         self.ctx.bind_app_entry()?;
         self.ctx.finish_hermes()?;
         info!("patch application finished");

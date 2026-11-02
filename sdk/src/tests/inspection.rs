@@ -180,6 +180,7 @@ fn check_prepared_trust(inspection_request: &InspectRequest, output: &Path) {
                     dry_run: false,
                     install_method: InstallMethod::Install,
                     leave_out_failed: false,
+                    trace: false,
                 },
                 |_| {},
             )

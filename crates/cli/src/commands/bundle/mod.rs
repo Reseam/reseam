@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 mod fetch;
+mod init;
 
 use std::collections::HashSet;
 
@@ -12,6 +13,7 @@ use reseam_sdk::inspect;
 use tracing::info;
 
 pub use self::fetch::run_bundle_fetch;
+pub use self::init::run_bundle_init;
 use super::create_parent;
 use crate::app::{
     BundleKeygenCommand, BundleListCommand, BundleManifestCommand, BundlePackCommand,

@@ -1,26 +1,27 @@
 ---
-description: Copy the template, build it, and run its patches on an app.
+description: Create a bundle from the template, build it, and run its patches on an app.
 ---
 
 # Start a bundle
 
-A bundle is the file you publish. It holds your patches, and any Kotlin code they add to apps. The quickest way to start one is the [patch bundle template](https://git.reseam.app/reseam/patches-template), which builds as it is and comes with two working patches.
+A bundle is the file you publish. It holds your patches, and any Kotlin code they add to apps. `reseam bundle init` starts one from the [patch bundle template](https://git.reseam.app/reseam/patches-template), which builds as it is and comes with two working patches.
 
 ## What you need
 
 - **JDK 17.**
 - **The Android SDK**, with `ANDROID_HOME` set to its folder. The build compiles your extension code against the newest `platforms/android-*/android.jar` it finds there.
-- **The `reseam` CLI**, on your `PATH`. Use the version that matches the plugin version in the template's `settings.gradle.kts`. See [Install](/docs/cli/install/).
-- **Git.**
+- **The `reseam` CLI**, on your `PATH`. See [Install](/docs/cli/install/).
 
-## 1. Copy the template
+## 1. Create the bundle
 
 ```bash
-git clone https://git.reseam.app/reseam/patches-template.git my-patches
+reseam bundle init my-patches
 cd my-patches
 ```
 
-The template contains:
+This downloads the template into the folder `my-patches` and names the bundle `my-patches`. Pick your own name: lowercase letters and digits, separated by single hyphens. Patch references use it, so keep it once you publish. The command also sets the Reseam Gradle plugin to the version of your CLI, so the bundle builds for the engine you test with.
+
+The bundle contains:
 
 ```text
 manifest.toml          the bundle's name, author, and description
@@ -54,17 +55,17 @@ Keep the key file private, and out of the repository. The build reads it from th
 ./gradlew bundle
 ```
 
-The bundle is written to `build/reseam/example-patches.reseam`.
+The bundle is written to `build/reseam/my-patches.reseam`.
 
 ## 4. Try it on an app
 
 List what is inside, then patch an APK you have:
 
 ```bash
-reseam bundle list build/reseam/example-patches.reseam
+reseam bundle list build/reseam/my-patches.reseam
 
 reseam patch app.apk \
-  --bundle build/reseam/example-patches.reseam \
+  --bundle build/reseam/my-patches.reseam \
   --trust <public key> \
   --enable "Enable debugging" \
   --output patched.apk
@@ -74,7 +75,7 @@ The example patches work on any app, so they start switched off, and `--enable` 
 
 ## 5. Make it yours
 
-1. Set `name`, `author`, and `description` in `manifest.toml`, and `rootProject.name` in `settings.gradle.kts`.
+1. Set `author` and `description` in `manifest.toml`.
 2. Rename `apps/example` to the app you patch, and the `app.example` packages to your own.
 3. Replace the example patches with yours.
 

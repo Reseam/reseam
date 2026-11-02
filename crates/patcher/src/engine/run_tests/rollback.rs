@@ -62,6 +62,7 @@ fn run_patches(delivery: Delivery, patches: &[&Patch], runs: &Arc<Mutex<Vec<Stri
         &specs,
         plan,
         patches,
+        Trace::Off,
         |event| {
             if let RunEvent::PatchesReverted { patches } = event {
                 reverted.extend(patches.iter().map(ToString::to_string));

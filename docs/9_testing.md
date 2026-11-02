@@ -82,6 +82,22 @@ The patch ran, so its target matched something. It may not be the code you meant
 3. **The hook is in a gate, and the setting is off.** Open your settings screen in the app and check the toggle.
 4. **A server decides.** Some features are switched on by the app's server. Changing the code that reads the flag may not be enough.
 
+A traced build tells 2 apart from 3 and 4. Add `--trace`, install the output, and watch the log while you use the screen your patch changes:
+
+```bash
+reseam patch app.apk ... --trace --output patched.apk
+adb install -r patched.apk
+adb logcat -v tag -s reseam-trace
+```
+
+```text
+I/reseam-trace: my-patches/app.example.patches.hideAds  Lcom/example/a/b;->c()V  [4]
+```
+
+Every place your patch changed the app's code logs a line each time the app runs it: the patch, the method, and the instruction where the change starts, counted as in a build without `--trace`. No line means the app took another path (2). A line and no change means the cause is past your code (3 or 4). Changes to Hermes bytecode don't log.
+
+Keep `--trace` for test builds. The calls slow down code that runs often, and the log names every place you patched.
+
 ## When the patched app crashes
 
 Read the crash from the phone:

@@ -4,6 +4,7 @@
 //! Paths crossing the application boundary are UTF-8 strings; the engine validates
 //! paths, signer keys, selections, and option values before executing patches.
 
+pub mod analysis;
 mod compatibility;
 mod container;
 mod error;

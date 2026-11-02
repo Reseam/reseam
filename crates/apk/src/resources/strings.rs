@@ -58,26 +58,21 @@ impl ResourceTable {
 
     pub fn find_entries_by_string(&self, string_index: u32) -> Result<Vec<ResourceRef>> {
         let mut refs = Vec::new();
-        for package in &self.packages {
-            for res_type in &package.types {
-                for i in 0..res_type.len() {
-                    let Some((key, Some(value))) = res_type.entry_head(i)? else {
-                        continue;
-                    };
-                    if value.string_index() == Some(string_index) {
-                        refs.push(ResourceRef {
-                            res_id: package.resource_id(res_type.id, i)?,
-                            key_name: package
-                                .key_strings
-                                .get(key)?
-                                .ok_or_else(|| {
-                                    invalid("resource key", format!("invalid index {key}"))
-                                })?
-                                .into_owned(),
-                        });
-                    }
-                }
+        for value in self.string_values() {
+            let value = value?;
+            if value.string != string_index {
+                continue;
             }
+            let key = value.key;
+            refs.push(ResourceRef {
+                res_id: value.res_id,
+                key_name: value
+                    .package
+                    .key_strings
+                    .get(key)?
+                    .ok_or_else(|| invalid("resource key", format!("invalid index {key}")))?
+                    .into_owned(),
+            });
         }
         Ok(refs)
     }

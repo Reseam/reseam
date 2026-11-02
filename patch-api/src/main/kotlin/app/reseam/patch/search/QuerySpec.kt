@@ -7,6 +7,7 @@ import app.reseam.patch.MatchReport
 import app.reseam.patch.PatchRuntime
 import app.reseam.patch.RankScope
 import app.reseam.patch.dex.Opcode
+import app.reseam.patch.inspect.TargetInspection
 import app.reseam.patch.run.Resolution
 
 internal enum class QueryMultiplicity {
@@ -58,26 +59,67 @@ internal abstract class QuerySpec<T : Any, S : RankScope>(private val kind: Stri
     fun resolveOne(runtime: PatchRuntime, debugName: String?): Resolution<T> {
         val plan = plan(runtime)
         val evaluated = evaluate(runtime, plan.narrowedPool())
+        if (evaluated.accepted.isEmpty()) {
+            error(noMatchMessage(kind, diagnose(runtime, plan).noMatchReport(debugName)))
+        }
         val winner =
-            evaluated.accepted.firstOrNull()
+            winner(evaluated)
                 ?: error(
-                    noMatchMessage(
-                        kind,
-                        diagnose(runtime, plan).noMatchReport(debugName),
-                    )
+                    "${evaluated.accepted.size} ${kind}s matched '${debugName ?: "anonymous"}'; add constraints, rank them, or take first(): " +
+                        evaluated.accepted.take(6).joinToString("; ") {
+                            "${describe(it.value)} [score=${it.score}]"
+                        }
                 )
+        return Resolution(winner.value, evaluated.report(debugName, winner))
+    }
+
+    /** What [resolveOne] would choose among, without failing when it cannot choose. */
+    fun inspectOne(runtime: PatchRuntime, debugName: String?): TargetInspection =
+        inspect(runtime, debugName, many = false, ::winner)
+
+    /** Every candidate [resolveAll] returns, or the closest misses when there is none. */
+    fun inspectAll(runtime: PatchRuntime, debugName: String?): TargetInspection =
+        inspect(runtime, debugName, many = true) { null }
+
+    /** The accepted candidates, with the one [choose] picks, or the closest misses. */
+    private fun inspect(
+        runtime: PatchRuntime,
+        debugName: String?,
+        many: Boolean,
+        choose: (Evaluated<T>) -> Scored<T>?,
+    ): TargetInspection {
+        val plan = plan(runtime)
+        val evaluated = evaluate(runtime, plan.narrowedPool())
+        if (evaluated.accepted.isEmpty()) {
+            return TargetInspection.of(
+                diagnose(runtime, plan).noMatchReport(debugName),
+                emptyList(),
+                many,
+            )
+        }
+        val winner = choose(evaluated)
+        return TargetInspection(
+            matches = evaluated.accepted.map { describe(it.value) },
+            winner = winner?.let { describe(it.value) },
+            many = many,
+            considered = evaluated.considered,
+            reasons = winner?.let { evaluated.report(debugName, it).reasons } ?: evaluated.pipeline,
+            nearMisses = emptyList(),
+        )
+    }
+
+    /**
+     * The accepted candidate a unique query resolves to: the only one, the first when the query
+     * takes the first, or the best ranked when its score beats the runner-up's.
+     */
+    private fun winner(evaluated: Evaluated<T>): Scored<T>? {
+        val winner = evaluated.accepted.firstOrNull() ?: return null
         val runnerUp = evaluated.accepted.getOrNull(1)
-        check(
+        val chosen =
             multiplicity == QueryMultiplicity.FIRST ||
                 runnerUp == null ||
                 rankers.isNotEmpty() && winner.score > runnerUp.score
-        ) {
-            "${evaluated.accepted.size} ${kind}s matched '${debugName ?: "anonymous"}'; add constraints, rank them, or take first(): " +
-                evaluated.accepted.take(6).joinToString("; ") {
-                    "${describe(it.value)} [score=${it.score}]"
-                }
-        }
-        return Resolution(winner.value, evaluated.report(debugName, winner))
+        return winner.takeIf { chosen }
     }
 
     fun resolveAll(runtime: PatchRuntime, debugName: String?): Resolution<List<T>> {

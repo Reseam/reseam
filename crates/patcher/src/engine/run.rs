@@ -38,16 +38,37 @@ pub fn apply_patches<'p>(
     specs: &[&PatchSpec],
     plan: ResolvedPlan,
     patches: &[&'p Patch],
+    #[cfg_attr(
+        not(feature = "bridge"),
+        expect(
+            unused_variables,
+            reason = "only patches calling the bridge change code"
+        )
+    )]
+    trace: Trace,
     observer: impl FnMut(RunEvent),
 ) -> Result<AppliedRun<'p>> {
     #[cfg(feature = "bridge")]
     let _bridge = crate::bridge::run_state::RunGuard::enter()?;
+    #[cfg(feature = "bridge")]
+    if trace == Trace::Log {
+        crate::bridge::trace::start();
+    }
     info!(
         patch_count = plan.order().len(),
         "starting patch application"
     );
     let code = loaded_code(specs, &plan, patches)?;
     Runner::new(ctx, specs, &code, plan, observer).run()
+}
+
+/// Whether a run's output is a test build that shows where patches changed app code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Trace {
+    Off,
+    /// Each place a patch changed app code logs itself every time the app runs it, under the
+    /// logcat tag `reseam-trace`.
+    Log,
 }
 
 /// The outcome of [`apply_patches`]: each patch's result, and the applied

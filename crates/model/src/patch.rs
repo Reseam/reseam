@@ -55,6 +55,21 @@ impl PatchRef {
     }
 }
 
+/// The schema of the text form `PatchRef` serializes as.
+#[cfg(feature = "schema")]
+impl schemars::JsonSchema for PatchRef {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "PatchRef".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "description": "A patch as `<bundle>/<id>`.",
+        })
+    }
+}
+
 impl std::fmt::Display for PatchRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}/{}", self.bundle, self.id)
@@ -196,5 +211,14 @@ mod tests {
             presets(&spec(Compatibility::Universal, true, true), app),
             vec![]
         );
+    }
+}
+
+#[cfg(all(test, feature = "schema"))]
+mod schema_tests {
+    #[test]
+    fn a_patch_reference_is_a_string_in_json_schema() {
+        let schema = schemars::schema_for!(super::PatchRef);
+        assert_eq!(schema.get("type"), Some(&serde_json::json!("string")));
     }
 }

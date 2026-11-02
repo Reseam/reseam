@@ -166,7 +166,7 @@ pub fn set_method_access_flags(
             .ok_or_else(|| format!("method handle {m} is missing"))?;
         let (id, previous_flags) = (method.method, method.access_flags);
         let mut code = method.code.take().map(Arc::unwrap_or_clone);
-        let frame = prepare_flag_frame(dex, id, previous_flags, flags, &mut code);
+        let frame = prepare_flag_frame(m, dex, id, previous_flags, flags, &mut code);
         logged("restore method", crate::context::method_mut(dex, loc))?
             .expect("frame preparation leaves the method slot in place")
             .code = code.map(Arc::new);

@@ -207,3 +207,24 @@ fn replace_bytes(bytes: &[u8], from: &[u8], to: &[u8]) -> Vec<u8> {
         .expect("string in pool");
     [&bytes[..at], to, &bytes[at + from.len()..]].concat()
 }
+
+#[test]
+fn documents_print_back_as_the_xml_they_compile_from() -> TestResult {
+    let source = r#"<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:gravity="center" android:orientation="vertical" android:layout_width="wrap_content" android:layout_height="wrap_content">
+    <TextView android:textSize="16sp" android:textColor="@android:color/white" android:padding="0.5dp" android:text="Fish &amp; &quot;chips&quot;" />
+    <View android:background="?android:attr/selectableItemBackground" android:visibility="gone" />
+</LinearLayout>"#;
+    // Written in resource id order, the order compiled attributes keep.
+    let document = axml::build_document(source, None)?;
+
+    assert_eq!(
+        document.to_xml(None)?,
+        r#"<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:gravity="center" android:orientation="vertical" android:layout_width="wrap_content" android:layout_height="wrap_content">
+    <TextView android:textSize="16sp" android:textColor="@android:color/white" android:padding="0.5dp" android:text="Fish &amp; &quot;chips&quot;" />
+    <View android:background="?android:attr/selectableItemBackground" android:visibility="gone" />
+</LinearLayout>
+"#
+    );
+    Ok(())
+}

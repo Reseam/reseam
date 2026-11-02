@@ -10,7 +10,8 @@ use crate::bridge::dex::convert::kotlin_to_dex;
 use crate::bridge::dex::link::link_instructions;
 use crate::bridge::dex::types::{Instruction, MethodEdit};
 use crate::bridge::handles::with_method_mut;
-use crate::context::{code_mut, method_mut};
+use crate::bridge::trace;
+use crate::context::{Moved, code_mut, method_mut};
 
 use super::logged;
 
@@ -65,6 +66,7 @@ pub fn replace_body(
         method
             .access_flags
             .remove(AccessFlags::NATIVE | AccessFlags::ABSTRACT);
+        trace::body_replaced(m, 0);
         Ok(Some(()))
     });
     crate::bridge::run_state::check_call()?;
@@ -110,10 +112,13 @@ pub fn insert_instructions(
     insns: Vec<Instruction>,
 ) -> Result<MethodEdit, String> {
     edit_code(m, &insns, |code, insns| {
-        edit_mapping(logged(
+        let map = logged(
             "insert instructions",
             code.insert_instructions(index as usize, &insns),
-        )?)
+        )?;
+        let start = map.insertion_start(index as usize, insns.len());
+        trace::wrote(m, &map, Moved::Insertion, start);
+        edit_mapping(map)
     })
 }
 
@@ -124,10 +129,12 @@ pub fn replace_instruction(
     insns: Vec<Instruction>,
 ) -> Result<MethodEdit, String> {
     edit_code(m, &insns, |code, insns| {
-        edit_mapping(logged(
+        let map = logged(
             "replace instruction",
             code.replace_instructions(index as usize, &insns),
-        )?)
+        )?;
+        trace::wrote(m, &map, Moved::Rewrite, map.starts()[index as usize]);
+        edit_mapping(map)
     })
 }
 
@@ -136,11 +143,13 @@ pub fn remove_instructions(m: u32, index: u32, count: u32) -> Result<MethodEdit,
     let result = with_method_mut(m, |dex, loc| {
         let code = logged("access method", code_mut(dex, loc))?
             .ok_or_else(|| format!("method handle {m} has no code"))?;
-        edit_mapping(logged(
+        let (index, count) = (index as usize, count as usize);
+        let map = logged(
             "remove instructions",
-            code.remove_instructions(index as usize, count as usize),
-        )?)
-        .map(Some)
+            code.remove_instructions(index, count),
+        )?;
+        trace::removed(m, index..index + count, &map);
+        edit_mapping(map).map(Some)
     });
     crate::bridge::run_state::check_call()?;
     result.ok_or_else(|| format!("method handle {m} could not be edited"))

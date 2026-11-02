@@ -7,6 +7,7 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[boltffi::data]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct CompatiblePackage {
     pub package: String,
     /// Accepted version names. With `version_codes` also empty, every version.
@@ -33,6 +34,7 @@ pub struct ApkVersion<'a> {
 #[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[boltffi::data]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Compatibility {
     /// Declares no package, so it applies to every app and joins presets only when enabled by default.
     Universal,

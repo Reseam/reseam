@@ -17,8 +17,11 @@ reseam-sign    = { workspace = true }
 reseam-patcher = { workspace = true, default-features = false }
 thiserror      = { workspace = true }
 tempfile       = { workspace = true }
+reseam-fixtures = { workspace = true, optional = true }
 hex            = { workspace = true }
+sha2           = { workspace = true }
 tracing        = { workspace = true }
+zip            = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }
@@ -29,6 +32,8 @@ windows-sys = { workspace = true, features = ["Win32_System_ProcessStatus"] }
 [features]
 default = ["kotlin"]
 kotlin = ["reseam-patcher/kotlin"]
+# The analysis fixture APK, for hosts' tests.
+fixtures = ["dep:reseam-fixtures"]
 browser = ["reseam-patcher/browser"]
 
 [dev-dependencies]

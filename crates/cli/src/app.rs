@@ -78,6 +78,10 @@ pub struct PatchRequestArgs {
     /// Write the output without patches that fail, and the patches that need them.
     #[arg(long)]
     pub leave_out_failed: bool,
+    /// Test build: log each place a patch changed app code when the app runs it
+    /// (`adb logcat -s reseam-trace`).
+    #[arg(long)]
+    pub trace: bool,
 }
 
 #[derive(Args)]
@@ -111,6 +115,8 @@ pub struct InfoCommand {
 
 #[derive(Subcommand)]
 pub enum BundleCommands {
+    /// Create a bundle project from the patch bundle template, in a folder named after it.
+    Init(BundleInitCommand),
     Keygen(BundleKeygenCommand),
     /// Print the public key of a signing key made by `keygen`.
     Pubkey(BundlePubkeyCommand),
@@ -120,6 +126,12 @@ pub enum BundleCommands {
     List(BundleListCommand),
     /// Download a release from a published index and verify it against the index signer.
     Fetch(BundleFetchCommand),
+}
+
+#[derive(Args)]
+pub struct BundleInitCommand {
+    /// The bundle's name: lowercase letters and digits, separated by single hyphens.
+    pub name: String,
 }
 
 #[derive(Args)]

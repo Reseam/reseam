@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+mod qualifiers;
+
+pub use qualifiers::qualifiers;
+
 use crate::error::{Result, invalid};
 
 const DENSITY: usize = 14;
@@ -10,6 +14,19 @@ const MIN_LEN: usize = UI_MODE + 1;
 
 const UI_MODE_NIGHT_NO: u8 = 0x10;
 const UI_MODE_NIGHT_YES: u8 = 0x20;
+
+/// Density qualifiers aapt names, and the dots per inch each stands for.
+const DENSITIES: [(&str, u16); 9] = [
+    ("ldpi", 120),
+    ("mdpi", 160),
+    ("tvdpi", 213),
+    ("hdpi", 240),
+    ("xhdpi", 320),
+    ("xxhdpi", 480),
+    ("xxxhdpi", 640),
+    ("anydpi", 0xFFFE),
+    ("nodpi", 0xFFFF),
+];
 
 /// A `len`-byte config for `qualifiers`, dash-separated in aapt's order
 /// (`xxhdpi`, `night-v26`); an empty string is the default configuration.
@@ -53,16 +70,9 @@ pub(crate) fn same_config(a: &[u8], b: &[u8]) -> bool {
 }
 
 fn density(qualifier: &str) -> Option<u16> {
-    Some(match qualifier {
-        "ldpi" => 120,
-        "mdpi" => 160,
-        "tvdpi" => 213,
-        "hdpi" => 240,
-        "xhdpi" => 320,
-        "xxhdpi" => 480,
-        "xxxhdpi" => 640,
-        "anydpi" => 0xFFFE,
-        "nodpi" => 0xFFFF,
-        _ => return qualifier.strip_suffix("dpi")?.parse().ok(),
-    })
+    DENSITIES
+        .iter()
+        .find(|(name, _)| *name == qualifier)
+        .map(|&(_, dpi)| dpi)
+        .or_else(|| qualifier.strip_suffix("dpi")?.parse().ok())
 }

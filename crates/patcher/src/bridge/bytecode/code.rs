@@ -14,14 +14,15 @@ mod returns;
 
 use super::logged;
 use super::mutation::{edit_mapping, growth_mapping};
-use super::registers::{incoming_types, incoming_words};
+use super::registers::incoming_words;
 use crate::bridge::dex::convert::kotlin_to_dex;
 use crate::bridge::dex::link::link_instructions;
 use crate::bridge::dex::types::{
     CodeEdit, CodeOperand, CodePlacement, CodeRegister, CodeStep, Instruction,
 };
 use crate::bridge::handles::with_method_mut;
-use crate::context::method_mut;
+use crate::bridge::trace;
+use crate::context::{Moved, method_mut};
 
 /// Places code written over temporaries into method `m` and returns the edits that made, in
 /// order. `protected` names registers the code must leave alone although nothing reads them yet.
@@ -53,12 +54,13 @@ pub fn emit_code(
         let (id, flags) = (method.method, method.access_flags);
         let mut body = method.code.take().map(Arc::unwrap_or_clone);
         let code = Code {
+            handle: m,
             dex,
             steps: &steps,
             templates,
             method: id,
             flags,
-            incoming: incoming_types(dex, id, flags),
+            incoming: dex.incoming_types(id, flags),
             protected,
         };
         let edits = code.apply(&mut body, placement);
@@ -83,6 +85,7 @@ fn existing(body: &mut Option<CodeItem>) -> Result<&mut CodeItem, String> {
 
 /// Emitted code, its instructions converted into the method's DEX.
 struct Code<'a> {
+    handle: u32,
     dex: &'a DexFile,
     steps: &'a [CodeStep],
     templates: Vec<DexInsn>,
@@ -144,8 +147,11 @@ impl Code<'_> {
                     CodeItem::new(incoming, incoming, 0, Vec::new()),
                 )?;
                 let block = self.block(&Frame::Incoming { base: 0 })?;
-                self.place(&mut replacement, 0, IncomingBranches::Skip, &block, &[])?;
+                let start = self
+                    .insert_block(&mut replacement, 0, IncomingBranches::Skip, &block, &[])?
+                    .start;
                 *body = Some(replacement);
+                trace::body_replaced(self.handle, start);
                 Ok(Vec::new())
             }
         }
@@ -162,6 +168,7 @@ impl Code<'_> {
         self.place(body, index as usize, branches, &block, &self.protected)
     }
 
+    /// Inserts `block` into the method's body before `at`.
     fn place(
         &self,
         body: &mut CodeItem,
@@ -171,7 +178,35 @@ impl Code<'_> {
         protected: &[u16],
     ) -> Result<Vec<CodeEdit>, String> {
         let base = body.registers_size() - body.ins_size();
-        let inserted = logged(
+        let inserted = self.insert_block(body, at, branches, block, protected)?;
+        let mut edits = Vec::new();
+        if let Some(growth) = inserted.growth {
+            trace::moved(self.handle, &growth.map, Moved::Rewrite);
+            edits.push(CodeEdit::Grow(growth_mapping(
+                base,
+                growth.registers,
+                growth.map,
+            )?));
+        }
+        trace::wrote(
+            self.handle,
+            &inserted.insertion,
+            Moved::Insertion,
+            inserted.start,
+        );
+        edits.push(CodeEdit::Insert(edit_mapping(inserted.insertion)?));
+        Ok(edits)
+    }
+
+    fn insert_block(
+        &self,
+        body: &mut CodeItem,
+        at: usize,
+        branches: IncomingBranches,
+        block: &[BlockStep],
+        protected: &[u16],
+    ) -> Result<dex::BlockInsertion, String> {
+        logged(
             "emit code",
             dex::insert_block(
                 body,
@@ -182,17 +217,7 @@ impl Code<'_> {
                 protected,
                 self.dex,
             ),
-        )?;
-        let mut edits = Vec::new();
-        if let Some(growth) = inserted.growth {
-            edits.push(CodeEdit::Grow(growth_mapping(
-                base,
-                growth.registers,
-                growth.map,
-            )?));
-        }
-        edits.push(CodeEdit::Insert(edit_mapping(inserted.insertion)?));
-        Ok(edits)
+        )
     }
 
     /// The steps as a block, with parameters and the returned value where `frame` has them.

@@ -3,7 +3,7 @@
 
 //! Reads Java values through their getters, with errors that name the getter.
 
-use jni::objects::{JObject, JString, JValue, JValueOwned};
+use jni::objects::{JObject, JObjectArray, JString, JValue, JValueOwned};
 use jni::{Env, jni_sig, jni_str};
 
 use super::jvm::{self, jvm_err};
@@ -136,4 +136,33 @@ pub(in crate::bridge) fn string_of(
     value: JObject<'_>,
 ) -> jni::errors::Result<String> {
     env.cast_local::<JString<'_>>(value)?.try_to_string(env)
+}
+
+/// A Java `String[]` holding `values`.
+pub(in crate::bridge) fn string_array<'a>(
+    env: &mut Env<'a>,
+    values: &[String],
+) -> Result<JObject<'a>> {
+    let array = env.new_object_array(
+        i32::try_from(values.len()).map_err(jvm_err)?,
+        jni_str!("java/lang/String"),
+        JObject::null(),
+    )?;
+    for (index, value) in values.iter().enumerate() {
+        let value = env.new_string(value)?;
+        array.set_element(env, index, &value)?;
+    }
+    Ok(array.into())
+}
+
+/// The strings of a Java `String[]`.
+pub(in crate::bridge) fn string_list(env: &mut Env<'_>, array: JObject<'_>) -> Result<Vec<String>> {
+    let array = env.cast_local::<JObjectArray<'_, JString<'_>>>(array)?;
+    let len = array.len(env)?;
+    (0..len)
+        .map(|index| {
+            let value = array.get_element(env, index)?;
+            Ok(string_of(env, value.into())?)
+        })
+        .collect()
 }

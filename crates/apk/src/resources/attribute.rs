@@ -74,7 +74,10 @@ impl ResourceTable {
             return Ok(None);
         }
         for item in bag.items {
-            if self.entry_name(item.name)?.as_deref() == Some(symbol) {
+            if self
+                .resource_name(item.name)?
+                .is_some_and(|name| name.entry == symbol)
+            {
                 return Ok(Some(AttrSymbol {
                     value: item.value.data,
                     flags,

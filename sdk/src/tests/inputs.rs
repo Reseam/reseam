@@ -69,6 +69,7 @@ fn incompatible_inputs_and_output_fail_before_loading_patches() {
             dry_run: true,
             install_method: InstallMethod::Install,
             leave_out_failed: false,
+            trace: false,
         },
         |_| {},
     )

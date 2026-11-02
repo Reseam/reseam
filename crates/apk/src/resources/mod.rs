@@ -16,6 +16,7 @@ mod reader;
 mod res_type;
 mod scope;
 mod staged_aliases;
+mod string_entries;
 mod strings;
 mod type_spec;
 mod writer;
@@ -29,12 +30,14 @@ use crate::error::Result;
 use crate::string_pool::StringPool;
 
 pub use attribute::{AttrFormats, AttrSymbol};
-pub use config::config_for_qualifiers;
+pub use config::{config_for_qualifiers, qualifiers};
 pub use entry::{EntryValue, MapEntry, ResEntry};
+pub use lookup::ResourceName;
 pub(crate) use lookup::first_found;
 pub use package::ResPackage;
 pub use res_type::ResType;
 pub use scope::{ResourceScope, SplitLookup};
+pub use string_entries::{StringEntries, StringUse};
 pub use strings::ResourceRef;
 pub use type_spec::TypeSpec;
 
@@ -82,6 +85,11 @@ impl ResourceTable {
 
     pub fn packages(&self) -> &[ResPackage] {
         &self.packages
+    }
+
+    /// The global string pool, which simple string values index.
+    pub fn global_strings(&self) -> &StringPool {
+        &self.global_strings
     }
 
     pub fn get_string(&self, index: u32) -> Result<Option<Cow<'_, str>>> {

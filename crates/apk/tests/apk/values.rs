@@ -80,3 +80,24 @@ fn fractional_dimension_values_retain_precision_and_units() {
         assert_eq!(data & 15, unit);
     }
 }
+
+#[test]
+fn dimensions_and_fractions_print_as_the_text_they_compile_from() {
+    for (attribute, text, printed) in [
+        ("padding", "16dp", "16dp"),
+        ("padding", "16dip", "16dp"),
+        ("padding", "0.5dp", "0.5dp"),
+        ("padding", "-1.25px", "-1.25px"),
+        ("padding", "12sp", "12sp"),
+        ("padding", "1in", "1in"),
+        ("pivotX", "50%", "50%"),
+        ("pivotX", "25%p", "25%p"),
+    ] {
+        let doc = view(&format!(r#"android:{attribute}="{text}""#), None);
+        assert_eq!(
+            root_value(&doc, attribute).to_text().as_deref(),
+            Some(printed),
+            "{text}"
+        );
+    }
+}

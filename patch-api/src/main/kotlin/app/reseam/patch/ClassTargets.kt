@@ -4,15 +4,20 @@
 package app.reseam.patch
 
 import app.reseam.patch.dex.DexClass
+import app.reseam.patch.inspect.TargetInspection
 import app.reseam.patch.run.Resolution
 import app.reseam.patch.search.ClassQuerySpec
 
 class ClassTarget
 internal constructor(
     debugName: String?,
+    private val inspector: ((PatchRuntime) -> TargetInspection)? = null,
     private val resolver: (PatchRuntime) -> Resolution<DexClass>,
 ) : Target<DexClass>(debugName) {
     override fun resolve(runtime: PatchRuntime): Resolution<DexClass> = resolver(runtime)
+
+    override fun inspect(runtime: PatchRuntime): TargetInspection =
+        inspector?.invoke(runtime) ?: super.inspect(runtime)
 
     val classDef: DexClass
         get() = resolved
@@ -44,6 +49,9 @@ fun klass(name: String): ClassTarget {
 
 /** The one class satisfying the query. */
 fun klass(debugName: String, block: ClassQuery.() -> Unit): ClassTarget =
-    ClassTarget(debugName) { runtime ->
+    ClassTarget(
+        debugName,
+        inspector = { runtime -> ClassQuerySpec().apply(block).inspectOne(runtime, debugName) },
+    ) { runtime ->
         ClassQuerySpec().apply(block).resolveOne(runtime, debugName)
     }

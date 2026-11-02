@@ -8,7 +8,7 @@ use reseam_dex::{LinkPolicy, MetadataPolicy, WriteOptions, estimated_ir_bytes};
 use reseam_model::{ApplyDiagnostics, MaterializationStats, MemoryBreakdown, PatchPhase, RunEvent};
 use reseam_patcher::bundle::PatchBundle;
 use reseam_patcher::context::{ExtensionSet, PatchContext};
-use reseam_patcher::engine::{self, AppliedRun, ResolvedPlan};
+use reseam_patcher::engine::{self, AppliedRun, ResolvedPlan, Trace};
 use reseam_patcher::{Patch, PatchSpec};
 
 use crate::apk::OpenedApk;
@@ -55,6 +55,7 @@ pub(crate) fn apply<'b>(
     opened: &mut OpenedApk,
     bundles: &'b [PatchBundle],
     plan: ResolvedPlan,
+    trace: Trace,
     emit: &mut impl FnMut(RunEvent),
     profiler: &mut PatchProfiler,
 ) -> Result<AppliedRun<'b>> {
@@ -66,7 +67,7 @@ pub(crate) fn apply<'b>(
         .collect();
     let mut ctx = PatchContext::new(&mut opened.apk, ExtensionSet::load(&extension_paths)?);
     let applied = profiler.measure(PatchPhase::ApplyPatches, || {
-        engine::apply_patches(&mut ctx, &specs, plan, &patches, &mut *emit)
+        engine::apply_patches(&mut ctx, &specs, plan, &patches, trace, &mut *emit)
     })?;
     profiler.set_apply_diagnostics(apply_diagnostics(&ctx));
     Ok(applied)

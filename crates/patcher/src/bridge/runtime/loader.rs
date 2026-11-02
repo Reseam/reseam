@@ -137,7 +137,7 @@ pub(crate) fn load_patches(
 }
 
 #[cfg(reseam_jni_bridge)]
-fn register_natives(env: &mut Env<'_>, loader: &JObject<'_>) -> Result<()> {
+pub(in crate::bridge) fn register_natives(env: &mut Env<'_>, loader: &JObject<'_>) -> Result<()> {
     unsafe extern "C" {
         fn reseam_register_patch_natives(
             env: *mut jni::sys::JNIEnv,
@@ -155,7 +155,7 @@ fn register_natives(env: &mut Env<'_>, loader: &JObject<'_>) -> Result<()> {
 }
 
 #[cfg(not(reseam_jni_bridge))]
-fn register_natives(_env: &mut Env<'_>, _loader: &JObject<'_>) -> Result<()> {
+pub(in crate::bridge) fn register_natives(_env: &mut Env<'_>, _loader: &JObject<'_>) -> Result<()> {
     Err(jvm_err(
         "patch loading is unavailable in a binding metadata build",
     ))

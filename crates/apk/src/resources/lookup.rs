@@ -2,11 +2,40 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::borrow::Cow;
+use std::fmt;
 
 use super::id::{EntryLocation, ResourceAddress};
 use super::{ResEntry, ResPackage, ResType, ResourceTable};
 use crate::error::{Result, invalid};
 use crate::res_value::ResValue;
+use crate::string_pool::StringPool;
+
+/// A resource's name as resource XML refers to it: `@string/app_name`, or
+/// `@android:string/ok` for one of the framework's.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ResourceName {
+    /// `None` for the app's own resources.
+    pub package: Option<String>,
+    pub type_name: String,
+    pub entry: String,
+}
+
+impl ResourceName {
+    /// The reference resource XML writes: `@` for a resource, `?` for a theme
+    /// attribute, as in `?android:attr/textColorPrimary`.
+    pub fn reference(&self, sigil: char) -> String {
+        match &self.package {
+            Some(package) => format!("{sigil}{package}:{}/{}", self.type_name, self.entry),
+            None => format!("{sigil}{}/{}", self.type_name, self.entry),
+        }
+    }
+}
+
+impl fmt::Display for ResourceName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.reference('@'))
+    }
+}
 
 /// The first value found. Errors only surface when no item finds one, so a
 /// malformed candidate does not hide a valid match elsewhere.
@@ -119,11 +148,29 @@ impl ResourceTable {
         )
     }
 
-    pub(super) fn entry_name(&self, res_id: u32) -> Result<Option<Cow<'_, str>>> {
-        match self.default_entry(res_id)? {
-            Some((package, entry)) => package.key_strings.get(entry.key),
-            None => Ok(None),
-        }
+    /// The type and entry name of `res_id`, from whichever configuration
+    /// defines it; `None` when no configuration does.
+    pub fn resource_name(&self, res_id: u32) -> Result<Option<ResourceName>> {
+        let entry_index = ResourceAddress::decode(res_id).entry_index;
+        first_found(self.configs(res_id).map(|(package, res_type)| {
+            let Some(key) = res_type.entry_key(entry_index)? else {
+                return Ok(None);
+            };
+            let name = |pool: &StringPool, index: u32, what: &'static str| {
+                pool.get(index)?
+                    .map(Cow::into_owned)
+                    .ok_or_else(|| invalid(what, format!("invalid index {index}")))
+            };
+            Ok(Some(ResourceName {
+                package: None,
+                type_name: name(
+                    &package.type_strings,
+                    u32::from(res_type.id) - 1,
+                    "resource type",
+                )?,
+                entry: name(&package.key_strings, key, "resource key")?,
+            }))
+        }))
     }
 
     pub(super) fn find_entry(

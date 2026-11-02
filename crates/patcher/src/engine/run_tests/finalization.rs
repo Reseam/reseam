@@ -71,6 +71,7 @@ fn finalization_orders_hooks_and_emits_one_terminal_result() {
             &specs,
             plan,
             &patches,
+            Trace::Off,
             |event| match event {
                 RunEvent::PatchFinished { patch, status } => {
                     events.lock().unwrap().push(format!("finished:{patch}"));

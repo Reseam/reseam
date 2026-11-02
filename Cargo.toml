@@ -96,6 +96,7 @@ tempfile    = "3"
 toml        = "1"
 serde       = { version = "1", features = ["derive"] }
 serde_json  = "1"
+schemars    = "1.2"
 time        = { version = "0.3", features = ["formatting", "parsing"] }
 boltffi_backend = "=0.31.0"
 boltffi_bindgen = "=0.31.0"

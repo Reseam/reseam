@@ -9,6 +9,7 @@ pub mod catalog;
 pub mod context;
 pub mod engine;
 pub mod error;
+pub mod inspect;
 pub mod log;
 pub mod options;
 pub mod output;

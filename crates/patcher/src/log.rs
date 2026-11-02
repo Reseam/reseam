@@ -36,6 +36,11 @@ impl PatchLog {
         }
     }
 
+    #[cfg(feature = "bridge")]
+    pub(crate) fn patch(&self) -> &PatchRef {
+        &self.patch
+    }
+
     pub fn log(&mut self, level: LogLevel, message: impl Into<String>) {
         self.entries.push(LogEntry {
             level,

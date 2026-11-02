@@ -4,7 +4,7 @@
 use reseam_journal::Savepoint;
 
 use super::dex::pool_copies;
-use super::{changes, handles};
+use super::{changes, handles, trace};
 use crate::error::Result as PatcherResult;
 
 /// What the engine asks of the run state at a savepoint.
@@ -20,12 +20,14 @@ pub(super) enum SavepointAction {
 pub(crate) fn open_savepoint(savepoint: Savepoint) -> PatcherResult<()> {
     handles::with_handles(|handles| handles.open_savepoint(savepoint));
     pool_copies::open_savepoint(savepoint);
+    trace::open_savepoint(savepoint);
     runtime_savepoint(SavepointAction::Open, savepoint)
 }
 
 pub(crate) fn release_savepoint(savepoint: Savepoint) -> PatcherResult<()> {
     handles::with_handles(|handles| handles.release_savepoint(savepoint));
     pool_copies::release_savepoint(savepoint);
+    trace::release_savepoint(savepoint);
     runtime_savepoint(SavepointAction::Release, savepoint)
 }
 
@@ -34,6 +36,7 @@ pub(crate) fn release_savepoint(savepoint: Savepoint) -> PatcherResult<()> {
 pub(crate) fn rollback_to(savepoint: Savepoint) -> PatcherResult<()> {
     handles::with_handles(|handles| handles.rollback_to(savepoint));
     pool_copies::rollback_to(savepoint);
+    trace::rollback_to(savepoint);
     changes::changed();
     runtime_savepoint(SavepointAction::Rollback, savepoint)
 }

@@ -32,7 +32,7 @@ pub(in crate::bridge) fn current() -> Option<&'static JavaVM> {
     JVM.get()?.as_ref().ok()
 }
 
-fn runtime_jar() -> Result<PathBuf> {
+pub(in crate::bridge) fn runtime_jar() -> Result<PathBuf> {
     let root = if cfg!(windows) {
         std::env::var_os("LOCALAPPDATA").map(PathBuf::from)
     } else {

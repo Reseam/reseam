@@ -176,6 +176,11 @@ export type PatchRequest = {
    * the output is what it would have made had the patch not been selected.
    */
   leave_out_failed: boolean;
+  /**
+   * Logs each place a patch changed app code when the app runs it, under the
+   * tag `reseam-trace`, so a test build shows which edits ran on the device.
+   */
+  trace: boolean;
 };
 export type Trust = { keys: Array<string> };
 export type PatchSelection = {

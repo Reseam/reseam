@@ -81,3 +81,28 @@ fn array_payloads_require_complete_elements_with_nonzero_width() -> TestResult {
     }
     Ok(())
 }
+
+#[test]
+fn invocation_arguments_are_read_by_word() {
+    use reseam_dex::{Instruction, MethodIdx, RegList};
+
+    let list = Instruction::InvokeStatic {
+        method: MethodIdx(0),
+        args: RegList::from([4, 7]),
+    };
+    let range = Instruction::InvokeStaticRange {
+        method: MethodIdx(0),
+        first_reg: 20,
+        count: 3,
+    };
+
+    assert_eq!(
+        [0, 1, 2].map(|word| list.argument_register(word)),
+        [Some(4), Some(7), None]
+    );
+    assert_eq!(
+        [0, 2, 3].map(|word| range.argument_register(word)),
+        [Some(20), Some(22), None]
+    );
+    assert_eq!(Instruction::ReturnVoid.argument_register(0), None);
+}

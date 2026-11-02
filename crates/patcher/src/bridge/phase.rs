@@ -14,6 +14,7 @@ use reseam_storage::ScratchDir;
 
 use crate::bridge::apk::{file_streams, xml};
 use crate::bridge::run_state::{checked, clear_failure, record_failure, take_failure};
+use crate::bridge::trace;
 #[cfg(any(feature = "kotlin", feature = "browser"))]
 use crate::bundle::BundleInfo;
 use crate::context::PatchContext;
@@ -84,6 +85,7 @@ pub(super) struct ContextGuard<'ctx, 'apk> {
 
 impl<'ctx, 'apk> ContextGuard<'ctx, 'apk> {
     pub fn enter(ctx: &'ctx mut PatchContext<'apk>, bundle: RunningBundle) -> PatcherResult<Self> {
+        trace::begin_patch(ctx.scope().log.patch());
         enter(&CTX_PTR, std::ptr::from_mut(ctx).cast(), bundle)?;
         Ok(Self {
             _context: std::marker::PhantomData,
@@ -103,6 +105,7 @@ impl<'ctx, 'apk> ContextGuard<'ctx, 'apk> {
 impl Drop for ContextGuard<'_, '_> {
     fn drop(&mut self) {
         leave(&CTX_PTR);
+        trace::end_patch();
         xml::reset();
         file_streams::reset();
     }

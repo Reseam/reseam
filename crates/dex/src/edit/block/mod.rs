@@ -60,6 +60,8 @@ pub struct FrameGrowth {
 pub struct BlockInsertion {
     pub growth: Option<FrameGrowth>,
     pub insertion: InstructionMap,
+    /// Where the block's first instruction is.
+    pub start: usize,
 }
 
 /// Inserts `steps` before instruction `at`. Temporaries take registers no value live at `at`
@@ -104,5 +106,10 @@ pub fn insert_block(
     };
     let at = growth.as_ref().map_or(at, |growth| growth.map.starts()[at]);
     let insertion = code.insert(at, &instructions, branches)?;
-    Ok(BlockInsertion { growth, insertion })
+    let start = insertion.insertion_start(at, instructions.len());
+    Ok(BlockInsertion {
+        growth,
+        insertion,
+        start,
+    })
 }

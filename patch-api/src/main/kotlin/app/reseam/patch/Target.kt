@@ -3,6 +3,8 @@
 
 package app.reseam.patch
 
+import app.reseam.patch.inspect.TargetInspection
+import app.reseam.patch.inspect.TargetRegistry
 import app.reseam.patch.run.ActiveRuntime
 import app.reseam.patch.run.Resolution
 
@@ -11,7 +13,26 @@ import app.reseam.patch.run.Resolution
  * cached for the rest of the patch.
  */
 abstract class Target<R : Any>(val debugName: String?) {
+    init {
+        TargetRegistry.created(this)
+    }
+
     internal abstract fun resolve(runtime: PatchRuntime): Resolution<R>
+
+    /**
+     * What the target matches in the running APK. A target found by query lists every candidate;
+     * any other resolves, and its failure is the inspection's.
+     */
+    internal open fun inspect(runtime: PatchRuntime): TargetInspection =
+        try {
+            inspection(runtime.resolve(this))
+        } catch (error: Exception) {
+            TargetInspection.failed(error)
+        }
+
+    /** What [resolution], a resolution of this target, matched. */
+    internal open fun inspection(resolution: Resolution<R>): TargetInspection =
+        TargetInspection.of(resolution.report, listOf(resolution.report.winner), many = false)
 
     internal val resolved: R
         get() = ActiveRuntime.current.resolve(this).value

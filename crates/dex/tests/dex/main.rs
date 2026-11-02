@@ -6,6 +6,7 @@ mod edit;
 mod encoding;
 mod pools;
 mod search;
+mod smali;
 mod strings;
 mod validation;
 mod write;

@@ -49,6 +49,17 @@ impl InstructionMap {
     pub fn ends(&self) -> &[usize] {
         &self.ends
     }
+
+    /// Where the `inserted` instructions an insertion before boundary `at` added begin. Code
+    /// inserted at the end follows every instruction, before the end boundary.
+    pub fn insertion_start(&self, at: usize, inserted: usize) -> usize {
+        let start = self.starts[at];
+        if at + 1 == self.starts.len() {
+            start - inserted
+        } else {
+            start
+        }
+    }
 }
 
 pub struct InstructionExpansion {

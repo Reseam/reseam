@@ -3,6 +3,7 @@
 
 package app.reseam.patch
 
+import app.reseam.patch.native.recordingResolutions
 import app.reseam.patch.run.RunCache
 import app.reseam.patch.run.RunJournal
 import app.reseam.patch.settings.SettingsHost
@@ -17,6 +18,11 @@ internal class PatchRun {
         IdentityHashMap<SettingsHost, MutableList<Pair<ReseamPatch, List<SettingsSection>>>>()
     private val settingsOwners = mutableMapOf<String, SettingsHost>()
     private val lists = IdentityHashMap<RunList<*>, MutableList<Any?>>()
+
+    /**
+     * Whether the engine records how this run's targets resolve, for a check of a bundle's targets.
+     */
+    val recordsResolutions: Boolean by lazy { recordingResolutions() }
 
     fun add(list: RunList<*>, value: Any?) {
         val values = lists.getOrPut(list) { mutableListOf() }

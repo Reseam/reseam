@@ -96,7 +96,7 @@ pub(super) struct BundleManifest {
 }
 
 /// The part of a manifest every engine line reads the same way.
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub(super) struct ManifestHeader {
     pub(super) bundle: BundleInfo,
 }
@@ -123,6 +123,14 @@ pub fn manifest_info(path: &Path) -> Result<BundleInfo> {
     let manifest: ManifestHeader = toml::from_str(&std::fs::read_to_string(path)?)?;
     manifest.bundle.check()?;
     Ok(manifest.bundle)
+}
+
+/// Writes `bundle` as the staging manifest at `path`, as [`manifest_info`] reads it.
+pub fn write_manifest_info(path: &Path, bundle: BundleInfo) -> Result<()> {
+    bundle.check()?;
+    let text = toml::to_string(&ManifestHeader { bundle }).map_err(BundleError::from)?;
+    std::fs::write(path, text)?;
+    Ok(())
 }
 
 /// A nonempty slug: lowercase letters or digits separated by single hyphens.

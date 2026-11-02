@@ -7,6 +7,7 @@ use crate::bridge::dex::types::MethodRef;
 use crate::bridge::handles::{method_location, with_method_mut};
 use crate::bridge::phase::with_ctx;
 use crate::bridge::run_state::{checked, record_failure};
+use crate::bridge::trace;
 use crate::context::code_mut;
 use boltffi::export;
 use reseam_dex::{Instruction as DexInsn, MethodIdx};
@@ -25,12 +26,13 @@ pub fn replace_strings(m: u32, old: String, new: String) -> u32 {
             "replace strings",
             code.edit_instructions(|instructions| {
                 let mut count = 0;
-                for insn in instructions {
+                for (index, insn) in instructions.iter_mut().enumerate() {
                     if let DexInsn::ConstString { string, .. }
                     | DexInsn::ConstStringJumbo { string, .. } = insn
                         && *string == old
                     {
                         *string = new;
+                        trace::changed(m, index);
                         count += 1;
                     }
                 }
@@ -61,12 +63,16 @@ pub fn replace_literals(m: u32, old: i64, new: i64) -> u32 {
             let count = code
                 .edit_instructions(|instructions| {
                     let mut count = 0;
-                    for insn in instructions
+                    for (index, insn) in instructions
                         .iter_mut()
-                        .filter(|insn| insn.literal() == Some(old))
+                        .enumerate()
+                        .filter(|(_, insn)| insn.literal() == Some(old))
                     {
                         match set_literal(insn, new) {
-                            Ok(()) => count += 1,
+                            Ok(()) => {
+                                trace::changed(m, index);
+                                count += 1;
+                            }
                             Err(message) => {
                                 first_error.get_or_insert_with(|| message.to_owned());
                                 skipped += 1;
@@ -127,8 +133,9 @@ pub fn replace_method_call(
                 instructions[index as usize] = insn;
                 Ok(())
             }),
-        )
-        .map(Some)
+        )?;
+        trace::changed(m, index as usize);
+        Ok(Some(()))
     })
     .is_some()
 }

@@ -10,10 +10,13 @@ boltffi = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 ts-rs = { version = "12.0.1", optional = true }
+schemars = { workspace = true, optional = true }
 
 [features]
 # Derives the TypeScript declarations `cargo xtask regen browser` writes.
 typescript = ["dep:ts-rs"]
+# Derives JSON Schema for the analysis types, for hosts that publish them as tool schemas.
+schema = ["dep:schemars"]
 
 [dev-dependencies]
 serde_json = { workspace = true }

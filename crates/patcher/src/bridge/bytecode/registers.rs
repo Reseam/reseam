@@ -8,7 +8,8 @@ use reseam_dex::{self as dex, AccessFlags};
 
 use crate::bridge::dex::types::{MethodEdit, RegisterWriters};
 use crate::bridge::handles::{with_code, with_method_mut};
-use crate::context::{code_mut, method_mut};
+use crate::bridge::trace;
+use crate::context::{Moved, code_mut, method_mut};
 
 use super::logged;
 
@@ -27,21 +28,6 @@ pub(super) fn incoming_words(proto: &str, flags: AccessFlags) -> dex::Result<u16
         section: "invoke",
         reason: "incoming register words exceed 65535".into(),
     })
-}
-
-pub(super) fn incoming_types(
-    dex: &dex::DexFile,
-    method: dex::MethodIdx,
-    flags: AccessFlags,
-) -> Vec<dex::TypeIdx> {
-    let id = dex.method_id(method);
-    let proto = dex.proto(id.proto);
-    let mut incoming = Vec::with_capacity(proto.parameters.len() + 1);
-    if !flags.contains(AccessFlags::STATIC) {
-        incoming.push(id.class);
-    }
-    incoming.extend(proto.parameters);
-    incoming
 }
 
 #[export]
@@ -69,7 +55,7 @@ pub fn grow_local_registers(
             .take()
             .map(Arc::unwrap_or_clone)
             .ok_or_else(|| format!("method handle {m} has no code"))?;
-        let incoming = incoming_types(dex, id, flags);
+        let incoming = dex.incoming_types(id, flags);
         let base = code.registers_size() - code.ins_size();
         let indices = logged(
             "grow method registers",
@@ -78,7 +64,9 @@ pub fn grow_local_registers(
         logged("restore method code", method_mut(dex, loc))?
             .expect("frame growth leaves the method slot in place")
             .code = Some(Arc::new(code));
-        super::mutation::growth_mapping(base, additional_locals, indices?).map(Some)
+        let map = indices?;
+        trace::moved(m, &map, Moved::Rewrite);
+        super::mutation::growth_mapping(base, additional_locals, map).map(Some)
     });
     crate::bridge::run_state::check_call()?;
     outcome.ok_or_else(|| format!("method handle {m} could not grow"))

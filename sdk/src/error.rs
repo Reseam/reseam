@@ -35,11 +35,30 @@ pub enum HostError {
     },
     #[error("{0}")]
     InvalidRequest(&'static str),
+    #[error("failed to read DEX code: {0}")]
+    Dex(#[from] reseam_dex::DexError),
+    #[error("nothing in the APK defines or references {0}")]
+    UnknownMember(reseam_model::analysis::Member),
+    #[error("the APK has no resource 0x{0:08x}")]
+    UnknownResource(u32),
+    #[error("the manifest declares no component {0}")]
+    UnknownComponent(reseam_model::analysis::ClassRef),
     #[error("{operation} {}: {source}", path.display())]
     File {
         operation: &'static str,
         path: PathBuf,
         source: std::io::Error,
+    },
+    #[error("{} already exists", .0.display())]
+    Exists(PathBuf),
+    #[error("failed to read the bundle template: {0}")]
+    TemplateArchive(#[from] zip::result::ZipError),
+    #[error("the bundle template has a file outside its folder: {0}")]
+    TemplatePath(String),
+    #[error("the bundle template's {file} has no single `{setting}` line")]
+    TemplateSetting {
+        file: &'static str,
+        setting: &'static str,
     },
     #[error("publication failed: {source}; rollback also failed: {rollback}; recover prior outputs from {}", recovery.display())]
     Publication {

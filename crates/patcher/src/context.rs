@@ -8,12 +8,16 @@ mod files;
 mod hermes;
 mod hierarchy;
 mod search;
+#[cfg(feature = "bridge")]
+mod trace;
 mod undo;
 
 pub use dex::ClassFields;
 pub use extensions::ExtensionSet;
 pub(crate) use hermes::hermes_imports;
 pub use search::{FieldRefQuery, MethodRefQuery};
+#[cfg(feature = "bridge")]
+pub(crate) use trace::{Moved, TracePoint};
 
 use reseam_apk::ApkFile;
 use reseam_dex::{ClassSkeleton, CodeItem, DexFile, EncodedMethod, MethodKind};

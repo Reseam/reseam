@@ -46,6 +46,7 @@ reseam-fixtures = { workspace = true }
 
 [build-dependencies]
 cc = "1"
+toml = { workspace = true }
 
 [lints]
 workspace = true

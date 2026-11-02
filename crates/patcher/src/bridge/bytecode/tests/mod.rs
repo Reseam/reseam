@@ -17,6 +17,7 @@ mod fixtures;
 mod handles;
 mod members;
 mod operands;
+mod trace;
 
 fn fixture_method(name: String, proto: String, registers_size: u16, ins_size: u16) -> NewMethod {
     NewMethod {

@@ -213,7 +213,7 @@ impl ClassTable {
     }
 
     fn record(&self, r: u32) -> RawClassDef {
-        RawClassDef::read(self.raw_bytes(), self.off + r as usize * RECORD_SIZE)
+        record_at(self.raw_bytes(), self.off, r)
     }
 
     pub(crate) fn raw_bytes(&self) -> &[u8] {
@@ -222,4 +222,9 @@ impl ClassTable {
             .expect("raw entries exist only while the buffer is retained")
             .as_bytes()
     }
+}
+
+/// File record `r` of a class table starting at `off` in `buf`.
+fn record_at(buf: &[u8], off: usize, r: u32) -> RawClassDef {
+    RawClassDef::read(buf, off + r as usize * RECORD_SIZE)
 }

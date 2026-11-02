@@ -13,7 +13,7 @@ use jni::objects::{Global, JObject};
 
 use super::apk::{file_streams, xml};
 use super::dex::pool_copies;
-use super::{changes, handles, hermes, phase};
+use super::{changes, handles, hermes, inspection, phase, trace};
 use crate::error::{PatcherError, Result as PatcherResult};
 
 thread_local! {
@@ -55,6 +55,8 @@ fn reset() {
     clear_failure();
     xml::reset();
     file_streams::reset();
+    inspection::reset();
+    trace::reset();
 }
 
 /// The run's Kotlin patch runtime, once a patch has created it.

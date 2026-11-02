@@ -205,6 +205,17 @@ macro_rules! define_operands {
 instruction_catalogue!(define_operands);
 
 impl Instruction {
+    /// The register an invoke or filled array passes as argument word `word`:
+    /// a call's receiver is word 0, and a wide value takes two words.
+    pub fn argument_register(&self, word: usize) -> Option<u16> {
+        match self.arguments() {
+            InstructionArguments::None => None,
+            InstructionArguments::List(args) => args.get(word).map(|&register| u16::from(register)),
+            InstructionArguments::Range { first, count } => (word < usize::from(count))
+                .then(|| first + u16::try_from(word).expect("a range holds at most 255 words")),
+        }
+    }
+
     /// Operand starting registers in encoding order; wide operands occur once.
     pub fn registers_used(&self) -> SmallVec<[u16; 6]> {
         let mut registers = SmallVec::new();

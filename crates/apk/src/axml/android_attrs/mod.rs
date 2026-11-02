@@ -3,7 +3,7 @@
 
 use std::sync::LazyLock;
 
-use crate::resources::{AttrFormats, AttrSymbol};
+use crate::resources::{AttrFormats, AttrSymbol, ResourceName};
 
 mod generated;
 
@@ -32,6 +32,64 @@ pub fn android_res_id(type_name: &str, name: &str) -> Option<u32> {
         .ok()
         .map(|index| ANDROID_RESOURCES[index].1)
 }
+
+/// The name of public framework resource `id`, attributes included.
+pub fn android_res_name(id: u32) -> Option<ResourceName> {
+    let index = NAMES_BY_ID.binary_search_by_key(&id, |&(id, ..)| id).ok()?;
+    let (_, type_name, entry) = NAMES_BY_ID[index];
+    Some(ResourceName {
+        package: Some("android".to_owned()),
+        type_name: type_name.to_owned(),
+        entry: entry.to_owned(),
+    })
+}
+
+/// The names public framework attribute `attr_id` gives `value`: its enum
+/// name, or the flag names whose bits make it up exactly, joined with `|`,
+/// widest flags first as aapt reads them. Names that alias one value set the
+/// same thing; the first in alphabetical order is used.
+pub fn android_attr_value_name(attr_id: u32, value: u32) -> Option<String> {
+    let formats = android_attr_formats(attr_id)?;
+    let start = ANDROID_ATTR_SYMBOLS.partition_point(|((id, _), _)| *id < attr_id);
+    let symbols: Vec<(&str, u32)> = ANDROID_ATTR_SYMBOLS[start..]
+        .iter()
+        .take_while(|((id, _), _)| *id == attr_id)
+        .map(|((_, name), value)| (*name, *value))
+        .collect();
+    let exact = symbols.iter().find(|&&(_, symbol)| symbol == value);
+    if !formats.contains(AttrFormats::FLAGS) || exact.is_some() {
+        return exact.map(|(name, _)| (*name).to_owned());
+    }
+    let mut flags: Vec<&(&str, u32)> = symbols
+        .iter()
+        .filter(|(_, symbol)| *symbol != 0 && value & symbol == *symbol)
+        .collect();
+    flags.sort_by_key(|(name, symbol)| (std::cmp::Reverse(symbol.count_ones()), *name));
+    let mut covered = 0;
+    let mut names = Vec::new();
+    for (name, symbol) in flags {
+        if covered & symbol != *symbol {
+            covered |= symbol;
+            names.push(*name);
+        }
+    }
+    (covered == value && !names.is_empty()).then(|| names.join("|"))
+}
+
+static NAMES_BY_ID: LazyLock<Vec<(u32, &str, &str)>> = LazyLock::new(|| {
+    let mut names: Vec<(u32, &str, &str)> = ANDROID_RESOURCES
+        .iter()
+        .map(|&((type_name, entry), id)| (id, type_name, entry))
+        .chain(
+            ANDROID_ATTRS
+                .iter()
+                .map(|(name, attr)| (attr.id, "attr", *name)),
+        )
+        .collect();
+    names.sort_unstable();
+    names.dedup_by_key(|&mut (id, ..)| id);
+    names
+});
 
 /// The value public framework attribute `attr_id` gives the enum or flag name `symbol`.
 pub fn android_attr_symbol(attr_id: u32, symbol: &str) -> Option<AttrSymbol> {

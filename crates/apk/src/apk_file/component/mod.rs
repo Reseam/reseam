@@ -129,6 +129,15 @@ impl ApkComponent {
         })
     }
 
+    /// The table an earlier [`Self::resources`] call loaded, without loading
+    /// it, so readers can hold it beside other borrows of the APK.
+    pub fn loaded_resources(&self) -> Option<&ResourceTable> {
+        match &self.resources {
+            Resources::Loaded(table) => Some(table),
+            _ => None,
+        }
+    }
+
     pub fn resources_mut(&mut self) -> Result<Option<&mut ResourceTable>> {
         self.load_resources()?;
         if !matches!(self.resources, Resources::Loaded(_)) {

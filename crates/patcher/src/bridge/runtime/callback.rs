@@ -80,6 +80,16 @@ fn call_with_runtime(
     loader: &JObject<'_>,
     method: &str,
 ) -> Result<()> {
+    let runtime = new_runtime(env, loader)?;
+    call_phase(env, &runtime, "PatchRuntime", method, patch)
+}
+
+/// A `PatchRuntime` over the run's `PatchRun`, created with the run's open
+/// savepoints on first use, from the patch API `loader` resolves.
+pub(in crate::bridge) fn new_runtime<'a>(
+    env: &mut Env<'a>,
+    loader: &JObject<'_>,
+) -> Result<JObject<'a>> {
     let run = crate::bridge::run_state::kotlin_run(|| {
         let class = load_class(env, loader, "app.reseam.patch.PatchRun")?;
         let class = JClass::cast_local(env, class)?;
@@ -91,14 +101,12 @@ fn call_with_runtime(
     })?;
     let runtime_class = load_class(env, loader, "app.reseam.patch.PatchRuntime")?;
     let runtime_class = JClass::cast_local(env, runtime_class)?;
-    let runtime = env
-        .new_object(
-            runtime_class,
-            jni_sig!("(Lapp/reseam/patch/PatchRun;)V"),
-            &[JValue::Object(run.as_ref().as_ref())],
-        )
-        .map_err(|e| jvm_err(format!("construct PatchRuntime: {e}")))?;
-    call_phase(env, &runtime, "PatchRuntime", method, patch)
+    env.new_object(
+        runtime_class,
+        jni_sig!("(Lapp/reseam/patch/PatchRun;)V"),
+        &[JValue::Object(run.as_ref().as_ref())],
+    )
+    .map_err(|e| jvm_err(format!("construct PatchRuntime: {e}")))
 }
 
 /// Calls `method` of `runtime`, an instance of `class`, with `patch`.

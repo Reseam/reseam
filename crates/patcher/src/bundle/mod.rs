@@ -24,7 +24,7 @@ use crate::patch::{Patch, PatchSpec};
 
 pub use archive::BundleArchive;
 pub use key::BundleKey;
-pub use manifest::{BundleInfo, manifest_info};
+pub use manifest::{BundleInfo, manifest_info, write_manifest_info};
 pub use pack::pack;
 
 pub const BUNDLE_MIMETYPE: &str = "application/vnd.reseam.bundle";

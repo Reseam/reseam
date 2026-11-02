@@ -87,6 +87,16 @@ pub enum PatcherError {
     #[error("JVM error: {0}")]
     Jvm(String),
 
+    #[error("the snippet does not compile:\n{}", .0.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"))]
+    Compile(Vec<reseam_model::analysis::CompileError>),
+
+    #[error("the snippet failed: {reason}")]
+    Snippet {
+        /// What it printed before failing.
+        output: String,
+        reason: String,
+    },
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 

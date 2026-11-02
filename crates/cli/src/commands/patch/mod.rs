@@ -144,6 +144,7 @@ pub(crate) fn request(args: &PatchRequestArgs, output: PatchOutput) -> PatchRequ
             InstallMethod::Install
         },
         leave_out_failed: args.leave_out_failed,
+        trace: args.trace,
     }
 }
 
