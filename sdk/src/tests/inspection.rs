@@ -27,6 +27,9 @@ engine = "{}"
 [files]
 "patches.jar" = "{}"
 
+[fingerprints]
+"sample.patch" = "{}"
+
 [[patches]]
 bundle = "example"
 id = "sample.patch"
@@ -51,6 +54,7 @@ default_value = {{ type = "string", value = "fast" }}
 "#,
         reseam_patcher::bundle::ENGINE_VERSION,
         "00".repeat(32),
+        "11".repeat(32),
     )
 }
 

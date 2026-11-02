@@ -60,6 +60,11 @@ export type PatchMetadata = {
    * The presets that select this patch for the inspected APK.
    */
   presets: Array<PatchPreset>;
+  /**
+   * Hex hash of the code and bundle files the patch can reach. A patch keeps it
+   * across bundle releases that change nothing it runs.
+   */
+  fingerprint: string;
   bundle: string;
   /**
    * `<package>.<property>` of the public declaration; unique within the bundle.

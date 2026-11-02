@@ -59,6 +59,9 @@ pub struct PatchMetadata {
     /// The presets that select this patch for the inspected APK.
     #[serde(default)]
     pub presets: Vec<PatchPreset>,
+    /// Hex hash of the code and bundle files the patch can reach. A patch keeps it
+    /// across bundle releases that change nothing it runs.
+    pub fingerprint: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

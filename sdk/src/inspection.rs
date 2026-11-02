@@ -51,7 +51,7 @@ impl PreparedInspection {
                 .bundles
                 .iter()
                 .flat_map(OpenedBundle::catalog)
-                .map(|spec| patch_metadata(spec, apk.as_ref()))
+                .map(|(spec, fingerprint)| patch_metadata(spec, fingerprint, apk.as_ref()))
                 .collect(),
             apk,
         };
@@ -104,7 +104,7 @@ impl PreparedInspection {
     }
 }
 
-fn patch_metadata(spec: &PatchSpec, apk: Option<&ApkMetadata>) -> PatchMetadata {
+fn patch_metadata(spec: &PatchSpec, fingerprint: &str, apk: Option<&ApkMetadata>) -> PatchMetadata {
     let package = apk.and_then(|apk| apk.package_name.as_deref());
     PatchMetadata {
         spec: spec.clone(),
@@ -119,5 +119,6 @@ fn patch_metadata(spec: &PatchSpec, apk: Option<&ApkMetadata>) -> PatchMetadata 
             .into_iter()
             .filter(|&preset| spec.in_preset(preset, package))
             .collect(),
+        fingerprint: fingerprint.to_owned(),
     }
 }

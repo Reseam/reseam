@@ -5,7 +5,7 @@ use std::fmt::Write;
 
 use crate::error::Result;
 use crate::file::DexFile;
-use crate::model::encoded_value::{EncodedAnnotation, EncodedValue};
+use crate::model::encoded_value::EncodedValue;
 use crate::model::method_handle::{MethodHandleMember, MethodHandleType};
 use crate::model::{
     CallSiteIdx, FieldIdx, MethodHandleIdx, MethodIdx, ProtoIdx, StringIdx, TypeIdx,
@@ -92,7 +92,14 @@ impl<'a> SmaliNames<'a> {
                 format!("{{{}}}", values.join(", "))
             }
             EncodedValue::Annotation(annotation) => {
-                format!(".subannotation {}", self.annotation(annotation)?)
+                let elements = annotation
+                    .elements
+                    .iter()
+                    .map(|element| (element.name, &element.value));
+                format!(
+                    ".subannotation {}",
+                    self.annotation(annotation.type_, elements)?
+                )
             }
             EncodedValue::Null => "null".to_owned(),
             EncodedValue::Boolean(value) => value.to_string(),
@@ -100,14 +107,18 @@ impl<'a> SmaliNames<'a> {
     }
 
     /// `Lpkg/Type; name = value, ...`.
-    fn annotation(self, annotation: &EncodedAnnotation) -> Result<String> {
-        let mut text = self.type_(annotation.type_);
-        for element in &annotation.elements {
+    pub(super) fn annotation<'v>(
+        self,
+        type_: TypeIdx,
+        elements: impl IntoIterator<Item = (StringIdx, &'v EncodedValue)>,
+    ) -> Result<String> {
+        let mut text = self.type_(type_);
+        for (name, value) in elements {
             write!(
                 text,
                 " {} = {}",
-                self.dex.strings().get(element.name),
-                self.value(&element.value)?
+                self.dex.strings().get(name),
+                self.value(value)?
             )
             .expect("writing to a String");
         }

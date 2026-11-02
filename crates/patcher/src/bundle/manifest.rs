@@ -91,6 +91,8 @@ fn engine_line(version: &str) -> Result<(u32, u32)> {
 pub(super) struct BundleManifest {
     pub(super) bundle: BundleInfo,
     pub(super) patches: Vec<PatchSpec>,
+    /// Each patch's fingerprint by patch id, as hex (see the `fingerprint` module).
+    pub(super) fingerprints: BTreeMap<String, String>,
     #[serde(default)]
     pub(super) files: BTreeMap<String, String>,
 }
@@ -113,6 +115,14 @@ impl BundleManifest {
             .into());
         }
         PatchCatalog::new(&self.patches.iter().collect::<Vec<_>>())?;
+        let fingerprinted = self.fingerprints.len() == self.patches.len()
+            && self
+                .patches
+                .iter()
+                .all(|patch| self.fingerprints.contains_key(&patch.id));
+        if !fingerprinted {
+            return Err(BundleError::Fingerprints.into());
+        }
         Ok(())
     }
 }

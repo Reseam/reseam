@@ -70,6 +70,7 @@ fn resource_archive(path: &Path, name: &str, declared: &[u8], actual: &[u8]) {
         },
         files: BTreeMap::from([(name.into(), hex::encode(Sha256::digest(declared)))]),
         patches: Vec::new(),
+        fingerprints: BTreeMap::new(),
     };
     let manifest = toml::to_string(&manifest).unwrap();
     signed_archive(path, &manifest, name, actual);
@@ -261,6 +262,10 @@ public final class Declarations {
             jar.write_all(&serde_json::to_vec(&index).unwrap()).unwrap();
             jar.start_file("classes.dex", SimpleFileOptions::default())
                 .unwrap();
+            let dex =
+                reseam_dex::DexFile::new(reseam_dex::DexHeader::new(reseam_dex::DexVersion::V035));
+            let (dex, _) = reseam_dex::write_spooled(&dex, None).unwrap();
+            std::io::copy(&mut dex.reader(), &mut jar).unwrap();
             jar.finish().unwrap();
             std::fs::write(
                 stage.join("manifest.toml"),

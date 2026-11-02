@@ -25,9 +25,14 @@ impl OpenedBundle {
         Self { path, archive }
     }
 
-    /// The patches the bundle declares; none when its catalog cannot be read.
-    pub(crate) fn catalog(&self) -> &[PatchSpec] {
-        self.archive.as_ref().map_or(&[], BundleArchive::patches)
+    /// The patches the bundle declares with their fingerprints; none when its catalog cannot be read.
+    pub(crate) fn catalog(&self) -> impl Iterator<Item = (&PatchSpec, &str)> {
+        self.archive.iter().flat_map(|archive| {
+            archive
+                .patches()
+                .iter()
+                .map(|patch| (patch, archive.fingerprint(patch)))
+        })
     }
 
     /// What the bundle's signed manifest says, or the problem reading it.

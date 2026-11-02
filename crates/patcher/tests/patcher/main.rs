@@ -9,6 +9,7 @@ mod emitted;
 mod extension_bodies;
 mod extensions;
 mod files;
+mod fingerprints;
 mod points;
 mod queries;
 mod resources;

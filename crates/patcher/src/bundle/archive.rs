@@ -84,6 +84,15 @@ impl BundleArchive {
         &self.manifest.patches
     }
 
+    /// The fingerprint of `patch`, one of [`Self::patches`], as hex. It changes
+    /// only when code or bundle files the patch can reach change.
+    pub fn fingerprint(&self, patch: &PatchSpec) -> &str {
+        self.manifest
+            .fingerprints
+            .get(&patch.id)
+            .expect("opening checks that every catalog patch has a fingerprint")
+    }
+
     /// Extracts the payload, checking every file against the manifest, and
     /// loads the code of the catalog patches whose ids are in `patches`. Only
     /// their declaring classes are initialized; the rest of the bundle runs no code.

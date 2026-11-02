@@ -169,6 +169,11 @@ pub enum BundleError {
         name: String,
         source: std::io::Error,
     },
+    #[error("payload {name}: {source}")]
+    PayloadDex {
+        name: String,
+        source: reseam_dex::DexError,
+    },
     #[error("payload {0} changed while packing")]
     PayloadChanged(String),
     #[error("file {0} is undeclared or occurs more than once")]
@@ -202,6 +207,8 @@ pub enum BundleError {
     },
     #[error("indexed declaration class {0} is absent from the bundle jars")]
     UndeclaredClass(String),
+    #[error("the manifest's fingerprints do not match its patches")]
+    Fingerprints,
     #[error("loaded patch metadata differs from the signed catalog; rebuild the bundle")]
     CatalogMismatch,
     #[error("signing key {}: {source}", path.display())]

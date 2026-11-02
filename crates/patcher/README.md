@@ -17,7 +17,7 @@ Apps that patch should call [`reseam-sdk`](../../sdk/) instead. It wraps this cr
 
 | Module | Contents |
 |---|---|
-| `bundle` | `BundleArchive`: open and verify, load, pack |
+| `bundle` | `BundleArchive`: open and verify, load, pack, and each patch's fingerprint |
 | `catalog` | `PatchCatalog`: resolves a patch selector to one patch across the loaded bundles |
 | `engine` | `ResolvedPlan` for a `PatchSelection`, then `apply_patches` or `validate_patches` |
 | `context` | `PatchContext`: the open APK, DEX search, logs, and options |

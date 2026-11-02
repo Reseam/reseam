@@ -9,6 +9,8 @@
 mod archive;
 #[cfg(feature = "bridge")]
 pub(crate) mod declarations;
+#[cfg(feature = "kotlin")]
+mod fingerprint;
 pub(crate) mod index;
 mod key;
 pub(crate) mod manifest;

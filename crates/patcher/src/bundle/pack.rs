@@ -39,8 +39,13 @@ pub fn pack(dir: &Path, version: Option<&str>, key: &BundleKey, out: &Path) -> R
         .filter(|(name, _)| Path::new(name).extension().is_some_and(|ext| ext == "jar"))
         .map(|(_, staged)| staged.path.clone())
         .collect();
+    let Catalog {
+        patches,
+        fingerprints,
+    } = catalog(&payload, &jars, Arc::clone(&snapshot), &bundle)?;
     let manifest = BundleManifest {
-        patches: catalog(&jars, Arc::clone(&snapshot), &bundle)?,
+        patches,
+        fingerprints,
         bundle,
         files: payload
             .iter()
@@ -54,30 +59,43 @@ pub fn pack(dir: &Path, version: Option<&str>, key: &BundleKey, out: &Path) -> R
     write(&manifest, &payload, key, out)
 }
 
-/// The specs of the patches `jars` declare, read by loading them.
+/// What packing reads from the patch jars: each patch's spec, and its fingerprint by patch id.
+#[derive(Default)]
+struct Catalog {
+    patches: Vec<PatchSpec>,
+    fingerprints: BTreeMap<String, String>,
+}
+
+/// The specs of the patches `jars` declare, read by loading them, and their fingerprints.
 #[cfg(feature = "kotlin")]
 fn catalog(
+    payload: &BTreeMap<String, Staged>,
     jars: &[PathBuf],
     snapshot: Arc<ScratchDir>,
     bundle: &BundleInfo,
-) -> Result<Vec<PatchSpec>> {
+) -> Result<Catalog> {
     let declarations = super::declarations::declarations(jars)?;
-    Ok(
+    let patches: Vec<PatchSpec> =
         crate::bridge::load_patches(jars, &declarations, snapshot, bundle)?
             .iter()
             .map(|patch| patch.spec().clone())
-            .collect(),
-    )
+            .collect();
+    let fingerprints = super::fingerprint::fingerprints(payload, &declarations, &patches)?;
+    Ok(Catalog {
+        patches,
+        fingerprints,
+    })
 }
 
 #[cfg(not(feature = "kotlin"))]
 fn catalog(
+    _payload: &BTreeMap<String, Staged>,
     jars: &[PathBuf],
     _snapshot: Arc<ScratchDir>,
     _bundle: &BundleInfo,
-) -> Result<Vec<PatchSpec>> {
+) -> Result<Catalog> {
     if jars.is_empty() {
-        Ok(Vec::new())
+        Ok(Catalog::default())
     } else {
         Err(BundleError::NoKotlin.into())
     }

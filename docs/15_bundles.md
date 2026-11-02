@@ -100,12 +100,25 @@ Add a `build.gradle.kts` to a module only to declare dependencies:
 
 Every module can use Maven Central, Google's Maven repository, and the Reseam registry.
 
+## Fingerprints
+
+Packing gives every patch a fingerprint: a hash of the code it can run and the bundle files it uses. Apps that patch with your bundle compare fingerprints between releases, and update only the apps whose patches changed.
+
+A patch's fingerprint covers:
+
+- its own code and every function that code calls, in your patch jars and extensions,
+- every extension class the patch names, as bindings do, whole,
+- the other files in the jars its code comes from,
+- the files in `resources/` whose path, folder, or name without extension the code holds as a string.
+
+Write bundle paths as whole strings, like `files.copy("resources/logo.png", "assets/logo.png")`. A path built from parts while patching doesn't count, so changing that file doesn't update apps that are already patched.
+
 ## What's in a `.reseam` file
 
 A ZIP archive with:
 
 - `mimetype`: marks the file as a Reseam bundle.
-- `manifest.toml`: your bundle's name, author, and description, the engine version it was built with, every patch's metadata, and a SHA-256 hash of every other file.
+- `manifest.toml`: your bundle's name, author, and description, the engine version it was built with, every patch's metadata and fingerprint, and a SHA-256 hash of every other file.
 - `manifest.pubkey` and `manifest.sig`: your public key, and its signature over the manifest.
 - The patch jars, the extension and settings DEX files, and `resources/`.
 
