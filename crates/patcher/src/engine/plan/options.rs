@@ -27,7 +27,17 @@ impl PlanOptions {
         plan: &ResolvedPlan,
         package: Option<&str>,
     ) -> Result<Self> {
-        let configured = configured(specs, selection, plan, package)?;
+        let configured = configured(specs, selection, package)?;
+        let unrun = configured
+            .keys()
+            .copied()
+            .filter(|idx| !runs_with_options(plan, *idx));
+        if let Some(idx) = unrun.min() {
+            return Err(PatcherError::InvalidSelection(format!(
+                "patch '{}' has options configured but is not enabled by the selection",
+                specs[idx].reference()
+            )));
+        }
         let options = specs
             .iter()
             .enumerate()
@@ -42,16 +52,16 @@ impl PlanOptions {
     }
 
     /// The [problems](PatchOptions::problems) with the option values each
-    /// patch `plan` covers would run with, by position. Selections that set
-    /// options for a patch the plan does not run fail as they do in
-    /// [`resolve`](Self::resolve).
+    /// patch `plan` covers would run with, by position. Options for a patch the
+    /// plan does not run are ignored, so a host can keep the values a user set
+    /// while the patch is turned off.
     pub fn problems(
         specs: &[&PatchSpec],
         selection: &PatchSelection,
         plan: &ResolvedPlan,
         package: Option<&str>,
     ) -> Result<Vec<Vec<(String, OptionProblem)>>> {
-        let configured = configured(specs, selection, plan, package)?;
+        let configured = configured(specs, selection, package)?;
         Ok(specs
             .iter()
             .enumerate()
@@ -78,7 +88,6 @@ fn runs_with_options(plan: &ResolvedPlan, idx: usize) -> bool {
 fn configured(
     specs: &[&PatchSpec],
     selection: &PatchSelection,
-    plan: &ResolvedPlan,
     package: Option<&str>,
 ) -> Result<HashMap<usize, PatchOptions>> {
     let index = PatchCatalog::new(specs)?;
@@ -92,11 +101,6 @@ fn configured(
             return Err(PatcherError::InvalidSelection(format!(
                 "options for patch '{}' were supplied under multiple selectors",
                 specs[idx].reference()
-            )));
-        }
-        if !runs_with_options(plan, idx) {
-            return Err(PatcherError::InvalidSelection(format!(
-                "patch '{patch}' has options configured but is not enabled by the selection"
             )));
         }
     }

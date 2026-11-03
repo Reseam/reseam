@@ -5,8 +5,8 @@ use std::collections::HashMap;
 
 use reseam_model::{
     AppIdentity, Compatibility, CompatiblePackage, Incompatibility, InstallMethod,
-    OptionDeclaration, OptionIssue, OptionProblem, OptionType, PatchPreset, PatchSelection,
-    PatchSpec, PlanRequest, PlannedPatch, PlannedRun,
+    OptionDeclaration, OptionIssue, OptionProblem, OptionType, OptionValue, PatchPreset,
+    PatchSelection, PatchSpec, PlanRequest, PlannedPatch, PlannedRun,
 };
 
 use super::{metadata, reference, spec};
@@ -126,4 +126,23 @@ fn a_plan_reports_what_a_run_would_reject_per_patch() {
     ));
     assert_eq!(patches["turned_off"].run, PlannedRun::Off);
     assert!(!patches["turned_off"].selected);
+}
+
+#[test]
+fn a_plan_ignores_options_for_a_patch_it_does_not_run() {
+    let (patches, unknown) = planned(
+        vec![spec("turned_off", Some(&[]))],
+        PatchSelection {
+            disable: vec!["bundle/turned_off".to_owned()],
+            options: HashMap::from([(
+                "bundle/turned_off".to_owned(),
+                HashMap::from([("name".to_owned(), OptionValue::Text("kept".to_owned()))]),
+            )]),
+            ..PatchSelection::default()
+        },
+        InstallMethod::Install,
+    );
+    assert!(unknown.is_empty());
+    assert_eq!(patches["turned_off"].run, PlannedRun::Off);
+    assert!(patches["turned_off"].option_problems.is_empty());
 }

@@ -15,8 +15,9 @@ use crate::error::Result;
 
 /// Plans `request` as a run would resolve it, from patch metadata alone, so a
 /// host can show what a selection does before it has the APK. Selection
-/// entries that name no patch are reported instead of failing; every other
-/// problem a run rejects the selection for fails here too.
+/// entries that name no patch are reported instead of failing, and options for
+/// a patch the plan does not run are ignored; every other problem a run rejects
+/// the selection for fails here too.
 pub fn plan(request: &PlanRequest) -> Result<SelectionPlan> {
     let specs: Vec<&PatchSpec> = request.patches.iter().map(|patch| &patch.spec).collect();
     plan_specs(
