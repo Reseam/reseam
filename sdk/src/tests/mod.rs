@@ -8,6 +8,7 @@ mod inspection;
 mod mount;
 mod output;
 mod plan;
+mod signing;
 mod template;
 
 use std::path::{Path, PathBuf};

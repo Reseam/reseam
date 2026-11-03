@@ -114,6 +114,7 @@ pub(crate) fn classify(error: &(dyn std::error::Error + 'static)) -> Problem {
                 Some(HostError::Apk { path, .. }) => return Some(Problem::unreadable_apk(path)),
                 Some(HostError::Problem(problem)) => return Some(problem.clone()),
                 Some(HostError::Patcher(source)) => return Some(classify(source)),
+                Some(HostError::Signing(source)) => return Some(classify(source)),
                 Some(HostError::Bundle { source, .. }) => {
                     let problem = classify(source);
                     if problem != Problem::Other {
