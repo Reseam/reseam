@@ -140,6 +140,12 @@ impl DexSet {
         self.slots.iter_mut().map(|slot| &mut slot.dex)
     }
 
+    pub(super) fn slots_mut(&mut self) -> impl Iterator<Item = (&mut DexFile, &DexOrigin)> {
+        self.slots
+            .iter_mut()
+            .map(|slot| (&mut slot.dex, &slot.origin))
+    }
+
     /// Whether the slot's entry must be serialized again rather than copied.
     pub(super) fn is_rewritten(&self, index: DexIndex) -> bool {
         let slot = &self.slots[index.0];

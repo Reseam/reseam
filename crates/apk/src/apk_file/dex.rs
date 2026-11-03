@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use reseam_dex::{DexFile, Spooled};
+use reseam_dex::{DexFile, Spooled, WriteOptions};
 
 use super::dex_set::DexMember;
 use super::dex_set::{DexIndex, DexOrigin, DexSet, DexSource};
@@ -57,6 +57,18 @@ impl ApkFile {
                 kind: DexSource::Added,
             },
         );
+    }
+
+    /// Drops every DEX's search caches and resident source pages once editing
+    /// is over, and writes each edited DEX of the input APKs with `edited`.
+    pub fn prepare_dex_for_writing(&mut self, edited: WriteOptions) {
+        for (dex, origin) in self.dex.slots_mut() {
+            dex.release_search_caches();
+            dex.release_pages();
+            if origin.kind == DexSource::Archive && dex.is_dirty() {
+                dex.set_write_options(edited);
+            }
+        }
     }
 
     pub fn is_added_dex(&self, index: usize) -> bool {

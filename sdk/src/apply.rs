@@ -3,8 +3,7 @@
 
 use std::collections::HashSet;
 
-use reseam_apk::ApkFile;
-use reseam_dex::{LinkPolicy, MetadataPolicy, WriteOptions, estimated_ir_bytes};
+use reseam_dex::estimated_ir_bytes;
 use reseam_model::{ApplyDiagnostics, MaterializationStats, MemoryBreakdown, PatchPhase, RunEvent};
 use reseam_patcher::bundle::PatchBundle;
 use reseam_patcher::context::{ExtensionSet, PatchContext};
@@ -71,26 +70,6 @@ pub(crate) fn apply<'b>(
     })?;
     profiler.set_apply_diagnostics(apply_diagnostics(&ctx));
     Ok(applied)
-}
-
-/// Patching is over, so its search indexes and resident source pages go
-/// before writing, the run's peak.
-pub(crate) fn release_for_writing(apk: &mut ApkFile) {
-    for index in 0..apk.dex().len() {
-        let added = apk.is_added_dex(index);
-        let dex = apk
-            .dex_mut(index)
-            .expect("index is within the DEX container");
-        dex.release_search_caches();
-        dex.release_pages();
-        if !added && dex.is_dirty() {
-            dex.set_write_options(WriteOptions {
-                debug_info: MetadataPolicy::OmitOriginal,
-                link_data: LinkPolicy::Omit,
-                ..Default::default()
-            });
-        }
-    }
 }
 
 fn apply_diagnostics(ctx: &PatchContext<'_>) -> ApplyDiagnostics {

@@ -5,7 +5,10 @@ use crate::common::TestResult;
 use crate::common::dex::{container_dex_bytes, dex_bytes};
 use crate::common::session::*;
 use reseam_apk::{ApkFile as Apk, ApkWriteOptions as WriteOptions, Compression};
-use reseam_dex::{DexFile, DexHeader, DexVersion, Loading, ParseOptions};
+use reseam_dex::{
+    DexFile, DexHeader, DexVersion, LinkPolicy, Loading, MetadataPolicy, ParseOptions,
+    WriteOptions as DexWriteOptions,
+};
 
 #[test]
 fn dex_containers_preserve_all_members_through_loading_and_editing() -> TestResult {
@@ -131,5 +134,62 @@ fn replacing_and_deleting_dex_containers_keeps_unrelated_slots_stable() -> TestR
         dex.type_descriptor(dex.classes().header(0).class_type),
         "LUnrelated;"
     );
+    Ok(())
+}
+
+#[test]
+fn preparing_for_writing_covers_deleted_slots_and_sets_options_on_edited_app_dex() -> TestResult {
+    let class = |descriptor| -> Result<DexFile, Box<dyn std::error::Error>> {
+        let mut dex = DexFile::new(DexHeader::new(DexVersion::V039));
+        dex.create_class(descriptor, reseam_dex::AccessFlags::PUBLIC, None)?;
+        Ok(dex)
+    };
+    let Session { dir, mut apk } = Session::single(&[
+        ("classes.dex", &dex_bytes(&class("LEdited;")?)),
+        ("classes2.dex", &dex_bytes(&class("LUnedited;")?)),
+    ]);
+    apk.inject_file(
+        0,
+        "classes3.dex",
+        dex_bytes(&class("LTemporary;")?),
+        Compression::Deflated,
+    )?;
+    apk.add_dex(class("LAdded;")?);
+    for index in [0, 2, 3] {
+        apk.dex_mut(index)
+            .expect("live DEX")
+            .intern_string("patched");
+    }
+    let copied = apk.read_entry("classes3.dex")?.expect("temporary DEX");
+    apk.inject_file(0, "assets/copied.dex", copied.clone(), Compression::Stored)?;
+    apk.delete_file(0, "classes3.dex")?;
+    let edited = DexWriteOptions {
+        debug_info: MetadataPolicy::OmitOriginal,
+        link_data: LinkPolicy::Omit,
+        ..Default::default()
+    };
+    apk.prepare_dex_for_writing(edited);
+    let options: Vec<_> = apk.dex().iter().map(DexFile::write_options).collect();
+    assert_eq!(
+        options,
+        [
+            edited,
+            DexWriteOptions::default(),
+            DexWriteOptions::default(),
+            DexWriteOptions::default()
+        ]
+    );
+    let paths = apk.write_to(dir.path().join("out"), WriteOptions::default())?;
+    let mut reopened = Apk::open(&paths[0], lazy())?;
+    let classes: Vec<_> = reopened
+        .dex()
+        .iter()
+        .map(|d| {
+            d.type_descriptor(d.classes().header(0).class_type)
+                .into_owned()
+        })
+        .collect();
+    assert_eq!(classes, ["LEdited;", "LUnedited;", "LAdded;"]);
+    assert_eq!(reopened.read_entry("assets/copied.dex")?, Some(copied));
     Ok(())
 }

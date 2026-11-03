@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use reseam_dex::{LinkPolicy, MetadataPolicy, WriteOptions};
 use reseam_model::{
     InstallMethod, PatchArtifact, PatchOutcome, PatchPhase, PatchRequest, Problem, RunEvent,
 };
@@ -8,7 +9,7 @@ use reseam_patcher::PatchSpec;
 use reseam_patcher::engine::{self, Delivery, PatchResult, PatchStatus, ResolvedPlan, Trace};
 
 use crate::apk::OpenedApk;
-use crate::apply::{apply, load_executed, release_for_writing};
+use crate::apply::{apply, load_executed};
 use crate::bundles::{OpenedBundle, TrustedArchive, trusted_archives};
 use crate::error::Result;
 use crate::inputs::Inputs;
@@ -113,7 +114,13 @@ fn execute(
         "Writing signed output to {}",
         output.path().display()
     )));
-    release_for_writing(&mut opened.apk);
+    // Patching is over, so its search indexes and resident source pages go
+    // before writing, the run's peak.
+    opened.apk.prepare_dex_for_writing(WriteOptions {
+        debug_info: MetadataPolicy::OmitOriginal,
+        link_data: LinkPolicy::Omit,
+        ..Default::default()
+    });
     release_process_memory();
     let staged = stage_unsigned(opened.apk, &output, request.signing.as_ref(), profiler)?;
     if applied.rewrites_output() {
