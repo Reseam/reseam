@@ -61,15 +61,19 @@ pub(crate) fn dex_entry_names(names: &[EntryName]) -> Vec<EntryName> {
     names.into_iter().map(|(_, name)| name).collect()
 }
 
+/// The DEX entry name of `ordinal`, the inverse of [`dex_ordinal`].
+pub(crate) fn dex_name(ordinal: u32) -> EntryName {
+    EntryName::from(if ordinal == 1 {
+        "classes.dex".to_string()
+    } else {
+        format!("classes{ordinal}.dex")
+    })
+}
+
 pub(crate) fn next_free_dex_name(used: &mut HashSet<EntryName>) -> EntryName {
-    (1..=used.len() + 1)
-        .map(|ordinal| {
-            EntryName::from(if ordinal == 1 {
-                "classes.dex".to_string()
-            } else {
-                format!("classes{ordinal}.dex")
-            })
-        })
+    (1..)
+        .take(used.len() + 1)
+        .map(dex_name)
         .find(|name| used.insert(name.clone()))
         .expect("N occupied names leave a free name among N+1 candidates")
 }

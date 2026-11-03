@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use super::super::ComponentIndex;
 use super::super::component::{ApkComponent, EntryEdit};
-use super::{DexJob, ProfileRewrite, SignaturePolicy};
+use super::{DexJob, DexNames, ProfileRewrite, SignaturePolicy};
 use crate::art_profile;
 use crate::entry::{EntryName, is_signature_entry};
 use crate::zip::reader;
@@ -23,12 +23,14 @@ pub(super) struct PlannedEntry<'a> {
 
 /// The entries of one output component in write order: its other entries in
 /// archive order, then its rewritten DEX in job order, so copying overlaps DEX
-/// serialization. A rewritten baseline `profile` leaves its entries out: they
-/// are written after this plan, once every DEX entry and its checksum is known.
+/// serialization. DEX entries take their [output names](DexNames). A rewritten
+/// baseline `profile` leaves its entries out: they are written after this
+/// plan, once every DEX entry and its checksum is known.
 pub(super) fn plan<'a>(
     component: &'a ApkComponent,
     index: ComponentIndex,
     jobs: &[DexJob],
+    names: &DexNames,
     signatures: SignaturePolicy,
     profile: Option<&ProfileRewrite>,
 ) -> Vec<PlannedEntry<'a>> {
@@ -36,7 +38,7 @@ pub(super) fn plan<'a>(
         .iter()
         .enumerate()
         .filter(|(_, job)| job.component == index)
-        .map(|(job_index, job)| (&job.name, job_index))
+        .filter_map(|(job_index, job)| Some((job.source.as_ref()?, job_index)))
         .collect();
     let archived = component
         .archive_entries()
@@ -48,7 +50,7 @@ pub(super) fn plan<'a>(
                 (None, Some(edit)) => EntrySource::Edit(edit),
                 (None, None) => EntrySource::Archive(archive_index),
             };
-            (name.clone(), source)
+            (name, source)
         });
     let added_files = component
         .edits()
@@ -58,17 +60,22 @@ pub(super) fn plan<'a>(
                 && !dex_jobs.contains_key(name)
                 && !reader::contains(component.archive(), name.as_str())
         })
-        .map(|(name, edit)| (name.clone(), EntrySource::Edit(edit)));
-    let added_dex = jobs
-        .iter()
-        .enumerate()
-        .filter(|(_, job)| {
-            job.component == index && !reader::contains(component.archive(), job.name.as_str())
-        })
-        .map(|(job_index, job)| (job.name.clone(), EntrySource::Dex(job_index)));
+        .map(|(name, edit)| (name, EntrySource::Edit(edit)));
+    let added_dex =
+        jobs.iter()
+            .enumerate()
+            .filter(|(_, job)| {
+                job.component == index
+                    && !job.source.as_ref().is_some_and(|source| {
+                        reader::contains(component.archive(), source.as_str())
+                    })
+            })
+            .map(|(job_index, job)| PlannedEntry {
+                name: job.name.clone(),
+                source: EntrySource::Dex(job_index),
+            });
     let mut entries: Vec<_> = archived
         .chain(added_files)
-        .chain(added_dex)
         .filter(|(name, _)| {
             let name = name.as_str();
             let deleted = matches!(component.edits().get(name), Some(EntryEdit::Deleted));
@@ -76,7 +83,16 @@ pub(super) fn plan<'a>(
             let profiled = profile.is_some() && art_profile::ENTRIES.contains(&name);
             !(deleted || stripped || profiled)
         })
-        .map(|(name, source)| PlannedEntry { name, source })
+        .map(|(name, source)| PlannedEntry {
+            name: match source {
+                EntrySource::Dex(job) => jobs[job].name.clone(),
+                EntrySource::Archive(_) | EntrySource::Edit(_) => {
+                    EntryName::from(names.output(name.as_str()))
+                }
+            },
+            source,
+        })
+        .chain(added_dex)
         .collect();
     entries.sort_by_key(|entry| match entry.source {
         EntrySource::Dex(job) => Some(job),

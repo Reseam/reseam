@@ -18,7 +18,7 @@ use crate::error::{Result, invalid};
 use crate::zip::Compression;
 use crate::zip::writer::{DEFAULT_LEVEL, Writer};
 use dex_stream::{DexEntry, DexEntryStream};
-pub(super) use jobs::DexJob;
+pub(super) use jobs::{DexJob, DexNames};
 use layout::{EntrySource, PlannedEntry, plan};
 use profile::ProfileRewrite;
 
@@ -61,29 +61,33 @@ impl ApkFile {
     /// Writes each component into its output, in component order. Components
     /// without rewritten DEX go first, so their copying overlaps serialization.
     fn write_components(&self, options: ApkWriteOptions, outputs: Vec<File>) -> Result<Vec<File>> {
-        let mut jobs = self.dex_jobs()?;
+        let mut names = self.dex_names();
+        let mut jobs = self.dex_jobs(&mut names)?;
         jobs.sort_by_key(|job| {
+            let archive = self.components[job.component.0].archive();
             (
                 job.component,
-                self.components[job.component.0]
-                    .archive()
-                    .index_for_name(job.name.as_str())
+                job.source
+                    .as_ref()
+                    .and_then(|source| archive.index_for_name(source.as_str()))
                     .unwrap_or(usize::MAX),
             )
         });
         let profiles = (0..self.components.len())
-            .map(|index| ProfileRewrite::new(self, ComponentIndex(index), &jobs))
+            .map(|index| ProfileRewrite::new(self, ComponentIndex(index), &jobs, &names[index]))
             .collect::<Result<Vec<_>>>()?;
         let plans: Vec<_> = self
             .components
             .iter()
             .zip(&profiles)
+            .zip(&names)
             .enumerate()
-            .map(|(index, (component, profile))| {
+            .map(|(index, ((component, profile), names))| {
                 plan(
                     component,
                     ComponentIndex(index),
                     &jobs,
+                    names,
                     options.signatures,
                     profile.as_ref(),
                 )

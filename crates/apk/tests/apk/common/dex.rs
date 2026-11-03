@@ -26,17 +26,17 @@ pub fn spooled_bytes(spooled: &Spooled) -> Vec<u8> {
     bytes
 }
 
+/// A DEX defining one empty public class.
+pub fn class_dex(descriptor: &str) -> DexFile {
+    let mut dex = empty_dex();
+    dex.create_class(descriptor, reseam_dex::AccessFlags::PUBLIC, None)
+        .expect("fixture class");
+    dex
+}
+
 /// A v041 container of one-class members.
 pub fn container_dex_bytes(classes: &[&str]) -> Vec<u8> {
-    let members: Vec<_> = classes
-        .iter()
-        .map(|name| {
-            let mut dex = empty_dex();
-            dex.create_class(name, reseam_dex::AccessFlags::PUBLIC, None)
-                .expect("fixture class");
-            dex
-        })
-        .collect();
+    let members: Vec<_> = classes.iter().map(|name| class_dex(name)).collect();
     let (spooled, _) = reseam_dex::write_container_spooled(members.iter().map(|dex| (dex, None)))
         .expect("DEX container fixture");
     spooled_bytes(&spooled)

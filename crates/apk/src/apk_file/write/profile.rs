@@ -4,7 +4,7 @@
 use reseam_dex::WriteLayout;
 use tracing::warn;
 
-use super::DexJob;
+use super::{DexJob, DexNames};
 use crate::apk_file::dex_set::{DexIndex, DexSource};
 use crate::apk_file::{ApkFile, ComponentIndex};
 use crate::art_profile::{BaselineProfile, DexProfile, PROFILE_ENTRY};
@@ -12,8 +12,9 @@ use crate::error::Result;
 use crate::zip::reader;
 
 /// A component's baseline profile carried through a write. Rewritten DEX
-/// files change their indices and checksum, so each keeps the profile of its
-/// classes in the indices and checksum it is written with.
+/// files change their indices and checksum, and any DEX can be renamed, so
+/// each keeps the profile of its classes under the name, indices and checksum
+/// it is written with.
 pub(super) struct ProfileRewrite {
     source: BaselineProfile,
     /// Profiles of the written DEX files, per source DEX.
@@ -27,6 +28,7 @@ impl ProfileRewrite {
         apk: &ApkFile,
         component: ComponentIndex,
         jobs: &[DexJob],
+        names: &DexNames,
     ) -> Result<Option<Self>> {
         let archive = apk.components[component.0].archive();
         if apk.components[component.0]
@@ -61,7 +63,7 @@ impl ProfileRewrite {
                 vec![profile.rewrite(
                     dex,
                     &WriteLayout::unchanged(dex),
-                    &profile.name,
+                    names.output(&profile.name),
                     profile.checksum,
                 )]
             })

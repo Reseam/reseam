@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::common::TestResult;
-use crate::common::dex::{container_dex_bytes, dex_bytes};
+use crate::common::dex::{class_dex, container_dex_bytes, dex_bytes};
 use crate::common::session::*;
 use reseam_apk::{ApkFile as Apk, ApkWriteOptions as WriteOptions, Compression};
 use reseam_dex::{
@@ -139,22 +139,17 @@ fn replacing_and_deleting_dex_containers_keeps_unrelated_slots_stable() -> TestR
 
 #[test]
 fn preparing_for_writing_covers_deleted_slots_and_sets_options_on_edited_app_dex() -> TestResult {
-    let class = |descriptor| -> Result<DexFile, Box<dyn std::error::Error>> {
-        let mut dex = DexFile::new(DexHeader::new(DexVersion::V039));
-        dex.create_class(descriptor, reseam_dex::AccessFlags::PUBLIC, None)?;
-        Ok(dex)
-    };
     let Session { dir, mut apk } = Session::single(&[
-        ("classes.dex", &dex_bytes(&class("LEdited;")?)),
-        ("classes2.dex", &dex_bytes(&class("LUnedited;")?)),
+        ("classes.dex", &dex_bytes(&class_dex("LEdited;"))),
+        ("classes2.dex", &dex_bytes(&class_dex("LUnedited;"))),
     ]);
     apk.inject_file(
         0,
         "classes3.dex",
-        dex_bytes(&class("LTemporary;")?),
+        dex_bytes(&class_dex("LTemporary;")),
         Compression::Deflated,
     )?;
-    apk.add_dex(class("LAdded;")?);
+    apk.add_dex(class_dex("LAdded;"));
     for index in [0, 2, 3] {
         apk.dex_mut(index)
             .expect("live DEX")

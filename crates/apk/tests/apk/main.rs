@@ -6,6 +6,7 @@ mod axml;
 mod common;
 mod compiler;
 mod container;
+mod dex_names;
 mod dex_slots;
 mod entries;
 mod entry_readers;

@@ -141,7 +141,8 @@ fn deletion_removes_dirty_entries_and_keeps_other_dex_identities_stable() -> Tes
     assert!(apk.delete_file(0, "AndroidManifest.xml").is_err());
     let paths = apk.write_to(dir.path().join("out"), WriteOptions::default())?;
     let reopened = Apk::open(&paths[0], lazy())?;
-    assert!(!reopened.base().contains("classes.dex"));
+    assert_eq!(reopened.dex().len(), 1);
+    assert!(!reopened.base().contains("classes2.dex"));
     assert!(!reopened.base().contains("resources.arsc"));
     assert!(
         reopened

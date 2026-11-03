@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use super::super::component::EntryEdit;
+use super::super::component::{ApkComponent, EntryEdit};
 use super::super::dex_set::{DexIndex, DexMember, DexSource};
 use super::super::{ApkFile, ComponentIndex};
-use crate::entry::{EntryName, next_free_dex_name};
+use crate::entry::{EntryName, dex_entry_names, dex_name};
 use crate::error::Result;
 use crate::zip::Compression;
 
@@ -14,30 +14,76 @@ use crate::zip::Compression;
 pub(in crate::apk_file) struct DexJob {
     pub members: Vec<DexMember>,
     pub component: ComponentIndex,
+    /// The entry the session holds it as; `None` for a part split off a DEX
+    /// too large for one entry.
+    pub source: Option<EntryName>,
+    /// Its name in the output.
     pub name: EntryName,
     pub compression: Compression,
 }
 
+/// The names a component's DEX entries are written as. Android loads
+/// `classes.dex`, `classes2.dex` and on until the first missing ordinal, so
+/// the entries the component holds from its archive or as injected files are
+/// numbered in order without gaps, and deleting one renames those after it.
+/// DEX the session added, and parts split off to fit, take the ordinals after
+/// them.
+pub(in crate::apk_file) struct DexNames {
+    /// Output names of the held entries, by the names the session holds them as.
+    held: HashMap<EntryName, EntryName>,
+    last_ordinal: u32,
+}
+
+impl DexNames {
+    fn of(component: &ApkComponent) -> Self {
+        let held: Vec<EntryName> = component
+            .reserved_dex_names()
+            .filter(|name| {
+                component.contains(name)
+                    && !matches!(component.edits().get(*name), Some(EntryEdit::Dex))
+            })
+            .map(EntryName::from)
+            .collect();
+        let mut held = dex_entry_names(&held);
+        held.dedup();
+        let mut names = Self {
+            held: HashMap::new(),
+            last_ordinal: 0,
+        };
+        for name in held {
+            let output = names.next();
+            names.held.insert(name, output);
+        }
+        names
+    }
+
+    /// The output name of entry `name`; entries that are not DEX keep theirs.
+    pub(super) fn output<'a>(&'a self, name: &'a str) -> &'a str {
+        self.held.get(name).map_or(name, EntryName::as_str)
+    }
+
+    /// The name of the next free ordinal, for a DEX entry the component did
+    /// not hold.
+    fn next(&mut self) -> EntryName {
+        self.last_ordinal += 1;
+        dex_name(self.last_ordinal)
+    }
+}
+
 impl ApkFile {
+    pub(super) fn dex_names(&self) -> Vec<DexNames> {
+        self.components.iter().map(DexNames::of).collect()
+    }
+
     /// The DEX entries each component must rewrite, in component order and,
-    /// within a component, in archive order followed by new entries.
-    pub(super) fn dex_jobs(&self) -> Result<Vec<DexJob>> {
+    /// within a component, in archive order followed by new entries, which
+    /// take their names from `names` in that order.
+    pub(super) fn dex_jobs(&self, names: &mut [DexNames]) -> Result<Vec<DexJob>> {
         let rewritten: HashSet<_> = self
             .dex
             .slots()
             .filter(|&(index, _, _)| self.dex.is_rewritten(index))
             .map(|(_, _, origin)| (origin.component, &origin.name))
-            .collect();
-        let mut used: Vec<HashSet<EntryName>> = self
-            .components
-            .iter()
-            .map(|component| {
-                component
-                    .reserved_dex_names()
-                    .filter(|name| !matches!(component.edits().get(*name), Some(EntryEdit::Dex)))
-                    .map(EntryName::from)
-                    .collect()
-            })
             .collect();
         let mut jobs = Vec::new();
         let mut emitted = HashSet::new();
@@ -54,9 +100,9 @@ impl ApkFile {
             }
             let compression = self.components[component.0].dex_compression(origin.name.as_str())?;
             let name = if origin.kind == DexSource::Added {
-                next_free_dex_name(&mut used[component.0])
+                names[component.0].next()
             } else {
-                origin.name.clone()
+                EntryName::from(names[component.0].output(origin.name.as_str()))
             };
             if dex.header().version.is_container_format() {
                 let members = self
@@ -75,20 +121,22 @@ impl ApkFile {
                 jobs.push(DexJob {
                     members,
                     component,
+                    source: Some(origin.name.clone()),
                     name,
                     compression,
                 });
                 continue;
             }
             for (ordinal, member) in members_for(dex_index, dex)?.into_iter().enumerate() {
-                let name = if ordinal == 0 {
-                    name.clone()
+                let (source, name) = if ordinal == 0 {
+                    (Some(origin.name.clone()), name.clone())
                 } else {
-                    next_free_dex_name(&mut used[component.0])
+                    (None, names[component.0].next())
                 };
                 jobs.push(DexJob {
                     members: vec![member],
                     component,
+                    source,
                     name,
                     compression,
                 });
