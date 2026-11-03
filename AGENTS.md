@@ -116,4 +116,16 @@ Run the installed `entanglement` CLI on any non-trivial change. The entanglement
 
 ## Commits
 
-Write one-line conventional commits like `fix(dex): …` or `refactor(apk): …`, with nothing below the subject line.
+One line, `type(scope): subject`, with nothing below it.
+
+- Say what changed in plain words, in 50 characters or fewer and never past 72. Leave the reason out: no "so ...", "instead of ..." or "by ..." tails.
+- One change per commit. A subject that lists several changes with "and" is several commits.
+- Types: `feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `build`, `ci`, `style`, `chore`, `revert`. A breaking change to the patch API, bundle format or SDK types gets `!` after the scope.
+- The scope is the crate or package: `apk`, `dex`, `hermes`, `sign`, `model`, `patcher`, `sdk`, `cli`, `patch-api`, `app-runtime`, `gradle-plugin`, `browser`, `xtask`. Leave it out when a change spans the engine.
+- Releases are `chore: release vX.Y.Z`, which `cargo xtask release` writes.
+
+```text
+fix(apk): don't crash when saving after a DEX is deleted
+perf(patcher): load only the patches a run executes
+feat(patch-api)!: add declarative targets
+```
