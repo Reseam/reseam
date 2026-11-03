@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 mod bundle;
+mod device;
 mod info;
 mod patch;
 mod perf;
@@ -18,6 +19,7 @@ pub use bundle::{
     run_bundle_fetch, run_bundle_init, run_bundle_keygen, run_bundle_list, run_bundle_manifest,
     run_bundle_pack, run_bundle_pubkey,
 };
+pub use device::{run_install, run_mount, run_unmount};
 pub use info::run_info;
 pub use patch::run_patch;
 pub use perf::{run_perf, run_perf_worker};

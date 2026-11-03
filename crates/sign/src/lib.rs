@@ -6,6 +6,8 @@ pub mod certificates;
 mod credentials;
 mod error;
 mod key;
+mod pkcs12;
+mod pkcs8;
 mod preserved;
 pub mod v2;
 mod zip_layout;

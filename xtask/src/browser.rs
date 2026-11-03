@@ -30,7 +30,7 @@ struct Runtime {
     assets: BTreeMap<&'static str, Asset>,
 }
 
-/// Builds the browser engine, compression worker, Java host and patch runtime, and publishes
+/// Builds the browser engine, compression worker, page tools, Java host and patch runtime, and publishes
 /// them under `browser/public/runtime/<hash>/` with their sums in `src/runtime.generated.ts`.
 pub fn pack() -> Result<()> {
     let wasi_sdk = PathBuf::from(
@@ -53,6 +53,7 @@ pub fn pack() -> Result<()> {
             .args([
                 "--package=reseam-sdk-browser",
                 "--package=reseam-browser-compression",
+                "--package=reseam-browser-tools",
             ])
             .env("CC_wasm32_wasip1", clang)
             .env("AR_wasm32_wasip1", wasi_sdk.join("bin/llvm-ar"))
@@ -64,7 +65,7 @@ pub fn pack() -> Result<()> {
     ])?;
     let wasm = paths::target_dir().join(TARGET).join("browser");
     let jars = root.join("browser/build/runtime");
-    let sources: [(&'static str, PathBuf); 5] = [
+    let sources: [(&'static str, PathBuf); 6] = [
         (
             "reseam_sdk_browser.wasm",
             wasm.join("reseam_sdk_browser.wasm"),
@@ -72,6 +73,10 @@ pub fn pack() -> Result<()> {
         (
             "reseam_browser_compression.wasm",
             wasm.join("reseam_browser_compression.wasm"),
+        ),
+        (
+            "reseam_browser_tools.wasm",
+            wasm.join("reseam_browser_tools.wasm"),
         ),
         (
             "methods.json",

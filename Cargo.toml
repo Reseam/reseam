@@ -16,6 +16,7 @@ members = [
     "sdk/native",
     "sdk/browser",
     "sdk/compression",
+    "sdk/tools",
     "crates/cli",
     "xtask",
 ]
@@ -103,7 +104,7 @@ boltffi_bindgen = "=0.31.0"
 boltffi_binding = "=0.31.0"
 boltffi     = { version = "=0.31.0", default-features = false }
 jni         = { version = "0.22", features = ["invocation"] }
-clap        = { version = "4", features = ["derive"] }
+clap        = { version = "4", features = ["derive", "env"] }
 anyhow      = "1"
 libc        = "0.2"
 libloading  = "0.9"

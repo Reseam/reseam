@@ -56,6 +56,13 @@ Requests and results are the SDK models in `src/models.ts`, generated from `crat
 - One `JavaRuntime` can serve every session. `warmup()` starts Java without loading patch code; a cold start takes seconds. A canceled run discards the JVM.
 - `compressionWorkers` (1 to 4) sets how many workers compress DEX entries. By default it is 1 or 2, depending on the CPU.
 
+`EngineTools` answers the calls that read no files and run no patch, synchronously on the page's own thread, so a page can plan a selection, check option text, compare a build with newer patches, and read or write PKCS#12 key backups without a session:
+
+```ts
+const tools = await EngineTools.load(runtimeBase);
+const plan = tools.plan({ patches, target, selection, install_method: 'install' });
+```
+
 Inputs stay browser `File`s. Scratch files are deleted once no name or descriptor refers to them, and a later session reclaims a crashed tab's storage after taking its Web Lock.
 
 Signing is the CLI's APK v2 signer: P-256, Android 7 and later, no v1. With empty key paths the engine generates a pair, which the host should store and offer as a backup. ECDSA is randomized, so signing blocks differ between runs with the same key. Signer approval and key storage belong to the host.

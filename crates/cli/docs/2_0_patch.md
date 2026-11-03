@@ -40,9 +40,9 @@ reseam patch app.apk --bundle patches.reseam --trust <key> \
   --option "Clone app.packageName=com.example.clone"
 ```
 
-`--option <patch>.<key>=<value>`, repeatable. The value is read as the option's type: `true` or `false`, a number, or text. A list is comma-separated.
+`--option <patch>.<key>=<value>`, repeatable. The value is read as the option's type: `true` or `false`, a number, or text. For a list option, give `--option` once per item; each one adds an item.
 
-## Split APKs, APKM, and XAPK
+## Split APKs, APKM, XAPK, and APKS
 
 ```bash
 reseam patch base.apk --split config.arm64_v8a.apk --split config.xxhdpi.apk \
@@ -51,7 +51,7 @@ reseam patch base.apk --split config.arm64_v8a.apk --split config.xxhdpi.apk \
 reseam patch app.apkm --bundle patches.reseam --trust <key>
 ```
 
-Pass extra splits with `--split`, or give an `.apkm` or `.xapk` file directly. XAPKs with OBB expansion files are not supported.
+Pass extra splits with `--split`, or give an `.apkm`, `.xapk` or `.apks` file directly. An `.apks` file is a ZIP with the APKs at its root, as `reseam patch` writes one. XAPKs with OBB expansion files are not supported.
 
 ## Output
 
@@ -60,7 +60,7 @@ Pass extra splits with `--split`, or give an `.apkm` or `.xapk` file directly. X
 | One APK | `<name>-patched.apk` next to the input |
 | Several APKs | a `<name>-patched/` folder next to the input |
 
-`--output <file>` sets the file for a single APK. `--output-dir <dir>` sets the folder, and works for either.
+`--output <file>` sets the file for a single APK. Name it `.apks` to get every APK in one file instead, which works for either. `--output-dir <dir>` sets the folder, and works for either.
 
 `--dry-run` checks the bundles, the selection, and the options without running any patch or writing anything. Targets are only searched when patches run, so a dry run doesn't tell you whether they match.
 
@@ -92,7 +92,7 @@ Each line names the patch, the method, and the instruction where the change star
 
 ## Signing
 
-Without `--key` and `--cert`, the CLI signs with the key next to the output: `<name>.pk8` and `<name>.der` beside a single APK, or `reseam.pk8` and `reseam.der` inside the output folder. If they don't exist yet, it creates them.
+Without `--key` and `--cert` or `--keystore`, the CLI signs with the key next to the output: `<name>.pk8` and `<name>.der` beside a single APK or `.apks` file, or `reseam.pk8` and `reseam.der` inside the output folder. If they don't exist yet, it creates them.
 
 Keep that key. Android only installs an update over an app signed with the same key, so patch future versions with it, using `--key` and `--cert`:
 
@@ -101,11 +101,18 @@ reseam patch app.apk --bundle patches.reseam --trust <key> \
   --key patched.pk8 --cert patched.der --output patched-2.apk
 ```
 
+To sign with the key Reseam Manager or the web patcher backed up, pass the backup with `--keystore`. It reads PKCS#12 keystores (`.p12`), the format every Reseam app backs keys up in, and signs with the first private key. Set the password in `RESEAM_KEYSTORE_PASSWORD`, which keeps it out of your shell history, or with `--keystore-password`:
+
+```bash
+RESEAM_KEYSTORE_PASSWORD=… reseam patch app.apk --bundle patches.reseam --trust <key> \
+  --keystore reseam-key.p12
+```
+
 ## All flags
 
 | Flag | |
 |---|---|
-| `<APK>` | the APK, APKM, or XAPK to patch |
+| `<APK>` | the APK, APKM, XAPK, or APKS to patch |
 | `--bundle <path>` | a bundle to load; repeatable, required |
 | `--trust <key>` | a signer to accept; repeatable |
 | `--split <path>` | an extra split APK; repeatable |
@@ -113,9 +120,11 @@ reseam patch app.apk --bundle patches.reseam --trust <key> \
 | `--enable <patch>`, `--disable <patch>` | add or remove a patch; repeatable |
 | `--option <patch>.<key>=<value>` | set an option; repeatable |
 | `--ignore-versions` | run patches on app versions they weren't made for |
-| `--output <file>` | output file, for a single APK |
+| `--output <file>` | output file: an APK for a single APK, or an `.apks` file for any input |
 | `--output-dir <dir>` | output folder |
 | `--key <pk8>`, `--cert <der>` | signing key and certificate, together |
+| `--keystore <file>` | sign with the first key in a PKCS#12 keystore |
+| `--keystore-password <password>` | the keystore's password; also read from `RESEAM_KEYSTORE_PASSWORD` |
 | `--mount` | build for mounting over the installed app; leaves out patches that edit the manifest |
 | `--leave-out-failed` | write the output without failed patches and the patches that need them |
 | `--trace` | test build: log each place a patch changed the app's code when the app runs it |

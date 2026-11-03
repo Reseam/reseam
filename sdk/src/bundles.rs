@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use reseam_model::{BundleMetadata, PatchSpec, Problem};
+use reseam_model::{BundleMetadata, PatchRef, PatchSpec, Problem};
 use reseam_patcher::bundle::{BundleArchive, PatchBundle};
 
 use crate::error::{HostError, Result, classify};
@@ -118,6 +118,14 @@ impl TrustedArchive {
 
     pub(crate) fn catalog(&self) -> &[PatchSpec] {
         self.archive.patches()
+    }
+
+    /// The catalog's patches with their fingerprints.
+    pub(crate) fn fingerprints(&self) -> impl Iterator<Item = (PatchRef, &str)> {
+        self.archive
+            .patches()
+            .iter()
+            .map(|patch| (patch.reference(), self.archive.fingerprint(patch)))
     }
 
     /// Loads the code of the catalog patches whose ids are in `patches`.

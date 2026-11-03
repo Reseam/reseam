@@ -35,58 +35,31 @@ pub(crate) fn measure<T, E>(
     ))
 }
 
-pub(crate) struct PatchProfiler {
-    started_at: Instant,
-    /// Time the run's inputs took to open, before the profiler started.
-    opening_ms: u64,
+/// The process's resident memory now.
+pub(crate) fn current_rss_bytes() -> Option<u64> {
+    sample_memory().rss
+}
+
+/// A run's metrics: its `phases`, which took `total_duration_ms`, and the
+/// memory the process holds as it ends.
+pub(crate) fn run_metrics(
+    total_duration_ms: u64,
     phases: Vec<PatchPhaseMetrics>,
     apply_diagnostics: Option<ApplyDiagnostics>,
-}
-
-impl PatchProfiler {
-    /// Starts with `opening`, the phase that opened the run's inputs.
-    pub(crate) fn new(opening: PatchPhaseMetrics) -> Self {
-        Self {
-            started_at: Instant::now(),
-            opening_ms: opening.duration_ms,
-            phases: vec![opening],
-            apply_diagnostics: None,
-        }
-    }
-
-    pub(crate) fn set_apply_diagnostics(&mut self, diagnostics: ApplyDiagnostics) {
-        self.apply_diagnostics = Some(diagnostics);
-    }
-
-    pub(crate) fn current_rss_bytes() -> Option<u64> {
-        sample_memory().rss
-    }
-
-    pub(crate) fn measure<T, E>(
-        &mut self,
-        phase: PatchPhase,
-        run: impl FnOnce() -> Result<T, E>,
-    ) -> Result<T, E> {
-        let (value, metrics) = measure(phase, run)?;
-        self.phases.push(metrics);
-        Ok(value)
-    }
-
-    pub(crate) fn finish(self) -> PatchMetrics {
-        let memory = sample_memory();
-        PatchMetrics {
-            total_duration_ms: self.opening_ms + duration_ms(self.started_at.elapsed()),
-            final_rss_bytes: memory.rss,
-            peak_rss_bytes: memory.process_peak,
-            final_rss_anon_bytes: memory.anonymous,
-            final_rss_file_bytes: memory.file_backed,
-            phases: self.phases,
-            apply_diagnostics: self.apply_diagnostics,
-        }
+) -> PatchMetrics {
+    let memory = sample_memory();
+    PatchMetrics {
+        total_duration_ms,
+        final_rss_bytes: memory.rss,
+        peak_rss_bytes: memory.process_peak,
+        final_rss_anon_bytes: memory.anonymous,
+        final_rss_file_bytes: memory.file_backed,
+        phases,
+        apply_diagnostics,
     }
 }
 
-fn duration_ms(duration: Duration) -> u64 {
+pub(crate) fn duration_ms(duration: Duration) -> u64 {
     duration.as_millis().try_into().unwrap_or(u64::MAX)
 }
 

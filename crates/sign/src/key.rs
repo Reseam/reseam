@@ -5,6 +5,7 @@ use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair, PublicKeyData
 use tracing::instrument;
 
 use crate::error::{Result, crypto, invalid};
+use crate::pkcs8::p256_with_public_point;
 
 /// An ECDSA P-256 private key and its matching X.509 certificate.
 /// Construction validates the certificate and subject public key, preserving its DER bytes.
@@ -43,19 +44,23 @@ impl SigningKey {
     }
 
     /// Loads a PKCS#8 P-256 private key and exactly one DER X.509 certificate.
-    /// Malformed certificates and certificates for a different key or curve are errors.
+    /// A key without its public point takes it from the certificate. Another
+    /// kind of key is `UnsupportedKey`; malformed certificates and
+    /// certificates for a different key are errors.
     pub fn from_pkcs8(pkcs8_der: &[u8], certificate_der: Vec<u8>) -> Result<Self> {
-        let key_pair = KeyPair::from_pkcs8_der_and_sign_algo(
-            &pkcs8_der.into(),
-            &rcgen::PKCS_ECDSA_P256_SHA256,
-        )
-        .map_err(|source| crypto("decoding PKCS#8", source))?;
-        let public_key_der = key_pair.subject_public_key_info();
         let (remaining, certificate) = x509_parser::parse_x509_certificate(&certificate_der)
             .map_err(|error| invalid("certificate", error.to_string()))?;
         if !remaining.is_empty() {
             return Err(invalid("certificate", "trailing bytes after certificate"));
         }
+        let pkcs8_der =
+            p256_with_public_point(pkcs8_der, &certificate.public_key().subject_public_key.data)?;
+        let key_pair = KeyPair::from_pkcs8_der_and_sign_algo(
+            &pkcs8_der.as_slice().into(),
+            &rcgen::PKCS_ECDSA_P256_SHA256,
+        )
+        .map_err(|source| crypto("decoding PKCS#8", source))?;
+        let public_key_der = key_pair.subject_public_key_info();
         if certificate.public_key().raw != public_key_der {
             return Err(invalid(
                 "certificate",

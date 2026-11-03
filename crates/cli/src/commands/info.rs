@@ -13,13 +13,13 @@ pub fn run_info(command: &InfoCommand) -> Result<()> {
     if let Some(label) = apk.application_label {
         println!("  label:      {label}");
     }
-    if let Some(package) = apk.package_name {
+    if let Some(package) = apk.identity.package_name {
         println!("  package:    {package}");
     }
-    if let Some(version) = apk.version_name {
+    if let Some(version) = apk.identity.version_name {
         println!("  version:    {version}");
     }
-    if let Some(code) = apk.version_code {
+    if let Some(code) = apk.identity.version_code {
         println!("  versionCode: {code}");
     }
     if let Some(kind) = apk.bundle_kind {

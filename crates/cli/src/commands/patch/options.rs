@@ -1,16 +1,20 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use std::collections::BTreeMap;
+
 use anyhow::{Context, Result, anyhow, ensure};
-use reseam_model::{OptionDeclaration, OptionType, OptionValue, PatchMetadata, PatchSelection};
+use reseam_model::{OptionDeclaration, OptionType, PatchMetadata, PatchSelection};
 use reseam_sdk::PreparedInspection;
 
-/// `selection` with each `PATCH.KEY=VALUE` in `options` set on the patch it names.
+/// `selection` with each `PATCH.KEY=VALUE` in `options` set on the patch it
+/// names. Each flag for a list option adds one item.
 pub(super) fn with_options(
     mut selection: PatchSelection,
     options: &[String],
     prepared: &PreparedInspection,
 ) -> Result<PatchSelection> {
+    let mut texts: BTreeMap<(String, &str), (&OptionDeclaration, Vec<&str>)> = BTreeMap::new();
     for raw in options {
         let invalid = || anyhow!("invalid option '{raw}': expected PATCH.KEY=VALUE");
         let (lhs, value) = raw.split_once('=').ok_or_else(invalid)?;
@@ -22,8 +26,19 @@ pub(super) fn with_options(
             .iter()
             .find(|declaration| declaration.key == key)
             .with_context(|| format!("unknown option '{key}' for patch '{reference}'"))?;
-        let value =
-            parse_option(declaration, value).with_context(|| format!("invalid --option {raw}"))?;
+        let (_, given) = texts
+            .entry((reference, key))
+            .or_insert_with(|| (declaration, Vec::new()));
+        ensure!(
+            given.is_empty() || declaration.option_type == OptionType::StringList,
+            "option {lhs} is given more than once"
+        );
+        given.push(value);
+    }
+    for ((reference, key), (declaration, given)) in texts {
+        let value = declaration
+            .parse(&given.join("\n"))
+            .with_context(|| format!("invalid --option {reference}.{key}"))?;
         selection
             .options
             .entry(reference)
@@ -52,21 +67,4 @@ fn option_target<'p, 'a>(
     Err(anyhow!(
         "unknown patch in option '{lhs}'; expected PATCH.KEY (use <bundle>/<id>, an ID, or an unambiguous name)"
     ))
-}
-
-fn parse_option(declaration: &OptionDeclaration, raw: &str) -> Result<OptionValue> {
-    Ok(match declaration.option_type {
-        OptionType::String => OptionValue::Text(raw.to_owned()),
-        OptionType::Bool => OptionValue::Bool(raw.parse().context("expected bool")?),
-        OptionType::Int => OptionValue::Int(raw.parse().context("expected int")?),
-        OptionType::Float => OptionValue::Float(raw.parse().context("expected float")?),
-        OptionType::StringList => OptionValue::TextList(
-            raw.split(',')
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(str::to_owned)
-                .collect(),
-        ),
-        OptionType::Path => OptionValue::Path(raw.to_owned()),
-    })
 }

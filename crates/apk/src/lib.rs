@@ -20,7 +20,7 @@ pub use apk_file::{
     SignaturePolicy,
 };
 pub use axml::AxmlDocument;
-pub use container::{ContainerFormat, open_container};
+pub use container::{ContainerFormat, open_container, write_split_archive};
 pub use error::{ApkError, Result};
 pub use res_value::ResValue;
 pub use resources::{ResourceScope, ResourceTable};

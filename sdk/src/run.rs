@@ -1,12 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use std::collections::HashMap;
+
 use reseam_dex::{LinkPolicy, MetadataPolicy, WriteOptions};
 use reseam_model::{
-    InstallMethod, PatchArtifact, PatchOutcome, PatchPhase, PatchRequest, Problem, RunEvent,
+    AppIdentity, BuildRecord, PatchArtifact, PatchOutcome, PatchPhase, PatchRef, PatchRequest,
+    Problem, RecordedPatch, RunEvent,
 };
 use reseam_patcher::PatchSpec;
-use reseam_patcher::engine::{self, Delivery, PatchResult, PatchStatus, ResolvedPlan, Trace};
+use reseam_patcher::engine::{self, PatchResult, PatchStatus, PlanOptions, ResolvedPlan, Trace};
 
 use crate::apk::OpenedApk;
 use crate::apply::{apply, load_executed};
@@ -14,8 +17,8 @@ use crate::bundles::{OpenedBundle, TrustedArchive, trusted_archives};
 use crate::error::Result;
 use crate::inputs::Inputs;
 use crate::memory::release_process_memory;
-use crate::metrics::PatchProfiler;
 use crate::output::{resolve_output, stage_unsigned};
+use crate::progress::RunProgress;
 use crate::trust::TrustStore;
 
 /// Runs the request end to end: open, load, apply, write, sign. A dry run
@@ -48,14 +51,15 @@ pub(crate) fn run(
         bundles,
     } = inputs;
     let opened = apk.expect("patch inputs are opened with the request's APK");
-    let mut profiler = PatchProfiler::new(opening);
-    let result = execute(request, &trust, opened, bundles, &mut emit, &mut profiler);
+    let mut progress = RunProgress::new(opening, &mut emit);
+    let result = execute(request, &trust, opened, bundles, &mut progress);
     release_process_memory();
-    let (results, output) = result?;
+    let (results, output, record) = result?;
     Ok(PatchOutcome {
         output,
         results,
-        metrics: profiler.finish(),
+        record,
+        metrics: progress.finish(),
     })
 }
 
@@ -64,31 +68,35 @@ fn execute(
     trust: &TrustStore,
     mut opened: OpenedApk,
     bundles: Vec<OpenedBundle>,
-    emit: &mut impl FnMut(RunEvent),
-    profiler: &mut PatchProfiler,
-) -> Result<(Vec<PatchResult>, PatchArtifact)> {
-    emit(info(format!("Opening APK {}", request.apk_path)));
-    report_container(&opened, emit);
+    progress: &mut RunProgress<'_>,
+) -> Result<(Vec<PatchResult>, PatchArtifact, BuildRecord)> {
+    report_container(&opened, progress);
     let output = resolve_output(&request.output, opened.apk.components().len())?;
 
-    emit(info("Loading bundles".to_string()));
     let archives = trusted_archives(bundles, trust)?;
     let identity = opened.identity();
     let specs: Vec<&PatchSpec> = archives.iter().flat_map(TrustedArchive::catalog).collect();
+    let package = identity.package_name.as_deref();
     let plan = ResolvedPlan::resolve(
         &specs,
         &request.selection,
-        delivery(request.install_method),
-        identity.package.as_deref(),
+        request.install_method.into(),
+        package,
         identity.version(),
     )?;
+    let options = PlanOptions::resolve(&specs, &request.selection, &plan, package)?;
+    let fingerprints: HashMap<PatchRef, String> = archives
+        .iter()
+        .flat_map(TrustedArchive::fingerprints)
+        .map(|(patch, fingerprint)| (patch, fingerprint.to_owned()))
+        .collect();
 
     if request.dry_run {
-        let results = profiler.measure(PatchPhase::ValidatePatches, || {
+        let results = progress.measure(PatchPhase::ValidatePatches, |_| {
             Ok::<_, crate::HostError>(engine::validate_patches(&specs, &plan))
         })?;
         for result in &results {
-            emit(RunEvent::PatchFinished {
+            progress.emit(RunEvent::PatchFinished {
                 patch: result.patch.clone(),
                 status: result.status.clone(),
             });
@@ -96,24 +104,21 @@ fn execute(
         if !request.leave_out_failed {
             ensure_none_failed(&results)?;
         }
-        return Ok((results, output));
+        let record = record(request, identity, &results, &fingerprints);
+        return Ok((results, output, record));
     }
 
-    let bundles = load_executed(archives, &plan, profiler)?;
+    let bundles = load_executed(archives, &plan, progress)?;
     let trace = if request.trace {
         Trace::Log
     } else {
         Trace::Off
     };
-    let mut applied = apply(&mut opened, &bundles, plan, trace, emit, profiler)?;
+    let mut applied = apply(&mut opened, &bundles, plan, &options, trace, progress)?;
     if !request.leave_out_failed {
         ensure_none_failed(applied.results())?;
     }
 
-    emit(info(format!(
-        "Writing signed output to {}",
-        output.path().display()
-    )));
     // Patching is over, so its search indexes and resident source pages go
     // before writing, the run's peak.
     opened.apk.prepare_dex_for_writing(WriteOptions {
@@ -122,48 +127,63 @@ fn execute(
         ..Default::default()
     });
     release_process_memory();
-    let staged = stage_unsigned(opened.apk, &output, request.signing.as_ref(), profiler)?;
+    let staged = stage_unsigned(opened.apk, &output, request.signing.as_ref(), progress)?;
     if applied.rewrites_output() {
         // The patch model is gone; give its memory back before patch code works
         // on whole APK files.
         release_process_memory();
-        profiler.measure(PatchPhase::RewriteOutput, || {
-            applied.rewrite_output(&mut staged.written(), &mut *emit)
+        progress.measure(PatchPhase::RewriteOutput, |progress| {
+            applied.rewrite_output(&mut staged.written(), |event| progress.emit(event))
         })?;
     }
-    staged.sign_and_publish(profiler)?;
-    Ok((applied.into_results(), output))
+    staged.sign_and_publish(progress)?;
+    let results = applied.into_results();
+    let record = record(request, identity, &results, &fingerprints);
+    Ok((results, output, record))
 }
 
-fn delivery(method: InstallMethod) -> Delivery {
-    match method {
-        InstallMethod::Install => Delivery::Install,
-        InstallMethod::Mount => Delivery::Mount,
+/// What the run of `request` on `app` built: its selection and install
+/// method, and the fingerprint of each patch in `results`.
+fn record(
+    request: &PatchRequest,
+    app: AppIdentity,
+    results: &[PatchResult],
+    fingerprints: &HashMap<PatchRef, String>,
+) -> BuildRecord {
+    BuildRecord {
+        app,
+        selection: request.selection.clone(),
+        install_method: request.install_method,
+        patches: results
+            .iter()
+            .map(|result| RecordedPatch {
+                patch: result.patch.clone(),
+                fingerprint: fingerprints[&result.patch].clone(),
+            })
+            .collect(),
     }
 }
 
-fn report_container(opened: &OpenedApk, emit: &mut impl FnMut(RunEvent)) {
+fn report_container(opened: &OpenedApk, progress: &mut RunProgress<'_>) {
     if let Some(bundle) = &opened.bundle {
         let splits = opened.apk.components().len() - 1;
-        emit(info(format!(
-            "Opened {} bundle {}: {} base APK, {} split{}",
-            bundle.as_str(),
-            opened.apk.package_name().as_deref().unwrap_or_default(),
-            opened
-                .apk
-                .base()
-                .path()
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy(),
-            splits,
-            if splits == 1 { "" } else { "s" },
-        )));
+        progress.emit(RunEvent::Info {
+            message: format!(
+                "Opened {} bundle {}: {} base APK, {} split{}",
+                bundle.as_str(),
+                opened.apk.package_name().as_deref().unwrap_or_default(),
+                opened
+                    .apk
+                    .base()
+                    .path()
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy(),
+                splits,
+                if splits == 1 { "" } else { "s" },
+            ),
+        });
     }
-}
-
-fn info(message: String) -> RunEvent {
-    RunEvent::Info { message }
 }
 
 fn ensure_none_failed(results: &[PatchResult]) -> Result<()> {

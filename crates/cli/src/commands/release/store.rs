@@ -13,7 +13,9 @@ use url::Url;
 use super::directory::Directory;
 use super::file_name;
 use super::forge::Forge;
-use super::index::Index;
+use reseam_model::ReleaseIndex;
+
+use super::index;
 use super::s3::S3;
 use crate::app::{ReleaseArgs, Target};
 
@@ -48,12 +50,12 @@ impl Store {
         }))
     }
 
-    pub fn previous_index(&self, name: &str) -> Result<Option<Index>> {
+    pub fn previous_index(&self, name: &str) -> Result<Option<ReleaseIndex>> {
         let json = match self {
             Self::Forge(forge) => forge.latest_asset(name)?,
             Self::Files(files) => files.storage.get(name)?,
         };
-        json.as_deref().map(Index::parse).transpose()
+        json.as_deref().map(index::parse).transpose()
     }
 
     pub fn download_url(&self, tag: &str, name: &str) -> Result<Url> {

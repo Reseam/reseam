@@ -39,6 +39,18 @@ pub enum Problem {
     PatchesFailed { patches: Vec<PatchRef> },
     #[error("input has {components} components; single-file output requires one")]
     SingleFileComponents { components: usize },
+    #[error(
+        "the patched build has another version or other splits than the installed {package} {installed}; patch the APKs installed on the device"
+    )]
+    InstalledAppDiffers { package: String, installed: String },
+    #[error("{package} is not installed")]
+    AppNotInstalled { package: String },
+    #[error("the keystore password is wrong, or the keystore is damaged")]
+    KeystoreLocked,
+    #[error("the keystore holds no private key with its certificate")]
+    KeystoreEmpty,
+    #[error("the signing key is not an ECDSA P-256 key")]
+    UnsupportedSigningKey,
     #[error("unknown preset '{value}'; expected recommended, all or none")]
     UnknownPreset { value: String },
     #[error("internal error")]

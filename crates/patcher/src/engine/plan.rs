@@ -8,9 +8,9 @@ use crate::catalog::PatchCatalog;
 
 use crate::context::PatchContext;
 use crate::error::{PatcherError, Result};
-use crate::options::PatchOptions;
 use crate::patch::{ApkVersion, PatchSpec};
 
+use reseam_model::InstallMethod;
 pub use reseam_model::PatchSelection;
 
 mod graph;
@@ -19,7 +19,7 @@ mod options;
 use graph::{
     DependencyGraph, MissingDependency, dependency_edges, desired_patches, topological_order,
 };
-use options::resolve_options;
+pub use options::PlanOptions;
 
 /// How a run's output reaches the device, which decides what a patch may change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,6 +31,15 @@ pub enum Delivery {
     /// finishes unmountable: the run undoes it and leaves out the patches that need it.
     /// A patch that rewrites the output is unmountable before it runs.
     Mount,
+}
+
+impl From<InstallMethod> for Delivery {
+    fn from(method: InstallMethod) -> Self {
+        match method {
+            InstallMethod::Install => Self::Install,
+            InstallMethod::Mount => Self::Mount,
+        }
+    }
 }
 
 impl Delivery {
@@ -64,15 +73,17 @@ pub struct ResolvedPlan {
     dependents: Vec<Vec<usize>>,
     roots: Vec<usize>,
     selected: Vec<bool>,
+    disabled: Vec<bool>,
     desired: Vec<bool>,
     precluded: Vec<Option<PatchStatus>>,
     excluded: Vec<bool>,
     executable: Vec<bool>,
-    options: Vec<PatchOptions>,
     delivery: Delivery,
 }
 
 impl ResolvedPlan {
+    /// What `selection` covers for an app of `package` at `version`. Option
+    /// values are not checked here; [`PlanOptions::resolve`] does that.
     pub fn resolve(
         specs: &[&PatchSpec],
         selection: &PatchSelection,
@@ -157,16 +168,14 @@ impl ResolvedPlan {
             dependents,
             roots,
             selected,
+            disabled,
             desired: Vec::new(),
             precluded,
             excluded: vec![false; specs.len()],
             executable: Vec::new(),
-            options: Vec::new(),
             delivery,
         };
         plan.refresh();
-        plan.options =
-            resolve_options(specs, selection, &index, package, &plan.desired, &disabled)?;
         Ok(plan)
     }
 
@@ -220,8 +229,19 @@ impl ResolvedPlan {
 
     /// Whether the patch at `idx` is in the selection, as opposed to only a
     /// dependency of it.
-    pub(crate) fn is_selected(&self, idx: usize) -> bool {
+    pub fn is_selected(&self, idx: usize) -> bool {
         self.selected[idx]
+    }
+
+    /// Whether the selection turns the patch at `idx` off.
+    pub fn is_disabled(&self, idx: usize) -> bool {
+        self.disabled[idx]
+    }
+
+    /// Whether the run covers the patch at `idx`: it is selected, or a patch
+    /// the run covers needs it.
+    pub(crate) fn covers(&self, idx: usize) -> bool {
+        self.desired[idx]
     }
 
     pub(crate) fn is_excluded(&self, idx: usize) -> bool {
@@ -268,10 +288,6 @@ impl ResolvedPlan {
     /// Why the patch cannot run regardless of how its dependencies fare.
     pub(crate) fn precluded(&self, idx: usize) -> Option<&PatchStatus> {
         self.precluded[idx].as_ref()
-    }
-
-    pub(crate) fn options(&self, idx: usize) -> &PatchOptions {
-        &self.options[idx]
     }
 
     pub(crate) fn delivery(&self) -> Delivery {

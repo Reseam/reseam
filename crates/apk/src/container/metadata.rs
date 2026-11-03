@@ -33,6 +33,7 @@ impl ContainerMarker {
         match format {
             ContainerFormat::Apkm => self.apkm_version,
             ContainerFormat::Xapk => self.xapk_version,
+            ContainerFormat::Apks => None,
         }
     }
 }

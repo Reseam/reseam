@@ -8,7 +8,8 @@ Signs APKs for the Reseam engine with APK Signature Scheme v2 (ECDSA P-256, SHA-
 
 - Signs in place on a file without loading the whole APK into memory.
 - Generates a P-256 key with a self-signed certificate, saved as PKCS#8 and DER.
-- Loads an existing key and certificate, and rejects a certificate that doesn't match the key.
+- Loads an existing key and certificate, and rejects a certificate that doesn't match the key. A PKCS#8 key without its public point, as Java writes keys, takes the point from the certificate.
+- Reads and writes PKCS#12 keystores, the format Reseam apps back keys up in. Reading also takes the 3DES and RC2 encryption older Android writes.
 - Keeps the signing block entries of the source APK that aren't signatures, such as Play's frosting, which apps can check at runtime.
 
 ## Example

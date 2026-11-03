@@ -10,9 +10,9 @@ use reseam_patcher::output::WrittenApk;
 use reseam_sign::{PreservedPairs, SigningKey};
 
 use crate::error::{HostError, Result, file_error};
-use crate::metrics::PatchProfiler;
+use crate::progress::RunProgress;
 use crate::publish::Publication;
-use reseam_model::{PatchArtifact, PatchOutput, PatchPhase, Problem, SigningKeyFiles};
+use reseam_model::{PatchArtifact, PatchOutput, PatchPhase, Problem, SigningIdentity};
 
 /// Resolves automatic output using the input component count.
 /// Explicit file output requires exactly one component; directories are preserved.
@@ -30,20 +30,17 @@ pub(crate) fn resolve_output(output: &PatchOutput, components: usize) -> Result<
             }
             PatchArtifact::SingleFile { path: path.clone() }
         }
+        PatchOutput::SplitArchive { path } => PatchArtifact::SplitArchive { path: path.clone() },
     })
 }
 
 /// Unsigned output staged beside its destinations, waiting to be signed.
 pub(crate) struct StagedOutput {
     publication: Publication,
-    components: Vec<StagedComponent>,
+    /// The signing block pairs each component's source carried, which its
+    /// new signature keeps.
+    preserved: Vec<PreservedPairs>,
     key: SigningKey,
-}
-
-struct StagedComponent {
-    name: String,
-    /// Signing block pairs the source carried, which the new signature keeps.
-    preserved: PreservedPairs,
 }
 
 /// Writes `apk` unsigned into a staging directory beside its destinations and
@@ -51,11 +48,11 @@ struct StagedComponent {
 pub(crate) fn stage_unsigned(
     apk: ApkFile,
     output: &PatchArtifact,
-    signing: Option<&SigningKeyFiles>,
-    profiler: &mut PatchProfiler,
+    signing: Option<&SigningIdentity>,
+    progress: &mut RunProgress<'_>,
 ) -> Result<StagedOutput> {
     let (dir, key_stem) = match output {
-        PatchArtifact::SingleFile { path } => (
+        PatchArtifact::SingleFile { path } | PatchArtifact::SplitArchive { path } => (
             Path::new(path)
                 .parent()
                 .filter(|parent| !parent.as_os_str().is_empty())
@@ -69,7 +66,7 @@ pub(crate) fn stage_unsigned(
         .prefix(".reseam-")
         .tempdir_in(dir)
         .map_err(|source| file_error("create output staging directory", dir, source))?;
-    let components = apk
+    let preserved = apk
         .components()
         .iter()
         .map(|component| {
@@ -77,14 +74,11 @@ pub(crate) fn stage_unsigned(
                 path: component.path().to_owned(),
                 source,
             })?;
-            Ok(StagedComponent {
-                name: component.name().to_owned(),
-                preserved: PreservedPairs::from_apk(&source)?,
-            })
+            Ok(PreservedPairs::from_apk(&source)?)
         })
         .collect::<Result<_>>()?;
-    let unsigned = profiler
-        .measure(PatchPhase::WriteUnsignedArtifacts, || {
+    let unsigned = progress
+        .measure(PatchPhase::WriteUnsignedArtifacts, |_| {
             apk.write_unsigned_files(ApkWriteOptions::default(), dir)
         })
         .map_err(|source| HostError::WriteApk {
@@ -93,23 +87,24 @@ pub(crate) fn stage_unsigned(
         })?;
     drop(apk);
     let publication = Publication::new(staging, &unsigned, output)?;
-    let (key_path, cert_path) = signing_paths(signing, &key_stem);
+    let identity = signing.cloned().unwrap_or_else(|| SigningIdentity::Files {
+        key: key_stem.with_extension("pk8").display().to_string(),
+        cert: key_stem.with_extension("der").display().to_string(),
+    });
     for artifact in publication.artifacts() {
-        for identity in [&key_path, &cert_path] {
-            if same_destination(artifact.destination(), identity)? {
+        for path in identity_paths(&identity) {
+            if same_destination(artifact.destination(), path)? {
                 return Err(HostError::InvalidRequest(
                     "APK output would overwrite its signing identity",
                 ));
             }
         }
     }
-    let key = profiler.measure(PatchPhase::LoadSigningKey, || {
-        SigningKey::load_or_generate(&key_path, &cert_path)
-    })?;
+    let key = progress.measure(PatchPhase::LoadSigningKey, |_| load_key(&identity))?;
     publication.stage(&unsigned)?;
     Ok(StagedOutput {
         publication,
-        components,
+        preserved,
         key,
     })
 }
@@ -119,35 +114,30 @@ impl StagedOutput {
     /// staging directory as their scratch space.
     pub(crate) fn written(&self) -> WrittenApk {
         WrittenApk::new(
-            self.components
+            self.publication
+                .components()
                 .iter()
-                .map(|component| component.name.clone())
-                .zip(
-                    self.publication
-                        .artifacts()
-                        .iter()
-                        .map(|artifact| artifact.staged().to_owned()),
-                )
+                .map(|component| (component.name().to_owned(), component.staged().to_owned()))
                 .collect(),
             self.publication.staging_dir().to_owned(),
         )
     }
 
-    pub(crate) fn sign_and_publish(mut self, profiler: &mut PatchProfiler) -> Result<()> {
-        profiler.measure(PatchPhase::SignArtifacts, || {
+    pub(crate) fn sign_and_publish(mut self, progress: &mut RunProgress<'_>) -> Result<()> {
+        progress.measure(PatchPhase::SignArtifacts, |_| {
             self.publication
-                .artifacts()
+                .components()
                 .iter()
-                .zip(&self.components)
-                .try_for_each(|(artifact, component)| {
+                .zip(&self.preserved)
+                .try_for_each(|(component, preserved)| {
                     let file = File::options()
                         .read(true)
                         .write(true)
-                        .open(artifact.staged())
+                        .open(component.staged())
                         .map_err(|source| {
-                            file_error("open APK to sign", artifact.destination(), source)
+                            file_error("open APK to sign", component.output(), source)
                         })?;
-                    reseam_sign::v2::sign_file_in_place(&file, &self.key, &component.preserved)?;
+                    reseam_sign::v2::sign_file_in_place(&file, &self.key, preserved)?;
                     Ok::<_, HostError>(())
                 })
         })?;
@@ -155,14 +145,24 @@ impl StagedOutput {
     }
 }
 
-fn signing_paths(files: Option<&SigningKeyFiles>, default_stem: &Path) -> (PathBuf, PathBuf) {
-    match files {
-        Some(files) => (PathBuf::from(&files.key), PathBuf::from(&files.cert)),
-        None => (
-            default_stem.with_extension("pk8"),
-            default_stem.with_extension("der"),
-        ),
+fn identity_paths(identity: &SigningIdentity) -> Vec<&Path> {
+    match identity {
+        SigningIdentity::Files { key, cert } => vec![Path::new(key), Path::new(cert)],
+        SigningIdentity::Pkcs12 { path, .. } => vec![Path::new(path)],
     }
+}
+
+fn load_key(identity: &SigningIdentity) -> Result<SigningKey> {
+    Ok(match identity {
+        SigningIdentity::Files { key, cert } => {
+            SigningKey::load_or_generate(Path::new(key), Path::new(cert))?
+        }
+        SigningIdentity::Pkcs12 { path, password } => {
+            let keystore = fs::read(path)
+                .map_err(|source| file_error("read keystore", Path::new(path), source))?;
+            SigningKey::from_pkcs12(&keystore, password)?
+        }
+    })
 }
 
 fn same_destination(output: &Path, identity: &Path) -> Result<bool> {

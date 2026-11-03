@@ -3,14 +3,14 @@
 
 use reseam_model::analysis::{PatchCheck, ResolveReport, ResolveRequest, TargetResolution};
 use reseam_model::{PatchPreset, PatchSelection, PatchSpec, PatchStatus};
-use reseam_patcher::engine::{Delivery, ResolvedPlan, Trace};
+use reseam_patcher::engine::{Delivery, PlanOptions, ResolvedPlan, Trace};
 use reseam_patcher::inspect::TargetCheck;
 
 use crate::apply::{apply, load_executed};
 use crate::bundles::{TrustedArchive, trusted_archives};
 use crate::error::Result;
 use crate::inputs::Inputs;
-use crate::metrics::PatchProfiler;
+use crate::progress::RunProgress;
 use crate::trust::TrustStore;
 
 /// Runs every listed patch of the bundles that declares the APK's package or
@@ -32,14 +32,11 @@ pub fn resolve(request: &ResolveRequest) -> Result<ResolveReport> {
     let mut opened = apk.expect("resolve inputs are opened with the request's APK");
     let archives = trusted_archives(bundles, &trust)?;
     let identity = opened.identity();
-    let package = identity.package.as_deref();
+    let package = identity.package_name.as_deref();
     let specs: Vec<&PatchSpec> = archives.iter().flat_map(TrustedArchive::catalog).collect();
     let checked: Vec<PatchSpec> = specs
         .iter()
-        .filter(|spec| {
-            !spec.hidden
-                && (spec.compatibility.declares(package) || spec.compatibility.is_universal())
-        })
+        .filter(|spec| spec.listed_for(package))
         .map(|spec| (*spec).clone())
         .collect();
     let selection = PatchSelection {
@@ -64,16 +61,18 @@ pub fn resolve(request: &ResolveRequest) -> Result<ResolveReport> {
         package,
         identity.version(),
     )?;
-    let mut profiler = PatchProfiler::new(opening);
+    let options = PlanOptions::resolve(&specs, &selection, &plan, package)?;
+    let mut ignore = |_| {};
+    let mut progress = RunProgress::new(opening, &mut ignore);
     let check = TargetCheck::start()?;
-    let bundles = load_executed(archives, &plan, &mut profiler)?;
+    let bundles = load_executed(archives, &plan, &mut progress)?;
     let applied = apply(
         &mut opened,
         &bundles,
         plan,
+        &options,
         Trace::Off,
-        &mut |_| {},
-        &mut profiler,
+        &mut progress,
     )?;
     let found = check.finish()?;
     let results = applied.into_results();

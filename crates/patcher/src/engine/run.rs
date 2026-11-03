@@ -6,7 +6,7 @@ use std::panic::{self, AssertUnwindSafe};
 
 use tracing::{info, info_span};
 
-use super::{PatchResult, PatchStatus, ResolvedPlan, RunEvent};
+use super::{PatchResult, PatchStatus, PlanOptions, ResolvedPlan, RunEvent};
 use crate::context::PatchContext;
 use crate::error::{PatcherError, Result};
 use crate::log::PatchScope;
@@ -37,6 +37,7 @@ pub fn apply_patches<'p>(
     ctx: &mut PatchContext<'_>,
     specs: &[&PatchSpec],
     plan: ResolvedPlan,
+    options: &PlanOptions,
     patches: &[&'p Patch],
     #[cfg_attr(
         not(feature = "bridge"),
@@ -59,7 +60,7 @@ pub fn apply_patches<'p>(
         "starting patch application"
     );
     let code = loaded_code(specs, &plan, patches)?;
-    Runner::new(ctx, specs, &code, plan, observer).run()
+    Runner::new(ctx, specs, &code, plan, options, observer).run()
 }
 
 /// Whether a run's output is a test build that shows where patches changed app code.

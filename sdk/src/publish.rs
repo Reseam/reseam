@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 use std::fs::{self, File};
-use std::io::{self, Seek, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 
 use reseam_model::PatchArtifact;
@@ -11,8 +11,17 @@ use tempfile::TempDir;
 use tracing::info;
 
 use crate::error::{HostError, Result, file_error};
+use crate::staging::stage_file;
 
-/// A staged APK and the destination it replaces when published.
+/// A written APK component at the path it is staged and signed at.
+pub(crate) struct StagedComponent {
+    name: String,
+    staged: PathBuf,
+    /// The output that holds it, which errors name.
+    output: PathBuf,
+}
+
+/// A staged file and the destination it replaces when published.
 pub(crate) struct Artifact {
     destination: PathBuf,
     staged: PathBuf,
@@ -25,19 +34,39 @@ enum PublicationState {
     Published(Option<PathBuf>),
 }
 
+/// How the signed components reach their destinations.
+enum Packing {
+    /// Each component is an artifact of its own.
+    Files,
+    /// The components go into the one artifact, a split archive.
+    Archive,
+}
+
 /// Staged APKs that replace their destinations together, or not at all.
 pub(crate) struct Publication {
     staging: TempDir,
+    components: Vec<StagedComponent>,
+    packing: Packing,
     artifacts: Vec<Artifact>,
+}
+
+impl StagedComponent {
+    pub(crate) fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub(crate) fn staged(&self) -> &Path {
+        &self.staged
+    }
+
+    pub(crate) fn output(&self) -> &Path {
+        &self.output
+    }
 }
 
 impl Artifact {
     pub(crate) fn destination(&self) -> &Path {
         &self.destination
-    }
-
-    pub(crate) fn staged(&self) -> &Path {
-        &self.staged
     }
 }
 
@@ -47,14 +76,34 @@ impl Publication {
         files: &[(String, File)],
         output: &PatchArtifact,
     ) -> Result<Self> {
-        let artifacts = files
+        let packing = match output {
+            PatchArtifact::SingleFile { .. } | PatchArtifact::SplitDir { .. } => Packing::Files,
+            PatchArtifact::SplitArchive { .. } => Packing::Archive,
+        };
+        let components: Vec<StagedComponent> = files
             .iter()
             .enumerate()
-            .map(|(index, (name, _))| {
-                let destination = match output {
-                    PatchArtifact::SingleFile { path } => PathBuf::from(path),
+            .map(|(index, (name, _))| StagedComponent {
+                name: name.clone(),
+                staged: staging.path().join(format!("{index}.apk")),
+                output: match output {
                     PatchArtifact::SplitDir { path } => Path::new(path).join(name),
-                };
+                    PatchArtifact::SingleFile { .. } | PatchArtifact::SplitArchive { .. } => {
+                        output.path().to_owned()
+                    }
+                },
+            })
+            .collect();
+        let placements: Vec<(PathBuf, PathBuf)> = match packing {
+            Packing::Files => components
+                .iter()
+                .map(|component| (component.output.clone(), component.staged.clone()))
+                .collect(),
+            Packing::Archive => vec![(output.path().to_owned(), staging.path().join("split.apks"))],
+        };
+        let artifacts = placements
+            .into_iter()
+            .map(|(destination, staged)| {
                 match fs::symlink_metadata(&destination) {
                     Ok(metadata) if metadata.is_dir() => {
                         return Err(file_error(
@@ -69,7 +118,7 @@ impl Publication {
                 }
                 Ok(Artifact {
                     destination,
-                    staged: staging.path().join(format!("{index}.apk")),
+                    staged,
                     state: PublicationState::Staged,
                 })
             })
@@ -92,7 +141,16 @@ impl Publication {
                 "APK components have colliding output names",
             ));
         }
-        Ok(Self { staging, artifacts })
+        Ok(Self {
+            staging,
+            components,
+            packing,
+            artifacts,
+        })
+    }
+
+    pub(crate) fn components(&self) -> &[StagedComponent] {
+        &self.components
     }
 
     pub(crate) fn artifacts(&self) -> &[Artifact] {
@@ -104,16 +162,31 @@ impl Publication {
         self.staging.path()
     }
 
-    /// Places each written file at its artifact's staged path.
+    /// Places each written file at its component's staged path.
     pub(crate) fn stage(&self, files: &[(String, File)]) -> Result<()> {
-        for ((_, file), artifact) in files.iter().zip(&self.artifacts) {
-            stage_file(file, &artifact.staged)
-                .map_err(|source| file_error("stage APK", &artifact.destination, source))?;
+        for ((_, file), component) in files.iter().zip(&self.components) {
+            stage_file(file, &component.staged)
+                .map_err(|source| file_error("stage APK", &component.output, source))?;
         }
         Ok(())
     }
 
+    /// Packs the signed components as the output asks, then replaces the
+    /// destinations.
     pub(crate) fn publish(&mut self) -> Result<()> {
+        if let (Packing::Archive, [archive]) = (&self.packing, self.artifacts.as_slice()) {
+            let apks: Vec<(&str, &Path)> = self
+                .components
+                .iter()
+                .map(|component| (component.name.as_str(), component.staged.as_path()))
+                .collect();
+            reseam_apk::write_split_archive(&apks, &archive.staged).map_err(|source| {
+                HostError::WriteApk {
+                    path: archive.destination.clone(),
+                    source,
+                }
+            })?;
+        }
         if let Err(source) = self.commit() {
             if let Err(rollback) = self.rollback() {
                 let recovery = self.staging.path().to_owned();
@@ -193,46 +266,4 @@ impl Publication {
         }
         failure.map_or(Ok(()), Err)
     }
-}
-
-fn stage_file(file: &File, path: &Path) -> io::Result<()> {
-    match link_anonymous(file, path) {
-        Ok(()) => return Ok(()),
-        Err(error) if matches!(error.kind(), io::ErrorKind::AlreadyExists) => {
-            return Err(error);
-        }
-        Err(_) => {}
-    }
-    let mut reader = io::BufReader::new(file);
-    reader.seek(io::SeekFrom::Start(0))?;
-    let mut writer = io::BufWriter::new(File::options().write(true).create_new(true).open(path)?);
-    io::copy(&mut reader, &mut writer)?;
-    writer.flush()
-}
-
-#[cfg(target_os = "linux")]
-fn link_anonymous(file: &File, path: &Path) -> io::Result<()> {
-    use std::os::fd::AsRawFd;
-    let source = std::ffi::CString::new(format!("/proc/self/fd/{}", file.as_raw_fd()))?;
-    let target = std::ffi::CString::new(path.as_os_str().as_encoded_bytes())?;
-    // SAFETY: both paths are valid C strings; linkat only creates a directory entry.
-    let result = unsafe {
-        libc::linkat(
-            libc::AT_FDCWD,
-            source.as_ptr(),
-            libc::AT_FDCWD,
-            target.as_ptr(),
-            libc::AT_SYMLINK_FOLLOW,
-        )
-    };
-    if result == 0 {
-        Ok(())
-    } else {
-        Err(io::Error::last_os_error())
-    }
-}
-
-#[cfg(not(target_os = "linux"))]
-fn link_anonymous(_file: &File, _path: &Path) -> io::Result<()> {
-    Err(io::ErrorKind::Unsupported.into())
 }

@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
 use super::forge::Forge;
-use super::index::Index;
+use reseam_model::ReleaseIndex;
+
+use super::index;
 use super::notes;
 use super::store::Store;
 use crate::app::ReleaseArgs;
@@ -82,10 +84,10 @@ pub(super) struct Staged {
 }
 
 impl Staged {
-    pub fn index(name: &str, index: &Index) -> Result<Self> {
+    pub fn index(name: &str, release_index: &ReleaseIndex) -> Result<Self> {
         let folder = tempfile::tempdir()?;
         let path = folder.path().join(name);
-        std::fs::write(&path, index.to_json()?)?;
+        std::fs::write(&path, index::to_json(release_index)?)?;
         Ok(Self {
             _folder: folder,
             path,

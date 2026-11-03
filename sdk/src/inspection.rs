@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use reseam_model::{
-    ApkMetadata, ApkVersion, InspectRequest, InspectResponse, PatchMetadata, PatchOutcome,
-    PatchPreset, PatchRequest, PatchSpec, RunEvent,
+    ApkMetadata, AppIdentity, InspectRequest, InspectResponse, PatchMetadata, PatchOutcome,
+    PatchRequest, PatchSpec, RunEvent,
 };
 use reseam_patcher::catalog::PatchCatalog;
 use reseam_patcher::error::PatcherError;
@@ -80,7 +80,7 @@ impl PreparedInspection {
             .metadata
             .apk
             .as_ref()
-            .and_then(|apk| apk.package_name.as_deref());
+            .and_then(|apk| apk.identity.package_name.as_deref());
         match PatchCatalog::new(&specs)?.resolve(selector, package) {
             Ok(index) => Ok(Some(&self.metadata.patches[index])),
             Err(PatcherError::UnknownPatch(_)) => Ok(None),
@@ -105,20 +105,15 @@ impl PreparedInspection {
 }
 
 fn patch_metadata(spec: &PatchSpec, fingerprint: &str, apk: Option<&ApkMetadata>) -> PatchMetadata {
-    let package = apk.and_then(|apk| apk.package_name.as_deref());
+    let unknown = AppIdentity::default();
+    let identity = apk.map_or(&unknown, |apk| &apk.identity);
+    let package = identity.package_name.as_deref();
     PatchMetadata {
         spec: spec.clone(),
-        incompatibility: spec.compatibility.incompatibility(
-            package,
-            ApkVersion {
-                name: apk.and_then(|apk| apk.version_name.as_deref()),
-                code: apk.and_then(|apk| apk.version_code),
-            },
-        ),
-        presets: [PatchPreset::Recommended, PatchPreset::All]
-            .into_iter()
-            .filter(|&preset| spec.in_preset(preset, package))
-            .collect(),
+        incompatibility: spec
+            .compatibility
+            .incompatibility(package, identity.version()),
+        presets: spec.presets(package),
         fingerprint: fingerprint.to_owned(),
     }
 }

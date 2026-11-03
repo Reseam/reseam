@@ -1,0 +1,18 @@
+[package]
+name = "reseam-browser-tools"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Engine calls a web page makes on its main thread, without files or the patch runtime"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+reseam-model = { workspace = true }
+reseam-sdk = { workspace = true, features = ["browser"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

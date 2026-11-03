@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use reseam_model::{Problem, SdkError};
 use reseam_patcher::error::PatcherError;
+use reseam_sign::SignError;
 use thiserror::Error;
 
 /// A host operation failed. Sources retain engine diagnostics and input paths.
@@ -25,7 +26,7 @@ pub enum HostError {
     #[error(transparent)]
     Patcher(#[from] PatcherError),
     #[error(transparent)]
-    Signing(#[from] reseam_sign::SignError),
+    Signing(#[from] SignError),
     #[error(transparent)]
     Problem(#[from] Problem),
     #[error("invalid trusted key `{key}`: {source}")]
@@ -35,6 +36,8 @@ pub enum HostError {
     },
     #[error("{0}")]
     InvalidRequest(&'static str),
+    #[error("the installed app query printed {0}")]
+    InstalledAppQuery(String),
     #[error("failed to read DEX code: {0}")]
     Dex(#[from] reseam_dex::DexError),
     #[error("nothing in the APK defines or references {0}")]
@@ -117,6 +120,12 @@ pub(crate) fn classify(error: &(dyn std::error::Error + 'static)) -> Problem {
                         return Some(problem);
                     }
                 }
+                _ => {}
+            }
+            match cause.downcast_ref::<SignError>() {
+                Some(SignError::KeystoreLocked) => return Some(Problem::KeystoreLocked),
+                Some(SignError::KeystoreEmpty) => return Some(Problem::KeystoreEmpty),
+                Some(SignError::UnsupportedKey) => return Some(Problem::UnsupportedSigningKey),
                 _ => {}
             }
             match cause.downcast_ref::<PatcherError>() {

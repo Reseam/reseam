@@ -8,6 +8,7 @@ use serde::Deserialize;
 use crate::error::{PatcherError, Result};
 use crate::patch::PatchRef;
 
+use reseam_model::OptionProblem;
 pub use reseam_model::{OptionDeclaration, OptionType, OptionValue};
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -33,43 +34,63 @@ impl PatchOptions {
         self.values.iter().map(|(key, value)| (key.as_str(), value))
     }
 
-    /// Checks `provided` against `declarations` and fills in defaults.
+    /// What is wrong with `provided` for `declarations`: keys no declaration
+    /// has, then declarations whose value is missing or does not fit.
+    pub fn problems(
+        declarations: &[OptionDeclaration],
+        provided: Option<&Self>,
+    ) -> Vec<(String, OptionProblem)> {
+        let undeclared = provided
+            .into_iter()
+            .flat_map(Self::iter)
+            .filter(|(key, _)| !declarations.iter().any(|decl| decl.key == *key))
+            .map(|(key, _)| (key.to_owned(), OptionProblem::Undeclared));
+        let invalid = declarations.iter().filter_map(|decl| {
+            decl.resolve(provided.and_then(|options| options.get(&decl.key)))
+                .err()
+                .map(|problem| (decl.key.clone(), problem))
+        });
+        undeclared.chain(invalid).collect()
+    }
+
+    /// Checks `provided` against `declarations` and fills in defaults. Path
+    /// values must also be accessible.
     pub fn resolve(
         patch: &PatchRef,
         declarations: &[OptionDeclaration],
         provided: Option<&Self>,
     ) -> Result<Self> {
-        if let Some(key) = provided
-            .iter()
-            .flat_map(|options| options.values.keys())
-            .find(|key| !declarations.iter().any(|decl| decl.key == **key))
-        {
-            return Err(PatcherError::UnknownOption {
-                patch: patch.clone(),
-                key: key.clone(),
+        if let Some((key, problem)) = Self::problems(declarations, provided).into_iter().next() {
+            return Err(match problem {
+                OptionProblem::Undeclared => PatcherError::UnknownOption {
+                    patch: patch.clone(),
+                    key,
+                },
+                OptionProblem::Missing => PatcherError::MissingRequiredOption {
+                    patch: patch.clone(),
+                    key,
+                },
+                problem => PatcherError::InvalidOptionValue {
+                    patch: patch.clone(),
+                    key,
+                    reason: problem.to_string(),
+                },
             });
         }
         let mut resolved = Self::default();
         for decl in declarations {
-            let value = match provided
-                .and_then(|options| options.get(&decl.key))
-                .or(decl.default_value.as_ref())
-            {
-                Some(value) => value,
-                None if decl.required => {
-                    return Err(PatcherError::MissingRequiredOption {
-                        patch: patch.clone(),
-                        key: decl.key.clone(),
-                    });
-                }
-                None => continue,
+            let Some(value) = decl
+                .resolve(provided.and_then(|options| options.get(&decl.key)))
+                .expect("problems found every option that does not resolve")
+            else {
+                continue;
             };
-            if let Some(reason) = rejection(decl, value) {
-                return Err(PatcherError::InvalidOptionValue {
+            if let OptionValue::Path(path) = value {
+                std::fs::metadata(path).map_err(|error| PatcherError::InvalidOptionValue {
                     patch: patch.clone(),
                     key: decl.key.clone(),
-                    reason,
-                });
+                    reason: format!("cannot access path {path}: {error}"),
+                })?;
             }
             resolved.set(decl.key.clone(), value.clone());
         }
@@ -117,33 +138,6 @@ impl PatchOptions {
         }
         Ok(Some(std::fs::read(&full)?))
     }
-}
-
-/// Why `value` does not fit `declaration`: its type, its declared choices, or a
-/// path that cannot be accessed.
-fn rejection(declaration: &OptionDeclaration, value: &OptionValue) -> Option<String> {
-    if value.option_type() != declaration.option_type {
-        return Some(format!(
-            "expected {:?}, got {:?}",
-            declaration.option_type,
-            value.option_type()
-        ));
-    }
-    let candidates: &[String] = match value {
-        OptionValue::Text(text) => std::slice::from_ref(text),
-        OptionValue::TextList(list) => list,
-        OptionValue::Path(path) => {
-            return std::fs::metadata(path)
-                .err()
-                .map(|error| format!("cannot access path {path}: {error}"));
-        }
-        _ => &[],
-    };
-    let valid = declaration.valid_values.as_ref()?;
-    candidates
-        .iter()
-        .find(|candidate| !valid.contains(candidate))
-        .map(|bad| format!("'{bad}' is not in [{}]", valid.join(", ")))
 }
 
 impl From<HashMap<String, OptionValue>> for PatchOptions {

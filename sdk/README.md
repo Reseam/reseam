@@ -16,10 +16,17 @@ The types come from [`crates/model`](../crates/model/). Bundle authoring (the si
 |---|---|
 | `inspect(InspectRequest)` | Reads an APK and each bundle's signed patch list. Doesn't load patch code. |
 | `PreparedInspection(request)` | Same as `inspect`, but keeps the opened APK and bundles for one `patch` call. |
-| `patch(PatchRequest, onEvent)` | Runs the patches and writes the signed output. Progress arrives as `RunEvent`s. |
-| `ApkInspection(apkPath, splitPaths)` | Opens an APK, APKM, or XAPK and exposes its metadata, component files, and icon. |
-| `dexMetadata(apkPath, sdk)` | Builds the `.dm` file to install next to a base APK, so Android compiles the app with its baseline profile at install. Null when there is nothing to compile from. |
-| `encodeSelection`, `encodePatchMetadata` | Store a selection or patch list as JSON, with matching `decode` functions. |
+| `patch(PatchRequest, onEvent)` | Runs the patches and writes the signed output. Progress arrives as `RunEvent`s, including `PhaseStarted` as each phase begins. The outcome's `record` says what the build was made from. |
+| `plan(PlanRequest)` | What a selection would run for an app, from patch metadata alone: each patch's compatibility, presets, whether it runs and why not, what requires it, and its option problems. Selection entries that name no patch are listed in `unknown` instead of failing. |
+| `changes(ChangesRequest)` | Compares a build's `record` with the patches available now: patches that changed, were added, or would be dropped. Empty when patching again would make the same build. |
+| `parseOption(option, text)`, `optionText(value)` | Read option text as users type it (one list item per line) and print a value back the same way. Problems are typed `OptionProblem`s. |
+| `ApkInspection(apkPath, splitPaths)` | Opens an APK, APKM, XAPK, or APKS and exposes its metadata, component files, and icon. |
+| `dexMetadata(apkPath, sdk)` | Builds the `.dm` file to install next to a base APK, so Android compiles the app with its baseline profile at install. Null when there is nothing to compile from. On Android, `PackageInstaller.Session.writeApks(apks)` writes each APK with its `.dm` into an install session. |
+| `writeSplitArchive(apkPaths, destination)` | Packs split APKs into one APKS file, as `PatchOutput.SplitArchive` writes them. |
+| `importPkcs12`, `exportPkcs12`, `certificateFingerprint` | Read and write PKCS#12 key backups, the one format every Reseam app backs up and restores signing keys in. |
+| `decodeReleaseIndex(json)`, `latestRelease(index, channel)` | Read a published `patches.json` or `manager.json`. |
+| `mountQueryScript`, `installedApp`, `mountScript`, `unmountScript`, `mountStatusScript`, `isMounted`, `originalApkScript`, `installScript` | Mount a patched build over an installed app on a rooted device. The SDK writes the root scripts and reads their output; the host runs them in a root shell (`su --mount-master -c sh`), on the device or over adb. |
+| `encodeSelection`, `encodePatchMetadata`, `encodeBuildRecord` | Store a selection, patch list, or build record as JSON, with matching `decode` functions. |
 
 - **Trust.** A request lists the bundle signers it accepts in `trust.keys`. The SDK trusts no one on its own. `inspect` reads bundles from any signer and marks each one `trusted` or not; `patch` refuses untrusted ones.
 - **Mount builds.** `installMethod = MOUNT` builds output to mount over the installed app. A patch that edits the manifest finishes `Unmountable`, and the run undoes it as it undoes a patch that fails: the output is what the run would have made without it. A patch that rewrites the written APK (`afterWrite`) is `Unmountable` before it runs. When undoing reaches patches already reported finished, the SDK sends `RunEvent.PatchesReverted` with them, and they run again.

@@ -44,6 +44,15 @@ pub enum SignError {
         existing: std::path::PathBuf,
     },
 
+    #[error("the signing key is not an ECDSA P-256 key")]
+    UnsupportedKey,
+
+    #[error("the keystore password is wrong, or the keystore is damaged")]
+    KeystoreLocked,
+
+    #[error("the keystore holds no private key with its certificate")]
+    KeystoreEmpty,
+
     #[error("{operation} at file offset {offset}: {source}")]
     IoAt {
         operation: &'static str,

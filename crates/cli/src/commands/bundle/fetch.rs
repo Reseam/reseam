@@ -11,7 +11,7 @@ use reseam_sdk::inspect;
 use url::Url;
 
 use super::super::release::http;
-use super::super::release::index::{Index, unprefixed};
+use super::super::release::index::{self, unprefixed};
 use crate::app::BundleFetchCommand;
 
 /// What a downloaded bundle must be to stand for the release the index names.
@@ -25,9 +25,8 @@ pub fn run_bundle_fetch(command: &BundleFetchCommand) -> Result<()> {
     let index_url = Url::parse(&command.index).context("--index must be a URL")?;
     let mut json = String::new();
     open(&index_url)?.read_to_string(&mut json)?;
-    let index = Index::parse(&json)?;
-    let signer = index
-        .public_key()
+    let index = index::parse(&json)?;
+    let signer = index::public_key(&index)
         .with_context(|| format!("{index_url} names no bundle public key"))?;
     if let Some(pinned) = &command.signer {
         ensure!(
@@ -35,9 +34,9 @@ pub fn run_bundle_fetch(command: &BundleFetchCommand) -> Result<()> {
             "{index_url} is signed by {signer}, not the pinned {pinned}"
         );
     }
-    let release = index.release(&command.version)?;
+    let release = index::release(&index, &command.version)?;
     let expected = Expected {
-        name: index.name(),
+        name: &index.bundle.name,
         version: unprefixed(&release.version),
         signer,
     };

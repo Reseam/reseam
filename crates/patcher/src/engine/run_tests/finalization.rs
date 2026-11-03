@@ -66,10 +66,18 @@ fn finalization_orders_hooks_and_emits_one_terminal_result() {
             },
         )
         .unwrap();
+        let options = PlanOptions::resolve(
+            &specs,
+            &PatchSelection::default(),
+            &plan,
+            Some("com.example"),
+        )
+        .unwrap();
         let results = apply_patches(
             &mut PatchContext::new(&mut apk, ExtensionSet::app_runtime()),
             &specs,
             plan,
+            &options,
             &patches,
             Trace::Off,
             |event| match event {

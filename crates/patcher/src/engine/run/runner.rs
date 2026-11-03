@@ -8,7 +8,7 @@ use super::savepoints::Savepoints;
 use super::{AppliedRun, Rewrite, guarded};
 use crate::context::PatchContext;
 use crate::engine::plan::unmountable_status;
-use crate::engine::{PatchStatus, ResolvedPlan, RunEvent};
+use crate::engine::{PatchStatus, PlanOptions, ResolvedPlan, RunEvent};
 use crate::error::Result;
 use crate::log::LogEntry;
 use crate::patch::{Patch, PatchPhase, PatchSpec};
@@ -20,6 +20,7 @@ pub(super) struct Runner<'r, 'c, 'p, O> {
     specs: &'r [&'r PatchSpec],
     code: &'r [Option<&'p Patch>],
     plan: ResolvedPlan,
+    options: &'r PlanOptions,
     run: Run<'r>,
     savepoints: Savepoints,
     observer: O,
@@ -38,6 +39,7 @@ impl<'r, 'c, 'p: 'r, O: FnMut(RunEvent)> Runner<'r, 'c, 'p, O> {
         specs: &'r [&'r PatchSpec],
         code: &'r [Option<&'p Patch>],
         plan: ResolvedPlan,
+        options: &'r PlanOptions,
         observer: O,
     ) -> Self {
         Self {
@@ -45,6 +47,7 @@ impl<'r, 'c, 'p: 'r, O: FnMut(RunEvent)> Runner<'r, 'c, 'p, O> {
             specs,
             code,
             plan,
+            options,
             run: Run::new(specs, code),
             savepoints: Savepoints::default(),
             observer,
@@ -71,7 +74,7 @@ impl<'r, 'c, 'p: 'r, O: FnMut(RunEvent)> Runner<'r, 'c, 'p, O> {
             .map(|(result, &idx)| Rewrite {
                 result,
                 patch: self.code[idx].expect("an applied patch has its code loaded"),
-                options: self.plan.options(idx).clone(),
+                options: self.options.get(idx).clone(),
             })
             .collect();
         Ok(AppliedRun {
@@ -97,7 +100,7 @@ impl<'r, 'c, 'p: 'r, O: FnMut(RunEvent)> Runner<'r, 'c, 'p, O> {
                 .expect("loaded_code holds the code of every patch the plan executes");
             let savepoint = self.savepoints.open(self.ctx, idx)?;
             self.ctx
-                .begin_patch(reference, self.plan.options(idx).clone());
+                .begin_patch(reference, self.options.get(idx).clone());
             (self.observer)(RunEvent::PatchStarted {
                 patch: reference.clone(),
             });
@@ -128,7 +131,7 @@ impl<'r, 'c, 'p: 'r, O: FnMut(RunEvent)> Runner<'r, 'c, 'p, O> {
             }
             let _span = info_span!("after_dependents", patch = %patch.reference()).entered();
             self.ctx
-                .begin_patch(patch.reference(), self.plan.options(idx).clone());
+                .begin_patch(patch.reference(), self.options.get(idx).clone());
             let (status, logs) = self.invoke(patch, Stage::Finalize);
             if status != PatchStatus::Applied {
                 let mut all_logs = self.run.take_logs(idx);

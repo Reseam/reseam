@@ -4,8 +4,8 @@
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
-use reseam_apk::{ApkComponent, ApkFile, ContainerFormat, open_container};
-use reseam_model::{ApkMetadata, ApkVersion, ApplicationIcon};
+use reseam_apk::{ApkFile, ContainerFormat, open_container};
+use reseam_model::{ApkMetadata, AppIdentity, ApplicationIcon};
 
 use crate::error::{HostError, Result};
 
@@ -50,13 +50,12 @@ impl OpenedApk {
             .apk
             .application_label()
             .map_err(|source| self.error(source))?;
+        let identity = self.identity();
         let apk = &self.apk;
         let dex_files = apk.dex();
         Ok(ApkMetadata {
             application_label,
-            package_name: apk.package_name().map(Into::into),
-            version_name: apk.version_name().map(Into::into),
-            version_code: apk.version_code(),
+            identity,
             bundle_kind: self.bundle,
             dex_files: dex_files.len(),
             component_count: apk.components().len(),
@@ -69,10 +68,10 @@ impl OpenedApk {
         })
     }
 
-    /// The package and version a plan checks patches against.
+    /// What the APK declares itself as, for checking patches against it.
     pub(crate) fn identity(&self) -> AppIdentity {
         AppIdentity {
-            package: self.apk.package_name().map(Cow::into_owned),
+            package_name: self.apk.package_name().map(Cow::into_owned),
             version_name: self.apk.version_name().map(Cow::into_owned),
             version_code: self.apk.version_code(),
         }
@@ -82,22 +81,6 @@ impl OpenedApk {
         HostError::Apk {
             path: self.input.clone(),
             source,
-        }
-    }
-}
-
-/// What an APK declares itself as, for checking patches against it.
-pub(crate) struct AppIdentity {
-    pub(crate) package: Option<String>,
-    version_name: Option<String>,
-    version_code: Option<i32>,
-}
-
-impl AppIdentity {
-    pub(crate) fn version(&self) -> ApkVersion<'_> {
-        ApkVersion {
-            name: self.version_name.as_deref(),
-            code: self.version_code,
         }
     }
 }
@@ -128,11 +111,12 @@ impl ApkInspection {
         self.opened.apk.base().path()
     }
 
-    /// Returns additional component paths in their original order.
-    pub fn split_paths(&self) -> impl Iterator<Item = &Path> {
+    /// The split components, each its split name and path, in their original
+    /// order.
+    pub fn splits(&self) -> impl Iterator<Item = (&str, &Path)> {
         self.opened.apk.components()[1..]
             .iter()
-            .map(ApkComponent::path)
+            .map(|component| (component.name(), component.path()))
     }
 
     /// Resolves a bitmap or adaptive icon, or none when no icon can be resolved.

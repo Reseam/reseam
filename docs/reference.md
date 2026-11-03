@@ -140,7 +140,7 @@ A decimal option, read as `Double`.
 
 ### `StringListOption`
 
-A list-of-text option, read as `List<String>`. On the CLI, separate items with commas.
+A list-of-text option, read as `List<String>`. On the CLI, repeat `--option` once per item.
 
 ### `PathOption`
 

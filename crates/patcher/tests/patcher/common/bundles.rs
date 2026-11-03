@@ -147,16 +147,26 @@ pub fn apply(
     selection: &PatchSelection,
 ) -> reseam_patcher::error::Result<Vec<engine::PatchResult>> {
     let specs: Vec<_> = patches.iter().map(|patch| patch.spec()).collect();
+    let package = ctx.apk().package_name();
     let plan = engine::ResolvedPlan::resolve(
         &specs,
         selection,
         engine::Delivery::Install,
-        ctx.apk().package_name().as_deref(),
+        package.as_deref(),
         ApkVersion {
             name: ctx.apk().version_name().as_deref(),
             code: ctx.apk().version_code(),
         },
     )?;
-    engine::apply_patches(ctx, &specs, plan, patches, engine::Trace::Off, |_| {})
-        .map(engine::AppliedRun::into_results)
+    let options = engine::PlanOptions::resolve(&specs, selection, &plan, package.as_deref())?;
+    engine::apply_patches(
+        ctx,
+        &specs,
+        plan,
+        &options,
+        patches,
+        engine::Trace::Off,
+        |_| {},
+    )
+    .map(engine::AppliedRun::into_results)
 }

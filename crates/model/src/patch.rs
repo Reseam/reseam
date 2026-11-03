@@ -124,6 +124,20 @@ impl PatchSpec {
         }
     }
 
+    /// The presets that select the patch for an app of `package`.
+    pub fn presets(&self, package: Option<&str>) -> Vec<PatchPreset> {
+        [PatchPreset::Recommended, PatchPreset::All]
+            .into_iter()
+            .filter(|&preset| self.in_preset(preset, package))
+            .collect()
+    }
+
+    /// Whether users see the patch for an app of `package`: it is not hidden,
+    /// and it declares the package or suits any app.
+    pub fn listed_for(&self, package: Option<&str>) -> bool {
+        !self.hidden && (self.compatibility.declares(package) || self.compatibility.is_universal())
+    }
+
     /// Whether `preset` selects the patch for an app of `package`. Presets take
     /// the patches that declare the package, and a universal patch only when its
     /// author enables it by default. Version compatibility is not considered; it

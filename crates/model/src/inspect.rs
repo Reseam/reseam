@@ -1,8 +1,37 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::{ContainerFormat, Incompatibility, PatchPreset, PatchSpec, Problem, Trust};
+use crate::{ApkVersion, ContainerFormat, Incompatibility, PatchPreset, PatchSpec, Problem, Trust};
 use serde::{Deserialize, Serialize};
+
+/// What an app declares itself as in its manifest. It is known before the
+/// APK is, from a store listing, an installed app, or an earlier build, which
+/// is enough to check patches against.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[boltffi::data]
+pub struct AppIdentity {
+    /// Absent when the manifest names no package; only universal patches
+    /// apply to such an app.
+    #[serde(default)]
+    #[boltffi::default(None)]
+    pub package_name: Option<String>,
+    #[serde(default)]
+    #[boltffi::default(None)]
+    pub version_name: Option<String>,
+    #[serde(default)]
+    #[boltffi::default(None)]
+    pub version_code: Option<i32>,
+}
+
+impl AppIdentity {
+    pub fn version(&self) -> ApkVersion<'_> {
+        ApkVersion {
+            name: self.version_name.as_deref(),
+            code: self.version_code,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
@@ -10,13 +39,10 @@ use serde::{Deserialize, Serialize};
 pub struct ApkMetadata {
     #[boltffi::default(None)]
     pub application_label: Option<String>,
-    #[boltffi::default(None)]
-    pub package_name: Option<String>,
-    #[boltffi::default(None)]
-    pub version_name: Option<String>,
-    #[boltffi::default(None)]
-    pub version_code: Option<i32>,
-    /// The container format the input came from, when it was an APKM/XAPK file.
+    #[serde(flatten)]
+    pub identity: AppIdentity,
+    /// The container format the input came from, when it was an APKM, XAPK or
+    /// APKS file.
     #[boltffi::default(None)]
     pub bundle_kind: Option<ContainerFormat>,
     pub dex_files: usize,

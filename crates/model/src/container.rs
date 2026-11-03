@@ -10,6 +10,9 @@ use serde::{Deserialize, Serialize};
 pub enum ContainerFormat {
     Apkm,
     Xapk,
+    /// A ZIP holding the APKs at its root and nothing that describes them, as
+    /// Reseam writes split output.
+    Apks,
 }
 
 impl ContainerFormat {
@@ -17,6 +20,7 @@ impl ContainerFormat {
         match self {
             Self::Apkm => "apkm",
             Self::Xapk => "xapk",
+            Self::Apks => "apks",
         }
     }
 }

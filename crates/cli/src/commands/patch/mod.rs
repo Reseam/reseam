@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use anyhow::{Context, Result};
 use reseam_model::{
     InspectRequest, InstallMethod, LogLevel, PatchOutcome, PatchOutput, PatchRef, PatchRequest,
-    PatchResult, PatchSelection, PatchStatus, RunEvent, SigningKeyFiles,
+    PatchResult, PatchSelection, PatchStatus, RunEvent, SigningIdentity,
 };
 use reseam_sdk::{HostError, PreparedInspection};
 use tracing::{debug, error, info, warn};
@@ -19,8 +19,14 @@ use crate::app::{PatchCommand, PatchRequestArgs};
 pub fn run_patch(command: &PatchCommand) -> Result<()> {
     let apk = &command.request.apk;
     let output = if let Some(path) = &command.output {
-        PatchOutput::SingleFile {
-            path: path.display().to_string(),
+        let archive = path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("apks"));
+        let path = path.display().to_string();
+        if archive {
+            PatchOutput::SplitArchive { path }
+        } else {
+            PatchOutput::SingleFile { path }
         }
     } else if let Some(path) = &command.output_dir {
         PatchOutput::SplitDir {
@@ -52,7 +58,7 @@ pub fn run_patch(command: &PatchCommand) -> Result<()> {
                 HostError::Problem(reseam_model::Problem::SingleFileComponents { .. })
             )
         }) {
-            error.context("use --output-dir for split input")
+            error.context("use --output-dir or an .apks --output for split input")
         } else {
             error
         }
@@ -83,6 +89,7 @@ fn applied(result: &PatchResult) -> bool {
 fn log_event(event: RunEvent, hidden: &HashSet<PatchRef>) {
     match event {
         RunEvent::Info { message } => info!(message),
+        RunEvent::PhaseStarted { phase } => info!(phase = phase.as_str(), "phase started"),
         RunEvent::PatchStarted { patch } if hidden.contains(&patch) => {
             debug!(%patch, "patch started");
         }
@@ -129,14 +136,7 @@ pub(crate) fn request(args: &PatchRequestArgs, output: PatchOutput) -> PatchRequ
         trust: args.trust.trust(),
         selection,
         output,
-        signing: args
-            .key
-            .as_ref()
-            .zip(args.cert.as_ref())
-            .map(|(key, cert)| SigningKeyFiles {
-                key: key.display().to_string(),
-                cert: cert.display().to_string(),
-            }),
+        signing: signing(args),
         dry_run: args.dry_run,
         install_method: if args.mount {
             InstallMethod::Mount
@@ -146,6 +146,22 @@ pub(crate) fn request(args: &PatchRequestArgs, output: PatchOutput) -> PatchRequ
         leave_out_failed: args.leave_out_failed,
         trace: args.trace,
     }
+}
+
+fn signing(args: &PatchRequestArgs) -> Option<SigningIdentity> {
+    if let Some(path) = &args.keystore {
+        return Some(SigningIdentity::Pkcs12 {
+            path: path.display().to_string(),
+            password: args.keystore_password.clone(),
+        });
+    }
+    args.key
+        .as_ref()
+        .zip(args.cert.as_ref())
+        .map(|(key, cert)| SigningIdentity::Files {
+            key: key.display().to_string(),
+            cert: cert.display().to_string(),
+        })
 }
 
 /// Inspects the request's inputs, sets `options` (`PATCH.KEY=VALUE`) on the

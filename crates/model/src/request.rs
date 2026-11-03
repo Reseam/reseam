@@ -19,12 +19,10 @@ pub struct PatchRequest {
     #[serde(default)]
     pub selection: PatchSelection,
     pub output: PatchOutput,
-    /// When absent, reuse or generate a pair next to the output.
-    /// Supplied paths also generate on first use when both files are missing.
-    /// Exactly one existing file is an error; existing credentials are never replaced.
+    /// When absent, reuse or generate a key pair next to the output.
     #[serde(default)]
     #[boltffi::default(None)]
-    pub signing: Option<SigningKeyFiles>,
+    pub signing: Option<SigningIdentity>,
     #[serde(default)]
     #[boltffi::default(false)]
     pub dry_run: bool,
@@ -44,12 +42,18 @@ pub struct PatchRequest {
     pub trace: bool,
 }
 
+/// The key a run signs its output with.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[serde(tag = "kind", rename_all = "snake_case")]
 #[boltffi::data]
-pub struct SigningKeyFiles {
-    pub key: String,
-    pub cert: String,
+pub enum SigningIdentity {
+    /// A PKCS#8 key and its DER certificate. Both are generated on first use
+    /// when both are missing; exactly one existing file is an error, and
+    /// existing files are never replaced.
+    Files { key: String, cert: String },
+    /// The first private key in a PKCS#12 keystore, which `password` opens.
+    Pkcs12 { path: String, password: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,15 +71,21 @@ pub enum PatchOutput {
     SplitDir {
         path: String,
     },
+    /// Every component in one APKS file at `path`, which users can share and
+    /// split installers read.
+    SplitArchive {
+        path: String,
+    },
 }
 
 impl PatchOutput {
     /// Requested destination. For automatic output, use the outcome for the final path.
     pub fn path(&self) -> &Path {
         match self {
-            Self::Auto { path } | Self::SingleFile { path } | Self::SplitDir { path } => {
-                Path::new(path)
-            }
+            Self::Auto { path }
+            | Self::SingleFile { path }
+            | Self::SplitDir { path }
+            | Self::SplitArchive { path } => Path::new(path),
         }
     }
 }

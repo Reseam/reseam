@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::{LogEntry, PatchMetrics, PatchRef};
+use crate::{BuildRecord, LogEntry, PatchMetrics, PatchPhase, PatchRef};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -11,6 +11,9 @@ use std::path::Path;
 pub struct PatchOutcome {
     pub output: PatchArtifact,
     pub results: Vec<PatchResult>,
+    /// What the build was made from; keep it to learn later whether patching
+    /// again would change the build.
+    pub record: BuildRecord,
     pub metrics: PatchMetrics,
 }
 
@@ -21,6 +24,11 @@ pub struct PatchOutcome {
 pub enum RunEvent {
     Info {
         message: String,
+    },
+    /// The run moved on to `phase`. Opening the APK happens before the run
+    /// starts, so it is never reported.
+    PhaseStarted {
+        phase: PatchPhase,
     },
     PatchStarted {
         patch: PatchRef,
@@ -44,12 +52,15 @@ pub enum RunEvent {
 pub enum PatchArtifact {
     SingleFile { path: String },
     SplitDir { path: String },
+    SplitArchive { path: String },
 }
 
 impl PatchArtifact {
     pub fn path(&self) -> &Path {
         match self {
-            Self::SingleFile { path } | Self::SplitDir { path } => Path::new(path),
+            Self::SingleFile { path } | Self::SplitDir { path } | Self::SplitArchive { path } => {
+                Path::new(path)
+            }
         }
     }
 }

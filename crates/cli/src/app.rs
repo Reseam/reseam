@@ -23,6 +23,12 @@ pub enum Commands {
     #[command(hide = true)]
     PerfWorker,
     Info(InfoCommand),
+    /// Install an app on a device over adb, compiled with its baseline profile.
+    Install(InstallCommand),
+    /// Mount a `--mount` build over the app installed on a rooted device, over adb.
+    Mount(MountCommand),
+    /// Take a mounted build off the app installed on a rooted device, over adb.
+    Unmount(UnmountCommand),
     Bundle {
         #[command(subcommand)]
         command: BundleCommands,
@@ -54,10 +60,21 @@ pub struct PatchRequestArgs {
     pub bundle: Vec<PathBuf>,
     #[command(flatten)]
     pub trust: TrustArgs,
-    #[arg(long, requires = "cert")]
+    #[arg(long, requires = "cert", conflicts_with = "keystore")]
     pub key: Option<PathBuf>,
     #[arg(long, requires = "key")]
     pub cert: Option<PathBuf>,
+    /// Sign with the first key in this PKCS#12 keystore (`.p12`).
+    #[arg(long)]
+    pub keystore: Option<PathBuf>,
+    /// The keystore's password, for `--keystore`.
+    #[arg(
+        long,
+        env = "RESEAM_KEYSTORE_PASSWORD",
+        hide_env_values = true,
+        default_value = ""
+    )]
+    pub keystore_password: String,
     /// Patches to start from: recommended, all or none. `--enable` and `--disable` adjust it.
     #[arg(long, default_value = "recommended")]
     pub preset: PatchPreset,
@@ -88,8 +105,9 @@ pub struct PatchRequestArgs {
 pub struct PatchCommand {
     #[command(flatten)]
     pub request: PatchRequestArgs,
-    /// File for a single-component input.
-    #[arg(long, conflicts_with_all = ["split", "output_dir"])]
+    /// File to write: an APK for single-component input, or an `.apks` file
+    /// holding every component.
+    #[arg(long, conflicts_with = "output_dir")]
     pub output: Option<PathBuf>,
     /// Directory for patched APK components, including a single APK.
     #[arg(long)]
@@ -111,6 +129,42 @@ pub struct PerfCommand {
 #[derive(Args)]
 pub struct InfoCommand {
     pub apk: PathBuf,
+}
+
+#[derive(Args)]
+pub struct InstallCommand {
+    /// The APK, APKM, XAPK, or APKS to install.
+    pub apk: PathBuf,
+    #[arg(long = "split")]
+    pub split: Vec<PathBuf>,
+    #[command(flatten)]
+    pub device: DeviceArgs,
+}
+
+#[derive(Args)]
+pub struct MountCommand {
+    /// The `--mount` build: an APK, APKS, or the base APK of a split folder.
+    pub apk: PathBuf,
+    #[arg(long = "split")]
+    pub split: Vec<PathBuf>,
+    #[command(flatten)]
+    pub device: DeviceArgs,
+}
+
+#[derive(Args)]
+pub struct UnmountCommand {
+    /// The package of the mounted app.
+    pub package: String,
+    #[command(flatten)]
+    pub device: DeviceArgs,
+}
+
+#[derive(Args)]
+pub struct DeviceArgs {
+    /// The serial of the device to use, as `adb devices` lists it; needed
+    /// when more than one is connected.
+    #[arg(long = "device", env = "ANDROID_SERIAL")]
+    pub serial: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -294,16 +348,18 @@ mod tests {
         let prefix = ["reseam", "patch", "app.apk", "--bundle", "patches.reseam"];
         for flags in [
             vec!["--output", "out.apk", "--output-dir", "out"],
-            vec!["--output", "out.apk", "--split", "config.en.apk"],
             vec!["--key", "identity.pk8"],
             vec!["--cert", "identity.der"],
+            vec!["--keystore", "key.p12", "--key", "a.pk8", "--cert", "a.der"],
         ] {
             assert!(Cli::try_parse_from(prefix.into_iter().chain(flags)).is_err());
         }
         for flags in [
             vec!["--output", "out.apk"],
+            vec!["--output", "out.apks", "--split", "config.en.apk"],
             vec!["--output-dir", "out", "--split", "config.en.apk"],
             vec!["--key", "identity.pk8", "--cert", "identity.der"],
+            vec!["--keystore", "key.p12", "--keystore-password", "secret"],
         ] {
             assert!(Cli::try_parse_from(prefix.into_iter().chain(flags)).is_ok());
         }

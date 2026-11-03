@@ -19,7 +19,9 @@ use semver::Version;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use self::index::{Entry, Index, Publisher};
+use reseam_model::{PublishedRelease, Publisher};
+
+use self::index::add;
 use self::publish::{Release, Staged};
 use self::store::Store;
 use crate::app::{ReleaseFilesCommand, ReleaseManagerCommand, ReleasePatchesCommand};
@@ -58,7 +60,7 @@ pub fn run_release_patches(command: &ReleasePatchesCommand) -> Result<()> {
         .or_else(|| {
             previous
                 .as_ref()
-                .and_then(|index| index.homepage().map(str::to_owned))
+                .and_then(|index| index.bundle.homepage.clone())
         })
         .or_else(|| release.forge().map(|forge| forge.page().to_string()));
     let publisher = Publisher {
@@ -69,7 +71,7 @@ pub fn run_release_patches(command: &ReleasePatchesCommand) -> Result<()> {
         public_key: Some(info.public_key),
     };
     let prerelease = is_prerelease(&info.version);
-    let entry = Entry {
+    let entry = PublishedRelease {
         version: info.version.clone(),
         created_at: OffsetDateTime::now_utc().format(&Rfc3339)?,
         description: release.notes.clone(),
@@ -80,7 +82,7 @@ pub fn run_release_patches(command: &ReleasePatchesCommand) -> Result<()> {
         prerelease,
         patches: Some(patches.into_iter().map(|patch| patch.spec).collect()),
     };
-    let staged = Staged::index(PATCHES_INDEX, &Index::add(previous, publisher, entry)?)?;
+    let staged = Staged::index(PATCHES_INDEX, &add(previous, publisher, entry)?)?;
     let body = match &release.store {
         Store::Forge(forge) => format!(
             "[Add to Reseam Manager](https://reseam.app/add/?url={})\n\n{}",
@@ -113,7 +115,7 @@ pub fn run_release_manager(command: &ReleaseManagerCommand) -> Result<()> {
         homepage: None,
         public_key: None,
     };
-    let entry = Entry {
+    let entry = PublishedRelease {
         version,
         created_at: OffsetDateTime::now_utc().format(&Rfc3339)?,
         description: release.notes.clone(),
@@ -122,7 +124,7 @@ pub fn run_release_manager(command: &ReleaseManagerCommand) -> Result<()> {
         patches: None,
     };
     let previous = release.store.previous_index(MANAGER_INDEX)?;
-    let staged = Staged::index(MANAGER_INDEX, &Index::add(previous, publisher, entry)?)?;
+    let staged = Staged::index(MANAGER_INDEX, &add(previous, publisher, entry)?)?;
     let files: Vec<_> = files.iter().map(PathBuf::as_path).collect();
     release.publish(&release.notes, prerelease, &files, Some(&staged.path))
 }

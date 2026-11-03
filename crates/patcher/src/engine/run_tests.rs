@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::context::ExtensionSet;
-use crate::engine::{Delivery, PatchSelection};
+use crate::engine::{Delivery, PatchSelection, PlanOptions};
 use crate::error::PatcherError;
 use crate::patch::{
     ApkVersion, Compatibility, CompatiblePackage, PatchPreset, PatchRef, PatchSpec,
@@ -65,6 +65,7 @@ fn validate(
         code: None,
     };
     let plan = ResolvedPlan::resolve(specs, selection, Delivery::Install, package, version)?;
+    PlanOptions::resolve(specs, selection, &plan, package)?;
     Ok(validate_patches(specs, &plan))
 }
 

@@ -2,112 +2,79 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use anyhow::{Context, Result, ensure};
-use reseam_model::PatchSpec;
-use serde::{Deserialize, Serialize};
+use reseam_model::{PublishedRelease, Publisher, ReleaseIndex};
 
-#[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct Index {
-    bundle: Publisher,
-    releases: Vec<Entry>,
+pub(crate) fn parse(json: &str) -> Result<ReleaseIndex> {
+    serde_json::from_str(json).context("the published index is not a release index")
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct Publisher {
-    pub name: String,
-    pub author: String,
-    pub description: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub homepage: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub public_key: Option<String>,
+pub(crate) fn to_json(index: &ReleaseIndex) -> Result<String> {
+    Ok(serde_json::to_string_pretty(index)? + "\n")
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct Entry {
-    pub version: String,
-    pub created_at: String,
-    pub description: String,
-    pub download_url: String,
-    pub prerelease: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub patches: Option<Vec<PatchSpec>>,
+/// The signer the publisher declares, in lowercase hex.
+pub(crate) fn public_key(index: &ReleaseIndex) -> Option<String> {
+    index
+        .bundle
+        .public_key
+        .as_deref()
+        .map(str::to_ascii_lowercase)
 }
 
-impl Index {
-    pub fn parse(json: &str) -> Result<Self> {
-        serde_json::from_str(json).context("the published index is not a release index")
-    }
+/// The release named `version`; a leading `v` on either name is ignored.
+pub(crate) fn release<'a>(index: &'a ReleaseIndex, version: &str) -> Result<&'a PublishedRelease> {
+    let wanted = unprefixed(version);
+    let mut matching = index
+        .releases
+        .iter()
+        .filter(|release| unprefixed(&release.version) == wanted);
+    let release = matching
+        .next()
+        .with_context(|| format!("the index has no release {wanted}"))?;
+    ensure!(
+        matching.next().is_none(),
+        "the index lists release {wanted} more than once"
+    );
+    Ok(release)
+}
 
-    pub fn homepage(&self) -> Option<&str> {
-        self.bundle.homepage.as_deref()
-    }
-
-    pub fn name(&self) -> &str {
-        &self.bundle.name
-    }
-
-    /// The signer the publisher declares, in lowercase hex.
-    pub fn public_key(&self) -> Option<String> {
-        self.bundle
-            .public_key
-            .as_deref()
-            .map(str::to_ascii_lowercase)
-    }
-
-    /// The release named `version`; a leading `v` on either name is ignored.
-    pub fn release(&self, version: &str) -> Result<&Entry> {
-        let wanted = unprefixed(version);
-        let mut matching = self
-            .releases
-            .iter()
-            .filter(|release| unprefixed(&release.version) == wanted);
-        let release = matching
-            .next()
-            .with_context(|| format!("the index has no release {wanted}"))?;
-        ensure!(
-            matching.next().is_none(),
-            "the index lists release {wanted} more than once"
-        );
-        Ok(release)
-    }
-
-    pub fn add(previous: Option<Self>, publisher: Publisher, entry: Entry) -> Result<Self> {
-        let mut releases = match previous {
-            Some(previous) => {
-                ensure!(
-                    previous.bundle.public_key == publisher.public_key,
-                    "refusing to change the public key of the published index (published {:?}, new {:?})",
-                    previous.bundle.public_key,
-                    publisher.public_key
-                );
-                previous.releases
-            }
-            None => Vec::new(),
-        };
-        releases.retain(|release| release.version != entry.version);
-        releases.insert(0, entry);
-        // Clients read patches only from the newest stable release and the newest prerelease; older
-        // lists would grow the index by the whole catalog on every release.
-        let (mut stable_listed, mut prerelease_listed) = (false, false);
-        for release in &mut releases {
-            let listed = if release.prerelease {
-                &mut prerelease_listed
-            } else {
-                &mut stable_listed
-            };
-            if std::mem::replace(listed, true) {
-                release.patches = None;
-            }
+/// `previous` with `release` added as the newest, published by `publisher`.
+pub(crate) fn add(
+    previous: Option<ReleaseIndex>,
+    publisher: Publisher,
+    release: PublishedRelease,
+) -> Result<ReleaseIndex> {
+    let mut releases = match previous {
+        Some(previous) => {
+            ensure!(
+                previous.bundle.public_key == publisher.public_key,
+                "refusing to change the public key of the published index (published {:?}, new {:?})",
+                previous.bundle.public_key,
+                publisher.public_key
+            );
+            previous.releases
         }
-        Ok(Self {
-            bundle: publisher,
-            releases,
-        })
+        None => Vec::new(),
+    };
+    releases.retain(|existing| existing.version != release.version);
+    releases.insert(0, release);
+    // Clients read patches only from the newest stable release and the newest prerelease; older
+    // lists would grow the index by the whole catalog on every release.
+    let (mut stable_listed, mut prerelease_listed) = (false, false);
+    for release in &mut releases {
+        let listed = if release.prerelease {
+            &mut prerelease_listed
+        } else {
+            &mut stable_listed
+        };
+        if std::mem::replace(listed, true) {
+            release.patches = None;
+        }
     }
-
-    pub fn to_json(&self) -> Result<String> {
-        Ok(serde_json::to_string_pretty(self)? + "\n")
-    }
+    Ok(ReleaseIndex {
+        bundle: publisher,
+        releases,
+    })
 }
 
 /// A version without the `v` that tags often carry.
@@ -129,8 +96,8 @@ mod tests {
         }
     }
 
-    fn entry(version: &str, prerelease: bool) -> Entry {
-        Entry {
+    fn entry(version: &str, prerelease: bool) -> PublishedRelease {
+        PublishedRelease {
             version: version.into(),
             created_at: "2026-10-01T00:00:00Z".into(),
             description: version.into(),
@@ -150,7 +117,7 @@ mod tests {
             ("1.2.0-beta", true),
             ("1.1.0", false),
         ] {
-            index = Some(Index::add(index, publisher("00"), entry(version, prerelease)).unwrap());
+            index = Some(add(index, publisher("00"), entry(version, prerelease)).unwrap());
         }
 
         let index = index.unwrap();
@@ -172,7 +139,7 @@ mod tests {
 
     #[test]
     fn a_new_key_cannot_take_over_a_published_index() {
-        let index = Index::add(None, publisher("00"), entry("1.0.0", false)).unwrap();
-        assert!(Index::add(Some(index), publisher("11"), entry("1.1.0", false)).is_err());
+        let index = add(None, publisher("00"), entry("1.0.0", false)).unwrap();
+        assert!(add(Some(index), publisher("11"), entry("1.1.0", false)).is_err());
     }
 }

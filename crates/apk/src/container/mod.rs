@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+mod archive;
 mod metadata;
 
 use std::fs::File;
@@ -23,9 +24,10 @@ use reseam_storage::ScratchDir;
 const INFO_JSON: &str = "info.json";
 const MANIFEST_JSON: &str = "manifest.json";
 
+pub use archive::write_split_archive;
 pub use reseam_model::ContainerFormat;
 
-/// Opens an APKM or XAPK container as a session over the APKs it holds,
+/// Opens an APKM, XAPK or APKS container as a session over the APKs it holds,
 /// extracted under their entry names into a scratch directory the session
 /// removes when dropped. `None` when `path` is not a container.
 #[instrument(level = "info", skip_all, fields(path = %path.display()))]
@@ -38,11 +40,11 @@ pub fn open_container(
         return Ok(None);
     };
     let apk_entries = apk_entries(&archive)?;
-    let metadata_name = match format {
-        ContainerFormat::Apkm => INFO_JSON,
-        ContainerFormat::Xapk => MANIFEST_JSON,
+    let metadata = match format {
+        ContainerFormat::Apkm => read_metadata(&mut archive, INFO_JSON)?,
+        ContainerFormat::Xapk => read_metadata(&mut archive, MANIFEST_JSON)?,
+        ContainerFormat::Apks => None,
     };
-    let metadata = read_metadata(&mut archive, metadata_name)?;
     if metadata
         .as_ref()
         .is_some_and(|info| !info.expansions.is_empty())
@@ -101,8 +103,7 @@ fn apk_entries(archive: &Archive) -> Result<Vec<String>> {
             ));
         }
         if extension.is_some_and(|ext| ext.eq_ignore_ascii_case("apk")) {
-            // Only a single portable filename may be joined to the scratch path.
-            if name.contains(['/', '\\', ':']) {
+            if !is_entry_name(name) {
                 return Err(invalid(
                     "container",
                     format!("unexpected APK entries inside folders or invalid filename: {name}"),
@@ -118,10 +119,17 @@ fn apk_entries(archive: &Archive) -> Result<Vec<String>> {
     Ok(entries)
 }
 
+/// Whether `name` can name an APK in a container: a single portable file
+/// name, which extraction joins to its scratch directory.
+fn is_entry_name(name: &str) -> bool {
+    !name.contains(['/', '\\', ':'])
+}
+
 fn extension_format(path: &Path) -> Option<ContainerFormat> {
     match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
         "apkm" => Some(ContainerFormat::Apkm),
         "xapk" => Some(ContainerFormat::Xapk),
+        "apks" => Some(ContainerFormat::Apks),
         _ => None,
     }
 }

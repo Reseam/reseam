@@ -57,10 +57,18 @@ fn run_patches(delivery: Delivery, patches: &[&Patch], runs: &Arc<Mutex<Vec<Stri
     )
     .unwrap();
     let mut reverted = Vec::new();
+    let options = PlanOptions::resolve(
+        &specs,
+        &PatchSelection::default(),
+        &plan,
+        Some("com.example"),
+    )
+    .unwrap();
     let results = apply_patches(
         &mut PatchContext::new(&mut apk, ExtensionSet::app_runtime()),
         &specs,
         plan,
+        &options,
         patches,
         Trace::Off,
         |event| {

@@ -4,7 +4,7 @@
 use std::path::Path;
 
 use reseam_apk::{ContainerFormat, ScratchDir};
-use reseam_model::{PatchArtifact, PatchOutput, Problem, SigningKeyFiles};
+use reseam_model::{PatchArtifact, PatchOutput, Problem, SigningIdentity};
 
 use super::{apk, apk_metadata, publish};
 use crate::apk::OpenedApk;
@@ -72,6 +72,9 @@ fn containers_and_plain_apks_use_the_same_output_pipeline() {
                             .unwrap();
                     assert_eq!(metadata.component_count, 2);
                 }
+                PatchArtifact::SplitArchive { .. } => {
+                    unreachable!("automatic output is a file or a folder")
+                }
             }
         }
     }
@@ -89,6 +92,33 @@ fn containers_and_plain_apks_use_the_same_output_pipeline() {
     .unwrap();
     publish(opened.apk, &output, None).unwrap();
     assert!(destination.join("plain.apk").is_file());
+}
+
+#[test]
+fn split_archive_output_opens_again_as_the_same_split_app() {
+    let tmp = ScratchDir::new("sdk-split-archive").unwrap();
+    let input = tmp.path().join("input.apkm");
+    std::fs::write(
+        &input,
+        zip(&[
+            ("base.apk", apk("").as_slice()),
+            ("config.en.apk", apk(r#"split="config.en""#).as_slice()),
+        ]),
+    )
+    .unwrap();
+    let destination = tmp.path().join("patched.apks");
+    let opened = OpenedApk::open(&input, &[]).unwrap();
+    let output = resolve_output(
+        &PatchOutput::SplitArchive {
+            path: destination.display().to_string(),
+        },
+        opened.apk.components().len(),
+    )
+    .unwrap();
+    publish(opened.apk, &output, None).unwrap();
+    let metadata = apk_metadata(&destination, &[]).unwrap();
+    assert_eq!(metadata.bundle_kind, Some(ContainerFormat::Apks));
+    assert_eq!(metadata.split_names, vec!["config.en".to_owned()]);
 }
 
 #[test]
@@ -171,7 +201,7 @@ fn invalid_artifact_targets_preserve_outputs_and_signing_identity() {
         let output = PatchArtifact::SingleFile {
             path: destination.display().to_string(),
         };
-        let signing = SigningKeyFiles {
+        let signing = SigningIdentity::Files {
             key: alias.display().to_string(),
             cert: cert.display().to_string(),
         };
