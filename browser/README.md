@@ -60,7 +60,7 @@ Requests and results are the SDK models in `src/models.ts`, generated from `crat
 
 ```ts
 const tools = await EngineTools.load(runtimeBase);
-const plan = tools.plan({ patches, target, selection, install_method: 'install' });
+const plan = tools.plan({ patches, app, selection, install_method: 'install' });
 ```
 
 Inputs stay browser `File`s. Scratch files are deleted once no name or descriptor refers to them, and a later session reclaims a crashed tab's storage after taking its Web Lock.
