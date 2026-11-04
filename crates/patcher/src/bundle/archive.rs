@@ -3,7 +3,6 @@
 
 use std::collections::HashSet;
 use std::fs::File;
-use std::io::Read;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -12,11 +11,10 @@ use reseam_storage::ScratchDir;
 use tracing::info;
 use zip::ZipArchive;
 
-use reseam_storage::copy_hashed;
-
-use super::manifest::{BundleManifest, ManifestHeader};
-use super::payload::{PayloadKind, payload_kind};
-use super::{BUNDLE_MIMETYPE, BundleInfo, CONTROL_ENTRIES, PatchBundle};
+use super::container::{self, MANIFEST_LIMIT, read_entry};
+use super::manifest::BundleManifest;
+use super::payload::{PayloadKind, copy_payload};
+use super::{BundleInfo, PatchBundle};
 use crate::error::{BundleError, Result};
 use crate::patch::PatchSpec;
 
@@ -30,17 +28,8 @@ pub struct BundleArchive {
 
 impl BundleArchive {
     pub fn open(path: &Path) -> Result<Self> {
-        let archive_error = |source| BundleError::Archive {
-            path: path.to_owned(),
-            source,
-        };
-        let mut archive = ZipArchive::new(File::open(path)?).map_err(archive_error)?;
-        if read_entry(&mut archive, "mimetype", BUNDLE_MIMETYPE.len() as u64)?
-            != BUNDLE_MIMETYPE.as_bytes()
-        {
-            return Err(BundleError::Mimetype.into());
-        }
-        let manifest_bytes = read_entry(&mut archive, "manifest.toml", 16 * 1024 * 1024)?;
+        let mut archive = container::open(path)?;
+        let manifest_bytes = read_entry(&mut archive, "manifest.toml", MANIFEST_LIMIT)?;
         let public_key: [u8; 32] = read_entry(&mut archive, "manifest.pubkey", 32)?
             .try_into()
             .map_err(|_| BundleError::Signature("manifest.pubkey must be 32 bytes"))?;
@@ -50,18 +39,9 @@ impl BundleArchive {
             .map_err(|_| BundleError::Signature("invalid Ed25519 public key"))?
             .verify(&manifest_bytes, &signature)
             .map_err(|_| BundleError::Signature("verification failed"))?;
-
-        let manifest_text =
-            std::str::from_utf8(&manifest_bytes).map_err(|_| BundleError::ManifestEncoding)?;
-        // Catalog schemas can differ between engine lines, so report compatibility first.
-        let header: ManifestHeader = toml::from_str(manifest_text)?;
-        header.bundle.check()?;
-        header.bundle.check_engine()?;
-        let manifest: BundleManifest = toml::from_str(manifest_text)?;
-        manifest.check_patches()?;
         Ok(Self {
             archive,
-            manifest,
+            manifest: BundleManifest::parse(&manifest_bytes)?,
             public_key,
         })
     }
@@ -99,51 +79,29 @@ impl BundleArchive {
     pub fn load(mut self, patches: &HashSet<String>) -> Result<PatchBundle> {
         info!(bundle = %self.manifest.bundle.name, "loading bundle");
         let extracted = Arc::new(ScratchDir::new("bundle")?);
-        let mut jars = Vec::new();
-        let mut extension_dex = Vec::new();
-        let mut remaining = std::mem::take(&mut self.manifest.files);
-        for index in 0..self.archive.len() {
-            let mut entry = self.archive.by_index(index)?;
-            let name = entry.name().to_string();
-            if entry.is_dir() || CONTROL_ENTRIES.contains(&name.as_str()) {
-                continue;
-            }
-            let expected = remaining
-                .remove(&name)
-                .ok_or_else(|| BundleError::UndeclaredPayload(name.clone()))?;
-            let expected: [u8; 32] = hex::decode(expected)
-                .ok()
-                .and_then(|hash| hash.try_into().ok())
-                .ok_or_else(|| BundleError::PayloadHash(name.clone()))?;
-            let kind = payload_kind(&name)?;
-            let out = extracted.path().join(&name);
+        let entries = copy_payload(&mut self.archive, &self.manifest.files, |name, _| {
+            let out = extracted.path().join(name);
             if let Some(parent) = out.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            let mut file = File::create(&out)?;
-            let hash =
-                copy_hashed(&mut entry, &mut file).map_err(|source| BundleError::Payload {
-                    name: name.clone(),
-                    source,
-                })?;
-            if hash != expected {
-                return Err(BundleError::HashMismatch(name).into());
-            }
+            Ok(File::create(out)?)
+        })?;
+        let mut jars = Vec::new();
+        let mut extension_dex = Vec::new();
+        for (name, kind) in entries {
+            let path = extracted.path().join(name);
             // ART refuses to load writable code on Android 14 and later.
             #[cfg(target_os = "android")]
             if kind != PayloadKind::Resource {
-                let mut permissions = file.metadata()?.permissions();
+                let mut permissions = std::fs::metadata(&path)?.permissions();
                 permissions.set_readonly(true);
-                file.set_permissions(permissions)?;
+                std::fs::set_permissions(&path, permissions)?;
             }
             match kind {
-                PayloadKind::Jar => jars.push(out),
-                PayloadKind::Dex => extension_dex.push(out),
+                PayloadKind::Jar => jars.push(path),
+                PayloadKind::Dex => extension_dex.push(path),
                 PayloadKind::Resource => {}
             }
-        }
-        if !remaining.is_empty() {
-            return Err(BundleError::MissingPayload.into());
         }
         jars.sort();
         extension_dex.sort();
@@ -193,17 +151,4 @@ impl BundleArchive {
             _extracted: extracted,
         })
     }
-}
-
-/// A control entry, which must not exceed `limit` bytes.
-fn read_entry(archive: &mut ZipArchive<File>, name: &'static str, limit: u64) -> Result<Vec<u8>> {
-    let mut entry = archive
-        .by_name(name)
-        .map_err(|source| BundleError::MissingEntry { name, source })?;
-    let mut buf = Vec::new();
-    entry.by_ref().take(limit + 1).read_to_end(&mut buf)?;
-    if entry.size() > limit || buf.len() as u64 > limit {
-        return Err(BundleError::EntryTooLarge { name, limit }.into());
-    }
-    Ok(buf)
 }

@@ -81,7 +81,13 @@ pub fn write_bundle_reseam() -> TestBundle {
     .unwrap();
     let key = tmp.path().join("bundle-signing.key");
     fs::write(&key, TEST_SIGNING_SEED).unwrap();
-    pack(tmp.path(), None, &BundleKey::read(&key).unwrap(), &out_path).unwrap();
+    pack(
+        tmp.path(),
+        None,
+        Some(&BundleKey::read(&key).unwrap()),
+        &out_path,
+    )
+    .unwrap();
 
     TestBundle {
         _dir: tmp,

@@ -17,8 +17,9 @@ use clap::Parser;
 use crate::app::{BundleCommands, Cli, Commands, ReleaseCommands};
 use crate::commands::{
     run_bundle_fetch, run_bundle_init, run_bundle_keygen, run_bundle_list, run_bundle_manifest,
-    run_bundle_pack, run_bundle_pubkey, run_info, run_install, run_mount, run_patch, run_perf,
-    run_perf_worker, run_release_files, run_release_manager, run_release_patches, run_unmount,
+    run_bundle_pack, run_bundle_pubkey, run_bundle_sign, run_info, run_install, run_mount,
+    run_patch, run_perf, run_perf_worker, run_release_files, run_release_manager,
+    run_release_patches, run_unmount,
 };
 use crate::logging::init_logging;
 
@@ -39,6 +40,7 @@ fn main() -> Result<()> {
             BundleCommands::Keygen(command) => run_bundle_keygen(&command),
             BundleCommands::Pubkey(command) => run_bundle_pubkey(&command),
             BundleCommands::Pack(command) => run_bundle_pack(&command),
+            BundleCommands::Sign(command) => run_bundle_sign(&command),
             BundleCommands::Manifest(command) => run_bundle_manifest(&command),
             BundleCommands::List(command) => run_bundle_list(&command),
             BundleCommands::Fetch(command) => run_bundle_fetch(&command),

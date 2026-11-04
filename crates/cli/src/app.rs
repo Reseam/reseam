@@ -174,7 +174,10 @@ pub enum BundleCommands {
     Keygen(BundleKeygenCommand),
     /// Print the public key of a signing key made by `keygen`.
     Pubkey(BundlePubkeyCommand),
+    /// Pack a staged bundle, signed with --key or unsigned for `bundle sign`.
     Pack(BundlePackCommand),
+    /// Sign an unsigned bundle without running any of its code.
+    Sign(BundleSignCommand),
     /// Validate a staging manifest and print its bundle metadata as JSON.
     Manifest(BundleManifestCommand),
     List(BundleListCommand),
@@ -211,6 +214,18 @@ pub struct BundlePackCommand {
     /// The release this bundle is; omit it for development builds.
     #[arg(long)]
     pub version: Option<String>,
+    /// The signing key made by `keygen`; without it the bundle stays unsigned.
+    #[arg(long)]
+    pub key: Option<PathBuf>,
+    #[arg(long)]
+    pub out: PathBuf,
+}
+
+#[derive(Args)]
+pub struct BundleSignCommand {
+    /// A bundle packed without a key.
+    pub bundle: PathBuf,
+    /// The signing key made by `keygen`.
     #[arg(long)]
     pub key: PathBuf,
     #[arg(long)]

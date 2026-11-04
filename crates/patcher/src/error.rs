@@ -184,6 +184,8 @@ pub enum BundleError {
     HashMismatch(String),
     #[error("manifest declares files missing from the archive")]
     MissingPayload,
+    #[error("{} is already signed", .0.display())]
+    AlreadySigned(PathBuf),
     #[error("{name} is not a valid jar: {source}")]
     Jar {
         name: String,

@@ -44,6 +44,18 @@ reseam release patches build/reseam/my-patches.reseam --tag v0.1.0 \
 
 It reads the `patches.json` already in the target, adds the release, and writes the bundle to `<target>/v0.1.0/` and the index to `<target>/patches.json`. Upload the folder as it is: each release keeps its own folder and URL. `--keep 3` keeps only the three newest releases. See [`reseam release`](/docs/cli/release/) for S3 and every flag.
 
+## Sign apart from the build
+
+Packing runs your bundle's code, and signing needs your key. When someone else's code builds on your machines, as in a shared release pipeline, keep the two apart so the key is never on the machine that runs the code:
+
+```bash
+./gradlew unsignedBundle -PreleaseTag=v0.1.0
+reseam bundle sign build/reseam/unsigned/my-patches.reseam \
+  --key ~/.reseam/bundle-signing.key --out my-patches.reseam
+```
+
+Run the first command where the code builds, without the key, and the second where the key is. [`reseam bundle sign`](/docs/cli/bundle/#reseam-bundle-sign) runs none of the bundle's code, and it checks the bundle as loading one does before it signs.
+
 ## Share your bundle
 
 Share this link, with the address of your repository or of your `patches.json` encoded into it:

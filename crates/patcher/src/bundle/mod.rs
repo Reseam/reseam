@@ -7,6 +7,7 @@
 //! intact and signed by the key it carries.
 
 mod archive;
+mod container;
 #[cfg(feature = "bridge")]
 pub(crate) mod declarations;
 #[cfg(feature = "kotlin")]
@@ -16,6 +17,7 @@ mod key;
 pub(crate) mod manifest;
 mod pack;
 mod payload;
+mod sign;
 mod stage;
 
 use std::path::PathBuf;
@@ -28,6 +30,7 @@ pub use archive::BundleArchive;
 pub use key::BundleKey;
 pub use manifest::{BundleInfo, manifest_info, write_manifest_info};
 pub use pack::pack;
+pub use sign::sign;
 
 pub const BUNDLE_MIMETYPE: &str = "application/vnd.reseam.bundle";
 pub const BUNDLE_FORMAT_VERSION: u32 = 1;

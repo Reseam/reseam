@@ -17,7 +17,7 @@ use crate::app::TrustArgs;
 
 pub use bundle::{
     run_bundle_fetch, run_bundle_init, run_bundle_keygen, run_bundle_list, run_bundle_manifest,
-    run_bundle_pack, run_bundle_pubkey,
+    run_bundle_pack, run_bundle_pubkey, run_bundle_sign,
 };
 pub use device::{run_install, run_mount, run_unmount};
 pub use info::run_info;

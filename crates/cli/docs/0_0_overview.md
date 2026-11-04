@@ -11,7 +11,7 @@ description: What the reseam command does, and who it is for.
 |---|---|
 | [`reseam patch`](2_0_patch.md) | Applies patches from bundles to an APK and signs the result. |
 | [`reseam perf`](2_5_perf.md) | Patches several times and reports how long each step took and how much memory it used. |
-| [`reseam bundle`](3_0_bundle.md) | Starts bundles from the template, creates signing keys, packs bundles, lists what is in them, and fetches published releases. |
+| [`reseam bundle`](3_0_bundle.md) | Starts bundles from the template, creates signing keys, packs and signs bundles, lists what is in them, and fetches published releases. |
 | [`reseam release`](4_0_release.md) | Publishes a release to a GitHub or Forgejo release, an S3 bucket, or a folder. |
 | [`reseam info`](5_0_info.md) | Prints an app's package, version, and DEX, class, and method counts. |
 | [`reseam install`, `mount`, `unmount`](6_0_device.md) | Installs a patched app on a phone over adb, or mounts it over the installed app on a rooted phone. |

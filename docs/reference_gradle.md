@@ -79,6 +79,7 @@ A patch module uses a settings module with the usual `api(project(":settings"))`
 | Task | Description |
 |---|---|
 | `bundle` | Builds, packs, and signs the bundle into `build/reseam/<name>.reseam`. Packing loads every patch once to record its metadata, so a patch that fails to load fails the build. |
+| `unsignedBundle` | Builds and packs the bundle without a key into `build/reseam/unsigned/<name>.reseam`, for [`reseam bundle sign`](/docs/cli/bundle/#reseam-bundle-sign) to sign on another machine. |
 | `typecheck-<app>` | Type checks an app folder's JavaScript extensions, for a folder with a `package.json`. `bundle` runs it. |
 
 ## Properties
@@ -88,7 +89,7 @@ The build reads these from environment variables or Gradle properties.
 | Environment | Gradle property | Description |
 |---|---|---|
 | `RESEAM_BIN` | `reseam.bin` | The `reseam` CLI. Otherwise, the one in the engine checkout `RESEAM_WORKSPACE` names, then `reseam` on your `PATH`. |
-| `RESEAM_BUNDLE_KEY` | `reseam.signingKey` | The signing key. Defaults to `~/.reseam/bundle-signing.key`. |
+| `RESEAM_BUNDLE_KEY` | `reseam.signingKey` | The signing key `bundle` signs with. Defaults to `~/.reseam/bundle-signing.key`. |
 | `RESEAM_RELEASE_VERSION` | `releaseTag` | The version recorded in the bundle. `releaseTag` may start with `v`, which is dropped. |
 | `RESEAM_WORKSPACE` | `reseam.workspace` | A local engine checkout to build against instead of the published plugin. Only for working on the engine. |
 | `ANDROID_HOME` or `ANDROID_SDK_ROOT` | | The Android SDK. Extensions compile against the newest `platforms/android-*/android.jar` in it. |

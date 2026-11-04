@@ -99,11 +99,23 @@ pub(super) struct BundleManifest {
 
 /// The part of a manifest every engine line reads the same way.
 #[derive(Serialize, Deserialize)]
-pub(super) struct ManifestHeader {
-    pub(super) bundle: BundleInfo,
+struct ManifestHeader {
+    bundle: BundleInfo,
 }
 
 impl BundleManifest {
+    /// Reads a packed manifest and checks it. Compatibility comes first, since
+    /// catalog schemas can differ between engine lines.
+    pub(super) fn parse(bytes: &[u8]) -> Result<Self> {
+        let text = std::str::from_utf8(bytes).map_err(|_| BundleError::ManifestEncoding)?;
+        let header: ManifestHeader = toml::from_str(text)?;
+        header.bundle.check()?;
+        header.bundle.check_engine()?;
+        let manifest: Self = toml::from_str(text)?;
+        manifest.check_patches()?;
+        Ok(manifest)
+    }
+
     pub(super) fn check_patches(&self) -> Result<()> {
         if let Some(patch) = self.patches.iter().find(|patch| {
             patch.reference().bundle != self.bundle.name || patch.reference().id.is_empty()

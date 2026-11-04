@@ -1,6 +1,6 @@
 ---
 title: Bundle
-description: Start a bundle from the template, create signing keys, pack bundles, list what is inside one, and fetch published releases.
+description: Start a bundle from the template, create signing keys, pack and sign bundles, list what is inside one, and fetch published releases.
 ---
 
 # `reseam bundle`
@@ -84,7 +84,17 @@ Packs and signs a staging folder into a `.reseam` file. The Gradle build creates
 
 `--version <version>` records the release in the signed manifest, where [`reseam release patches`](/docs/cli/release/) and the app's settings screen read it. Leave it out for development builds.
 
-Packing loads the patches once to record their metadata, so it needs Java.
+Without `--key`, the bundle is packed unsigned. Nothing loads an unsigned bundle until [`reseam bundle sign`](#reseam-bundle-sign) signs it.
+
+Packing loads the patches once to record their metadata, so it needs Java, and it runs the bundle's code.
+
+## `reseam bundle sign`
+
+```bash
+reseam bundle sign build/reseam/unsigned/my-patches.reseam --key ~/.reseam/bundle-signing.key --out my-patches.reseam
+```
+
+Signs a bundle that `pack` made without `--key`. Signing runs none of the bundle's code, so you can pack on one machine and sign on another that holds the key. It checks the manifest as loading a bundle does, and every file against its hash, and refuses a bundle that is already signed.
 
 ## `reseam bundle manifest`
 

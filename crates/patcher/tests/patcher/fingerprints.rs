@@ -54,7 +54,13 @@ fn fingerprints(extensions: &[(&str, Vec<u8>)]) -> BTreeMap<String, String> {
     let key = dir.path().join("bundle-signing.key");
     fs::write(&key, TEST_SIGNING_SEED).unwrap();
     let out = dir.path().join("fingerprints.reseam");
-    pack(dir.path(), None, &BundleKey::read(&key).unwrap(), &out).unwrap();
+    pack(
+        dir.path(),
+        None,
+        Some(&BundleKey::read(&key).unwrap()),
+        &out,
+    )
+    .unwrap();
     let archive = BundleArchive::open(&out).unwrap();
     archive
         .patches()

@@ -3,27 +3,26 @@
 
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use reseam_storage::{ScratchDir, copy_hashed};
-use zip::write::SimpleFileOptions;
-use zip::{CompressionMethod, ZipWriter};
 
+use super::container;
 use super::manifest::BundleManifest;
 use super::stage::{Staged, stage};
-use super::{BUNDLE_MIMETYPE, BundleInfo, BundleKey, ENGINE_VERSION, manifest_info};
+use super::{BundleInfo, BundleKey, ENGINE_VERSION, manifest_info};
 use crate::error::{BundleError, Result};
 use crate::patch::PatchSpec;
 
 /// Packs `dir/manifest.toml`, adjacent `.jar`/`.dex` files, and `resources/` into a
-/// signed bundle at `out`. Jars must carry both JVM classes and `classes.dex`
-/// so the same bundle runs on the desktop JVM and on ART.
+/// bundle at `out`, signed with `key`, or unsigned without one for [`super::sign`]
+/// to sign elsewhere. Jars must carry both JVM classes and `classes.dex` so the
+/// same bundle runs on the desktop JVM and on ART.
 /// Initializes the author's patch declarations to include their static metadata
-/// in the signed manifest. Packing therefore requires trusted source code.
+/// in the manifest. Packing therefore runs the author's code.
 /// `version` names the release; development builds pass `None`.
-pub fn pack(dir: &Path, version: Option<&str>, key: &BundleKey, out: &Path) -> Result<()> {
+pub fn pack(dir: &Path, version: Option<&str>, key: Option<&BundleKey>, out: &Path) -> Result<()> {
     if version.is_some_and(|version| version.trim().is_empty()) {
         return Err(BundleError::EmptyVersion.into());
     }
@@ -101,43 +100,25 @@ fn catalog(
     }
 }
 
-/// Writes the signed bundle next to `out`, then moves it into place.
+/// Writes the bundle, copying each staged payload file unless it changed since staging.
 fn write(
     manifest: &[u8],
     payload: &BTreeMap<String, Staged>,
-    key: &BundleKey,
+    key: Option<&BundleKey>,
     out: &Path,
 ) -> Result<()> {
-    let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
-    let deflated = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-    let parent = out
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
-    let mut zip = ZipWriter::new(temporary.as_file_mut());
-    for (name, options, bytes) in [
-        ("mimetype", stored, BUNDLE_MIMETYPE.as_bytes()),
-        ("manifest.toml", deflated, manifest),
-        ("manifest.pubkey", stored, key.public_key().as_slice()),
-        ("manifest.sig", stored, key.sign(manifest).as_slice()),
-    ] {
-        zip.start_file(name, options)?;
-        zip.write_all(bytes)?;
-    }
-    for (name, staged) in payload {
-        let payload_error = |source| BundleError::Payload {
-            name: name.clone(),
-            source,
-        };
-        let mut file = File::open(&staged.path).map_err(payload_error)?;
-        zip.start_file(name, deflated)?;
-        if copy_hashed(&mut file, &mut zip).map_err(payload_error)? != staged.hash {
-            return Err(BundleError::PayloadChanged(name.clone()).into());
+    container::write(out, manifest, key, |zip| {
+        for (name, staged) in payload {
+            let payload_error = |source| BundleError::Payload {
+                name: name.clone(),
+                source,
+            };
+            let mut file = File::open(&staged.path).map_err(payload_error)?;
+            zip.start_file(name, container::deflated())?;
+            if copy_hashed(&mut file, zip).map_err(payload_error)? != staged.hash {
+                return Err(BundleError::PayloadChanged(name.clone()).into());
+            }
         }
-    }
-    zip.finish()?;
-    temporary.as_file().sync_all()?;
-    temporary.persist(out).map_err(|error| error.error)?;
-    Ok(())
+        Ok(())
+    })
 }

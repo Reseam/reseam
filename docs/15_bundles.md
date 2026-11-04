@@ -119,7 +119,7 @@ A ZIP archive with:
 
 - `mimetype`: marks the file as a Reseam bundle.
 - `manifest.toml`: your bundle's name, author, and description, the engine version it was built with, every patch's metadata and fingerprint, and a SHA-256 hash of every other file.
-- `manifest.pubkey` and `manifest.sig`: your public key, and its signature over the manifest.
+- `manifest.pubkey` and `manifest.sig`: your public key, and its signature over the manifest. A bundle packed with `unsignedBundle` has neither until it is signed.
 - The patch jars, the extension and settings DEX files, and `resources/`.
 
 Changing any file breaks the signature or a hash, and the bundle won't load. Your sources and build scripts aren't included.

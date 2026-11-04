@@ -8,7 +8,7 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 use reseam_model::{Compatibility, InspectRequest, PatchMetadata, PatchRef};
-use reseam_sdk::authoring::{BundleKey, manifest_info, pack};
+use reseam_sdk::authoring::{BundleKey, manifest_info, pack, sign};
 use reseam_sdk::inspect;
 use tracing::info;
 
@@ -17,7 +17,7 @@ pub use self::init::run_bundle_init;
 use super::create_parent;
 use crate::app::{
     BundleKeygenCommand, BundleListCommand, BundleManifestCommand, BundlePackCommand,
-    BundlePubkeyCommand,
+    BundlePubkeyCommand, BundleSignCommand,
 };
 
 pub fn run_bundle_list(command: &BundleListCommand) -> Result<()> {
@@ -174,10 +174,27 @@ pub fn run_bundle_pubkey(command: &BundlePubkeyCommand) -> Result<()> {
 }
 
 pub fn run_bundle_pack(command: &BundlePackCommand) -> Result<()> {
+    let key = command.key.as_deref().map(BundleKey::read).transpose()?;
+    create_parent(&command.out)?;
+    pack(
+        &command.dir,
+        command.version.as_deref(),
+        key.as_ref(),
+        &command.out,
+    )?;
+    if key.is_some() {
+        info!(out = %command.out.display(), "bundle packed and signed");
+    } else {
+        info!(out = %command.out.display(), "bundle packed unsigned");
+    }
+    Ok(())
+}
+
+pub fn run_bundle_sign(command: &BundleSignCommand) -> Result<()> {
     let key = BundleKey::read(&command.key)?;
     create_parent(&command.out)?;
-    pack(&command.dir, command.version.as_deref(), &key, &command.out)?;
-    info!(out = %command.out.display(), "bundle packed and signed");
+    sign(&command.bundle, &key, &command.out)?;
+    info!(out = %command.out.display(), "bundle signed");
     Ok(())
 }
 
