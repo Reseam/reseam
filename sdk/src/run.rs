@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use reseam_dex::{LinkPolicy, MetadataPolicy, WriteOptions};
 use reseam_model::{
@@ -85,6 +85,12 @@ fn execute(
         identity.version(),
     )?;
     let options = PlanOptions::resolve(&specs, &request.selection, &plan, package)?;
+    let disabled: HashSet<PatchRef> = specs
+        .iter()
+        .enumerate()
+        .filter(|&(idx, _)| plan.is_disabled(idx))
+        .map(|(_, spec)| spec.reference())
+        .collect();
     let fingerprints: HashMap<PatchRef, String> = archives
         .iter()
         .flat_map(TrustedArchive::fingerprints)
@@ -104,7 +110,7 @@ fn execute(
         if !request.leave_out_failed {
             ensure_none_failed(&results)?;
         }
-        let record = record(request, identity, &results, &fingerprints);
+        let record = record(request, identity, &results, &disabled, &fingerprints);
         return Ok((results, output, record));
     }
 
@@ -138,16 +144,18 @@ fn execute(
     }
     staged.sign_and_publish(progress)?;
     let results = applied.into_results();
-    let record = record(request, identity, &results, &fingerprints);
+    let record = record(request, identity, &results, &disabled, &fingerprints);
     Ok((results, output, record))
 }
 
 /// What the run of `request` on `app` built: its selection and install
-/// method, and the fingerprint of each patch in `results`.
+/// method, and the fingerprint of each patch in `results` the run took up.
+/// Patches the selection turns off are reported, but were never taken up.
 fn record(
     request: &PatchRequest,
     app: AppIdentity,
     results: &[PatchResult],
+    disabled: &HashSet<PatchRef>,
     fingerprints: &HashMap<PatchRef, String>,
 ) -> BuildRecord {
     BuildRecord {
@@ -156,6 +164,7 @@ fn record(
         install_method: request.install_method,
         patches: results
             .iter()
+            .filter(|result| !disabled.contains(&result.patch))
             .map(|result| RecordedPatch {
                 patch: result.patch.clone(),
                 fingerprint: fingerprints[&result.patch].clone(),

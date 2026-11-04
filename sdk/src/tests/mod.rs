@@ -11,9 +11,12 @@ mod plan;
 mod signing;
 mod template;
 
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
+use ed25519_dalek::{Signer, SigningKey};
 use reseam_apk::ApkFile;
+use reseam_fixtures::zip;
 use reseam_model::{
     ApkMetadata, Compatibility, CompatiblePackage, PatchArtifact, PatchMetadata, PatchPhase,
     PatchRef, PatchSpec, SigningIdentity,
@@ -29,6 +32,52 @@ pub(super) fn apk(split: &str) -> Vec<u8> {
         r#"<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.test" android:versionCode="1" {split}><application android:label="Example" /></manifest>"#
     ), None).unwrap();
     reseam_fixtures::apk(&manifest, &[])
+}
+
+/// The manifest of bundle `example`: `patches` holds its `[[patches]]` tables,
+/// `fingerprints` their fingerprints by id.
+pub(super) fn catalog_manifest(fingerprints: &[(&str, &str)], patches: &str) -> String {
+    let fingerprints = fingerprints
+        .iter()
+        .fold(String::new(), |mut toml, (id, fingerprint)| {
+            writeln!(toml, "\"{id}\" = \"{fingerprint}\"").unwrap();
+            toml
+        });
+    format!(
+        r#"
+[bundle]
+name = "example"
+format_version = 1
+engine = "{}"
+
+[files]
+"patches.jar" = "{}"
+
+[fingerprints]
+{fingerprints}{patches}"#,
+        reseam_patcher::bundle::ENGINE_VERSION,
+        "00".repeat(32),
+    )
+}
+
+/// Writes a bundle holding `manifest` to `path`, with `key`'s signature over
+/// `signed`.
+pub(super) fn write_catalog(path: &Path, manifest: &str, signed: &str, key: &SigningKey) {
+    std::fs::write(
+        path,
+        zip(&[
+            (
+                "mimetype",
+                reseam_patcher::bundle::BUNDLE_MIMETYPE.as_bytes(),
+            ),
+            ("manifest.toml", manifest.as_bytes()),
+            ("manifest.pubkey", &key.verifying_key().to_bytes()),
+            ("manifest.sig", &key.sign(signed.as_bytes()).to_bytes()),
+            // This payload cannot be loaded, regardless of the client's trust.
+            ("patches.jar", b"not executable code"),
+        ]),
+    )
+    .unwrap();
 }
 
 pub(super) fn apk_metadata(path: &Path, splits: &[PathBuf]) -> crate::error::Result<ApkMetadata> {

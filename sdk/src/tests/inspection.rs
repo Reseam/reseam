@@ -3,33 +3,22 @@
 
 use std::path::Path;
 
-use ed25519_dalek::{Signer, SigningKey};
+use ed25519_dalek::SigningKey;
 use reseam_apk::ScratchDir;
 use reseam_model::{
     InspectRequest, InstallMethod, PatchOutput, PatchPreset, PatchRequest, PatchSelection, Problem,
     Trust,
 };
 
-use super::apk;
+use super::{apk, catalog_manifest, write_catalog};
 use crate::bundles::trusted_archives;
 use crate::inputs::Inputs;
 use crate::trust::TrustStore;
-use reseam_fixtures::zip;
 
-fn catalog_manifest() -> String {
-    format!(
+fn sample_manifest() -> String {
+    catalog_manifest(
+        &[("sample.patch", &"11".repeat(32))],
         r#"
-[bundle]
-name = "example"
-format_version = 1
-engine = "{}"
-
-[files]
-"patches.jar" = "{}"
-
-[fingerprints]
-"sample.patch" = "{}"
-
 [[patches]]
 bundle = "example"
 id = "sample.patch"
@@ -41,7 +30,7 @@ dependencies = ["other/sample.core"]
 
 [patches.compatibility]
 kind = "packages"
-packages = [{{ package = "com.example.test", versions = ["1.0"] }}]
+packages = [{ package = "com.example.test", versions = ["1.0"] }]
 
 [[patches.options]]
 key = "mode"
@@ -50,11 +39,8 @@ description = "Choose a mode"
 option_type = "string"
 required = false
 valid_values = ["fast", "slow"]
-default_value = {{ type = "string", value = "fast" }}
+default_value = { type = "string", value = "fast" }
 "#,
-        reseam_patcher::bundle::ENGINE_VERSION,
-        "00".repeat(32),
-        "11".repeat(32),
     )
 }
 
@@ -63,27 +49,9 @@ fn inspection_reads_signed_catalogs_without_loading_even_trusted_code() {
     let tmp = ScratchDir::new("sdk-catalog").unwrap();
     let key = SigningKey::from_bytes(&[42; 32]);
     let public_key = hex::encode(key.verifying_key().to_bytes());
-    let manifest = catalog_manifest();
-    let signature = key.sign(manifest.as_bytes()).to_bytes();
+    let manifest = sample_manifest();
     let path = tmp.path().join("example.reseam");
-    let write_bundle = |metadata: &[u8]| {
-        std::fs::write(
-            &path,
-            zip(&[
-                (
-                    "mimetype",
-                    reseam_patcher::bundle::BUNDLE_MIMETYPE.as_bytes(),
-                ),
-                ("manifest.toml", metadata),
-                ("manifest.pubkey", &key.verifying_key().to_bytes()),
-                ("manifest.sig", &signature),
-                // This payload cannot be loaded, regardless of the client's trust.
-                ("patches.jar", b"not executable code"),
-            ]),
-        )
-        .unwrap();
-    };
-    write_bundle(manifest.as_bytes());
+    write_catalog(&path, &manifest, &manifest, &key);
     let input = tmp.path().join("app.apk");
     std::fs::write(&input, apk("")).unwrap();
     let inspection_request = InspectRequest {
@@ -144,10 +112,11 @@ fn inspection_reads_signed_catalogs_without_loading_even_trusted_code() {
             ));
         }
     }
-    write_bundle(
-        manifest
-            .replace("Static metadata", "Tampered metadata")
-            .as_bytes(),
+    write_catalog(
+        &path,
+        &manifest.replace("Static metadata", "Tampered metadata"),
+        &manifest,
+        &key,
     );
     let response = crate::inspect(&InspectRequest {
         apk_path: None,
