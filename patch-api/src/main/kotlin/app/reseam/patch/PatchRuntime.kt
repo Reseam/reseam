@@ -58,7 +58,7 @@ class PatchRuntime internal constructor(internal val run: PatchRun) {
             successful.clear()
         }
 
-    internal val edits: MethodEdits = MethodEdits()
+    internal val edits: MethodEdits = MethodEdits(run.entries)
 
     /** Why a target resolved the way it did. */
     fun explain(target: Target<*>): MatchReport = resolve(target).report

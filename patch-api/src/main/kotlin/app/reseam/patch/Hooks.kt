@@ -22,18 +22,22 @@ import app.reseam.patch.run.edits
 import app.reseam.patch.types.CodePlacement
 
 /** Runs `block` when the method is entered. */
-fun MethodTarget.before(block: CodeScope.() -> Unit) = method.insertCode(method.entry, block)
+fun MethodTarget.before(block: CodeScope.() -> Unit) = method.insertEntryCode(block)
 
-/** The start of the method, past the code that initializes its reserved locals. */
-private val Method.entry: CodePlacement
-    get() = CodePlacement.Before((edits?.entry(this) ?: 0).toUInt())
+private fun Method.insertEntryCode(block: CodeScope.() -> Unit) {
+    val entries = edits?.entries
+    val start = entries?.entry(this) ?: 0
+    val applied = insertCode(CodePlacement.Before(start.toUInt()), block)
+    entries?.hooked(this, start, applied)
+}
 
 /**
  * Runs `block` before every return; [CodeScope.result] is the value being returned. Referenced
  * parameters and `thisObject` are saved at entry, before the body can reuse their registers.
  */
-fun MethodTarget.after(block: CodeScope.() -> Unit) =
+fun MethodTarget.after(block: CodeScope.() -> Unit) {
     method.insertCode(CodePlacement.BeforeReturns, block)
+}
 
 /** Code [appEntry] adds: a [CodeScope] with the app's `Application` as [application]. */
 interface AppEntryScope : CodeScope {
@@ -47,7 +51,7 @@ interface AppEntryScope : CodeScope {
  */
 fun appEntry(block: AppEntryScope.() -> Unit) {
     val hook = Method(appEntryHook())
-    hook.insertCode(hook.entry, { AppEntryCode(this).block() })
+    hook.insertEntryCode { AppEntryCode(this).block() }
 }
 
 private class AppEntryCode(code: CodeScope) : AppEntryScope, CodeScope by code {
@@ -57,7 +61,9 @@ private class AppEntryCode(code: CodeScope) : AppEntryScope, CodeScope by code {
 }
 
 /** Replaces the method body with `block`. */
-fun MethodTarget.replace(block: CodeScope.() -> Unit) = method.insertCode(CodePlacement.Body, block)
+fun MethodTarget.replace(block: CodeScope.() -> Unit) {
+    method.insertCode(CodePlacement.Body, block)
+}
 
 /**
  * Reserves a register shared across this method's code blocks, accessed as `local(slot)`. Grows the
@@ -75,8 +81,9 @@ fun MethodTarget.reserveLocal(name: String, type: String): MethodLocal {
     val initializer = buildInstructions {
         if (local.wordCount == 2) constLong(register, 0) else constInt(register, 0)
     }
-    target.insertInstructions(ActiveRuntime.current.edits.entry(target), initializer)
-    ActiveRuntime.current.edits.initialized(target, initializer.size)
+    val entries = ActiveRuntime.current.edits.entries
+    target.insertInstructions(entries.prologue(target), initializer)
+    entries.initialized(target, initializer.size)
     return local
 }
 

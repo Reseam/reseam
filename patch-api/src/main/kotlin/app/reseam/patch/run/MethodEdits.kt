@@ -64,11 +64,10 @@ internal enum class EditKind {
     GROW,
 }
 
-internal class MethodEdits {
+internal class MethodEdits(val entries: MethodEntries) {
     private val tracked = HashMap<UInt, Tracked>()
 
     private class Tracked {
-        var prologueEnd = 0
         val anchors = mutableListOf<InstructionAnchor>()
         val captures = mutableListOf<Capture>()
         val locals = mutableListOf<MethodLocal>()
@@ -100,20 +99,14 @@ internal class MethodEdits {
             .map { it.toUShort() }
             .toUShortArray()
 
-    fun entry(method: Method): Int = tracked[method.handle]?.prologueEnd ?: 0
-
-    fun initialized(method: Method, count: Int) {
-        of(method.handle).prologueEnd += count
-    }
-
     fun relocated(
         handle: UInt,
         mapping: MethodEdit,
         kind: EditKind,
         removed: IntRange = IntRange.EMPTY,
     ) {
+        entries.relocated(handle, mapping)
         val entry = tracked[handle] ?: return
-        entry.prologueEnd = mapping.starts[entry.prologueEnd].toInt()
         entry.anchors.forEach { it.relocate(mapping, kind, removed) }
     }
 
@@ -128,10 +121,10 @@ internal class MethodEdits {
     }
 
     fun bodyReplaced(handle: UInt) {
+        entries.bodyReplaced(handle)
         val entry = tracked[handle] ?: return
         entry.anchors.forEach { it.lose("the method body was replaced under it") }
         entry.anchors.clear()
-        entry.prologueEnd = 0
         entry.captures.clear()
         entry.locals.forEach { it.invalidate() }
         entry.locals.clear()
