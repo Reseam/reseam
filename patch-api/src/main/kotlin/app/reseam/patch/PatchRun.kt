@@ -4,6 +4,7 @@
 package app.reseam.patch
 
 import app.reseam.patch.native.recordingResolutions
+import app.reseam.patch.run.MethodEntries
 import app.reseam.patch.run.RunCache
 import app.reseam.patch.run.RunJournal
 import app.reseam.patch.settings.SettingsHost
@@ -12,6 +13,7 @@ import java.util.IdentityHashMap
 
 internal class PatchRun {
     private val journal = RunJournal()
+    val entries = MethodEntries(journal)
     val cache = RunCache()
     val appModules = AppModules(journal)
     private val settings =

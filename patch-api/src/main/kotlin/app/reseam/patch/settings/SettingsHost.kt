@@ -12,8 +12,8 @@ import app.reseam.patch.run.ActiveRuntime
 
 /**
  * The internal patch that gives one app the running bundle's settings screen. Patches register
- * their sections with it; after they have all run it writes the bundle's settings into the app,
- * links the app runtime, and runs the app-specific install.
+ * their sections with it; after they have all run it writes the bundle's settings into the app and
+ * runs the app-specific install.
  */
 class SettingsHost
 internal constructor(
@@ -38,6 +38,7 @@ internal constructor(
 
     /** The host runs before dependents, so its own sections lead the screen. */
     override fun execute(ctx: PatchRuntime) {
+        appEntry { call(Reseam.init, application) }
         ctx.run.clear(this)
         register(this, ownSections)
     }
@@ -48,8 +49,6 @@ internal constructor(
             SettingsFiles(ctx.bundle, brand, about, ctx.run.sections(this), strings)
                 .write(ctx.files)
             ctx.install()
-            // appEntry code runs newest first, so this init precedes every other entry hook.
-            appEntry { call(Reseam.init, application) }
         } finally {
             ctx.run.clear(this)
         }

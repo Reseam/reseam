@@ -19,7 +19,7 @@ internal fun Method.insertCode(
     placement: CodePlacement,
     block: CodeScope.() -> Unit,
     captures: List<Capture> = emptyList(),
-) {
+): List<CodeEdit> {
     val emitter = CodeEmitter(this, placement, captures)
     emitter.code.block()
     if (placement == CodePlacement.Body) emitter.requireReturn()
@@ -32,6 +32,7 @@ internal fun Method.insertCode(
         }
     }
     if (placement == CodePlacement.Body) edits?.bodyReplaced(handle)
+    return applied
 }
 
 private fun CodeEmitter.requireReturn() {
