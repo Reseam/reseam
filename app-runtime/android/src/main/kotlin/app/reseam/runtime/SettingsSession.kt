@@ -12,6 +12,7 @@ import android.os.LocaleList
 import android.view.View
 import android.view.WindowInsetsController
 import android.widget.FrameLayout
+import android.widget.ScrollView
 import app.reseam.runtime.ui.Motion
 import app.reseam.runtime.ui.Ui
 
@@ -29,9 +30,16 @@ internal class SettingsSession(
     var locales: LocaleList = Reseam.context.resources.configuration.locales
         private set
 
-    val pageIds = mutableListOf<String>()
-    private var page: View? = null
+    val pages = mutableListOf<OpenPage>()
+    private var shown: Shown? = null
     private var transition: Animator? = null
+
+    /** The page on screen and the stack entry it shows. */
+    private class Shown(val entry: OpenPage, val page: BuiltPage) {
+        fun keepScroll() {
+            entry.scrollY = page.scroll.scrollY
+        }
+    }
 
     enum class Direction {
         NONE,
@@ -41,10 +49,13 @@ internal class SettingsSession(
 
     fun display(direction: Direction) {
         transition?.end()
-        val previous = page
-        val next = settingsPage(bundle, ui, pageIds.last(), back, open, ::toggleTheme)
-        page = next
-        frame.addView(next)
+        val previous = shown?.page?.view
+        shown?.keepScroll()
+        val entry = pages.last()
+        val next = settingsPage(bundle, ui, entry.id, back, open, ::toggleTheme)
+        next.scroll.scrollOnceLaidOut(entry.scrollY)
+        shown = Shown(entry, next)
+        frame.addView(next.view)
         // Insets reach only views attached when the window first lays out.
         frame.requestApplyInsets()
         if (previous == null) return
@@ -52,7 +63,7 @@ internal class SettingsSession(
             frame.removeView(previous)
             return
         }
-        val animation = Motion.sharedAxisX(previous, next, direction == Direction.FORWARD)
+        val animation = Motion.sharedAxisX(previous, next.view, direction == Direction.FORWARD)
         transition = animation
         animation.apply {
             addListener(
@@ -102,9 +113,41 @@ internal class SettingsSession(
         theme()
     }
 
+    /** The open pages, with the one on screen scrolled where it is now. */
+    fun openPages(): List<OpenPage> {
+        shown?.keepScroll()
+        return pages.map { OpenPage(it.id, it.scrollY) }
+    }
+
     fun release() {
         transition?.end()
-        page = null
-        pageIds.clear()
+        shown = null
+        pages.clear()
     }
+}
+
+/** A page on the settings stack, and how far it was scrolled when it was last on screen. */
+internal class OpenPage(val id: String, var scrollY: Int = 0)
+
+/** A scroll view can only move once it has laid out the content it scrolls. */
+private fun ScrollView.scrollOnceLaidOut(y: Int) {
+    if (y == 0) return
+    addOnLayoutChangeListener(
+        object : View.OnLayoutChangeListener {
+            override fun onLayoutChange(
+                view: View,
+                left: Int,
+                top: Int,
+                right: Int,
+                bottom: Int,
+                oldLeft: Int,
+                oldTop: Int,
+                oldRight: Int,
+                oldBottom: Int,
+            ) {
+                view.removeOnLayoutChangeListener(this)
+                view.scrollTo(0, y)
+            }
+        }
+    )
 }

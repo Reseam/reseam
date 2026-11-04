@@ -10,7 +10,7 @@ import android.os.Looper
 internal data class PanelRestore(
     val bundle: ReseamBundle,
     val opened: Map<String, *>?,
-    val pages: List<String>,
+    val pages: List<OpenPage>,
     val host: Class<*>,
 )
 
@@ -38,5 +38,5 @@ internal fun trackSettings(app: Application) {
 
 internal fun openSettingsPanel(bundle: ReseamBundle) {
     val panel = settingsPanel ?: error("Reseam.init has not run")
-    main.post { panel.show(bundle, listOf("")) }
+    main.post { panel.show(bundle, listOf(OpenPage(""))) }
 }

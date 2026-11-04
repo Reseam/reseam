@@ -25,23 +25,23 @@ internal class SettingsPanel : Application.ActivityLifecycleCallbacks, Component
 
     private fun push(pageId: String) {
         val current = visible.session
-        current.pageIds.add(pageId)
+        current.pages.add(OpenPage(pageId))
         current.display(SettingsSession.Direction.FORWARD)
     }
 
     private fun back() {
         val current = visible.session
-        if (current.pageIds.size == 1) {
+        if (current.pages.size == 1) {
             current.dialog.dismiss()
             return
         }
-        current.pageIds.removeAt(current.pageIds.lastIndex)
+        current.pages.removeAt(current.pages.lastIndex)
         current.display(SettingsSession.Direction.BACKWARD)
     }
 
     fun show(
         bundle: ReseamBundle,
-        ids: List<String>,
+        pages: List<OpenPage>,
         opened: Map<String, *>? = state.restore?.opened,
     ) {
         if (state is PanelState.Visible) return
@@ -66,7 +66,7 @@ internal class SettingsPanel : Application.ActivityLifecycleCallbacks, Component
                 before,
                 state.restore?.copy(bundle = bundle, opened = before),
             )
-        current.pageIds.addAll(ids)
+        current.pages.addAll(pages)
         current.theme()
         dialog.show()
     }
@@ -109,7 +109,7 @@ internal class SettingsPanel : Application.ActivityLifecycleCallbacks, Component
                 PanelRestore(
                     current.bundle,
                     showing.opened,
-                    current.pageIds.toList(),
+                    current.openPages(),
                     activity.javaClass,
                 )
             else showing.restore?.copy(opened = null)

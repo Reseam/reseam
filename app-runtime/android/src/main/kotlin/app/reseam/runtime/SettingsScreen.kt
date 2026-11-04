@@ -12,6 +12,9 @@ import app.reseam.runtime.ui.Icons
 import app.reseam.runtime.ui.Tokens
 import app.reseam.runtime.ui.Ui
 
+/** A built settings page: the view to show, and the part of it that scrolls. */
+internal class BuiltPage(val view: View, val scroll: ScrollView)
+
 internal fun settingsPage(
     bundle: ReseamBundle,
     ui: Ui,
@@ -19,7 +22,7 @@ internal fun settingsPage(
     back: () -> Unit,
     open: (String) -> Unit,
     toggleTheme: () -> Unit,
-): View {
+): BuiltPage {
     val schema = bundle.schema
     val root = pageId.isEmpty()
     val container =
@@ -121,7 +124,7 @@ internal fun settingsPage(
         body.addView(results.view, matchWidth())
     }
     body.addView(content, matchWidth())
-    return container
+    return BuiltPage(container, scroll)
 }
 
 internal fun settingsMessage(ui: Ui, text: String): TextView =
