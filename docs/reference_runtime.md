@@ -101,6 +101,7 @@ The app runtime's entry point.
 | `getString(bundle: String, key: String, defaultValue: String): String` | A text setting's value by key. |
 | `getChoice(bundle: String, key: String, defaultValue: String): String` | A choice setting's value by key. |
 | `openSettings(bundle: String)` | Opens a bundle's settings over the current screen. |
+| `runAction(bundle: String, key: String, activity: Activity)` | Runs the code patches gave an action with [`onAction`](reference_settings.md#onaction). The settings screen calls it when the action is tapped. |
 | `startActivity(context: Context, intent: Intent)` | Opens settings for an intent that [`opensSettings`](reference_settings.md#the-app-runtime-in-code-blocks) set up, and starts any other intent as usual. |
 
 ### `ReseamBundle`

@@ -34,6 +34,7 @@ object Reseam : ExtClass("app.reseam.runtime.Reseam") {
     internal val getString by static(Type.String, Type.String, Type.String, returns = Type.String)
     internal val getChoice by static(Type.String, Type.String, Type.String, returns = Type.String)
     internal val openSettings by static(Type.String)
+    internal val runAction by static(Type.String, Type.String, Type.Activity)
 }
 
 internal object ReseamReactPackage : ExtClass("app.reseam.runtime.react.ReseamReactPackage") {

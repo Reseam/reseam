@@ -9,8 +9,9 @@ import kotlin.properties.PropertyDelegateProvider
 import kotlin.properties.ReadOnlyProperty
 
 /**
- * A user-facing setting stored in the patched app and shown on the bundle's settings screen. Its
- * [key] is unique within the bundle; other bundles keep their own settings.
+ * A user-facing setting shown on the bundle's settings screen. Every kind but [ActionSetting]
+ * stores a value in the patched app. Its [key] is unique within the bundle; other bundles keep
+ * their own settings.
  */
 sealed class Setting<T>(
     internal val kind: SettingKind,
@@ -24,12 +25,15 @@ sealed class Setting<T>(
     override fun toString() = key
 }
 
-/** How the app runtime knows a setting: its schema tag and its value class. */
-internal enum class SettingKind(val tag: String, val runtimeValue: String) {
+/**
+ * How the app runtime knows a setting: its schema tag and its value class, which an action lacks.
+ */
+internal enum class SettingKind(val tag: String, val runtimeValue: String?) {
     TOGGLE("toggle", "ToggleValue"),
     TEXT("text", "TextValue"),
     FOLDER("folder", "FolderValue"),
     CHOICE("choice", "ChoiceValue"),
+    ACTION("action", null),
 }
 
 /** While this toggle is on, every toggle in [covers] reads as on and cannot be changed. */
@@ -88,6 +92,16 @@ internal constructor(
 }
 
 data class Choice(val value: String, val title: DisplayText)
+
+/** A row that runs the code a patch gives it with [onAction] when tapped. It stores nothing. */
+class ActionSetting
+internal constructor(
+    key: String,
+    property: String,
+    title: StringRef,
+    summary: StringRef?,
+    icon: Vector?,
+) : Setting<Unit>(SettingKind.ACTION, key, property, title, summary, Unit, icon)
 
 /**
  * Declares settings as properties. A setting's title is the string named after the property in
@@ -161,6 +175,9 @@ fun choice(default: String, choices: List<Choice>, key: String? = null, icon: Ve
     SettingDelegate(key) {
         ChoiceSetting(it.key, it.property, it.title, it.summary, default, choices, icon)
     }
+
+fun action(key: String? = null, icon: Vector? = null) =
+    SettingDelegate(key) { ActionSetting(it.key, it.property, it.title, it.summary, icon) }
 
 internal class SettingDeclaration(
     val key: String,

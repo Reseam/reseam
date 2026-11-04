@@ -1403,6 +1403,21 @@ public final class app/reseam/patch/settings/About {
 	public final fun getLinks ()Ljava/util/List;
 }
 
+public abstract interface class app/reseam/patch/settings/ActionScope : app/reseam/patch/CodeScope {
+	public abstract fun getActivity ()Lapp/reseam/patch/ValueRef;
+}
+
+public final class app/reseam/patch/settings/ActionScope$DefaultImpls {
+	public static fun invoke (Lapp/reseam/patch/settings/ActionScope;Lapp/reseam/patch/ExtMethod;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
+}
+
+public final class app/reseam/patch/settings/ActionSetting : app/reseam/patch/settings/Setting {
+}
+
+public final class app/reseam/patch/settings/ActionsKt {
+	public static final fun onAction (Lapp/reseam/patch/settings/ActionSetting;Lkotlin/jvm/functions/Function1;)V
+}
+
 public final class app/reseam/patch/settings/AppRuntimeKt {
 	public static final fun addReactPackage (Lapp/reseam/patch/CodeScope;Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
 	public static final fun openSettings (Lapp/reseam/patch/CodeScope;)Lapp/reseam/patch/ValueRef;
@@ -1596,6 +1611,8 @@ public final class app/reseam/patch/settings/SettingsHostKt {
 }
 
 public final class app/reseam/patch/settings/SettingsKt {
+	public static final fun action (Ljava/lang/String;Lapp/reseam/patch/settings/Vector;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static synthetic fun action$default (Ljava/lang/String;Lapp/reseam/patch/settings/Vector;ILjava/lang/Object;)Lapp/reseam/patch/settings/SettingDelegate;
 	public static final fun choice (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Lapp/reseam/patch/settings/Vector;)Lapp/reseam/patch/settings/SettingDelegate;
 	public static synthetic fun choice$default (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Lapp/reseam/patch/settings/Vector;ILjava/lang/Object;)Lapp/reseam/patch/settings/SettingDelegate;
 	public static final fun folder (Ljava/lang/String;Ljava/lang/String;Lapp/reseam/patch/settings/Vector;)Lapp/reseam/patch/settings/SettingDelegate;

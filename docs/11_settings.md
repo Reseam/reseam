@@ -64,7 +64,7 @@ And their text in `strings.xml`:
 
 A setting's title is the string named after its property in snake case: `hideAds` reads `hide_ads`. Its summary is the same name with `_summary`, when there is one. A missing title fails the build. The generated `ExampleStrings` has one member per string, for choices, [sections](#show-settings-on-the-screen), and [pages](#pages).
 
-There are four kinds of setting, each with a default and an optional [icon](#icons):
+There are four kinds of setting that hold a value, each with a default and an optional [icon](#icons), and actions, which hold none:
 
 | Kind | Holds |
 |---|---|
@@ -72,6 +72,7 @@ There are four kinds of setting, each with a default and an optional [icon](#ico
 | `text(default, multiline = false)` | text the user types. A `multiline` text holds one entry per line. |
 | `folder(default)` | a folder the user picks, with permission to read and write it |
 | `choice(default, choices)` | one of several values |
+| `action()` | nothing. The row runs code when tapped; see [Actions](#actions). |
 
 ### Keys
 
@@ -253,6 +254,32 @@ configureDownloads.after {
 
 Code that runs before the app's `Application.onCreate`, such as a content provider, reads the defaults.
 
+## Actions
+
+An action is a row that does something when the user taps it, such as copying a login or opening a page. Declare it like the other settings, show it in a section, and give it code with `onAction` in the same patch:
+
+```kotlin
+object AppSettings : SettingsGroup(ExampleStrings) {
+    val exportLogin by action(key = "app.export_login")
+}
+
+val loginTransfer = patch("Export login") {
+    settings(appSettings, section(ExampleStrings.sectionAccount, AppSettings.exportLogin))
+    execute {
+        onAction(AppSettings.exportLogin) {
+            Login.copy(activity)
+        }
+    }
+}
+```
+
+The block runs in the app on every tap. `activity` is the screen your settings are shown over, for a dialog, a toast or an intent. The work itself usually belongs in an [extension](10_extensions.md) that the block calls.
+
+Things to know:
+
+- Every action your settings show needs code from a patch of the same run. The settings host fails, and names the action, when one has none.
+- An action stores nothing, so settings export and import skip it, and extensions have no value to read for it.
+
 ## Read settings in extensions
 
 [Extensions](10_extensions.md) compile against objects the build generates from your settings module. They have the same names, with a value for each setting that the extension reads and writes while the app runs:
@@ -268,6 +295,7 @@ Toast.makeText(context, ExampleStrings.downloadSaved(folder), Toast.LENGTH_SHORT
 ```
 
 - A folder setting's `pick(activity) { ... }` opens the system folder picker, stores the folder the user picks, then runs the block. A cancelled pick runs nothing.
+- Actions have no object here; their code comes from [`onAction`](#actions).
 - A choice reads as the stored value while the setting still lists it, and as the default otherwise.
 - Before the app runtime has started, values read as their defaults.
 - Strings without arguments are properties. The others are functions named after the string, taking its `xliff:g` arguments in order.

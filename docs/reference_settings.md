@@ -38,6 +38,7 @@ Use these as property delegates inside a `SettingsGroup`. `key` defaults to the 
 | `text(default: String, multiline: Boolean = false, key: String? = null, icon: Vector? = null)` | Text the user types. A `multiline` text holds one entry per line. |
 | `folder(default: String, key: String? = null, icon: Vector? = null)` | A folder the user picks. The app gets permission to read and write it. |
 | `choice(default: String, choices: List<Choice>, key: String? = null, icon: Vector? = null)` | One of several values. `default` must be one of the choices' values. |
+| `action(key: String? = null, icon: Vector? = null)` | A row that runs code when the user taps it, such as copying something or opening a page. It stores nothing. A patch gives it its code with [`onAction`](#onaction). |
 
 > [!WARNING]
 > **Pin your keys before the first release.** If you later rename the object or the property, the key changes, and every user's saved value is lost. Set `key = "..."` on each setting, and you can rename the code freely.
@@ -55,7 +56,7 @@ The base of every setting.
 | `key: String` | Where the value is stored. Keys only have to be unique within your bundle, since each bundle stores its settings apart. |
 | `title: StringRef` | The title on the settings screen. |
 | `summary: StringRef?` | The line under the title, if any. |
-| `default: T` | The value until the user changes it. |
+| `default: T` | The value until the user changes it. An action's is `Unit`. |
 | `icon: Vector?` | The icon at the start of the row, if any. |
 
 ### `ToggleSetting`
@@ -80,6 +81,10 @@ A folder setting. Its value is the folder's address, as text.
 ### `Choice`
 
 `Choice(value: String, title: DisplayText)`: the stored `value`, and the `title` users see.
+
+### `ActionSetting`
+
+A row that runs code when the user taps it. It stores nothing, so settings export and import skip it, and extensions have no value to read for it.
 
 ## Text
 
@@ -216,6 +221,26 @@ The receiver of `gate { }`. Each member works like the same hook outside a gate.
 | `CodeScope.openSettings(): ValueRef` | Opens your bundle's settings over the app's current screen. It works from any thread. |
 | `XmlElement.opensSettings()` | Makes an `<intent>` element, such as the one an androidx `Preference` starts, open your settings. Also redirect the row's `startActivity` call to `Reseam.startActivity`, which recognizes the intent. |
 | `CodeScope.addReactPackage(packages: ValueRef): ValueRef` | Adds the React Native package that Hermes gates read settings through to `packages`, the app's package list. It is added once, however many bundles call it. |
+
+### `onAction`
+
+`onAction(action: ActionSetting, block: ActionScope.() -> Unit)` runs `block` in the app each time the user taps `action` on your settings screen. Call it in `execute` of the patch that shows the action, or of another patch in the same run.
+
+```kotlin
+import app.reseam.patch.settings.onAction
+
+execute {
+    onAction(AppSettings.exportLogin) {
+        Login.copy(activity)
+    }
+}
+```
+
+Every action your settings show needs code. The settings host fails, and names the action, when one has none.
+
+### `ActionScope`
+
+The code block of `onAction`: a [`CodeScope`](reference_code.md#codescope) whose `activity: ValueRef` is the `Activity` your settings are shown over. The code runs in a static method, so it has no `thisObject`.
 
 ### `Reseam`
 

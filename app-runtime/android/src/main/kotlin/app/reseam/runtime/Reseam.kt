@@ -3,6 +3,7 @@
 
 package app.reseam.runtime
 
+import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.content.Intent
@@ -55,6 +56,15 @@ object Reseam {
         if (app == null) defaultValue else bundle(bundle).settings.getChoice(key)
 
     @Export @JvmStatic fun openSettings(bundle: String) = bundle(bundle).openSettings()
+
+    /**
+     * Runs the code patches gave the action [key] of [bundle], tapped over [activity]. The method
+     * is empty here; each patch's `onAction` adds its code to it.
+     */
+    @Export
+    @JvmStatic
+    @Suppress("UNUSED_PARAMETER")
+    fun runAction(bundle: String, key: String, activity: Activity) {}
 
     /**
      * Opens bundle settings for the SDK's settings intent, otherwise starts the intent unchanged.

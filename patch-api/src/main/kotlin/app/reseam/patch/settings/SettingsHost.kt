@@ -46,8 +46,9 @@ internal constructor(
     override fun afterDependents(ctx: PatchRuntime) {
         try {
             ctx.run.claimSettings(ctx.bundle.name, this)
-            SettingsFiles(ctx.bundle, brand, about, ctx.run.sections(this), strings)
-                .write(ctx.files)
+            val sections = ctx.run.sections(this)
+            requireActionCode(sections)
+            SettingsFiles(ctx.bundle, brand, about, sections, strings).write(ctx.files)
             ctx.install()
         } finally {
             ctx.run.clear(this)

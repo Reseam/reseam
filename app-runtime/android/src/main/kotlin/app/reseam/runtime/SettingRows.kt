@@ -42,6 +42,7 @@ internal class SettingRows(private val bundle: ReseamBundle, private val ui: Ui)
             is SettingsSchema.Choice -> choice(item, setting)
             is SettingsSchema.Folder -> folder(item, setting)
             is SettingsSchema.Text -> text(item, setting)
+            is SettingsSchema.Action -> action(item, setting)
         }
         return item
     }
@@ -93,6 +94,12 @@ internal class SettingRows(private val bundle: ReseamBundle, private val ui: Ui)
     private fun text(item: ListItem, text: SettingsSchema.Text) {
         item.stringSummary(text, text.defaultValue)
         item.onClick { editTextSetting(ui, bundle, text) }
+    }
+
+    private fun action(item: ListItem, action: SettingsSchema.Action) {
+        item.supporting(action.summary?.resolve(bundle.name)).onClick {
+            Reseam.runAction(bundle.name, action.key, activity(ui.context))
+        }
     }
 
     private fun folder(item: ListItem, folder: SettingsSchema.Folder) {

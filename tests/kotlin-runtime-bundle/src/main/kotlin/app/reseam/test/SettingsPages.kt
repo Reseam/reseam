@@ -11,6 +11,8 @@ import app.reseam.patch.settings.SettingsGroup
 import app.reseam.patch.settings.SettingsPage
 import app.reseam.patch.settings.Vector
 import app.reseam.patch.settings.Verbatim
+import app.reseam.patch.settings.action
+import app.reseam.patch.settings.onAction
 import app.reseam.patch.settings.section
 import app.reseam.patch.settings.settingsHost
 import app.reseam.patch.settings.text
@@ -44,6 +46,7 @@ object NavigationSettings : SettingsGroup(TestStrings) {
     val qualitySecond by toggle(default = false, key = "quality.second")
     val generalEnabled by toggle(default = true, key = "general.enabled")
     val gateEnabled by toggle(default = true, key = "gate.enabled")
+    val share by action(key = "share", icon = dot)
 }
 
 val navigationSettings =
@@ -112,4 +115,23 @@ val gatedEntry =
                 }
             }
         }
+    }
+
+val actionRow =
+    patch("Settings action") {
+        compatibleWith("com.example.test")
+        enabledByDefault(false)
+        settings(navigationSettings, section(TestStrings.sectionActions, NavigationSettings.share))
+        execute {
+            onAction(NavigationSettings.share) {
+                callStatic("com.example.Observer", "shared", "(Landroid/app/Activity;)V", activity)
+            }
+        }
+    }
+
+val uncodedActionRow =
+    patch("Settings action without code") {
+        compatibleWith("com.example.test")
+        enabledByDefault(false)
+        settings(navigationSettings, section(TestStrings.sectionActions, NavigationSettings.share))
     }

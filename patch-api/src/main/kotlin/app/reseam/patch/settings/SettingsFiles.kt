@@ -132,6 +132,7 @@ internal class SettingsFiles(
                 field("multiline", setting.multiline)
             }
             is FolderSetting -> field("default", setting.default)
+            is ActionSetting -> {}
             is ChoiceSetting -> {
                 field("default", setting.default)
                 field("choices") {

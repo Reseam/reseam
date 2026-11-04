@@ -33,12 +33,14 @@ private fun classNames(root: File): List<String> =
 
 private fun Json.group(type: Class<*>) {
     val instance = type.getField("INSTANCE").get(null)
+    // Extensions read a value from each setting; an action has none.
     val settings =
         type.methods
             .filter {
                 it.parameterCount == 0 && Setting::class.java.isAssignableFrom(it.returnType)
             }
             .map { it.invoke(instance) as Setting<*> }
+            .filter { it.kind.runtimeValue != null }
             .sortedBy { it.property }
     obj {
         field("class", type.name)

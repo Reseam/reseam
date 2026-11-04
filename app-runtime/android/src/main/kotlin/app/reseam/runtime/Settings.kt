@@ -80,6 +80,7 @@ internal constructor(app: Context, bundle: String, private val schema: SettingsS
                         is SettingsSchema.Text -> getString(setting.key, setting.defaultValue)
                         // A folder holds a permission granted to this install alone.
                         is SettingsSchema.Folder -> return@forEach
+                        is SettingsSchema.Action -> return@forEach
                     }
                 put(setting.key, value)
             }
@@ -103,7 +104,8 @@ internal constructor(app: Context, bundle: String, private val schema: SettingsS
                             ?.also { editor.putString(setting.key, it) }
                     is SettingsSchema.Text ->
                         (value as? String)?.also { editor.putString(setting.key, it) }
-                    is SettingsSchema.Folder -> null
+                    is SettingsSchema.Folder,
+                    is SettingsSchema.Action -> null
                 } != null
             }
         editor.apply()

@@ -88,7 +88,7 @@ internal fun settingsPage(
     }
     if (pages.childCount == 0 && sections.isEmpty())
         content.addView(settingsMessage(ui, RuntimeStrings.noSettings))
-    if (root && schema.settings.isNotEmpty()) {
+    if (root && schema.settings.any { it !is SettingsSchema.Action }) {
         content.addView(ui.sectionLabel(RuntimeStrings.backup))
         content.addView(
             ui.itemGroup()

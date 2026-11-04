@@ -62,6 +62,7 @@ internal class SettingsSchema(json: JSONObject) {
                     "text" -> Text(setting)
                     "folder" -> Folder(setting)
                     "choice" -> Choice(setting)
+                    "action" -> Action(setting)
                     else -> throw JSONException("Unknown setting type: $type")
                 }
             }
@@ -83,6 +84,9 @@ internal class SettingsSchema(json: JSONObject) {
         val defaultValue: String = json.getString("default")
         val multiline: Boolean = json.getBoolean("multiline")
     }
+
+    /** A row that runs the code a patch gave it; it stores nothing. */
+    class Action(json: JSONObject) : Setting(json)
 
     class Folder(json: JSONObject) : Setting(json) {
         val defaultValue: String = json.getString("default")

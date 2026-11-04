@@ -164,3 +164,75 @@ fn settings_hosts_start_the_app_runtime_and_gate_on_the_bundles_own_settings() {
         "the engine links its app runtime"
     );
 }
+
+#[test]
+fn settings_actions_list_a_row_and_run_the_patch_code_when_tapped() {
+    use reseam_dex::Instruction::ConstString;
+
+    let (_dir, mut apk) = open_settings_test_apk();
+    apply_fixture(&mut apk, "Settings action", "actionRow");
+    let schema: serde_json::Value =
+        serde_json::from_slice(&entry(&mut apk, 0, SETTINGS_SCHEMA).unwrap()).unwrap();
+    let action = schema["sections"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|section| section["settings"].as_array().unwrap())
+        .find(|setting| setting["key"] == "share")
+        .unwrap();
+    assert_eq!(action["type"], "action");
+    assert_eq!(action["title"]["name"], "share");
+    assert_eq!(action["summary"]["name"], "share_summary");
+    assert!(action.get("default").is_none(), "an action stores nothing");
+
+    let written = (0..apk.dex().len())
+        .map(|index| written_dex(&apk, index))
+        .find(|dex| read_method(dex, "Lapp/reseam/runtime/Reseam;", "runAction").is_some())
+        .unwrap();
+    assert_eq!(
+        invoked_by(&written, "Lapp/reseam/runtime/Reseam;", "runAction"),
+        [
+            "Ljava/lang/String;->equals",
+            "Ljava/lang/String;->equals",
+            "Lcom/example/Observer;->shared",
+        ],
+        "the action's code runs only for its own bundle and key"
+    );
+    let code = read_method(&written, "Lapp/reseam/runtime/Reseam;", "runAction")
+        .unwrap()
+        .code
+        .unwrap();
+    let strings: Vec<String> = code
+        .instructions()
+        .iter()
+        .filter_map(|instruction| match instruction {
+            ConstString { string, .. } => Some(written.strings().get(*string).into_owned()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(strings, ["runtime-test-bundle", "share"]);
+}
+
+#[test]
+fn an_action_without_code_fails_the_settings_host() {
+    let bundle_file = write_bundle_reseam();
+    let bundle = load_all(&bundle_file.path);
+    let patches: Vec<&Patch> = bundle.patches().iter().collect();
+    let (_dir, mut apk) = open_settings_test_apk();
+    let results = apply(
+        &mut PatchContext::new(&mut apk, ExtensionSet::app_runtime()),
+        &patches,
+        &PatchSelection {
+            enable: ["runtime-test-bundle/app.reseam.test.uncodedActionRow".to_owned()].into(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(
+        results.iter().any(|result| matches!(
+            &result.status,
+            PatchStatus::Failed { reason } if reason.contains("share") && reason.contains("onAction")
+        )),
+        "{results:?}"
+    );
+}

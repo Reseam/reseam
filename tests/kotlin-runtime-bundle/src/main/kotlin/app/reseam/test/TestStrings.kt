@@ -28,6 +28,9 @@ object TestStrings :
             "gate_enabled",
             "first_enabled",
             "second_enabled",
+            "section_actions",
+            "share",
+            "share_summary",
         ),
     ) {
     val pageMedia = string("page_media")
@@ -49,4 +52,7 @@ object TestStrings :
     val gateEnabled = string("gate_enabled")
     val firstEnabled = string("first_enabled")
     val secondEnabled = string("second_enabled")
+    val sectionActions = string("section_actions")
+    val share = string("share")
+    val shareSummary = string("share_summary")
 }
