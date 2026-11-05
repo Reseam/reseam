@@ -53,3 +53,13 @@ fn replacing_the_body_resets_the_entry_hook_position() {
         (vec![vec![20], vec![25], vec![30]], None)
     );
 }
+
+#[test]
+fn a_skipped_conditional_hook_does_not_skip_the_hooks_after_it() {
+    let (_directory, mut apk) = open_dex_apk(&[dex!("point_order")]);
+    apply_fixture(&mut apk, "conditional-hooks", "conditionalHooks");
+    assert_eq!(
+        hook_calls(&patched_code(&apk, OWNER, "twice"), &[]),
+        (vec![vec![20], vec![40]], None)
+    );
+}

@@ -55,3 +55,14 @@ val entryHookReplacement =
             anchoredTwice.before { mark(25) }
         }
     }
+
+val conditionalHooks =
+    declaredFixture("conditional-hooks") {
+        enabledByDefault(false)
+        execute {
+            anchoredTwice.before { whenTrue(bool(false)) { mark(10) } }
+            anchoredTwice.before { mark(20) }
+            anchoredTwice.after { whenTrue(bool(false)) { mark(30) } }
+            anchoredTwice.after { mark(40) }
+        }
+    }
