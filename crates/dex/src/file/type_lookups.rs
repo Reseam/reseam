@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::sync::{Mutex, PoisonError};
+use std::sync::Mutex;
 
 use rustc_hash::FxHashMap;
 
@@ -30,7 +30,7 @@ impl TypeLookups {
         match self
             .0
             .lock()
-            .unwrap_or_else(PoisonError::into_inner)
+            .expect("type lookups lock")
             .get(descriptor)
         {
             Some(Lookup::Found(idx)) => return Some(*idx),
@@ -40,7 +40,7 @@ impl TypeLookups {
         let found = find();
         self.0
             .lock()
-            .unwrap_or_else(PoisonError::into_inner)
+            .expect("type lookups lock")
             .insert(
                 descriptor.into(),
                 found.map_or(Lookup::Missing { types }, Lookup::Found),
@@ -51,7 +51,7 @@ impl TypeLookups {
     pub(crate) fn clear(&mut self) {
         self.0
             .get_mut()
-            .unwrap_or_else(PoisonError::into_inner)
+            .expect("type lookups lock")
             .clear();
     }
 }
