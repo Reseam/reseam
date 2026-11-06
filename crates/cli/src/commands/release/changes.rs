@@ -7,14 +7,15 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
+use std::io;
 
 use anyhow::{Context, Result, bail};
-use reseam_model::{Compatibility, InspectRequest, PatchMetadata, ReleaseIndex, Trust};
+use reseam_model::{Compatibility, InspectRequest, PatchMetadata, Problem, ReleaseIndex, Trust};
 use reseam_sdk::inspect;
 use url::Url;
 
 use super::index::{self, unprefixed};
-use super::published::{Expected, download};
+use super::published::{Expected, check, open};
 
 /// The app a patch is for: a package, or any app for a universal patch.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -40,12 +41,31 @@ pub(super) struct Updates {
     pub(super) removed: usize,
 }
 
+/// The newest release before this one, as this engine reads it.
+enum Previous {
+    Patches(Vec<PatchMetadata>),
+    /// Built for an engine line this one no longer loads, so nothing in it can be compared and
+    /// every app patched with it has to update.
+    OtherLine {
+        engine: String,
+    },
+}
+
 /// Prints which apps `patches` update, compared with the newest release `previous` lists.
 pub(super) fn report(previous: &ReleaseIndex, patches: &[PatchMetadata]) -> Result<()> {
     let Some(release) = previous.releases.first() else {
         return Ok(());
     };
-    let before = released_patches(previous, &release.download_url, &release.version)?;
+    let before = match read(previous, &release.download_url, &release.version)? {
+        Previous::Patches(before) => before,
+        Previous::OtherLine { engine } => {
+            println!(
+                "Compared with {}, built for engine {engine}, which this engine no longer loads, this release updates every app.",
+                release.version
+            );
+            return Ok(());
+        }
+    };
     let updates = updates(&before, patches);
     if updates.is_empty() {
         println!(
@@ -69,37 +89,38 @@ pub(super) fn report(previous: &ReleaseIndex, patches: &[PatchMetadata]) -> Resu
     Ok(())
 }
 
-/// The patches of the release at `url`, checked against the index that lists it.
-fn released_patches(
-    previous: &ReleaseIndex,
-    url: &str,
-    version: &str,
-) -> Result<Vec<PatchMetadata>> {
+/// The release at `url`, checked against the index that lists it when this engine can read it.
+fn read(previous: &ReleaseIndex, url: &str, version: &str) -> Result<Previous> {
     let signer =
         index::public_key(previous).context("the previous index names no bundle public key")?;
-    let folder = tempfile::tempdir()?;
-    let path = folder.path().join("previous.reseam");
     let url =
         Url::parse(url).with_context(|| format!("the previous release's download URL {url}"))?;
-    download(
-        &url,
-        &path,
-        &Expected {
-            name: &previous.bundle.name,
-            version: unprefixed(version),
-            signer: signer.clone(),
-        },
-    )?;
+    let mut file = tempfile::NamedTempFile::new()?;
+    io::copy(&mut open(&url)?, &mut file).with_context(|| format!("downloading {url}"))?;
     let mut response = inspect(&InspectRequest {
         apk_path: None,
         split_paths: Vec::new(),
-        bundle_paths: vec![path.display().to_string()],
-        trust: Trust { keys: vec![signer] },
+        bundle_paths: vec![file.path().display().to_string()],
+        trust: Trust {
+            keys: vec![signer.clone()],
+        },
     })?;
-    if let Some(problem) = response.bundles.remove(0).problem {
-        bail!("failed to open the previous release: {problem}");
+    let bundle = response.bundles.remove(0);
+    match bundle.problem {
+        Some(Problem::BundleTooOld { built, .. }) => Ok(Previous::OtherLine { engine: built }),
+        Some(problem) => bail!("failed to open the previous release: {problem}"),
+        None => {
+            check(
+                &bundle,
+                &Expected {
+                    name: &previous.bundle.name,
+                    version: unprefixed(version),
+                    signer,
+                },
+            )?;
+            Ok(Previous::Patches(response.patches))
+        }
     }
-    Ok(response.patches)
 }
 
 /// What `after` does to each app's patches compared with `before`, for the apps it changes.

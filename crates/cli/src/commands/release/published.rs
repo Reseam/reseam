@@ -8,7 +8,7 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail, ensure};
-use reseam_model::{InspectRequest, Trust};
+use reseam_model::{BundleMetadata, InspectRequest, Trust};
 use reseam_sdk::inspect;
 use url::Url;
 
@@ -45,6 +45,11 @@ pub(crate) fn verify(path: &Path, expected: &Expected<'_>) -> Result<()> {
     if let Some(problem) = bundle.problem {
         bail!("{problem}");
     }
+    check(&bundle, expected)
+}
+
+/// Fails unless `bundle`, read without problems, is signed by the index signer and is the release `expected` names.
+pub(crate) fn check(bundle: &BundleMetadata, expected: &Expected<'_>) -> Result<()> {
     ensure!(
         bundle.trusted && bundle.public_key == expected.signer,
         "the bundle is signed by {}, not the index signer {}",
