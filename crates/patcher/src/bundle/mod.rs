@@ -15,6 +15,8 @@ mod fingerprint;
 pub(crate) mod index;
 mod key;
 pub(crate) mod manifest;
+#[cfg(feature = "kotlin")]
+mod modules;
 mod pack;
 mod payload;
 mod sign;

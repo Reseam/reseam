@@ -3,19 +3,14 @@
 
 //! DEX code written as smali, in baksmali's syntax: mnemonics, `vN`/`pN`
 //! registers, `:cond_0`-style labels and `.catch` directives.
-//! [`class_declarations`] writes a whole class in the same notation.
 
 mod body;
-mod declarations;
 mod flags;
 mod labels;
 mod mnemonic;
 mod names;
 mod operands;
 
-pub use declarations::{
-    ClassDeclarations, Declaration, MemberDeclaration, References, class_declarations,
-};
 pub use flags::{DeclarationKind, access_keywords};
 pub use names::SmaliNames;
 

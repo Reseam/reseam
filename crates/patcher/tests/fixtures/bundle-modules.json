@@ -1,0 +1,1 @@
+[{"name":":apps:example:patch","files":["example-patches.jar"],"uses":[":apps:example:extensions:feed",":"]},{"name":":apps:example:extensions:feed","files":["example-feed.dex","example-feed2.dex"],"uses":["kotlin"]},{"name":"kotlin","files":["kotlin.dex"],"source":"0f9253e596d39a177e87a26cdb499686fabbafefcd35df214a3e9fbb3d4416ba"},{"name":":","files":["resources/logo.png"]}]

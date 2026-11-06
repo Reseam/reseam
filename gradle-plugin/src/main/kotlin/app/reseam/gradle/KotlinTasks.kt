@@ -47,9 +47,9 @@ internal abstract class RelocateKotlinTask : DefaultTask() {
 }
 
 /**
- * The part of the Kotlin standard library that [roots] use, relocated like them, as class files. R8
- * traces from the roots but neither optimizes nor renames, so the roots, dexed separately, still
- * find every member they call.
+ * The part of the Kotlin standard library that [roots] use, as class files. R8 traces from the
+ * roots but neither optimizes nor renames, so the roots, dexed separately, still find every member
+ * they call.
  */
 internal abstract class KotlinStdlibTask @Inject constructor(private val exec: ExecOperations) :
     DefaultTask() {
@@ -57,35 +57,40 @@ internal abstract class KotlinStdlibTask @Inject constructor(private val exec: E
 
     @get:InputFiles abstract val roots: ConfigurableFileCollection
 
-    @get:Classpath abstract val stdlib: ConfigurableFileCollection
+    /** The standard library, relocated like the roots. */
+    @get:InputFiles abstract val stdlib: ConfigurableFileCollection
 
     @get:Classpath abstract val libraries: ConfigurableFileCollection
 
     @get:Input abstract val kotlinPackage: Property<String>
 
+    /** R8's configuration: keep the roots whole and trace the standard library from them. */
+    @get:Input abstract val rules: Property<String>
+
     @get:OutputDirectory abstract val output: DirectoryProperty
+
+    init {
+        rules.convention(
+            kotlinPackage.map { prefix ->
+                """
+                -dontobfuscate
+                -dontoptimize
+                -dontwarn **
+                -keep class !$prefix.**,** { *; }
+                """
+                    .trimIndent()
+            }
+        )
+    }
 
     @TaskAction
     fun run() {
         val outDir = output.get().asFile.also(::recreate)
         val work = temporaryDir.also(::recreate)
-        val relocated = work.resolve("stdlib").also { it.mkdirs() }
-        KotlinRelocation(kotlinPackage.get()).relocate(stdlib.files, relocated)
         val program = work.resolve("program.jar")
-        jar(program, roots.files.filter(File::isDirectory) + relocated)
+        jar(program, (roots.files + stdlib.files).filter(File::isDirectory))
         val prefix = kotlinPackage.get()
-        val rules =
-            work.resolve("rules.pro").apply {
-                writeText(
-                    """
-                    -dontobfuscate
-                    -dontoptimize
-                    -dontwarn **
-                    -keep class !$prefix.**,** { *; }
-                    """
-                        .trimIndent()
-                )
-            }
+        val rulesFile = work.resolve("rules.pro").apply { writeText(rules.get()) }
         val shrunk = work.resolve("shrunk.jar")
         exec.javaexec {
             classpath = compiler
@@ -96,7 +101,7 @@ internal abstract class KotlinStdlibTask @Inject constructor(private val exec: E
                     "--output",
                     shrunk.absolutePath,
                     "--pg-conf",
-                    rules.absolutePath,
+                    rulesFile.absolutePath,
                 ) +
                     libraries.files.flatMap { listOf("--lib", it.absolutePath) } +
                     program.absolutePath

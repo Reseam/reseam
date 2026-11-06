@@ -17,6 +17,8 @@ Publishes a bundle and `patches.json`. The bundle's name, author, public key, ve
 
 It refuses to change the public key recorded in the published index, so a bundle signed with a different key can't take over your index by mistake.
 
+Before publishing, it downloads the newest release the index lists and prints which apps the new bundle updates for people who patched with it: per app package, how many patches have a changed [fingerprint](/docs/authoring/bundles/#fingerprints), are new, or are gone. Universal patches count as `any app`.
+
 | Flag | |
 |---|---|
 | `--homepage <url>` | your project's page (default: the one in the published index, or the repository page) |

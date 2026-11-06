@@ -169,11 +169,6 @@ pub enum BundleError {
         name: String,
         source: std::io::Error,
     },
-    #[error("payload {name}: {source}")]
-    PayloadDex {
-        name: String,
-        source: reseam_dex::DexError,
-    },
     #[error("payload {0} changed while packing")]
     PayloadChanged(String),
     #[error("file {0} is undeclared or occurs more than once")]
@@ -211,6 +206,18 @@ pub enum BundleError {
     UndeclaredClass(String),
     #[error("the manifest's fingerprints do not match its patches")]
     Fingerprints,
+    #[error("modules.json: {0}")]
+    Modules(#[source] serde_json::Error),
+    #[error("module {module} lists {file}, which is not in the payload")]
+    ModuleFileMissing { module: String, file: String },
+    #[error("{0} is in more than one module")]
+    FileInModules(String),
+    #[error("{0} is in no module")]
+    FileInNoModule(String),
+    #[error("module {0} is listed more than once")]
+    ModuleTwice(String),
+    #[error("module {module} uses {uses}, which is not a module")]
+    UnknownModule { module: String, uses: String },
     #[error("loaded patch metadata differs from the signed catalog; rebuild the bundle")]
     CatalogMismatch,
     #[error("signing key {}: {source}", path.display())]

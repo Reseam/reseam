@@ -65,7 +65,7 @@ impl BundleArchive {
     }
 
     /// The fingerprint of `patch`, one of [`Self::patches`], as hex. It changes
-    /// only when code or bundle files the patch can reach change.
+    /// only when the files of its module, or of a module that module uses, change.
     pub fn fingerprint(&self, patch: &PatchSpec) -> &str {
         self.manifest
             .fingerprints

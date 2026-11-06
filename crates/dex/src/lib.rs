@@ -87,10 +87,7 @@ pub use search::index::{RefKey, RefQuery};
 pub use search::inspect::{MethodSummary, summarize_resident};
 pub use search::pattern::{InstructionPattern, OpcodeMatcher};
 pub use search::view::{InstructionHit, InstructionRef, InstructionSite, MethodHit, MethodView};
-pub use smali::{
-    ClassDeclarations, Declaration, DeclarationKind, MemberDeclaration, References, SmaliLine,
-    SmaliNames, access_keywords, class_declarations, disassemble,
-};
+pub use smali::{DeclarationKind, SmaliLine, SmaliNames, access_keywords, disassemble};
 pub use write::{
     DexPart, Spooled, WriteLayout, split_to_fit, write_class, write_container_spooled,
     write_spooled,

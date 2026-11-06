@@ -8,13 +8,13 @@ mod walk;
 use crate::model::Pool;
 
 pub(crate) use items::{
-    annotation_item, annotations_dir, call_site, debug_info, encoded_value, id_entry, instruction,
+    annotations_dir, call_site, debug_info, encoded_value, id_entry, instruction,
 };
 pub(crate) use validate::{
     ReferenceValidator, check_index, validate_class, validate_part, validate_pools,
     validate_skeleton,
 };
-pub(crate) use walk::{Bodies, class, class_header, code_body, raw_class};
+pub(crate) use walk::{Bodies, class, class_header, raw_class};
 
 pub(crate) trait RefSink {
     fn add(&mut self, pool: Pool, idx: u32);

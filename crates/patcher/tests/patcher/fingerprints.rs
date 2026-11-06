@@ -4,47 +4,46 @@
 use std::collections::BTreeMap;
 use std::fs;
 
-use reseam_dex::{AccessFlags, DexFile, DexHeader, DexVersion, EncodedMethod};
+use reseam_dex::{AccessFlags, DexFile, DexHeader, DexVersion};
 use reseam_patcher::bundle::{BUNDLE_FORMAT_VERSION, BundleArchive, BundleKey, pack};
 
 use crate::common::bundles::{TEST_SIGNING_SEED, build_fixture_jar};
 use crate::common::code::dex_bytes;
 
-/// Named by the fixture's extension body patches through a binding.
-const BODIES: &str = "Lapp/reseam/test/Bodies;";
+const PATCHES: &str = "reseam-test-patches.jar";
 
-fn extension(class: &str, flags: AccessFlags) -> Vec<u8> {
+fn extension(class: &str) -> Vec<u8> {
     let mut dex = DexFile::new(DexHeader::new(DexVersion::V035));
-    dex.create_class(class, flags, Some("Ljava/lang/Object;"))
+    dex.create_class(class, AccessFlags::PUBLIC, Some("Ljava/lang/Object;"))
         .unwrap();
     dex_bytes(&dex)
 }
 
-/// `Bodies` with one native method `entry`, declared with `flags`.
-fn bodies_with_entry(flags: AccessFlags) -> Vec<u8> {
-    let mut dex = DexFile::new(DexHeader::new(DexVersion::V035));
-    let class = dex
-        .create_class(BODIES, AccessFlags::PUBLIC, Some("Ljava/lang/Object;"))
-        .unwrap();
-    let entry = dex.intern_method(BODIES, "entry", "()V").unwrap();
-    dex.class_mut(class).unwrap().add_method(EncodedMethod {
-        method: entry,
-        access_flags: flags | AccessFlags::PUBLIC | AccessFlags::NATIVE,
-        code: None,
-    });
-    dex_bytes(&dex)
-}
-
-/// Packs the fixture patches with `extensions`, then reads each patch's fingerprint.
-fn fingerprints(extensions: &[(&str, Vec<u8>)]) -> BTreeMap<String, String> {
-    let dir = tempfile::tempdir().unwrap();
-    fs::copy(
-        build_fixture_jar(),
-        dir.path().join("reseam-test-patches.jar"),
+/// The patch jar's module uses `used.dex`, `library.dex` stands for its source,
+/// and `other.dex` belongs to a module the patches don't use.
+fn modules(source: &str) -> String {
+    format!(
+        r#"[
+            {{"name": ":patches", "files": ["{PATCHES}"], "uses": [":used", "library"]}},
+            {{"name": ":used", "files": ["used.dex"]}},
+            {{"name": "library", "files": ["library.dex"], "source": "{source}"}},
+            {{"name": ":other", "files": ["other.dex"]}}
+        ]"#
     )
-    .unwrap();
+}
+
+/// Packs the fixture patches with `extensions` and `modules`, then reads each patch's fingerprint.
+fn fingerprints(
+    extensions: &[(&str, Vec<u8>)],
+    modules: Option<String>,
+) -> reseam_patcher::error::Result<BTreeMap<String, String>> {
+    let dir = tempfile::tempdir().unwrap();
+    fs::copy(build_fixture_jar(), dir.path().join(PATCHES)).unwrap();
     for (name, bytes) in extensions {
         fs::write(dir.path().join(name), bytes).unwrap();
+    }
+    if let Some(modules) = modules {
+        fs::write(dir.path().join("modules.json"), modules).unwrap();
     }
     fs::write(
         dir.path().join("manifest.toml"),
@@ -59,59 +58,115 @@ fn fingerprints(extensions: &[(&str, Vec<u8>)]) -> BTreeMap<String, String> {
         None,
         Some(&BundleKey::read(&key).unwrap()),
         &out,
-    )
-    .unwrap();
+    )?;
     let archive = BundleArchive::open(&out).unwrap();
-    archive
+    Ok(archive
         .patches()
         .iter()
         .map(|patch| (patch.id.clone(), archive.fingerprint(patch).to_owned()))
-        .collect()
+        .collect())
 }
 
-#[test]
-fn a_changed_extension_class_changes_only_the_patches_that_name_it() {
-    let before = fingerprints(&[("bodies.dex", extension(BODIES, AccessFlags::PUBLIC))]);
-    let after = fingerprints(&[(
-        "bodies.dex",
-        extension(BODIES, AccessFlags::PUBLIC | AccessFlags::FINAL),
-    )]);
-    let changed: Vec<&str> = before
-        .iter()
-        .filter(|&(id, fingerprint)| after[id] != *fingerprint)
-        .map(|(id, _)| id.as_str())
-        .collect();
-    assert_eq!(
-        changed,
-        [
-            "app.reseam.test.filledBodies",
-            "app.reseam.test.unfilledBodies"
-        ]
-    );
-}
+const SOURCE: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+const OTHER_SOURCE: &str = "2222222222222222222222222222222222222222222222222222222222222222";
 
 #[test]
-fn code_no_patch_reaches_leaves_every_fingerprint_as_it_was() {
-    let without = fingerprints(&[]);
+fn a_fingerprint_follows_the_files_of_the_modules_its_patch_uses() {
+    let packed = |used: &str, library: &str, other: &str, source: &str| {
+        fingerprints(
+            &[
+                ("used.dex", extension(used)),
+                ("library.dex", extension(library)),
+                ("other.dex", extension(other)),
+            ],
+            Some(modules(source)),
+        )
+        .unwrap()
+    };
+    let before = packed("LUsed;", "LLibrary;", "LOther;", SOURCE);
     assert_eq!(
-        fingerprints(&[]),
-        without,
+        packed("LUsed;", "LLibrary;", "LOther;", SOURCE),
+        before,
         "packing again gives the same fingerprints"
     );
-    let unreached = extension("Lapp/reseam/test/Unreached;", AccessFlags::PUBLIC);
-    assert_eq!(fingerprints(&[("unreached.dex", unreached)]), without);
+    for (case, after, changes) in [
+        (
+            "a used module's file",
+            packed("LUsed2;", "LLibrary;", "LOther;", SOURCE),
+            true,
+        ),
+        (
+            "a module the patches don't use",
+            packed("LUsed;", "LLibrary;", "LOther2;", SOURCE),
+            false,
+        ),
+        (
+            "a file a module's source stands for",
+            packed("LUsed;", "LLibrary2;", "LOther;", SOURCE),
+            false,
+        ),
+        (
+            "a used module's source",
+            packed("LUsed;", "LLibrary;", "LOther;", OTHER_SOURCE),
+            true,
+        ),
+    ] {
+        assert!(!before.is_empty());
+        for (id, fingerprint) in &before {
+            assert_eq!(after[id] != *fingerprint, changes, "{case} changes {id}");
+        }
+    }
 }
 
 #[test]
-fn final_changes_a_fingerprint_only_where_a_subclass_could_override() {
-    let fingerprints_of = |flags| fingerprints(&[("bodies.dex", bodies_with_entry(flags))]);
-    assert_eq!(
-        fingerprints_of(AccessFlags::STATIC),
-        fingerprints_of(AccessFlags::STATIC | AccessFlags::FINAL),
-        "ART ignores final on a static method"
-    );
-    assert_ne!(
-        fingerprints_of(AccessFlags::empty()),
-        fingerprints_of(AccessFlags::FINAL)
-    );
+fn without_modules_any_payload_file_changes_every_fingerprint() {
+    let without = fingerprints(&[], None).unwrap();
+    let with_file = fingerprints(&[("other.dex", extension("LOther;"))], None).unwrap();
+    assert!(!without.is_empty());
+    for (id, fingerprint) in &without {
+        assert_ne!(with_file[id], *fingerprint, "{id}");
+    }
+}
+
+#[test]
+fn packing_refuses_modules_that_do_not_match_the_payload() {
+    let extensions = [("used.dex", extension("LUsed;"))];
+    for (case, modules) in [
+        (
+            "a file that is not in the payload",
+            format!(
+                r#"[{{"name": ":patches", "files": ["{PATCHES}", "used.dex", "missing.dex"]}}]"#
+            ),
+        ),
+        (
+            "a payload file in no module",
+            format!(r#"[{{"name": ":patches", "files": ["{PATCHES}"]}}]"#),
+        ),
+        (
+            "a file in two modules",
+            format!(
+                r#"[{{"name": ":patches", "files": ["{PATCHES}", "used.dex"]}}, {{"name": ":used", "files": ["used.dex"]}}]"#
+            ),
+        ),
+        (
+            "a module listed twice",
+            format!(
+                r#"[{{"name": ":patches", "files": ["{PATCHES}"]}}, {{"name": ":patches", "files": ["used.dex"]}}]"#
+            ),
+        ),
+        (
+            "a use of an unknown module",
+            format!(
+                r#"[{{"name": ":patches", "files": ["{PATCHES}", "used.dex"], "uses": [":gone"]}}]"#
+            ),
+        ),
+        (
+            "a source that is not a SHA-256",
+            format!(
+                r#"[{{"name": ":patches", "files": ["{PATCHES}"]}}, {{"name": ":used", "files": ["used.dex"], "source": "abc"}}]"#
+            ),
+        ),
+    ] {
+        assert!(fingerprints(&extensions, Some(modules)).is_err(), "{case}");
+    }
 }

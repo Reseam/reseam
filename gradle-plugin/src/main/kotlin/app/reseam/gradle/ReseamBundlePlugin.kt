@@ -6,12 +6,9 @@ package app.reseam.gradle
 import kotlinx.serialization.Serializable
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-import org.gradle.api.file.DuplicatesStrategy
 import org.gradle.api.file.RegularFile
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.Exec
-import org.gradle.api.tasks.Sync
-import org.gradle.api.tasks.bundling.Jar
 
 /** What `reseam bundle manifest` prints, as far as the build reads it. */
 @Serializable private data class ManifestInfo(val name: String)
@@ -41,54 +38,15 @@ internal class ReseamBundlePlugin : Plugin<Project> {
         val stageDir = project.layout.buildDirectory.dir("reseam/stage")
         val bundleFile = project.layout.buildDirectory.file(bundleName.map { "reseam/$it.reseam" })
 
-        val patchJars = project.provider {
-            project.subprojects
-                .filter { it.plugins.hasPlugin(ReseamPatchesPlugin::class.java) }
-                .map { it.tasks.named("patchJar", Jar::class.java) }
-        }
         val dex = project.registerBundleDex()
-        val extensionHbc = project.provider {
-            project.subprojects
-                .filter { it.plugins.hasPlugin(ReseamJavascriptPlugin::class.java) }
-                .map { it.tasks.named(HermesCompiler.TASK, HermesCompileTask::class.java) }
-        }
-
         val stage =
-            project.tasks.register("stageBundle", Sync::class.java) {
+            project.tasks.register("stageBundle", StageBundleTask::class.java) {
                 group = "build"
-                description = "Collects the manifest, patch jars, extension DEX, and resources."
-                into(stageDir)
-                from(manifest)
-                from(project.layout.projectDirectory.dir("resources")) { into("resources") }
-                extensionHbc.get().forEach { task ->
-                    dependsOn(task)
-                    from(task.flatMap { it.output }) {
-                        include("*.hbc")
-                        into("resources/hermes/v${HermesCompiler.BYTECODE_VERSION}")
-                    }
-                }
-                from(patchJars.map { jars -> jars.map { jar -> jar.map { it.archiveFile } } })
-                dex.modules.get().forEach { dexTask ->
-                    dependsOn(dexTask)
-                    from(dexTask.map { it.output }) {
-                        include("classes*.dex")
-                        rename { name ->
-                            name.replace(
-                                "classes",
-                                dexTask.get().project.reseamArtifact().name.get(),
-                            )
-                        }
-                    }
-                }
-                from(dex.kotlin.map { it.output }) {
-                    include("classes*.dex")
-                    rename { name -> name.replace("classes", "kotlin") }
-                }
-                from(dex.globals.map { it.output }) {
-                    include("classes*.dex")
-                    rename { name -> name.replace("classes", "d8-globals") }
-                }
-                duplicatesStrategy = DuplicatesStrategy.FAIL
+                description =
+                    "Collects the manifest and each module's patch jars, DEX and resources, and lists them by module."
+                this.manifest.set(manifest)
+                modules.set(project.bundleModules(dex))
+                output.set(stageDir)
             }
 
         fun registerPack(

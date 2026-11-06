@@ -17,7 +17,8 @@ use crate::patch::PatchSpec;
 
 /// Packs `dir/manifest.toml`, adjacent `.jar`/`.dex` files, and `resources/` into a
 /// bundle at `out`, signed with `key`, or unsigned without one for [`super::sign`]
-/// to sign elsewhere. Jars must carry both JVM classes and `classes.dex` so the
+/// to sign elsewhere. `dir/modules.json`, when present, says which module makes
+/// each payload file, for the patches' fingerprints. Jars must carry both JVM classes and `classes.dex` so the
 /// same bundle runs on the desktop JVM and on ART.
 /// Initializes the author's patch declarations to include their static metadata
 /// in the manifest. Packing therefore runs the author's code.
@@ -41,7 +42,7 @@ pub fn pack(dir: &Path, version: Option<&str>, key: Option<&BundleKey>, out: &Pa
     let Catalog {
         patches,
         fingerprints,
-    } = catalog(&payload, &jars, Arc::clone(&snapshot), &bundle)?;
+    } = catalog(dir, &payload, &jars, Arc::clone(&snapshot), &bundle)?;
     let manifest = BundleManifest {
         patches,
         fingerprints,
@@ -68,18 +69,22 @@ struct Catalog {
 /// The specs of the patches `jars` declare, read by loading them, and their fingerprints.
 #[cfg(feature = "kotlin")]
 fn catalog(
+    dir: &Path,
     payload: &BTreeMap<String, Staged>,
     jars: &[PathBuf],
     snapshot: Arc<ScratchDir>,
     bundle: &BundleInfo,
 ) -> Result<Catalog> {
+    let modules = super::modules::Modules::read(dir, payload)?;
     let declarations = super::declarations::declarations(jars)?;
     let patches: Vec<PatchSpec> =
         crate::bridge::load_patches(jars, &declarations, snapshot, bundle)?
             .iter()
             .map(|patch| patch.spec().clone())
             .collect();
-    let fingerprints = super::fingerprint::fingerprints(payload, &declarations, &patches)?;
+    let declaring_jars = super::declarations::declaring_jars(jars)?;
+    let fingerprints =
+        super::fingerprint::fingerprints(&modules, payload, &declaring_jars, &patches);
     Ok(Catalog {
         patches,
         fingerprints,
@@ -88,6 +93,7 @@ fn catalog(
 
 #[cfg(not(feature = "kotlin"))]
 fn catalog(
+    _dir: &Path,
     _payload: &BTreeMap<String, Staged>,
     jars: &[PathBuf],
     _snapshot: Arc<ScratchDir>,

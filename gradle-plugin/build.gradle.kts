@@ -30,6 +30,10 @@ tasks.test {
         "reseam.patchIndexFixture",
         rootProject.file("crates/patcher/tests/fixtures/patch-index.json").absolutePath,
     )
+    systemProperty(
+        "reseam.moduleListFixture",
+        rootProject.file("crates/patcher/tests/fixtures/bundle-modules.json").absolutePath,
+    )
 }
 
 gradlePlugin {

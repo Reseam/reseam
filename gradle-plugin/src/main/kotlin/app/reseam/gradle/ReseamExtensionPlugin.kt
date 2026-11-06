@@ -63,7 +63,8 @@ internal class ReseamExtensionPlugin : Plugin<Project> {
         // Outside a bundle the extension ships its own stdlib, and callers relocate theirs
         // elsewhere.
         val standalone =
-            if (project.inBundle()) null else project.kotlinStdlibFor(relocate, platform)
+            if (project.inBundle()) null
+            else project.registerKotlinStdlib(relocate.flatMap { it.output }, platform).shrunk
         val apiCheck =
             project.tasks.register("checkKotlinFreeApi", KotlinFreeApiTask::class.java) {
                 classes.from(main.output.classesDirs)

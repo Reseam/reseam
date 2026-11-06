@@ -56,17 +56,30 @@ internal fun Project.bundleInfo(): ReseamBundleInfo =
 internal fun Project.kotlinPackage(): Provider<String> =
     if (inBundle()) bundleInfo().kotlinPackage else reseamArtifact().kotlinPackage
 
-internal fun Project.kotlinStdlibFor(
-    relocate: TaskProvider<RelocateKotlinTask>,
-    platform: FileCollection,
-): TaskProvider<KotlinStdlibTask> =
-    tasks.register("kotlinStdlib", KotlinStdlibTask::class.java) {
-        roots.from(relocate.flatMap { it.output })
-        stdlib.from(kotlinStdlib())
-        libraries.from(platform)
-        kotlinPackage.set(project.kotlinPackage())
-        output.set(layout.buildDirectory.dir("reseam/kotlin-stdlib"))
-    }
+/** The standard library relocated to [kotlinPackage], and the part of it that [roots] use. */
+internal class KotlinStdlib(
+    val relocated: TaskProvider<RelocateKotlinTask>,
+    val shrunk: TaskProvider<KotlinStdlibTask>,
+)
+
+internal fun Project.registerKotlinStdlib(roots: Any, platform: FileCollection): KotlinStdlib {
+    val relocated =
+        tasks.register("relocateKotlinStdlib", RelocateKotlinTask::class.java) {
+            classes.from(kotlinStdlib())
+            kotlinPackage.set(project.kotlinPackage())
+            output.set(layout.buildDirectory.dir("reseam/kotlin-stdlib-relocated"))
+        }
+    val shrunk =
+        tasks.register("kotlinStdlib", KotlinStdlibTask::class.java) {
+            description = "Shrinks the Kotlin stdlib to what the roots use."
+            this.roots.from(roots)
+            stdlib.from(relocated.flatMap { it.output })
+            libraries.from(platform)
+            kotlinPackage.set(project.kotlinPackage())
+            output.set(layout.buildDirectory.dir("reseam/kotlin-stdlib"))
+        }
+    return KotlinStdlib(relocated, shrunk)
+}
 
 internal fun Project.kotlinSourceSet(name: String): KotlinSourceSet =
     extensions.getByType(KotlinJvmProjectExtension::class.java).sourceSets.getByName(name)

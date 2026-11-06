@@ -162,8 +162,7 @@ fn raw_code_item(
     Ok(())
 }
 
-/// The references of a body's instructions and catch handlers, without its debug info.
-pub(crate) fn code_body(sink: &mut impl RefSink, code: &CodeItem) {
+pub(crate) fn code_item(sink: &mut impl RefSink, code: &CodeItem, dex: &DexFile) -> Result<()> {
     for insn in &code.instructions {
         instruction(sink, insn);
     }
@@ -172,10 +171,6 @@ pub(crate) fn code_body(sink: &mut impl RefSink, code: &CodeItem) {
             sink.add(Pool::Type, catch.exception_type.0);
         }
     }
-}
-
-pub(crate) fn code_item(sink: &mut impl RefSink, code: &CodeItem, dex: &DexFile) -> Result<()> {
-    code_body(sink, code);
     if let Some(debug) = code
         .debug_info
         .as_ref()

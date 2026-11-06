@@ -8,10 +8,12 @@ import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.TaskProvider
 
 /**
- * The bundle's DEX: one per extension and settings module, the shrunk Kotlin stdlib, d8's globals.
+ * The bundle's DEX: one per extension and settings module, the Kotlin stdlib shrunk to what they
+ * use, and d8's globals.
  */
 internal class BundleDex(
     val modules: Provider<List<TaskProvider<DexTask>>>,
+    val kotlinStdlib: KotlinStdlib,
     val kotlin: TaskProvider<DexTask>,
     val globals: TaskProvider<GlobalSyntheticsDexTask>,
 )
@@ -26,25 +28,19 @@ internal fun Project.registerBundleDex(): BundleDex {
     }
     val platform = files(provider { AndroidSdk.platformJar() })
     val kotlinStdlib =
-        tasks.register("kotlinStdlib", KotlinStdlibTask::class.java) {
-            description = "Shrinks the Kotlin stdlib to what the bundle's extensions use."
-            roots.from(
-                deviceProjects.map { projects ->
-                    projects.map { p ->
-                        p.tasks.named("relocateKotlin", RelocateKotlinTask::class.java).flatMap {
-                            it.output
-                        }
+        registerKotlinStdlib(
+            deviceProjects.map { projects ->
+                projects.map { p ->
+                    p.tasks.named("relocateKotlin", RelocateKotlinTask::class.java).flatMap {
+                        it.output
                     }
                 }
-            )
-            stdlib.from(kotlinStdlib())
-            libraries.from(platform)
-            kotlinPackage.set(bundleInfo().kotlinPackage)
-            output.set(layout.buildDirectory.dir("reseam/kotlin-stdlib"))
-        }
+            },
+            platform,
+        )
     val kotlinDex =
         tasks.register("dexKotlinStdlib", DexTask::class.java) {
-            sources.from(kotlinStdlib.flatMap { it.output })
+            sources.from(kotlinStdlib.shrunk.flatMap { it.output })
             allowEmpty.set(true)
             libraries.from(platform)
             output.set(layout.buildDirectory.dir("reseam/kotlin-dex"))
@@ -64,5 +60,5 @@ internal fun Project.registerBundleDex(): BundleDex {
             output.set(layout.buildDirectory.dir("reseam/globals-dex"))
         }
 
-    return BundleDex(extensionDex, kotlinDex, globalsDex)
+    return BundleDex(extensionDex, kotlinStdlib, kotlinDex, globalsDex)
 }

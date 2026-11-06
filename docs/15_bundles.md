@@ -102,16 +102,13 @@ Every module can use Maven Central, Google's Maven repository, and the Reseam re
 
 ## Fingerprints
 
-Packing gives every patch a fingerprint: a hash of the code it can run and the bundle files it uses. Apps that patch with your bundle compare fingerprints between releases, and update only the apps whose patches changed.
+Packing gives every patch a fingerprint. Apps that patch with your bundle compare fingerprints between releases, and update only the apps whose patches changed.
 
-A patch's fingerprint covers:
+A patch's fingerprint is a hash of the files your build makes from its module and from every module that module uses: its patch jar, its extensions and settings, the modules it depends on, and `resources/`. A release that rebuilds only one app's modules leaves every other app's fingerprints as they were. Any change that alters a module's built files counts, including a change that only moves line numbers.
 
-- its own code and every function that code calls, in your patch jars and extensions,
-- every extension class the patch names, as bindings do, whole,
-- the other files in the jars its code comes from,
-- the files in `resources/` whose path, folder, or name without extension the code holds as a string.
+The Kotlin standard library and d8's shared classes are built once for all your extensions, shrunk to what all of them use together. They count by what they are built from, the stdlib and the tools, so an extension that starts using more of the stdlib changes only its own patches' fingerprints.
 
-Write bundle paths as whole strings, like `files.copy("resources/logo.png", "assets/logo.png")`. A path built from parts while patching doesn't count, so changing that file doesn't update apps that are already patched.
+The Gradle build lists the modules for packing. A bundle packed without that list counts as one module, so any change to it changes every fingerprint.
 
 ## What's in a `.reseam` file
 

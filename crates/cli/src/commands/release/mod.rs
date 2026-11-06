@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+mod changes;
 mod directory;
 mod forge;
 pub(super) mod http;
 pub(super) mod index;
 mod notes;
 mod publish;
+pub(super) mod published;
 mod s3;
 mod store;
 
@@ -54,6 +56,9 @@ pub fn run_release_patches(command: &ReleasePatchesCommand) -> Result<()> {
     );
     let release = Release::open(&command.release)?;
     let previous = release.store.previous_index(PATCHES_INDEX)?;
+    if let Some(previous) = &previous {
+        changes::report(previous, &patches)?;
+    }
     let homepage = command
         .homepage
         .clone()

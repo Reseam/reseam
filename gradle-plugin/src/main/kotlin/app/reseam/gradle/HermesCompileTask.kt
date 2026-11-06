@@ -27,6 +27,9 @@ internal object HermesCompiler {
     const val PACKAGE = "hermes-compiler"
     const val TASK = "hermes$BYTECODE_VERSION"
 
+    /** Where a bundle carries the bytecode, as the engine loads it. */
+    const val BUNDLE_FOLDER = "resources/hermes/v$BYTECODE_VERSION"
+
     fun tool() =
         NpmTool(
             NpmPackage(PACKAGE, "250829098.0.19"),

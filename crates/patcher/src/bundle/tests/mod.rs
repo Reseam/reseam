@@ -178,6 +178,14 @@ fn rejects_unverified_or_unsafe_resources() {
 #[cfg(all(feature = "kotlin", not(target_os = "android")))]
 mod indexed;
 
+#[cfg(feature = "kotlin")]
+#[test]
+fn the_module_list_round_trips_the_fixture_the_gradle_plugin_writes() {
+    let fixture = include_str!("../../../tests/fixtures/bundle-modules.json").trim();
+    let modules: Vec<modules::Module> = serde_json::from_str(fixture).unwrap();
+    assert_eq!(serde_json::to_string(&modules).unwrap(), fixture);
+}
+
 #[cfg(feature = "bridge")]
 #[test]
 fn the_patch_index_round_trips_the_fixture_the_gradle_plugin_writes() {

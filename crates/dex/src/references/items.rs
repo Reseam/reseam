@@ -116,7 +116,7 @@ pub(crate) fn annotations_dir(sink: &mut impl RefSink, dir: &AnnotationsDirector
     }
 }
 
-pub(crate) fn annotation_item(sink: &mut impl RefSink, item: &AnnotationItem) {
+fn annotation_item(sink: &mut impl RefSink, item: &AnnotationItem) {
     sink.add(Pool::Type, item.type_.0);
     for element in &item.elements {
         sink.add(Pool::String, element.name.0);

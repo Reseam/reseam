@@ -78,7 +78,7 @@ A patch module uses a settings module with the usual `api(project(":settings"))`
 
 | Task | Description |
 |---|---|
-| `bundle` | Builds, packs, and signs the bundle into `build/reseam/<name>.reseam`. Packing loads every patch once to record its metadata, so a patch that fails to load fails the build. |
+| `bundle` | Builds, packs, and signs the bundle into `build/reseam/<name>.reseam`. Packing loads every patch once to record its metadata, so a patch that fails to load fails the build. The build lists which module made each file, which sets every patch's [fingerprint](15_bundles.md#fingerprints). |
 | `unsignedBundle` | Builds and packs the bundle without a key into `build/reseam/unsigned/<name>.reseam`, for [`reseam bundle sign`](/docs/cli/bundle/#reseam-bundle-sign) to sign on another machine. |
 | `typecheck-<app>` | Type checks an app folder's JavaScript extensions, for a folder with a `package.json`. `bundle` runs it. |
 
