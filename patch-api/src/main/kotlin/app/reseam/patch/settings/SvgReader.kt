@@ -33,14 +33,24 @@ internal object SvgReader {
         require(root.tagName == "svg") {
             "an SVG document starts with <svg>, not <${root.tagName}>"
         }
+        return draw(root, listOf(root), SvgStyle.INITIAL)
+    }
+
+    /** A sprite's `<symbol>`, drawn with [style], the paint of the `<svg>` that shows it. */
+    fun symbol(symbol: Element, style: SvgStyle): Vector =
+        draw(symbol, symbol.childElements(), style)
+
+    /** [elements] in the box [frame]'s `viewBox` or size sets, starting from [style]. */
+    private fun draw(frame: Element, elements: List<Element>, style: SvgStyle): Vector {
         val box =
-            root.getAttribute("viewBox").takeIf(String::isNotBlank)?.let(::numbers)
-                ?: listOf(0f, 0f, root.number("width"), root.number("height"))
+            frame.getAttribute("viewBox").takeIf(String::isNotBlank)?.let(::numbers)
+                ?: listOf(0f, 0f, frame.number("width"), frame.number("height"))
         require(box.size == 4 && box[2] > 0 && box[3] > 0) {
             "viewBox needs a positive width and height"
         }
         val paths = mutableListOf<VectorPath>()
-        collect(root, SvgStyle.INITIAL, PathNormalizer(-box[0], -box[1]), paths)
+        val normalizer = PathNormalizer(-box[0], -box[1])
+        elements.forEach { collect(it, style, normalizer, paths) }
         require(paths.isNotEmpty()) { "the SVG draws nothing" }
         return Vector(box[2], box[3], paths)
     }
@@ -67,11 +77,11 @@ internal object SvgReader {
             val stroke = style.stroke?.let { Stroke(it, style.strokeWidth, style.cap, style.join) }
             if (fill != null || stroke != null) paths += VectorPath(data, fill, stroke)
         }
-        val children = element.childNodes
-        for (index in 0 until children.length) {
-            (children.item(index) as? Element)?.let { collect(it, style, normalizer, paths) }
-        }
+        element.childElements().forEach { collect(it, style, normalizer, paths) }
     }
+
+    private fun Element.childElements(): List<Element> =
+        (0 until childNodes.length).mapNotNull { childNodes.item(it) as? Element }
 
     private fun outline(element: Element): String =
         when (element.tagName) {

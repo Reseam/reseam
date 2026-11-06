@@ -8,6 +8,7 @@ plugins {
 
 dependencies {
     implementation(kotlin("stdlib"))
+    testImplementation(kotlin("test"))
 }
 
 kotlin {
@@ -21,6 +22,8 @@ kotlin {
 }
 
 // Settings hosts write the app runtime's string table into every patched app.
+tasks.test { useJUnitPlatform() }
+
 tasks.processResources {
     dependsOn(gradle.includedBuild("app-runtime").task(":stage"))
     from(rootDir.resolve("build/runtime/app/strings")) { into("reseam/strings/runtime") }

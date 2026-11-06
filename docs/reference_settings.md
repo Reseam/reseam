@@ -290,13 +290,15 @@ The Material 3 type roles: `headlineSmall`, `titleLarge`, `titleMedium`, `bodyLa
 
 A vector image, such as an icon or a logo, drawn at any size.
 
-`Vector.svg(source: String): Vector` reads an SVG when your patches load. The `svg` element needs a `viewBox`, or a `width` and `height`, with a positive size. These elements draw: `path`, `circle`, `ellipse`, `rect`, `line`, `polyline`, and `polygon`, inside any number of `g`. Paint comes from `fill`, `stroke`, `stroke-width`, `stroke-linecap`, `stroke-linejoin`, and `fill-rule`, inherited from enclosing elements. `currentColor` takes the color the screen draws icons in, so line icons such as [Lucide](https://lucide.dev) work as they are. A `#rgb` or `#rrggbb` color stays fixed, and `none` paints nothing. Anything else, such as transforms, `style`, gradients, or text, fails the build.
+`Vector.svg(source: String): Vector` reads an SVG when your patches load. The `svg` element needs a `viewBox`, or a `width` and `height`, with a positive size. These elements draw: `path`, `circle`, `ellipse`, `rect`, `line`, `polyline`, and `polygon`, inside any number of `g`. Paint comes from `fill`, `stroke`, `stroke-width`, `stroke-linecap`, `stroke-linejoin`, and `fill-rule`, inherited from enclosing elements. `currentColor` takes the color the screen draws icons in. A `#rgb` or `#rrggbb` color stays fixed, and `none` paints nothing. Anything else, such as transforms, `style`, gradients, or text, fails the build.
 
 ```kotlin
 private object Icons
 
 val megaphone = Vector.svg(Icons::class.java.getResource("/icons/megaphone.svg")!!.readText())
 ```
+
+`Vector.lucide(name: String): Vector` is the [Lucide](https://lucide.dev/icons) icon `name`, such as `"trash"`, drawn as Lucide draws it: a round stroke 2 wide in the screen's icon color. The patch API ships every icon of Lucide 1.66.0, so bundles carry no Lucide files. An unknown name, including Lucide's old aliases such as `"trash-2"`, fails the build.
 
 ### `About`
 

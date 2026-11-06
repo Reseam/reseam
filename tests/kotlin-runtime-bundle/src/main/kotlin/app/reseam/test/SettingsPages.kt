@@ -54,7 +54,15 @@ val navigationSettings =
         compatibleWith("com.example.test")
         about(
             About(
-                links = listOf(Link(Verbatim("Forum"), "https://example.com/forum", chevron)),
+                links =
+                    listOf(
+                        Link(Verbatim("Forum"), "https://example.com/forum", chevron),
+                        Link(
+                            Verbatim("Chat"),
+                            "https://example.com/chat",
+                            Vector.lucide("chevron-right"),
+                        ),
+                    ),
                 actions = listOf(Link(TestStrings.pageMedia, "https://example.com/donate", dot)),
             )
         )

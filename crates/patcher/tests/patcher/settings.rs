@@ -101,6 +101,10 @@ fn settings_schemas_carry_the_bundle_license_and_normalized_svg_icons() {
         about["links"][0]["icon"]["paths"][0]["data"],
         "M 9 18 L 15 12 L 9 6"
     );
+    assert_eq!(
+        about["links"][1]["icon"], about["links"][0]["icon"],
+        "Lucide's chevron-right draws as its single-icon SVG does"
+    );
     assert_eq!(about["actions"][0]["label"]["name"], "page_media");
     assert_eq!(about["actions"][0]["url"], "https://example.com/donate");
     let media = schema["pages"]

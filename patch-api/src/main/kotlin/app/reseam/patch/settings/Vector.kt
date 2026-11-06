@@ -5,7 +5,7 @@ package app.reseam.patch.settings
 
 /**
  * A vector image, such as an icon or a logo, that the app runtime draws at any size. Read one from
- * an SVG with [svg].
+ * an SVG with [svg], or take a Lucide icon with [lucide].
  */
 class Vector
 internal constructor(
@@ -27,6 +27,14 @@ internal constructor(
          * ```
          */
         fun svg(source: String): Vector = SvgReader.read(source)
+
+        /**
+         * The [Lucide](https://lucide.dev/icons) icon [name], such as `"trash"`, drawn as Lucide
+         * draws it: a 2-wide round stroke in the screen's icon color. The patch API ships the whole
+         * set of Lucide 1.66.0, so a bundle carries no icon files. Use the icon's current name;
+         * Lucide's old aliases, such as `"trash-2"`, fail.
+         */
+        fun lucide(name: String): Vector = Lucide.icon(name)
     }
 }
 

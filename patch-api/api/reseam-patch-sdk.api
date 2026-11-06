@@ -1717,6 +1717,7 @@ public final class app/reseam/patch/settings/Vector {
 }
 
 public final class app/reseam/patch/settings/Vector$Companion {
+	public final fun lucide (Ljava/lang/String;)Lapp/reseam/patch/settings/Vector;
 	public final fun svg (Ljava/lang/String;)Lapp/reseam/patch/settings/Vector;
 }
 

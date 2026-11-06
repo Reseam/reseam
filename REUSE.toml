@@ -21,6 +21,14 @@ precedence = "override"
 SPDX-FileCopyrightText = "2026 Ali A. Hilal"
 SPDX-License-Identifier = "MIT"
 
+# ── Lucide icons, unmodified (lucide-static sprite) ─────────────────────────
+
+[[annotations]]
+path = ["patch-api/src/main/resources/app/reseam/patch/settings/lucide.svg"]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Lucide Icons and Contributors"
+SPDX-License-Identifier = "ISC"
+
 # ── Gradle wrapper (Apache-2.0, from the Gradle project) ────────────────────
 
 [[annotations]]

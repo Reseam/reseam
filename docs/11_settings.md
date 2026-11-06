@@ -232,15 +232,21 @@ A host without a brand uses `Brand.DEFAULT`: Material 3's baseline colors, in th
 
 ## Icons
 
-Settings and pages can start with an icon:
+Settings and pages can start with an icon. Any [Lucide](https://lucide.dev/icons) icon works by name, since the patch API ships the whole set:
+
+```kotlin
+val hideAds by toggle(default = true, icon = Vector.lucide("megaphone-off"))
+```
+
+Use the name Lucide lists today: old aliases such as `trash-2` fail the build. Lucide icons cost your bundle nothing.
+
+For your own icons, `Vector.svg` reads an SVG from your patch module's resources:
 
 ```kotlin
 private val ads = Vector.svg(Files::class.java.getResource("/icons/megaphone.svg")!!.readText())
-
-val hideAds by toggle(default = true, icon = ads)
 ```
 
-`Vector.svg` reads an SVG when your patches load: paths and basic shapes, with fills and strokes. The SVG needs a `viewBox`, or a `width` and `height`. `currentColor` draws in the screen's icon color, so line icons such as [Lucide](https://lucide.dev) work as they are. Transforms, `style` attributes, gradients, and text fail the build.
+`Vector.svg` reads an SVG when your patches load: paths and basic shapes, with fills and strokes. The SVG needs a `viewBox`, or a `width` and `height`. `currentColor` draws in the screen's icon color. Transforms, `style` attributes, gradients, and text fail the build.
 
 ## Read settings in code blocks
 
