@@ -52,7 +52,7 @@ internal class SettingsSession(
         val previous = shown?.page?.view
         shown?.keepScroll()
         val entry = pages.last()
-        val next = settingsPage(bundle, ui, entry.id, back, open, ::toggleTheme)
+        val next = settingsPage(bundle, ui, entry.id, back, open, ::toggleTheme) { restart(host) }
         next.scroll.scrollOnceLaidOut(entry.scrollY)
         shown = Shown(entry, next)
         frame.addView(next.view)

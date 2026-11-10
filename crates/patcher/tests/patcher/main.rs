@@ -4,6 +4,7 @@
 #![expect(clippy::unwrap_used, reason = "fixture operations must succeed")]
 
 mod app_entry;
+mod catalog_text;
 mod common;
 mod emitted;
 mod entry_hooks;

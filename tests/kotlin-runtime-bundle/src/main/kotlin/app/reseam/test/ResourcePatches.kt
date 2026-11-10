@@ -7,7 +7,7 @@ import app.reseam.patch.ResourceValue
 import app.reseam.patch.invoke
 
 val resourceEntries =
-    fixturePatch("resource-entries") {
+    fixturePatch(TestStrings.resourceEntries, TestStrings.resourceEntriesDescription) {
         val icon = resources.addFile("drawable", "reseam_icon", ICON_PATH, ICON_BYTES)
         check(resources.id("drawable", "reseam_icon") == icon) {
             "drawable/reseam_icon is not addressable"

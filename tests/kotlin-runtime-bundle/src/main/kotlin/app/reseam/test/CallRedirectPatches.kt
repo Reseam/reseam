@@ -8,7 +8,7 @@ import app.reseam.patch.dex.Opcode
 import app.reseam.patch.types.MethodRef
 
 val pointRedirects =
-    patch("point-redirects") {
+    patch(TestStrings.pointRedirects) {
         compatibleWith("com.example.test")
         enabledByDefault(false)
         execute {

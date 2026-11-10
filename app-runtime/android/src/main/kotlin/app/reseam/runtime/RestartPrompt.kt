@@ -7,9 +7,12 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 
-/** Most patches read settings at startup, so offer a restart after closing with changed values. */
+/**
+ * Offers a restart after the settings close with a changed value of a setting that takes effect
+ * only on restart.
+ */
 internal fun offerRestart(activity: Activity, bundle: ReseamBundle, opened: Map<String, *>) {
-    if (activity.isFinishing || opened == bundle.settings.snapshot()) return
+    if (activity.isFinishing || opened == bundle.settings.restartValues()) return
     bundle
         .ui(activity)
         .dialog()
@@ -20,7 +23,7 @@ internal fun offerRestart(activity: Activity, bundle: ReseamBundle, opened: Map<
         .show()
 }
 
-private fun restart(context: Context) {
+internal fun restart(context: Context) {
     val launch =
         checkNotNull(context.packageManager.getLaunchIntentForPackage(context.packageName)) {
             "The app has no launcher activity to restart into"

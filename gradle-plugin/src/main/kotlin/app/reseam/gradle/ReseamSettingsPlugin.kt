@@ -25,12 +25,13 @@ internal class ReseamSettingsPlugin : Plugin<Project> {
         val main = sourceSets.getByName("main")
         val device = sourceSets.create("device")
         val strings =
-            project.registerStrings()
+            project.reseamStrings()
                 ?: throw GradleException(
                     "${project.path} has no src/main/strings/values/strings.xml"
                 )
-        project.kotlinSourceSet("main").kotlin.srcDir(strings.flatMap { it.host })
-        main.resources.srcDir(strings.flatMap { it.json })
+        val tables = project.registerStringTables(strings)
+        project.kotlinSourceSet("main").kotlin.srcDir(tables.flatMap { it.host })
+        main.resources.srcDir(tables.flatMap { it.json })
 
         val describe =
             project.tasks.register("describeSettings", JavaExec::class.java) {
@@ -52,7 +53,7 @@ internal class ReseamSettingsPlugin : Plugin<Project> {
                 output.set(project.layout.buildDirectory.dir("generated/reseam/settings/device"))
             }
         project.kotlinSourceSet("device").kotlin.apply {
-            srcDir(strings.flatMap { it.device })
+            srcDir(project.registerDeviceStrings(strings).flatMap { it.device })
             srcDir(deviceSettings.flatMap { it.output })
         }
         val platform = project.files(project.provider { AndroidSdk.platformJar() })

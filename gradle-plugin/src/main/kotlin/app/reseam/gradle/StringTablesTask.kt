@@ -5,16 +5,11 @@ package app.reseam.gradle
 
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import org.gradle.api.DefaultTask
-import org.gradle.api.GradleException
 import org.gradle.api.Project
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.OutputDirectory
-import org.gradle.api.tasks.PathSensitive
-import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import org.gradle.api.tasks.TaskProvider
 
@@ -30,41 +25,40 @@ abstract class ReseamStringsExtension {
 }
 
 /**
- * Compiles `src/main/strings` into the JSON tables the app runtime reads, the extension-side object
- * that reads them, and the patch-side table of references.
+ * Compiles `src/main/strings` into the JSON tables that settings hosts copy into apps and the
+ * engine copies into bundle catalogs, and the patch-side table of references to the strings a patch
+ * can show as they are.
  */
-internal abstract class StringsTask : DefaultTask() {
-    @get:InputDirectory
-    @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val sources: DirectoryProperty
-
-    @get:Input abstract val objectName: Property<String>
-
+internal abstract class StringTablesTask : StringObjectTask() {
     @get:Input abstract val tableId: Property<String>
 
-    @get:Input abstract val assetDirectory: Property<String>
-
     @get:OutputDirectory abstract val json: DirectoryProperty
-
-    @get:OutputDirectory abstract val device: DirectoryProperty
 
     @get:OutputDirectory abstract val host: DirectoryProperty
 
     @TaskAction
     fun run() {
-        val files = readStringFiles(sources.get().asFile)
-        val base = files.single { it.locale == DEFAULT_LOCALE }
+        val files = readStrings()
         val table = json.get().asFile.also(::recreate).resolve("reseam/strings/${tableId.get()}")
         table.mkdirs()
         for (file in files) table.resolve("${file.locale}.json").writeText(encode(file))
         table.resolve("locales").writeText(files.joinToString("\n", postfix = "\n") { it.locale })
-        val names = base.strings.keys.map(::kotlinName)
-        if (names.toSet().size != names.size || names.any { it in RESERVED_NAMES })
-            throw GradleException(
-                "${sources.get()}: string names must map to distinct Kotlin names other than $RESERVED_NAMES"
-            )
-        writeSource(device, deviceObject(base))
-        writeSource(host, hostObject(base))
+        val shown =
+            files
+                .single { it.locale == DEFAULT_LOCALE }
+                .strings
+                .filterValues { it is PlainString && it.placeholders.isEmpty() }
+                .keys
+        writeObject(host) {
+            line("import app.reseam.patch.settings.StringTable")
+            line()
+            val names = shown.joinToString(", ") { "\"$it\"" }
+            block(
+                "object ${simpleName()} : StringTable(${kotlinString(tableId.get())}, setOf($names))"
+            ) {
+                for (name in shown) line("val ${kotlinName(name)} = string(\"$name\")")
+            }
+        }
     }
 
     private fun encode(file: StringFile): String =
@@ -78,79 +72,14 @@ internal abstract class StringsTask : DefaultTask() {
                 }
             )
             .toString()
-
-    private fun writeSource(directory: DirectoryProperty, source: String) {
-        val (pkg, name) =
-            objectName.get().let { it.substringBeforeLast('.', "") to it.substringAfterLast('.') }
-        val file =
-            directory
-                .get()
-                .asFile
-                .also(::recreate)
-                .resolve(pkg.replace('.', '/'))
-                .resolve("$name.kt")
-        file.parentFile.mkdirs()
-        file.writeText(source)
-    }
-
-    private fun deviceObject(base: StringFile) = kotlinFile {
-        line("import app.reseam.runtime.StringTable")
-        line()
-        block("object ${simpleName()}") {
-            line("private val table = StringTable(${kotlinString(assetDirectory.get())})")
-            for ((name, value) in base.strings) {
-                line()
-                val parameters =
-                    value.placeholders.joinToString { "${kotlinName(it.id)}: ${it.type.kotlin}" }
-                val arguments = value.placeholders.joinToString { kotlinName(it.id) }
-                when {
-                    value is PluralString ->
-                        line(
-                            "fun ${kotlinName(name)}($parameters): String = " +
-                                "table.plural(\"$name\", count, $arguments)"
-                        )
-                    value.placeholders.isEmpty() ->
-                        line("val ${kotlinName(name)}: String get() = table[\"$name\"]")
-                    else ->
-                        line(
-                            "fun ${kotlinName(name)}($parameters): String = " +
-                                "table.format(\"$name\", $arguments)"
-                        )
-                }
-            }
-        }
-    }
-
-    private fun hostObject(base: StringFile) = kotlinFile {
-        line("import app.reseam.patch.settings.StringTable")
-        line()
-        val names = base.strings.keys.joinToString(", ") { "\"$it\"" }
-        block(
-            "object ${simpleName()} : StringTable(${kotlinString(tableId.get())}, setOf($names))"
-        ) {
-            for (name in base.strings.keys) line("val ${kotlinName(name)} = string(\"$name\")")
-        }
-    }
-
-    private fun kotlinFile(body: KotlinWriter.() -> Unit): String =
-        KotlinWriter()
-            .apply {
-                line("// Generated by the Reseam Gradle plugin from src/main/strings.")
-                objectName.get().substringBeforeLast('.', "").takeIf(String::isNotEmpty)?.let {
-                    line("package $it")
-                    line()
-                }
-                body()
-            }
-            .toString()
-
-    private fun simpleName() = objectName.get().substringAfterLast('.')
 }
 
-/** Registers the string table of a module with `src/main/strings`, or returns `null`. */
-internal fun Project.registerStrings(): TaskProvider<StringsTask>? {
-    val sources = layout.projectDirectory.dir("src/main/strings")
-    if (!sources.asFile.isDirectory) return null
+/** The string settings of a module with `src/main/strings`, or `null` when it has none. */
+internal fun Project.reseamStrings(): ReseamStringsExtension? {
+    extensions.findByType(ReseamStringsExtension::class.java)?.let {
+        return it
+    }
+    if (!layout.projectDirectory.dir("src/main/strings").asFile.isDirectory) return null
     val strings = extensions.create("reseamStrings", ReseamStringsExtension::class.java)
     strings.tableId.convention(strings.objectName.map { it.substringAfterLast('.') })
     if (inBundle()) {
@@ -160,13 +89,16 @@ internal fun Project.registerStrings(): TaskProvider<StringsTask>? {
             }
         )
     }
-    return tasks.register("generateStrings", StringsTask::class.java) {
-        this.sources.set(sources)
+    return strings
+}
+
+internal fun Project.registerStringTables(
+    strings: ReseamStringsExtension
+): TaskProvider<StringTablesTask> =
+    tasks.register("generateStrings", StringTablesTask::class.java) {
+        sources.set(layout.projectDirectory.dir("src/main/strings"))
         objectName.set(strings.objectName)
         tableId.set(strings.tableId)
-        assetDirectory.set(strings.assetDirectory)
         json.set(layout.buildDirectory.dir("generated/reseam/strings/json"))
-        device.set(layout.buildDirectory.dir("generated/reseam/strings/device"))
         host.set(layout.buildDirectory.dir("generated/reseam/strings/host"))
     }
-}

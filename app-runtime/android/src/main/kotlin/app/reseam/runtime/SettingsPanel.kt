@@ -50,7 +50,7 @@ internal class SettingsPanel : Application.ActivityLifecycleCallbacks, Component
             Log.e(LOG_TAG, "Cannot open settings: no screen of the app is in the foreground")
             return
         }
-        val before = opened ?: bundle.settings.snapshot()
+        val before = opened ?: bundle.settings.restartValues()
         val dialog = settingsDialog(activity, ::back, ::closed)
         val frame = FrameLayout(dialog.context)
         dialog.setContentView(frame)

@@ -12,7 +12,7 @@ A bundle is built from a Gradle project with a fixed layout. The `app.reseam.wor
 my-patches/
   manifest.toml
   settings.gradle.kts
-  apps/<app>/patch/                  patches for one app
+  apps/<app>/patch/                  patches for one app, and their names and descriptions
   apps/<app>/settings/               that app's settings and strings (optional)
   apps/<app>/extensions/<name>/      code added to that app
   shared/<name>/                     code added to several apps
@@ -96,7 +96,7 @@ Add a `build.gradle.kts` to a module only to declare dependencies:
 
 - An extension's dependencies are covered in [Shipping your own code](10_extensions.md#dependencies).
 - A patch module uses one to [depend on another bundle](4_patches.md#patches-from-another-bundle).
-- A settings module uses one to name its string table, with `reseamStrings`.
+- A patch or settings module uses one to name its string table, with `reseamStrings`.
 
 Every module can use Maven Central, Google's Maven repository, and the Reseam registry.
 

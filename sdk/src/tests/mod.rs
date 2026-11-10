@@ -119,6 +119,7 @@ pub(super) fn spec(id: &str, versions: Option<&[&str]>) -> PatchSpec {
         },
         options: Vec::new(),
         rewrites_output: false,
+        translations: Vec::new(),
     }
 }
 

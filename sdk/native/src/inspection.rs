@@ -8,13 +8,20 @@ use std::sync::{Mutex, MutexGuard};
 use boltffi::export;
 use reseam_model::{
     ApkMetadata, ApplicationIcon, InspectRequest, InspectResponse, PatchOutcome, PatchRequest,
-    RunEvent, SdkError,
+    PatchSpec, PatchText, RunEvent, SdkError,
 };
 
 /// Inspects APK and bundle metadata without running patches.
 #[export]
 pub fn inspect(request: InspectRequest) -> Result<InspectResponse, SdkError> {
     reseam_sdk::inspect(&request).map_err(SdkError::from)
+}
+
+/// What users who read `locales`, BCP 47 tags most preferred first, see of
+/// `spec`. Each field falls back as [`PatchSpec::text`] describes.
+#[export]
+pub fn patch_text(spec: PatchSpec, locales: Vec<String>) -> PatchText {
+    spec.text(&locales)
 }
 
 /// Runs a patch request end to end. Progress is delivered on the calling

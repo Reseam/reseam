@@ -15,7 +15,7 @@ import app.reseam.patch.reserveLocal
 import app.reseam.patch.skipWhen
 
 val afterEntryValues =
-    fixturePatch("after-entry-values") {
+    fixturePatch(TestStrings.afterEntryValues, TestStrings.afterEntryValuesDescription) {
         val target = klass("com.example.HookTarget")
         repeat(5) { target.method("invokeGrowth").reserveLocal("growth$it", Type.Long) }
         target.method("invokeGrowth").after {
@@ -69,7 +69,7 @@ val afterEntryValues =
     }
 
 val skipWhenCall =
-    fixturePatch("skip-when") {
+    fixturePatch(TestStrings.skipWhen, TestStrings.skipWhenDescription) {
         skipHost
             .method("straight")
             .point { literal(2) }
@@ -90,7 +90,7 @@ val skipWhenCall =
     }
 
 val beforeJoin =
-    fixturePatch("before-join") {
+    fixturePatch(TestStrings.beforeJoin, TestStrings.beforeJoinDescription) {
         skipHost
             .method("joinedBefore")
             .point { literal(2) }
@@ -100,7 +100,7 @@ val beforeJoin =
     }
 
 val pointAnchors =
-    fixturePatch("point-anchors") {
+    fixturePatch(TestStrings.pointAnchors, TestStrings.pointAnchorsDescription) {
         anchoredPoint.after { mark(10) }
         anchoredPoint.after { mark(20) }
         anchoredPoint.before { mark(30) }
@@ -116,7 +116,7 @@ val pointAnchors =
     }
 
 val reservedLocals =
-    fixturePatch("reserved-locals") {
+    fixturePatch(TestStrings.reservedLocals, TestStrings.reservedLocalsDescription) {
         val carried = carry.reserveLocal("carried", Type.Int)
         val carriedWide = carry.reserveLocal("carriedWide", Type.Long)
         carry.before {
@@ -138,7 +138,7 @@ val reservedLocals =
     }
 
 val capturedArguments =
-    fixturePatch("captured-arguments") {
+    fixturePatch(TestStrings.capturedArguments, TestStrings.capturedArgumentsDescription) {
         greetCall
             .captureArgumentAs("host", 0)
             .captureArgumentAs("text", 1)
@@ -171,7 +171,7 @@ val capturedArguments =
     }
 
 val registerWriters =
-    fixturePatch("register-writers") {
+    fixturePatch(TestStrings.registerWriters, TestStrings.registerWritersDescription) {
         val single = takeCall("single").writer(0)
         single.after { mark(99) }
         val copied = takeCall("copied").writer(0)

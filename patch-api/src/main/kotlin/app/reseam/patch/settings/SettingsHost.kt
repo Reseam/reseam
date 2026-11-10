@@ -26,8 +26,7 @@ internal constructor(
     private val about: About?,
     private val install: PatchRuntime.() -> Unit,
 ) : ReseamPatch {
-    override val name: String? = null
-    override val description = "Settings for $appId"
+    override val name: StringRef? = null
 
     fun register(patch: ReseamPatch, sections: List<SettingsSection>) {
         if (sections.isEmpty()) return

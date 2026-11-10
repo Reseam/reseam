@@ -97,6 +97,11 @@ export type PatchMetadata = {
    * build leaves such a patch out, since it cannot tell what the files hold.
    */
   rewrites_output: boolean;
+  /**
+   * The patch's text in each locale its bundle translates it to; `name`,
+   * `description` and the option titles hold the source text.
+   */
+  translations?: Array<PatchTranslation>;
 };
 export type PatchSpec = {
   bundle: string;
@@ -126,7 +131,31 @@ export type PatchSpec = {
    * build leaves such a patch out, since it cannot tell what the files hold.
    */
   rewrites_output: boolean;
+  /**
+   * The patch's text in each locale its bundle translates it to; `name`,
+   * `description` and the option titles hold the source text.
+   */
+  translations?: Array<PatchTranslation>;
 };
+export type PatchTranslation = {
+  /**
+   * A BCP 47 tag, such as `de` or `pt-BR`.
+   */
+  locale: string;
+  name?: string | null;
+  description?: string | null;
+  options?: Array<OptionTranslation>;
+};
+export type OptionTranslation = { key: string; title?: string | null; description?: string | null };
+export type PatchText = {
+  name: string;
+  description: string;
+  /**
+   * In the order of [`PatchSpec::options`].
+   */
+  options: Array<OptionText>;
+};
+export type OptionText = { key: string; title: string; description: string };
 export type PatchRef = string;
 export type PatchPreset = 'recommended' | 'all' | 'none';
 export type Compatibility = { kind: 'universal' } | { kind: 'packages'; packages: Array<CompatiblePackage> };

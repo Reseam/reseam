@@ -22,6 +22,7 @@ internal fun settingsPage(
     back: () -> Unit,
     open: (String) -> Unit,
     toggleTheme: () -> Unit,
+    restartApp: () -> Unit,
 ): BuiltPage {
     val schema = bundle.schema
     val root = pageId.isEmpty()
@@ -44,6 +45,7 @@ internal fun settingsPage(
                 ) {
                     toggleTheme()
                 }
+                topBar.action(Icons.RESTART, RuntimeStrings.restartApp) { restartApp() }
             }
             addView(topBar, matchWidth())
         }

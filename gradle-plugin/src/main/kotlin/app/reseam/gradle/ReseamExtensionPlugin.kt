@@ -50,8 +50,12 @@ internal class ReseamExtensionPlugin : Plugin<Project> {
         project.dependencies.add("compileOnly", platform)
         project.dependencies.add("stubsCompileOnly", platform)
 
-        project.registerStrings()?.let { strings ->
-            project.kotlinSourceSet("main").kotlin.srcDir(strings.flatMap { it.device })
+        project.reseamStrings()?.let { strings ->
+            project.registerStringTables(strings)
+            project
+                .kotlinSourceSet("main")
+                .kotlin
+                .srcDir(project.registerDeviceStrings(strings).flatMap { it.device })
         }
         val relocate =
             project.tasks.register("relocateKotlin", RelocateKotlinTask::class.java) {

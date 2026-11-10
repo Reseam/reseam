@@ -65,7 +65,11 @@ internal constructor(app: Context, bundle: String, private val schema: SettingsS
 
     fun setString(key: String, value: String) = prefs.edit().putString(key, value).apply()
 
-    internal fun snapshot(): Map<String, *> = prefs.all.toMap()
+    /** The stored values of the settings that take effect when the app restarts. */
+    internal fun restartValues(): Map<String, *> {
+        val stored = prefs.all
+        return schema.settings.filter { it.restart }.associate { it.key to stored[it.key] }
+    }
 
     /** The stored value of every setting that can move to another install. */
     internal fun export(): JSONObject =

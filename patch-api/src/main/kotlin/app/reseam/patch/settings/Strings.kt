@@ -3,18 +3,14 @@
 
 package app.reseam.patch.settings
 
-/** Translated strings generated from the `strings.xml` files in a module's `src/main/strings`. */
+/**
+ * Translated strings generated from the `strings.xml` files in a module's `src/main/strings`. It
+ * names only the strings without placeholders, the ones a patch can show as they are.
+ */
 abstract class StringTable(val id: String, private val names: Set<String>) {
     protected fun string(name: String): StringRef = find(name) ?: error("$id has no string '$name'")
 
     internal fun find(name: String): StringRef? = if (name in names) StringRef(this, name) else null
-
-    internal fun locales(): List<String> =
-        resource("locales").reader().useLines { lines -> lines.filter(String::isNotBlank).toList() }
-
-    internal fun resource(file: String): java.io.InputStream =
-        this::class.java.getResourceAsStream("/reseam/strings/$id/$file")
-            ?: error("$id has no resource $file; was it built by the Reseam Gradle plugin?")
 
     override fun toString() = id
 }

@@ -15,7 +15,7 @@ import app.reseam.patch.settings.settingsHost
 import app.reseam.patch.settings.toggle
 
 val finalizeOwner =
-    declaredFixture("finalize-owner") {
+    declaredFixture(TestStrings.finalizeOwner, TestStrings.finalizeOwnerDescription) {
         execute {
             log.info("finalize-owner execute")
         }
@@ -26,10 +26,21 @@ val finalizeOwner =
     }
 
 val runtimeApi =
-    declaredFixture("runtime-api") {
-        val baseVersion = stringOption("baseVersion", default = "2.0-base")
-        val splitVersion = stringOption("splitVersion", default = "2.0-split")
-        val splitText = stringOption("splitText", default = "Split patched")
+    declaredFixture(TestStrings.runtimeApi, TestStrings.runtimeApiDescription) {
+        val baseVersion =
+            stringOption("baseVersion", title = TestStrings.optionBaseversion, default = "2.0-base")
+        val splitVersion =
+            stringOption(
+                "splitVersion",
+                title = TestStrings.optionSplitversion,
+                default = "2.0-split",
+            )
+        val splitText =
+            stringOption(
+                "splitText",
+                title = TestStrings.optionSplittext,
+                default = "Split patched",
+            )
 
         execute {
             manifest.setVersionName(options[baseVersion])
@@ -43,7 +54,7 @@ val runtimeApi =
     }
 
 val dependentRuntime =
-    declaredFixture("dependent-runtime") {
+    declaredFixture(TestStrings.dependentRuntime, TestStrings.dependentRuntimeDescription) {
         dependsOn(finalizeOwner)
 
         execute {
@@ -54,9 +65,9 @@ val dependentRuntime =
     }
 
 val requiredOption =
-    declaredFixture("required-option") {
+    declaredFixture(TestStrings.requiredOption, TestStrings.requiredOptionDescription) {
         enabledByDefault(false)
-        val token = stringOption("token", required = true)
+        val token = stringOption("token", title = TestStrings.optionToken, required = true)
 
         execute {
             log.info(options[token])
@@ -64,7 +75,7 @@ val requiredOption =
     }
 
 val internalHelper = patch {
-    description("An internal dependency: never listed, runs when something depends on it")
+    description(TestStrings.internalHelperDescription)
     compatibleWith("com.example.test")
 
     execute {
@@ -73,7 +84,7 @@ val internalHelper = patch {
 }
 
 val usesInternal =
-    declaredFixture("uses-internal") {
+    declaredFixture(TestStrings.usesInternal, TestStrings.usesInternalDescription) {
         dependsOn(internalHelper)
 
         execute {
@@ -93,10 +104,11 @@ val duplicateSettings =
     }
 
 val firstAds =
-    declaredFixture("Hide Ads") {
+    declaredFixture(TestStrings.hideAds, null) {
         enabledByDefault(false)
-        val marker = stringOption("marker", default = "first")
-        val label = stringOption("label.detail", default = "nested")
+        val marker = stringOption("marker", title = TestStrings.optionMarker, default = "first")
+        val label =
+            stringOption("label.detail", title = TestStrings.optionLabelDetail, default = "nested")
         settings(
             duplicateSettings,
             section(TestStrings.sectionFirst, DuplicateSettings.firstEnabled),
@@ -110,10 +122,10 @@ val firstAds =
 val firstAdsAlias = firstAds
 
 val secondAds =
-    declaredFixture("Hide Ads") {
+    declaredFixture(TestStrings.hideAds, null) {
         enabledByDefault(false)
         dependsOn(firstAds)
-        val marker = stringOption("marker", default = "second")
+        val marker = stringOption("marker", title = TestStrings.optionMarker, default = "second")
         settings(
             duplicateSettings,
             section(TestStrings.sectionSecond, DuplicateSettings.secondEnabled),
@@ -122,44 +134,44 @@ val secondAds =
     }
 
 val otherAds =
-    patch("Hide Ads") {
+    patch(TestStrings.hideAds) {
         compatibleWith("com.example.other")
         enabledByDefault(false)
-        val marker = stringOption("marker", default = "other")
+        val marker = stringOption("marker", title = TestStrings.optionMarker, default = "other")
         execute { files.write("assets/other-ads.txt", options[marker].encodeToByteArray()) }
     }
 
 val otherBundleHelper = ExternalPatch("other-bundle", "app.reseam.other.helper")
 
 val needsOtherBundle =
-    declaredFixture("needs-other-bundle") {
+    declaredFixture(TestStrings.needsOtherBundle, TestStrings.needsOtherBundleDescription) {
         dependsOn(otherBundleHelper)
         execute {}
     }
 
 val installedVersionCode =
-    patch("installed-version-code") {
+    patch(TestStrings.installedVersionCode) {
         compatibleWith("com.example.test"("9.9", 1))
         enabledByDefault(false)
         execute {}
     }
 
 val otherVersionCode =
-    patch("other-version-code") {
+    patch(TestStrings.otherVersionCode) {
         compatibleWith(CompatiblePackage("com.example.test", versionCodes = listOf(2)))
         enabledByDefault(false)
         execute {}
     }
 
 val universalMarker =
-    patch("universal-marker") {
-        description("Declares no package, so it works with any app and waits to be asked for")
+    patch(TestStrings.universalMarker) {
+        description(TestStrings.universalMarkerDescription)
         execute { files.write("assets/universal-marker.txt", "universal".encodeToByteArray()) }
     }
 
 val ownedCallbacks = run {
     lateinit var builder: app.reseam.patch.PatchBuilder
-    patch("owned-callbacks") {
+    patch(TestStrings.ownedCallbacks) {
             builder = this
             compatibleWith("com.example.test")
             enabledByDefault(false)
@@ -175,7 +187,7 @@ val ownedCallbacks = run {
 }
 
 val appEntryHook =
-    fixturePatch("app-entry-hook") {
+    fixturePatch(TestStrings.appEntryHook, TestStrings.appEntryHookDescription) {
         appEntry {
             callStatic(
                 "com.example.Observer",
@@ -187,7 +199,7 @@ val appEntryHook =
     }
 
 val unwrapApplication =
-    declaredFixture("unwrap-application") {
+    declaredFixture(TestStrings.unwrapApplication, TestStrings.unwrapApplicationDescription) {
         enabledByDefault(false)
         dependsOn(appEntryHook)
 

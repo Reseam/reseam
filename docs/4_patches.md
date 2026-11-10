@@ -4,11 +4,11 @@ description: Name a patch, say which apps it is for, and give it options and dep
 
 # Declaring patches
 
-A patch is a public top-level `val` built with `patch("Name") { }`. The block first says what users and the engine need to know about the patch, then `execute { }` holds the change.
+A patch is a public top-level `val` built with `patch(name) { }`. The block first says what users and the engine need to know about the patch, then `execute { }` holds the change.
 
 ```kotlin
-val hideAds = patch("Hide ads") {
-    description("Removes ads from the feed.")
+val hideAds = patch(ExamplePatchStrings.hideAds) {
+    description(ExamplePatchStrings.hideAdsDescription)
     compatibleWith("com.example.app"("2.14.0"))
 
     execute {
@@ -25,6 +25,25 @@ val hideAds = patch("Hide ads") {
 The name is what users see, and it doesn't have to be unique. Each patch also has an ID, taken from its Kotlin declaration: `package.property`, such as `app.example.patches.hideAds`. Its *reference* adds your bundle's name from `manifest.toml`: `my-patches/app.example.patches.hideAds`.
 
 Renaming the property or moving it to another package changes the ID. Users who saved a selection, and bundles that depend on your patch, refer to it by ID, so keep IDs stable once you publish. Changing the display name is safe.
+
+## Names in every language
+
+The name, the description, and option titles and descriptions are strings from the patch module's string table, so translators can work on them without touching code. Put them in `src/main/strings/values/strings.xml`, and name the object the build generates in the module's `build.gradle.kts`:
+
+```xml
+<resources>
+    <string name="hide_ads">Hide ads</string>
+    <string name="hide_ads_description">Removes ads from the feed.</string>
+</resources>
+```
+
+```kotlin
+reseamStrings { objectName = "app.example.patches.ExamplePatchStrings" }
+```
+
+A translation is a `strings.xml` in a folder named for its locale, such as `values-de` or `values-pt-rBR`. It can translate some strings and leave the rest, which then show in the source language. When you build the bundle, the engine copies every translation into the signed catalog. Reseam Manager shows each patch in the user's language, and the CLI keeps the source text, which is also what `--enable`, `--disable` and `--option` match.
+
+Patch text has to be plain: a string with a placeholder, or a `<plurals>`, isn't in the generated object, so the build fails if a patch names one. Mark a string that must stay the same in every language, such as a host name, with `translatable="false"`. The build then rejects any translation of it.
 
 ## Which apps
 
@@ -77,7 +96,7 @@ val adBlockerSetup = patch {
 ## Dependencies
 
 ```kotlin
-val hideAds = patch("Hide ads") {
+val hideAds = patch(ExamplePatchStrings.hideAds) {
     compatibleWith(EXAMPLE_APP)
     dependsOn(adBlockerSetup)
     execute { /* ... */ }
@@ -103,7 +122,7 @@ The build downloads that bundle and generates a Kotlin value for each of its pat
 ```kotlin
 import com.example.other.removeProtection
 
-val hideBanners = patch("Hide banners") {
+val hideBanners = patch(ExamplePatchStrings.hideBanners) {
     dependsOn(removeProtection)
     execute { /* ... */ }
 }
@@ -116,9 +135,10 @@ Users need to load that bundle too. If it is missing, your patch is skipped, wit
 Options are values users choose before patching, such as a new app name. Declare one in the patch block, and read it in `execute`:
 
 ```kotlin
-val cloneApp = patch("Clone app") {
+val cloneApp = patch(ExamplePatchStrings.cloneApp) {
     compatibleWith(EXAMPLE_APP)
-    val packageName = stringOption("packageName", title = "Package name", default = "com.example.app.clone")
+    val packageName =
+        stringOption("packageName", title = ExamplePatchStrings.packageName, default = "com.example.app.clone")
 
     execute {
         val newPackage = options[packageName]
@@ -135,7 +155,7 @@ val cloneApp = patch("Clone app") {
 | `stringListOption` | `List<String>` | |
 | `pathOption` | `OptionPath` | A folder the user picks. `listContents()` and `readFile(path)` read it. |
 
-Each takes a `key`, and optionally a `title`, a `description`, a `default` (except paths), and `required`. The key is how users set the option, for example `--option "Clone app.packageName=com.example.clone"` on the CLI.
+Each takes a `key` and a `title`, and optionally a `description`, a `default` (except paths), and `required`. The title and description are strings from the module's string table, like the patch name. The key is how users set the option, for example `--option "Clone app.packageName=com.example.clone"` on the CLI.
 
 `options[x]` returns the value, with the default filled in. It fails when the option is optional, has no default, and the user set nothing. Read such an option with `options.getOrNull(x)`, which returns null instead.
 

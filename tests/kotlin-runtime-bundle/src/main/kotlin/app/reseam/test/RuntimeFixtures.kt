@@ -15,6 +15,7 @@ import app.reseam.patch.method
 import app.reseam.patch.methods
 import app.reseam.patch.patch
 import app.reseam.patch.point
+import app.reseam.patch.settings.StringRef
 import app.reseam.patch.types.FieldRef
 
 internal val appVideoState = klass("appVideoState") { strings("NEW", "PLAYING") }
@@ -118,35 +119,32 @@ internal val writerHost = klass("com.example.WriterHost")
 internal fun takeCall(method: String) =
     writerHost.method(method).point { invokeStatic { name("take") } }
 
-internal fun invalidCondition(name: String, block: CodeScope.() -> Unit) =
+internal fun invalidCondition(name: StringRef, block: CodeScope.() -> Unit) =
     patch(name) {
         compatibleWith("com.example.test")
         enabledByDefault(false)
         execute { anchoredTwice.before(block) }
     }
 
-internal fun fixturePatch(name: String, execute: PatchRuntime.() -> Unit) =
+internal fun fixturePatch(
+    name: StringRef,
+    description: StringRef,
+    execute: PatchRuntime.() -> Unit,
+) =
     patch(name) {
-        description(fixtureDescriptions.getValue(name))
+        description(description)
         compatibleWith("com.example.test")
         enabledByDefault(false)
         execute(execute)
     }
 
-internal val fixtureDescriptions: Map<String, String> =
-    java.util.Properties().run {
-        checkNotNull(
-                RuntimeFixtures::class.java.getResourceAsStream("/fixtures/runtime.properties")
-            )
-            .use(::load)
-        stringPropertyNames().associateWith { getProperty(it) }
-    }
-
-private object RuntimeFixtures
-
-internal fun declaredFixture(name: String, block: app.reseam.patch.PatchBuilder.() -> Unit) =
+internal fun declaredFixture(
+    name: StringRef,
+    description: StringRef?,
+    block: app.reseam.patch.PatchBuilder.() -> Unit,
+) =
     patch(name) {
-        description(fixtureDescriptions[name] ?: "")
+        description?.let(::description)
         compatibleWith("com.example.test")
         block()
     }

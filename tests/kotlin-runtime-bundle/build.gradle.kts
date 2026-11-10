@@ -17,3 +17,5 @@ repositories {
         ))
     .name
     .set("reseam-test")
+
+reseamStrings { objectName = "app.reseam.test.TestStrings" }

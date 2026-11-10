@@ -34,10 +34,10 @@ Use these as property delegates inside a `SettingsGroup`. `key` defaults to the 
 
 | Function | Description |
 |---|---|
-| `toggle(default: Boolean, key: String? = null, icon: Vector? = null, covers: List<ToggleSetting> = emptyList())` | An on/off switch. While it is on, each toggle in `covers` reads as on and shows greyed out. Their own values come back when it is turned off. |
-| `text(default: String, multiline: Boolean = false, key: String? = null, icon: Vector? = null)` | Text the user types. A `multiline` text holds one entry per line. |
-| `folder(default: String, key: String? = null, icon: Vector? = null)` | A folder the user picks. The app gets permission to read and write it. |
-| `choice(default: String, choices: List<Choice>, key: String? = null, icon: Vector? = null)` | One of several values. `default` must be one of the choices' values. |
+| `toggle(default: Boolean, key: String? = null, icon: Vector? = null, covers: List<ToggleSetting> = emptyList(), takesEffect: TakesEffect = TakesEffect.ON_RESTART)` | An on/off switch. While it is on, each toggle in `covers` reads as on and shows greyed out. Their own values come back when it is turned off. |
+| `text(default: String, multiline: Boolean = false, key: String? = null, icon: Vector? = null, takesEffect: TakesEffect = TakesEffect.ON_RESTART)` | Text the user types. A `multiline` text holds one entry per line. |
+| `folder(default: String, key: String? = null, icon: Vector? = null, takesEffect: TakesEffect = TakesEffect.ON_RESTART)` | A folder the user picks. The app gets permission to read and write it. |
+| `choice(default: String, choices: List<Choice>, key: String? = null, icon: Vector? = null, takesEffect: TakesEffect = TakesEffect.ON_RESTART)` | One of several values. `default` must be one of the choices' values. |
 | `action(key: String? = null, icon: Vector? = null)` | A row that runs code when the user taps it, such as copying something or opening a page. It stores nothing. A patch gives it its code with [`onAction`](#onaction). |
 
 > [!WARNING]
@@ -58,6 +58,16 @@ The base of every setting.
 | `summary: StringRef?` | The line under the title, if any. |
 | `default: T` | The value until the user changes it. An action's is `Unit`. |
 | `icon: Vector?` | The icon at the start of the row, if any. |
+| `takesEffect: TakesEffect` | When the app picks up a change. An action's is `IMMEDIATELY`. |
+
+### `TakesEffect`
+
+When the app picks up a change to a setting. See [When a change applies](11_settings.md#when-a-change-applies).
+
+| Value | Description |
+|---|---|
+| `ON_RESTART` | The default. Closing the settings after changing it offers to restart the app. |
+| `IMMEDIATELY` | The code that reads it sees a change right away, so changing it never asks for a restart. |
 
 ### `ToggleSetting`
 
@@ -90,7 +100,7 @@ A row that runs code when the user taps it. It stores nothing, so settings expor
 
 ### `StringTable`
 
-Translated strings, generated from the `strings.xml` files in a settings module's `src/main/strings`. The generated object has one `StringRef` member per string, named in camel case: `feed_style_compact` becomes `ExampleStrings.feedStyleCompact`.
+Translated strings, generated from the `strings.xml` files in a patch or settings module's `src/main/strings`. The generated object has one `StringRef` member per string without arguments, named in camel case: `feed_style_compact` becomes `ExampleStrings.feedStyleCompact`.
 
 | Member | Description |
 |---|---|
@@ -98,7 +108,7 @@ Translated strings, generated from the `strings.xml` files in a settings module'
 
 ### `StringRef`
 
-One string of a table, shown in the app's current language.
+One string of a table. The app shows a setting's text in its current language, and Reseam Manager shows a patch's name, description and option text in the user's language.
 
 | Member | Description |
 |---|---|

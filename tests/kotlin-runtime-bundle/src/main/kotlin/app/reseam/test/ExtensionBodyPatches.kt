@@ -23,10 +23,11 @@ private fun PatchRuntime.callBodies() {
     }
 }
 
-val unfilledBodies = fixturePatch("unfilled-bodies") { callBodies() }
+val unfilledBodies =
+    fixturePatch(TestStrings.unfilledBodies, TestStrings.unfilledBodiesDescription) { callBodies() }
 
 val filledBodies =
-    fixturePatch("filled-bodies") {
+    fixturePatch(TestStrings.filledBodies, TestStrings.filledBodiesDescription) {
         callBodies()
         Bodies.filled.implement { returnVoid() }
         Bodies.missing.implement { returnVoid() }

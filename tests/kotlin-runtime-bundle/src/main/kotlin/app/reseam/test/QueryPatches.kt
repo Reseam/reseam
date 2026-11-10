@@ -16,7 +16,7 @@ import app.reseam.patch.methods
 import app.reseam.patch.replace
 
 val extensionShadow =
-    fixturePatch("extension-shadow") {
+    fixturePatch(TestStrings.extensionShadow, TestStrings.extensionShadowDescription) {
         check(bytecode.findClass("app.reseam.test.ext.VideoState") != null)
         check(
             klass("app.reseam.test.ext.VideoState").method("names").owner ==
@@ -29,7 +29,10 @@ val extensionShadow =
     }
 
 val instructionShapeQueries =
-    fixturePatch("instruction-shape-queries") {
+    fixturePatch(
+        TestStrings.instructionShapeQueries,
+        TestStrings.instructionShapeQueriesDescription,
+    ) {
         check(unorderedShape.all.size == 2) {
             "expected both shapes, got ${unorderedShape.all.map { it.descriptor }}"
         }
@@ -75,7 +78,7 @@ val instructionShapeQueries =
     }
 
 val inheritedMethods =
-    fixturePatch("inherited-methods") {
+    fixturePatch(TestStrings.inheritedMethods, TestStrings.inheritedMethodsDescription) {
         val declaredOnly = runCatching { preferenceFragment.method("findPreference").method }
         check(declaredOnly.isFailure)
         files.write(
@@ -87,7 +90,7 @@ val inheritedMethods =
 private val planEnum = klass("plan") { enumConstants("FREE", "PREMIUM") }
 
 val enumConstants =
-    fixturePatch("enum-constants") {
+    fixturePatch(TestStrings.enumConstants, TestStrings.enumConstantsDescription) {
         val premium = planEnum.enumConstant("PREMIUM")
         klass("com.example.Account").method("plan").replace { returnValue(staticField(premium)) }
         files.write(
@@ -98,7 +101,7 @@ val enumConstants =
     }
 
 val fieldAccesses =
-    fixturePatch("field-accesses") {
+    fixturePatch(TestStrings.fieldAccesses, TestStrings.fieldAccessesDescription) {
         val premium = planEnum.enumConstant("PREMIUM")
         val readers = methods {
             accesses {
@@ -121,7 +124,10 @@ private val licenseEnum = klass("license") { enumConstants("NO_LICENSE", "VALID"
 private val tierEnum = klass("tier") { enumConstants("BASIC", "PRO") }
 
 val optimizedEnumConstants =
-    fixturePatch("optimized-enum-constants") {
+    fixturePatch(
+        TestStrings.optimizedEnumConstants,
+        TestStrings.optimizedEnumConstantsDescription,
+    ) {
         val valid = licenseEnum.enumConstant("VALID")
         val pro = tierEnum.enumConstant("PRO")
         val account = klass("com.example.Account")

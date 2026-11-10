@@ -68,6 +68,8 @@ fn settings_pages_merge_selected_contributions_and_keep_nested_ancestors() {
         assert!(sections[0]["page"].is_null());
         assert_eq!(sections[0]["settings"][0]["key"], "root.enabled");
         assert_eq!(sections[0]["settings"][1]["multiline"], true);
+        assert_eq!(sections[0]["settings"][0]["restart"], true);
+        assert_eq!(sections[0]["settings"][1]["restart"], false);
         let quality: Vec<_> = sections.iter().filter(|s| s["page"] == "quality").collect();
         assert_eq!(quality.len(), 1);
         assert_eq!(

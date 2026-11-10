@@ -46,7 +46,7 @@ private val featureFlags = function {
     paramCount(1)
 }
 
-val allFeatures = patch("All features") {
+val allFeatures = patch(ExamplePatchStrings.allFeatures) {
     execute {
         featureFlags.after {
             returnValue(Features.withFeature(result, string("search")))

@@ -9,6 +9,7 @@ import app.reseam.patch.settings.About
 import app.reseam.patch.settings.Link
 import app.reseam.patch.settings.SettingsGroup
 import app.reseam.patch.settings.SettingsPage
+import app.reseam.patch.settings.TakesEffect
 import app.reseam.patch.settings.Vector
 import app.reseam.patch.settings.Verbatim
 import app.reseam.patch.settings.action
@@ -41,7 +42,13 @@ private val navigationEmpty = SettingsPage("empty", TestStrings.pageEmpty)
 
 object NavigationSettings : SettingsGroup(TestStrings) {
     val rootEnabled by toggle(default = false, key = "root.enabled", icon = dot)
-    val rootLines by text(default = "", multiline = true, key = "root.lines")
+    val rootLines by
+        text(
+            default = "",
+            multiline = true,
+            key = "root.lines",
+            takesEffect = TakesEffect.IMMEDIATELY,
+        )
     val qualityFirst by toggle(default = true, key = "quality.first")
     val qualitySecond by toggle(default = false, key = "quality.second")
     val generalEnabled by toggle(default = true, key = "general.enabled")
@@ -76,7 +83,7 @@ val navigationSettings =
     }
 
 val navigationFirstPatch =
-    patch("Settings navigation first") {
+    patch(TestStrings.settingsNavigationFirst) {
         compatibleWith("com.example.test")
         enabledByDefault(false)
         settings(
@@ -87,7 +94,7 @@ val navigationFirstPatch =
     }
 
 val navigationSecondPatch =
-    patch("Settings navigation second") {
+    patch(TestStrings.settingsNavigationSecond) {
         compatibleWith("com.example.test")
         enabledByDefault(false)
         dependsOn(navigationFirstPatch)
@@ -104,7 +111,7 @@ val navigationSecondPatch =
     }
 
 val gatedEntry =
-    patch("Settings gated entry") {
+    patch(TestStrings.settingsGatedEntry) {
         compatibleWith("com.example.test")
         enabledByDefault(false)
         settings(
@@ -126,7 +133,7 @@ val gatedEntry =
     }
 
 val actionRow =
-    patch("Settings action") {
+    patch(TestStrings.settingsAction) {
         compatibleWith("com.example.test")
         enabledByDefault(false)
         settings(navigationSettings, section(TestStrings.sectionActions, NavigationSettings.share))
@@ -138,7 +145,7 @@ val actionRow =
     }
 
 val uncodedActionRow =
-    patch("Settings action without code") {
+    patch(TestStrings.settingsActionWithoutCode) {
         compatibleWith("com.example.test")
         enabledByDefault(false)
         settings(navigationSettings, section(TestStrings.sectionActions, NavigationSettings.share))

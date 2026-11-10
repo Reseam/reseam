@@ -29,7 +29,7 @@ internal object PointObserver : ExtClass("com.example.PointObserver") {
 }
 
 val pointQueries =
-    patch("point-queries") {
+    patch(TestStrings.pointQueries) {
         compatibleWith("com.example.test")
         enabledByDefault(false)
         execute {

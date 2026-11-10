@@ -13,6 +13,7 @@ import app.reseam.patch.native.optionGetString
 import app.reseam.patch.native.optionGetStringList
 import app.reseam.patch.native.optionListPathContents
 import app.reseam.patch.native.optionReadPathFile
+import app.reseam.patch.settings.StringRef
 
 enum class OptionKind {
     STRING,
@@ -29,8 +30,8 @@ enum class OptionKind {
  */
 sealed class Option<T : Any>(
     val key: String,
-    val title: String,
-    val description: String,
+    val title: StringRef,
+    val description: StringRef?,
     val required: Boolean,
     val kind: OptionKind,
     val default: T?,
@@ -44,8 +45,8 @@ sealed class Option<T : Any>(
 class StringOption
 internal constructor(
     key: String,
-    title: String,
-    description: String,
+    title: StringRef,
+    description: StringRef?,
     required: Boolean,
     default: String?,
     validValues: List<String>?,
@@ -56,8 +57,8 @@ internal constructor(
 class BoolOption
 internal constructor(
     key: String,
-    title: String,
-    description: String,
+    title: StringRef,
+    description: StringRef?,
     required: Boolean,
     default: Boolean?,
 ) : Option<Boolean>(key, title, description, required, OptionKind.BOOL, default, null) {
@@ -67,8 +68,8 @@ internal constructor(
 class IntOption
 internal constructor(
     key: String,
-    title: String,
-    description: String,
+    title: StringRef,
+    description: StringRef?,
     required: Boolean,
     default: Long?,
 ) : Option<Long>(key, title, description, required, OptionKind.INT, default, null) {
@@ -78,8 +79,8 @@ internal constructor(
 class FloatOption
 internal constructor(
     key: String,
-    title: String,
-    description: String,
+    title: StringRef,
+    description: StringRef?,
     required: Boolean,
     default: Double?,
 ) : Option<Double>(key, title, description, required, OptionKind.FLOAT, default, null) {
@@ -89,8 +90,8 @@ internal constructor(
 class StringListOption
 internal constructor(
     key: String,
-    title: String,
-    description: String,
+    title: StringRef,
+    description: StringRef?,
     required: Boolean,
     default: List<String>?,
 ) : Option<List<String>>(key, title, description, required, OptionKind.STRING_LIST, default, null) {
@@ -98,7 +99,7 @@ internal constructor(
 }
 
 class PathOption
-internal constructor(key: String, title: String, description: String, required: Boolean) :
+internal constructor(key: String, title: StringRef, description: StringRef?, required: Boolean) :
     Option<OptionPath>(key, title, description, required, OptionKind.PATH, null, null) {
     override fun read() = optionGetPath(key)?.let { OptionPath(it, key) }
 }

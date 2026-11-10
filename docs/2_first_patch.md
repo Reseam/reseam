@@ -32,16 +32,36 @@ val showRatePrompt = method("showRatePrompt") {
 
 This is a *target*: a description of the method, which Reseam searches the app for when a patch uses it. `"showRatePrompt"` is a label for error messages. The app's real name for the method doesn't matter.
 
-## 3. Write the patch
+## 3. Name the patch
 
-In the same file:
+Users see a patch's name and description in their own language, so they live in a string table rather than in the code. Add `apps/example/patch/src/main/strings/values/strings.xml`:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hide_rate_prompt">Hide rate prompt</string>
+    <string name="hide_rate_prompt_description">Never asks you to rate the app.</string>
+</resources>
+```
+
+Then tell the Gradle plugin which object to generate from it, in `apps/example/patch/build.gradle.kts`:
+
+```kotlin
+reseamStrings { objectName = "app.example.patches.ExamplePatchStrings" }
+```
+
+The build turns each string into a property of `ExamplePatchStrings`, so `hide_rate_prompt` becomes `ExamplePatchStrings.hideRatePrompt`. Translators add `values-de/strings.xml` and the like next to `values/` later, without touching the code.
+
+## 4. Write the patch
+
+In the file from step 2:
 
 ```kotlin
 import app.reseam.patch.before
 import app.reseam.patch.patch
 
-val hideRatePrompt = patch("Hide rate prompt") {
-    description("Never asks you to rate the app.")
+val hideRatePrompt = patch(ExamplePatchStrings.hideRatePrompt) {
+    description(ExamplePatchStrings.hideRatePromptDescription)
     compatibleWith("com.example.app")
 
     execute {
@@ -52,7 +72,7 @@ val hideRatePrompt = patch("Hide rate prompt") {
 }
 ```
 
-- `patch("Hide rate prompt")` is the name users see.
+- `patch(ExamplePatchStrings.hideRatePrompt)` is the name users see.
 - `compatibleWith` says which app the patch is for. It is selected by default when someone patches that app.
 - `execute` is the change. Here, it adds `return` at the start of the method, so the prompt never shows.
 
@@ -60,7 +80,7 @@ The patch has to be a public, top-level `val`. That is how Reseam finds it.
 
 Hooks such as `before` are extension functions, so each needs its import. Your IDE adds them for you.
 
-## 4. Build and test
+## 5. Build and test
 
 ```bash
 ./gradlew bundle
@@ -80,7 +100,7 @@ INFO patch run finished applied=1 dependencies=0 skipped=0 unmountable=0 failed=
 
 Then open the app and check that the prompt is gone. A patch that applied changed the code its target matched. Only the app shows you whether that was the right code.
 
-## 5. When the target doesn't match
+## 6. When the target doesn't match
 
 If no method fits the description, the patch fails, nothing is written, and the log says why:
 

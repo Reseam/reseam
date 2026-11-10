@@ -30,9 +30,16 @@ impl Fixture {
 package sample;
 import app.reseam.patch.ReseamPatch;
 import app.reseam.patch.PatchRuntime;
+import app.reseam.patch.settings.StringRef;
+import app.reseam.patch.settings.StringTable;
 public final class Declarations {
+private static final class Strings extends StringTable {
+    static final Strings TABLE = new Strings();
+    final StringRef indexedPatch = string("indexed_patch");
+    private Strings() { super("Fixture", java.util.Set.of("indexed_patch")); }
+}
 private static class TestPatch implements ReseamPatch {
-    public String getName() { return "Indexed patch"; }
+    public StringRef getName() { return Strings.TABLE.indexedPatch; }
     public void execute(PatchRuntime runtime) {}
 }
 private static final ReseamPatch shared = new TestPatch();
@@ -44,7 +51,7 @@ public static ReseamPatch getNull() { return null; }
 public static ReseamPatch getThrows() { throw new IllegalStateException("declaration failure"); }
 public static ReseamPatch getBadMetadata() {
     return new TestPatch() {
-        public String getName() { throw new IllegalStateException("metadata failure"); }
+        public StringRef getName() { throw new IllegalStateException("metadata failure"); }
     };
 }
 public static ReseamPatch getNullMetadata() {
@@ -105,6 +112,17 @@ public static String getUnindexed() { throw new AssertionError("unindexed member
             )
             .unwrap();
             std::io::copy(&mut File::open(path).unwrap(), &mut jar).unwrap();
+        }
+        for (file, contents) in [
+            ("locales", "default\n"),
+            ("default.json", r#"{"indexed_patch":"Indexed patch"}"#),
+        ] {
+            jar.start_file(
+                format!("reseam/strings/Fixture/{file}"),
+                SimpleFileOptions::default(),
+            )
+            .unwrap();
+            jar.write_all(contents.as_bytes()).unwrap();
         }
         jar.start_file("META-INF/reseam/patches.json", SimpleFileOptions::default())
             .unwrap();

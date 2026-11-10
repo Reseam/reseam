@@ -23,6 +23,12 @@ pub(crate) mod jvm;
 pub(crate) mod loader;
 #[cfg(feature = "kotlin")]
 pub(crate) mod metadata;
+#[cfg(feature = "kotlin")]
+pub(crate) mod option_metadata;
+#[cfg(feature = "kotlin")]
+pub(crate) mod patch_text;
+#[cfg(feature = "kotlin")]
+pub(crate) mod patch_translations;
 #[cfg(all(feature = "kotlin", not(target_os = "android")))]
 pub(crate) mod target_check;
 

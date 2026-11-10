@@ -15,7 +15,7 @@ private class FailingStream(private var length: Int) : InputStream() {
 }
 
 val fileStreams =
-    fixturePatch("file-streams") {
+    fixturePatch(TestStrings.fileStreams, TestStrings.fileStreamsDescription) {
         files.write("assets/large.bin", LARGE.inputStream())
         files.writeStored("assets/large-stored.bin", LARGE.inputStream())
         files.write("res/xml/streamed.xml", "<settings />".byteInputStream())

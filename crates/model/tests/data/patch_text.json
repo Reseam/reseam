@@ -1,0 +1,38 @@
+{
+  "spec": {
+    "bundle": "bundle",
+    "id": "patch",
+    "name": "Hide ads",
+    "hidden": false,
+    "description": "Removes ads.",
+    "enabled_by_default": true,
+    "dependencies": [],
+    "compatibility": { "kind": "universal" },
+    "options": [
+      {
+        "key": "label",
+        "title": "Label",
+        "description": "",
+        "option_type": "string",
+        "default_value": null,
+        "valid_values": null,
+        "required": false
+      }
+    ],
+    "rewrites_output": false,
+    "translations": [
+      { "locale": "pt", "name": "Ocultar anúncios", "options": [{ "key": "label", "title": "Rótulo" }] },
+      { "locale": "pt-BR", "name": "Esconder anúncios" },
+      { "locale": "sr-Latn", "name": "Sakrij reklame" },
+      { "locale": "de", "options": [{ "key": "label", "title": "Beschriftung" }] }
+    ]
+  },
+  "cases": [
+    { "locales": [], "name": "Hide ads", "title": "Label", "description": "Removes ads." },
+    { "locales": ["pt-BR"], "name": "Esconder anúncios", "title": "Rótulo", "description": "Removes ads." },
+    { "locales": ["pt-PT"], "name": "Ocultar anúncios", "title": "Rótulo", "description": "Removes ads." },
+    { "locales": ["sr-Latn-RS"], "name": "Sakrij reklame", "title": "Label", "description": "Removes ads." },
+    { "locales": ["de-AT", "pt"], "name": "Ocultar anúncios", "title": "Beschriftung", "description": "Removes ads." },
+    { "locales": ["fr"], "name": "Hide ads", "title": "Label", "description": "Removes ads." }
+  ]
+}

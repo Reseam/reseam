@@ -21,6 +21,7 @@ mod record;
 mod release;
 mod request;
 mod signing;
+mod translation;
 
 pub use compatibility::{ApkVersion, Compatibility, CompatiblePackage, Incompatibility};
 pub use container::ContainerFormat;
@@ -47,3 +48,4 @@ pub use request::{
     InstallMethod, PatchOutput, PatchRequest, PatchSelection, SigningIdentity, Trust,
 };
 pub use signing::SigningKeyMaterial;
+pub use translation::{OptionText, OptionTranslation, PatchText, PatchTranslation};

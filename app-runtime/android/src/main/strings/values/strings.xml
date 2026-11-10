@@ -8,9 +8,10 @@
     <string name="save">Save</string>
     <string name="restore_default">Restore the default</string>
     <string name="restart_title">Restart to apply changes?</string>
-    <string name="restart_message">Most settings take effect after the app restarts.</string>
+    <string name="restart_message">Some of the settings you changed take effect after the app restarts.</string>
     <string name="later">Later</string>
     <string name="restart">Restart</string>
+    <string name="restart_app">Restart the app</string>
     <string name="version">Version <xliff:g id="version">%1$s</xliff:g></string>
     <string name="engine">Engine <xliff:g id="engine">%1$s</xliff:g></string>
     <string name="engine_license">Engine <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>

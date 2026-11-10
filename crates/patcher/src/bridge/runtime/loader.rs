@@ -15,6 +15,7 @@ use super::class_loader::create_class_loader;
 use super::discovery::read_declarations;
 use super::jvm::{self, jvm_err};
 use super::metadata::read_patch;
+use super::patch_text::StringTables;
 use crate::bridge::phase::LoadedBundle;
 use crate::bundle::BundleInfo;
 use crate::bundle::index::Declaration;
@@ -117,6 +118,7 @@ pub(crate) fn load_patches(
                     )
                 })?;
             }
+            let mut tables = StringTables::new(env, loader)?;
             found
                 .iter()
                 .map(|patch| {
@@ -128,6 +130,7 @@ pub(crate) fn load_patches(
                             &external_class,
                             &retained_loader,
                             &bundle.name,
+                            &mut tables,
                         )
                     })
                 })

@@ -7,7 +7,7 @@ import app.reseam.patch.XmlDocument
 import app.reseam.patch.invoke
 
 val xmlAttributeBinding =
-    fixturePatch("xml-attribute-binding") {
+    fixturePatch(TestStrings.xmlAttributeBinding, TestStrings.xmlAttributeBindingDescription) {
         manifest.edit {
             root.appendChild(
                 createElement("intent").apply {
@@ -23,7 +23,7 @@ val xmlAttributeBinding =
     }
 
 val xmlGraft =
-    declaredFixture("xml-graft") {
+    declaredFixture(TestStrings.xmlGraft, TestStrings.xmlGraftDescription) {
         enabledByDefault(false)
         dependsOn(resourceEntries)
 
@@ -45,7 +45,7 @@ val xmlGraft =
     }
 
 val xmlFilesWith =
-    fixturePatch("xml-files-with") {
+    fixturePatch(TestStrings.xmlFilesWith, TestStrings.xmlFilesWithDescription) {
         val found =
             listOf(
                 files.xmlFilesWith("android:layout_width"),

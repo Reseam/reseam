@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::{Compatibility, OptionDeclaration, Problem};
+use crate::{Compatibility, OptionDeclaration, PatchTranslation, Problem};
 use serde::{Deserialize, Serialize};
 
 /// A bulk selection clients offer next to toggling patches one by one.
@@ -114,6 +114,10 @@ pub struct PatchSpec {
     #[serde(default)]
     #[boltffi::default(false)]
     pub rewrites_output: bool,
+    /// The patch's text in each locale its bundle translates it to; `name`,
+    /// `description` and the option titles hold the source text.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub translations: Vec<PatchTranslation>,
 }
 
 impl PatchSpec {
@@ -170,6 +174,7 @@ mod tests {
             compatibility,
             options: Vec::new(),
             rewrites_output: false,
+            translations: Vec::new(),
         }
     }
 

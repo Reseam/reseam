@@ -8,7 +8,7 @@ import app.reseam.patch.RunList
 private val registrations = RunList<String>()
 
 val registrationOwner =
-    declaredFixture("registration-owner") {
+    declaredFixture(TestStrings.registrationOwner, null) {
         enabledByDefault(false)
         afterDependents {
             files.write(
@@ -19,7 +19,7 @@ val registrationOwner =
     }
 
 val registersAndFails =
-    declaredFixture("registers-and-fails") {
+    declaredFixture(TestStrings.registersAndFails, null) {
         enabledByDefault(false)
         dependsOn(registrationOwner)
         execute {
@@ -29,7 +29,7 @@ val registersAndFails =
     }
 
 val registersAndApplies =
-    declaredFixture("registers-and-applies") {
+    declaredFixture(TestStrings.registersAndApplies, null) {
         enabledByDefault(false)
         dependsOn(registrationOwner)
         execute { registrations.add("applied") }

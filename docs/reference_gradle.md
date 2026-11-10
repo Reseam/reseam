@@ -25,7 +25,7 @@ It applies the others for you, by folder:
 |---|---|---|
 | `app.reseam.workspace` | `settings.gradle.kts` | Adds a module for each folder of the layout, and the repositories they need. |
 | `app.reseam.bundle` | the root project | Packs and signs the bundle. |
-| `app.reseam.patches` | `apps/<app>/patch`, `shared/<name>/patch` | Compiles patches, and generates the bindings of the folder's extensions. |
+| `app.reseam.patches` | `apps/<app>/patch`, `shared/<name>/patch` | Compiles patches and their strings, and generates the bindings of the folder's extensions. |
 | `app.reseam.extension` | `apps/<app>/extensions/<name>`, `shared/<name>` | Compiles an extension to DEX. A module with `src/main/js` is a JavaScript extension instead. |
 | `app.reseam.settings` | `apps/<app>/settings`, `shared/<name>/settings` | Compiles settings and their strings, for patches and extensions both. |
 
@@ -50,17 +50,19 @@ reseam {
 
 ### `reseamStrings`
 
-In a settings module with `src/main/strings`: the string table the build generates.
+In a patch, settings, or extension module with `src/main/strings`: the string table the build generates. A patch module's table holds its patch names, descriptions and option text, which packing copies into the catalog in every language. A settings module's table ships in the app.
 
 | Member | Description |
 |---|---|
 | `objectName: Property<String>` | The generated object's full name, such as `app.example.settings.ExampleStrings`. Required. |
-| `tableId: Property<String>` | The table's name. Defaults to the object's simple name. |
-| `assetDirectory: Property<String>` | Where the table is stored in the app. Defaults to `reseam/<bundle>/strings/<tableId>`. |
+| `tableId: Property<String>` | The table's name, unique within the bundle. Defaults to the object's simple name. |
+| `assetDirectory: Property<String>` | Where the table is stored in the app. Defaults to `reseam/<bundle>/strings/<tableId>`. Settings and extension modules only. |
 
 ```kotlin
 reseamStrings { objectName = "app.example.settings.ExampleStrings" }
 ```
+
+The patch-side object, which patch and settings modules get, names only the strings without arguments, as [`StringRef`](reference_settings.md#stringref) members. The extension-side object, which settings and extension modules get, has every string.
 
 ## Dependency configurations
 
@@ -80,6 +82,8 @@ A patch module uses a settings module with the usual `api(project(":settings"))`
 |---|---|
 | `bundle` | Builds, packs, and signs the bundle into `build/reseam/<name>.reseam`. Packing loads every patch once to record its metadata, so a patch that fails to load fails the build. The build lists which module made each file, which sets every patch's [fingerprint](15_bundles.md#fingerprints). |
 | `unsignedBundle` | Builds and packs the bundle without a key into `build/reseam/unsigned/<name>.reseam`, for [`reseam bundle sign`](/docs/cli/bundle/#reseam-bundle-sign) to sign on another machine. |
+| `generateStrings` | Compiles `src/main/strings` into JSON tables and the patch-side object. Fails on a translation of an unknown string, one marked `translatable="false"`, or one whose arguments differ from the default. |
+| `generateDeviceStrings` | Generates the extension-side object of a settings or extension module. |
 | `typecheck-<app>` | Type checks an app folder's JavaScript extensions, for a folder with a `package.json`. `bundle` runs it. |
 
 ## Properties

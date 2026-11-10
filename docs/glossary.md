@@ -56,6 +56,8 @@ description: The words used across these docs.
 
 **Split APK**: one part of an app that ships as several APK files.
 
+**String table**: the strings of a module's `src/main/strings`, with their translations. A patch module's table names its patches, and a settings module's table ships in the app. See [Names in every language](4_patches.md#names-in-every-language).
+
 **Target**: a description of a method, class, field, or function that Reseam searches the app for.
 
 **Universal patch**: a patch with no `compatibleWith`. It works on any app, and starts switched off unless its author calls `enabledByDefault(true)`.

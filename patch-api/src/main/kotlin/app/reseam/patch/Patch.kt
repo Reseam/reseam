@@ -5,18 +5,19 @@ package app.reseam.patch
 
 import app.reseam.patch.settings.SettingsHost
 import app.reseam.patch.settings.SettingsSection
+import app.reseam.patch.settings.StringRef
 
 interface ReseamPatch {
     /**
      * Display name; need not be unique. Identity comes from the public declaration. Null means an
      * internal dependency, never listed.
      */
-    val name: String?
+    val name: StringRef?
     val hidden: Boolean
         get() = name == null
 
-    val description: String
-        get() = ""
+    val description: StringRef?
+        get() = null
 
     val dependencies: List<ReseamPatch>
         get() = emptyList()
@@ -89,14 +90,18 @@ operator fun String.invoke(versionName: String, versionCode: Int) =
  * bundle a module declares; it is never written by hand.
  */
 class ExternalPatch(val bundle: String, val id: String) : ReseamPatch {
-    override val name: String? = null
+    override val name: StringRef? = null
 
     override fun execute(ctx: PatchRuntime) = error("$this belongs to another bundle")
 
     override fun toString() = "$bundle/$id"
 }
 
-fun patch(name: String, block: PatchBuilder.() -> Unit): ReseamPatch =
+/**
+ * A patch users see as [name], a string of the module's `src/main/strings` that the bundle's
+ * catalog carries in every language the module translates it to.
+ */
+fun patch(name: StringRef, block: PatchBuilder.() -> Unit): ReseamPatch =
     PatchBuilder(name).apply(block).build()
 
 fun patch(block: PatchBuilder.() -> Unit): ReseamPatch = PatchBuilder(null).apply(block).build()
@@ -118,8 +123,8 @@ abstract class PatchDeclaration internal constructor() {
     }
 }
 
-class PatchBuilder internal constructor(private val name: String?) : PatchDeclaration() {
-    private var description = ""
+class PatchBuilder internal constructor(private val name: StringRef?) : PatchDeclaration() {
+    private var description: StringRef? = null
     private var hidden = name == null
     private var enabledByDefault: Boolean? = null
     private val options = mutableListOf<Option<*>>()
@@ -129,8 +134,8 @@ class PatchBuilder internal constructor(private val name: String?) : PatchDeclar
     private var afterDependentsBlock: (PatchRuntime.() -> Unit)? = null
     private var afterWriteBlock: (OutputRuntime.() -> Unit)? = null
 
-    fun description(text: String) {
-        description = text.trimIndent()
+    fun description(text: StringRef) {
+        description = text
     }
 
     fun enabledByDefault(value: Boolean) {
@@ -144,8 +149,8 @@ class PatchBuilder internal constructor(private val name: String?) : PatchDeclar
 
     fun stringOption(
         key: String,
-        title: String = key,
-        description: String = "",
+        title: StringRef,
+        description: StringRef? = null,
         default: String? = null,
         validValues: List<String>? = null,
         required: Boolean = false,
@@ -153,40 +158,40 @@ class PatchBuilder internal constructor(private val name: String?) : PatchDeclar
 
     fun boolOption(
         key: String,
-        title: String = key,
-        description: String = "",
+        title: StringRef,
+        description: StringRef? = null,
         default: Boolean? = null,
         required: Boolean = false,
     ) = BoolOption(key, title, description, required, default).also { options += it }
 
     fun intOption(
         key: String,
-        title: String = key,
-        description: String = "",
+        title: StringRef,
+        description: StringRef? = null,
         default: Long? = null,
         required: Boolean = false,
     ) = IntOption(key, title, description, required, default).also { options += it }
 
     fun floatOption(
         key: String,
-        title: String = key,
-        description: String = "",
+        title: StringRef,
+        description: StringRef? = null,
         default: Double? = null,
         required: Boolean = false,
     ) = FloatOption(key, title, description, required, default).also { options += it }
 
     fun stringListOption(
         key: String,
-        title: String = key,
-        description: String = "",
+        title: StringRef,
+        description: StringRef? = null,
         default: List<String>? = null,
         required: Boolean = false,
     ) = StringListOption(key, title, description, required, default).also { options += it }
 
     fun pathOption(
         key: String,
-        title: String = key,
-        description: String = "",
+        title: StringRef,
+        description: StringRef? = null,
         required: Boolean = false,
     ) = PathOption(key, title, description, required).also { options += it }
 
@@ -250,7 +255,7 @@ class PatchBuilder internal constructor(private val name: String?) : PatchDeclar
                 rewrite?.invoke(ctx)
             }
 
-            override fun toString() = name ?: "internal patch"
+            override fun toString() = name?.toString() ?: "internal patch"
         }
     }
 }

@@ -19,7 +19,7 @@ import app.reseam.patch.types.FieldRef
 import app.reseam.patch.types.NewField
 
 val replaceFallsThrough =
-    fixturePatch("replace-falls-through") {
+    fixturePatch(TestStrings.replaceFallsThrough, TestStrings.replaceFallsThroughDescription) {
         anchorHost.method("replaced").replace { whenTrue(bool(true)) { returnVoid() } }
     }
 
@@ -28,24 +28,24 @@ private object GhostExtension : ExtClass("app.reseam.test.GhostExtension") {
 }
 
 val extMethodMissing =
-    fixturePatch("ext-method-missing") {
+    fixturePatch(TestStrings.extMethodMissing, TestStrings.extMethodMissingDescription) {
         anchoredTwice.before { call(GhostExtension.run, bool(true)) }
     }
 
 val assignFieldRead =
-    fixturePatch("assign-field-read") {
+    fixturePatch(TestStrings.assignFieldRead, TestStrings.assignFieldReadDescription) {
         anchoredTwice.before { staticField(anchorValue).assign(int(7)) }
     }
 
 val afterReturn =
-    fixturePatch("after-return") {
+    fixturePatch(TestStrings.afterReturn, TestStrings.afterReturnDescription) {
         anchoredTwice
             .point { opcode(Opcode.RETURN_VOID) }
             .after { callStatic("com.example.Observer", "mark", "(I)V", int(1)) }
     }
 
 val privateFieldAccess =
-    fixturePatch("private-field-access") {
+    fixturePatch(TestStrings.privateFieldAccess, TestStrings.privateFieldAccessDescription) {
         anchorHost.classDef.addField(
             NewField(
                 name = "secret",
@@ -60,25 +60,27 @@ val privateFieldAccess =
     }
 
 val callArity =
-    fixturePatch("call-arity") {
+    fixturePatch(TestStrings.callArity, TestStrings.callArityDescription) {
         anchoredTwice.before {
             callStatic("java.lang.String", "valueOf", "(I)Ljava/lang/String;")
         }
     }
 
-val wideCondition = invalidCondition("wide-condition") { whenTrue(long(1)) {} }
+val wideCondition = invalidCondition(TestStrings.wideCondition) { whenTrue(long(1)) {} }
 
-val primitiveNull = invalidCondition("primitive-null") { whenNull(int(1)) {} }
+val primitiveNull = invalidCondition(TestStrings.primitiveNull) { whenNull(int(1)) {} }
 
-val mixedEquality = invalidCondition("mixed-equality") { whenEqual(int(1), string("one")) {} }
+val mixedEquality =
+    invalidCondition(TestStrings.mixedEquality) { whenEqual(int(1), string("one")) {} }
 
 val primitiveInstance =
-    invalidCondition("primitive-instance") { whenInstanceOf(int(1), Type.Object) {} }
+    invalidCondition(TestStrings.primitiveInstance) { whenInstanceOf(int(1), Type.Object) {} }
 
 val primitiveInstanceType =
-    invalidCondition("primitive-instance-type") { whenInstanceOf(nullObject, Type.Int) {} }
+    invalidCondition(TestStrings.primitiveInstanceType) { whenInstanceOf(nullObject, Type.Int) {} }
 
-val primitiveConstruction = invalidCondition("primitive-construction") { newInstance(Type.Int) }
+val primitiveConstruction =
+    invalidCondition(TestStrings.primitiveConstruction) { newInstance(Type.Int) }
 
 val invalidConstructorReturn =
-    invalidCondition("invalid-constructor-return") { newInstance(Type.Object, "()I") }
+    invalidCondition(TestStrings.invalidConstructorReturn) { newInstance(Type.Object, "()I") }

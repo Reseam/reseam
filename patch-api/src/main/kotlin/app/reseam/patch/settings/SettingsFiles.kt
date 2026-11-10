@@ -44,11 +44,8 @@ internal class SettingsFiles(
     }
 
     private fun writeTable(files: FileScope, table: StringTable, target: String) {
-        for (locale in table.locales()) {
-            files.write(
-                "$target/$locale.json",
-                table.resource("$locale.json").use { it.readBytes() },
-            )
+        for (locale in StringTableFiles.locales(table)) {
+            files.write("$target/$locale.json", StringTableFiles.json(table, locale))
         }
     }
 
@@ -122,6 +119,7 @@ internal class SettingsFiles(
         field("title") { text(setting.title) }
         field("summary") { text(setting.summary) }
         field("icon") { vector(setting.icon) }
+        field("restart", setting.takesEffect == TakesEffect.ON_RESTART)
         when (setting) {
             is ToggleSetting -> {
                 field("default", setting.default)

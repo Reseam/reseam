@@ -73,6 +73,9 @@ internal class SettingsSchema(json: JSONObject) {
         val title: DisplayText = json.text("title")
         val summary: DisplayText? = json.optionalText("summary")
         val icon: VectorImage? = VectorImage.read(json.optJSONObject("icon"))
+
+        /** Whether the app picks up a change only after it restarts. */
+        val restart: Boolean = json.getBoolean("restart")
     }
 
     class Toggle(json: JSONObject) : Setting(json) {

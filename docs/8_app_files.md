@@ -163,7 +163,7 @@ A package name or version change has to reach every split, or Android won't inst
 Some work needs the finished APK file instead of its parts, such as handing it to a tool that takes an APK. `afterWrite { }` runs once every patch has executed and the engine has written the APK, just before it is signed:
 
 ```kotlin
-val packApp = patch("Pack app") {
+val packApp = patch(ExamplePatchStrings.packApp) {
     compatibleWith(EXAMPLE_APP)
 
     afterWrite {

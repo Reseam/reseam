@@ -5,9 +5,6 @@
 
 package app.reseam.patch.settings
 
-import kotlin.properties.PropertyDelegateProvider
-import kotlin.properties.ReadOnlyProperty
-
 /**
  * A user-facing setting shown on the bundle's settings screen. Every kind but [ActionSetting]
  * stores a value in the patched app. Its [key] is unique within the bundle; other bundles keep
@@ -21,8 +18,19 @@ sealed class Setting<T>(
     val summary: StringRef?,
     val default: T,
     val icon: Vector?,
+    val takesEffect: TakesEffect,
 ) {
     override fun toString() = key
+}
+
+/**
+ * When the app picks up a change to a setting. Closing the settings after changing one that takes
+ * effect [ON_RESTART] offers to restart the app; a change to one that applies [IMMEDIATELY] does
+ * not.
+ */
+enum class TakesEffect {
+    ON_RESTART,
+    IMMEDIATELY,
 }
 
 /**
@@ -45,8 +53,19 @@ internal constructor(
     summary: StringRef?,
     default: Boolean,
     icon: Vector?,
+    takesEffect: TakesEffect,
     val covers: List<ToggleSetting>,
-) : Setting<Boolean>(SettingKind.TOGGLE, key, property, title, summary, default, icon)
+) :
+    Setting<Boolean>(
+        SettingKind.TOGGLE,
+        key,
+        property,
+        title,
+        summary,
+        default,
+        icon,
+        takesEffect,
+    )
 
 /** [multiline] lets the value hold one entry per line. */
 class TextSetting
@@ -58,7 +77,8 @@ internal constructor(
     default: String,
     val multiline: Boolean,
     icon: Vector?,
-) : Setting<String>(SettingKind.TEXT, key, property, title, summary, default, icon)
+    takesEffect: TakesEffect,
+) : Setting<String>(SettingKind.TEXT, key, property, title, summary, default, icon, takesEffect)
 
 class FolderSetting
 internal constructor(
@@ -68,7 +88,18 @@ internal constructor(
     summary: StringRef?,
     default: String,
     icon: Vector?,
-) : Setting<String>(SettingKind.FOLDER, key, property, title, summary, default, icon)
+    takesEffect: TakesEffect,
+) :
+    Setting<String>(
+        SettingKind.FOLDER,
+        key,
+        property,
+        title,
+        summary,
+        default,
+        icon,
+        takesEffect,
+    )
 
 class ChoiceSetting
 internal constructor(
@@ -79,7 +110,18 @@ internal constructor(
     default: String,
     val choices: List<Choice>,
     icon: Vector?,
-) : Setting<String>(SettingKind.CHOICE, key, property, title, summary, default, icon) {
+    takesEffect: TakesEffect,
+) :
+    Setting<String>(
+        SettingKind.CHOICE,
+        key,
+        property,
+        title,
+        summary,
+        default,
+        icon,
+        takesEffect,
+    ) {
     init {
         require(choices.any { it.value == default }) {
             "Choice setting '$key' defaults to '$default', which is not a choice"
@@ -88,7 +130,7 @@ internal constructor(
 
     /** The same stored setting with other choices, for a patch that extends it from its options. */
     fun copy(default: String = this.default, choices: List<Choice> = this.choices) =
-        ChoiceSetting(key, property, title, summary, default, choices, icon)
+        ChoiceSetting(key, property, title, summary, default, choices, icon, takesEffect)
 }
 
 data class Choice(val value: String, val title: DisplayText)
@@ -101,7 +143,17 @@ internal constructor(
     title: StringRef,
     summary: StringRef?,
     icon: Vector?,
-) : Setting<Unit>(SettingKind.ACTION, key, property, title, summary, Unit, icon)
+) :
+    Setting<Unit>(
+        SettingKind.ACTION,
+        key,
+        property,
+        title,
+        summary,
+        Unit,
+        icon,
+        TakesEffect.IMMEDIATELY,
+    )
 
 /**
  * Declares settings as properties. A setting's title is the string named after the property in
@@ -148,81 +200,3 @@ fun section(title: StringRef, vararg settings: Setting<*>) =
 /** Contributes settings to a page shared by any number of patches. */
 fun section(page: SettingsPage, title: StringRef, vararg settings: Setting<*>) =
     SettingsSection(title, settings.toList(), page)
-
-/**
- * Declares a setting as a property of a [SettingsGroup]: `val hideAds by toggle(default = true)`.
- * The key derives from the group and property names unless given.
- */
-fun toggle(
-    default: Boolean,
-    key: String? = null,
-    icon: Vector? = null,
-    covers: List<ToggleSetting> = emptyList(),
-) =
-    SettingDelegate(key) {
-        ToggleSetting(it.key, it.property, it.title, it.summary, default, icon, covers)
-    }
-
-fun text(default: String, multiline: Boolean = false, key: String? = null, icon: Vector? = null) =
-    SettingDelegate(key) {
-        TextSetting(it.key, it.property, it.title, it.summary, default, multiline, icon)
-    }
-
-fun folder(default: String, key: String? = null, icon: Vector? = null) =
-    SettingDelegate(key) { FolderSetting(it.key, it.property, it.title, it.summary, default, icon) }
-
-fun choice(default: String, choices: List<Choice>, key: String? = null, icon: Vector? = null) =
-    SettingDelegate(key) {
-        ChoiceSetting(it.key, it.property, it.title, it.summary, default, choices, icon)
-    }
-
-fun action(key: String? = null, icon: Vector? = null) =
-    SettingDelegate(key) { ActionSetting(it.key, it.property, it.title, it.summary, icon) }
-
-internal class SettingDeclaration(
-    val key: String,
-    val property: String,
-    val title: StringRef,
-    val summary: StringRef?,
-)
-
-class SettingDelegate<S : Setting<*>>
-internal constructor(
-    private val key: String?,
-    private val create: (SettingDeclaration) -> S,
-) : PropertyDelegateProvider<SettingsGroup, ReadOnlyProperty<SettingsGroup, S>> {
-    override fun provideDelegate(
-        thisRef: SettingsGroup,
-        property: kotlin.reflect.KProperty<*>,
-    ): ReadOnlyProperty<SettingsGroup, S> {
-        val name = snakeCase(property.name)
-        val strings = thisRef.strings
-        val title =
-            strings.find(name)
-                ?: error(
-                    "${thisRef::class.simpleName}.${property.name} has no title: add '$name' to $strings"
-                )
-        val setting =
-            create(
-                SettingDeclaration(
-                    key ?: (thisRef.keyPrefix + "." + name),
-                    property.name,
-                    title,
-                    strings.find(name + "_summary"),
-                )
-            )
-        return ReadOnlyProperty { _, _ -> setting }
-    }
-}
-
-internal fun snakeCase(name: String): String = buildString {
-    for ((i, ch) in name.withIndex()) {
-        if (
-            ch.isUpperCase() &&
-                i > 0 &&
-                (name[i - 1].isLowerCase() || name.getOrNull(i + 1)?.isLowerCase() == true)
-        )
-            append('_')
-        append(ch.lowercaseChar())
-    }
-}

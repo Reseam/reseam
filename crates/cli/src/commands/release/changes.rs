@@ -186,6 +186,7 @@ mod tests {
                 compatibility,
                 options: Vec::new(),
                 rewrites_output: false,
+                translations: Vec::new(),
             },
             incompatibility: None,
             presets: Vec::new(),

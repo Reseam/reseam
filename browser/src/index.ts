@@ -5,4 +5,5 @@ export { EngineError } from './rpc';
 export { EngineTools } from './tools';
 export { JavaRuntime, type JavaOptions } from './java';
 export { runtime } from './runtime';
+export { patchText } from './patch-text';
 export type * from './models';

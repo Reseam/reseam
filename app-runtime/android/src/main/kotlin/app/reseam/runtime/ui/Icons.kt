@@ -24,6 +24,13 @@ object Icons {
             "M 3 3 L 3 8 L 8 8",
         )
     @JvmField
+    val RESTART =
+        VectorImage.stroked(
+            "M 21 12 C 21 16.971 16.971 21 12 21 C 7.029 21 3 16.971 3 12 C 3 7.029 7.029 3 12 3 " +
+                "C 14.516 3.009 16.931 3.991 18.74 5.74 L 21 8",
+            "M 21 3 L 21 8 L 16 8",
+        )
+    @JvmField
     val SUN =
         VectorImage.stroked(
             "M 16 12 C 16 14.209 14.209 16 12 16 C 9.791 16 8 14.209 8 12 C 8 9.791 9.791 8 12 8 " +

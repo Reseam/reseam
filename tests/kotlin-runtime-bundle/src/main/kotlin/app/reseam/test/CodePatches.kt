@@ -13,7 +13,7 @@ import app.reseam.patch.replace
 import app.reseam.patch.reserveLocal
 
 val embeddedStrings =
-    fixturePatch("embedded-strings") {
+    fixturePatch(TestStrings.embeddedStrings, TestStrings.embeddedStringsDescription) {
         val contained =
             bytecode.replaceStringsContaining("com.google.android.gsf") { old ->
                 old.takeIf { it.startsWith("content://") }
@@ -27,7 +27,7 @@ val embeddedStrings =
     }
 
 val whenInstanceOfBranch =
-    fixturePatch("when-instance-of") {
+    fixturePatch(TestStrings.whenInstanceOf, TestStrings.whenInstanceOfDescription) {
         skipHost.method("typed").replace {
             whenInstanceOf(param(0), "java.lang.String") { mark(1) } otherwise { mark(2) }
             returnVoid()
@@ -35,19 +35,19 @@ val whenInstanceOfBranch =
     }
 
 val castParameter =
-    fixturePatch("cast-parameter") {
+    fixturePatch(TestStrings.castParameter, TestStrings.castParameterDescription) {
         skipHost.method("typed").before { whenNotNull(param(0).cast("java.lang.String")) {} }
     }
 
 val replaceBothReturn =
-    fixturePatch("replace-both-return") {
+    fixturePatch(TestStrings.replaceBothReturn, TestStrings.replaceBothReturnDescription) {
         anchorHost.method("replaced").replace {
             whenTrue(param(0)) { returnValue(int(10)) } otherwise { returnValue(int(20)) }
         }
     }
 
 val typedComparisons =
-    fixturePatch("typed-comparisons") {
+    fixturePatch(TestStrings.typedComparisons, TestStrings.typedComparisonsDescription) {
         val host = klass("com.example.ComparisonHost")
         for (type in listOf("long", "float", "double", "int", "reference")) {
             host.method("${type}Equal").replace {
@@ -66,7 +66,7 @@ val typedComparisons =
     }
 
 val incompleteHierarchies =
-    fixturePatch("incomplete-hierarchies") {
+    fixturePatch(TestStrings.incompleteHierarchies, TestStrings.incompleteHierarchiesDescription) {
         val host = klass("com.example.TypeHost")
         for ((name, expected) in
             listOf(
@@ -109,7 +109,7 @@ val incompleteHierarchies =
     }
 
 val constantForms =
-    fixturePatch("constant-forms") {
+    fixturePatch(TestStrings.constantForms, TestStrings.constantFormsDescription) {
         val host = klass("com.example.ConstantHost")
         for ((name, value) in
             listOf(
@@ -132,7 +132,7 @@ val constantForms =
     }
 
 val longGoto =
-    fixturePatch("long-goto") {
+    fixturePatch(TestStrings.longGoto, TestStrings.longGotoDescription) {
         klass("com.example.ConstantHost").method("small").replace {
             whenTrue(param(0)) {} otherwise { repeat(130) { int(1) } }
             returnValue(int(0))
@@ -140,7 +140,7 @@ val longGoto =
     }
 
 val distantOperands =
-    fixturePatch("distant-operands") {
+    fixturePatch(TestStrings.distantOperands, TestStrings.distantOperandsDescription) {
         val target = klass("com.example.HookTarget").method("invokeGrowth")
         repeat(4) { target.reserveLocal("distance$it", Type.Long) }
         target.before {
@@ -151,7 +151,7 @@ val distantOperands =
     }
 
 val addedMethod =
-    fixturePatch("added-method") {
+    fixturePatch(TestStrings.addedMethod, TestStrings.addedMethodDescription) {
         val app = klass("com.example.App")
         repeat(2) {
             app.addMethod("reseamCallsBase", "()V") {

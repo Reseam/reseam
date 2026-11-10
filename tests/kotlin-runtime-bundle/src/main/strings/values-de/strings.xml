@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hide_ads">Werbung ausblenden</string>
+    <string name="option_marker">Markierung</string>
+    <string name="universal_marker_description">Nennt kein Paket, passt also zu jeder App und wartet, bis sie gewählt wird</string>
+</resources>

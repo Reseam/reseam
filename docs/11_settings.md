@@ -95,6 +95,18 @@ While `focusMode` is on, `hideStories` and `hideReels` read as on everywhere, ga
 
 Declare the covered toggles first. Kotlin initializes properties in order, so a toggle used before its declaration is still null.
 
+### When a change applies
+
+Most patches read a setting once, when the app starts, so a change only shows after a restart. When the user closes the settings after changing such a setting, the screen offers to restart the app. The settings screen also has a restart button in its top bar.
+
+A setting your code reads each time it is used, such as a folder read when a download starts, applies right away. Declare it with `takesEffect = TakesEffect.IMMEDIATELY`, and changing it never asks for a restart:
+
+```kotlin
+val downloadFolder by folder(default = "", takesEffect = TakesEffect.IMMEDIATELY)
+```
+
+Settings default to `TakesEffect.ON_RESTART`. Only declare `IMMEDIATELY` when every place that reads the setting reads it again after a change, or users see the old value until they restart anyway.
+
 ## Translations
 
 Put translations next to the default strings, in Android's folder names: `values-de/strings.xml`, `values-pt-rBR/strings.xml`, `values-b+sr+Latn/strings.xml`. The app shows each string in its current language, including Android's per-app language setting, and falls back to the default when a translation lacks it.
@@ -103,7 +115,11 @@ Put translations next to the default strings, in Android's folder names: `values
 - Wrap each argument of a string in `xliff:g`, whose `id` names it: `Saved to <xliff:g id="folder">%1$s</xliff:g>`. `%s` takes text, `%d` a whole number, and `%f` a decimal number.
 - `<plurals>` picks its form by an integer argument with the id `count`.
 
-A translation must keep the default's arguments. One that adds, drops, or changes the type of an argument fails the build, and so does a translation of a string the default lacks.
+- Mark a string that reads the same in every language, such as a host name, with `translatable="false"`. Translation tools then skip it.
+
+A translation must keep the default's arguments. One that adds, drops, or changes the type of an argument fails the build, and so does a translation of a string the default lacks or marks `translatable="false"`.
+
+Titles, summaries, sections and pages show their text as it is, so they take strings without arguments. A string with an argument, or a `<plurals>`, is only in the extension-side object, and a setting named after one fails the build with a missing title.
 
 ## Add the settings screen
 
@@ -159,7 +175,7 @@ The screen ends with Export settings and Import settings. An export is a JSON fi
 A patch adds its settings to the screen with `settings(host, section(...))`:
 
 ```kotlin
-val hideAds = patch("Hide ads") {
+val hideAds = patch(ExamplePatchStrings.hideAds) {
     compatibleWith(EXAMPLE_APP)
     settings(appSettings, section(ExampleStrings.sectionAds, AppSettings.hideAds))
 
@@ -269,7 +285,7 @@ object AppSettings : SettingsGroup(ExampleStrings) {
     val exportLogin by action(key = "app.export_login")
 }
 
-val loginTransfer = patch("Export login") {
+val loginTransfer = patch(ExamplePatchStrings.exportLogin) {
     settings(appSettings, section(ExampleStrings.sectionAccount, AppSettings.exportLogin))
     execute {
         onAction(AppSettings.exportLogin) {

@@ -15,7 +15,7 @@ Wherever a parameter is a type written as a `String`, you can pass a descriptor 
 
 | Function | Description |
 |---|---|
-| `patch(name: String, block: PatchBuilder.() -> Unit): ReseamPatch` | A patch users see, under `name`. The name doesn't have to be unique. |
+| `patch(name: StringRef, block: PatchBuilder.() -> Unit): ReseamPatch` | A patch users see, under `name`, a string from the module's string table. The name doesn't have to be unique. See [Names in every language](4_patches.md#names-in-every-language). |
 | `patch(block: PatchBuilder.() -> Unit): ReseamPatch` | An internal patch. Users never see it, and it only runs when a patch that runs depends on it. |
 
 Assign the result to a public top-level `val`. The engine finds patches by their declarations, and the patch's ID is the declaration's `package.property`.
@@ -38,15 +38,15 @@ The receiver of `patch { }`.
 
 | Member | Description |
 |---|---|
-| `description(text: String)` | The text users see under the name. Indentation is trimmed, so a `"""` string can be indented with your code. |
+| `description(text: StringRef)` | The text users see under the name, from the module's string table. |
 | `enabledByDefault(value: Boolean)` | Whether the patch starts selected. A patch for specific apps defaults to `true`, a patch for any app to `false`. |
 | `hidden()` | Keeps a named patch off the lists users see. It still runs when selected or needed as a dependency. |
-| `stringOption(key, title = key, description = "", default: String? = null, validValues: List<String>? = null, required = false): StringOption` | Declares a text option. With `validValues`, the user picks one of them. |
-| `boolOption(key, title = key, description = "", default: Boolean? = null, required = false): BoolOption` | Declares an on/off option. |
-| `intOption(key, title = key, description = "", default: Long? = null, required = false): IntOption` | Declares a whole-number option. |
-| `floatOption(key, title = key, description = "", default: Double? = null, required = false): FloatOption` | Declares a decimal option. |
-| `stringListOption(key, title = key, description = "", default: List<String>? = null, required = false): StringListOption` | Declares a list-of-text option. |
-| `pathOption(key, title = key, description = "", required = false): PathOption` | Declares a folder the user picks. It has no default. |
+| `stringOption(key, title: StringRef, description: StringRef? = null, default: String? = null, validValues: List<String>? = null, required = false): StringOption` | Declares a text option. With `validValues`, the user picks one of them. |
+| `boolOption(key, title: StringRef, description: StringRef? = null, default: Boolean? = null, required = false): BoolOption` | Declares an on/off option. |
+| `intOption(key, title: StringRef, description: StringRef? = null, default: Long? = null, required = false): IntOption` | Declares a whole-number option. |
+| `floatOption(key, title: StringRef, description: StringRef? = null, default: Double? = null, required = false): FloatOption` | Declares a decimal option. |
+| `stringListOption(key, title: StringRef, description: StringRef? = null, default: List<String>? = null, required = false): StringListOption` | Declares a list-of-text option. |
+| `pathOption(key, title: StringRef, description: StringRef? = null, required = false): PathOption` | Declares a folder the user picks. It has no default. |
 | `settings(host: SettingsHost, vararg sections: SettingsSection)` | Adds these sections to the app's settings screen. `host` becomes a dependency. |
 | `settings(host: SettingsHost, sections: PatchRuntime.() -> List<SettingsSection>)` | The same, with sections computed after `execute`, so they can depend on options. |
 | `execute(block: PatchRuntime.() -> Unit)` | The change itself. It runs once all dependencies have run. |
@@ -61,9 +61,9 @@ What `patch` returns, and what the engine reads. You use the value to name a dep
 
 | Member | Description |
 |---|---|
-| `name: String?` | The display name, or null for an internal patch. |
+| `name: StringRef?` | The display name, or null for an internal patch. |
 | `hidden: Boolean` | Whether the patch is kept off the lists. |
-| `description: String` | The description. |
+| `description: StringRef?` | The description, or null for none. |
 | `dependencies: List<ReseamPatch>` | The patches it depends on. |
 | `compatibleWith: List<CompatiblePackage>` | The packages it is for. Empty for a patch that works on any app. |
 | `universal: Boolean` | True when the patch declares no package. |
@@ -113,8 +113,8 @@ The base of every option type. `options[option]` reads its value.
 | Member | Description |
 |---|---|
 | `key: String` | The key users set it by, for example `--option "Clone app.packageName=..."` on the CLI. |
-| `title: String` | The label users see. |
-| `description: String` | Help text users see. |
+| `title: StringRef` | The label users see. |
+| `description: StringRef?` | Help text users see, or null for none. |
 | `required: Boolean` | Whether patching refuses to start without a value. |
 | `kind: OptionKind` | The value's type. |
 | `default: T?` | The value when the user sets none. |

@@ -67,6 +67,11 @@ internal class ReseamPatchesPlugin : Plugin<Project> {
         }
 
         val main = project.extensions.getByType(SourceSetContainer::class.java).getByName("main")
+        project.reseamStrings()?.let { strings ->
+            val tables = project.registerStringTables(strings)
+            project.kotlinSourceSet("main").kotlin.srcDir(tables.flatMap { it.host })
+            main.resources.srcDir(tables.flatMap { it.json })
+        }
         val dependencies =
             project.configurations
                 .getByName("runtimeClasspath")

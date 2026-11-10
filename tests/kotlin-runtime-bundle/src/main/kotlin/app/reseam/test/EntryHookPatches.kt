@@ -10,7 +10,7 @@ import app.reseam.patch.before
 import app.reseam.patch.reserveLocal
 
 val entryHookOwner =
-    declaredFixture("entry-hook-owner") {
+    declaredFixture(TestStrings.entryHookOwner, null) {
         enabledByDefault(false)
         execute {
             val carried = anchoredTwice.reserveLocal("carried", Type.Int)
@@ -28,14 +28,14 @@ val entryHookOwner =
     }
 
 val entryHookDependent =
-    declaredFixture("entry-hook-dependent") {
+    declaredFixture(TestStrings.entryHookDependent, null) {
         enabledByDefault(false)
         dependsOn(entryHookOwner)
         execute { anchoredTwice.before { mark(30) } }
     }
 
 val entryHookFailure =
-    declaredFixture("entry-hook-failure") {
+    declaredFixture(TestStrings.entryHookFailure, null) {
         enabledByDefault(false)
         dependsOn(entryHookOwner)
         execute {
@@ -45,7 +45,7 @@ val entryHookFailure =
     }
 
 val entryHookReplacement =
-    declaredFixture("entry-hook-replacement") {
+    declaredFixture(TestStrings.entryHookReplacement, null) {
         enabledByDefault(false)
         execute {
             anchoredTwice.before { mark(10) }
@@ -57,7 +57,7 @@ val entryHookReplacement =
     }
 
 val conditionalHooks =
-    declaredFixture("conditional-hooks") {
+    declaredFixture(TestStrings.conditionalHooks, null) {
         enabledByDefault(false)
         execute {
             anchoredTwice.before { whenTrue(bool(false)) { mark(10) } }

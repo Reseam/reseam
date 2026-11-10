@@ -29,8 +29,15 @@ internal data class PluralString(
     override val placeholders: List<Placeholder>,
 ) : StringValue
 
-/** One `values[-qualifier]/strings.xml`; [locale] is a BCP 47 tag, or `default` for `values`. */
-internal class StringFile(val locale: String, val strings: Map<String, StringValue>)
+/**
+ * One `values[-qualifier]/strings.xml`; [locale] is a BCP 47 tag, or `default` for `values`.
+ * [untranslatable] names the strings marked `translatable="false"`, such as host names.
+ */
+internal class StringFile(
+    val locale: String,
+    val strings: Map<String, StringValue>,
+    val untranslatable: Set<String>,
+)
 
 internal const val DEFAULT_LOCALE = "default"
 
@@ -47,7 +54,7 @@ internal fun readStringFiles(root: File): List<StringFile> {
             .listFiles { file -> file.isDirectory && file.name.startsWith("values") }
             .orEmpty()
             .mapNotNull { dir -> dir.resolve("strings.xml").takeIf(File::isFile) }
-            .map { StringFile(locale(it.parentFile.name), parse(it)) }
+            .map { parse(locale(it.parentFile.name), it) }
             .sortedBy { it.locale }
     val base =
         files.singleOrNull { it.locale == DEFAULT_LOCALE }
@@ -63,6 +70,10 @@ private fun check(base: StringFile, translation: StringFile, root: File) {
                 ?: throw GradleException(
                     "$root: ${translation.locale} translates unknown string '$name'"
                 )
+        if (name in base.untranslatable)
+            throw GradleException(
+                "$root: ${translation.locale} translates '$name', which is translatable=\"false\""
+            )
         if (
             original::class != value::class ||
                 original.placeholders.toSet() != value.placeholders.toSet()
@@ -83,10 +94,11 @@ private fun locale(directory: String): String {
     }
 }
 
-private fun parse(file: File): Map<String, StringValue> {
+private fun parse(locale: String, file: File): StringFile {
     val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
     val root = factory.newDocumentBuilder().parse(file).documentElement
     val strings = linkedMapOf<String, StringValue>()
+    val untranslatable = mutableSetOf<String>()
     for (element in root.childElements()) {
         val name = element.getAttribute("name")
         if (!NAME.matches(name)) throw GradleException("$file: invalid string name '$name'")
@@ -98,8 +110,13 @@ private fun parse(file: File): Map<String, StringValue> {
             }
         if (strings.put(name, value) != null)
             throw GradleException("$file: duplicate string '$name'")
+        when (element.getAttribute("translatable")) {
+            "" -> Unit
+            "false" -> untranslatable += name
+            else -> throw GradleException("$file: '$name' has translatable other than \"false\"")
+        }
     }
-    return strings
+    return StringFile(locale, strings, untranslatable)
 }
 
 private fun plain(element: Element, file: File): PlainString {

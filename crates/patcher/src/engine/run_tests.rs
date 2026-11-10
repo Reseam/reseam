@@ -51,6 +51,7 @@ fn declared(bundle: &str, id: &str, dependencies: &[&str]) -> PatchSpec {
         .collect(),
         options: Vec::new(),
         rewrites_output: false,
+        translations: Vec::new(),
     }
 }
 

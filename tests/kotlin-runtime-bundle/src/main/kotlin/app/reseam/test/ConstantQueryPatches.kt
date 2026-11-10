@@ -9,7 +9,7 @@ import app.reseam.patch.dex.literal
 private val prefixedRoutes = methods("prefixedRoutes") { stringsStartingWith("reel/") }
 
 val stringPrefixQueries =
-    patch("string-prefix-queries") {
+    patch(TestStrings.stringPrefixQueries) {
         compatibleWith("com.example.test")
         enabledByDefault(false)
         execute {
@@ -37,7 +37,7 @@ val stringPrefixQueries =
     }
 
 val high16Literals =
-    patch("high16-literals") {
+    patch(TestStrings.high16Literals) {
         compatibleWith("com.example.test")
         enabledByDefault(false)
         execute {
