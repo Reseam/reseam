@@ -158,6 +158,7 @@ They follow Material 3, in the settings screen's current light or dark theme: th
 | `button(label: CharSequence?, onClick: View.OnClickListener?): TextView` | A text button. |
 | `tonalButton(label: CharSequence?, image: VectorImage, onClick: View.OnClickListener?): View` | A filled button with an icon. |
 | `listItem(title: CharSequence?): ListItem` | A list row. |
+| `buttonRow(buttons: List<View>): ButtonRow` | Buttons side by side in equal shares, stacked at full width when a label would not fit its share. |
 | `itemGroup(): ItemGroup` | A group of list rows with shared rounded corners. |
 | `sectionLabel(label: CharSequence?): TextView` | A heading above a group. |
 | `switchView(): SwitchView` | A switch. |
@@ -180,6 +181,10 @@ A list row, a `View`. Each setter returns the row, so calls chain.
 | `trailing(view: View?)` | A view at the end, such as a switch. |
 | `chevron()` | A trailing arrow, for a row that opens something. |
 | `onClick(listener: View.OnClickListener?)` | Makes the row clickable. |
+
+### `ButtonRow`
+
+A `LinearLayout` of buttons, such as `tonalButton`s. It measures each button's label, so a long translation stacks the buttons instead of wrapping their text.
 
 ### `ItemGroup`
 

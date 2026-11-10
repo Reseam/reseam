@@ -60,16 +60,11 @@ private fun links(ui: Ui, bundle: String, links: List<SettingsSchema.Link>): Vie
     }
 
 private fun actions(ui: Ui, bundle: String, actions: List<SettingsSchema.Link>): View =
-    LinearLayout(ui.context).apply {
-        actions.forEachIndexed { index, action ->
-            addView(
-                ui.tonalButton(action.label.resolve(bundle), action.icon) { open(it, action.url) },
-                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    if (index > 0) marginStart = ui.px(Tokens.SPACE_SM)
-                },
-            )
+    ui.buttonRow(
+        actions.map { action ->
+            ui.tonalButton(action.label.resolve(bundle), action.icon) { open(it, action.url) }
         }
-    }
+    )
 
 private fun spaced(ui: Ui) =
     LinearLayout.LayoutParams(

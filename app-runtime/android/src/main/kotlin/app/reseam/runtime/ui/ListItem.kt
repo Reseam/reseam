@@ -40,7 +40,12 @@ class ListItem internal constructor(private val ui: Ui, title: CharSequence?) :
             LinearLayout(ui.context).apply {
                 orientation = VERTICAL
                 addView(titleView)
-                addView(supportingView)
+                addView(
+                    supportingView,
+                    LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                        topMargin = ui.px(Tokens.SPACE_XS)
+                    },
+                )
             }
         addView(texts, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
         setShape(true, true)

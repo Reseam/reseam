@@ -132,6 +132,8 @@ class Ui(@JvmField val context: Context, @JvmField val theme: Theme) {
 
     fun listItem(title: CharSequence?): ListItem = ListItem(this, title)
 
+    fun buttonRow(buttons: List<View>): ButtonRow = ButtonRow(this, buttons)
+
     fun itemGroup(): ItemGroup = ItemGroup(this)
 
     fun sectionLabel(label: CharSequence?): TextView =
