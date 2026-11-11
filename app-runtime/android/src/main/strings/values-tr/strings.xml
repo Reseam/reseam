@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="settings">Ayarlar</string>
+    <string name="search_settings">Ayarlarda ara</string>
+    <string name="no_search_results">Aramanızla eşleşen ayar yok.</string>
+    <string name="no_settings">Seçtiğiniz yamaların burada ayarı yok.</string>
+    <string name="cancel">İptal</string>
+    <string name="save">Kaydet</string>
+    <string name="restore_default">Varsayılanı geri yükle</string>
+    <string name="restart_title">Değişiklikleri uygulamak için yeniden başlatılsın mı?</string>
+    <string name="restart_message">Değiştirdiğiniz ayarların bazıları uygulama yeniden başladıktan sonra geçerli olur.</string>
+    <string name="later">Sonra</string>
+    <string name="restart">Yeniden başlat</string>
+    <string name="restart_app">Uygulamayı yeniden başlat</string>
+    <string name="version">Sürüm <xliff:g id="version">%1$s</xliff:g></string>
+    <string name="engine">Motor <xliff:g id="engine">%1$s</xliff:g></string>
+    <string name="engine_license">Motor <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
+    <string name="clear_search">Aramayı temizle</string>
+    <string name="back">Geri</string>
+    <string name="use_dark_theme">Koyu temayı kullan</string>
+    <string name="use_light_theme">Açık temayı kullan</string>
+    <string name="backup">Yedekleme</string>
+    <string name="export_settings">Ayarları dışa aktar</string>
+    <string name="export_settings_summary">Ayarlarınızı bir dosyaya kaydedin.</string>
+    <string name="import_settings">Ayarları içe aktar</string>
+    <string name="import_settings_summary">Dışa aktardığınız bir dosyadan ayarları yükleyin.</string>
+    <string name="settings_file_name"><xliff:g id="app">%1$s</xliff:g> settings.json</string>
+    <string name="settings_exported">Ayarlar dışa aktarıldı</string>
+    <plurals name="settings_imported">
+        <item quantity="one"><xliff:g id="count">%1$d</xliff:g> ayar içe aktarıldı</item>
+        <item quantity="other"><xliff:g id="count">%1$d</xliff:g> ayar içe aktarıldı</item>
+    </plurals>
+    <string name="export_failed">Ayarlar dışa aktarılamadı</string>
+    <string name="import_failed">Ayarlar içe aktarılamadı</string>
+    <string name="import_unreadable">Bu dosya bir ayar dışa aktarımı değil.</string>
+    <string name="import_nothing_applies">Bu dosyadaki ayarların hiçbiri bu uygulamaya ait değil.</string>
+    <string name="ok">Tamam</string>
+</resources>
