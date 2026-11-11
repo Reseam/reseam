@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="settings">Setelan</string>
+    <string name="search_settings">Cari setelan</string>
+    <string name="no_search_results">Tidak ada setelan yang cocok dengan pencarian Anda.</string>
+    <string name="no_settings">Patch yang Anda pilih tidak memiliki setelan di sini.</string>
+    <string name="cancel">Batal</string>
+    <string name="save">Simpan</string>
+    <string name="restore_default">Pulihkan default</string>
+    <string name="restart_title">Mulai ulang untuk menerapkan perubahan?</string>
+    <string name="restart_message">Beberapa setelan yang Anda ubah berlaku setelah aplikasi dimulai ulang.</string>
+    <string name="later">Nanti</string>
+    <string name="restart">Mulai ulang</string>
+    <string name="restart_app">Mulai ulang aplikasi</string>
+    <string name="version">Versi <xliff:g id="version">%1$s</xliff:g></string>
+    <string name="engine">Engine <xliff:g id="engine">%1$s</xliff:g></string>
+    <string name="engine_license">Engine <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
+    <string name="clear_search">Hapus pencarian</string>
+    <string name="back">Kembali</string>
+    <string name="use_dark_theme">Gunakan tema gelap</string>
+    <string name="use_light_theme">Gunakan tema terang</string>
+    <string name="backup">Cadangan</string>
+    <string name="export_settings">Ekspor setelan</string>
+    <string name="export_settings_summary">Simpan setelan Anda ke file.</string>
+    <string name="import_settings">Impor setelan</string>
+    <string name="import_settings_summary">Muat setelan dari file yang Anda ekspor.</string>
+    <string name="settings_file_name"><xliff:g id="app">%1$s</xliff:g> settings.json</string>
+    <string name="settings_exported">Setelan diekspor</string>
+    <plurals name="settings_imported">
+        <item quantity="other"><xliff:g id="count">%1$d</xliff:g> setelan diimpor</item>
+    </plurals>
+    <string name="export_failed">Tidak dapat mengekspor setelan</string>
+    <string name="import_failed">Tidak dapat mengimpor setelan</string>
+    <string name="import_unreadable">File ini bukan ekspor setelan.</string>
+    <string name="import_nothing_applies">Tidak ada setelan di file ini yang milik aplikasi ini.</string>
+    <string name="ok">OK</string>
+</resources>
