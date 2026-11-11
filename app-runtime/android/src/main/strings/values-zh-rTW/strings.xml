@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="settings">設定</string>
+    <string name="search_settings">搜尋設定</string>
+    <string name="no_search_results">沒有符合搜尋條件的設定。</string>
+    <string name="no_settings">你選擇的修補程式在這裡沒有設定項目。</string>
+    <string name="cancel">取消</string>
+    <string name="save">儲存</string>
+    <string name="restore_default">還原預設值</string>
+    <string name="restart_title">要重新啟動以套用變更嗎？</string>
+    <string name="restart_message">你變更的部分設定要在應用程式重新啟動後才會生效。</string>
+    <string name="later">稍後</string>
+    <string name="restart">重新啟動</string>
+    <string name="restart_app">重新啟動應用程式</string>
+    <string name="version">版本 <xliff:g id="version">%1$s</xliff:g></string>
+    <string name="engine">引擎 <xliff:g id="engine">%1$s</xliff:g></string>
+    <string name="engine_license">引擎 <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
+    <string name="clear_search">清除搜尋內容</string>
+    <string name="back">返回</string>
+    <string name="use_dark_theme">使用深色主題</string>
+    <string name="use_light_theme">使用淺色主題</string>
+    <string name="backup">備份</string>
+    <string name="export_settings">匯出設定</string>
+    <string name="export_settings_summary">將你的設定儲存到檔案。</string>
+    <string name="import_settings">匯入設定</string>
+    <string name="import_settings_summary">從你匯出的檔案載入設定。</string>
+    <string name="settings_file_name"><xliff:g id="app">%1$s</xliff:g> settings.json</string>
+    <string name="settings_exported">已匯出設定</string>
+    <plurals name="settings_imported">
+        <item quantity="other">已匯入 <xliff:g id="count">%1$d</xliff:g> 項設定</item>
+    </plurals>
+    <string name="export_failed">無法匯出設定</string>
+    <string name="import_failed">無法匯入設定</string>
+    <string name="import_unreadable">這個檔案不是匯出的設定。</string>
+    <string name="import_nothing_applies">這個檔案中的設定都不屬於這個應用程式。</string>
+    <string name="ok">確定</string>
+</resources>
