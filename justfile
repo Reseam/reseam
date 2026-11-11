@@ -29,3 +29,7 @@ release tag:
     install -D target/release/reseam dist/reseam-linux-x64
     install -D target/x86_64-pc-windows-gnullvm/release/reseam.exe dist/reseam-windows-x64.exe
     target/release/reseam release files dist --tag {{ tag }} --to s3://reseam-releases/engine --forge-release
+    # The GitHub mirror gets the same files, as a second place to download them from.
+    git push "https://x-access-token:$MIRROR_RELEASE_TOKEN@github.com/Reseam/reseam.git" refs/tags/{{ tag }}
+    GITHUB_SERVER_URL=https://github.com GITHUB_API_URL=https://api.github.com RELEASE_TOKEN="$MIRROR_RELEASE_TOKEN" \
+        target/release/reseam release files dist --tag {{ tag }}

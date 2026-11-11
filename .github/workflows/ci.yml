@@ -12,6 +12,7 @@ jobs:
       image: ghcr.io/reseam/ci:2026.10.19
     env:
       RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+      MIRROR_RELEASE_TOKEN: ${{ secrets.MIRROR_RELEASE_TOKEN }}
       AWS_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT }}
       AWS_REGION: auto
       AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
