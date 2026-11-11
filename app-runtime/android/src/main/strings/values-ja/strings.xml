@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="settings">設定</string>
+    <string name="search_settings">設定を検索</string>
+    <string name="no_search_results">検索に一致する設定はありません。</string>
+    <string name="no_settings">選んだパッチには、ここで変更できる設定がありません。</string>
+    <string name="cancel">キャンセル</string>
+    <string name="save">保存</string>
+    <string name="restore_default">デフォルトに戻す</string>
+    <string name="restart_title">変更を適用するために再起動しますか?</string>
+    <string name="restart_message">変更した設定の一部は、アプリの再起動後に有効になります。</string>
+    <string name="later">後で</string>
+    <string name="restart">再起動</string>
+    <string name="restart_app">アプリを再起動</string>
+    <string name="version">バージョン <xliff:g id="version">%1$s</xliff:g></string>
+    <string name="engine">エンジン <xliff:g id="engine">%1$s</xliff:g></string>
+    <string name="engine_license">エンジン <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
+    <string name="clear_search">検索をクリア</string>
+    <string name="back">戻る</string>
+    <string name="use_dark_theme">ダークテーマを使う</string>
+    <string name="use_light_theme">ライトテーマを使う</string>
+    <string name="backup">バックアップ</string>
+    <string name="export_settings">設定をエクスポート</string>
+    <string name="export_settings_summary">設定をファイルに保存します。</string>
+    <string name="import_settings">設定をインポート</string>
+    <string name="import_settings_summary">エクスポートしたファイルから設定を読み込みます。</string>
+    <string name="settings_file_name"><xliff:g id="app">%1$s</xliff:g> settings.json</string>
+    <string name="settings_exported">設定をエクスポートしました</string>
+    <plurals name="settings_imported">
+        <item quantity="other"><xliff:g id="count">%1$d</xliff:g> 件の設定をインポートしました</item>
+    </plurals>
+    <string name="export_failed">設定をエクスポートできませんでした</string>
+    <string name="import_failed">設定をインポートできませんでした</string>
+    <string name="import_unreadable">このファイルは設定のエクスポートではありません。</string>
+    <string name="import_nothing_applies">このファイルには、このアプリの設定が含まれていません。</string>
+    <string name="ok">OK</string>
+</resources>
