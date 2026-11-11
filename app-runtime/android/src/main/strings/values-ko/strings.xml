@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="settings">설정</string>
+    <string name="search_settings">설정 검색</string>
+    <string name="no_search_results">검색과 일치하는 설정이 없습니다.</string>
+    <string name="no_settings">선택한 패치에는 여기서 바꿀 설정이 없습니다.</string>
+    <string name="cancel">취소</string>
+    <string name="save">저장</string>
+    <string name="restore_default">기본값으로 복원</string>
+    <string name="restart_title">변경사항을 적용하려면 다시 시작할까요?</string>
+    <string name="restart_message">변경한 설정 중 일부는 앱을 다시 시작한 후에 적용됩니다.</string>
+    <string name="later">나중에</string>
+    <string name="restart">다시 시작</string>
+    <string name="restart_app">앱 다시 시작</string>
+    <string name="version">버전 <xliff:g id="version">%1$s</xliff:g></string>
+    <string name="engine">엔진 <xliff:g id="engine">%1$s</xliff:g></string>
+    <string name="engine_license">엔진 <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
+    <string name="clear_search">검색어 지우기</string>
+    <string name="back">뒤로</string>
+    <string name="use_dark_theme">어두운 테마 사용</string>
+    <string name="use_light_theme">밝은 테마 사용</string>
+    <string name="backup">백업</string>
+    <string name="export_settings">설정 내보내기</string>
+    <string name="export_settings_summary">설정을 파일로 저장합니다.</string>
+    <string name="import_settings">설정 가져오기</string>
+    <string name="import_settings_summary">내보낸 파일에서 설정을 불러옵니다.</string>
+    <string name="settings_file_name"><xliff:g id="app">%1$s</xliff:g> settings.json</string>
+    <string name="settings_exported">설정을 내보냈습니다</string>
+    <plurals name="settings_imported">
+        <item quantity="other">설정 <xliff:g id="count">%1$d</xliff:g>개를 가져왔습니다</item>
+    </plurals>
+    <string name="export_failed">설정을 내보낼 수 없습니다</string>
+    <string name="import_failed">설정을 가져올 수 없습니다</string>
+    <string name="import_unreadable">이 파일은 설정 내보내기 파일이 아닙니다.</string>
+    <string name="import_nothing_applies">이 파일의 설정 중 이 앱에 해당하는 것이 없습니다.</string>
+    <string name="ok">확인</string>
+</resources>
