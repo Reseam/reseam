@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="settings">การตั้งค่า</string>
+    <string name="search_settings">ค้นหาการตั้งค่า</string>
+    <string name="no_search_results">ไม่มีการตั้งค่าที่ตรงกับการค้นหาของคุณ</string>
+    <string name="no_settings">แพตช์ที่คุณเลือกไม่มีการตั้งค่าที่นี่</string>
+    <string name="cancel">ยกเลิก</string>
+    <string name="save">บันทึก</string>
+    <string name="restore_default">คืนค่าเริ่มต้น</string>
+    <string name="restart_title">รีสตาร์ทเพื่อใช้การเปลี่ยนแปลงไหม</string>
+    <string name="restart_message">การตั้งค่าบางรายการที่คุณเปลี่ยนจะมีผลหลังจากรีสตาร์ทแอป</string>
+    <string name="later">ภายหลัง</string>
+    <string name="restart">รีสตาร์ท</string>
+    <string name="restart_app">รีสตาร์ทแอป</string>
+    <string name="version">เวอร์ชัน <xliff:g id="version">%1$s</xliff:g></string>
+    <string name="engine">เอนจิน <xliff:g id="engine">%1$s</xliff:g></string>
+    <string name="engine_license">เอนจิน <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
+    <string name="clear_search">ล้างการค้นหา</string>
+    <string name="back">กลับ</string>
+    <string name="use_dark_theme">ใช้ธีมมืด</string>
+    <string name="use_light_theme">ใช้ธีมสว่าง</string>
+    <string name="backup">การสำรองข้อมูล</string>
+    <string name="export_settings">ส่งออกการตั้งค่า</string>
+    <string name="export_settings_summary">บันทึกการตั้งค่าของคุณลงในไฟล์</string>
+    <string name="import_settings">นำเข้าการตั้งค่า</string>
+    <string name="import_settings_summary">โหลดการตั้งค่าจากไฟล์ที่คุณส่งออก</string>
+    <string name="settings_file_name"><xliff:g id="app">%1$s</xliff:g> settings.json</string>
+    <string name="settings_exported">ส่งออกการตั้งค่าแล้ว</string>
+    <plurals name="settings_imported">
+        <item quantity="other">นำเข้าการตั้งค่า <xliff:g id="count">%1$d</xliff:g> รายการแล้ว</item>
+    </plurals>
+    <string name="export_failed">ส่งออกการตั้งค่าไม่ได้</string>
+    <string name="import_failed">นำเข้าการตั้งค่าไม่ได้</string>
+    <string name="import_unreadable">ไฟล์นี้ไม่ใช่ไฟล์ส่งออกการตั้งค่า</string>
+    <string name="import_nothing_applies">ไม่มีการตั้งค่าใดในไฟล์นี้ที่เป็นของแอปนี้</string>
+    <string name="ok">ตกลง</string>
+</resources>
