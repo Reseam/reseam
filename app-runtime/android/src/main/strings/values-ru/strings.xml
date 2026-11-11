@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="settings">Настройки</string>
+    <string name="search_settings">Поиск по настройкам</string>
+    <string name="no_search_results">По вашему запросу настроек не найдено.</string>
+    <string name="no_settings">У выбранных вами патчей здесь нет настроек.</string>
+    <string name="cancel">Отмена</string>
+    <string name="save">Сохранить</string>
+    <string name="restore_default">Вернуть значение по умолчанию</string>
+    <string name="restart_title">Перезапустить, чтобы применить изменения?</string>
+    <string name="restart_message">Некоторые изменённые настройки вступят в силу после перезапуска приложения.</string>
+    <string name="later">Позже</string>
+    <string name="restart">Перезапустить</string>
+    <string name="restart_app">Перезапустить приложение</string>
+    <string name="version">Версия <xliff:g id="version">%1$s</xliff:g></string>
+    <string name="engine">Движок <xliff:g id="engine">%1$s</xliff:g></string>
+    <string name="engine_license">Движок <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
+    <string name="clear_search">Очистить поиск</string>
+    <string name="back">Назад</string>
+    <string name="use_dark_theme">Включить тёмную тему</string>
+    <string name="use_light_theme">Включить светлую тему</string>
+    <string name="backup">Резервная копия</string>
+    <string name="export_settings">Экспорт настроек</string>
+    <string name="export_settings_summary">Сохраняет ваши настройки в файл.</string>
+    <string name="import_settings">Импорт настроек</string>
+    <string name="import_settings_summary">Загружает настройки из экспортированного вами файла.</string>
+    <string name="settings_file_name"><xliff:g id="app">%1$s</xliff:g> settings.json</string>
+    <string name="settings_exported">Настройки экспортированы</string>
+    <plurals name="settings_imported">
+        <item quantity="one">Импортирована <xliff:g id="count">%1$d</xliff:g> настройка</item>
+        <item quantity="few">Импортировано <xliff:g id="count">%1$d</xliff:g> настройки</item>
+        <item quantity="many">Импортировано <xliff:g id="count">%1$d</xliff:g> настроек</item>
+        <item quantity="other">Импортировано <xliff:g id="count">%1$d</xliff:g> настройки</item>
+    </plurals>
+    <string name="export_failed">Не удалось экспортировать настройки</string>
+    <string name="import_failed">Не удалось импортировать настройки</string>
+    <string name="import_unreadable">Этот файл не является экспортом настроек.</string>
+    <string name="import_nothing_applies">Ни одна настройка в этом файле не относится к этому приложению.</string>
+    <string name="ok">ОК</string>
+</resources>
