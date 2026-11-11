@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="settings">Paramètres</string>
+    <string name="search_settings">Rechercher dans les paramètres</string>
+    <string name="no_search_results">Aucun paramètre ne correspond à votre recherche.</string>
+    <string name="no_settings">Les patchs que vous avez choisis n’ont aucun paramètre ici.</string>
+    <string name="cancel">Annuler</string>
+    <string name="save">Enregistrer</string>
+    <string name="restore_default">Rétablir la valeur par défaut</string>
+    <string name="restart_title">Redémarrer pour appliquer les changements ?</string>
+    <string name="restart_message">Certains des paramètres que vous avez changés prennent effet au redémarrage de l’application.</string>
+    <string name="later">Plus tard</string>
+    <string name="restart">Redémarrer</string>
+    <string name="restart_app">Redémarrer l’application</string>
+    <string name="version">Version <xliff:g id="version">%1$s</xliff:g></string>
+    <string name="engine">Moteur <xliff:g id="engine">%1$s</xliff:g></string>
+    <string name="engine_license">Moteur <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
+    <string name="clear_search">Effacer la recherche</string>
+    <string name="back">Retour</string>
+    <string name="use_dark_theme">Utiliser le thème sombre</string>
+    <string name="use_light_theme">Utiliser le thème clair</string>
+    <string name="backup">Sauvegarde</string>
+    <string name="export_settings">Exporter les paramètres</string>
+    <string name="export_settings_summary">Enregistre vos paramètres dans un fichier.</string>
+    <string name="import_settings">Importer des paramètres</string>
+    <string name="import_settings_summary">Charge les paramètres depuis un fichier que vous avez exporté.</string>
+    <string name="settings_file_name"><xliff:g id="app">%1$s</xliff:g> settings.json</string>
+    <string name="settings_exported">Paramètres exportés</string>
+    <plurals name="settings_imported">
+        <item quantity="one"><xliff:g id="count">%1$d</xliff:g> paramètre importé</item>
+        <item quantity="other"><xliff:g id="count">%1$d</xliff:g> paramètres importés</item>
+    </plurals>
+    <string name="export_failed">Impossible d’exporter les paramètres</string>
+    <string name="import_failed">Impossible d’importer les paramètres</string>
+    <string name="import_unreadable">Ce fichier n’est pas un export de paramètres.</string>
+    <string name="import_nothing_applies">Aucun des paramètres de ce fichier n’appartient à cette application.</string>
+    <string name="ok">OK</string>
+</resources>
