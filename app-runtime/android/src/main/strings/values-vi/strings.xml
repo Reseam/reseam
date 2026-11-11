@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="settings">Cài đặt</string>
+    <string name="search_settings">Tìm trong cài đặt</string>
+    <string name="no_search_results">Không có cài đặt nào khớp với nội dung tìm kiếm.</string>
+    <string name="no_settings">Các bản vá bạn chọn không có cài đặt ở đây.</string>
+    <string name="cancel">Hủy</string>
+    <string name="save">Lưu</string>
+    <string name="restore_default">Khôi phục mặc định</string>
+    <string name="restart_title">Khởi động lại để áp dụng thay đổi?</string>
+    <string name="restart_message">Một số cài đặt bạn đã thay đổi chỉ có hiệu lực sau khi ứng dụng khởi động lại.</string>
+    <string name="later">Để sau</string>
+    <string name="restart">Khởi động lại</string>
+    <string name="restart_app">Khởi động lại ứng dụng</string>
+    <string name="version">Phiên bản <xliff:g id="version">%1$s</xliff:g></string>
+    <string name="engine">Engine <xliff:g id="engine">%1$s</xliff:g></string>
+    <string name="engine_license">Engine <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
+    <string name="clear_search">Xóa nội dung tìm kiếm</string>
+    <string name="back">Quay lại</string>
+    <string name="use_dark_theme">Dùng giao diện tối</string>
+    <string name="use_light_theme">Dùng giao diện sáng</string>
+    <string name="backup">Sao lưu</string>
+    <string name="export_settings">Xuất cài đặt</string>
+    <string name="export_settings_summary">Lưu cài đặt của bạn vào một tệp.</string>
+    <string name="import_settings">Nhập cài đặt</string>
+    <string name="import_settings_summary">Tải cài đặt từ tệp bạn đã xuất.</string>
+    <string name="settings_file_name"><xliff:g id="app">%1$s</xliff:g> settings.json</string>
+    <string name="settings_exported">Đã xuất cài đặt</string>
+    <plurals name="settings_imported">
+        <item quantity="other">Đã nhập <xliff:g id="count">%1$d</xliff:g> cài đặt</item>
+    </plurals>
+    <string name="export_failed">Không xuất được cài đặt</string>
+    <string name="import_failed">Không nhập được cài đặt</string>
+    <string name="import_unreadable">Tệp này không phải là tệp xuất cài đặt.</string>
+    <string name="import_nothing_applies">Không có cài đặt nào trong tệp này thuộc về ứng dụng này.</string>
+    <string name="ok">OK</string>
+</resources>
