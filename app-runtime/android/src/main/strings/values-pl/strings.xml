@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="settings">Ustawienia</string>
+    <string name="search_settings">Szukaj w ustawieniach</string>
+    <string name="no_search_results">Żadne ustawienie nie pasuje do wyszukiwania.</string>
+    <string name="no_settings">Wybrane łatki nie mają tu ustawień.</string>
+    <string name="cancel">Anuluj</string>
+    <string name="save">Zapisz</string>
+    <string name="restore_default">Przywróć domyślne</string>
+    <string name="restart_title">Uruchomić ponownie, aby zastosować zmiany?</string>
+    <string name="restart_message">Niektóre zmienione ustawienia zaczną działać po ponownym uruchomieniu aplikacji.</string>
+    <string name="later">Później</string>
+    <string name="restart">Uruchom ponownie</string>
+    <string name="restart_app">Uruchom aplikację ponownie</string>
+    <string name="version">Wersja <xliff:g id="version">%1$s</xliff:g></string>
+    <string name="engine">Silnik <xliff:g id="engine">%1$s</xliff:g></string>
+    <string name="engine_license">Silnik <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
+    <string name="clear_search">Wyczyść wyszukiwanie</string>
+    <string name="back">Wstecz</string>
+    <string name="use_dark_theme">Użyj ciemnego motywu</string>
+    <string name="use_light_theme">Użyj jasnego motywu</string>
+    <string name="backup">Kopia zapasowa</string>
+    <string name="export_settings">Eksportuj ustawienia</string>
+    <string name="export_settings_summary">Zapisz ustawienia do pliku.</string>
+    <string name="import_settings">Importuj ustawienia</string>
+    <string name="import_settings_summary">Wczytaj ustawienia z wyeksportowanego pliku.</string>
+    <string name="settings_file_name"><xliff:g id="app">%1$s</xliff:g> settings.json</string>
+    <string name="settings_exported">Wyeksportowano ustawienia</string>
+    <plurals name="settings_imported">
+        <item quantity="one">Zaimportowano <xliff:g id="count">%1$d</xliff:g> ustawienie</item>
+        <item quantity="few">Zaimportowano <xliff:g id="count">%1$d</xliff:g> ustawienia</item>
+        <item quantity="many">Zaimportowano <xliff:g id="count">%1$d</xliff:g> ustawień</item>
+        <item quantity="other">Zaimportowano <xliff:g id="count">%1$d</xliff:g> ustawienia</item>
+    </plurals>
+    <string name="export_failed">Nie udało się wyeksportować ustawień</string>
+    <string name="import_failed">Nie udało się zaimportować ustawień</string>
+    <string name="import_unreadable">Ten plik nie jest eksportem ustawień.</string>
+    <string name="import_nothing_applies">Żadne z ustawień w tym pliku nie należy do tej aplikacji.</string>
+    <string name="ok">OK</string>
+</resources>
