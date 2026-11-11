@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="settings">Ajustes</string>
+    <string name="search_settings">Buscar en los ajustes</string>
+    <string name="no_search_results">Ningún ajuste coincide con tu búsqueda.</string>
+    <string name="no_settings">Los parches que elegiste no tienen ajustes aquí.</string>
+    <string name="cancel">Cancelar</string>
+    <string name="save">Guardar</string>
+    <string name="restore_default">Restaurar el valor predeterminado</string>
+    <string name="restart_title">¿Reiniciar para aplicar los cambios?</string>
+    <string name="restart_message">Algunos de los ajustes que cambiaste se aplican cuando la app se reinicia.</string>
+    <string name="later">Más tarde</string>
+    <string name="restart">Reiniciar</string>
+    <string name="restart_app">Reiniciar la app</string>
+    <string name="version">Versión <xliff:g id="version">%1$s</xliff:g></string>
+    <string name="engine">Motor <xliff:g id="engine">%1$s</xliff:g></string>
+    <string name="engine_license">Motor <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
+    <string name="clear_search">Borrar búsqueda</string>
+    <string name="back">Atrás</string>
+    <string name="use_dark_theme">Usar tema oscuro</string>
+    <string name="use_light_theme">Usar tema claro</string>
+    <string name="backup">Copia de seguridad</string>
+    <string name="export_settings">Exportar ajustes</string>
+    <string name="export_settings_summary">Guarda tus ajustes en un archivo.</string>
+    <string name="import_settings">Importar ajustes</string>
+    <string name="import_settings_summary">Carga los ajustes desde un archivo que exportaste.</string>
+    <string name="settings_file_name"><xliff:g id="app">%1$s</xliff:g> settings.json</string>
+    <string name="settings_exported">Ajustes exportados</string>
+    <plurals name="settings_imported">
+        <item quantity="one"><xliff:g id="count">%1$d</xliff:g> ajuste importado</item>
+        <item quantity="other"><xliff:g id="count">%1$d</xliff:g> ajustes importados</item>
+    </plurals>
+    <string name="export_failed">No se pudieron exportar los ajustes</string>
+    <string name="import_failed">No se pudieron importar los ajustes</string>
+    <string name="import_unreadable">Este archivo no es una exportación de ajustes.</string>
+    <string name="import_nothing_applies">Ninguno de los ajustes de este archivo pertenece a esta app.</string>
+    <string name="ok">Aceptar</string>
+</resources>
