@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="settings">Налаштування</string>
+    <string name="search_settings">Пошук у налаштуваннях</string>
+    <string name="no_search_results">Жодне налаштування не відповідає пошуку.</string>
+    <string name="no_settings">Вибрані патчі не мають тут налаштувань.</string>
+    <string name="cancel">Скасувати</string>
+    <string name="save">Зберегти</string>
+    <string name="restore_default">Відновити стандартне</string>
+    <string name="restart_title">Перезапустити, щоб застосувати зміни?</string>
+    <string name="restart_message">Деякі змінені налаштування почнуть діяти після перезапуску застосунку.</string>
+    <string name="later">Пізніше</string>
+    <string name="restart">Перезапустити</string>
+    <string name="restart_app">Перезапустити застосунок</string>
+    <string name="version">Версія <xliff:g id="version">%1$s</xliff:g></string>
+    <string name="engine">Рушій <xliff:g id="engine">%1$s</xliff:g></string>
+    <string name="engine_license">Рушій <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
+    <string name="clear_search">Очистити пошук</string>
+    <string name="back">Назад</string>
+    <string name="use_dark_theme">Використовувати темну тему</string>
+    <string name="use_light_theme">Використовувати світлу тему</string>
+    <string name="backup">Резервна копія</string>
+    <string name="export_settings">Експортувати налаштування</string>
+    <string name="export_settings_summary">Зберегти налаштування у файл.</string>
+    <string name="import_settings">Імпортувати налаштування</string>
+    <string name="import_settings_summary">Завантажити налаштування з експортованого файлу.</string>
+    <string name="settings_file_name"><xliff:g id="app">%1$s</xliff:g> settings.json</string>
+    <string name="settings_exported">Налаштування експортовано</string>
+    <plurals name="settings_imported">
+        <item quantity="one">Імпортовано <xliff:g id="count">%1$d</xliff:g> налаштування</item>
+        <item quantity="few">Імпортовано <xliff:g id="count">%1$d</xliff:g> налаштування</item>
+        <item quantity="many">Імпортовано <xliff:g id="count">%1$d</xliff:g> налаштувань</item>
+        <item quantity="other">Імпортовано <xliff:g id="count">%1$d</xliff:g> налаштування</item>
+    </plurals>
+    <string name="export_failed">Не вдалося експортувати налаштування</string>
+    <string name="import_failed">Не вдалося імпортувати налаштування</string>
+    <string name="import_unreadable">Цей файл не є експортом налаштувань.</string>
+    <string name="import_nothing_applies">Жодне з налаштувань у цьому файлі не належить цьому застосунку.</string>
+    <string name="ok">OK</string>
+</resources>
