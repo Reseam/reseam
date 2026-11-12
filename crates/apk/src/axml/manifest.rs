@@ -5,7 +5,8 @@ use std::borrow::Cow;
 
 use super::AxmlDocument;
 use super::android_attrs::{
-    ATTR_MIN_SDK_VERSION, ATTR_NAME, ATTR_SPLIT_NAME, ATTR_VERSION_CODE, ATTR_VERSION_NAME,
+    ATTR_MIN_SDK_VERSION, ATTR_MULTI_ARCH, ATTR_NAME, ATTR_SPLIT_NAME, ATTR_SPLIT_TYPES,
+    ATTR_VERSION_CODE, ATTR_VERSION_NAME,
 };
 use crate::res_value::ResValue;
 
@@ -32,6 +33,31 @@ impl AxmlDocument {
         self.attribute(root, ATTR_SPLIT_NAME)
             .or_else(|| self.attribute_named(root, "split"))
             .and_then(|attr| self.attribute_string(attr))
+    }
+
+    /// `android:splitTypes`, the split types a split provides, such as
+    /// `base__abi` for the base module's native libraries of one ABI.
+    pub fn split_types(&self) -> Vec<String> {
+        self.root()
+            .and_then(|root| self.attribute(root, ATTR_SPLIT_TYPES))
+            .and_then(|attr| self.attribute_string(attr))
+            .map(|types| {
+                types
+                    .split(',')
+                    .filter(|split_type| !split_type.is_empty())
+                    .map(String::from)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// `<application android:multiArch>`: the app loads native code for every
+    /// ABI the device runs instead of one.
+    pub fn multi_arch(&self) -> bool {
+        self.find_element("application")
+            .and_then(|application| self.attribute(application, ATTR_MULTI_ARCH))
+            .and_then(|attr| attr.value.as_bool())
+            .unwrap_or(false)
     }
 
     /// `<application android:name>` as written, possibly relative to the package.

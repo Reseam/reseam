@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::{ApkVersion, ContainerFormat, Incompatibility, PatchPreset, PatchSpec, Problem, Trust};
+use crate::{
+    Abi, ApkVersion, ContainerFormat, Incompatibility, PatchPreset, PatchSpec, Problem, Trust,
+};
 use serde::{Deserialize, Serialize};
 
 /// What an app declares itself as in its manifest. It is known before the
@@ -101,6 +103,10 @@ pub struct InspectRequest {
     pub split_paths: Vec<String>,
     #[serde(default)]
     pub bundle_paths: Vec<String>,
+    /// The ABIs of the device the APK is for, most preferred first; inspection
+    /// then sees the splits that device installs. Empty inspects every split.
+    #[serde(default)]
+    pub device_abis: Vec<Abi>,
     /// Marks approved signers in the response without gating catalog inspection.
     #[serde(default)]
     pub trust: Trust,

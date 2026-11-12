@@ -24,6 +24,7 @@ pub fn run_bundle_list(command: &BundleListCommand) -> Result<()> {
     let response = inspect(&InspectRequest {
         apk_path: None,
         split_paths: Vec::new(),
+        device_abis: Vec::new(),
         bundle_paths: vec![command.bundle.display().to_string()],
         trust: command.trust.trust(),
     })?;

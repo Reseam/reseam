@@ -79,6 +79,7 @@ impl Session {
         let apk = ApkFile::open_split(
             dir.path().join("base.apk"),
             &[dir.path().join("split.apk")],
+            &[],
             options,
         )
         .expect("fixture split APK");

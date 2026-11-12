@@ -100,6 +100,7 @@ fn read(previous: &ReleaseIndex, url: &str, version: &str) -> Result<Previous> {
     let mut response = inspect(&InspectRequest {
         apk_path: None,
         split_paths: Vec::new(),
+        device_abis: Vec::new(),
         bundle_paths: vec![file.path().display().to_string()],
         trust: Trust {
             keys: vec![signer.clone()],

@@ -37,7 +37,7 @@ fn split_apk_supports_split_resource_tables_and_component_state() -> TestResult 
     }
     apk.delete_file(0, "assets/old.txt")?;
     let paths = apk.write_to(dir.path().join("out"), WriteOptions::default())?;
-    let mut reopened = Apk::open_split(&paths[0], &paths[1..], lazy())?;
+    let mut reopened = Apk::open_split(&paths[0], &paths[1..], &[], lazy())?;
     assert_eq!(
         component_state(&mut reopened, 1)?,
         (Some("2.0-split".into()), true)

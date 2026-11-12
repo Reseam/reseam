@@ -4,6 +4,11 @@ export type InspectRequest = {
   split_paths: Array<string>;
   bundle_paths: Array<string>;
   /**
+   * The ABIs of the device the APK is for, most preferred first; inspection
+   * then sees the splits that device installs. Empty inspects every split.
+   */
+  device_abis: Array<Abi>;
+  /**
    * Marks approved signers in the response without gating catalog inspection.
    */
   trust: Trust;
@@ -34,6 +39,7 @@ export type ApkMetadata = {
   version_code: number | null;
 };
 export type ContainerFormat = 'apkm' | 'xapk' | 'apks';
+export type Abi = string;
 export type BundleMetadata = {
   file_name: string;
   name: string;
@@ -345,6 +351,13 @@ export type PatchRequest = {
   selection: PatchSelection;
   output: PatchOutput;
   /**
+   * The ABIs of the device the output is for, most preferred first, as its
+   * `Build.SUPPORTED_ABIS` lists them. The output keeps only the native
+   * libraries Android loads there, and leaves out the ABI splits it doesn't
+   * install. Empty keeps every ABI.
+   */
+  device_abis: Array<Abi>;
+  /**
    * When absent, reuse or generate a key pair next to the output.
    */
   signing: SigningIdentity | null;
@@ -455,6 +468,11 @@ export type PatchOutcome = {
    */
   record: BuildRecord;
   metrics: PatchMetrics;
+  /**
+   * The one ABI whose native libraries the output keeps, when the request
+   * named device ABIs and the app has libraries for one of them.
+   */
+  native_abi: Abi | null;
 };
 export type PatchArtifact = { kind: 'single_file'; path: string } | { kind: 'split_dir'; path: string } | {
   kind: 'split_archive';
@@ -545,5 +563,6 @@ export type Problem =
   | { type: 'keystore_empty' }
   | { type: 'unsupported_signing_key' }
   | { type: 'unknown_preset'; value: string }
+  | { type: 'unknown_abi'; value: string }
   | { type: 'other' };
 export type SdkError = { problem: Problem; message: string };

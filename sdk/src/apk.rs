@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
 use reseam_apk::{ApkFile, ContainerFormat, open_container};
-use reseam_model::{ApkMetadata, AppIdentity, ApplicationIcon};
+use reseam_model::{Abi, ApkMetadata, AppIdentity, ApplicationIcon};
 
 use crate::error::{HostError, Result};
 
@@ -17,27 +17,34 @@ pub(crate) struct OpenedApk {
 }
 
 impl OpenedApk {
+    /// Opens the set a device whose ABIs are `device_abis` installs, all of it when empty.
     // Inspection reads with the same tolerance as patching: a repacked APK
     // (stale DEX checksums and signatures) is still an APK, and inspection
     // exists to read it, not to certify it.
-    pub(crate) fn open(apk_path: &Path, split_paths: &[PathBuf]) -> Result<Self> {
+    pub(crate) fn open(
+        apk_path: &Path,
+        split_paths: &[PathBuf],
+        device_abis: &[Abi],
+    ) -> Result<Self> {
         let apk_error = |source| HostError::Apk {
             path: apk_path.to_owned(),
             source,
         };
         let options = ApkFile::patch_options();
-        let (bundle, apk) = match open_container(apk_path, options).map_err(apk_error)? {
-            Some(_) if !split_paths.is_empty() => {
-                return Err(HostError::InvalidRequest(
-                    "split files cannot be combined with an APKM/XAPK container",
-                ));
-            }
-            Some((format, apk)) => (Some(format), apk),
-            None => (
-                None,
-                ApkFile::open_split(apk_path, split_paths, options).map_err(apk_error)?,
-            ),
-        };
+        let (bundle, apk) =
+            match open_container(apk_path, device_abis, options).map_err(apk_error)? {
+                Some(_) if !split_paths.is_empty() => {
+                    return Err(HostError::InvalidRequest(
+                        "split files cannot be combined with an APKM/XAPK container",
+                    ));
+                }
+                Some((format, apk)) => (Some(format), apk),
+                None => (
+                    None,
+                    ApkFile::open_split(apk_path, split_paths, device_abis, options)
+                        .map_err(apk_error)?,
+                ),
+            };
         Ok(Self {
             apk,
             bundle,
@@ -66,6 +73,18 @@ impl OpenedApk {
             class_count: dex_files.iter().map(|dex| dex.classes().len()).sum(),
             method_count: dex_files.iter().map(|dex| dex.methods().len()).sum(),
         })
+    }
+
+    /// Deletes the native libraries a device whose ABIs are `device_abis` doesn't
+    /// load, and returns the ABI it does.
+    pub(crate) fn retain_native_abi_for(&mut self, device_abis: &[Abi]) -> Result<Option<Abi>> {
+        let abi = self.apk.native_abi(device_abis);
+        if let Some(abi) = abi {
+            self.apk
+                .retain_native_abi(abi)
+                .map_err(|source| self.error(source))?;
+        }
+        Ok(abi)
     }
 
     /// What the APK declares itself as, for checking patches against it.
@@ -97,7 +116,7 @@ impl ApkInspection {
     /// Opens an APK or container, returning an error for unreadable input.
     pub fn open(path: &Path, split_paths: &[PathBuf]) -> Result<Self> {
         Ok(Self {
-            opened: OpenedApk::open(path, split_paths)?,
+            opened: OpenedApk::open(path, split_paths, &[])?,
         })
     }
 

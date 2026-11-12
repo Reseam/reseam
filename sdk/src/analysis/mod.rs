@@ -51,7 +51,7 @@ pub struct Analysis {
 impl Analysis {
     /// Opens an APK, its splits, or an APKM or XAPK container, as patching does.
     pub fn open(path: &Path, split_paths: &[PathBuf]) -> Result<Self> {
-        let mut opened = OpenedApk::open(path, split_paths)?;
+        let mut opened = OpenedApk::open(path, split_paths, &[])?;
         for index in 0..opened.apk.components().len() {
             let component = opened
                 .apk

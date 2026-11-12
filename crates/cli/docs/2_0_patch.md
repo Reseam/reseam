@@ -53,6 +53,21 @@ reseam patch app.apkm --bundle patches.reseam --trust <key>
 
 Pass extra splits with `--split`, or give an `.apkm`, `.xapk` or `.apks` file directly. An `.apks` file is a ZIP with the APKs at its root, as `reseam patch` writes one. XAPKs with OBB expansion files are not supported.
 
+## Builds for one phone
+
+Most apps carry native libraries for several kinds of processor, and a phone loads only one of them. `--abi` builds for one phone, so the output keeps only the libraries that phone loads:
+
+```bash
+reseam patch app.apkm --bundle patches.reseam --trust <key> \
+  --abi arm64-v8a --abi armeabi-v7a --abi armeabi
+```
+
+Android loads the first ABI in the phone's list that the app has libraries for, so give the ABIs in the phone's order. `adb shell getprop ro.product.cpu.abilist` prints that list. The output keeps that ABI's `lib/` folder, and from split input only that ABI's split. The log names the ABI it kept.
+
+The output installs only on phones that run that ABI. Leave out `--abi` when you build an APK to share.
+
+Apps that declare `android:multiArch` load every ABI the phone runs, so they keep all of them. A split that doesn't declare its ABI in `android:splitTypes` stays in the output, with the other ABIs' libraries removed.
+
 ## Output
 
 | | Default |
@@ -125,6 +140,7 @@ RESEAM_KEYSTORE_PASSWORD=… reseam patch app.apk --bundle patches.reseam --trus
 | `--key <pk8>`, `--cert <der>` | signing key and certificate, together |
 | `--keystore <file>` | sign with the first key in a PKCS#12 keystore |
 | `--keystore-password <password>` | the keystore's password; also read from `RESEAM_KEYSTORE_PASSWORD` |
+| `--abi <abi>` | build for a phone with this ABI, keeping only the native libraries it loads; repeatable, in the phone's order |
 | `--mount` | build for mounting over the installed app; leaves out patches that edit the manifest |
 | `--leave-out-failed` | write the output without failed patches and the patches that need them |
 | `--trace` | test build: log each place a patch changed the app's code when the app runs it |

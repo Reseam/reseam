@@ -36,6 +36,7 @@ pub(crate) fn verify(path: &Path, expected: &Expected<'_>) -> Result<()> {
     let mut response = inspect(&InspectRequest {
         apk_path: None,
         split_paths: Vec::new(),
+        device_abis: Vec::new(),
         bundle_paths: vec![path.display().to_string()],
         trust: Trust {
             keys: vec![expected.signer.clone()],

@@ -61,7 +61,7 @@ fn containers_classify_extract_and_transfer_their_lifetime_to_a_session() {
             entries.push((case.metadata_name, case.metadata));
             let input = dir.path().join(format!("app.{}", case.extension));
             write_container(&input, &entries, compression);
-            let (format, mut apk) = open_container(&input, ApkFile::patch_options())
+            let (format, mut apk) = open_container(&input, &[], ApkFile::patch_options())
                 .expect("extract")
                 .expect("container");
             assert_eq!(format, case.format);
@@ -74,7 +74,7 @@ fn containers_classify_extract_and_transfer_their_lifetime_to_a_session() {
             let paths = apk.write_to(dir.path().join("out"), ApkWriteOptions::default()).expect("write");
             drop(apk);
             assert!(!extracted.exists());
-            let mut output = ApkFile::open_split(&paths[0], &paths[1..], ApkFile::patch_options()).expect("output");
+            let mut output = ApkFile::open_split(&paths[0], &paths[1..], &[], ApkFile::patch_options()).expect("output");
             assert_eq!(output.read_component_entry(0, "assets/data.txt").expect("base"), Some(b"original".to_vec()));
             assert_eq!(output.read_component_entry(1, "assets/data.txt").expect("split"), Some(b"patched split".to_vec()));
         }
@@ -99,7 +99,7 @@ fn an_apk_manifest_takes_precedence_over_embedded_metadata_and_extension() {
         )
         .expect("fixture APK");
         assert!(
-            open_container(&path, ApkFile::patch_options())
+            open_container(&path, &[], ApkFile::patch_options())
                 .expect("open")
                 .is_none()
         );
@@ -149,14 +149,19 @@ fn explicit_and_contained_sets_enforce_the_same_manifest_identity_rules() {
             zip::CompressionMethod::Stored,
         );
         assert!(matches!(
-            open_container(&input, ApkFile::patch_options()),
+            open_container(&input, &[], ApkFile::patch_options()),
             Err(ApkError::Invalid { .. })
         ));
         let splits: Vec<_> = (1..manifests.len())
             .map(|index| dir.path().join(format!("{index}.apk")))
             .collect();
         assert!(matches!(
-            ApkFile::open_split(dir.path().join("0.apk"), &splits, ApkFile::patch_options()),
+            ApkFile::open_split(
+                dir.path().join("0.apk"),
+                &splits,
+                &[],
+                ApkFile::patch_options()
+            ),
             Err(ApkError::Invalid { .. })
         ));
     }
@@ -184,7 +189,7 @@ fn container_metadata_must_describe_the_complete_set_without_overriding_manifest
         let input = dir.path().join("app.xapk");
         write_container(&input, &entries, zip::CompressionMethod::Stored);
         assert!(matches!(
-            open_container(&input, ApkFile::patch_options()),
+            open_container(&input, &[], ApkFile::patch_options()),
             Err(ApkError::Invalid { .. })
         ));
     }
@@ -209,7 +214,7 @@ fn unsafe_names_and_expansion_payloads_cannot_be_materialized() {
             zip::CompressionMethod::Stored,
         );
         assert!(matches!(
-            open_container(&input, ApkFile::patch_options()),
+            open_container(&input, &[], ApkFile::patch_options()),
             Err(ApkError::Invalid { .. })
         ));
     }
@@ -236,6 +241,6 @@ fn extraction_checks_payload_integrity_before_opening_an_apk() {
         drop(archive);
         bytes[offset] ^= 1;
         std::fs::write(&path, bytes).expect("corrupt fixture");
-        assert!(open_container(&path, ApkFile::patch_options()).is_err());
+        assert!(open_container(&path, &[], ApkFile::patch_options()).is_err());
     }
 }

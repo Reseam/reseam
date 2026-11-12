@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::{BuildRecord, LogEntry, PatchMetrics, PatchPhase, PatchRef};
+use crate::{Abi, BuildRecord, LogEntry, PatchMetrics, PatchPhase, PatchRef};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -15,6 +15,9 @@ pub struct PatchOutcome {
     /// again would change the build.
     pub record: BuildRecord,
     pub metrics: PatchMetrics,
+    /// The one ABI whose native libraries the output keeps, when the request
+    /// named device ABIs and the app has libraries for one of them.
+    pub native_abi: Option<Abi>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

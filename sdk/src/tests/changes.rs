@@ -102,6 +102,7 @@ packages = [{{ package = "com.example.test", versions = [] }}]
         &PatchRequest {
             apk_path: input.display().to_string(),
             split_paths: Vec::new(),
+            device_abis: Vec::new(),
             bundle_paths: vec![bundle.display().to_string()],
             trust: trust.clone(),
             selection: PatchSelection {
@@ -123,6 +124,7 @@ packages = [{{ package = "com.example.test", versions = [] }}]
     let patches = crate::inspect(&InspectRequest {
         apk_path: None,
         split_paths: Vec::new(),
+        device_abis: Vec::new(),
         bundle_paths: vec![bundle.display().to_string()],
         trust,
     })

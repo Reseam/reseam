@@ -8,6 +8,7 @@ mod open;
 pub(crate) use open::order_components;
 mod entries;
 mod entry_reader;
+mod native;
 mod presentation;
 mod resources;
 mod undo;

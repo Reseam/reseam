@@ -73,6 +73,9 @@ pub fn run_patch(command: &PatchCommand) -> Result<()> {
         failed = count(|result| matches!(result.status, PatchStatus::Failed { .. })),
         "patch run finished"
     );
+    if let Some(abi) = outcome.native_abi {
+        info!(%abi, "native libraries kept for one ABI");
+    }
     if dry_run {
         info!("dry run: validation completed without applying patches");
     } else {
@@ -133,6 +136,7 @@ pub(crate) fn request(args: &PatchRequestArgs, output: PatchOutput) -> PatchRequ
             .iter()
             .map(|path| path.display().to_string())
             .collect(),
+        device_abis: args.abi.clone(),
         trust: args.trust.trust(),
         selection,
         output,
@@ -176,6 +180,7 @@ pub(crate) fn run(
         apk_path: Some(request.apk_path.clone()),
         split_paths: request.split_paths.clone(),
         bundle_paths: request.bundle_paths.clone(),
+        device_abis: request.device_abis.clone(),
         trust: request.trust.clone(),
     })?;
     let hidden: HashSet<PatchRef> = prepared

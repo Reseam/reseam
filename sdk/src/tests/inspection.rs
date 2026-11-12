@@ -57,6 +57,7 @@ fn inspection_reads_signed_catalogs_without_loading_even_trusted_code() {
     let inspection_request = InspectRequest {
         apk_path: Some(input.display().to_string()),
         split_paths: Vec::new(),
+        device_abis: Vec::new(),
         bundle_paths: vec![path.display().to_string()],
         trust: Trust {
             keys: vec![public_key.clone()],
@@ -74,6 +75,7 @@ fn inspection_reads_signed_catalogs_without_loading_even_trusted_code() {
         let response = crate::inspect(&InspectRequest {
             apk_path: Some(input.display().to_string()),
             split_paths: Vec::new(),
+            device_abis: Vec::new(),
             bundle_paths: vec![path.display().to_string()],
             trust: trust.clone(),
         })
@@ -98,7 +100,7 @@ fn inspection_reads_signed_catalogs_without_loading_even_trusted_code() {
         assert_eq!(patch.presets, [PatchPreset::Recommended, PatchPreset::All]);
         assert!(patch.incompatibility.is_some());
         let opened = trusted_archives(
-            Inputs::open(None, &[], &[path.display().to_string()])
+            Inputs::open(None, &[], &[], &[path.display().to_string()])
                 .unwrap()
                 .bundles,
             &TrustStore::new(&trust).unwrap(),
@@ -121,6 +123,7 @@ fn inspection_reads_signed_catalogs_without_loading_even_trusted_code() {
     let response = crate::inspect(&InspectRequest {
         apk_path: None,
         split_paths: Vec::new(),
+        device_abis: Vec::new(),
         bundle_paths: vec![path.display().to_string()],
         trust: Trust::default(),
     })
@@ -137,6 +140,7 @@ fn check_prepared_trust(inspection_request: &InspectRequest, output: &Path) {
                 &PatchRequest {
                     apk_path: inspection_request.apk_path.clone().unwrap(),
                     split_paths: Vec::new(),
+                    device_abis: Vec::new(),
                     bundle_paths: inspection_request.bundle_paths.clone(),
                     trust: Trust {
                         keys: if approved {

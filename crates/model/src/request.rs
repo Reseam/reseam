@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::{OptionValue, PatchPreset};
+use crate::{Abi, OptionValue, PatchPreset};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
@@ -19,6 +19,12 @@ pub struct PatchRequest {
     #[serde(default)]
     pub selection: PatchSelection,
     pub output: PatchOutput,
+    /// The ABIs of the device the output is for, most preferred first, as its
+    /// `Build.SUPPORTED_ABIS` lists them. The output keeps only the native
+    /// libraries Android loads there, and leaves out the ABI splits it doesn't
+    /// install. Empty keeps every ABI.
+    #[serde(default)]
+    pub device_abis: Vec<Abi>,
     /// When absent, reuse or generate a key pair next to the output.
     #[serde(default)]
     #[boltffi::default(None)]

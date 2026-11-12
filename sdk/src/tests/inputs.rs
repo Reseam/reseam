@@ -59,6 +59,7 @@ fn incompatible_inputs_and_output_fail_before_loading_patches() {
         &PatchRequest {
             apk_path: input.display().to_string(),
             split_paths: Vec::new(),
+            device_abis: Vec::new(),
             bundle_paths: Vec::new(),
             trust: Trust::default(),
             selection: PatchSelection::default(),

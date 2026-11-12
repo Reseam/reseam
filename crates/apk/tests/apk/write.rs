@@ -141,7 +141,7 @@ fn serialization_failure_preserves_destinations_and_allows_repair() -> TestResul
             let repeated = invalid.intern_type("LRepeated;")?;
             invalid.remove_class(repeated)?.expect("duplicate class");
             let paths = apk.write_to(&output, options)?;
-            let repaired = Apk::open_split(&paths[0], &paths[1..], lazy())?;
+            let repaired = Apk::open_split(&paths[0], &paths[1..], &[], lazy())?;
             assert_eq!(repaired.version_name().as_deref(), Some("edited"));
             assert_eq!(
                 repaired

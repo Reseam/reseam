@@ -21,6 +21,7 @@ The types come from [`crates/model`](../crates/model/). Bundle authoring (the si
 | `changes(ChangesRequest)` | Compares a build's `record` with the patches available now: patches that changed, were added, or would be dropped. Empty when patching again would make the same build. |
 | `parseOption(option, text)`, `optionText(value)` | Read option text as users type it (one list item per line) and print a value back the same way. Problems are typed `OptionProblem`s. |
 | `ApkInspection(apkPath, splitPaths)` | Opens an APK, APKM, XAPK, or APKS and exposes its metadata, component files, and icon. |
+| `abiNamed(name)`, `abiName(abi)` | Read and write the ABI names Android uses, such as the entries of a device's `Build.SUPPORTED_ABIS`, for `PatchRequest.deviceAbis`. |
 | `dexMetadata(apkPath, sdk)` | Builds the `.dm` file to install next to a base APK, so Android compiles the app with its baseline profile at install. Null when there is nothing to compile from. On Android, `PackageInstaller.Session.writeApks(apks)` writes each APK with its `.dm` into an install session. |
 | `writeSplitArchive(apkPaths, destination)` | Packs split APKs into one APKS file, as `PatchOutput.SplitArchive` writes them. |
 | `importPkcs12`, `exportPkcs12`, `certificateFingerprint` | Read and write PKCS#12 key backups, the one format every Reseam app backs up and restores signing keys in. |
@@ -30,6 +31,7 @@ The types come from [`crates/model`](../crates/model/). Bundle authoring (the si
 
 - **Trust.** A request lists the bundle signers it accepts in `trust.keys`. The SDK trusts no one on its own. `inspect` reads bundles from any signer and marks each one `trusted` or not; `patch` refuses untrusted ones.
 - **Mount builds.** `installMethod = MOUNT` builds output to mount over the installed app. A patch that edits the manifest finishes `Unmountable`, and the run undoes it as it undoes a patch that fails: the output is what the run would have made without it. A patch that rewrites the written APK (`afterWrite`) is `Unmountable` before it runs. When undoing reaches patches already reported finished, the SDK sends `RunEvent.PatchesReverted` with them, and they run again.
+- **Builds for one device.** `deviceAbis` lists a device's ABIs, most preferred first. The output then keeps only the native libraries that device loads, and from split input only its ABI split. The outcome's `nativeAbi` names the ABI it kept. Leave it empty for an APK to share.
 - **Failed patches.** By default a patch that fails fails the run with `PatchesFailed`. With `leaveOutFailed`, the SDK writes the output anyway: the run undoes each failed patch and leaves out the patches that need it, so the output is what it would have made had they not been selected. Their results say why.
 - **Errors.** Failures are `SdkError` with a typed `Problem`, such as `UntrustedBundle`, `EngineTooOld`, or `PatchesFailed`.
 - **Threads.** Calls are synchronous; run them off the main thread. `onEvent` runs on the calling thread and must not call back into the SDK.

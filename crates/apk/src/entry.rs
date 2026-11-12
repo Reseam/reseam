@@ -3,6 +3,8 @@
 
 use std::collections::HashSet;
 
+use reseam_model::Abi;
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct EntryName(Box<str>);
 
@@ -86,6 +88,15 @@ pub(crate) fn is_native_library(name: &str) -> bool {
             .next()
             .is_some_and(|file| file.as_bytes().ends_with(b".so"))
         && parts.next().is_none()
+}
+
+/// The ABI of a native library, `lib/<abi>/<name>.so`, when Android knows
+/// its folder.
+pub(crate) fn native_library_abi(name: &str) -> Option<Abi> {
+    if !is_native_library(name) {
+        return None;
+    }
+    name.split('/').nth(1)?.parse().ok()
 }
 
 pub(crate) fn is_signature_entry(name: &str) -> bool {

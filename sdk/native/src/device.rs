@@ -4,7 +4,20 @@
 //! Getting a patched app onto a device: install files, and mounts on rooted devices.
 
 use boltffi::export;
-use reseam_model::{InstalledApp, MountRequest, RootScript, SdkError};
+use reseam_model::{Abi, InstalledApp, MountRequest, RootScript, SdkError};
+
+/// The ABI `name` stands for, as a device's `Build.SUPPORTED_ABIS` lists it.
+/// Null for a name Android doesn't use.
+#[export]
+pub fn abi_named(name: String) -> Option<Abi> {
+    name.parse().ok()
+}
+
+/// The name Android gives `abi`, such as `arm64-v8a`.
+#[export]
+pub fn abi_name(abi: Abi) -> String {
+    abi.as_str().to_owned()
+}
 
 /// Dex metadata to write into an install session beside the base APK at
 /// `apkPath`, named like it with `.dm` in place of `.apk`, for a device running

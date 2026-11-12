@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 
 use reseam_dex::{LinkPolicy, MetadataPolicy, WriteOptions};
 use reseam_model::{
-    AppIdentity, BuildRecord, PatchArtifact, PatchOutcome, PatchPhase, PatchRef, PatchRequest,
+    Abi, AppIdentity, BuildRecord, PatchArtifact, PatchOutcome, PatchPhase, PatchRef, PatchRequest,
     Problem, RecordedPatch, RunEvent,
 };
 use reseam_patcher::PatchSpec;
@@ -33,6 +33,7 @@ pub fn patch(request: &PatchRequest, emit: impl FnMut(RunEvent)) -> Result<Patch
     let inputs = Inputs::open(
         Some(&request.apk_path),
         &request.split_paths,
+        &request.device_abis,
         &request.bundle_paths,
     )?;
     run(request, inputs, emit)
@@ -54,13 +55,27 @@ pub(crate) fn run(
     let mut progress = RunProgress::new(opening, &mut emit);
     let result = execute(request, &trust, opened, bundles, &mut progress);
     release_process_memory();
-    let (results, output, record) = result?;
+    let Built {
+        results,
+        output,
+        record,
+        native_abi,
+    } = result?;
     Ok(PatchOutcome {
         output,
         results,
         record,
         metrics: progress.finish(),
+        native_abi,
     })
+}
+
+/// What a run made, before its metrics are complete.
+struct Built {
+    results: Vec<PatchResult>,
+    output: PatchArtifact,
+    record: BuildRecord,
+    native_abi: Option<Abi>,
 }
 
 fn execute(
@@ -69,7 +84,7 @@ fn execute(
     mut opened: OpenedApk,
     bundles: Vec<OpenedBundle>,
     progress: &mut RunProgress<'_>,
-) -> Result<(Vec<PatchResult>, PatchArtifact, BuildRecord)> {
+) -> Result<Built> {
     report_container(&opened, progress);
     let output = resolve_output(&request.output, opened.apk.components().len())?;
 
@@ -111,7 +126,12 @@ fn execute(
             ensure_none_failed(&results)?;
         }
         let record = record(request, identity, &results, &disabled, &fingerprints);
-        return Ok((results, output, record));
+        return Ok(Built {
+            results,
+            output,
+            record,
+            native_abi: None,
+        });
     }
 
     let bundles = load_executed(archives, &plan, progress)?;
@@ -124,6 +144,8 @@ fn execute(
     if !request.leave_out_failed {
         ensure_none_failed(applied.results())?;
     }
+    // Patches can add native libraries, so the ABI is chosen from the patched app.
+    let native_abi = opened.retain_native_abi_for(&request.device_abis)?;
 
     // Patching is over, so its search indexes and resident source pages go
     // before writing, the run's peak.
@@ -145,7 +167,12 @@ fn execute(
     staged.sign_and_publish(progress)?;
     let results = applied.into_results();
     let record = record(request, identity, &results, &disabled, &fingerprints);
-    Ok((results, output, record))
+    Ok(Built {
+        results,
+        output,
+        record,
+        native_abi,
+    })
 }
 
 /// What the run of `request` on `app` built: its selection and install

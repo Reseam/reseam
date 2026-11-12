@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use clap::{Args, Parser, Subcommand};
-use reseam_model::PatchPreset;
+use reseam_model::{Abi, PatchPreset};
 use url::Url;
 
 #[derive(Parser)]
@@ -92,6 +92,10 @@ pub struct PatchRequestArgs {
     /// Build output to mount over the installed app, leaving out patches that change the manifest.
     #[arg(long)]
     pub mount: bool,
+    /// Build for a phone with this ABI, keeping only the native libraries it loads; repeat in the
+    /// phone's order.
+    #[arg(long = "abi", value_name = "ABI")]
+    pub abi: Vec<Abi>,
     /// Write the output without patches that fail, and the patches that need them.
     #[arg(long)]
     pub leave_out_failed: bool,

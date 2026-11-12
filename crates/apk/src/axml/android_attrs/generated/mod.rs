@@ -19,6 +19,8 @@ pub const ATTR_MIN_SDK_VERSION: u32 = 0x0101_020c;
 pub const ATTR_VERSION_CODE: u32 = 0x0101_021b;
 pub const ATTR_VERSION_NAME: u32 = 0x0101_021c;
 pub const ATTR_SPLIT_NAME: u32 = 0x0101_0549;
+pub const ATTR_MULTI_ARCH: u32 = 0x0101_048e;
+pub const ATTR_SPLIT_TYPES: u32 = 0x0101_064f;
 
 #[rustfmt::skip]
 pub(super) static ANDROID_ATTRS: &[(&str, AttributeInfo)] = &[

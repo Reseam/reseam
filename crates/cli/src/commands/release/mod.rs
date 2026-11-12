@@ -39,6 +39,7 @@ pub fn run_release_patches(command: &ReleasePatchesCommand) -> Result<()> {
     } = inspect(&InspectRequest {
         apk_path: None,
         split_paths: Vec::new(),
+        device_abis: Vec::new(),
         bundle_paths: vec![command.bundle.display().to_string()],
         trust: Trust::default(),
     })?;

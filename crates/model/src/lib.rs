@@ -4,6 +4,7 @@
 //! Paths crossing the application boundary are UTF-8 strings; the engine validates
 //! paths, signer keys, selections, and option values before executing patches.
 
+mod abi;
 pub mod analysis;
 mod compatibility;
 mod container;
@@ -23,6 +24,7 @@ mod request;
 mod signing;
 mod translation;
 
+pub use abi::Abi;
 pub use compatibility::{ApkVersion, Compatibility, CompatiblePackage, Incompatibility};
 pub use container::ContainerFormat;
 pub use error::{Problem, SdkError};

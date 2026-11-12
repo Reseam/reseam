@@ -49,7 +49,7 @@ fn containers_and_plain_apks_use_the_same_output_pipeline() {
                 })
             );
             let destination = tmp.path().join(format!("output-{count}-{extension}"));
-            let opened = OpenedApk::open(&input, &[]).unwrap();
+            let opened = OpenedApk::open(&input, &[], &[]).unwrap();
             let output = resolve_output(
                 &PatchOutput::Auto {
                     path: destination.display().to_string(),
@@ -80,7 +80,7 @@ fn containers_and_plain_apks_use_the_same_output_pipeline() {
     }
     let input = tmp.path().join("plain.apk");
     std::fs::write(&input, base).unwrap();
-    let opened = OpenedApk::open(&input, &[]).unwrap();
+    let opened = OpenedApk::open(&input, &[], &[]).unwrap();
     assert!(opened.bundle.is_none());
     let destination = tmp.path().join("chosen-directory");
     let output = resolve_output(
@@ -107,7 +107,7 @@ fn split_archive_output_opens_again_as_the_same_split_app() {
     )
     .unwrap();
     let destination = tmp.path().join("patched.apks");
-    let opened = OpenedApk::open(&input, &[]).unwrap();
+    let opened = OpenedApk::open(&input, &[], &[]).unwrap();
     let output = resolve_output(
         &PatchOutput::SplitArchive {
             path: destination.display().to_string(),
@@ -134,7 +134,7 @@ fn output_keeps_the_source_signing_block_pairs_that_are_not_signatures() {
     )
     .unwrap();
     let destination = tmp.path().join("output.apk");
-    let opened = OpenedApk::open(&input, &[]).unwrap();
+    let opened = OpenedApk::open(&input, &[], &[]).unwrap();
     let output = PatchArtifact::SingleFile {
         path: destination.display().to_string(),
     };
@@ -171,7 +171,7 @@ fn invalid_artifact_targets_preserve_outputs_and_signing_identity() {
         });
         std::fs::write(&prior, b"prior output").unwrap();
         std::fs::create_dir(dir.join(blocked)).unwrap();
-        let opened = OpenedApk::open(&base, std::slice::from_ref(&split)).unwrap();
+        let opened = OpenedApk::open(&base, std::slice::from_ref(&split), &[]).unwrap();
         let output = PatchArtifact::SplitDir {
             path: dir.display().to_string(),
         };
@@ -182,7 +182,7 @@ fn invalid_artifact_targets_preserve_outputs_and_signing_identity() {
     }
     for extension in ["pk8", "der"] {
         let path = tmp.path().join(format!("identity.{extension}"));
-        let opened = OpenedApk::open(&base, &[]).unwrap();
+        let opened = OpenedApk::open(&base, &[], &[]).unwrap();
         let output = PatchArtifact::SingleFile {
             path: path.display().to_string(),
         };
@@ -197,7 +197,7 @@ fn invalid_artifact_targets_preserve_outputs_and_signing_identity() {
         let original_key = std::fs::read(&destination).unwrap();
         let alias = tmp.path().join("key-alias.pk8");
         std::os::unix::fs::symlink(&destination, &alias).unwrap();
-        let opened = OpenedApk::open(&base, &[]).unwrap();
+        let opened = OpenedApk::open(&base, &[], &[]).unwrap();
         let output = PatchArtifact::SingleFile {
             path: destination.display().to_string(),
         };

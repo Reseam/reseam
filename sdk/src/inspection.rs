@@ -38,6 +38,7 @@ impl PreparedInspection {
         let mut inputs = Inputs::open(
             request.apk_path.as_deref(),
             &request.split_paths,
+            &request.device_abis,
             &request.bundle_paths,
         )?;
         let apk = inputs.apk.as_mut().map(OpenedApk::metadata).transpose()?;
@@ -88,13 +89,15 @@ impl PreparedInspection {
         }
     }
 
-    /// Consumes the inspected inputs. Paths and their ordering must match inspection;
-    /// selection, signer approvals, signing identity and destination may change.
+    /// Consumes the inspected inputs. Paths, their ordering and the device ABIs
+    /// must match inspection; selection, signer approvals, signing identity and
+    /// destination may change.
     /// Trust is checked again and every payload hash is verified before execution.
     pub fn patch(self, request: &PatchRequest, emit: impl FnMut(RunEvent)) -> Result<PatchOutcome> {
         if self.request.apk_path.as_deref() != Some(request.apk_path.as_str())
             || self.request.split_paths != request.split_paths
             || self.request.bundle_paths != request.bundle_paths
+            || self.request.device_abis != request.device_abis
         {
             return Err(HostError::InvalidRequest(
                 "patch inputs differ from the prepared inspection",

@@ -18,6 +18,7 @@ const DECLARATIONS: &[Declaration] = &[
     declaration::<model::InspectResponse>,
     declaration::<model::ApkMetadata>,
     declaration::<model::ContainerFormat>,
+    declaration::<model::Abi>,
     declaration::<model::BundleMetadata>,
     declaration::<model::PatchMetadata>,
     declaration::<model::PatchSpec>,

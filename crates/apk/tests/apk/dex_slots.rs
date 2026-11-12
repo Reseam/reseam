@@ -27,7 +27,7 @@ fn dex_containers_preserve_all_members_through_loading_and_editing() -> TestResu
             );
             assert_eq!(apk.dex().len(), 2);
             let paths = apk.write_to(dir.path().join("unchanged"), WriteOptions::default())?;
-            let mut unchanged = Apk::open_split(&paths[0], &paths[1..], options)?;
+            let mut unchanged = Apk::open_split(&paths[0], &paths[1..], &[], options)?;
             assert_eq!(
                 unchanged.read_component_entry(component, "classes.dex")?,
                 Some(bytes)
@@ -43,7 +43,7 @@ fn dex_containers_preserve_all_members_through_loading_and_editing() -> TestResu
             assert!(members[1].strings().find("patched second member").is_some());
             for name in ["edited", "edited-again"] {
                 let paths = apk.write_to(dir.path().join(name), WriteOptions::default())?;
-                let reopened = Apk::open_split(&paths[0], &paths[1..], options)?;
+                let reopened = Apk::open_split(&paths[0], &paths[1..], &[], options)?;
                 assert_eq!(reopened.dex().len(), 2);
                 for (index, expected) in ["LFirst;", "LSecond;"].into_iter().enumerate() {
                     let dex = reopened.dex().get(index).expect("DEX");

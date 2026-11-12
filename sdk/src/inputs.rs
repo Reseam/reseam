@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use reseam_model::{PatchPhase, PatchPhaseMetrics};
+use reseam_model::{Abi, PatchPhase, PatchPhaseMetrics};
 
 use crate::apk::OpenedApk;
 use crate::bundles::OpenedBundle;
@@ -19,16 +19,19 @@ pub(crate) struct Inputs {
 }
 
 impl Inputs {
-    /// Fails when the APK cannot be opened; a bundle that cannot is kept with its error.
+    /// Opens the APK as a device whose ABIs are `device_abis` installs it, all
+    /// of it when empty. Fails when the APK cannot be opened; a bundle that
+    /// cannot is kept with its error.
     pub(crate) fn open(
         apk_path: Option<&str>,
         split_paths: &[String],
+        device_abis: &[Abi],
         bundle_paths: &[String],
     ) -> Result<Self> {
         let splits: Vec<PathBuf> = split_paths.iter().map(PathBuf::from).collect();
         let (apk, opening) = measure(PatchPhase::OpenApk, || {
             apk_path
-                .map(|path| OpenedApk::open(Path::new(path), &splits))
+                .map(|path| OpenedApk::open(Path::new(path), &splits, device_abis))
                 .transpose()
         })?;
         Ok(Self {

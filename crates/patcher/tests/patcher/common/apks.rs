@@ -90,6 +90,7 @@ pub fn open_split_test_apk_with(
     let apk = ApkFile::open_split(
         &base_path,
         &[split_path.as_path()],
+        &[],
         ParseOptions {
             classes: reseam_dex::Loading::Deferred,
             ..ParseOptions::default()

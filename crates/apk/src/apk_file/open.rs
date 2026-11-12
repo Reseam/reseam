@@ -5,26 +5,31 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use reseam_dex::{Loading, ParseOptions, Verification};
+use reseam_model::Abi;
 use reseam_storage::ScratchDir;
 use tracing::{info, instrument};
 
+use super::native::installed_components;
 use super::{ApkComponent, ApkFile, DexSet};
 use crate::error::{Result, invalid};
 
 impl ApkFile {
     #[instrument(level = "info", skip_all, fields(apk_path = %path.as_ref().display()))]
     pub fn open(path: impl AsRef<Path>, opts: ParseOptions) -> Result<Self> {
-        Self::open_split(path, &[] as &[&Path], opts)
+        Self::open_split(path, &[] as &[&Path], &[], opts)
     }
 
     /// Opens an APK set given in any order: the component without a split
     /// identity is the base, and it must have a package name. Splits must have
     /// unique nonempty names and match its package and version code; invalid
-    /// sets fail before any DEX is loaded.
+    /// sets fail before any DEX is loaded. With `device`, the ABIs of a device
+    /// most preferred first, the set leaves out the ABI splits that device
+    /// doesn't install; empty keeps every split.
     #[instrument(level = "info", skip_all)]
     pub fn open_split(
         base: impl AsRef<Path>,
         splits: &[impl AsRef<Path>],
+        device: &[Abi],
         opts: ParseOptions,
     ) -> Result<Self> {
         let mut components: Vec<_> = std::iter::once(base.as_ref())
@@ -32,16 +37,19 @@ impl ApkFile {
             .map(|path| ApkComponent::open(path, opts.classes))
             .collect::<Result<_>>()?;
         order_components(&mut components)?;
-        Self::from_components(components, opts, None)
+        Self::from_components(components, device, opts, None)
     }
 
-    /// A session over components [`order_components`] put in order. It owns
-    /// `scratch`, the directory a container's components were extracted to.
+    /// A session over the components [`order_components`] put in order that a
+    /// device whose ABIs are `device` installs. It owns `scratch`, the
+    /// directory a container's components were extracted to.
     pub(crate) fn from_components(
-        mut components: Vec<ApkComponent>,
+        components: Vec<ApkComponent>,
+        device: &[Abi],
         opts: ParseOptions,
         scratch: Option<ScratchDir>,
     ) -> Result<Self> {
+        let mut components = installed_components(components, device);
         if opts.classes == Loading::Eager {
             for component in &mut components {
                 component.resources()?;

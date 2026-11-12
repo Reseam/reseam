@@ -141,6 +141,8 @@ fn format_catalogue(
         ("VERSION_CODE", "versionCode"),
         ("VERSION_NAME", "versionName"),
         ("SPLIT_NAME", "splitName"),
+        ("MULTI_ARCH", "multiArch"),
+        ("SPLIT_TYPES", "splitTypes"),
     ] {
         let Some(&(id, _)) = attrs.get(name) else {
             bail!("framework attribute {name} is not public");

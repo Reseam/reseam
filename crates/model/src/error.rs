@@ -53,6 +53,8 @@ pub enum Problem {
     UnsupportedSigningKey,
     #[error("unknown preset '{value}'; expected recommended, all or none")]
     UnknownPreset { value: String },
+    #[error("'{value}' is not an Android ABI")]
+    UnknownAbi { value: String },
     #[error("internal error")]
     Other,
 }

@@ -19,6 +19,7 @@ use crate::error::{Result, invalid};
 use crate::zip::reader::{self, Archive};
 use crate::{ApkComponent, ApkFile};
 use reseam_dex::{Loading, ParseOptions};
+use reseam_model::Abi;
 use reseam_storage::ScratchDir;
 
 const INFO_JSON: &str = "info.json";
@@ -29,10 +30,12 @@ pub use reseam_model::ContainerFormat;
 
 /// Opens an APKM, XAPK or APKS container as a session over the APKs it holds,
 /// extracted under their entry names into a scratch directory the session
-/// removes when dropped. `None` when `path` is not a container.
+/// removes when dropped, without the ABI splits a device whose ABIs are
+/// `device` doesn't install. `None` when `path` is not a container.
 #[instrument(level = "info", skip_all, fields(path = %path.display()))]
 pub fn open_container(
     path: &Path,
+    device: &[Abi],
     options: ParseOptions,
 ) -> Result<Option<(ContainerFormat, ApkFile)>> {
     let mut archive = reader::open_archive(path)?;
@@ -66,7 +69,7 @@ pub fn open_container(
     if let Some(metadata) = &metadata {
         check_metadata(metadata, &components, apk_entries.len())?;
     }
-    let apk = ApkFile::from_components(components, options, Some(scratch))?;
+    let apk = ApkFile::from_components(components, device, options, Some(scratch))?;
     Ok(Some((format, apk)))
 }
 

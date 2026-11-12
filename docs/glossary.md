@@ -4,6 +4,8 @@ description: The words used across these docs.
 
 # Glossary
 
+**ABI**: the kind of processor native code is built for, such as `arm64-v8a`. An APK keeps each ABI's native libraries in its own `lib/<abi>/` folder or split, and a phone loads one of them.
+
 **APK**: the file an Android app is installed from. Apps from stores often come as split APKs, or bundled into one **APKM** or **XAPK** file.
 
 **App runtime**: code the engine adds to a patched app the first time a patch uses it. It holds the settings screen, the settings storage, and the branded components extensions build with. Bundles share one copy.

@@ -27,6 +27,7 @@ pub fn resolve(request: &ResolveRequest) -> Result<ResolveReport> {
     } = Inputs::open(
         Some(&request.apk_path),
         &request.split_paths,
+        &[],
         &request.bundle_paths,
     )?;
     let mut opened = apk.expect("resolve inputs are opened with the request's APK");
