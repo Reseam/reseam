@@ -111,14 +111,6 @@ impl ResolvedPlan {
             .iter()
             .map(|missing| missing.as_ref().map(MissingDependency::skip_reason))
             .collect();
-        let roots: Vec<usize> = (0..specs.len())
-            .filter(|&i| enabled.contains(&i) || specs[i].in_preset(selection.preset, package))
-            .collect();
-        let mut selected = vec![false; specs.len()];
-        for &idx in &roots {
-            selected[idx] = true;
-        }
-
         let mut disabled = vec![false; specs.len()];
         for patch in &selection.disable {
             let idx = lookup(patch)?;
@@ -128,6 +120,16 @@ impl ResolvedPlan {
                 )));
             }
             disabled[idx] = true;
+        }
+        let roots: Vec<usize> = (0..specs.len())
+            .filter(|&i| {
+                !disabled[i]
+                    && (enabled.contains(&i) || specs[i].in_preset(selection.preset, package))
+            })
+            .collect();
+        let mut selected = vec![false; specs.len()];
+        for &idx in &roots {
+            selected[idx] = true;
         }
 
         let precluded: Vec<Option<PatchStatus>> = specs

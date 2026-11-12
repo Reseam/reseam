@@ -142,7 +142,7 @@ fn selection_presets_and_compatibility() {
             },
             (
                 "com.example",
-                &[("own", S), ("pinned", S), ("optional", A), ("opted-in", A)],
+                &[("pinned", S), ("optional", A), ("opted-in", A)],
             ),
         ),
         (
@@ -184,7 +184,7 @@ fn dependency_selection_stops_at_unavailable_or_incompatible_nodes() {
                 disable: vec!["root".into()],
                 ..Default::default()
             },
-            ("com.example", &[("root", S)]),
+            ("com.example", &[]),
         ),
         (
             PatchSelection {

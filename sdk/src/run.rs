@@ -150,7 +150,8 @@ fn execute(
 
 /// What the run of `request` on `app` built: its selection and install
 /// method, and the fingerprint of each patch in `results` the run took up.
-/// Patches the selection turns off are reported, but were never taken up.
+/// A patch the selection turns off is reported only when a selected patch
+/// needs it, and was never taken up.
 fn record(
     request: &PatchRequest,
     app: AppIdentity,
