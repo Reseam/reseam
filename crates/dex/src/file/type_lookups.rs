@@ -7,6 +7,8 @@ use rustc_hash::FxHashMap;
 
 use crate::model::TypeIdx;
 
+const UNPOISONED: &str = "the lock is held only to read or write the map, which never panics";
+
 /// Remembered descriptor lookups. Type ids are only ever appended, so a found
 /// index stays valid, and a miss holds until the type table grows.
 #[derive(Debug, Default)]
@@ -27,32 +29,21 @@ impl TypeLookups {
         types: usize,
         find: impl FnOnce() -> Option<TypeIdx>,
     ) -> Option<TypeIdx> {
-        match self
-            .0
-            .lock()
-            .expect("type lookups lock")
-            .get(descriptor)
-        {
+        match self.0.lock().expect(UNPOISONED).get(descriptor) {
             Some(Lookup::Found(idx)) => return Some(*idx),
             Some(Lookup::Missing { types: seen }) if *seen == types => return None,
             _ => {}
         }
         let found = find();
-        self.0
-            .lock()
-            .expect("type lookups lock")
-            .insert(
-                descriptor.into(),
-                found.map_or(Lookup::Missing { types }, Lookup::Found),
-            );
+        self.0.lock().expect(UNPOISONED).insert(
+            descriptor.into(),
+            found.map_or(Lookup::Missing { types }, Lookup::Found),
+        );
         found
     }
 
     pub(crate) fn clear(&mut self) {
-        self.0
-            .get_mut()
-            .expect("type lookups lock")
-            .clear();
+        self.0.get_mut().expect(UNPOISONED).clear();
     }
 }
 
