@@ -41,6 +41,17 @@ class StringTable(private val directory: String) {
     val layoutDirection: Int
         get() = TextUtils.getLayoutDirectionFromLocale(readingOrder().first().locale)
 
+    val locales: List<Locale> by lazy {
+        Reseam.context.assets.list(directory).orEmpty()
+            .asSequence()
+            .filter { it.endsWith(".json") }
+            .map { it.removeSuffix(".json") }
+            .map { if (it == "default") "en" else it }
+            .distinct()
+            .map(Locale::forLanguageTag)
+            .toList()
+    }
+
     /** By the tag in each file's name, which Locale does not always give back. */
     private val translations: Map<String, Locale> by lazy {
         Reseam.context.assets
@@ -56,7 +67,7 @@ class StringTable(private val directory: String) {
     private class Order(val locales: LocaleList, val tables: List<LoadedTable>)
 
     private fun readingOrder(): List<LoadedTable> {
-        val locales = Reseam.context.resources.configuration.locales
+        val locales = LocaleList(Appearance.getLanguage())
         val cached = order
         if (cached != null && cached.locales == locales) return cached.tables
         val tags = buildList {
