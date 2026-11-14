@@ -4,9 +4,9 @@
 package app.reseam.runtime
 
 import android.icu.text.PluralRules
+import org.json.JSONObject
 import java.io.FileNotFoundException
 import java.util.Locale
-import org.json.JSONObject
 
 /**
  * Lazily reads translated assets from a table directory. Each name falls back through the current
@@ -30,8 +30,19 @@ class StringTable(private val directory: String) {
         return String.format(locale, pattern, *args)
     }
 
+    val locales: List<Locale> by lazy {
+        Reseam.context.assets.list(directory).orEmpty()
+            .asSequence()
+            .filter { it.endsWith(".json") }
+            .map { it.removeSuffix(".json") }
+            .map { if (it == "default") "en" else it }
+            .distinct()
+            .map(Locale::forLanguageTag)
+            .toList()
+    }
+
     private val currentLocale: Locale
-        get() = Reseam.context.resources.configuration.locales[0]
+        get() = Appearance.getLanguage()
 
     private fun lookup(name: String, locale: Locale): JSONObject {
         val tags = buildList {

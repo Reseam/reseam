@@ -11,6 +11,7 @@ import android.widget.TextView
 import app.reseam.runtime.ui.Icons
 import app.reseam.runtime.ui.Tokens
 import app.reseam.runtime.ui.Ui
+import java.util.Locale
 
 /** A built settings page: the view to show, and the part of it that scrolls. */
 internal class BuiltPage(val view: View, val scroll: ScrollView)
@@ -38,6 +39,26 @@ internal fun settingsPage(
                     Runnable(back),
                 )
             if (root) {
+                topBar.action(Icons.LANGUAGE, description = RuntimeStrings.language) {
+                    val group = ui.itemGroup().add(
+                        ui.listItem(RuntimeStrings.languageSameAsApp)
+                            .onClick {
+                                Appearance.setLanguageAsAppLanguage()
+                                restartApp()
+                            }
+                    )
+                    
+                    RuntimeStrings.locales
+                        .sortedBy { it.toLanguageTag() }
+                        .forEach { locale ->
+                            group.add(
+                                ui.listItem(locale.displayName).onClick {
+                                    Appearance.setLanguage(locale)
+                                    restartApp()
+                                })
+                        }
+                    ui.dialog().title(RuntimeStrings.language).view(group).show()
+                }
                 val dark = ui.theme.dark
                 topBar.action(
                     if (dark) Icons.SUN else Icons.MOON,

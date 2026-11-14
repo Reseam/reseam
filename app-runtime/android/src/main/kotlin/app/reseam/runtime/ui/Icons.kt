@@ -66,6 +66,16 @@ object Icons {
             "M 7 10 L 12 15 L 17 10",
             "M 12 15 L 12 3",
         )
+    @JvmField
+    val LANGUAGE =
+        VectorImage.stroked(
+            "M 5 8 L 11 14",
+            "M 4 14 L 10 8 L 12 5",
+            "M 2 5 L 14 5",
+            "M 7 2 L 8 2",
+            "M 22 22 L 17 12 L 12 22",
+            "M 14 18 L 20 18",
+        )
 }
 
 private const val TRAY =
