@@ -101,7 +101,8 @@ class SwitchView internal constructor(ui: Ui) : View(ui.context), Checkable {
         val end = left + width - radius
         paint.style = Paint.Style.FILL
         paint.color = blend(colors.outline, colors.onPrimary)
-        canvas.drawCircle(start + (end - start) * progress, top + radius, thumb, paint)
+        val position = if (layoutDirection == LAYOUT_DIRECTION_RTL) 1f - progress else progress
+        canvas.drawCircle(start + (end - start) * position, top + radius, thumb, paint)
     }
 
     private fun blend(off: Int, on: Int): Int = evaluator.evaluate(progress, off, on) as Int

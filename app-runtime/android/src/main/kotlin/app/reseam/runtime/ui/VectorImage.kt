@@ -15,9 +15,11 @@ private constructor(
     internal val width: Float,
     internal val height: Float,
     internal val shapes: List<Shape>,
+    /** Points along the reading direction, so right-to-left layouts draw it flipped. */
+    internal val directional: Boolean = false,
 ) {
     companion object {
-        internal fun stroked(vararg data: String): VectorImage =
+        internal fun stroked(vararg data: String, directional: Boolean = false): VectorImage =
             VectorImage(
                 24f,
                 24f,
@@ -29,6 +31,7 @@ private constructor(
                         false,
                     )
                 },
+                directional,
             )
 
         /** Reads the SDK form; null means no image. */

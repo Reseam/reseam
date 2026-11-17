@@ -80,6 +80,7 @@ class BrandDialog private constructor() {
                 onDismiss?.let { callback -> setOnDismissListener { callback.run() } }
                 checkNotNull(window) { "A dialog always owns a window" }
                     .apply {
+                        followRuntimeText()
                         setBackgroundDrawable(ColorDrawable(0))
                         addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
                         setDimAmount(Tokens.SCRIM)
@@ -126,7 +127,7 @@ class BrandDialog private constructor() {
         private fun buttons(dialog: Dialog, padding: Int): LinearLayout =
             LinearLayout(ui.context).apply {
                 gravity = Gravity.END or Gravity.CENTER_VERTICAL
-                setPadding(padding, padding, padding - ui.px(Tokens.SPACE_MD), 0)
+                setPaddingRelative(padding, padding, padding - ui.px(Tokens.SPACE_MD), 0)
                 actions.forEach { action ->
                     addView(
                         ui.button(action.label) {

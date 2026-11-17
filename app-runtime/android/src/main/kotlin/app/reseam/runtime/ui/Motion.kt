@@ -22,11 +22,15 @@ object Motion {
 
     /**
      * Slides screens 30dp toward the start when forward, fading the outgoing screen before the
-     * incoming one.
+     * incoming one. The start is on the right in right-to-left layouts.
      */
     @JvmStatic
     fun sharedAxisX(outgoing: View, incoming: View, forward: Boolean): Animator {
-        val slide = Tokens.px(incoming.context, SLIDE.toFloat()).toFloat() * if (forward) 1 else -1
+        val toStart = if (outgoing.layoutDirection == View.LAYOUT_DIRECTION_RTL) -1 else 1
+        val slide =
+            Tokens.px(incoming.context, SLIDE.toFloat()).toFloat() *
+                toStart *
+                if (forward) 1 else -1
         // A delayed animator applies its start value only once the delay ends.
         incoming.alpha = 0f
         incoming.translationX = slide

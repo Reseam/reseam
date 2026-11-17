@@ -7,10 +7,12 @@ import android.app.Activity
 import android.app.Dialog
 import android.os.Build
 import android.window.OnBackInvokedDispatcher
+import app.reseam.runtime.ui.withRtlSupport
 
 internal fun settingsDialog(activity: Activity, back: () -> Unit, closed: () -> Unit): Dialog {
     val dialog =
-        object : Dialog(activity, android.R.style.Theme_DeviceDefault_NoActionBar) {
+        object :
+            Dialog(activity.withRtlSupport(), android.R.style.Theme_DeviceDefault_NoActionBar) {
             override fun onBackPressed() {
                 back()
             }

@@ -7,6 +7,7 @@ import android.content.Context
 import app.reseam.runtime.ui.Brand
 import app.reseam.runtime.ui.Theme
 import app.reseam.runtime.ui.Ui
+import app.reseam.runtime.ui.withRtlSupport
 import java.io.IOException
 import org.json.JSONException
 import org.json.JSONObject
@@ -35,7 +36,7 @@ class ReseamBundle internal constructor(app: Context, @JvmField val name: String
     val settings = Settings(app, name, schema)
 
     /** Builds views in the bundle's brand and the current theme of Reseam's screens. */
-    fun ui(context: Context): Ui = Ui(context, Theme.of(brand, context))
+    fun ui(context: Context): Ui = Ui(context.withRtlSupport(), Theme.of(brand, context))
 
     /** Opens settings over the current screen. Callable from any thread. */
     fun openSettings() = openSettingsPanel(this)

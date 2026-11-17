@@ -15,6 +15,7 @@ import android.widget.FrameLayout
 import android.widget.ScrollView
 import app.reseam.runtime.ui.Motion
 import app.reseam.runtime.ui.Ui
+import app.reseam.runtime.ui.followRuntimeText
 
 internal class SettingsSession(
     val bundle: ReseamBundle,
@@ -83,6 +84,7 @@ internal class SettingsSession(
         ui = bundle.ui(dialog.context)
         locales = Reseam.context.resources.configuration.locales
         val window = checkNotNull(dialog.window) { "A dialog always owns a window" }
+        window.followRuntimeText()
         val surface = ui.colors.surface
         window.decorView.setBackgroundColor(surface)
         window.statusBarColor = surface

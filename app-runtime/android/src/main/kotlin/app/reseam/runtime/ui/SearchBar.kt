@@ -19,7 +19,7 @@ class SearchBar internal constructor(ui: Ui, hint: CharSequence?) : LinearLayout
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         minimumHeight = ui.px(Tokens.SEARCH_BAR)
-        setPadding(ui.px(Tokens.SPACE_LG), 0, ui.px(Tokens.SPACE_XS), 0)
+        setPaddingRelative(ui.px(Tokens.SPACE_LG), 0, ui.px(Tokens.SPACE_XS), 0)
         background = ui.shape(colors.surfaceContainerHigh, Tokens.SEARCH_BAR / 2f)
         addView(
             ui.icon(Icons.SEARCH, Tokens.ICON_MD, colors.onSurfaceVariant),
@@ -34,7 +34,7 @@ class SearchBar internal constructor(ui: Ui, hint: CharSequence?) : LinearLayout
             setSingleLine(true)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             imeOptions = EditorInfo.IME_ACTION_SEARCH
-            setPadding(ui.px(Tokens.SPACE_LG), 0, 0, 0)
+            setPaddingRelative(ui.px(Tokens.SPACE_LG), 0, 0, 0)
             setOnEditorActionListener { _, action, _ ->
                 if (action != EditorInfo.IME_ACTION_SEARCH) false
                 else {

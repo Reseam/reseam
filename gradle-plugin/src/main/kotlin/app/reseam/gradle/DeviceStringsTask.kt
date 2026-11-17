@@ -25,7 +25,7 @@ internal abstract class DeviceStringsTask : StringObjectTask() {
             line("import app.reseam.runtime.StringTable")
             line()
             block("object ${simpleName()}") {
-                line("private val table = StringTable(${kotlinString(assetDirectory.get())})")
+                line("internal val table = StringTable(${kotlinString(assetDirectory.get())})")
                 for ((name, value) in base.strings) {
                     line()
                     val parameters =

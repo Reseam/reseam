@@ -5,8 +5,10 @@
 package app.reseam.runtime.ui
 
 object Icons {
-    @JvmField val ARROW_LEFT = VectorImage.stroked("M 12 19 L 5 12 L 12 5", "M 19 12 L 5 12")
-    @JvmField val CHEVRON_RIGHT = VectorImage.stroked("M 9 18 L 15 12 L 9 6")
+    @JvmField
+    val ARROW_LEFT =
+        VectorImage.stroked("M 12 19 L 5 12 L 12 5", "M 19 12 L 5 12", directional = true)
+    @JvmField val CHEVRON_RIGHT = VectorImage.stroked("M 9 18 L 15 12 L 9 6", directional = true)
     @JvmField
     val SEARCH =
         VectorImage.stroked(

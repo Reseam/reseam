@@ -11,6 +11,7 @@ import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.RectF
 import android.graphics.drawable.Drawable
+import android.util.LayoutDirection
 
 /** Size is the intrinsic size in pixels of the image's longer side. */
 class VectorIcon(private val image: VectorImage, private val size: Int, private val tint: Int) :
@@ -25,6 +26,9 @@ class VectorIcon(private val image: VectorImage, private val size: Int, private 
             RectF(bounds),
             Matrix.ScaleToFit.CENTER,
         )
+        if (isAutoMirrored && layoutDirection == LayoutDirection.RTL) {
+            matrix.postScale(-1f, 1f, bounds.exactCenterX(), bounds.exactCenterY())
+        }
         val scale = matrix.mapRadius(1f)
         val alpha = paint.alpha
         image.shapes.forEach { shape ->
@@ -47,6 +51,10 @@ class VectorIcon(private val image: VectorImage, private val size: Int, private 
             paint.alpha = alpha
         }
     }
+
+    override fun isAutoMirrored(): Boolean = image.directional
+
+    override fun onLayoutDirectionChanged(layoutDirection: Int): Boolean = image.directional
 
     override fun getIntrinsicWidth(): Int = Math.round(size * minOf(1f, image.width / image.height))
 
