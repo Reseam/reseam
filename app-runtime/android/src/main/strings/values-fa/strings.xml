@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="settings">تنظیمات</string>
+    <string name="search_settings">جستجوی تنظیمات</string>
+    <string name="no_search_results">هیچ تنظیمی با جستجوی شما مطابقت ندارد.</string>
+    <string name="no_settings">وصله‌هایی که انتخاب کرده‌اید اینجا تنظیماتی ندارند.</string>
+    <string name="cancel">لغو</string>
+    <string name="save">ذخیره</string>
+    <string name="restore_default">بازگرداندن پیش‌فرض</string>
+    <string name="restart_title">برای اعمال تغییرات، برنامه دوباره راه‌اندازی شود؟</string>
+    <string name="restart_message">برخی از تنظیماتی که تغییر داده‌اید پس از راه‌اندازی دوبارهٔ برنامه اعمال می‌شوند.</string>
+    <string name="later">بعداً</string>
+    <string name="restart">راه‌اندازی دوباره</string>
+    <string name="restart_app">راه‌اندازی دوبارهٔ برنامه</string>
+    <string name="version">نسخهٔ <xliff:g id="version">%1$s</xliff:g></string>
+    <string name="engine">موتور <xliff:g id="engine">%1$s</xliff:g></string>
+    <string name="engine_license">موتور <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
+    <string name="clear_search">پاک کردن جستجو</string>
+    <string name="back">بازگشت</string>
+    <string name="use_dark_theme">استفاده از زمینهٔ تیره</string>
+    <string name="use_light_theme">استفاده از زمینهٔ روشن</string>
+    <string name="backup">پشتیبان</string>
+    <string name="export_settings">صدور تنظیمات</string>
+    <string name="export_settings_summary">تنظیماتتان را در یک فایل ذخیره کنید.</string>
+    <string name="import_settings">وارد کردن تنظیمات</string>
+    <string name="import_settings_summary">تنظیمات را از فایلی که صادر کرده‌اید بار کنید.</string>
+    <string name="settings_file_name"><xliff:g id="app">%1$s</xliff:g> settings.json</string>
+    <string name="settings_exported">تنظیمات صادر شد</string>
+    <plurals name="settings_imported">
+        <item quantity="one"><xliff:g id="count">%1$d</xliff:g> تنظیم وارد شد</item>
+        <item quantity="other"><xliff:g id="count">%1$d</xliff:g> تنظیم وارد شد</item>
+    </plurals>
+    <string name="export_failed">صدور تنظیمات ممکن نشد</string>
+    <string name="import_failed">وارد کردن تنظیمات ممکن نشد</string>
+    <string name="import_unreadable">این فایل خروجی تنظیمات نیست.</string>
+    <string name="import_nothing_applies">هیچ‌یک از تنظیمات این فایل مربوط به این برنامه نیست.</string>
+    <string name="ok">تأیید</string>
+</resources>
