@@ -20,7 +20,8 @@ class TypeStyle internal constructor(json: JSONObject) {
         view.typeface = typeface
         view.setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
         view.letterSpacing = tracking / size
-        view.includeFontPadding = false
+        // Marks above the ascent, such as Vietnamese stacked accents, are cut off without it.
+        view.includeFontPadding = true
         val height =
             Math.round(
                 TypedValue.applyDimension(
