@@ -3,6 +3,7 @@
 
 package app.reseam.patch.points
 
+import app.reseam.patch.ArrayElementMatch
 import app.reseam.patch.FieldRefMatch
 import app.reseam.patch.MethodRefMatch
 import app.reseam.patch.MethodTarget
@@ -10,6 +11,8 @@ import app.reseam.patch.PointMatch
 import app.reseam.patch.descriptor
 import app.reseam.patch.dex.Method
 import app.reseam.patch.dex.Opcode
+import app.reseam.patch.dex.arrayReads
+import app.reseam.patch.dex.arrayWrites
 import app.reseam.patch.dex.descriptor
 import app.reseam.patch.dex.literal
 import app.reseam.patch.dex.methodRef
@@ -19,6 +22,7 @@ import app.reseam.patch.dex.stringValue
 import app.reseam.patch.dex.typeRef
 import app.reseam.patch.proto
 import app.reseam.patch.run.ActiveRuntime
+import app.reseam.patch.search.ArrayElementMatchSpec
 import app.reseam.patch.search.FieldRefMatchSpec
 import app.reseam.patch.search.MethodRefMatchSpec
 import app.reseam.patch.types.Instruction
@@ -135,6 +139,18 @@ internal class PointMatchSpec(private val method: Method) : PointMatch {
     override fun field(block: FieldRefMatch.() -> Unit) {
         val pattern = FieldRefMatchSpec().apply(block).pattern
         add { _, i -> i in references.accessesIn(method, pattern) }
+    }
+
+    override fun arrayRead(block: ArrayElementMatch.() -> Unit) = arrayAccess(arrayReads, block)
+
+    override fun arrayWrite(block: ArrayElementMatch.() -> Unit) = arrayAccess(arrayWrites, block)
+
+    private fun arrayAccess(opcodes: ClosedRange<Opcode>, block: ArrayElementMatch.() -> Unit) {
+        val wanted = ArrayElementMatchSpec().apply(block).elementType
+        add { insns, i ->
+            insns[i].opcode?.let { it in opcodes } == true &&
+                (wanted == null || origins.elementType(insns, i) == wanted)
+        }
     }
 
     override fun argument(index: Int, block: PointMatch.() -> Unit) {

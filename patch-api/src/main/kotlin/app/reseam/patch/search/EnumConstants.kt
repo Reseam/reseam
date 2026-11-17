@@ -4,13 +4,11 @@
 package app.reseam.patch.search
 
 import app.reseam.patch.dex.DexClass
-import app.reseam.patch.dex.Method
 import app.reseam.patch.dex.Opcode
 import app.reseam.patch.dex.fieldRef
 import app.reseam.patch.dex.methodRef
 import app.reseam.patch.dex.opcode
 import app.reseam.patch.dex.regA
-import app.reseam.patch.dex.registerWordCount
 import app.reseam.patch.dex.stringValue
 import app.reseam.patch.dex.typeRef
 import app.reseam.patch.points.ArgumentOrigins
@@ -88,21 +86,12 @@ private fun nameArgument(
             ?.takeIf { !it.unknown && it.sites.isEmpty() }
             ?.registersAtBoundary
             ?.singleOrNull()
-            ?.let { argumentIn(method, it) }
+            ?.let(method::incomingAt)
     insns.forEachIndexed { at, insn ->
         val ref = insn.methodRef ?: return@forEachIndexed
         if (insn.opcode !in constructorCalls || ref.name != "<init>") return@forEachIndexed
         if (parameter(at, 0) != 0) return@forEachIndexed
         return parameter(at, nameArgument(ref, index, seen) ?: return null)
-    }
-    return null
-}
-
-private fun argumentIn(method: Method, register: Int): Int? {
-    var next = method.registersSize - method.insSize
-    (listOf(method.owner) + method.parameterTypes).forEachIndexed { argument, type ->
-        if (next == register) return argument
-        next += registerWordCount(type)
     }
     return null
 }

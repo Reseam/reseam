@@ -6,6 +6,7 @@ package app.reseam.patch.points
 import app.reseam.patch.Type
 import app.reseam.patch.dex.Method
 import app.reseam.patch.dex.Opcode
+import app.reseam.patch.dex.arrayReads
 import app.reseam.patch.dex.fieldRef
 import app.reseam.patch.dex.invokeRegisters
 import app.reseam.patch.dex.methodRef
@@ -15,10 +16,16 @@ import app.reseam.patch.dex.returnType
 import app.reseam.patch.dex.typeRef
 import app.reseam.patch.types.Instruction
 
-internal fun inferType(method: Method, index: Int): String? {
+internal fun inferType(
+    method: Method,
+    index: Int,
+    origins: ArgumentOrigins = ArgumentOrigins(method),
+): String? {
     val insns = method.instructions
     val insn = insns[index]
-    return when (insn.opcode) {
+    val opcode = insn.opcode ?: return null
+    return when (opcode) {
+        in arrayReads -> origins.elementType(insns, index)
         Opcode.CHECK_CAST,
         Opcode.NEW_INSTANCE,
         Opcode.NEW_ARRAY -> insn.typeRef

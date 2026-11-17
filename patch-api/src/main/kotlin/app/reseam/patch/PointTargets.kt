@@ -3,11 +3,12 @@
 
 package app.reseam.patch
 
-import app.reseam.patch.dex.arguments
+import app.reseam.patch.dex.arrayWrites
 import app.reseam.patch.dex.descriptor
 import app.reseam.patch.dex.fieldRef
 import app.reseam.patch.dex.methodRef
 import app.reseam.patch.dex.opcode
+import app.reseam.patch.dex.operandRegisters
 import app.reseam.patch.dex.regA
 import app.reseam.patch.points.ArgumentOrigins
 import app.reseam.patch.points.PointMatchSpec
@@ -65,6 +66,9 @@ internal constructor(
      */
     fun captureAs(name: String, type: String? = null): PointTarget = capturing { point ->
         val insn = point.instruction
+        require(insn.opcode?.let { it in arrayWrites } != true) {
+            "$label: an array write at instruction ${point.index} writes no register; capture the stored value with captureArgumentAs(\"$name\", 2)"
+        }
         val register = insn.regA ?: error(noRegisterMessage(label, point.index, insn))
         val captureType =
             type?.let(::descriptor)
@@ -76,28 +80,29 @@ internal constructor(
     }
 
     /**
-     * Captures argument [argument] of the invoke for `capture(name)`. Argument 0 of an instance
-     * invoke is the receiver; a wide argument counts once.
+     * Captures argument [argument] of the invoke or array access for `capture(name)`. Argument 0 of
+     * an instance invoke is the receiver; a wide argument counts once. An array access passes the
+     * array, the index, and for a write the stored value.
      */
     fun captureArgumentAs(name: String, argument: Int, type: String? = null): PointTarget =
         capturing { point ->
-            val value =
-                ArgumentOrigins(point.method)
-                    .atEntry(
-                        point.method.instructions,
-                        point.index,
-                        argument,
-                        point.anchor.head,
-                        label,
+            val insns = point.method.instructions
+            val origins = ArgumentOrigins(point.method)
+            val register = origins.atEntry(insns, point.index, argument, point.anchor.head, label)
+            val captureType =
+                type?.let(::descriptor)
+                    ?: origins.operandTypes(insns, point.index)?.getOrNull(argument)
+                    ?: error(
+                        "$label: cannot infer the type of argument $argument at instruction ${point.index} (${insns[point.index].opcode}); pass captureArgumentAs(\"$name\", $argument, type)"
                     )
-            Capture(name, type?.let(::descriptor) ?: value.type, value.register)
+            Capture(name, captureType, register)
         }
 
     /**
-     * Finds the unique instruction defining argument [argument], including exception paths.
-     * Register-to-register moves are followed to the instruction that produced the value. Fails for
-     * multiple reaching definitions or an incoming parameter. Arguments are counted as in
-     * [captureArgumentAs].
+     * Finds the unique instruction defining argument [argument] of the invoke or array access,
+     * including exception paths. Register-to-register moves are followed to the instruction that
+     * produced the value. Fails for multiple reaching definitions or an incoming parameter.
+     * Arguments are counted as in [captureArgumentAs].
      */
     fun writer(argument: Int, debugName: String? = null): PointTarget {
         val base = this
@@ -109,9 +114,9 @@ internal constructor(
                 requireNotNull(
                     ArgumentOrigins(point.method).argument(insns, point.index, argument)
                 ) {
-                    "$label: invoke has no argument $argument"
+                    "$label: ${insns[point.index].opcode} has no argument $argument"
                 }
-            val register = insns[point.index].arguments(label)[argument].register
+            val register = insns[point.index].operandRegisters(label)!![argument].register
             val index =
                 origins.sites.singleOrNull()?.takeUnless { origins.entry || origins.unknown }
                     ?: error(writerMessage(label, point.method, point.index, register, origins))

@@ -185,7 +185,7 @@ fun PointTarget.skipWhen(condition: CodeScope.() -> ValueRef) {
         call.arguments("$label: ${method.descriptor}[${point.index}]").mapIndexed { i, arg ->
             val original =
                 origins.atEntry(method.instructions, point.index, i, point.anchor.head, label)
-            Capture("skipWhen$i", arg.type, original.register)
+            Capture("skipWhen$i", arg.type, original)
         }
     method.insertCode(
         CodePlacement.OnEveryPath(point.anchor.head.toUInt()),

@@ -65,6 +65,22 @@ value class Method(val handle: UInt) {
     val isStatic: Boolean
         get() = info.isStatic
 
+    /** What the method receives in its last registers: the receiver of an instance method first. */
+    internal val incomingTypes: List<String>
+        get() = (if (isStatic) emptyList() else listOf(owner)) + parameterTypes
+
+    /**
+     * The position in [incomingTypes] of the value that arrives in [register]; null for a local.
+     */
+    internal fun incomingAt(register: Int): Int? {
+        var next = registersSize - insSize
+        incomingTypes.forEachIndexed { index, type ->
+            if (next == register) return index
+            next += registerWordCount(type)
+        }
+        return null
+    }
+
     val instructions: List<Instruction>
         get() = ActiveRuntime.current.run.cache.instructions(handle)
 

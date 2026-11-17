@@ -41,7 +41,7 @@ method.insertInstructions(
 )
 ```
 
-The builder's functions are named after Dalvik instructions: `constInt`, `constString`, `move`, `moveResult`, `invokeVirtual`, `iget`, `sput`, `ifEqz`, `goto`, `returnObject`, and so on. Where Dalvik has several encodings of one instruction, the builder picks one for you: constants and moves by register width, field accesses by the field's type, and moves and results by the value's type.
+The builder's functions are named after Dalvik instructions: `constInt`, `constString`, `move`, `moveResult`, `invokeVirtual`, `iget`, `sput`, `ifEqz`, `goto`, `returnObject`, and so on. Where Dalvik has several encodings of one instruction, the builder picks one for you: constants and moves by register width, field and array accesses by the value's type, and moves and results by the value's type.
 
 Here you choose every register. Register `0` above must be free at that point, and `findFreeRegister(index)` finds one that is.
 

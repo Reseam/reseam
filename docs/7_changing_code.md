@@ -50,6 +50,7 @@ Every value in a code block is a `ValueRef`:
 | `value.call(method, args)` | call an instance method on an object |
 | `value.field(f)`, `staticField(f)` | read a field |
 | `value.set(f, v)`, `setStatic(f, v)` | write a field |
+| `value[index]`, `value[index] = v`, `value.size()` | read or write an element of an array or `List`, or get its size |
 | `value.cast(type)`, `newInstance(type)` | cast, or create an object |
 | `capture("name")`, `value.assign(v)` | read a captured value, or overwrite a value |
 

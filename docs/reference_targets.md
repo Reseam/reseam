@@ -189,6 +189,14 @@ Describes a field that is accessed.
 | `name(value: String)` | have this name. |
 | `type(descriptor: String)` | have this type. |
 
+### `ArrayElementMatch`
+
+Describes the array an element is read from or written to.
+
+| Member | Matches arrays that |
+|---|---|
+| `type(descriptor: String)` | hold elements of this type. An object array's type comes from where the array was written, such as a field, a parameter, or a call's result, so an array of unknown type never matches. |
+
 ## Points
 
 ### Point functions
@@ -210,12 +218,14 @@ One instruction. A point keeps naming the same instruction when code is added ar
 | `instruction: Instruction` | The instruction. |
 | `previous(block: PointMatch.() -> Unit): PointTarget` | The nearest earlier instruction matching the block. It takes a single step, not a sequence. |
 | `next(block: PointMatch.() -> Unit): PointTarget` | The nearest later instruction matching the block. On a call, a leading `resultOf` must match the call's own result. |
-| `captureAs(name: String, type: String? = null): PointTarget` | Saves the value this instruction writes, for `capture(name)` in code added at a later point. |
-| `captureArgumentAs(name: String, argument: Int, type: String? = null): PointTarget` | Saves argument `argument` of this call. Argument 0 of an instance call is the object it is called on. A `long` or `double` argument counts once. |
-| `writer(argument: Int, debugName: String? = null): PointTarget` | The instruction that produced argument `argument` of this call, following register copies back to the source. Fails when the value is an incoming parameter or comes from several places. |
+| `captureAs(name: String, type: String? = null): PointTarget` | Saves the value this instruction writes, for `capture(name)` in code added at a later point. An array write writes no register; save its value with `captureArgumentAs(name, 2)`. |
+| `captureArgumentAs(name: String, argument: Int, type: String? = null): PointTarget` | Saves argument `argument` of this call or array access. Argument 0 of an instance call is the object it is called on. A `long` or `double` argument counts once. |
+| `writer(argument: Int, debugName: String? = null): PointTarget` | The instruction that produced argument `argument` of this call or array access, following register copies back to the source. Fails when the value is an incoming parameter or comes from several places. |
 | `callee(debugName: String? = null): MethodTarget` | The method this call invokes, as a target. It resolves to the nearest declaration up the class hierarchy. |
 | `field(debugName: String? = null): FieldTarget` | The field this instruction reads or writes, as a target. |
-| `redirectTo(target: ExtMethod)` | Replaces this call with a call to a static extension method. For an instance call, the object comes first. Arguments, the result, and access are checked. |
+| `redirectTo(target: ExtMethod)` | Replaces this call or array access with a call to a static extension method. For an instance call, the object comes first. An array read calls `target(array, index)` and the app takes its result as the element; a write calls `target(array, index, value)`. Arguments, the result, and access are checked. |
+
+An array access counts as a call for `argument`, `captureArgumentAs`, `writer`, and `redirectTo`: a read as `get(array, index)` and a write as `set(array, index, value)`, so argument 0 is the array, 1 the index, and 2 the value written.
 
 Code blocks attach here too: `before`, `after`, and `skipWhen`. See [API: Code blocks](reference_code.md#hooks). Replacing the method's body ends every point in it, and using one afterwards fails.
 
@@ -246,7 +256,9 @@ The receiver of `point { }`, `points { }`, `previous { }`, and `next { }`. Every
 | `invokeStatic(block)`, `invokeVirtual(block)`, `invokeInterface(block)`, `invokeDirect(block)` | a call of that kind. The block is optional. |
 | `calls(target: MethodTarget)` | a call to exactly this method. |
 | `field(block: FieldRefMatch.() -> Unit)` | reading or writing a matching field. |
-| `argument(index: Int, block: PointMatch.() -> Unit)` | a call whose argument `index` comes from an instruction matching the block, on every path that reaches it. |
+| `arrayRead(block: ArrayElementMatch.() -> Unit = {})` | reading an element of a matching array. |
+| `arrayWrite(block: ArrayElementMatch.() -> Unit = {})` | writing an element of a matching array. |
+| `argument(index: Int, block: PointMatch.() -> Unit)` | a call or array access whose argument `index` comes from an instruction matching the block, on every path that reaches it. |
 | `resultOf(returns: String? = null)` | reading the result of a call (`move-result`) that returns this type, or any type. |
 | `where(predicate: Instruction.() -> Boolean)` | your own check on the instruction. |
 | `then(within: Int = 1, block: PointMatch.() -> Unit)` | the next step of a sequence, at most `within` instructions later. |

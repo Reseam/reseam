@@ -11,6 +11,10 @@ public final class app/reseam/patch/AppModules {
 	public final fun prefix (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 }
 
+public abstract interface class app/reseam/patch/ArrayElementMatch {
+	public abstract fun type (Ljava/lang/String;)V
+}
+
 public abstract interface class app/reseam/patch/BindingQuery {
 	public abstract fun bind (Ljava/lang/String;Lapp/reseam/patch/BindingTarget;Lkotlin/jvm/functions/Function1;)V
 	public abstract fun fromClass (Lapp/reseam/patch/ClassTarget;)V
@@ -629,6 +633,10 @@ public final class app/reseam/patch/PathQuery$DefaultImpls {
 
 public abstract interface class app/reseam/patch/PointMatch {
 	public abstract fun argument (ILkotlin/jvm/functions/Function1;)V
+	public abstract fun arrayRead (Lkotlin/jvm/functions/Function1;)V
+	public static synthetic fun arrayRead$default (Lapp/reseam/patch/PointMatch;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public abstract fun arrayWrite (Lkotlin/jvm/functions/Function1;)V
+	public static synthetic fun arrayWrite$default (Lapp/reseam/patch/PointMatch;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public abstract fun calls (Lapp/reseam/patch/MethodTarget;)V
 	public abstract fun checkCast (Ljava/lang/String;)V
 	public abstract fun field (Lkotlin/jvm/functions/Function1;)V
@@ -656,6 +664,8 @@ public abstract interface class app/reseam/patch/PointMatch {
 }
 
 public final class app/reseam/patch/PointMatch$DefaultImpls {
+	public static synthetic fun arrayRead$default (Lapp/reseam/patch/PointMatch;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public static synthetic fun arrayWrite$default (Lapp/reseam/patch/PointMatch;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun invoke$default (Lapp/reseam/patch/PointMatch;[Lapp/reseam/patch/dex/Opcode;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun invokeDirect$default (Lapp/reseam/patch/PointMatch;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun invokeInterface$default (Lapp/reseam/patch/PointMatch;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
@@ -879,6 +889,7 @@ public abstract interface class app/reseam/patch/ValueRef {
 	public abstract fun minus (Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
 	public abstract fun plus (Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
 	public abstract fun set (Lapp/reseam/patch/FieldTarget;Lapp/reseam/patch/ValueRef;)V
+	public abstract fun set (Lapp/reseam/patch/ValueRef;Lapp/reseam/patch/ValueRef;)V
 	public abstract fun set (Lapp/reseam/patch/types/FieldRef;Lapp/reseam/patch/ValueRef;)V
 	public abstract fun size ()Lapp/reseam/patch/ValueRef;
 }
@@ -1008,7 +1019,9 @@ public final class app/reseam/patch/dex/InstructionBuilder {
 	public fun <init> ()V
 	public final fun add (Lapp/reseam/patch/types/Instruction;)V
 	public final fun addInt (III)V
+	public final fun aget (IIILjava/lang/String;)V
 	public final fun agetObject (III)V
+	public final fun aput (IIILjava/lang/String;)V
 	public final fun aputObject (III)V
 	public final fun arrayLength (II)V
 	public final fun build ()Ljava/util/List;

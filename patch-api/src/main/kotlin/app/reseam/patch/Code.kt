@@ -134,11 +134,14 @@ interface ValueRef {
     /** `super.name(args)` with this value as the receiver, as [owner]'s subclass calls it. */
     fun callSuper(owner: String, name: String, proto: String, vararg args: ValueRef): ValueRef
 
-    /** `List.size()` of this value. */
+    /** The length of this array, or `List.size()`. */
     fun size(): ValueRef
 
-    /** `List.get(index)` of this value. */
+    /** The element of this array at [index], or `List.get(index)`. */
     operator fun get(index: ValueRef): ValueRef
+
+    /** Writes [value] to this array at [index], or `List.set(index, value)`. */
+    operator fun set(index: ValueRef, value: ValueRef)
 
     operator fun plus(other: ValueRef): ValueRef
 

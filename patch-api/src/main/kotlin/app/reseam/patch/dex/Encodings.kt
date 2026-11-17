@@ -44,11 +44,11 @@ internal fun moveResultOpcode(type: String): Opcode =
         else -> Opcode.MOVE_RESULT
     }
 
-/** The member of the field access family starting at [plain] that moves a [fieldType] value. */
-internal fun fieldOpcode(plain: Opcode, fieldType: String): Opcode {
+/** The member of the field or array access family starting at [plain] that moves a [type] value. */
+internal fun typedOpcode(plain: Opcode, type: String): Opcode {
     // Each family runs plain, wide, object, boolean, byte, char, short.
     val kind =
-        when (fieldType) {
+        when (type) {
             "I",
             "F" -> 0
             "J",

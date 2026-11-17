@@ -25,6 +25,7 @@ execute {
 | `invokeVirtual { }`, `invokeStatic { }`, `invokeInterface { }`, `invokeDirect { }` | a call. The block narrows it with `owner`, `name`, `params`, `returns`. |
 | `calls(target)` | a call to exactly this method |
 | `field { owner(...); name(...) }` | reading or writing a field |
+| `arrayRead { type(Type.Int) }`, `arrayWrite { }` | reading or writing an array element. The block is optional. |
 | `newInstance(type)`, `checkCast(type)` | creating or casting an object |
 | `resultOf(Type.Boolean)` | reading the result of a call (`move-result`) |
 | `opcode(Opcode.IF_EQZ)` | any instruction with this opcode |
@@ -120,6 +121,23 @@ loadFeed.point { invokeVirtual { name("getDeviceId") } }.redirectTo(Identity.dev
 ```
 
 For an instance call, your method receives the object first, then the arguments. Reseam checks that your method's parameters and return type fit the call. To redirect every call to a method across the app, use [`bytecode.redirectCalls`](7_changing_code.md#redirecting-a-call).
+
+## Arrays
+
+An array access works like a call: a read is `get(array, index)` and a write is `set(array, index, value)`. So `argument`, `captureArgumentAs`, `writer`, and `redirectTo` work on it, with the array as argument 0, the index as 1, and the value written as 2:
+
+```kotlin
+val flag = checkFlags.point {
+    arrayRead { type(Type.Boolean) }
+    argument(0) { field { name("enabled") } }
+    argument(1) { literal(3) }
+}
+flag.redirectTo(Flags.isEnabled)
+```
+
+`Flags.isEnabled` takes `(BooleanArray, Int)` and returns `Boolean`, and the app uses what it returns as the element. A redirected write calls a method taking `(array, index, value)`.
+
+`arrayRead { type(...) }` checks the element type. An object array's type comes from where the array was written, such as a field, a parameter, or a call's result. When Reseam can't tell, the point doesn't match and a redirect fails.
 
 ## Points follow their instruction
 

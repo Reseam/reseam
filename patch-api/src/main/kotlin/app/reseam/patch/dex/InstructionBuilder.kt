@@ -103,16 +103,16 @@ class InstructionBuilder {
         )
 
     fun iget(dest: Int, obj: Int, field: FieldRef) =
-        field(fieldOpcode(Opcode.IGET, field.fieldType), dest, obj, field)
+        field(typedOpcode(Opcode.IGET, field.fieldType), dest, obj, field)
 
     fun iput(src: Int, obj: Int, field: FieldRef) =
-        field(fieldOpcode(Opcode.IPUT, field.fieldType), src, obj, field)
+        field(typedOpcode(Opcode.IPUT, field.fieldType), src, obj, field)
 
     fun sget(dest: Int, field: FieldRef) =
-        field(fieldOpcode(Opcode.SGET, field.fieldType), dest, 0, field)
+        field(typedOpcode(Opcode.SGET, field.fieldType), dest, 0, field)
 
     fun sput(src: Int, field: FieldRef) =
-        field(fieldOpcode(Opcode.SPUT, field.fieldType), src, 0, field)
+        field(typedOpcode(Opcode.SPUT, field.fieldType), src, 0, field)
 
     fun newInstance(dest: Int, descriptor: String) = type(Opcode.NEW_INSTANCE, dest, 0, descriptor)
 
@@ -120,6 +120,12 @@ class InstructionBuilder {
         type(Opcode.NEW_ARRAY, dest, size, descriptor)
 
     fun arrayLength(dest: Int, array: Int) = reg2(Opcode.ARRAY_LENGTH, dest, array)
+
+    fun aget(dest: Int, array: Int, index: Int, elementType: String) =
+        reg3(typedOpcode(Opcode.AGET, elementType), dest, array, index)
+
+    fun aput(src: Int, array: Int, index: Int, elementType: String) =
+        reg3(typedOpcode(Opcode.APUT, elementType), src, array, index)
 
     fun agetObject(dest: Int, array: Int, index: Int) = reg3(Opcode.AGET_OBJECT, dest, array, index)
 

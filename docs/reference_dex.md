@@ -161,7 +161,7 @@ Flag constants: `PUBLIC`, `PRIVATE`, `PROTECTED`, `STATIC`, `FINAL`, `SYNCHRONIZ
 
 ### `InstructionBuilder`
 
-The receiver of `buildInstructions { }`, which returns the instructions as a `List<Instruction>`. You choose every register. Where Dalvik has several encodings of one instruction, the builder picks one: constants and moves by register width, field accesses by the field's type, and moves and results by the value's type.
+The receiver of `buildInstructions { }`, which returns the instructions as a `List<Instruction>`. You choose every register. Where Dalvik has several encodings of one instruction, the builder picks one: constants and moves by register width, field and array accesses by the value's type, and moves and results by the value's type.
 
 | Member | Instruction |
 |---|---|
@@ -180,6 +180,7 @@ The receiver of `buildInstructions { }`, which returns the instructions as a `Li
 | `newInstance(dest: Int, descriptor: String)` | `new-instance` |
 | `newArray(dest: Int, size: Int, descriptor: String)` | `new-array` |
 | `arrayLength(dest: Int, array: Int)` | `array-length` |
+| `aget(dest: Int, array: Int, index: Int, elementType: String)`, `aput(src: Int, array: Int, index: Int, elementType: String)` | read or write an array element of this type |
 | `agetObject(dest: Int, array: Int, index: Int)`, `aputObject(src: Int, array: Int, index: Int)` | read or write an object array element |
 | `checkCast(reg: Int, descriptor: String)` | `check-cast` |
 | `instanceOf(dest: Int, ref: Int, descriptor: String)` | `instance-of` |

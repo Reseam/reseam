@@ -37,6 +37,18 @@ interface PointMatch {
     fun field(block: FieldRefMatch.() -> Unit)
 
     /**
+     * Reading an array element. Arguments, captures, [PointTarget.writer] and
+     * [PointTarget.redirectTo] treat it as a call `get(array, index)`.
+     */
+    fun arrayRead(block: ArrayElementMatch.() -> Unit = {})
+
+    /**
+     * Writing an array element. Arguments, captures, [PointTarget.writer] and
+     * [PointTarget.redirectTo] treat it as a call `set(array, index, value)`.
+     */
+    fun arrayWrite(block: ArrayElementMatch.() -> Unit = {})
+
+    /**
      * Every reaching source of an invoke argument must match; follows copies and exception paths.
      */
     fun argument(index: Int, block: PointMatch.() -> Unit)
@@ -72,5 +84,13 @@ interface FieldRefMatch {
 
     fun name(value: String)
 
+    fun type(descriptor: String)
+}
+
+interface ArrayElementMatch {
+    /**
+     * The array holds elements of this type. An object array's type comes from where the array was
+     * written, so an array of unknown type never matches.
+     */
     fun type(descriptor: String)
 }

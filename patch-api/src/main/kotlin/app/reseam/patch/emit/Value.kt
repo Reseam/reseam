@@ -109,15 +109,36 @@ internal class Value(
             listOf(this) + args.map { it.builtBy(emitter) },
         )
 
+    private val isArray: Boolean
+        get() = type.startsWith('[')
+
     override fun size(): ValueRef =
-        emitter.invoke(Opcode.INVOKE_INTERFACE, MethodRef(Type.List, "size", "()I"), listOf(this))
+        if (isArray) emitter.arrayLength(this)
+        else
+            emitter.invoke(
+                Opcode.INVOKE_INTERFACE,
+                MethodRef(Type.List, "size", "()I"),
+                listOf(this),
+            )
 
     override fun get(index: ValueRef): ValueRef =
-        emitter.invoke(
-            Opcode.INVOKE_INTERFACE,
-            MethodRef(Type.List, "get", "(I)Ljava/lang/Object;"),
-            listOf(this, index.builtBy(emitter)),
-        )
+        if (isArray) emitter.readElement(this, index.builtBy(emitter))
+        else
+            emitter.invoke(
+                Opcode.INVOKE_INTERFACE,
+                MethodRef(Type.List, "get", "(I)Ljava/lang/Object;"),
+                listOf(this, index.builtBy(emitter)),
+            )
+
+    override fun set(index: ValueRef, value: ValueRef) {
+        if (isArray) emitter.writeElement(this, index.builtBy(emitter), value.builtBy(emitter))
+        else
+            emitter.invoke(
+                Opcode.INVOKE_INTERFACE,
+                MethodRef(Type.List, "set", "(ILjava/lang/Object;)Ljava/lang/Object;"),
+                listOf(this, index.builtBy(emitter), value.builtBy(emitter)),
+            )
+    }
 
     override fun plus(other: ValueRef): ValueRef =
         emitter.arithmetic(Opcode.ADD_INT, this, other.builtBy(emitter))

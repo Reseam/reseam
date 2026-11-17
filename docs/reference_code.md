@@ -137,8 +137,9 @@ A value inside a code block. A value belongs to the block that created it, and u
 | `callVirtual(owner: String, name: String, proto: String, vararg args: ValueRef): ValueRef` | Calls a method on this object by name. |
 | `callInterface(owner: String, name: String, proto: String, vararg args: ValueRef): ValueRef` | Calls an interface method on this object by name. |
 | `callSuper(owner: String, name: String, proto: String, vararg args: ValueRef): ValueRef` | Calls the superclass's version of a method, as `super.name(args)` does in a subclass of `owner`. Use it in a method you add with `addMethod` to override one. |
-| `size(): ValueRef` | `List.size()` of this value. |
-| `get(index: ValueRef): ValueRef` | `List.get(index)`, written `value[index]`. |
+| `size(): ValueRef` | The length of this array, or `List.size()`. |
+| `get(index: ValueRef): ValueRef` | The element of this array, or `List.get(index)`, written `value[index]`. |
+| `set(index: ValueRef, value: ValueRef)` | Writes the element of this array, or `List.set(index, value)`, written `value[index] = v`. |
 | `plus(other: ValueRef): ValueRef`, `minus(other: ValueRef): ValueRef` | Adds or subtracts two numbers, written `a + b` and `a - b`. |
 
 ### `Otherwise`

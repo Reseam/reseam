@@ -3,6 +3,7 @@
 
 package app.reseam.patch.search
 
+import app.reseam.patch.ArrayElementMatch
 import app.reseam.patch.FieldRefMatch
 import app.reseam.patch.MethodRefMatch
 import app.reseam.patch.descriptor
@@ -85,5 +86,14 @@ internal class FieldRefMatchSpec : FieldRefMatch {
 
     override fun type(descriptor: String) {
         fieldType = descriptor(descriptor)
+    }
+}
+
+internal class ArrayElementMatchSpec : ArrayElementMatch {
+    var elementType: String? = null
+        private set
+
+    override fun type(descriptor: String) {
+        elementType = descriptor(descriptor)
     }
 }

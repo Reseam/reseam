@@ -114,6 +114,30 @@ val Instruction.invokeArgumentTypes: List<String>?
 
 internal data class InvokeArgument(val register: Int, val type: String)
 
+internal val arrayReads = Opcode.AGET..Opcode.AGET_SHORT
+
+internal val arrayWrites = Opcode.APUT..Opcode.APUT_SHORT
+
+internal data class OperandRegister(val register: Int, val words: Int)
+
+/**
+ * The registers an instruction takes the way a call takes arguments, with their word counts: an
+ * invoke's arguments, receiver first, or an array read as `get(array, index)` and a write as
+ * `set(array, index, value)`. Null for any other instruction.
+ */
+internal fun Instruction.operandRegisters(label: String): List<OperandRegister>? {
+    val opcode = opcode ?: return null
+    val array = { listOf(OperandRegister(regB!!, 1), OperandRegister(regC!!, 1)) }
+    return when {
+        opcode in arrayReads -> array()
+        opcode in arrayWrites ->
+            array() + OperandRegister(regA!!, if (opcode == Opcode.APUT_WIDE) 2 else 1)
+        invokeArgumentTypes != null ->
+            arguments(label).map { OperandRegister(it.register, registerWordCount(it.type)) }
+        else -> null
+    }
+}
+
 internal fun Instruction.arguments(label: String): List<InvokeArgument> {
     val types =
         requireNotNull(invokeArgumentTypes) {

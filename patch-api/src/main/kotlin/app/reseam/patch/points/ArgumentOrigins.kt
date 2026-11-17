@@ -3,15 +3,16 @@
 
 package app.reseam.patch.points
 
-import app.reseam.patch.dex.InvokeArgument
+import app.reseam.patch.Type
 import app.reseam.patch.dex.Method
 import app.reseam.patch.dex.Opcode
-import app.reseam.patch.dex.arguments
+import app.reseam.patch.dex.arrayReads
+import app.reseam.patch.dex.arrayWrites
 import app.reseam.patch.dex.invokeArgumentTypes
 import app.reseam.patch.dex.opcode
+import app.reseam.patch.dex.operandRegisters
 import app.reseam.patch.dex.regA
 import app.reseam.patch.dex.regB
-import app.reseam.patch.dex.registerWordCount
 import app.reseam.patch.native.registerWriters
 import app.reseam.patch.types.Instruction
 
@@ -28,13 +29,13 @@ internal class ArgumentOrigins(private val method: Method) {
     private val cache = mutableMapOf<TraceKey, Origins>()
     val diagnostics = linkedSetOf<String>()
 
+    /** Where operand [argument] of the invoke or array access at [at] was written. */
     fun argument(insns: List<Instruction>, at: Int, argument: Int, before: Int? = null): Origins? {
-        val call = insns[at]
-        val types = call.invokeArgumentTypes ?: return null
-        if (argument !in types.indices) return null
-        val value = call.arguments("${method.descriptor}[$at]")[argument]
+        val value =
+            insns[at].operandRegisters("${method.descriptor}[$at]")?.getOrNull(argument)
+                ?: return null
         val origins = trace(insns, at, value.register, before, mutableSetOf())
-        if (registerWordCount(value.type) == 2) {
+        if (value.words == 2) {
             val high = trace(insns, at, value.register + 1, before, mutableSetOf())
             if (
                 origins.sites != high.sites ||
@@ -55,27 +56,51 @@ internal class ArgumentOrigins(private val method: Method) {
     fun register(insns: List<Instruction>, at: Int, register: Int): Origins =
         trace(insns, at, register, null, mutableSetOf())
 
-    /** Resolves a staged argument to the register holding its value before the anchored block. */
-    fun atEntry(
-        insns: List<Instruction>,
-        at: Int,
-        argument: Int,
-        entry: Int,
-        label: String,
-    ): InvokeArgument {
+    /** Resolves a staged operand to the register holding its value before the anchored block. */
+    fun atEntry(insns: List<Instruction>, at: Int, argument: Int, entry: Int, label: String): Int {
         val value =
-            insns[at].arguments(label).getOrNull(argument)
-                ?: error("$label: invoke has no argument $argument")
-        if (entry == at) return value
-        val origins =
-            requireNotNull(argument(insns, at, argument, entry)) {
-                "$label: invoke has no argument $argument"
-            }
+            insns[at].operandRegisters(label)?.getOrNull(argument)
+                ?: error("$label: ${insns[at].opcode} has no argument $argument")
+        if (entry == at) return value.register
+        val origins = checkNotNull(argument(insns, at, argument, entry))
         val register = origins.registersAtBoundary.singleOrNull()
         require(register != null && !origins.unknown && origins.sites.isEmpty()) {
             "$label: argument $argument has no unique value before instruction $entry"
         }
-        return InvokeArgument(register, value.type)
+        return register
+    }
+
+    /**
+     * The operand types of the invoke or array access at [at], each null where the method does not
+     * show it.
+     */
+    fun operandTypes(insns: List<Instruction>, at: Int): List<String?>? {
+        val opcode = insns[at].opcode ?: return null
+        return when {
+            opcode in arrayReads -> listOf(arrayType(insns, at), Type.Int)
+            opcode in arrayWrites -> listOf(arrayType(insns, at), Type.Int, elementType(insns, at))
+            else -> insns[at].invokeArgumentTypes
+        }
+    }
+
+    /** The array type of the array access at [at]. */
+    fun arrayType(insns: List<Instruction>, at: Int): String? =
+        type(insns, at, insns[at].regB!!)?.takeIf { it.startsWith('[') }
+            ?: elementByOpcode[insns[at].opcode]?.let { "[$it" }
+
+    /** The element type the array access at [at] moves. */
+    fun elementType(insns: List<Instruction>, at: Int): String? =
+        elementByOpcode[insns[at].opcode] ?: arrayType(insns, at)?.substring(1)
+
+    /** The type of [register] at [at], when every instruction or parameter writing it agrees. */
+    fun type(insns: List<Instruction>, at: Int, register: Int): String? {
+        val origins = trace(insns, at, register, 0, mutableSetOf())
+        if (origins.unknown) return null
+        val incoming = method.incomingTypes
+        val types =
+            origins.sites.map { inferType(method, it, this) } +
+                origins.registersAtBoundary.map { method.incomingAt(it)?.let(incoming::get) }
+        return types.distinct().singleOrNull()
     }
 
     fun matches(insns: List<Instruction>, at: Int, argument: Int, constraint: PointStep): Boolean {
@@ -145,6 +170,18 @@ internal class ArgumentOrigins(private val method: Method) {
     }
 
     private companion object {
+        val elementByOpcode =
+            mapOf(
+                Opcode.AGET_BOOLEAN to Type.Boolean,
+                Opcode.APUT_BOOLEAN to Type.Boolean,
+                Opcode.AGET_BYTE to Type.Byte,
+                Opcode.APUT_BYTE to Type.Byte,
+                Opcode.AGET_CHAR to Type.Char,
+                Opcode.APUT_CHAR to Type.Char,
+                Opcode.AGET_SHORT to Type.Short,
+                Opcode.APUT_SHORT to Type.Short,
+            )
+
         val copies =
             setOf(
                 Opcode.MOVE,

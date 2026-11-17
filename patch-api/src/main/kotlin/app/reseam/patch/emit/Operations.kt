@@ -94,6 +94,27 @@ internal fun CodeEmitter.writeField(value: Value, field: FieldRef, newValue: Val
     emit(template { iput(0, 0, field) }, newValue, value)
 }
 
+internal fun CodeEmitter.arrayLength(array: Value): ValueRef {
+    val result = temporary(Type.Int)
+    emit(template { arrayLength(0, 0) }, result, array)
+    return result
+}
+
+internal fun CodeEmitter.readElement(array: Value, index: Value): ValueRef {
+    requireAssignableType(index.assignableType, Type.Int, "array index")
+    val element = array.type.substring(1)
+    val result = temporary(element)
+    emit(template { aget(0, 0, 0, element) }, result, array, index)
+    return result
+}
+
+internal fun CodeEmitter.writeElement(array: Value, index: Value, value: Value) {
+    requireAssignableType(index.assignableType, Type.Int, "array index")
+    val element = array.type.substring(1)
+    requireAssignableType(value.assignableType, element, "write ${array.type} element")
+    emit(template { aput(0, 0, 0, element) }, value, array, index)
+}
+
 internal fun CodeEmitter.arithmetic(opcode: Opcode, left: Value, right: Value): ValueRef {
     requireArgumentTypes(
         listOf(left.assignableType, right.assignableType),
