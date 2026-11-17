@@ -4,6 +4,7 @@
 package app.reseam.runtime.ui
 
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 
@@ -29,7 +30,9 @@ internal fun dialogHeader(
         title?.let {
             val label =
                 ui.text(it, ui.type.headlineSmall, ui.colors.onSurface).apply {
-                    gravity = if (icon != null) Gravity.CENTER_HORIZONTAL else Gravity.START
+                    textAlignment =
+                        if (icon != null) View.TEXT_ALIGNMENT_CENTER
+                        else View.TEXT_ALIGNMENT_VIEW_START
                 }
             addView(
                 label,
@@ -41,7 +44,7 @@ internal fun dialogHeader(
         }
         message?.let {
             addView(
-                ui.text(it, ui.type.bodyMedium, ui.colors.onSurfaceVariant).apply {
+                ui.text(it, ui.type.bodyMedium, ui.colors.onSurfaceVariant).alignToScreen().apply {
                     setPadding(0, if (title != null) ui.px(Tokens.SPACE_LG) else 0, 0, 0)
                 }
             )

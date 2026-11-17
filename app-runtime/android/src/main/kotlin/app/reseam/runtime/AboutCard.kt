@@ -10,6 +10,7 @@ import android.view.View
 import android.widget.LinearLayout
 import app.reseam.runtime.ui.Tokens
 import app.reseam.runtime.ui.Ui
+import app.reseam.runtime.ui.alignToScreen
 
 internal fun aboutCard(ui: Ui, bundle: ReseamBundle): View =
     LinearLayout(ui.context).apply {
@@ -40,9 +41,14 @@ private fun identity(ui: Ui, schema: SettingsSchema): View =
         addView(
             LinearLayout(ui.context).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(ui.text(ui.theme.brand.name, ui.type.titleLarge, ui.colors.onSurface))
+                addView(
+                    ui.text(ui.theme.brand.name, ui.type.titleLarge, ui.colors.onSurface)
+                        .alignToScreen()
+                )
                 listOfNotNull(schema.version?.let(RuntimeStrings::version), engine).forEach {
-                    addView(ui.text(it, ui.type.bodyMedium, ui.colors.onSurfaceVariant))
+                    addView(
+                        ui.text(it, ui.type.bodyMedium, ui.colors.onSurfaceVariant).alignToScreen()
+                    )
                 }
             }
         )

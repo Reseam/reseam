@@ -11,6 +11,7 @@ import android.widget.TextView
 import app.reseam.runtime.ui.Icons
 import app.reseam.runtime.ui.Tokens
 import app.reseam.runtime.ui.Ui
+import app.reseam.runtime.ui.alignToScreen
 
 /** A built settings page: the view to show, and the part of it that scrolls. */
 internal class BuiltPage(val view: View, val scroll: ScrollView)
@@ -130,7 +131,7 @@ internal fun settingsPage(
 }
 
 internal fun settingsMessage(ui: Ui, text: String): TextView =
-    ui.text(text, ui.type.bodyMedium, ui.colors.onSurfaceVariant).apply {
+    ui.text(text, ui.type.bodyMedium, ui.colors.onSurfaceVariant).alignToScreen().apply {
         setPadding(0, ui.px(Tokens.SPACE_LG), 0, ui.px(Tokens.SPACE_LG))
     }
 

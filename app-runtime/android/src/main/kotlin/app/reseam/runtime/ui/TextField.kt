@@ -17,7 +17,8 @@ class TextField internal constructor(private val ui: Ui, labelText: CharSequence
     val text: String
         get() = this.field.text.toString()
 
-    private val label = ui.text(labelText, ui.type.labelMedium, ui.colors.onSurfaceVariant)
+    private val label =
+        ui.text(labelText, ui.type.labelMedium, ui.colors.onSurfaceVariant).alignToScreen()
     private val outline =
         FieldOutline(
             ui.colors,
@@ -39,6 +40,7 @@ class TextField internal constructor(private val ui: Ui, labelText: CharSequence
             )
         field.apply {
             ui.theme.style(this, ui.type.bodyLarge)
+            alignToScreen()
             setTextColor(colors.onSurface)
             setHintTextColor(colors.onSurfaceVariant)
             minHeight = ui.px(Tokens.SEARCH_BAR)

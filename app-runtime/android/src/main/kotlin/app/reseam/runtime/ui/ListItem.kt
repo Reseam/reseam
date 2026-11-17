@@ -15,9 +15,11 @@ class ListItem internal constructor(private val ui: Ui, title: CharSequence?) :
             visibility = GONE
             importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
         }
-    private val titleView = ui.text(title, ui.type.bodyLarge, ui.colors.onSurface)
+    private val titleView = ui.text(title, ui.type.bodyLarge, ui.colors.onSurface).alignToScreen()
     private val supportingView =
-        ui.text("", ui.type.bodyMedium, ui.colors.onSurfaceVariant).apply { visibility = GONE }
+        ui.text("", ui.type.bodyMedium, ui.colors.onSurfaceVariant).alignToScreen().apply {
+            visibility = GONE
+        }
     private var trailingView: View? = null
 
     init {

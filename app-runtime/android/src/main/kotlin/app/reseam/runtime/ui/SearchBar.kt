@@ -27,6 +27,7 @@ class SearchBar internal constructor(ui: Ui, hint: CharSequence?) : LinearLayout
         )
         field.apply {
             ui.theme.style(this, ui.type.bodyLarge)
+            alignToScreen()
             setTextColor(colors.onSurface)
             setHintTextColor(colors.onSurfaceVariant)
             this.hint = hint

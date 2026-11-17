@@ -6,7 +6,9 @@ package app.reseam.runtime.ui
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ApplicationInfo
+import android.view.View
 import android.view.Window
+import android.widget.TextView
 import app.reseam.runtime.RuntimeStrings
 
 /**
@@ -27,4 +29,12 @@ internal fun Context.withRtlSupport(): Context {
 /** Lays the window out the way the runtime's own text reads, whatever direction the host uses. */
 internal fun Window.followRuntimeText() {
     decorView.layoutDirection = RuntimeStrings.table.layoutDirection
+}
+
+/**
+ * Aligns the text with the screen's start edge. A text view otherwise aligns by its own text, so a
+ * Latin title sits on the left of a right-to-left screen.
+ */
+internal fun <T : TextView> T.alignToScreen(): T = apply {
+    textAlignment = View.TEXT_ALIGNMENT_VIEW_START
 }

@@ -137,7 +137,7 @@ class Ui(@JvmField val context: Context, @JvmField val theme: Theme) {
     fun itemGroup(): ItemGroup = ItemGroup(this)
 
     fun sectionLabel(label: CharSequence?): TextView =
-        text(label, type.labelLarge, colors.primary).apply {
+        text(label, type.labelLarge, colors.primary).alignToScreen().apply {
             setPadding(0, px(Tokens.SPACE_LG), 0, px(Tokens.SPACE_SM))
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) isAccessibilityHeading = true
         }

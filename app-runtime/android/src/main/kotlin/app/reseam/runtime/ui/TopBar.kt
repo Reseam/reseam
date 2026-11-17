@@ -23,7 +23,7 @@ class TopBar internal constructor(private val ui: Ui, title: CharSequence?, back
             LayoutParams(ui.px(Tokens.TOUCH_TARGET), ui.px(Tokens.TOUCH_TARGET)),
         )
         val label =
-            ui.text(title, ui.type.titleLarge, ui.colors.onSurface).apply {
+            ui.text(title, ui.type.titleLarge, ui.colors.onSurface).alignToScreen().apply {
                 setSingleLine(true)
                 ellipsize = TextUtils.TruncateAt.END
             }

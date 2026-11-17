@@ -16,7 +16,7 @@ internal class ChoiceRow(ui: Ui, title: CharSequence?, checked: Boolean) :
         background = ui.ripple(null, 0f, 0f, ui.colors.onSurface)
         isFocusable = true
         addView(
-            ui.text(title, ui.type.bodyLarge, ui.colors.onSurface),
+            ui.text(title, ui.type.bodyLarge, ui.colors.onSurface).alignToScreen(),
             LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f),
         )
         if (checked)
