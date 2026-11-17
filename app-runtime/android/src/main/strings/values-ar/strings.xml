@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="settings">الإعدادات</string>
+    <string name="search_settings">البحث في الإعدادات</string>
+    <string name="no_search_results">لا توجد إعدادات تطابق بحثك.</string>
+    <string name="no_settings">لا تتضمن التعديلات التي اخترتها أي إعدادات هنا.</string>
+    <string name="cancel">إلغاء</string>
+    <string name="save">حفظ</string>
+    <string name="restore_default">استعادة الإعداد الافتراضي</string>
+    <string name="restart_title">هل تريد إعادة التشغيل لتطبيق التغييرات؟</string>
+    <string name="restart_message">تسري بعض الإعدادات التي غيّرتها بعد إعادة تشغيل التطبيق.</string>
+    <string name="later">لاحقًا</string>
+    <string name="restart">إعادة التشغيل</string>
+    <string name="restart_app">إعادة تشغيل التطبيق</string>
+    <string name="version">الإصدار <xliff:g id="version">%1$s</xliff:g></string>
+    <string name="engine">المحرك <xliff:g id="engine">%1$s</xliff:g></string>
+    <string name="engine_license">المحرك <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
+    <string name="clear_search">مسح البحث</string>
+    <string name="back">رجوع</string>
+    <string name="use_dark_theme">استخدام المظهر الداكن</string>
+    <string name="use_light_theme">استخدام المظهر الفاتح</string>
+    <string name="backup">النسخ الاحتياطي</string>
+    <string name="export_settings">تصدير الإعدادات</string>
+    <string name="export_settings_summary">حفظ إعداداتك في ملف.</string>
+    <string name="import_settings">استيراد الإعدادات</string>
+    <string name="import_settings_summary">تحميل الإعدادات من ملف صدّرته.</string>
+    <string name="settings_file_name"><xliff:g id="app">%1$s</xliff:g> settings.json</string>
+    <string name="settings_exported">تم تصدير الإعدادات</string>
+    <plurals name="settings_imported">
+        <item quantity="few">تم استيراد <xliff:g id="count">%1$d</xliff:g> إعدادات</item>
+        <item quantity="many">تم استيراد <xliff:g id="count">%1$d</xliff:g> إعدادًا</item>
+        <item quantity="other">تم استيراد <xliff:g id="count">%1$d</xliff:g> إعداد</item>
+    </plurals>
+    <string name="export_failed">تعذّر تصدير الإعدادات</string>
+    <string name="import_failed">تعذّر استيراد الإعدادات</string>
+    <string name="import_unreadable">هذا الملف ليس ملف إعدادات مُصدَّرًا.</string>
+    <string name="import_nothing_applies">لا ينتمي أي من الإعدادات في هذا الملف إلى هذا التطبيق.</string>
+    <string name="ok">حسنًا</string>
+</resources>
