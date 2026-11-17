@@ -73,7 +73,7 @@ Toast.makeText(context, ExampleStrings.downloadSaved(folder), Toast.LENGTH_SHORT
 val label = ExampleStrings.itemsHidden(count)
 ```
 
-Each string shows in the app's current language, including Android's per-app language setting, and falls back to the default text when a translation lacks it. Reading a string before the app runtime has started fails.
+Each string shows in the first of the app's languages that translates it, including Android's per-app language setting, and falls back to the default text, which is English. Reading a string before the app runtime has started fails.
 
 ### `StringTable`
 
@@ -84,7 +84,8 @@ What the generated objects read through. You rarely use it directly.
 | `StringTable(directory: String)` | The table stored in the app at `directory`. |
 | `get(name: String): String` | A string without arguments, written `table["name"]`. |
 | `format(name: String, vararg args: Any?): String` | A string with arguments. |
-| `plural(name: String, count: Int, vararg args: Any?): String` | A plural, in the form the current language uses for `count`. |
+| `plural(name: String, count: Int, vararg args: Any?): String` | A plural, in the form its text's language uses for `count`. |
+| `layoutDirection: Int` | `View.LAYOUT_DIRECTION_RTL` when the language the table shows reads right to left, else `View.LAYOUT_DIRECTION_LTR`. Set it on a screen you build from the table's text. |
 
 ## Reaching the runtime
 

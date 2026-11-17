@@ -109,7 +109,9 @@ Settings default to `TakesEffect.ON_RESTART`. Only declare `IMMEDIATELY` when ev
 
 ## Translations
 
-Put translations next to the default strings, in Android's folder names: `values-de/strings.xml`, `values-pt-rBR/strings.xml`, `values-b+sr+Latn/strings.xml`. The app shows each string in its current language, including Android's per-app language setting, and falls back to the default when a translation lacks it.
+Write the default strings in English, and put translations next to them, in Android's folder names: `values-de/strings.xml`, `values-pt-rBR/strings.xml`, `values-b+sr+Latn/strings.xml`. The app shows each string in the first of its languages that translates it, including Android's per-app language setting, and falls back to the default text. A translation counts for a language when it has the same script: `values-zh-rTW` serves Traditional Chinese in Taiwan and Hong Kong, and `values-pt` any Portuguese. English readers get the default text.
+
+Reseam's settings screens lay out right to left in Arabic, Persian, Urdu and other right-to-left languages, also in apps that never declared right-to-left support.
 
 - Escape apostrophes and quotes as `\'` and `\"`.
 - Wrap each argument of a string in `xliff:g`, whose `id` names it: `Saved to <xliff:g id="folder">%1$s</xliff:g>`. `%s` takes text, `%d` a whole number, and `%f` a decimal number.
