@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="settings">ترتیبات</string>
+    <string name="search_settings">ترتیبات تلاش کریں</string>
+    <string name="no_search_results">آپ کی تلاش سے کوئی ترتیب میل نہیں کھاتی۔</string>
+    <string name="no_settings">آپ کے منتخب کردہ پیچز کی یہاں کوئی ترتیبات نہیں ہیں۔</string>
+    <string name="cancel">منسوخ کریں</string>
+    <string name="save">محفوظ کریں</string>
+    <string name="restore_default">ڈیفالٹ بحال کریں</string>
+    <string name="restart_title">تبدیلیاں لاگو کرنے کے لیے ری اسٹارٹ کریں؟</string>
+    <string name="restart_message">آپ کی تبدیل کردہ کچھ ترتیبات ایپ ری اسٹارٹ ہونے کے بعد لاگو ہوں گی۔</string>
+    <string name="later">بعد میں</string>
+    <string name="restart">ری اسٹارٹ کریں</string>
+    <string name="restart_app">ایپ ری اسٹارٹ کریں</string>
+    <string name="version">ورژن <xliff:g id="version">%1$s</xliff:g></string>
+    <string name="engine">انجن <xliff:g id="engine">%1$s</xliff:g></string>
+    <string name="engine_license">انجن <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
+    <string name="clear_search">تلاش صاف کریں</string>
+    <string name="back">واپس</string>
+    <string name="use_dark_theme">گہری تھیم استعمال کریں</string>
+    <string name="use_light_theme">ہلکی تھیم استعمال کریں</string>
+    <string name="backup">بیک اپ</string>
+    <string name="export_settings">ترتیبات ایکسپورٹ کریں</string>
+    <string name="export_settings_summary">اپنی ترتیبات فائل میں محفوظ کریں۔</string>
+    <string name="import_settings">ترتیبات امپورٹ کریں</string>
+    <string name="import_settings_summary">ایکسپورٹ کی گئی فائل سے ترتیبات لوڈ کریں۔</string>
+    <string name="settings_file_name"><xliff:g id="app">%1$s</xliff:g> settings.json</string>
+    <string name="settings_exported">ترتیبات ایکسپورٹ ہو گئیں</string>
+    <plurals name="settings_imported">
+        <item quantity="one"><xliff:g id="count">%1$d</xliff:g> ترتیب امپورٹ ہو گئی</item>
+        <item quantity="other"><xliff:g id="count">%1$d</xliff:g> ترتیبات امپورٹ ہو گئیں</item>
+    </plurals>
+    <string name="export_failed">ترتیبات ایکسپورٹ نہیں ہو سکیں</string>
+    <string name="import_failed">ترتیبات امپورٹ نہیں ہو سکیں</string>
+    <string name="import_unreadable">یہ ترتیبات کی ایکسپورٹ فائل نہیں ہے۔</string>
+    <string name="import_nothing_applies">اس فائل کی کوئی بھی ترتیب اس ایپ سے متعلق نہیں ہے۔</string>
+    <string name="ok">ٹھیک ہے</string>
+</resources>
