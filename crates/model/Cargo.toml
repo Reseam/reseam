@@ -7,6 +7,7 @@ description = "Shared Reseam application and patch metadata"
 
 [dependencies]
 boltffi = { workspace = true }
+icu_locale = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 ts-rs = { version = "12.0.1", optional = true }

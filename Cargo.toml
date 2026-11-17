@@ -115,6 +115,7 @@ ureq        = { version = "3", default-features = false, features = ["rustls", "
 rusty-s3    = "0.10"
 url         = "2"
 semver      = "1"
+icu_locale  = "2"
 
 # Shared dev dependencies
 pretty_assertions = "1"

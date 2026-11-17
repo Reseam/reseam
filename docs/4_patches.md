@@ -41,7 +41,7 @@ The name, the description, and option titles and descriptions are strings from t
 reseamStrings { objectName = "app.example.patches.ExamplePatchStrings" }
 ```
 
-A translation is a `strings.xml` in a folder named for its locale, such as `values-de` or `values-pt-rBR`. It can translate some strings and leave the rest, which then show in the source language. When you build the bundle, the engine copies every translation into the signed catalog. Reseam Manager shows each patch in the user's language, and the CLI keeps the source text, which is also what `--enable`, `--disable` and `--option` match.
+Write these strings in English. A translation is a `strings.xml` in a folder named for its locale, such as `values-de` or `values-pt-rBR`. It can translate some strings and leave the rest, which then show in the user's next language, or in English. When you build the bundle, the engine copies every translation into the signed catalog. Reseam Manager shows each patch in the user's language, and the CLI keeps the source text, which is also what `--enable`, `--disable` and `--option` match.
 
 Patch text has to be plain: a string with a placeholder, or a `<plurals>`, isn't in the generated object, so the build fails if a patch names one. Mark a string that must stay the same in every language, such as a host name, with `translatable="false"`. The build then rejects any translation of it.
 

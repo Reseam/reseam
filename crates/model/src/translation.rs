@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::PatchSpec;
+use icu_locale::subtags::{Language, Region, Script, language};
+use icu_locale::{Locale, LocaleCanonicalizer, LocaleExpander};
 use serde::{Deserialize, Serialize};
 
 /// A patch's text in one locale. Fields the locale leaves untranslated are
@@ -58,15 +60,11 @@ pub struct OptionText {
 
 impl PatchSpec {
     /// The patch's text for a user who reads `locales`, most preferred first,
-    /// as BCP 47 tags. Each field comes from the first tag that translates it,
-    /// trying every tag as itself, then its language and script, then its
-    /// language, the order the app runtime reads string tables in. A field no
-    /// tag translates keeps the source text.
+    /// as BCP 47 tags. Each field comes from the first translation in
+    /// [`reading_order`] that has it, and a field none has keeps the source
+    /// text.
     pub fn text(&self, locales: &[String]) -> PatchText {
-        let chain: Vec<&PatchTranslation> = fallbacks(locales)
-            .iter()
-            .filter_map(|tag| self.translations.iter().find(|it| it.locale == *tag))
-            .collect();
+        let chain = reading_order(&self.translations, locales);
         let options = self.options.iter().map(|declared| {
             let translated = || {
                 chain
@@ -102,26 +100,84 @@ impl PatchSpec {
     }
 }
 
-fn fallbacks(locales: &[String]) -> Vec<String> {
-    let mut tags = Vec::new();
-    for locale in locales {
-        let mut parts = locale.split('-');
-        let language = parts.next().unwrap_or_default();
-        let script = parts
-            .next()
-            .filter(|it| it.len() == 4 && it.chars().all(|c| c.is_ascii_alphabetic()));
-        let candidates = [
-            Some(locale.clone()),
-            script.map(|script| format!("{language}-{script}")),
-            Some(language.to_owned()),
-        ];
-        for tag in candidates.into_iter().flatten() {
-            if !tag.is_empty() && !tags.contains(&tag) {
-                tags.push(tag);
+/// Patch text is written in English, so English readers stop at the source.
+const SOURCE_LANGUAGE: Language = language!("en");
+
+/// The translations a reader of `locales` sees, in the order the app runtime
+/// reads string tables in. For each locale, translations of its language in
+/// the same script count, the locale's region first, then no region, then
+/// other regions. An English locale ends the order, since the source is
+/// English, after only a translation for its own region.
+fn reading_order<'a>(
+    translations: &'a [PatchTranslation],
+    locales: &[String],
+) -> Vec<&'a PatchTranslation> {
+    let available: Vec<(Tag, &PatchTranslation)> = translations
+        .iter()
+        .filter_map(|it| Some((Tag::parse(&it.locale)?, it)))
+        .collect();
+    let mut order: Vec<&PatchTranslation> = Vec::new();
+    for wanted in locales.iter().filter_map(|it| Tag::parse(it)) {
+        let source = wanted.language == SOURCE_LANGUAGE;
+        let mut matching: Vec<_> = available
+            .iter()
+            .filter_map(|(tag, it)| Some((tag.rank(&wanted)?, *it)))
+            .filter(|(rank, _)| !source || *rank == Rank::Region)
+            .collect();
+        matching.sort_by_key(|(rank, _)| *rank);
+        for (_, translation) in matching {
+            if !order.iter().any(|it| std::ptr::eq(*it, translation)) {
+                order.push(translation);
             }
         }
+        if source {
+            break;
+        }
     }
-    tags
+    order
+}
+
+/// A locale as text matching compares it: canonical language, likely script
+/// and the region it names.
+struct Tag {
+    language: Language,
+    script: Option<Script>,
+    region: Option<Region>,
+}
+
+/// How well a translation fits a wanted locale of the same language and script.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Rank {
+    Region,
+    NoRegion,
+    OtherRegion,
+}
+
+impl Tag {
+    fn parse(tag: &str) -> Option<Self> {
+        let mut locale: Locale = tag.parse().ok()?;
+        LocaleCanonicalizer::new_common().canonicalize(&mut locale);
+        let region = locale.id.region;
+        LocaleExpander::new_common().maximize(&mut locale.id);
+        Some(Self {
+            language: locale.id.language,
+            script: locale.id.script,
+            region,
+        })
+    }
+
+    /// How this translation's tag fits `wanted`, or `None` for another
+    /// language or script.
+    fn rank(&self, wanted: &Tag) -> Option<Rank> {
+        if self.language != wanted.language || self.script != wanted.script {
+            return None;
+        }
+        Some(match self.region {
+            None => Rank::NoRegion,
+            region if region == wanted.region => Rank::Region,
+            Some(_) => Rank::OtherRegion,
+        })
+    }
 }
 
 #[cfg(test)]
