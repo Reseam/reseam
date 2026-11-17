@@ -12,7 +12,7 @@ import app.reseam.runtime.ui.Icons
 import app.reseam.runtime.ui.Tokens
 import app.reseam.runtime.ui.Ui
 import app.reseam.runtime.ui.alignToScreen
-import java.util.Locale
+import java.text.Collator
 
 /** A built settings page: the view to show, and the part of it that scrolls. */
 internal class BuiltPage(val view: View, val scroll: ScrollView)
@@ -24,6 +24,7 @@ internal fun settingsPage(
     back: () -> Unit,
     open: (String) -> Unit,
     toggleTheme: () -> Unit,
+    setLanguage: (String?) -> Unit,
     restartApp: () -> Unit,
 ): BuiltPage {
     val schema = bundle.schema
@@ -40,25 +41,8 @@ internal fun settingsPage(
                     Runnable(back),
                 )
             if (root) {
-                topBar.action(Icons.LANGUAGE, description = RuntimeStrings.language) {
-                    val group = ui.itemGroup().add(
-                        ui.listItem(RuntimeStrings.languageSameAsApp)
-                            .onClick {
-                                Appearance.setLanguageAsAppLanguage()
-                                restartApp()
-                            }
-                    )
-                    
-                    RuntimeStrings.locales
-                        .sortedBy { it.toLanguageTag() }
-                        .forEach { locale ->
-                            group.add(
-                                ui.listItem(locale.displayName).onClick {
-                                    Appearance.setLanguage(locale)
-                                    restartApp()
-                                })
-                        }
-                    ui.dialog().title(RuntimeStrings.language).view(group).show()
+                topBar.action(Icons.LANGUAGE, RuntimeStrings.language) {
+                    chooseLanguage(ui, setLanguage)
                 }
                 val dark = ui.theme.dark
                 topBar.action(
@@ -149,6 +133,23 @@ internal fun settingsPage(
     }
     body.addView(content, matchWidth())
     return BuiltPage(container, scroll)
+}
+
+/** Lists each language by its own name, after the choice to follow the app's language. */
+private fun chooseLanguage(ui: Ui, setLanguage: (String?) -> Unit) {
+    val languages =
+        RuntimeStrings.table.languages
+            .map { (tag, locale) ->
+                tag to locale.getDisplayName(locale).replaceFirstChar { it.titlecase(locale) }
+            }
+            .sortedWith(compareBy(Collator.getInstance()) { it.second })
+    val tags = listOf(null) + languages.map { it.first }
+    val names = listOf(RuntimeStrings.languageSameAsApp) + languages.map { it.second }
+    ui.dialog()
+        .title(RuntimeStrings.language)
+        .choices(names.toTypedArray(), tags.indexOf(Appearance.language)) { setLanguage(tags[it]) }
+        .dismissAction(RuntimeStrings.cancel)
+        .show()
 }
 
 internal fun settingsMessage(ui: Ui, text: String): TextView =

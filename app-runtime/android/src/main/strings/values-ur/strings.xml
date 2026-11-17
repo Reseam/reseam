@@ -17,6 +17,8 @@
     <string name="engine_license">انجن <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
     <string name="clear_search">تلاش صاف کریں</string>
     <string name="back">واپس</string>
+    <string name="language">زبان</string>
+    <string name="language_same_as_app">ایپ کے مطابق</string>
     <string name="use_dark_theme">گہری تھیم استعمال کریں</string>
     <string name="use_light_theme">ہلکی تھیم استعمال کریں</string>
     <string name="backup">بیک اپ</string>

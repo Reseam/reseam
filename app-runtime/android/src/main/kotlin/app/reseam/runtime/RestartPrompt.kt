@@ -8,11 +8,17 @@ import android.content.Context
 import android.content.Intent
 
 /**
- * Offers a restart after the settings close with a changed value of a setting that takes effect
- * only on restart.
+ * What takes effect only when the app restarts: the bundle's settings marked so, and Reseam's
+ * language, which text already on the app's screens keeps until then.
  */
-internal fun offerRestart(activity: Activity, bundle: ReseamBundle, opened: Map<String, *>) {
-    if (activity.isFinishing || opened == bundle.settings.restartValues()) return
+internal data class RestartState(val settings: Map<String, *>, val language: String?)
+
+internal fun ReseamBundle.restartState() =
+    RestartState(settings.restartValues(), Appearance.language)
+
+/** Offers a restart after the settings close with a change that takes effect only on restart. */
+internal fun offerRestart(activity: Activity, bundle: ReseamBundle, opened: RestartState) {
+    if (activity.isFinishing || opened == bundle.restartState()) return
     bundle
         .ui(activity)
         .dialog()

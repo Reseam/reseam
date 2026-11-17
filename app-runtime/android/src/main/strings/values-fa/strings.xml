@@ -17,6 +17,8 @@
     <string name="engine_license">موتور <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
     <string name="clear_search">پاک کردن جستجو</string>
     <string name="back">بازگشت</string>
+    <string name="language">زبان</string>
+    <string name="language_same_as_app">مانند برنامه</string>
     <string name="use_dark_theme">استفاده از زمینهٔ تیره</string>
     <string name="use_light_theme">استفاده از زمینهٔ روشن</string>
     <string name="backup">پشتیبان</string>

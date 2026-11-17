@@ -10,32 +10,25 @@ import android.content.res.Configuration
 import android.content.res.Resources
 import android.os.Build
 import android.util.TypedValue
-import androidx.core.content.edit
-import java.util.Locale
 
-/**
- * Whether Reseam's screens are dark: the theme the user picked, and until they pick one, the
- * system's, or before Android 10, which has no system dark theme, the one the host activity
- * declares.
- *
- * As well as language settings independent of the rest of the app's language settings
- */
+/** How Reseam's screens look: the theme and the language the user picked for them. */
 internal object Appearance {
     private val prefs
         get() = Reseam.context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun setLanguageAsAppLanguage() = prefs.edit(commit = true) { remove(LANGUAGE) }
+    /** The table tag Reseam's text reads first, or null to follow the app's languages. */
+    var language: String?
+        get() = prefs.getString(LANGUAGE, null)
+        set(value) = prefs.edit().putString(LANGUAGE, value).apply()
 
-    fun setLanguage(language: Locale) = prefs.edit(commit = true) { putString(LANGUAGE, language.toLanguageTag()) }
-
-    fun getLanguage(): Locale =
-        prefs.getString(LANGUAGE, null)?.let(Locale::forLanguageTag)
-            ?: Reseam.context.resources.configuration.locales[0]
-
+    /**
+     * The theme the user picked, and until they pick one, the system's, or before Android 10, which
+     * has no system dark theme, the one the host activity declares.
+     */
     fun isDark(context: Context): Boolean =
         if (prefs.contains(DARK)) prefs.getBoolean(DARK, false) else isDefaultDark(context)
 
-    fun toggle(context: Context) = prefs.edit { putBoolean(DARK, !isDark(context)) }
+    fun toggle(context: Context) = prefs.edit().putBoolean(DARK, !isDark(context)).apply()
 
     private fun isDefaultDark(context: Context): Boolean =
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) isHostDark(context) ?: false
@@ -44,7 +37,7 @@ internal object Appearance {
     // Hosts can force their own activity configuration, so only the system's is reliable.
     private fun isSystemDark(): Boolean =
         Resources.getSystem().configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
-                Configuration.UI_MODE_NIGHT_YES
+            Configuration.UI_MODE_NIGHT_YES
 
     // Dialogs wrap the activity in their own theme, so the activity's theme is read instead.
     private fun isHostDark(context: Context): Boolean? {
@@ -56,8 +49,8 @@ internal object Appearance {
         val value = TypedValue()
         return if (
             attribute != 0 &&
-            activity.theme.resolveAttribute(attribute, value, true) &&
-            value.type == TypedValue.TYPE_INT_BOOLEAN
+                activity.theme.resolveAttribute(attribute, value, true) &&
+                value.type == TypedValue.TYPE_INT_BOOLEAN
         ) {
             value.data == 0
         } else null

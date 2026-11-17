@@ -17,6 +17,8 @@
     <string name="engine_license">Motore <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
     <string name="clear_search">Cancella la ricerca</string>
     <string name="back">Indietro</string>
+    <string name="language">Lingua</string>
+    <string name="language_same_as_app">Come l’app</string>
     <string name="use_dark_theme">Usa il tema scuro</string>
     <string name="use_light_theme">Usa il tema chiaro</string>
     <string name="backup">Backup</string>

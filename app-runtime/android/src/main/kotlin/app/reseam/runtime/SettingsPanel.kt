@@ -42,7 +42,7 @@ internal class SettingsPanel : Application.ActivityLifecycleCallbacks, Component
     fun show(
         bundle: ReseamBundle,
         pages: List<OpenPage>,
-        opened: Map<String, *>? = state.restore?.opened,
+        opened: RestartState? = state.restore?.opened,
     ) {
         if (state is PanelState.Visible) return
         val activity = resumed.get()
@@ -50,7 +50,7 @@ internal class SettingsPanel : Application.ActivityLifecycleCallbacks, Component
             Log.e(LOG_TAG, "Cannot open settings: no screen of the app is in the foreground")
             return
         }
-        val before = opened ?: bundle.settings.restartValues()
+        val before = opened ?: bundle.restartState()
         val dialog = settingsDialog(activity, ::back, ::closed)
         val frame = FrameLayout(dialog.context)
         dialog.setContentView(frame)

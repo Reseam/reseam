@@ -17,6 +17,8 @@
     <string name="engine_license">エンジン <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
     <string name="clear_search">検索をクリア</string>
     <string name="back">戻る</string>
+    <string name="language">言語</string>
+    <string name="language_same_as_app">アプリと同じ</string>
     <string name="use_dark_theme">ダークテーマを使う</string>
     <string name="use_light_theme">ライトテーマを使う</string>
     <string name="backup">バックアップ</string>

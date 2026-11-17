@@ -17,6 +17,8 @@
     <string name="engine_license">Рушій <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
     <string name="clear_search">Очистити пошук</string>
     <string name="back">Назад</string>
+    <string name="language">Мова</string>
+    <string name="language_same_as_app">Як у застосунку</string>
     <string name="use_dark_theme">Використовувати темну тему</string>
     <string name="use_light_theme">Використовувати світлу тему</string>
     <string name="backup">Резервна копія</string>

@@ -17,6 +17,8 @@
     <string name="engine_license">เอนจิน <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
     <string name="clear_search">ล้างการค้นหา</string>
     <string name="back">กลับ</string>
+    <string name="language">ภาษา</string>
+    <string name="language_same_as_app">เหมือนกับแอป</string>
     <string name="use_dark_theme">ใช้ธีมมืด</string>
     <string name="use_light_theme">ใช้ธีมสว่าง</string>
     <string name="backup">การสำรองข้อมูล</string>

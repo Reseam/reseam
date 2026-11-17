@@ -53,7 +53,10 @@ internal class SettingsSession(
         val previous = shown?.page?.view
         shown?.keepScroll()
         val entry = pages.last()
-        val next = settingsPage(bundle, ui, entry.id, back, open, ::toggleTheme) { restart(host) }
+        val next =
+            settingsPage(bundle, ui, entry.id, back, open, ::toggleTheme, ::setLanguage) {
+                restart(host)
+            }
         next.scroll.scrollOnceLaidOut(entry.scrollY)
         shown = Shown(entry, next)
         frame.addView(next.view)
@@ -112,6 +115,11 @@ internal class SettingsSession(
 
     private fun toggleTheme() {
         Appearance.toggle(dialog.context)
+        theme()
+    }
+
+    private fun setLanguage(tag: String?) {
+        Appearance.language = tag
         theme()
     }
 

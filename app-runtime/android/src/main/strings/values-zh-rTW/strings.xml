@@ -17,6 +17,8 @@
     <string name="engine_license">引擎 <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
     <string name="clear_search">清除搜尋內容</string>
     <string name="back">返回</string>
+    <string name="language">語言</string>
+    <string name="language_same_as_app">與應用程式相同</string>
     <string name="use_dark_theme">使用深色主題</string>
     <string name="use_light_theme">使用淺色主題</string>
     <string name="backup">備份</string>

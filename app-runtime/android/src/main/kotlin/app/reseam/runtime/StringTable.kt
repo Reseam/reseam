@@ -12,10 +12,11 @@ import org.json.JSONObject
 
 /**
  * Lazily reads translated assets from a table directory. Each name comes from the first table that
- * has it in the order the app's locales read them, the way the engine resolves patch text: for each
- * locale, tables of its language in the same script, its region first, then none, then other
- * regions. The default text is English, so an English locale ends the order. Missing names and use
- * before Reseam.init throw; malformed JSON and formatting errors propagate to the caller.
+ * has it in the order of the language picked in Reseam's settings, then the app's locales, the way
+ * the engine resolves patch text: for each locale, tables of its language in the same script, its
+ * region first, then none, then other regions. The default text is English, so an English locale
+ * ends the order. Missing names and use before Reseam.init throw; malformed JSON and formatting
+ * errors propagate to the caller.
  */
 class StringTable(private val directory: String) {
     operator fun get(name: String): String = find(name).strings.getString(name)
@@ -41,16 +42,9 @@ class StringTable(private val directory: String) {
     val layoutDirection: Int
         get() = TextUtils.getLayoutDirectionFromLocale(readingOrder().first().locale)
 
-    val locales: List<Locale> by lazy {
-        Reseam.context.assets.list(directory).orEmpty()
-            .asSequence()
-            .filter { it.endsWith(".json") }
-            .map { it.removeSuffix(".json") }
-            .map { if (it == "default") "en" else it }
-            .distinct()
-            .map(Locale::forLanguageTag)
-            .toList()
-    }
+    /** Each language the table has text in, by the tag Appearance.language takes. */
+    internal val languages: Map<String, Locale>
+        get() = translations + (Locale.ENGLISH.language to Locale.ENGLISH)
 
     /** By the tag in each file's name, which Locale does not always give back. */
     private val translations: Map<String, Locale> by lazy {
@@ -67,7 +61,7 @@ class StringTable(private val directory: String) {
     private class Order(val locales: LocaleList, val tables: List<LoadedTable>)
 
     private fun readingOrder(): List<LoadedTable> {
-        val locales = LocaleList(Appearance.getLanguage())
+        val locales = readingLocales()
         val cached = order
         if (cached != null && cached.locales == locales) return cached.tables
         val tags = buildList {
@@ -87,6 +81,13 @@ class StringTable(private val directory: String) {
                 LoadedTable(Locale.ENGLISH, loadStringTable(directory, DEFAULT))
         order = Order(locales, tables)
         return tables
+    }
+
+    private fun readingLocales(): LocaleList {
+        val app = Reseam.context.resources.configuration.locales
+        val chosen = Appearance.language ?: return app
+        val locales = listOf(Locale.forLanguageTag(chosen)) + List(app.size()) { app[it] }
+        return LocaleList(*locales.distinct().toTypedArray())
     }
 
     private fun find(name: String): LoadedTable =

@@ -17,6 +17,8 @@
     <string name="engine_license">엔진 <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
     <string name="clear_search">검색어 지우기</string>
     <string name="back">뒤로</string>
+    <string name="language">언어</string>
+    <string name="language_same_as_app">앱과 동일</string>
     <string name="use_dark_theme">어두운 테마 사용</string>
     <string name="use_light_theme">밝은 테마 사용</string>
     <string name="backup">백업</string>

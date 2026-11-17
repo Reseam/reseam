@@ -17,6 +17,8 @@
     <string name="engine_license">Engine <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
     <string name="clear_search">Hapus pencarian</string>
     <string name="back">Kembali</string>
+    <string name="language">Bahasa</string>
+    <string name="language_same_as_app">Sama seperti aplikasi</string>
     <string name="use_dark_theme">Gunakan tema gelap</string>
     <string name="use_light_theme">Gunakan tema terang</string>
     <string name="backup">Cadangan</string>

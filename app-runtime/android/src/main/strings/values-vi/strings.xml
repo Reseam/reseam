@@ -17,6 +17,8 @@
     <string name="engine_license">Engine <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
     <string name="clear_search">Xóa nội dung tìm kiếm</string>
     <string name="back">Quay lại</string>
+    <string name="language">Ngôn ngữ</string>
+    <string name="language_same_as_app">Giống với ứng dụng</string>
     <string name="use_dark_theme">Dùng giao diện tối</string>
     <string name="use_light_theme">Dùng giao diện sáng</string>
     <string name="backup">Sao lưu</string>

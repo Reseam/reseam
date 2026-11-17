@@ -9,7 +9,7 @@ import android.os.Looper
 
 internal data class PanelRestore(
     val bundle: ReseamBundle,
-    val opened: Map<String, *>?,
+    val opened: RestartState?,
     val pages: List<OpenPage>,
     val host: Class<*>,
 )
@@ -21,7 +21,7 @@ internal sealed interface PanelState {
 
     data class Visible(
         val session: SettingsSession,
-        val opened: Map<String, *>,
+        val opened: RestartState,
         override val restore: PanelRestore? = null,
     ) : PanelState
 }

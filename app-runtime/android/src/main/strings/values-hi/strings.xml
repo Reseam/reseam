@@ -17,6 +17,8 @@
     <string name="engine_license">इंजन <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
     <string name="clear_search">खोज साफ़ करें</string>
     <string name="back">वापस</string>
+    <string name="language">भाषा</string>
+    <string name="language_same_as_app">ऐप जैसी</string>
     <string name="use_dark_theme">डार्क थीम इस्तेमाल करें</string>
     <string name="use_light_theme">लाइट थीम इस्तेमाल करें</string>
     <string name="backup">बैकअप</string>

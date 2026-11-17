@@ -17,6 +17,8 @@
     <string name="engine_license">المحرك <xliff:g id="engine">%1$s</xliff:g> · <xliff:g id="license">%2$s</xliff:g></string>
     <string name="clear_search">مسح البحث</string>
     <string name="back">رجوع</string>
+    <string name="language">اللغة</string>
+    <string name="language_same_as_app">حسب لغة التطبيق</string>
     <string name="use_dark_theme">استخدام المظهر الداكن</string>
     <string name="use_light_theme">استخدام المظهر الفاتح</string>
     <string name="backup">النسخ الاحتياطي</string>

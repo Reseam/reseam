@@ -18,7 +18,7 @@
     <string name="clear_search">Clear search</string>
     <string name="back">Back</string>
     <string name="language">Language</string>
-    <string name="language_same_as_app">App language</string>
+    <string name="language_same_as_app">Same as the app</string>
     <string name="use_dark_theme">Use dark theme</string>
     <string name="use_light_theme">Use light theme</string>
     <string name="backup">Backup</string>
