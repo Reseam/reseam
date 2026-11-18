@@ -59,26 +59,17 @@ impl ApkFile {
         Ok(paths)
     }
 
-    /// Writes each component into an unlinked file in `dir`. The caller owns
-    /// publication; the returned files are positioned at the end of the ZIP.
+    /// Writes each component into the corresponding file in `outputs`. The
+    /// caller owns publication; the returned files are positioned at the end of
+    /// each ZIP.
     #[instrument(level = "info", skip_all)]
-    pub fn write_unsigned_files(
-        &self,
-        options: ApkWriteOptions,
-        dir: &Path,
-    ) -> Result<Vec<(String, File)>> {
-        let names = self.output_names()?;
-        let files = self.write_components(
-            options,
-            names
-                .iter()
-                .map(|_| tempfile::tempfile_in(dir))
-                .collect::<io::Result<_>>()?,
-        )?;
-        Ok(names.into_iter().zip(files).collect())
+    pub fn write_files(&self, options: ApkWriteOptions, outputs: Vec<File>) -> Result<Vec<File>> {
+        self.write_components(options, outputs)
     }
 
-    fn output_names(&self) -> Result<Vec<String>> {
+    /// Output file names of the session's components, validated to be UTF-8 and
+    /// distinct.
+    pub fn output_names(&self) -> Result<Vec<String>> {
         let mut used = HashSet::new();
         self.components
             .iter()

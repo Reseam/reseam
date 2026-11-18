@@ -28,7 +28,6 @@ mod publish;
 mod resolve;
 mod run;
 mod signing;
-mod staging;
 mod trust;
 
 pub use apk::ApkInspection;

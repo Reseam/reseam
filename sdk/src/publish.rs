@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::collections::HashSet;
-use std::fs::{self, File};
+use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -11,7 +11,6 @@ use tempfile::TempDir;
 use tracing::info;
 
 use crate::error::{HostError, Result, file_error};
-use crate::staging::stage_file;
 
 /// A written APK component at the path it is staged and signed at.
 pub(crate) struct StagedComponent {
@@ -71,19 +70,15 @@ impl Artifact {
 }
 
 impl Publication {
-    pub(crate) fn new(
-        staging: TempDir,
-        files: &[(String, File)],
-        output: &PatchArtifact,
-    ) -> Result<Self> {
+    pub(crate) fn new(staging: TempDir, names: &[String], output: &PatchArtifact) -> Result<Self> {
         let packing = match output {
             PatchArtifact::SingleFile { .. } | PatchArtifact::SplitDir { .. } => Packing::Files,
             PatchArtifact::SplitArchive { .. } => Packing::Archive,
         };
-        let components: Vec<StagedComponent> = files
+        let components: Vec<StagedComponent> = names
             .iter()
             .enumerate()
-            .map(|(index, (name, _))| StagedComponent {
+            .map(|(index, name)| StagedComponent {
                 name: name.clone(),
                 staged: staging.path().join(format!("{index}.apk")),
                 output: match output {
@@ -160,15 +155,6 @@ impl Publication {
     /// The directory holding the staged files until they are published.
     pub(crate) fn staging_dir(&self) -> &Path {
         self.staging.path()
-    }
-
-    /// Places each written file at its component's staged path.
-    pub(crate) fn stage(&self, files: &[(String, File)]) -> Result<()> {
-        for ((_, file), component) in files.iter().zip(&self.components) {
-            stage_file(file, &component.staged)
-                .map_err(|source| file_error("stage APK", &component.output, source))?;
-        }
-        Ok(())
     }
 
     /// Packs the signed components as the output asks, then replaces the

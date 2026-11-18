@@ -77,16 +77,11 @@ pub(crate) fn stage_unsigned(
             Ok(PreservedPairs::from_apk(&source)?)
         })
         .collect::<Result<_>>()?;
-    let unsigned = progress
-        .measure(PatchPhase::WriteUnsignedArtifacts, |_| {
-            apk.write_unsigned_files(ApkWriteOptions::default(), dir)
-        })
-        .map_err(|source| HostError::WriteApk {
-            path: output.path().to_owned(),
-            source,
-        })?;
-    drop(apk);
-    let publication = Publication::new(staging, &unsigned, output)?;
+    let names = apk.output_names().map_err(|source| HostError::WriteApk {
+        path: output.path().to_owned(),
+        source,
+    })?;
+    let publication = Publication::new(staging, &names, output)?;
     let identity = signing.cloned().unwrap_or_else(|| SigningIdentity::Files {
         key: key_stem.with_extension("pk8").display().to_string(),
         cert: key_stem.with_extension("der").display().to_string(),
@@ -100,8 +95,28 @@ pub(crate) fn stage_unsigned(
             }
         }
     }
+    progress.measure(PatchPhase::WriteUnsignedArtifacts, |_| {
+        let outputs = publication
+            .components()
+            .iter()
+            .map(|component| {
+                File::options()
+                    .read(true)
+                    .write(true)
+                    .create_new(true)
+                    .open(component.staged())
+                    .map_err(|source| file_error("stage APK", component.output(), source))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        apk.write_files(ApkWriteOptions::default(), outputs)
+            .map_err(|source| HostError::WriteApk {
+                path: output.path().to_owned(),
+                source,
+            })?;
+        Ok::<_, HostError>(())
+    })?;
+    drop(apk);
     let key = progress.measure(PatchPhase::LoadSigningKey, |_| load_key(&identity))?;
-    publication.stage(&unsigned)?;
     Ok(StagedOutput {
         publication,
         preserved,
