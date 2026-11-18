@@ -143,6 +143,12 @@ impl DexFile {
         self.dirty = true;
     }
 
+    /// Whether the reference index is built, so scans no longer read the
+    /// whole file to build it.
+    pub fn is_indexed(&self) -> bool {
+        self.ref_index.get().is_some()
+    }
+
     pub(crate) fn ref_index(&self) -> crate::error::Result<&RefIndex> {
         if let Some(index) = self.ref_index.get() {
             return Ok(index);

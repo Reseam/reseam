@@ -11,6 +11,7 @@ use std::hash::Hash;
 
 use super::{InstructionLocation, MethodLocation, PatchContext};
 use crate::error::Result;
+use rayon::prelude::*;
 use reseam_dex::{DexFile, Instruction, InstructionSite, MethodHit, RefKey, RefQuery};
 use tracing::debug;
 
@@ -35,19 +36,29 @@ impl PatchContext<'_> {
         }))
     }
 
-    pub(super) fn scan_all<T>(
+    /// What `scan` finds in each DEX of the app, in DEX order. A scan can
+    /// build the reference index of its DEX, which reads the whole file, so
+    /// the files without one are scanned one at a time and the rest together.
+    pub(super) fn scan_all<T: Send>(
         &self,
         what: &str,
-        scan: impl Fn(usize, &DexFile) -> DexResult<Vec<T>>,
+        scan: impl Fn(usize, &DexFile) -> DexResult<Vec<T>> + Sync,
     ) -> Result<Vec<T>> {
         debug!(what, "full scan");
-        self.dex()
+        let (indexed, unindexed): (Vec<_>, Vec<_>) = self
+            .dex()
             .iter()
             .enumerate()
-            .try_fold(Vec::new(), |mut hits, (index, dex)| {
-                hits.extend(scan(index, dex)?);
-                Ok(hits)
-            })
+            .partition(|(_, dex)| dex.is_indexed());
+        let mut hits = indexed
+            .into_par_iter()
+            .map(|(index, dex)| Ok((index, scan(index, dex)?)))
+            .collect::<DexResult<Vec<_>>>()?;
+        for (index, dex) in unindexed {
+            hits.push((index, scan(index, dex)?));
+        }
+        hits.sort_unstable_by_key(|&(index, _)| index);
+        Ok(hits.into_iter().flat_map(|(_, hits)| hits).collect())
     }
 }
 
