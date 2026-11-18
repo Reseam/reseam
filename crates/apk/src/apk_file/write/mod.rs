@@ -10,7 +10,7 @@ mod publish;
 use std::fs::File;
 use std::num::NonZeroUsize;
 
-use tracing::{debug, info};
+use tracing::{debug, info, instrument};
 
 use super::component::EntryEdit;
 use super::{ApkFile, ComponentIndex};
@@ -58,9 +58,11 @@ impl Default for ApkWriteOptions {
 }
 
 impl ApkFile {
-    /// Writes each component into its output, in component order. Components
-    /// without rewritten DEX go first, so their copying overlaps serialization.
-    fn write_components(&self, options: ApkWriteOptions, outputs: Vec<File>) -> Result<Vec<File>> {
+    /// Writes each component as a complete ZIP into the file of `outputs` at
+    /// its index. Components without rewritten DEX go first, so their copying
+    /// overlaps serialization. The caller owns publication.
+    #[instrument(level = "info", skip_all)]
+    pub fn write_files(&self, options: ApkWriteOptions, outputs: Vec<File>) -> Result<()> {
         let mut names = self.dex_names();
         let mut jobs = self.dex_jobs(&mut names)?;
         jobs.sort_by_key(|job| {
@@ -115,16 +117,16 @@ impl ApkFile {
                 let output = files[index.0]
                     .take()
                     .expect("each component is written once");
-                files[index.0] = Some(self.write_component(
+                self.write_component(
                     index,
                     &plans[index.0],
                     &jobs,
                     profiles[index.0].take(),
                     &mut entries,
                     output,
-                )?);
+                )?;
             }
-            Ok(files.into_iter().flatten().collect())
+            Ok(())
         })
     }
 
@@ -136,7 +138,7 @@ impl ApkFile {
         mut profile: Option<ProfileRewrite>,
         entries: &mut DexEntryStream<'_>,
         output: File,
-    ) -> Result<File> {
+    ) -> Result<()> {
         let component = &self.components[index.0];
         debug!(component = component.name(), "writing APK component");
         let mut source = component.archive().clone();
@@ -188,6 +190,6 @@ impl ApkFile {
                     .map_err(|error| error.in_entry(name))?;
             }
         }
-        writer.finish()
+        writer.finish().map(drop)
     }
 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::collections::HashSet;
-use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -46,7 +45,7 @@ impl ApkFile {
             .iter()
             .map(|_| tempfile::NamedTempFile::new_in(output_dir))
             .collect::<io::Result<Vec<_>>>()?;
-        self.write_components(
+        self.write_files(
             options,
             staging
                 .iter()
@@ -57,14 +56,6 @@ impl ApkFile {
             file.persist(path).map_err(|error| error.error)?;
         }
         Ok(paths)
-    }
-
-    /// Writes each component into the corresponding file in `outputs`. The
-    /// caller owns publication; the returned files are positioned at the end of
-    /// each ZIP.
-    #[instrument(level = "info", skip_all)]
-    pub fn write_files(&self, options: ApkWriteOptions, outputs: Vec<File>) -> Result<Vec<File>> {
-        self.write_components(options, outputs)
     }
 
     /// Output file names of the session's components, validated to be UTF-8 and

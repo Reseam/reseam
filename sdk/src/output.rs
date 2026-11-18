@@ -112,8 +112,7 @@ pub(crate) fn stage_unsigned(
             .map_err(|source| HostError::WriteApk {
                 path: output.path().to_owned(),
                 source,
-            })?;
-        Ok::<_, HostError>(())
+            })
     })?;
     drop(apk);
     let key = progress.measure(PatchPhase::LoadSigningKey, |_| load_key(&identity))?;
