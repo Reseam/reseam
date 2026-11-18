@@ -66,10 +66,14 @@ impl SortedIndex {
         }
     }
 
-    /// The sorted entry `order` places at `Equal`, given how each entry
-    /// orders against the one sought.
-    pub(crate) fn search(&self, order: impl Fn(usize) -> Ordering) -> Option<usize> {
-        let (mut lo, mut hi) = (0, self.sorted_len);
+    /// The sorted entry of `within` that `order` places at `Equal`, given how
+    /// each entry orders against the one sought.
+    pub(crate) fn search(
+        &self,
+        within: Range<usize>,
+        order: impl Fn(usize) -> Ordering,
+    ) -> Option<usize> {
+        let (mut lo, mut hi) = (within.start, within.end.min(self.sorted_len));
         while lo < hi {
             let mid = lo + (hi - lo) / 2;
             match order(mid) {

@@ -135,7 +135,9 @@ impl<T: IdRecord> IdTable<T> {
     /// Index of the entry whose sort key equals `probe`'s.
     pub fn find(&self, probe: &T) -> Option<usize> {
         self.index
-            .search(|i| key_order(&self.get(i), probe))
+            .search(0..self.index.sorted_len(), |i| {
+                key_order(&self.get(i), probe)
+            })
             .or_else(|| {
                 self.index
                     .appended(hash_of(probe.key()))

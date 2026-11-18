@@ -12,15 +12,22 @@ impl StringPool {
         let bmp = s.chars().all(|c| (c as u32) < 0x10000);
         let target = (!s.contains('\0')).then_some(s.as_bytes());
         let encoded = std::cell::OnceCell::new();
+        // How a sorted entry, its payload through its terminator, orders against `s`.
+        let order = |item: &[u8]| {
+            target
+                .and_then(|target| ascii_order(item, target))
+                .unwrap_or_else(|| {
+                    let payload = &item[..item.len() - 1];
+                    if bmp && std::str::from_utf8(payload).is_ok() {
+                        payload.cmp(s.as_bytes())
+                    } else {
+                        mutf8_compare(payload, encoded.get_or_init(|| encode_mutf8(s)))
+                    }
+                })
+        };
         self.index
-            .search(|i| {
-                target
-                    .zip(self.raw_payload(i))
-                    .and_then(|(target, raw)| ascii_order(raw, target))
-                    .unwrap_or_else(|| match self.plain(i) {
-                        Some(bytes) if bmp => bytes.cmp(s.as_bytes()),
-                        _ => mutf8_compare(&self.mutf8(i), encoded.get_or_init(|| encode_mutf8(s))),
-                    })
+            .search(self.fences.window(self.index.sorted_len(), order), |i| {
+                order(self.terminated(i))
             })
             .or_else(|| {
                 self.index

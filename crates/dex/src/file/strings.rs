@@ -8,6 +8,7 @@ use std::hash::{Hash, Hasher};
 
 use rustc_hash::FxHasher;
 
+mod fences;
 mod lookup;
 
 use super::sorted_index::SortedIndex;
@@ -18,6 +19,7 @@ use crate::encoding::mutf8::{decode_mutf8_lossy, encode_mutf8, utf16_len, utf16_
 use crate::error::{Result, invalid, invalid_mutf8};
 use crate::model::StringIdx;
 use crate::options::ParseOptions;
+use fences::Fences;
 
 /// The string table left in the file: raw entries are read through the
 /// `string_ids` table on access, and only strings added after parse are owned.
@@ -28,6 +30,7 @@ pub struct StringPool {
     raw_len: usize,
     owned: Vec<Box<str>>,
     index: SortedIndex,
+    fences: Fences,
 }
 
 impl StringPool {
@@ -55,6 +58,7 @@ impl StringPool {
             |i| pool.compare(i as u32 - 1, i as u32) == Ordering::Less,
             |i| hash_units(mutf8_units(&pool.mutf8(i))),
         );
+        pool.fences = Fences::of(pool.index.sorted_len(), |i| pool.terminated(i));
         Ok(pool)
     }
 
@@ -172,7 +176,7 @@ impl StringPool {
             .iter()
             .map(|s| s.len() + size_of::<Box<str>>())
             .sum();
-        (owned + self.index.heap_bytes()) as u64
+        (owned + self.index.heap_bytes() + self.fences.heap_bytes()) as u64
     }
 
     fn plain(&self, i: usize) -> Option<&[u8]> {
@@ -199,6 +203,13 @@ impl StringPool {
     fn payload(&self, off: u32) -> &[u8] {
         let (start, end) = self.payload_range(off);
         &self.raw_bytes()[off as usize + start..off as usize + end]
+    }
+
+    /// Raw entry `i`'s payload through its terminator.
+    fn terminated(&self, i: usize) -> &[u8] {
+        let off = self.raw_offset(i);
+        let (start, end) = self.payload_range(off);
+        &self.raw_bytes()[off as usize + start..=off as usize + end]
     }
 
     /// A raw entry's payload through the end of the buffer, so its terminator
