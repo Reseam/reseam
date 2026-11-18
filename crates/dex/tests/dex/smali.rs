@@ -3,8 +3,8 @@
 
 use crate::common::{self, TestResult};
 use reseam_dex::{
-    CatchHandler, CodeItem, Instruction, Loading, PackedSwitchData, SmaliLine, TryItem, TypedCatch,
-    disassemble,
+    CatchHandler, CodeItem, FillArrayPayloadData, Instruction, Loading, PackedSwitchData,
+    SmaliLine, TryItem, TypedCatch, disassemble,
 };
 
 fn text(lines: &[SmaliLine]) -> Vec<&str> {
@@ -113,5 +113,26 @@ fn reading_a_class_leaves_it_in_the_file() -> TestResult {
         Some(1)
     );
     assert!(!dex.classes().is_resident(0));
+    Ok(())
+}
+
+#[test]
+fn an_array_payload_of_an_impossible_element_width_is_an_error() -> TestResult {
+    let dex = common::dex();
+    for element_width in [0, 3, 16] {
+        let code = CodeItem::new(
+            1,
+            0,
+            0,
+            vec![
+                Instruction::ReturnVoid,
+                Instruction::FillArrayDataPayload(Box::new(FillArrayPayloadData {
+                    element_width,
+                    data: vec![0; 32],
+                })),
+            ],
+        )?;
+        assert!(disassemble(&dex, &code).is_err(), "width {element_width}");
+    }
     Ok(())
 }

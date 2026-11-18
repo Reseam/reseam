@@ -3,7 +3,7 @@
 
 //! Payloads and code units no opcode describes.
 
-use crate::error::Result;
+use crate::error::{Result, invalid};
 use crate::instruction::Instruction;
 use crate::smali::body::Body;
 use crate::smali::labels::LabelKind;
@@ -37,7 +37,13 @@ pub(super) fn payload(body: &Body<'_>, at: usize, insn: &Instruction) -> Result<
         }
         Instruction::FillArrayDataPayload(data) => {
             let width = usize::from(data.element_width);
-            let entries = data.data.chunks(width.max(1)).map(array_element).collect();
+            if !matches!(width, 1 | 2 | 4 | 8) {
+                return Err(invalid(
+                    "fill-array-data payload",
+                    format!("element width {width} is not 1, 2, 4 or 8"),
+                ));
+            }
+            let entries = data.data.chunks(width).map(array_element).collect();
             (width.to_string(), entries, "array-data")
         }
         _ => unreachable!("only payload variants have the payload format"),
