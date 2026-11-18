@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use reseam_bytes::read_u32;
-use std::ops::Range;
+use std::ops::{ControlFlow, Range};
 
 use rayon::prelude::*;
 
@@ -12,7 +12,7 @@ use crate::error::{Result, invalid};
 use crate::file::ClassTable;
 use crate::instruction::stream::walk_instructions;
 use crate::options::ParseOptions;
-use crate::read::class::read_class_skeleton_at;
+use crate::read::class::ClassDataCursor;
 
 /// Classes one parallel task walks.
 const CHUNK: usize = 64;
@@ -149,28 +149,27 @@ fn chunk_refs(
     };
     let mut method = MethodRefs::default();
     let mut position = 0u32;
+    let buf = table.raw_bytes();
     for class_idx in classes {
         let Some(offset) = table.class_data_offset(class_idx) else {
             refs.methods.push(0);
             continue;
         };
-        let buf = table.raw_bytes();
-        let skeleton = read_class_skeleton_at(buf, offset as usize, opts)?;
-        let headers = skeleton
-            .direct_methods
-            .iter()
-            .chain(&skeleton.virtual_methods);
-        let mut count = 0u32;
-        for header in headers {
-            if header.code_off != 0 {
-                method.collect(buf, header.code_off, keys)?;
-                refs.pool
-                    .extend(method.pool.iter().map(|&key| (key, position)));
-                refs.literals
-                    .extend(method.literals.iter().map(|&value| (value, position)));
-            }
-            position += 1;
-            count += 1;
+        let mut cursor = ClassDataCursor::new(buf, offset as usize, opts)?;
+        cursor.skip_fields()?;
+        let count = cursor.counts.direct_methods + cursor.counts.virtual_methods;
+        for group in [cursor.counts.direct_methods, cursor.counts.virtual_methods] {
+            let _: ControlFlow<()> = cursor.methods(group, |header| {
+                if header.code_off != 0 {
+                    method.collect(buf, header.code_off, keys)?;
+                    refs.pool
+                        .extend(method.pool.iter().map(|&key| (key, position)));
+                    refs.literals
+                        .extend(method.literals.iter().map(|&value| (value, position)));
+                }
+                position += 1;
+                Ok(ControlFlow::Continue(()))
+            })?;
         }
         refs.methods.push(count);
     }
