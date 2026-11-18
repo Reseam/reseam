@@ -46,8 +46,6 @@ pub fn build_fixture_jar() -> PathBuf {
                 Command::new(&gradle)
                     .arg("-p")
                     .arg(&fixture_dir)
-                    .arg("--no-daemon")
-                    .arg("-Dorg.gradle.jvmargs=-Xmx1536m")
                     .arg("patchJar"),
                 "build kotlin runtime test bundle",
             );

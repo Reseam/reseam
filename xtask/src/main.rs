@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 mod boltffi;
 mod browser;
+mod cache;
 mod dex_codec;
 mod framework;
 mod models;
@@ -37,6 +38,8 @@ enum Cmd {
     PackSdk,
     /// Builds the browser engine and runtime assets into `browser/public/runtime`. Needs `WASI_SDK_PATH`.
     PackBrowser,
+    /// Removes the workspace's own crates from the build cache and keeps their dependencies.
+    Prune,
     /// Sets the workspace version, commits, and tags the release.
     Release { version: String },
     /// Fails unless the tag names the workspace version.
@@ -85,6 +88,7 @@ fn main() -> Result<()> {
             boltffi::check_version()?;
             browser::pack()?;
         }
+        Cmd::Prune => cache::prune()?,
         Cmd::Release { version } => version::tag(&version)?,
         Cmd::CheckTag { tag } => version::check_tag(&tag)?,
         Cmd::DexRoundTrip { paths } => dex_codec::round_trip(&paths)?,

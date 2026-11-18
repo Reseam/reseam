@@ -37,8 +37,5 @@ pub fn gradle(arguments: &[&str]) -> Result<()> {
     } else {
         "gradlew"
     });
-    run(Command::new(launcher)
-        .args(arguments)
-        .args(["--no-daemon", "-Dorg.gradle.jvmargs=-Xmx1536m"])
-        .current_dir(root))
+    run(Command::new(launcher).args(arguments).current_dir(root))
 }
