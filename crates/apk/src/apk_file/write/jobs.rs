@@ -3,6 +3,8 @@
 
 use std::collections::{HashMap, HashSet};
 
+use rayon::prelude::*;
+
 use super::super::component::{ApkComponent, EntryEdit};
 use super::super::dex_set::{DexIndex, DexMember, DexSource};
 use super::super::{ApkFile, ComponentIndex};
@@ -85,6 +87,24 @@ impl ApkFile {
             .filter(|&(index, _, _)| self.dex.is_rewritten(index))
             .map(|(_, _, origin)| (origin.component, &origin.name))
             .collect();
+        // Splitting walks every class of a DEX past its id limits, so the
+        // DEX files are split together.
+        let mut members: HashMap<DexIndex, Vec<DexMember>> = self
+            .dex
+            .slots()
+            .filter(|(_, _, origin)| {
+                origin.kind != DexSource::Removed
+                    && rewritten.contains(&(origin.component, &origin.name))
+            })
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(index, dex, _)| Ok((index, members_for(index, dex)?)))
+            .collect::<Result<_>>()?;
+        let mut members_of = |index| {
+            members
+                .remove(&index)
+                .expect("every rewritten DEX was split")
+        };
         let mut jobs = Vec::new();
         let mut emitted = HashSet::new();
         for (dex_index, dex, origin) in self.dex.slots() {
@@ -113,10 +133,7 @@ impl ApkFile {
                             && member.component == component
                             && member.name == origin.name
                     })
-                    .map(|(index, dex, _)| members_for(index, dex))
-                    .collect::<Result<Vec<_>>>()?
-                    .into_iter()
-                    .flatten()
+                    .flat_map(|(index, _, _)| members_of(index))
                     .collect();
                 jobs.push(DexJob {
                     members,
@@ -127,7 +144,7 @@ impl ApkFile {
                 });
                 continue;
             }
-            for (ordinal, member) in members_for(dex_index, dex)?.into_iter().enumerate() {
+            for (ordinal, member) in members_of(dex_index).into_iter().enumerate() {
                 let (source, name) = if ordinal == 0 {
                     (Some(origin.name.clone()), name.clone())
                 } else {
