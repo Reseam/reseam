@@ -62,10 +62,11 @@ pub fn open_container(
     let scratch = ScratchDir::new("apk-container")?;
     let mut components: Vec<_> = apk_entries
         .par_iter()
-        .map_with(
-            (archive.clone(), vec![0u8; COPY_BUFFER]),
-            |(archive, buf), entry| {
-                let path = extract_entry(archive, entry, scratch.path(), buf)?;
+        .map_init(
+            || (archive.clone(), vec![0; COPY_BUFFER]),
+            |(archive, buffer), entry| {
+                let path = extract_entry(archive, entry, scratch.path(), buffer)
+                    .map_err(|error| error.in_entry(entry))?;
                 ApkComponent::open(&path, Loading::Deferred)
             },
         )
