@@ -1,16 +1,17 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+mod link;
+
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::path::PathBuf;
 
+use rayon::prelude::*;
 use reseam_dex::Loading;
 use reseam_dex::write_class;
 use reseam_dex::{DexFile, ParseOptions, parse_file};
-use tracing::debug;
 
-use super::PatchContext;
 use crate::error::{ExtensionError, PatcherError, Result};
 
 fn options() -> ParseOptions {
@@ -21,17 +22,17 @@ fn options() -> ParseOptions {
 }
 
 pub struct ExtensionSet {
-    files: Vec<ExtensionDex>,
-    providers: HashMap<String, usize>,
-    warned: HashSet<String>,
+    pub(super) files: Vec<ExtensionDex>,
+    pub(super) providers: HashMap<String, usize>,
+    pub(super) warned: HashSet<String>,
 }
 
-struct ExtensionDex {
-    source: Source,
-    file: Option<DexFile>,
+pub(super) struct ExtensionDex {
+    pub(super) source: Source,
+    pub(super) file: Option<DexFile>,
 }
 
-enum Source {
+pub(super) enum Source {
     AppRuntime,
     Bundle(PathBuf),
 }
@@ -69,26 +70,36 @@ impl ExtensionSet {
     /// The app runtime, then the bundles' extension files.
     pub fn load(paths: &[PathBuf]) -> Result<Self> {
         let mut set = Self::app_runtime();
-        for path in paths {
-            set.add(Source::Bundle(path.clone()), parse_file(path, options()))?;
+        let parsed: Vec<(Source, DexFile)> = paths
+            .par_iter()
+            .map(|path| {
+                let source = Source::Bundle(path.clone());
+                let dex = parse_and_validate(&source, parse_file(path, options()))?;
+                Ok((source, dex))
+            })
+            .collect::<Result<_>>()?;
+        for (source, dex) in parsed {
+            set.register(source, dex)?;
         }
         Ok(set)
     }
 
     fn add(&mut self, source: Source, parsed: reseam_dex::Result<DexFile>) -> Result<()> {
+        let dex = match source {
+            Source::AppRuntime => parsed.map_err(|error| PatcherError::Extension {
+                file: source.to_string(),
+                reason: error.into(),
+            })?,
+            Source::Bundle(_) => parse_and_validate(&source, parsed)?,
+        };
+        self.register(source, dex)
+    }
+
+    fn register(&mut self, source: Source, mut dex: DexFile) -> Result<()> {
         let failed = |reason| PatcherError::Extension {
             file: source.to_string(),
             reason,
         };
-        let mut dex = parsed.map_err(|error| failed(error.into()))?;
-        let mut validation = dex.classes().clone();
-        for index in (0..validation.len()).rev() {
-            drop(
-                validation
-                    .remove(index, options())
-                    .map_err(|source| failed(ExtensionError::Class { index, source }))?,
-            );
-        }
         let index = self.files.len();
         let mut shared = Vec::new();
         for (class_idx, header) in dex.classes().headers().enumerate() {
@@ -158,113 +169,39 @@ impl ExtensionSet {
         Ok(image(provider_dex, provider_idx, &provider.source)? == image(dex, class_idx, source)?)
     }
 
-    fn provider(&self, descriptor: &str) -> Option<usize> {
+    pub(super) fn provider(&self, descriptor: &str) -> Option<usize> {
         self.providers.get(descriptor).copied()
     }
 
     /// The definition of `descriptor` in an extension not linked yet.
-    pub(super) fn unlinked_class(&self, descriptor: &str) -> Option<(&DexFile, usize)> {
+    pub(in crate::context) fn unlinked_class(&self, descriptor: &str) -> Option<(&DexFile, usize)> {
         let dex = self.files[self.provider(descriptor)?].file.as_ref()?;
         Some((dex, dex.find_class_index(descriptor)?))
     }
-}
 
-fn class_of(descriptor: &str) -> Option<&str> {
-    let element = descriptor.trim_start_matches('[');
-    element.starts_with('L').then_some(element)
-}
-
-fn is_platform(descriptor: &str) -> bool {
-    const PLATFORM: [&str; 10] = [
-        "Ljava/",
-        "Ljavax/",
-        "Landroid/",
-        "Ldalvik/",
-        "Llibcore/",
-        "Lsun/",
-        "Lorg/json/",
-        "Lorg/xml/",
-        "Lorg/w3c/",
-        "Lorg/apache/http/",
-    ];
-    PLATFORM.iter().any(|prefix| descriptor.starts_with(prefix))
-}
-
-impl PatchContext<'_> {
-    /// Makes sure every class the descriptors refer to is defined, merging
-    /// extension DEX files as needed. A reference nothing defines is logged
-    /// once, since it is almost always a typo in the patch.
-    pub fn link_types<'s>(&mut self, descriptors: impl IntoIterator<Item = &'s str>) {
-        for descriptor in descriptors {
-            let Some(class) = class_of(descriptor) else {
-                continue;
-            };
-            if is_platform(class) || self.find_class(class).is_some() {
-                continue;
-            }
-            match self.extensions.provider(class) {
-                Some(index) => self.merge_extension(index),
-                None => {
-                    if self.extensions.warned.insert(class.to_owned()) {
-                        self.journal
-                            .record(super::undo::Part::Warned(class.to_owned()), || {
-                                super::undo::Undo::Warned(class.to_owned())
-                            });
-                        self.log().warn(format!(
-                            "{class} is not defined by the app or any extension in the bundle"
-                        ));
-                    }
-                }
-            }
-        }
-    }
-
-    pub fn find_or_link_class(&mut self, descriptor: &str) -> Option<super::ClassLocation> {
-        if let Some(location) = self.find_class(descriptor) {
-            return Some(location);
-        }
-        let index = self.extensions.provider(descriptor)?;
-        self.merge_extension(index);
-        self.find_class(descriptor)
-    }
-
-    fn merge_extension(&mut self, index: usize) {
-        let mut pending = vec![index];
-        while let Some(index) = pending.pop() {
-            let Some(dex) = self.extensions.files[index].file.take() else {
-                continue;
-            };
-            debug!(source = %self.extensions.files[index].source, "linking extension");
-            pending.extend(
-                dex.types()
-                    .iter()
-                    .filter_map(|string| {
-                        self.extensions
-                            .providers
-                            .get(dex.strings().get(string).as_ref())
-                            .copied()
-                    })
-                    .filter(|&provider| provider != index),
-            );
-            let dex_index = self.apk.dex().len();
-            self.journal.record(super::undo::Part::Merge(index), || {
-                super::undo::Undo::Merged {
-                    extension: index,
-                    dex: dex_index,
-                }
-            });
-            self.apk_mut().add_dex(dex);
-        }
-    }
-}
-
-impl ExtensionSet {
     /// Takes back extension `index`, which a rollback removed from the app.
-    pub(super) fn restore(&mut self, index: usize, dex: DexFile) {
+    pub(in crate::context) fn restore(&mut self, index: usize, dex: DexFile) {
         self.files[index].file = Some(dex);
     }
 
-    pub(super) fn forget_warning(&mut self, class: &str) {
+    pub(in crate::context) fn forget_warning(&mut self, class: &str) {
         self.warned.remove(class);
     }
+}
+
+fn parse_and_validate(source: &Source, parsed: reseam_dex::Result<DexFile>) -> Result<DexFile> {
+    let failed = |reason| PatcherError::Extension {
+        file: source.to_string(),
+        reason,
+    };
+    let dex = parsed.map_err(|error| failed(error.into()))?;
+    let mut validation = dex.classes().clone();
+    for index in (0..validation.len()).rev() {
+        drop(
+            validation
+                .remove(index, options())
+                .map_err(|source| failed(ExtensionError::Class { index, source }))?,
+        );
+    }
+    Ok(dex)
 }
