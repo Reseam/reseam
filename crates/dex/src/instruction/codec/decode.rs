@@ -6,7 +6,6 @@ use crate::instruction::catalogue::instruction_catalogue;
 use crate::instruction::stream::{RawInstruction, instruction_stream};
 use crate::instruction::{Instruction, RegList};
 use reseam_bytes::{u16_at, u32_at};
-use smallvec::SmallVec;
 
 /// Decodes `insns_size` code units starting at byte `start` of `buf`.
 /// Truncated or malformed encodings fail; unknown opcodes keep all their
@@ -26,19 +25,6 @@ pub fn decode_instructions(
         );
     }
     Ok(instructions)
-}
-
-impl RawInstruction {
-    /// The literal of a `const*` or `*-int/lit*` instruction, as
-    /// [`Instruction::literal`] reports it once decoded.
-    pub fn literal(&self, buf: &[u8]) -> Option<i64> {
-        if !super::has_literal(self.opcode) {
-            return None;
-        }
-        let mut decoded = SmallVec::<[Instruction; 1]>::new();
-        decode_onto(buf, self, &mut decoded).ok()?;
-        decoded.pop()?.literal()
-    }
 }
 
 /// The code units of one framed instruction.
@@ -170,6 +156,36 @@ macro_rules! decode_format {
     };
 }
 
+macro_rules! decode_literal {
+    (f11n, $u:ident, $v:ident) => {
+        Some(i64::from($u.signed_b()))
+    };
+    (f21s, $u:ident, $v:ident) => {
+        Some(i64::from($u.unit(1) as i16))
+    };
+    (f21h, $u:ident, ConstHigh16) => {
+        Some(i64::from($u.unit(1) as i16) << 16)
+    };
+    (f21h, $u:ident, ConstWideHigh16) => {
+        Some(i64::from($u.unit(1) as i16) << 48)
+    };
+    (f31i, $u:ident, $v:ident) => {
+        Some(i64::from($u.word(1) as i32))
+    };
+    (f51l, $u:ident, $v:ident) => {
+        Some($u.long())
+    };
+    (f22b, $u:ident, $v:ident) => {
+        Some(i64::from(($u.unit(1) >> 8) as i8))
+    };
+    (f22s, $u:ident, $v:ident) => {
+        Some(i64::from($u.unit(1) as i16))
+    };
+    ($format:ident, $u:ident, $v:ident) => {
+        None
+    };
+}
+
 macro_rules! define_decoder {
     ($($variant:ident [$($shape:tt)*] [$($definition:tt)*] => $opname:ident $opcode:pat, $units:tt; [$($register:ident: $reg_type:ident $kind:ident $access:ident ($max:expr)),*]; $args:ident; [$($index:ident: $id_type:ident $pool:ident $at:literal $index_width:ident),*]; $format:ident($($slot:ident),*);)*) => {
         /// Decodes the instruction `frame` locates in `buf` onto `out`, where
@@ -190,6 +206,23 @@ macro_rules! define_decoder {
                 _ => out.extend([units.raw()]),
             }
             Ok(())
+        }
+
+        impl RawInstruction {
+            /// The literal of a `const*` or `*-int/lit*` instruction, as
+            /// [`Instruction::literal`] reports it once decoded.
+            #[inline]
+            pub fn literal(&self, buf: &[u8]) -> Option<i64> {
+                let units = Units {
+                    buf,
+                    at: self.offset(),
+                    len: self.units,
+                };
+                match u16::from(self.opcode) {
+                    $(crate::instruction::opcodes::$opname => decode_literal!($format, units, $variant),)*
+                    _ => None,
+                }
+            }
         }
     };
 }

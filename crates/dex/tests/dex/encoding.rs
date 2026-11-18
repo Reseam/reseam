@@ -106,3 +106,82 @@ fn invocation_arguments_are_read_by_word() {
     );
     assert_eq!(Instruction::ReturnVoid.argument_register(0), None);
 }
+
+#[test]
+fn deferred_literal_queries_match_decoded_instructions() -> TestResult {
+    use reseam_dex::{Instruction, RefKey, RefQuery};
+
+    let mut dex = common::dex();
+    let code = common::body(&mut dex);
+    code.set_register_frame(10, 0, 0)?;
+    let instructions = vec![
+        Instruction::Const4 { dest: 0, value: -8 },
+        Instruction::Const4 { dest: 1, value: 7 },
+        Instruction::Const16 {
+            dest: 2,
+            value: i16::MIN,
+        },
+        Instruction::Const {
+            dest: 3,
+            value: i32::MIN,
+        },
+        Instruction::ConstHigh16 {
+            dest: 4,
+            value: -0x1234,
+        },
+        Instruction::ConstWide16 {
+            dest: 4,
+            value: -42,
+        },
+        Instruction::ConstWide32 {
+            dest: 4,
+            value: -100_000,
+        },
+        Instruction::ConstWide {
+            dest: 4,
+            value: -0x1234_5678_9abc_def0,
+        },
+        Instruction::ConstWideHigh16 {
+            dest: 4,
+            value: -0x7fff,
+        },
+        Instruction::AddIntLit16 {
+            dest: 1,
+            src: 0,
+            literal: -3210,
+        },
+        Instruction::XorIntLit16 {
+            dest: 1,
+            src: 0,
+            literal: 3210,
+        },
+        Instruction::AddIntLit8 {
+            dest: 1,
+            src: 0,
+            literal: i8::MIN,
+        },
+        Instruction::UshrIntLit8 {
+            dest: 1,
+            src: 0,
+            literal: i8::MAX,
+        },
+        Instruction::ReturnVoid,
+    ];
+    let expected: Vec<(usize, i64)> = instructions
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, insn)| Some((idx, insn.literal()?)))
+        .collect();
+    code.set_instructions(instructions);
+
+    let bytes = common::write(&dex)?;
+    let deferred = common::parse_with_loading(&bytes, Loading::Deferred)?;
+    for &(expected_idx, literal) in &expected {
+        let query = RefQuery::all_of([RefKey::Literal(literal)]);
+        let hits = deferred.scan_instructions(&query, |site| {
+            (site.instruction.literal() == Some(literal)).then_some(site.insn_idx)
+        })?;
+        assert_eq!(hits, vec![expected_idx], "literal {literal}");
+    }
+    Ok(())
+}
