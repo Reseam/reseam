@@ -8,6 +8,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
 
+use reseam_storage::file::FileReader;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
@@ -15,14 +16,16 @@ use super::{BUNDLE_MIMETYPE, BundleKey};
 use crate::error::{BundleError, Result};
 
 pub(super) const MANIFEST_LIMIT: u64 = 16 * 1024 * 1024;
+pub(super) type Archive = ZipArchive<FileReader>;
 
 /// Opens the bundle at `path`, which must start with the bundle mimetype marker.
-pub(super) fn open(path: &Path) -> Result<ZipArchive<File>> {
-    let mut archive =
-        ZipArchive::new(File::open(path)?).map_err(|source| BundleError::Archive {
+pub(super) fn open(path: &Path) -> Result<Archive> {
+    let mut archive = ZipArchive::new(FileReader::new(File::open(path)?)?).map_err(|source| {
+        BundleError::Archive {
             path: path.to_owned(),
             source,
-        })?;
+        }
+    })?;
     if read_entry(&mut archive, "mimetype", BUNDLE_MIMETYPE.len() as u64)?
         != BUNDLE_MIMETYPE.as_bytes()
     {
@@ -32,11 +35,7 @@ pub(super) fn open(path: &Path) -> Result<ZipArchive<File>> {
 }
 
 /// A control entry, which must not exceed `limit` bytes.
-pub(super) fn read_entry(
-    archive: &mut ZipArchive<File>,
-    name: &'static str,
-    limit: u64,
-) -> Result<Vec<u8>> {
+pub(super) fn read_entry(archive: &mut Archive, name: &'static str, limit: u64) -> Result<Vec<u8>> {
     let mut entry = archive
         .by_name(name)
         .map_err(|source| BundleError::MissingEntry { name, source })?;

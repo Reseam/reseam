@@ -9,9 +9,8 @@ use std::sync::Arc;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use reseam_storage::ScratchDir;
 use tracing::info;
-use zip::ZipArchive;
 
-use super::container::{self, MANIFEST_LIMIT, read_entry};
+use super::container::{self, Archive, MANIFEST_LIMIT, read_entry};
 use super::manifest::BundleManifest;
 use super::payload::{PayloadKind, copy_payload};
 use super::{BundleInfo, PatchBundle};
@@ -21,7 +20,7 @@ use crate::patch::PatchSpec;
 /// A bundle whose manifest signature and format version have been checked.
 /// Payload hashes are checked when the payload is read by [`Self::load`].
 pub struct BundleArchive {
-    archive: ZipArchive<File>,
+    archive: Archive,
     manifest: BundleManifest,
     public_key: [u8; 32],
 }

@@ -22,6 +22,7 @@ serde       = { workspace = true }
 serde_json  = { workspace = true }
 toml        = { workspace = true }
 rustc-hash  = { workspace = true }
+rayon       = { workspace = true }
 boltffi     = { workspace = true, optional = true }
 jni         = { workspace = true, optional = true }
 zip         = { workspace = true }

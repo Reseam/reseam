@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
+use rayon::prelude::*;
 use reseam_storage::copy_hashed;
-use zip::ZipArchive;
 
 use super::CONTROL_ENTRIES;
+use super::container::Archive;
 use crate::error::{BundleError, Result};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -61,15 +61,15 @@ fn is_portable(part: &str) -> bool {
 /// name: an entry the manifest does not declare, one that differs from it, and
 /// a declared file the archive lacks all fail. Returns the entries' names and
 /// kinds, in archive order.
-pub(super) fn copy_payload<W: Write>(
-    archive: &mut ZipArchive<File>,
+pub(super) fn copy_payload<W: Write + Send>(
+    archive: &mut Archive,
     declared: &BTreeMap<String, String>,
-    mut open: impl FnMut(&str, PayloadKind) -> Result<W>,
+    open: impl Fn(&str, PayloadKind) -> Result<W> + Sync,
 ) -> Result<Vec<(String, PayloadKind)>> {
     let mut remaining: BTreeSet<&str> = declared.keys().map(String::as_str).collect();
-    let mut entries = Vec::new();
+    let mut planned = Vec::with_capacity(archive.len());
     for index in 0..archive.len() {
-        let mut entry = archive.by_index(index)?;
+        let entry = archive.by_index_raw(index)?;
         let name = entry.name().to_string();
         if entry.is_dir() || CONTROL_ENTRIES.contains(&name.as_str()) {
             continue;
@@ -82,19 +82,25 @@ pub(super) fn copy_payload<W: Write>(
             .and_then(|hash| hash.try_into().ok())
             .ok_or_else(|| BundleError::PayloadHash(name.clone()))?;
         let kind = payload_kind(&name)?;
-        let hash = copy_hashed(&mut entry, &mut open(&name, kind)?).map_err(|source| {
-            BundleError::Payload {
-                name: name.clone(),
-                source,
-            }
-        })?;
-        if hash != expected {
-            return Err(BundleError::HashMismatch(name).into());
-        }
-        entries.push((name, kind));
+        planned.push((index, name, kind, expected));
     }
     if !remaining.is_empty() {
         return Err(BundleError::MissingPayload.into());
     }
-    Ok(entries)
+    planned
+        .into_par_iter()
+        .map_with(archive.clone(), |archive, (index, name, kind, expected)| {
+            let mut entry = archive.by_index(index)?;
+            let hash = copy_hashed(&mut entry, &mut open(&name, kind)?).map_err(|source| {
+                BundleError::Payload {
+                    name: name.clone(),
+                    source,
+                }
+            })?;
+            if hash != expected {
+                return Err(BundleError::HashMismatch(name).into());
+            }
+            Ok((name, kind))
+        })
+        .collect()
 }

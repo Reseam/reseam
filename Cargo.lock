@@ -2278,6 +2278,7 @@ dependencies = [
  "hex",
  "jni",
  "libloading 0.9.0",
+ "rayon",
  "reseam-apk",
  "reseam-dex",
  "reseam-fixtures",
