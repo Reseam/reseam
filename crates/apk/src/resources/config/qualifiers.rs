@@ -4,7 +4,7 @@
 //! A `ResTable_config` read back into the qualifier string aapt2 writes for
 //! it, such as `fr-rCA`, `b+sr+Latn`, `night-v8` or `sw600dp-land-xhdpi`.
 
-use super::DENSITIES;
+use super::{DENSITIES, DENSITY, SDK_VERSION, UI_MODE, UI_MODE_NIGHT_NO, UI_MODE_NIGHT_YES};
 
 /// The qualifiers `config` stands for, in aapt2's order and dash-separated;
 /// the default configuration is the empty string. Fields past the end of a
@@ -56,7 +56,7 @@ pub fn qualifiers(config: &[u8]) -> String {
         &[(1, "port"), (2, "land"), (3, "square")],
     ));
     push(named(
-        config.u8(29) & 0x0F,
+        config.u8(UI_MODE) & 0x0F,
         &[
             (2, "desk"),
             (3, "car"),
@@ -67,10 +67,10 @@ pub fn qualifiers(config: &[u8]) -> String {
         ],
     ));
     push(named(
-        config.u8(29) & 0x30,
-        &[(0x10, "notnight"), (0x20, "night")],
+        config.u8(UI_MODE) & (UI_MODE_NIGHT_NO | UI_MODE_NIGHT_YES),
+        &[(UI_MODE_NIGHT_NO, "notnight"), (UI_MODE_NIGHT_YES, "night")],
     ));
-    push(match config.u16(14) {
+    push(match config.u16(DENSITY) {
         0 => None,
         dpi => Some(
             DENSITIES
@@ -101,7 +101,7 @@ pub fn qualifiers(config: &[u8]) -> String {
     ));
     let (width, height) = (config.u16(20), config.u16(22));
     push((width != 0 || height != 0).then(|| format!("{width}x{height}")));
-    push((config.u16(24) != 0).then(|| format!("v{}", config.u16(24))));
+    push((config.u16(SDK_VERSION) != 0).then(|| format!("v{}", config.u16(SDK_VERSION))));
     parts.join("-")
 }
 
