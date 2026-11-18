@@ -107,16 +107,27 @@ fn invocation_arguments_are_read_by_word() {
     assert_eq!(Instruction::ReturnVoid.argument_register(0), None);
 }
 
+/// One instruction of each named variant that takes a register pair and a
+/// literal, each with a literal of its own counted up from `$first`.
+macro_rules! arithmetic_literals {
+    ($first:expr; $($variant:ident),+) => {{
+        let mut literal = $first;
+        [$({
+            literal += 1;
+            reseam_dex::Instruction::$variant { dest: 1, src: 0, literal }
+        }),+]
+    }};
+}
+
 #[test]
-fn deferred_literal_queries_match_decoded_instructions() -> TestResult {
+fn literals_read_from_the_file_match_decoded_instructions() -> TestResult {
     use reseam_dex::{Instruction, RefKey, RefQuery};
 
     let mut dex = common::dex();
     let code = common::body(&mut dex);
     code.set_register_frame(10, 0, 0)?;
-    let instructions = vec![
+    let mut instructions = vec![
         Instruction::Const4 { dest: 0, value: -8 },
-        Instruction::Const4 { dest: 1, value: 7 },
         Instruction::Const16 {
             dest: 2,
             value: i16::MIN,
@@ -145,43 +156,31 @@ fn deferred_literal_queries_match_decoded_instructions() -> TestResult {
             dest: 4,
             value: -0x7fff,
         },
-        Instruction::AddIntLit16 {
-            dest: 1,
-            src: 0,
-            literal: -3210,
-        },
-        Instruction::XorIntLit16 {
-            dest: 1,
-            src: 0,
-            literal: 3210,
-        },
-        Instruction::AddIntLit8 {
-            dest: 1,
-            src: 0,
-            literal: i8::MIN,
-        },
-        Instruction::UshrIntLit8 {
-            dest: 1,
-            src: 0,
-            literal: i8::MAX,
-        },
-        Instruction::ReturnVoid,
     ];
+    instructions.extend(arithmetic_literals!(-3210i16;
+        AddIntLit16, RsubIntLit16, MulIntLit16, DivIntLit16, RemIntLit16, AndIntLit16,
+        OrIntLit16, XorIntLit16
+    ));
+    instructions.extend(arithmetic_literals!(i8::MIN;
+        AddIntLit8, RsubIntLit8, MulIntLit8, DivIntLit8, RemIntLit8, AndIntLit8, OrIntLit8,
+        XorIntLit8, ShlIntLit8, ShrIntLit8, UshrIntLit8
+    ));
+    instructions.push(Instruction::ReturnVoid);
     let expected: Vec<(usize, i64)> = instructions
         .iter()
         .enumerate()
-        .filter_map(|(idx, insn)| Some((idx, insn.literal()?)))
+        .filter_map(|(index, instruction)| Some((index, instruction.literal()?)))
         .collect();
+    assert_eq!(expected.len(), instructions.len() - 1);
     code.set_instructions(instructions);
 
-    let bytes = common::write(&dex)?;
-    let deferred = common::parse_with_loading(&bytes, Loading::Deferred)?;
-    for &(expected_idx, literal) in &expected {
+    let deferred = common::parse_with_loading(&common::write(&dex)?, Loading::Deferred)?;
+    for (index, literal) in expected {
         let query = RefQuery::all_of([RefKey::Literal(literal)]);
         let hits = deferred.scan_instructions(&query, |site| {
             (site.instruction.literal() == Some(literal)).then_some(site.insn_idx)
         })?;
-        assert_eq!(hits, vec![expected_idx], "literal {literal}");
+        assert_eq!(hits, [index], "literal {literal}");
     }
     Ok(())
 }
