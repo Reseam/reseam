@@ -128,6 +128,15 @@ impl DexSet {
             .map(|(index, slot)| (DexIndex(index), &slot.dex, &slot.origin))
     }
 
+    /// Slots `a` and `b`, which differ, both mutably.
+    pub(super) fn pair_mut(&mut self, a: DexIndex, b: DexIndex) -> (&mut DexFile, &mut DexFile) {
+        let [a, b] = self
+            .slots
+            .get_disjoint_mut([a.0, b.0])
+            .expect("the slots are two of this set");
+        (&mut a.dex, &mut b.dex)
+    }
+
     /// The DEX of a slot whose entry still exists.
     pub(super) fn live_mut(&mut self, index: usize) -> Option<&mut DexFile> {
         self.slots

@@ -42,3 +42,8 @@ val fileStreams =
         check(runCatching { files.write("assets/failed.bin", FailingStream(100_000)) }.isFailure)
         check(files.read("assets/failed.bin") == null) { "a failed write leaves nothing" }
     }
+
+val foldDexFiles =
+    fixturePatch(TestStrings.foldDexFiles, TestStrings.foldDexFilesDescription) {
+        bytecode.foldDexFiles()
+    }

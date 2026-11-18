@@ -4,6 +4,7 @@
 mod common;
 mod edit;
 mod encoding;
+mod import;
 mod pools;
 mod search;
 mod smali;

@@ -109,6 +109,24 @@ Every extension also compiles against:
 
 Outside the `apps/` and `shared/` layout, a patch module adds extensions with `reseamExtensions(project(":my-extension"))`, and an extension adds a settings module with `reseamSettings(project(":settings"))`.
 
+## Where the classes go
+
+Each extension DEX in your bundle becomes one more `classesN.dex` in the app. So does the overflow of an app DEX file that your patches pushed past its limit: a DEX file holds at most 65,536 methods, fields and types.
+
+Some apps count their DEX files and refuse to run with more. For those, call `foldDexFiles()` from a patch:
+
+```kotlin
+val keepDexFileCount = patch(ExamplePatchStrings.keepDexFileCount) {
+    compatibleWith("com.example.app"("2.14.0"))
+
+    execute { bytecode.foldDexFiles() }
+}
+```
+
+Reseam then writes your classes, and the overflow, into the DEX files the app already has, wherever they have room. A class that no file has room for still gets a new file.
+
+Folding rewrites DEX files that patching would otherwise copy unchanged, so a run takes a little longer. Leave it out for apps that don't need it.
+
 ## When something clashes
 
 Two extensions that define the same class differently fail the bundle when it loads. `reseam bundle list <bundle> --verbose` shows which DEX files a bundle contains.

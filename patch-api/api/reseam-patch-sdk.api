@@ -50,6 +50,7 @@ public final class app/reseam/patch/BytecodeScope {
 	public final fun classesExtending (Ljava/lang/String;)Ljava/util/List;
 	public final fun classesImplementing (Ljava/lang/String;)Ljava/util/List;
 	public final fun findClass-cbruItE (Ljava/lang/String;)Lapp/reseam/patch/dex/DexClass;
+	public final fun foldDexFiles ()V
 	public final fun getClasses ()Ljava/util/List;
 	public final fun redirectCalls (Lapp/reseam/patch/types/MethodRef;Lapp/reseam/patch/ExtMethod;)I
 	public final fun redirectCalls (Ljava/lang/String;Ljava/lang/String;Lapp/reseam/patch/ExtMethod;)I

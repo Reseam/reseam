@@ -21,6 +21,11 @@ impl DexPart {
     pub fn class_count(&self) -> usize {
         self.classes.len()
     }
+
+    /// The classes' indices in their DEX, in table order.
+    pub fn classes(&self) -> &[usize] {
+        &self.classes
+    }
 }
 
 /// Splits `dex` into parts that each fit the id limits, keeping its classes

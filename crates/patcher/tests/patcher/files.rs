@@ -42,3 +42,11 @@ fn files_streamed_in_and_out_match_files_written_whole() {
         );
     }
 }
+
+#[test]
+fn a_patch_can_ask_for_dex_folding() {
+    let (_dir, mut apk) = open_split_test_apk();
+    assert!(!apk.dex_folding_requested());
+    apply_fixture(&mut apk, "fold-dex-files", "foldDexFiles");
+    assert!(apk.dex_folding_requested());
+}

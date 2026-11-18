@@ -8,3 +8,8 @@ use boltffi::export;
 pub fn is_added_dex(d: u32) -> bool {
     with_ctx(|ctx| ctx.apk().is_added_dex(d as usize))
 }
+
+#[export]
+pub fn request_dex_folding() {
+    with_ctx(|ctx| ctx.apk_mut().request_dex_folding());
+}

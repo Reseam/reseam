@@ -7,6 +7,7 @@ pub(crate) mod hidden_api;
 pub(crate) mod memory;
 pub use hidden_api::HiddenApiData;
 mod ids;
+mod import;
 mod interning;
 mod items;
 pub(crate) use items::FileTable;
@@ -25,6 +26,7 @@ use crate::DexBytes;
 use crate::search::index::{PoolKeys, RefIndex};
 pub use classes::ClassTable;
 pub use ids::{IdRecord, IdTable};
+pub use import::{ClassImport, ImportedPools};
 pub use strings::StringPool;
 
 use crate::model::header::DexHeader;

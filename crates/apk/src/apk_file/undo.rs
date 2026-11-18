@@ -11,10 +11,12 @@ use super::dex_set::{DexIndex, DexSource};
 pub(super) enum Part {
     DexCount,
     Slot(DexIndex),
+    DexFolding,
 }
 
 pub(super) enum Undo {
     DexCount(usize),
+    DexFolding(bool),
     Slot {
         index: DexIndex,
         dex: Box<DexFile>,
@@ -54,6 +56,7 @@ impl ApkFile {
         for undo in self.journal.rollback(savepoint) {
             match undo {
                 Undo::DexCount(len) => removed.extend(self.dex.truncate(len)),
+                Undo::DexFolding(requested) => self.folds_dex = requested,
                 Undo::Slot { index, dex, kind } => {
                     self.dex.replace(index, *dex, kind);
                 }

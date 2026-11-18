@@ -6,6 +6,7 @@ use crate::model::code::CodeItem;
 use crate::model::{
     FieldIdx, MethodHandleIdx, MethodIdx, PerPool, Pool, ProtoIdx, StringIdx, TypeIdx,
 };
+mod class;
 mod metadata;
 
 use crate::references::{self, RefSink, ReferenceValidator};
@@ -21,6 +22,25 @@ impl Remap {
 
     pub(crate) fn into_tables(self) -> PerPool<Vec<u32>> {
         self.0
+    }
+
+    /// A map for pools of `len` source entries that places none of them yet.
+    pub(crate) fn unplaced(len: impl Fn(Pool) -> usize) -> Self {
+        Self(PerPool::from_fn(|pool| vec![u32::MAX; len(pool)]))
+    }
+
+    /// Records that source index `idx` lands at `written`.
+    pub(crate) fn place(&mut self, pool: Pool, idx: u32, written: u32) {
+        self.0[pool][idx as usize] = written;
+    }
+
+    /// Forgets where source index `idx` lands.
+    pub(crate) fn unplace(&mut self, pool: Pool, idx: u32) {
+        self.place(pool, idx, u32::MAX);
+    }
+
+    pub(crate) fn places(&self, pool: Pool, idx: u32) -> bool {
+        self.0[pool][idx as usize] != u32::MAX
     }
 
     /// The written index of a source index the output must hold.

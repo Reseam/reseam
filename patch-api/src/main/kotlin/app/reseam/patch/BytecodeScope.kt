@@ -12,11 +12,20 @@ import app.reseam.patch.native.findInstructionsByString
 import app.reseam.patch.native.findInstructionsByStringContains
 import app.reseam.patch.native.findInstructionsByStringPrefix
 import app.reseam.patch.native.instructionStringRef
+import app.reseam.patch.native.requestDexFolding
 import app.reseam.patch.run.ActiveRuntime
 import app.reseam.patch.types.InstructionHit
 import app.reseam.patch.types.MethodRef
 
 class BytecodeScope internal constructor() {
+    /**
+     * Keeps the app at the DEX files it came with. Extension classes, and app classes that no
+     * longer fit their own file, are written into the app's DEX files that have room for them. A
+     * class no file has room for still gets a file of its own. Call it from a patch for an app that
+     * counts its DEX files.
+     */
+    fun foldDexFiles() = requestDexFolding()
+
     val classes: List<DexClass>
         get() = ActiveRuntime.current.index.allClasses
 

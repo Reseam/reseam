@@ -60,6 +60,7 @@ impl ApkFile {
             dex: DexSet::load(&components, opts)?,
             components,
             _scratch: scratch,
+            folds_dex: false,
             journal: reseam_journal::Journal::default(),
         };
         info!(

@@ -147,6 +147,12 @@ fn execute(
     // Patches can add native libraries, so the ABI is chosen from the patched app.
     let native_abi = opened.retain_native_abi_for(&request.device_abis)?;
 
+    if opened.apk.dex_folding_requested() {
+        opened
+            .apk
+            .fold_dex()
+            .map_err(|source| opened.error(source))?;
+    }
     // Patching is over, so its search indexes and resident source pages go
     // before writing, the run's peak.
     opened.apk.prepare_dex_for_writing(WriteOptions {

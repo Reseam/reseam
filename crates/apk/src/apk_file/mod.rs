@@ -8,6 +8,7 @@ mod open;
 pub(crate) use open::order_components;
 mod entries;
 mod entry_reader;
+mod fold;
 mod native;
 mod presentation;
 mod resources;
@@ -32,6 +33,8 @@ pub struct ApkFile {
     dex: DexSet,
     /// Where the components of a container were extracted, removed with the session.
     _scratch: Option<reseam_storage::ScratchDir>,
+    /// Whether a patch asked for [`Self::fold_dex`] before the APK is written.
+    folds_dex: bool,
     journal: reseam_journal::Journal<undo::Part, undo::Undo>,
 }
 

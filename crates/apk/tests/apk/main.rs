@@ -10,6 +10,7 @@ mod dex_names;
 mod dex_slots;
 mod entries;
 mod entry_readers;
+mod fold;
 mod presentation;
 mod savepoints;
 mod string_pool;

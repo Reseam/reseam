@@ -56,6 +56,8 @@
     <string name="filled_bodies_description">Calls an extension and implements the external methods the call reaches</string>
     <string name="file_streams">file-streams</string>
     <string name="file_streams_description">Streams files in and out without holding them whole, and keeps what a stream opened</string>
+    <string name="fold_dex_files">fold-dex-files</string>
+    <string name="fold_dex_files_description">Asks for added classes to go into the DEX files of the app</string>
     <string name="after_entry_values">after-entry-values</string>
     <string name="after_entry_values_description">Checks entry argument lifetimes through the real code emitter</string>
     <string name="skip_when">skip-when</string>
