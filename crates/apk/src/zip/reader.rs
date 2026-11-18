@@ -22,10 +22,16 @@ pub(crate) fn open_archive(path: &Path) -> Result<Archive> {
 /// language encoding flag says. The ZIP reader decodes unflagged names as CP437 instead, which
 /// turns any non-ASCII name into one the archive does not hold.
 pub(crate) fn entry_names(archive: &Archive) -> Result<Vec<EntryName>> {
-    let mut archive = archive.clone();
-    (0..archive.len())
-        .map(|index| {
-            let entry = archive.by_index_raw(index)?;
+    let mut raw_archive = None;
+    archive
+        .file_names()
+        .enumerate()
+        .map(|(index, decoded)| {
+            if decoded.is_ascii() {
+                return Ok(EntryName::from(decoded));
+            }
+            let raw = raw_archive.get_or_insert_with(|| archive.clone());
+            let entry = raw.by_index_raw(index)?;
             String::from_utf8(entry.name_raw().to_vec())
                 .map(EntryName::from)
                 .map_err(|_| invalid("zip entry", format!("{}: name is not UTF-8", entry.name())))
