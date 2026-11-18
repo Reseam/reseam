@@ -11,6 +11,7 @@ use super::{PoolKeys, RefIndex, Slot};
 use crate::error::{Result, invalid};
 use crate::file::ClassTable;
 use crate::instruction::stream::walk_instructions;
+use crate::model::class::MethodKind;
 use crate::options::ParseOptions;
 use crate::read::class::ClassDataCursor;
 
@@ -157,9 +158,9 @@ fn chunk_refs(
         };
         let mut cursor = ClassDataCursor::new(buf, offset as usize, opts)?;
         cursor.skip_fields()?;
-        let count = cursor.counts.direct_methods + cursor.counts.virtual_methods;
-        for group in [cursor.counts.direct_methods, cursor.counts.virtual_methods] {
-            let _: ControlFlow<()> = cursor.methods(group, |header| {
+        let first = position;
+        for kind in MethodKind::ALL {
+            let _: ControlFlow<()> = cursor.methods(cursor.counts.methods(kind), |header| {
                 if header.code_off != 0 {
                     method.collect(buf, header.code_off, keys)?;
                     refs.pool
@@ -171,7 +172,7 @@ fn chunk_refs(
                 Ok(ControlFlow::Continue(()))
             })?;
         }
-        refs.methods.push(count);
+        refs.methods.push(position - first);
     }
     Ok(refs)
 }
