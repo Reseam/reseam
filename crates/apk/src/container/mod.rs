@@ -5,7 +5,7 @@ mod archive;
 mod metadata;
 
 use std::fs::File;
-use std::io;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use rayon::prelude::*;
@@ -16,6 +16,8 @@ use metadata::{ContainerMarker, check_metadata, read_metadata};
 use crate::apk_file::order_components;
 use crate::entry::MANIFEST_ENTRY;
 use crate::error::{Result, invalid};
+use crate::zip::COPY_BUFFER;
+use crate::zip::entry_data::EntryData;
 use crate::zip::reader::{self, Archive};
 use crate::{ApkComponent, ApkFile};
 use reseam_dex::{Loading, ParseOptions};
@@ -60,10 +62,13 @@ pub fn open_container(
     let scratch = ScratchDir::new("apk-container")?;
     let mut components: Vec<_> = apk_entries
         .par_iter()
-        .map_with(archive.clone(), |archive, entry| {
-            let path = extract_entry(archive, entry, scratch.path())?;
-            ApkComponent::open(&path, Loading::Deferred)
-        })
+        .map_with(
+            (archive.clone(), vec![0u8; COPY_BUFFER]),
+            |(archive, buf), entry| {
+                let path = extract_entry(archive, entry, scratch.path(), buf)?;
+                ApkComponent::open(&path, Loading::Deferred)
+            },
+        )
         .collect::<Result<_>>()?;
     order_components(&mut components)?;
     if let Some(metadata) = &metadata {
@@ -137,17 +142,16 @@ fn extension_format(path: &Path) -> Option<ContainerFormat> {
     }
 }
 
-fn extract_entry(archive: &mut Archive, name: &str, dir: &Path) -> Result<PathBuf> {
+fn extract_entry(archive: &mut Archive, name: &str, dir: &Path, buf: &mut [u8]) -> Result<PathBuf> {
     let path = dir.join(name);
-    let mut entry = archive.by_name(name)?;
-    let size = entry.size();
+    let mut entry = EntryData::open(archive, name)?;
     let mut output = File::create(&path)?;
-    let written = io::copy(&mut entry, &mut output)?;
-    if written != size {
-        return Err(invalid(
-            "container",
-            format!("truncated APK entry {name}: expected {size} bytes, got {written}"),
-        ));
+    loop {
+        let read = entry.read(buf)?;
+        if read == 0 {
+            break;
+        }
+        output.write_all(&buf[..read])?;
     }
     Ok(path)
 }
