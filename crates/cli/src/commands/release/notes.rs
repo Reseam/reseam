@@ -14,6 +14,15 @@ pub(super) fn commit_subjects(tag: &str) -> Result<String> {
     git(&["log", "--no-merges", "--format=- %s", &range])
 }
 
+/// The non-empty `parts` as Markdown paragraphs.
+pub(super) fn paragraphs(parts: [&str; 2]) -> String {
+    parts
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
 fn git(args: &[&str]) -> Result<String> {
     let output = Command::new("git")
         .args(args)

@@ -19,7 +19,9 @@ pub(super) struct Release<'a> {
     pub args: &'a ReleaseArgs,
     pub store: Store,
     announcement: Option<Forge>,
+    /// What the forge release says. Its page lists the attached media itself.
     pub notes: String,
+    media: String,
 }
 
 impl<'a> Release<'a> {
@@ -35,12 +37,32 @@ impl<'a> Release<'a> {
                 .with_context(|| format!("failed to read {}", path.display()))?,
             None => notes::commit_subjects(&args.tag)?,
         };
-        Ok(Self {
+        let mut release = Self {
             args,
             store,
             announcement,
             notes,
-        })
+            media: String::new(),
+        };
+        let draft = release
+            .forge()
+            .map(|forge| forge.draft(&args.tag))
+            .transpose()?;
+        if let Some(draft) = draft.flatten() {
+            release.notes = notes::paragraphs([&draft.text, release.notes.trim()]);
+            release.media = draft
+                .media
+                .iter()
+                .map(|(name, url)| format!("![{name}]({url})"))
+                .collect::<Vec<_>>()
+                .join("\n\n");
+        }
+        Ok(release)
+    }
+
+    /// The notes clients show: the author's media in Markdown, then what the forge release says.
+    pub fn description(&self) -> String {
+        notes::paragraphs([&self.media, &self.notes])
     }
 
     pub fn forge(&self) -> Option<&Forge> {

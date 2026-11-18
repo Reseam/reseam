@@ -80,7 +80,7 @@ pub fn run_release_patches(command: &ReleasePatchesCommand) -> Result<()> {
     let entry = PublishedRelease {
         version: info.version.clone(),
         created_at: OffsetDateTime::now_utc().format(&Rfc3339)?,
-        description: release.notes.clone(),
+        description: release.description(),
         download_url: release
             .store
             .download_url(&release.args.tag, file_name(&command.bundle)?)?
@@ -124,7 +124,7 @@ pub fn run_release_manager(command: &ReleaseManagerCommand) -> Result<()> {
     let entry = PublishedRelease {
         version,
         created_at: OffsetDateTime::now_utc().format(&Rfc3339)?,
-        description: release.notes.clone(),
+        description: release.description(),
         download_url: command.download_url.to_string(),
         prerelease,
         patches: None,

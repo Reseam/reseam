@@ -4,7 +4,7 @@
 use std::fs::File;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use serde::Deserialize;
 use serde_json::json;
 use tracing::info;
@@ -28,14 +28,34 @@ struct Release {
     id: u64,
     tag_name: String,
     draft: bool,
+    body: Option<String>,
     upload_url: String,
     assets: Vec<Asset>,
 }
 
 #[derive(Deserialize)]
 struct Asset {
+    id: u64,
     name: String,
     browser_download_url: String,
+    /// The asset in the API. GitHub names it; Forgejo keeps assets under their release.
+    url: Option<String>,
+}
+
+/// What an author put in a draft release for a tag before releasing it.
+pub(super) struct Draft {
+    pub text: String,
+    /// The name and address of each image and video attached to it.
+    pub media: Vec<(String, Url)>,
+}
+
+const MEDIA: [&str; 8] = ["avif", "gif", "jpeg", "jpg", "mp4", "png", "webm", "webp"];
+
+fn media_name(file: &str) -> Option<&str> {
+    let (name, extension) = file.rsplit_once('.')?;
+    MEDIA
+        .contains(&extension.to_ascii_lowercase().as_str())
+        .then_some(name)
 }
 
 impl Forge {
@@ -79,45 +99,69 @@ impl Forge {
         )
     }
 
+    /// The draft release an author prepared for `tag`: its text, and the images and videos attached to it.
+    pub fn draft(&self, tag: &str) -> Result<Option<Draft>> {
+        let (draft, _) = self.tagged(tag)?;
+        Ok(draft.map(|release| Draft {
+            text: release.body.unwrap_or_default().trim().to_owned(),
+            media: release
+                .assets
+                .iter()
+                .filter_map(|asset| {
+                    Some((
+                        media_name(&asset.name)?.to_owned(),
+                        self.asset_url(tag, &asset.name),
+                    ))
+                })
+                .collect(),
+        }))
+    }
+
+    /// Publishes the release for `tag` with `files` attached. A draft for the tag becomes the release and keeps
+    /// what its author attached; published releases of the tag are replaced.
     pub fn publish(&self, tag: &str, notes: &str, prerelease: bool, files: &[&Path]) -> Result<()> {
-        for stale in self
-            .releases()?
-            .into_iter()
-            .filter(|release| release.tag_name == tag)
-        {
-            checked(
+        let (draft, published) = self.tagged(tag)?;
+        for stale in published {
+            self.delete(&self.release_url(Some(stale.id)))?;
+        }
+        let release = if let Some(draft) = draft {
+            draft
+        } else {
+            // A draft stays hidden from clients until every file is attached.
+            let mut body = json!({ "tag_name": tag, "name": tag, "draft": true });
+            if let Some(commit) = &self.commit {
+                body["target_commitish"] = json!(commit);
+            }
+            json(
                 self.agent
-                    .delete(self.release_url(Some(stale.id)).as_str())
+                    .post(self.release_url(None).as_str())
                     .header("Authorization", &self.auth)
-                    .call(),
-            )?;
-        }
-        // A draft stays hidden from clients until every file is attached.
-        let mut body = json!({
-            "tag_name": tag,
-            "name": tag,
-            "body": notes,
-            "prerelease": prerelease,
-            "draft": true,
-        });
-        if let Some(commit) = &self.commit {
-            body["target_commitish"] = json!(commit);
-        }
-        let release: Release = json(
-            self.agent
-                .post(self.release_url(None).as_str())
-                .header("Authorization", &self.auth)
-                .send_json(&body),
-        )?;
+                    .send_json(&body),
+            )?
+        };
         // GitHub ends upload_url with a {?name,label} URI template; Forgejo does not.
         let uploads = release
             .upload_url
             .split_once('{')
             .map_or(release.upload_url.as_str(), |(url, _)| url);
         for path in files {
+            let name = file_name(path)?;
+            // A run that stopped halfway left its files on the draft, and a forge refuses a second file of a name.
+            for stale in release.assets.iter().filter(|asset| asset.name == name) {
+                let asset = match &stale.url {
+                    Some(url) => {
+                        Url::parse(url).context("the forge returned an invalid asset url")?
+                    }
+                    None => with_segments(
+                        self.release_url(Some(release.id)),
+                        ["assets", &stale.id.to_string()],
+                    ),
+                };
+                self.delete(&asset)?;
+            }
             let mut url =
                 Url::parse(uploads).context("the forge returned an invalid upload_url")?;
-            url.query_pairs_mut().append_pair("name", file_name(path)?);
+            url.query_pairs_mut().append_pair("name", name);
             let file =
                 File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
             checked(
@@ -132,9 +176,34 @@ impl Forge {
             self.agent
                 .patch(self.release_url(Some(release.id)).as_str())
                 .header("Authorization", &self.auth)
-                .send_json(json!({ "draft": false })),
+                .send_json(json!({ "body": notes, "prerelease": prerelease, "draft": false })),
         )?;
         info!(tag, page = %self.page, "published the forge release");
+        Ok(())
+    }
+
+    /// The releases of `tag`: its draft, and the published ones.
+    fn tagged(&self, tag: &str) -> Result<(Option<Release>, Vec<Release>)> {
+        let (mut drafts, published): (Vec<_>, Vec<_>) = self
+            .releases()?
+            .into_iter()
+            .filter(|release| release.tag_name == tag)
+            .partition(|release| release.draft);
+        ensure!(
+            drafts.len() <= 1,
+            "{tag} has {} draft releases; keep one",
+            drafts.len()
+        );
+        Ok((drafts.pop(), published))
+    }
+
+    fn delete(&self, url: &Url) -> Result<()> {
+        checked(
+            self.agent
+                .delete(url.as_str())
+                .header("Authorization", &self.auth)
+                .call(),
+        )?;
         Ok(())
     }
 
