@@ -9,6 +9,7 @@ pub mod catalog;
 pub mod context;
 pub mod engine;
 pub mod error;
+#[cfg(all(feature = "kotlin", not(target_os = "android")))]
 pub mod inspect;
 pub mod log;
 pub mod options;

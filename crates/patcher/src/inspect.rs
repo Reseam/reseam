@@ -6,21 +6,16 @@
 //! with a Kotlin compiler the host provides and run in a patch runtime over
 //! the APK, so a target matches exactly what it matches in a patch.
 
-#[cfg(all(feature = "kotlin", not(target_os = "android")))]
 use reseam_model::analysis::{CompileError, Snippet};
 
-#[cfg(all(feature = "kotlin", not(target_os = "android")))]
 pub use crate::bridge::runtime::inspector::inspect;
 
 /// The Kotlin version the patch runtime is compiled with. The compiler a host
 /// provides for [`inspect`] must be this version.
-#[cfg(all(feature = "kotlin", not(target_os = "android")))]
 pub const KOTLIN_VERSION: &str = env!("RESEAM_KOTLIN_VERSION");
-#[cfg(all(feature = "kotlin", not(target_os = "android")))]
 pub use crate::bridge::runtime::target_check::{CheckedTargets, TargetCheck};
 
 /// The generated file around a snippet, split where the snippet goes.
-#[cfg(all(feature = "kotlin", not(target_os = "android")))]
 pub(crate) fn source(snippet: &Snippet) -> (String, u32) {
     const HEADER: &str = "package app.reseam.inspection\n\nimport app.reseam.patch.*\nimport app.reseam.patch.dex.*\nimport app.reseam.patch.types.*\n\nobject Snippet {\n";
     let (open, text, close) = match snippet {
@@ -42,7 +37,6 @@ pub(crate) fn source(snippet: &Snippet) -> (String, u32) {
 
 /// The errors in the compiler's messages, at snippet lines: each starts
 /// `<file>:<line>:<column>: error: <message>`.
-#[cfg(all(feature = "kotlin", not(target_os = "android")))]
 pub(crate) fn compile_errors(messages: &str, offset: u32) -> Vec<CompileError> {
     messages
         .lines()
@@ -60,7 +54,7 @@ pub(crate) fn compile_errors(messages: &str, offset: u32) -> Vec<CompileError> {
         .collect()
 }
 
-#[cfg(all(test, feature = "kotlin", not(target_os = "android")))]
+#[cfg(test)]
 mod tests {
     use reseam_model::analysis::{CompileError, Snippet};
 
