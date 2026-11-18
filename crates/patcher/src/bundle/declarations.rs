@@ -4,7 +4,6 @@
 use super::PATCH_INDEX;
 use super::index::Declaration;
 use crate::error::{BundleError, Result};
-use rayon::prelude::*;
 #[cfg(feature = "kotlin")]
 use std::collections::BTreeSet;
 use std::collections::{BTreeMap, HashSet};
@@ -15,24 +14,17 @@ use zip::ZipArchive;
 
 /// The patch declarations of `jars`, by the class that declares them.
 pub(crate) fn declarations(jars: &[PathBuf]) -> Result<BTreeMap<String, Vec<Declaration>>> {
-    let per_jar: Vec<(Vec<String>, Vec<Declaration>)> = jars
-        .par_iter()
-        .map(|jar| {
-            let mut archive = ZipArchive::new(File::open(jar)?)?;
-            let classes: Vec<String> = archive
-                .file_names()
-                .filter_map(|name| name.strip_suffix(".class"))
-                .map(|name| name.replace('/', "."))
-                .collect();
-            let declarations = index(jar, &mut archive)?;
-            Ok((classes, declarations))
-        })
-        .collect::<Result<_>>()?;
     let mut classes = HashSet::new();
     let mut found: BTreeMap<String, Vec<Declaration>> = BTreeMap::new();
-    for (jar_classes, jar_declarations) in per_jar {
-        classes.extend(jar_classes);
-        for declaration in jar_declarations {
+    for jar in jars {
+        let mut archive = ZipArchive::new(File::open(jar)?)?;
+        classes.extend(
+            archive
+                .file_names()
+                .filter_map(|name| name.strip_suffix(".class"))
+                .map(|name| name.replace('/', ".")),
+        );
+        for declaration in index(jar, &mut archive)? {
             let members = found.entry(declaration.class_name.clone()).or_default();
             if !members.contains(&declaration) {
                 members.push(declaration);
