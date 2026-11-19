@@ -33,7 +33,7 @@ release tag:
     bun run --cwd browser types
     cd browser && npm version --no-git-tag-version --allow-same-version {{ trim_start_match(tag, "v") }}
     cd browser && npm config set //git.reseam.app/api/packages/reseam/npm/:_authToken "$FORGEJO_PACKAGES_TOKEN" && npm publish
-    dist/reseam-linux-x64 release files dist --tag {{ tag }} --to s3://reseam-releases/engine --forge-release
+    dist/reseam-linux-x64 release files dist --tag {{ tag }} --to s3://reseam-releases/engine --keep 3 --forge-release
     # The GitHub mirror gets the same files, as a second place to download them from.
     git push "https://x-access-token:$MIRROR_RELEASE_TOKEN@github.com/Reseam/reseam.git" refs/tags/{{ tag }}
     GITHUB_SERVER_URL=https://github.com GITHUB_API_URL=https://api.github.com RELEASE_TOKEN="$MIRROR_RELEASE_TOKEN" \
