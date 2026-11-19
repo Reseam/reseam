@@ -20,6 +20,12 @@ use crate::error::PatcherError;
 
 mod signing;
 
+/// A version on the engine line after this engine's.
+pub(super) fn newer_engine() -> String {
+    let major: u32 = ENGINE_VERSION.split('.').next().unwrap().parse().unwrap();
+    format!("{}.0.0", major + 1)
+}
+
 pub(super) fn load_all(archive: BundleArchive) -> crate::error::Result<PatchBundle> {
     let ids = archive
         .patches()
@@ -128,7 +134,7 @@ pub(super) fn write_archive(path: &Path, manifest: &str, entries: &[(&str, &[u8]
 fn compatibility_errors_take_precedence_over_catalog_schema_errors() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("example.reseam");
-    for (engine, older) in [("0.16.0", true), ("1.0.0", false)] {
+    for (engine, older) in [("0.16.0".to_owned(), true), (newer_engine(), false)] {
         let manifest =
             format!("[bundle]\nname = 'example'\nformat_version = 1\nengine = '{engine}'\n");
         signed_archive(&path, &manifest, "resources/icon.png", b"resource");

@@ -6,7 +6,7 @@ use std::path::Path;
 use reseam_model::Problem;
 
 use super::super::{BundleArchive, container, pack, sign};
-use super::{load_all, resource_archive, resource_manifest, test_key, write_archive};
+use super::{load_all, newer_engine, resource_archive, resource_manifest, test_key, write_archive};
 use crate::error::{BundleError, PatcherError};
 
 /// Whether an error is the one a case expects.
@@ -68,7 +68,10 @@ fn signing_refuses_what_opening_would_and_signed_bundles() {
     );
     write_archive(
         &input("newer"),
-        "[bundle]\nname = 'example'\nformat_version = 1\nengine = '1.0.0'\n",
+        &format!(
+            "[bundle]\nname = 'example'\nformat_version = 1\nengine = '{}'\n",
+            newer_engine()
+        ),
         &[],
     );
     let cases: [(&str, Expected); 5] = [
