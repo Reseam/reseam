@@ -12,7 +12,7 @@ jobs:
     if: ${{ !github.event.deleted }}
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     container:
-      image: ghcr.io/reseam/ci:2026.11.18
+      image: ghcr.io/reseam/ci:2026.11.19
       volumes:
         - reseam-ci:/cache
     env:
