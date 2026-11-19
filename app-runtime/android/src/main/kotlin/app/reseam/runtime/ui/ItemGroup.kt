@@ -11,14 +11,14 @@ class ItemGroup internal constructor(private val ui: Ui) : LinearLayout(ui.conte
     }
 
     fun add(item: ListItem): ItemGroup = apply {
+        val previous = getChildAt(childCount - 1) as ListItem?
         addView(
             item,
             LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-                if (childCount > 0) topMargin = ui.px(Tokens.SPACE_XS)
+                if (previous != null) topMargin = ui.px(Tokens.SPACE_XS)
             },
         )
-        (0 until childCount).forEach { index ->
-            (getChildAt(index) as ListItem).setShape(index == 0, index == childCount - 1)
-        }
+        previous?.setShape(first = childCount == 2, last = false)
+        item.setShape(first = previous == null, last = true)
     }
 }
