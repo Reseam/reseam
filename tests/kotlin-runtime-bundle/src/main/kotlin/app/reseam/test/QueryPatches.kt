@@ -139,3 +139,15 @@ val optimizedEnumConstants =
                 .encodeToByteArray(),
         )
     }
+
+private val modeEnum = klass("mode") { enumConstants("MAIN", "BACKUP") }
+
+val aliasedEnumConstants =
+    fixturePatch(TestStrings.aliasedEnumConstants, TestStrings.aliasedEnumConstantsDescription) {
+        val main = modeEnum.enumConstant("MAIN")
+        klass("com.example.Account").method("mode").replace { returnValue(staticField(main)) }
+        files.write(
+            "assets/aliased-enum-constants.txt",
+            "${modeEnum.descriptor}|${main.name}".encodeToByteArray(),
+        )
+    }
