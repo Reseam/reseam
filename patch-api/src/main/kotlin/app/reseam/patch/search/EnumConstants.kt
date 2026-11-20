@@ -3,9 +3,11 @@
 
 package app.reseam.patch.search
 
+import app.reseam.patch.dex.AccessFlags
 import app.reseam.patch.dex.DexClass
 import app.reseam.patch.dex.Opcode
 import app.reseam.patch.dex.fieldRef
+import app.reseam.patch.dex.isSet
 import app.reseam.patch.dex.methodRef
 import app.reseam.patch.dex.opcode
 import app.reseam.patch.dex.regA
@@ -55,13 +57,20 @@ internal fun readEnumConstants(classDef: DexClass, index: SearchIndex): Map<Stri
                 ?.distinct()
                 ?.singleOrNull() ?: return@forEachIndexed
     }
+    // Optimizers can store a constant again in a plain static alias (e.g. a private DEFAULT), so
+    // only the fields declared as enum constants name one.
+    val constantFields =
+        classDef.staticFields
+            .filter { AccessFlags.ENUM.isSet(it.accessFlags) }
+            .mapTo(mutableSetOf()) { it.name }
     return buildMap {
         insns.forEachIndexed { at, insn ->
             val field = insn.fieldRef ?: return@forEachIndexed
             if (
                 insn.opcode != Opcode.SPUT_OBJECT ||
                     field.definingClass != type ||
-                    field.fieldType != type
+                    field.fieldType != type ||
+                    field.name !in constantFields
             )
                 return@forEachIndexed
             val instance = sites(origins.register(insns, at, insn.regA ?: return@forEachIndexed))

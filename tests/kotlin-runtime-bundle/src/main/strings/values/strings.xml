@@ -125,6 +125,8 @@
     <string name="field_accesses_description">Field access queries find readers and writers through the reference index</string>
     <string name="optimized_enum_constants">optimized-enum-constants</string>
     <string name="optimized_enum_constants_description">Enum constants resolve when optimizers construct them through Enum.&lt;init&gt; or a constant subclass</string>
+    <string name="aliased_enum_constants">aliased-enum-constants</string>
+    <string name="aliased_enum_constants_description">Enum constants resolve to their own fields when a static alias stores the same instance</string>
     <string name="resource_entries">resource-entries</string>
     <string name="resource_entries_description">Reaches a resource file by name, registers typed file resources, and edits a style and an array</string>
     <string name="registration_owner">registration-owner</string>

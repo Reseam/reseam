@@ -137,6 +137,19 @@ fn enum_constants_resolve_when_optimizers_bypass_the_enum_constructor() {
 }
 
 #[test]
+fn enum_constants_ignore_static_aliases_stored_after_the_constant() {
+    let (_apk_dir, mut apk) = open_dex_apk(&[dex!("aliased_enum")]);
+    apply_fixture(&mut apk, "aliased-enum-constants", "aliasedEnumConstants");
+
+    assert_eq!(
+        apk.read_component_entry(0, "assets/aliased-enum-constants.txt")
+            .unwrap(),
+        Some(b"Lcom/example/Mode;|MAIN".to_vec()),
+        "<clinit> stores MAIN again in a private DEFAULT alias that is not an enum constant"
+    );
+}
+
+#[test]
 fn a_query_can_require_instruction_order_and_a_predicate_of_its_own() {
     let (_apk_dir, mut apk) = open_dex_apk(&[dex!("ordered_queries")]);
     apply_fixture(
