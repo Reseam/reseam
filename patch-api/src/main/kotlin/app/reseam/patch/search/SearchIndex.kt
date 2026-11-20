@@ -135,8 +135,13 @@ internal class SearchIndex(private val cache: RunCache) {
     fun classesImplementing(type: String): Set<DexClass> =
         classesBy(implementers, type, ::findClassesImplementing)
 
-    fun classExtends(classDef: DexClass, type: String): Boolean =
-        classDef.superclass == type || classDef.superclassChain.any { it.descriptor == type }
+    // The chain holds only classes the app defines, so the platform class it stops at is the last
+    // ancestor's superclass.
+    fun classExtends(classDef: DexClass, type: String): Boolean {
+        if (classDef.superclass == type) return true
+        val chain = classDef.superclassChain
+        return chain.any { it.descriptor == type } || chain.lastOrNull()?.superclass == type
+    }
 
     private fun classesBy(
         memo: Memos.Memo<String, Set<DexClass>>,
