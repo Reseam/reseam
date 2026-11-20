@@ -6,6 +6,7 @@ package app.reseam.runtime
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.os.Process
 
 /**
  * What takes effect only when the app restarts: the bundle's settings marked so, and Reseam's
@@ -35,5 +36,6 @@ internal fun restart(context: Context) {
             "The app has no launcher activity to restart into"
         }
     context.startActivity(Intent.makeRestartActivityTask(launch.component))
-    Runtime.getRuntime().exit(0)
+    // Native crash reporters hook exit() and can block in it.
+    Process.killProcess(Process.myPid())
 }
