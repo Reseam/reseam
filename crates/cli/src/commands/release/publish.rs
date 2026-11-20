@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-use super::forge::Forge;
+use super::forge::{Forge, Published};
 use reseam_model::ReleaseIndex;
 
 use super::index;
@@ -22,11 +22,25 @@ pub(super) struct Release<'a> {
     /// What the forge release says. Its page lists the attached media itself.
     pub notes: String,
     media: String,
+    /// The index this release adds to, as published before it.
+    pub previous: Option<ReleaseIndex>,
+    published: Published,
 }
 
 impl<'a> Release<'a> {
-    pub fn open(args: &'a ReleaseArgs) -> Result<Self> {
+    /// Opens the release of `args.tag`. With `index`, the name of the release index it adds to, a published forge
+    /// release of a tag that index does not list yet is taken as the author's draft.
+    pub fn open(args: &'a ReleaseArgs, index: Option<&str>) -> Result<Self> {
         let store = Store::open(args)?;
+        let previous = index
+            .map(|name| store.previous_index(name))
+            .transpose()?
+            .flatten();
+        let published = match (index, &previous) {
+            (Some(_), None) => Published::Draft,
+            (Some(_), Some(previous)) if !index::lists(previous, &args.tag) => Published::Draft,
+            _ => Published::Earlier,
+        };
         let announcement = if args.forge_release {
             Some(Forge::from_env()?)
         } else {
@@ -43,10 +57,12 @@ impl<'a> Release<'a> {
             announcement,
             notes,
             media: String::new(),
+            previous,
+            published,
         };
         let draft = release
             .forge()
-            .map(|forge| forge.draft(&args.tag))
+            .map(|forge| forge.draft(&args.tag, published))
             .transpose()?;
         if let Some(draft) = draft.flatten() {
             release.notes = notes::paragraphs([&draft.text, release.notes.trim()]);
@@ -83,7 +99,7 @@ impl<'a> Release<'a> {
         match &self.store {
             Store::Forge(forge) => {
                 let assets: Vec<_> = files.iter().copied().chain(index).collect();
-                forge.publish(tag, body, prerelease, &assets)
+                forge.publish(tag, body, prerelease, &assets, self.published)
             }
             Store::Files(store) => {
                 store.upload(tag, files, index)?;
@@ -91,7 +107,7 @@ impl<'a> Release<'a> {
                     store.prune(keep)?;
                 }
                 match &self.announcement {
-                    Some(forge) => forge.publish(tag, body, prerelease, &[]),
+                    Some(forge) => forge.publish(tag, body, prerelease, &[], self.published),
                     None => Ok(()),
                 }
             }

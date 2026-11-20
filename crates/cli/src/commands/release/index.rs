@@ -21,6 +21,15 @@ pub(crate) fn public_key(index: &ReleaseIndex) -> Option<String> {
         .map(str::to_ascii_lowercase)
 }
 
+/// Whether `index` lists a release named `version`; a leading `v` on either name is ignored.
+pub(crate) fn lists(index: &ReleaseIndex, version: &str) -> bool {
+    let wanted = unprefixed(version);
+    index
+        .releases
+        .iter()
+        .any(|release| unprefixed(&release.version) == wanted)
+}
+
 /// The release named `version`; a leading `v` on either name is ignored.
 pub(crate) fn release<'a>(index: &'a ReleaseIndex, version: &str) -> Result<&'a PublishedRelease> {
     let wanted = unprefixed(version);

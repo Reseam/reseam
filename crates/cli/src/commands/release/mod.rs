@@ -55,8 +55,8 @@ pub fn run_release_patches(command: &ReleasePatchesCommand) -> Result<()> {
         "{} has no version; pack it with --version",
         command.bundle.display()
     );
-    let release = Release::open(&command.release)?;
-    let previous = release.store.previous_index(PATCHES_INDEX)?;
+    let mut release = Release::open(&command.release, Some(PATCHES_INDEX))?;
+    let previous = release.previous.take();
     if let Some(previous) = &previous {
         changes::report(previous, &patches)?;
     }
@@ -111,7 +111,7 @@ pub fn run_release_manager(command: &ReleaseManagerCommand) -> Result<()> {
         "{} already holds a {MANAGER_INDEX}",
         command.dir.display()
     );
-    let release = Release::open(&command.release)?;
+    let mut release = Release::open(&command.release, Some(MANAGER_INDEX))?;
     let version = release.args.tag.trim_start_matches('v').to_owned();
     let prerelease = is_prerelease(&version);
     let publisher = Publisher {
@@ -129,7 +129,7 @@ pub fn run_release_manager(command: &ReleaseManagerCommand) -> Result<()> {
         prerelease,
         patches: None,
     };
-    let previous = release.store.previous_index(MANAGER_INDEX)?;
+    let previous = release.previous.take();
     let staged = Staged::index(MANAGER_INDEX, &add(previous, publisher, entry)?)?;
     let files: Vec<_> = files.iter().map(PathBuf::as_path).collect();
     release.publish(&release.notes, prerelease, &files, Some(&staged.path))
@@ -137,7 +137,7 @@ pub fn run_release_manager(command: &ReleaseManagerCommand) -> Result<()> {
 
 pub fn run_release_files(command: &ReleaseFilesCommand) -> Result<()> {
     let files = files_in(&command.dir)?;
-    let release = Release::open(&command.release)?;
+    let release = Release::open(&command.release, None)?;
     let files: Vec<_> = files.iter().map(PathBuf::as_path).collect();
     let prerelease = is_prerelease(&release.args.tag);
     release.publish(&release.notes, prerelease, &files, None)

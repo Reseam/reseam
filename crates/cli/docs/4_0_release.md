@@ -44,6 +44,8 @@ Publishes every file in the folder, without an index.
 
 `--to` picks where a release goes. The default, `forge`, creates the GitHub or Forgejo release of the tag with every file attached. Run it in a workflow: it reads the repository from the variables GitHub and Forgejo set, and the token from `RELEASE_TOKEN`, which you set to `${{ github.token }}`. The release stays a draft until every file is attached, and running it again for a tag replaces that tag's release. For bundles, the notes start with an Add to Reseam Manager link to the repository.
 
+A draft release you create for the tag before pushing it becomes the release. Its text goes above the commit subjects, and the images and videos attached to it (`avif`, `gif`, `jpeg`, `jpg`, `mp4`, `png`, `webm`, `webp`) go first in the index's notes. Forgejo publishes the draft as soon as the tag is pushed, so for `patches` and `manager` a published release of a tag that the index does not list yet is still treated as your draft.
+
 `s3://<bucket>/<prefix>` uploads to any S3-compatible store, configured by `AWS_ENDPOINT_URL`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY`. A folder path writes to that folder, for a static host. Both put the release's files in `<prefix>/<tag>/` and the index also in `<prefix>/`, where it always holds the latest. That copy is written last and, on S3, marked `no-cache`; release files are cached for a day.
 
 ## Release flags

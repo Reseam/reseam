@@ -42,6 +42,15 @@ struct Asset {
     url: Option<String>,
 }
 
+/// What an already published forge release of the tag being released is, when the tag has no draft.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Published {
+    /// The author's draft. Forgejo publishes a tag's draft when the tag is pushed.
+    Draft,
+    /// An earlier release of the tag, which this release replaces.
+    Earlier,
+}
+
 /// What an author put in a draft release for a tag before releasing it.
 pub(super) struct Draft {
     pub text: String,
@@ -84,11 +93,15 @@ impl Forge {
         with_segments(self.page.clone(), ["releases", "download", tag, name])
     }
 
+    /// The file `name` of the newest published release that has one. A release Forgejo published from a draft has
+    /// none until it is released.
     pub fn latest_asset(&self, name: &str) -> Result<Option<String>> {
-        let Some(release) = self.releases()?.into_iter().find(|release| !release.draft) else {
-            return Ok(None);
-        };
-        let Some(asset) = release.assets.into_iter().find(|asset| asset.name == name) else {
+        let Some(asset) = self
+            .releases()?
+            .into_iter()
+            .filter(|release| !release.draft)
+            .find_map(|release| release.assets.into_iter().find(|asset| asset.name == name))
+        else {
             return Ok(None);
         };
         text_if_found(
@@ -100,8 +113,8 @@ impl Forge {
     }
 
     /// The draft release an author prepared for `tag`: its text, and the images and videos attached to it.
-    pub fn draft(&self, tag: &str) -> Result<Option<Draft>> {
-        let (draft, _) = self.tagged(tag)?;
+    pub fn draft(&self, tag: &str, published: Published) -> Result<Option<Draft>> {
+        let (draft, _) = self.tagged(tag, published)?;
         Ok(draft.map(|release| Draft {
             text: release.body.unwrap_or_default().trim().to_owned(),
             media: release
@@ -118,10 +131,17 @@ impl Forge {
     }
 
     /// Publishes the release for `tag` with `files` attached. A draft for the tag becomes the release and keeps
-    /// what its author attached; published releases of the tag are replaced.
-    pub fn publish(&self, tag: &str, notes: &str, prerelease: bool, files: &[&Path]) -> Result<()> {
-        let (draft, published) = self.tagged(tag)?;
-        for stale in published {
+    /// what its author attached; earlier releases of the tag are replaced.
+    pub fn publish(
+        &self,
+        tag: &str,
+        notes: &str,
+        prerelease: bool,
+        files: &[&Path],
+        published: Published,
+    ) -> Result<()> {
+        let (draft, earlier) = self.tagged(tag, published)?;
+        for stale in earlier {
             self.delete(&self.release_url(Some(stale.id)))?;
         }
         let release = if let Some(draft) = draft {
@@ -183,8 +203,8 @@ impl Forge {
     }
 
     /// The releases of `tag`: its draft, and the published ones.
-    fn tagged(&self, tag: &str) -> Result<(Option<Release>, Vec<Release>)> {
-        let (mut drafts, published): (Vec<_>, Vec<_>) = self
+    fn tagged(&self, tag: &str, published: Published) -> Result<(Option<Release>, Vec<Release>)> {
+        let (mut drafts, mut earlier): (Vec<_>, Vec<_>) = self
             .releases()?
             .into_iter()
             .filter(|release| release.tag_name == tag)
@@ -194,7 +214,10 @@ impl Forge {
             "{tag} has {} draft releases; keep one",
             drafts.len()
         );
-        Ok((drafts.pop(), published))
+        if drafts.is_empty() && published == Published::Draft && earlier.len() == 1 {
+            drafts.append(&mut earlier);
+        }
+        Ok((drafts.pop(), earlier))
     }
 
     fn delete(&self, url: &Url) -> Result<()> {
