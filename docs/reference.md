@@ -5,7 +5,7 @@ description: Declaring patches, options, and what a patch sees while it runs.
 
 # API: Patches
 
-Everything here is in `app.reseam.patch`. The other API pages cover [targets and points](reference_targets.md), [code blocks](reference_code.md), [the manifest, resources, and files](reference_files.md), [settings](reference_settings.md), [Hermes](reference_hermes.md), [raw bytecode](reference_dex.md), the [app runtime](reference_runtime.md) your extensions call, and the [Gradle plugin](reference_gradle.md).
+Everything here is in `app.reseam.patch`. The other API pages cover [targets and points](reference_targets.md), [code blocks](reference_code.md), [the manifest, resources, and files](reference_files.md), [settings](reference_settings.md), [Hermes](reference_hermes.md), [native libraries](reference_native.md), [raw bytecode](reference_dex.md), the [app runtime](reference_runtime.md) your extensions call, and the [Gradle plugin](reference_gradle.md).
 
 Wherever a parameter is a type written as a `String`, you can pass a descriptor (`Ljava/lang/String;`), a dotted name (`java.lang.String`), or a [`Type`](#type) constant.
 

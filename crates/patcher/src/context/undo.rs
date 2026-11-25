@@ -34,6 +34,9 @@ impl PatchContext<'_> {
         if let Some(session) = &mut self.hermes {
             session.editor.open_savepoint(savepoint);
         }
+        for editor in self.native.values_mut() {
+            editor.open_savepoint(savepoint);
+        }
     }
 
     /// Keeps the changes made since `savepoint` as part of the savepoint around it.
@@ -42,6 +45,9 @@ impl PatchContext<'_> {
         self.apk.release_savepoint(savepoint);
         if let Some(session) = &mut self.hermes {
             session.editor.release_savepoint(savepoint);
+        }
+        for editor in self.native.values_mut() {
+            editor.release_savepoint(savepoint);
         }
     }
 
@@ -52,6 +58,9 @@ impl PatchContext<'_> {
         let mut removed: HashMap<usize, _> = self.apk.rollback_to(savepoint).into_iter().collect();
         if let Some(session) = &mut self.hermes {
             session.editor.rollback_to(savepoint);
+        }
+        for editor in self.native.values_mut() {
+            editor.rollback_to(savepoint);
         }
         for undo in self.journal.rollback(savepoint) {
             match undo {

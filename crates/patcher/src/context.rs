@@ -7,6 +7,9 @@ mod extensions;
 mod files;
 mod hermes;
 mod hierarchy;
+mod native;
+#[cfg(test)]
+mod native_tests;
 mod search;
 #[cfg(feature = "bridge")]
 mod trace;
@@ -15,12 +18,16 @@ mod undo;
 pub use dex::ClassFields;
 pub use extensions::ExtensionSet;
 pub(crate) use hermes::hermes_imports;
+pub(crate) use native::{LibraryKey, NativeQuery};
 pub use search::{FieldRefQuery, MethodRefQuery};
 #[cfg(feature = "bridge")]
 pub(crate) use trace::{Moved, TracePoint};
 
+use std::collections::BTreeMap;
+
 use reseam_apk::ApkFile;
 use reseam_dex::{ClassSkeleton, CodeItem, DexFile, EncodedMethod, MethodKind};
+use reseam_elf::Editor;
 
 use crate::log::{PatchLog, PatchScope};
 use crate::options::PatchOptions;
@@ -53,6 +60,7 @@ pub struct PatchContext<'a> {
     method: Option<CachedMethod>,
     extensions: ExtensionSet,
     hermes: Option<hermes::HermesSession>,
+    native: BTreeMap<LibraryKey, Editor>,
     journal: reseam_journal::Journal<undo::Part, undo::Undo>,
 }
 
@@ -76,6 +84,7 @@ impl<'a> PatchContext<'a> {
             method: None,
             extensions,
             hermes: None,
+            native: BTreeMap::new(),
             journal: reseam_journal::Journal::default(),
         }
     }

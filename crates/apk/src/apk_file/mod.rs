@@ -18,9 +18,12 @@ mod write;
 use std::borrow::Cow;
 use std::collections::HashSet;
 
+use reseam_model::Abi;
+
 pub use component::ApkComponent;
 pub use dex_set::DexSet;
 pub use entry_reader::EntryReader;
+pub use native::NativeLibrary;
 pub use presentation::{ApplicationIcon, IconLayer};
 pub use write::{ApkWriteOptions, SignaturePolicy};
 
@@ -35,6 +38,8 @@ pub struct ApkFile {
     _scratch: Option<reseam_storage::ScratchDir>,
     /// Whether a patch asked for [`Self::fold_dex`] before the APK is written.
     folds_dex: bool,
+    /// The ABIs of the device the set is for, most preferred first; empty when it is for any.
+    device: Vec<Abi>,
     journal: reseam_journal::Journal<undo::Part, undo::Undo>,
 }
 

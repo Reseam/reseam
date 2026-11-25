@@ -5,7 +5,7 @@ description: The plugins that build a bundle, their settings, and the properties
 
 # API: Gradle plugin
 
-The Gradle plugin builds your bundle. The guide page is [Bundle projects](15_bundles.md).
+The Gradle plugin builds your bundle. The guide page is [Bundle projects](16_bundles.md).
 
 ## Plugins
 
@@ -80,7 +80,7 @@ A patch module uses a settings module with the usual `api(project(":settings"))`
 
 | Task | Description |
 |---|---|
-| `bundle` | Builds, packs, and signs the bundle into `build/reseam/<name>.reseam`. Packing loads every patch once to record its metadata, so a patch that fails to load fails the build. The build lists which module made each file, which sets every patch's [fingerprint](15_bundles.md#fingerprints). |
+| `bundle` | Builds, packs, and signs the bundle into `build/reseam/<name>.reseam`. Packing loads every patch once to record its metadata, so a patch that fails to load fails the build. The build lists which module made each file, which sets every patch's [fingerprint](16_bundles.md#fingerprints). |
 | `unsignedBundle` | Builds and packs the bundle without a key into `build/reseam/unsigned/<name>.reseam`, for [`reseam bundle sign`](/docs/cli/bundle/#reseam-bundle-sign) to sign on another machine. |
 | `generateStrings` | Compiles `src/main/strings` into JSON tables and the patch-side object. Fails on a translation of an unknown string, one marked `translatable="false"`, or one whose arguments differ from the default. |
 | `generateDeviceStrings` | Generates the extension-side object of a settings or extension module. |

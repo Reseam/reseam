@@ -7,7 +7,7 @@ use crate::Problem;
 
 /// An Android ABI, named as a device's `Build.SUPPORTED_ABIS` lists it and as
 /// an APK's `lib/<abi>/` folder holds its native libraries.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(as = "String"))]
 #[boltffi::data]
 pub enum Abi {

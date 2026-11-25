@@ -2229,6 +2229,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "reseam-elf"
+version = "1.0.1"
+dependencies = [
+ "fixedbitset",
+ "memchr",
+ "pretty_assertions",
+ "reseam-bytes",
+ "reseam-journal",
+ "reseam-storage",
+ "rustc-hash",
+ "thiserror",
+]
+
+[[package]]
 name = "reseam-fixtures"
 version = "1.0.1"
 dependencies = [
@@ -2281,6 +2295,7 @@ dependencies = [
  "rayon",
  "reseam-apk",
  "reseam-dex",
+ "reseam-elf",
  "reseam-fixtures",
  "reseam-hermes",
  "reseam-journal",

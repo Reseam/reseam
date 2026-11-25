@@ -1,0 +1,21 @@
+[package]
+name = "reseam-elf"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Finding and editing functions in AArch64 and 32-bit ARM ELF shared libraries"
+
+[dependencies]
+reseam-bytes.workspace = true
+reseam-storage.workspace = true
+reseam-journal.workspace = true
+thiserror.workspace = true
+rustc-hash.workspace = true
+memchr.workspace = true
+fixedbitset.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+
+[lints]
+workspace = true

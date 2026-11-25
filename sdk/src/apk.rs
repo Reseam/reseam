@@ -75,10 +75,10 @@ impl OpenedApk {
         })
     }
 
-    /// Deletes the native libraries a device whose ABIs are `device_abis` doesn't
+    /// Deletes the native libraries the device the set was opened for doesn't
     /// load, and returns the ABI it does.
-    pub(crate) fn retain_native_abi_for(&mut self, device_abis: &[Abi]) -> Result<Option<Abi>> {
-        let abi = self.apk.native_abi(device_abis);
+    pub(crate) fn retain_native_abi(&mut self) -> Result<Option<Abi>> {
+        let abi = self.apk.native_abi();
         if let Some(abi) = abi {
             self.apk
                 .retain_native_abi(abi)

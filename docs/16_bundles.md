@@ -121,4 +121,4 @@ A ZIP archive with:
 
 Changing any file breaks the signature or a hash, and the bundle won't load. Your sources and build scripts aren't included.
 
-Next: [Publishing](16_publishing.md).
+Next: [Publishing](17_publishing.md).

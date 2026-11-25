@@ -61,6 +61,7 @@ impl ApkFile {
             components,
             _scratch: scratch,
             folds_dex: false,
+            device: device.to_vec(),
             journal: reseam_journal::Journal::default(),
         };
         info!(

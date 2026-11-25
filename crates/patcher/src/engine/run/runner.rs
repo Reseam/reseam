@@ -7,7 +7,7 @@ use super::results::Run;
 use super::savepoints::Savepoints;
 use super::{AppliedRun, Rewrite, guarded};
 use crate::context::PatchContext;
-use crate::engine::plan::unmountable_status;
+use crate::engine::delivery::Revisions;
 use crate::engine::{PatchStatus, PlanOptions, ResolvedPlan, RunEvent};
 use crate::error::Result;
 use crate::log::LogEntry;
@@ -64,6 +64,7 @@ impl<'r, 'c, 'p: 'r, O: FnMut(RunEvent)> Runner<'r, 'c, 'p, O> {
         crate::bridge::trace::insert(self.ctx)?;
         self.ctx.bind_app_entry()?;
         self.ctx.finish_hermes()?;
+        self.ctx.finish_native()?;
         info!("patch application finished");
         let rewrites = self
             .plan
@@ -145,7 +146,7 @@ impl<'r, 'c, 'p: 'r, O: FnMut(RunEvent)> Runner<'r, 'c, 'p, O> {
     }
 
     fn invoke(&mut self, patch: &Patch, stage: Stage) -> (PatchStatus, Vec<LogEntry>) {
-        let manifest = self.ctx.apk().manifest_revision();
+        let before = Revisions::of(self.ctx);
         let outcome = guarded(|| {
             patch.invoke(match stage {
                 Stage::Execute => PatchPhase::Execute(self.ctx),
@@ -157,15 +158,12 @@ impl<'r, 'c, 'p: 'r, O: FnMut(RunEvent)> Runner<'r, 'c, 'p, O> {
             (self.observer)(RunEvent::PatchLog(log.clone()));
         }
         let status = match outcome {
-            Ok(())
-                if self
-                    .plan
-                    .delivery()
-                    .forbids_manifest_edit(manifest, self.ctx) =>
-            {
-                unmountable_status()
-            }
-            Ok(()) => PatchStatus::Applied,
+            Ok(()) => match self.plan.delivery().unmountable(before, self.ctx) {
+                Some(reason) => PatchStatus::Unmountable {
+                    reason: reason.to_owned(),
+                },
+                None => PatchStatus::Applied,
+            },
             Err(reason) => PatchStatus::Failed {
                 reason: match stage {
                     Stage::Execute => reason,

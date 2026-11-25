@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::super::plan::CHANGES_MANIFEST;
 use super::super::{PatchResult, PatchStatus, ResolvedPlan, RunEvent};
 use crate::log::LogEntry;
 use crate::patch::{Patch, PatchRef, PatchSpec};
@@ -53,8 +52,8 @@ impl<'a> Run<'a> {
                 Some(PatchStatus::Skipped { reason }) => {
                     return skipped(format!("dependency '{name}' skipped: {reason}"));
                 }
-                Some(PatchStatus::Unmountable { .. }) => {
-                    return skipped(format!("dependency '{name}' {CHANGES_MANIFEST}"));
+                Some(PatchStatus::Unmountable { reason }) => {
+                    return skipped(format!("dependency '{name}' {reason}"));
                 }
                 Some(PatchStatus::Failed { reason }) => {
                     return skipped(format!("dependency '{name}' failed: {reason}"));

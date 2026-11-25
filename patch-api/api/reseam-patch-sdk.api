@@ -498,6 +498,46 @@ public final class app/reseam/patch/MethodsTarget : app/reseam/patch/Target {
 public final class app/reseam/patch/MetroModule {
 }
 
+public final class app/reseam/patch/NativeAbi : java/lang/Enum {
+	public static final field ARM64_V8A Lapp/reseam/patch/NativeAbi;
+	public static final field ARMEABI_V7A Lapp/reseam/patch/NativeAbi;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lapp/reseam/patch/NativeAbi;
+	public static fun values ()[Lapp/reseam/patch/NativeAbi;
+}
+
+public abstract interface class app/reseam/patch/NativeBranchQuery {
+	public abstract fun bytes (Lapp/reseam/patch/NativeAbi;Ljava/lang/String;)V
+}
+
+public final class app/reseam/patch/NativeBranchTarget : app/reseam/patch/Target {
+}
+
+public abstract interface class app/reseam/patch/NativeFunctionQuery {
+	public abstract fun abi (Lapp/reseam/patch/NativeAbi;)V
+	public abstract fun bytes (Lapp/reseam/patch/NativeAbi;Ljava/lang/String;)V
+	public abstract fun library (Ljava/lang/String;)V
+	public abstract fun nth (I)V
+	public abstract fun referencesString ([Ljava/lang/String;)V
+	public abstract fun single ()V
+	public abstract fun symbol (Ljava/lang/String;)V
+}
+
+public final class app/reseam/patch/NativeFunctionTarget : app/reseam/patch/Target {
+}
+
+public final class app/reseam/patch/NativeFunctionsKt {
+	public static final fun alwaysReturn (Lapp/reseam/patch/NativeFunctionTarget;I)V
+	public static final fun alwaysReturn (Lapp/reseam/patch/NativeFunctionTarget;Z)V
+	public static final fun alwaysTake (Lapp/reseam/patch/NativeBranchTarget;)V
+	public static final fun branch (Lapp/reseam/patch/NativeFunctionTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/NativeBranchTarget;
+	public static synthetic fun branch$default (Lapp/reseam/patch/NativeFunctionTarget;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/NativeBranchTarget;
+	public static final fun nativeFunction (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/NativeFunctionTarget;
+	public static synthetic fun nativeFunction$default (Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lapp/reseam/patch/NativeFunctionTarget;
+	public static final fun neverTake (Lapp/reseam/patch/NativeBranchTarget;)V
+	public static final fun replaceBytes-z13BHRw (Lapp/reseam/patch/NativeFunctionTarget;J[B)V
+}
+
 public abstract class app/reseam/patch/Option {
 	public synthetic fun <init> (Ljava/lang/String;Lapp/reseam/patch/settings/StringRef;Lapp/reseam/patch/settings/StringRef;ZLapp/reseam/patch/OptionKind;Ljava/lang/Object;Ljava/util/List;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getDefault ()Ljava/lang/Object;
@@ -3086,6 +3126,37 @@ public final class app/reseam/patch/types/MethodRef {
 }
 
 public final class app/reseam/patch/types/MethodRef$Companion {
+}
+
+public final class app/reseam/patch/types/NativeBytes {
+	public static final field Companion Lapp/reseam/patch/types/NativeBytes$Companion;
+	public fun <init> (Lapp/reseam/patch/types/NativeLibraryAbi;Ljava/lang/String;)V
+	public final fun component1 ()Lapp/reseam/patch/types/NativeLibraryAbi;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Lapp/reseam/patch/types/NativeLibraryAbi;Ljava/lang/String;)Lapp/reseam/patch/types/NativeBytes;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/NativeBytes;Lapp/reseam/patch/types/NativeLibraryAbi;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/types/NativeBytes;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAbi ()Lapp/reseam/patch/types/NativeLibraryAbi;
+	public final fun getPattern ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/NativeBytes$Companion {
+}
+
+public final class app/reseam/patch/types/NativeLibraryAbi : java/lang/Enum {
+	public static final field ARM64_V8A Lapp/reseam/patch/types/NativeLibraryAbi;
+	public static final field ARMEABI_V7A Lapp/reseam/patch/types/NativeLibraryAbi;
+	public static final field Companion Lapp/reseam/patch/types/NativeLibraryAbi$Companion;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getValue ()I
+	public static fun valueOf (Ljava/lang/String;)Lapp/reseam/patch/types/NativeLibraryAbi;
+	public static fun values ()[Lapp/reseam/patch/types/NativeLibraryAbi;
+}
+
+public final class app/reseam/patch/types/NativeLibraryAbi$Companion {
+	public final fun fromValue (I)Lapp/reseam/patch/types/NativeLibraryAbi;
 }
 
 public final class app/reseam/patch/types/NewField {

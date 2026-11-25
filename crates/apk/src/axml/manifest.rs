@@ -5,8 +5,8 @@ use std::borrow::Cow;
 
 use super::AxmlDocument;
 use super::android_attrs::{
-    ATTR_MIN_SDK_VERSION, ATTR_MULTI_ARCH, ATTR_NAME, ATTR_SPLIT_NAME, ATTR_SPLIT_TYPES,
-    ATTR_VERSION_CODE, ATTR_VERSION_NAME,
+    ATTR_EXTRACT_NATIVE_LIBS, ATTR_MIN_SDK_VERSION, ATTR_MULTI_ARCH, ATTR_NAME, ATTR_SPLIT_NAME,
+    ATTR_SPLIT_TYPES, ATTR_VERSION_CODE, ATTR_VERSION_NAME,
 };
 use crate::res_value::ResValue;
 
@@ -58,6 +58,15 @@ impl AxmlDocument {
             .and_then(|application| self.attribute(application, ATTR_MULTI_ARCH))
             .and_then(|attr| attr.value.as_bool())
             .unwrap_or(false)
+    }
+
+    /// `<application android:extractNativeLibs>`: the installer copies the native libraries
+    /// out of the APK, and the app loads those copies. Android's default is true.
+    pub fn extract_native_libs(&self) -> bool {
+        self.find_element("application")
+            .and_then(|application| self.attribute(application, ATTR_EXTRACT_NATIVE_LIBS))
+            .and_then(|attr| attr.value.as_bool())
+            .unwrap_or(true)
     }
 
     /// `<application android:name>` as written, possibly relative to the package.

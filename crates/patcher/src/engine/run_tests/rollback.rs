@@ -4,6 +4,7 @@
 use std::sync::{Arc, Mutex};
 
 use super::*;
+use crate::context::NativeQuery;
 
 /// A patch that adds `assets/<id>`, counts its runs in `runs`, and then does what `extra` does.
 fn adding(
@@ -40,10 +41,17 @@ struct Outcome {
     reverted: Vec<String>,
     assets: Vec<String>,
     version: Option<String>,
+    library: Option<Vec<u8>>,
 }
 
-fn run_patches(delivery: Delivery, patches: &[&Patch], runs: &Arc<Mutex<Vec<String>>>) -> Outcome {
-    let (_dir, mut apk) = crate::test_support::apk();
+const LIBRARY_ENTRY: &str = "lib/arm64-v8a/library.so";
+
+fn run_patches(
+    (_dir, mut apk): (tempfile::TempDir, reseam_apk::ApkFile),
+    delivery: Delivery,
+    patches: &[&Patch],
+    runs: &Arc<Mutex<Vec<String>>>,
+) -> Outcome {
     let specs: Vec<_> = patches.iter().map(|patch| patch.spec()).collect();
     let plan = ResolvedPlan::resolve(
         &specs,
@@ -92,6 +100,7 @@ fn run_patches(delivery: Delivery, patches: &[&Patch], runs: &Arc<Mutex<Vec<Stri
             .filter(|name| name.starts_with("assets/"))
             .collect(),
         version: apk.version_name().map(std::borrow::Cow::into_owned),
+        library: apk.read_component_entry(0, LIBRARY_ENTRY).unwrap(),
     }
 }
 
@@ -119,7 +128,12 @@ fn a_patch_that_cannot_apply_leaves_nothing_behind() {
             runs.clone(),
             |_| Ok(()),
         );
-        let outcome = run_patches(delivery, &[&failing, &independent, &dependent], &runs);
+        let outcome = run_patches(
+            crate::test_support::apk(),
+            delivery,
+            &[&failing, &independent, &dependent],
+            &runs,
+        );
         assert_eq!(
             outcome.results,
             covered(&[("failing", expected), ("independent", A), ("dependent", S)])
@@ -146,7 +160,12 @@ fn a_dependency_only_a_left_out_patch_needed_is_undone() {
         },
     );
     let other = adding(declared("bundle", "other", &[]), runs.clone(), |_| Ok(()));
-    let outcome = run_patches(Delivery::Mount, &[&helper, &consumer, &other], &runs);
+    let outcome = run_patches(
+        crate::test_support::apk(),
+        Delivery::Mount,
+        &[&helper, &consumer, &other],
+        &runs,
+    );
     assert_eq!(
         outcome.results,
         covered(&[("other", A), ("consumer", Status::Unmountable)])
@@ -155,4 +174,42 @@ fn a_dependency_only_a_left_out_patch_needed_is_undone() {
     assert_eq!(outcome.reverted, ["bundle/helper", "bundle/other"]);
     assert_eq!(outcome.assets, ["assets/other"]);
     assert_eq!(outcome.version.as_deref(), Some("2.0"));
+}
+
+#[test]
+fn a_mount_leaves_out_native_edits_the_installed_app_loads_from_extracted_libraries() {
+    use Status::Unmountable as U;
+    let cases = [
+        ("", Delivery::Mount, U),
+        (r#" android:extractNativeLibs="true""#, Delivery::Mount, U),
+        (r#" android:extractNativeLibs="false""#, Delivery::Mount, A),
+        ("", Delivery::Install, A),
+    ];
+    for (extract, delivery, expected) in cases {
+        let runs = Arc::new(Mutex::new(Vec::new()));
+        let native = adding(declared("bundle", "native", &[]), runs.clone(), |ctx| {
+            let found = ctx.native_find(&NativeQuery {
+                library: "library.so",
+                symbol: Some("exported_check"),
+                ..NativeQuery::default()
+            })?;
+            ctx.native_always_return(&found, 1)
+        });
+        let apk = crate::test_support::apk_with(
+            &format!("<application{extract}/>"),
+            &[(LIBRARY_ENTRY, crate::test_support::NATIVE_LIBRARY)],
+            &[],
+        );
+        let outcome = run_patches(apk, delivery, &[&native], &runs);
+        assert_eq!(
+            outcome.results,
+            covered(&[("native", expected)]),
+            "{extract} {delivery:?}"
+        );
+        assert_eq!(
+            outcome.library.as_deref() == Some(crate::test_support::NATIVE_LIBRARY),
+            expected == U,
+            "{extract} {delivery:?}: the library is edited only when the patch applied"
+        );
+    }
 }

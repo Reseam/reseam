@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use reseam_model::{PatchRef, Problem};
+use reseam_model::{Abi, PatchRef, Problem};
 use thiserror::Error;
 
 use crate::bundle::BUNDLE_FORMAT_VERSION;
@@ -77,6 +77,35 @@ pub enum PatcherError {
 
     #[error("Hermes error: {0}")]
     Hermes(#[from] reseam_hermes::HermesError),
+
+    #[error("native library {entry}: {source}")]
+    Elf {
+        entry: String,
+        source: Box<reseam_elf::ElfError>,
+    },
+
+    #[error(
+        "the device loads {} native libraries; only arm64-v8a and armeabi-v7a libraries can be edited",
+        .0.as_str()
+    )]
+    NativeAbi(Abi),
+
+    #[error(
+        "native library {library} not found for {}",
+        .abis.iter().map(|abi| abi.as_str()).collect::<Vec<_>>().join(" or ")
+    )]
+    MissingNativeLibrary { library: String, abis: Vec<Abi> },
+
+    #[error(
+        "{first} and {second} hold code of different instruction sets, and raw bytes fit one; narrow the target with abi()"
+    )]
+    MixedInstructionSets { first: String, second: String },
+
+    #[error("{entry}: the branch has no byte pattern for {}", .abi.as_str())]
+    MissingBranchPattern { entry: String, abi: Abi },
+
+    #[error("{0} holds native code edits, which replacing or deleting it would lose")]
+    EditedNativeLibrary(String),
 
     #[error("APK error: {0}")]
     Apk(#[from] reseam_apk::ApkError),

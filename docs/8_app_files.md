@@ -41,6 +41,8 @@ On a rooted phone, a build can be *mounted* over the app installed from the stor
 
 Android keeps reading the installed app's manifest, so a mount build leaves out every patch that edits the manifest, and the patches that depend on it. Code, resources, and other files apply as usual. A patch that [rewrites the written APK](#after-the-apk-is-written) is left out too.
 
+An app that extracts its native libraries at install loads those copies, not the ones in the APK. For such an app, a mount build also leaves out every patch that [edits native code](15_native.md).
+
 Where code and resource changes can do the job, use them instead of manifest changes, so your patch works both ways. A patch whose whole purpose is the manifest, such as a package rename, is left out of mount builds.
 
 ## Resources
@@ -110,7 +112,7 @@ files.copy("resources/logo.png", "assets/logo.png")
 files.delete("assets/tracking.json")
 ```
 
-`files.copy` takes a file from your bundle's `resources/` folder, which [Bundle projects](15_bundles.md#layout) describes.
+`files.copy` takes a file from your bundle's `resources/` folder, which [Bundle projects](16_bundles.md#layout) describes.
 
 ### Large files
 

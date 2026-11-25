@@ -142,6 +142,7 @@ fn format_catalogue(
         ("VERSION_NAME", "versionName"),
         ("SPLIT_NAME", "splitName"),
         ("MULTI_ARCH", "multiArch"),
+        ("EXTRACT_NATIVE_LIBS", "extractNativeLibs"),
         ("SPLIT_TYPES", "splitTypes"),
     ] {
         let Some(&(id, _)) = attrs.get(name) else {

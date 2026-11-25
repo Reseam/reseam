@@ -9,7 +9,7 @@ Each file should do one thing, and each rule should be written once. Please keep
 The crates, from the bottom up. Lower crates don't depend on higher ones, and crates use each other only through what they export at the crate root.
 
 - `bytes`, `storage`, `journal`: reading binary fields, file-backed data and temp files, undo for patch runs.
-- `dex`, `hermes`: the DEX and Hermes bytecode formats. Reading, the in-memory model, editing and writing each have their own modules.
+- `dex`, `hermes`, `elf`: the DEX and Hermes bytecode formats and AArch64 and 32-bit ARM shared libraries. Reading, the in-memory model, editing and writing each have their own modules.
 - `apk`, `sign`: APK files (ZIP, binary XML, resources, the app's DEX files) and APK signing.
 - `model`: types shared between the engine and the apps that use it.
 - `patcher`: patch bundles, choosing and ordering patches, running them, and the Kotlin bridge (`bridge/`).

@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use reseam_model::Abi;
 
 use super::{ApkComponent, ApkFile};
-use crate::entry::native_library_abi;
+use crate::entry::native_library;
 use crate::error::Result;
 
 const ABI_SPLIT_TYPE_SUFFIX: &str = "__abi";
@@ -15,7 +15,7 @@ impl ApkComponent {
     fn native_abis(&self) -> HashSet<Abi> {
         self.entry_names()
             .iter()
-            .filter_map(|name| native_library_abi(name))
+            .filter_map(|name| native_library(name).map(|(abi, _)| abi))
             .collect()
     }
 
@@ -58,19 +58,47 @@ pub(super) fn installed_components(
     components
 }
 
+/// A copy of a native library: its component, its ABI and its entry,
+/// `lib/<abi>/<name>.so`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NativeLibrary {
+    pub component: usize,
+    pub abi: Abi,
+    pub entry: String,
+}
+
 impl ApkFile {
-    /// The ABI Android loads this app's native libraries for on a device whose
-    /// ABIs are `device`, most preferred first. `None` when the app has
-    /// libraries for none of them, or loads every ABI (`android:multiArch`).
-    pub fn native_abi(&self, device: &[Abi]) -> Option<Abi> {
-        loaded_abi(&self.components, device)
+    /// Every copy of the native library named `file`, in each component, for
+    /// each ABI Android knows.
+    pub fn native_library_copies(&self, file: &str) -> Vec<NativeLibrary> {
+        self.components
+            .iter()
+            .enumerate()
+            .flat_map(|(component, apk)| {
+                apk.entry_names().into_iter().filter_map(move |entry| {
+                    let (abi, name) = native_library(&entry)?;
+                    (name == file).then_some(NativeLibrary {
+                        component,
+                        abi,
+                        entry,
+                    })
+                })
+            })
+            .collect()
+    }
+
+    /// The ABI Android loads this app's native libraries for on the device the
+    /// set was opened for. `None` when that device is any, when the app has
+    /// libraries for none of its ABIs, or loads every ABI (`android:multiArch`).
+    pub fn native_abi(&self) -> Option<Abi> {
+        loaded_abi(&self.components, &self.device)
     }
 
     /// Deletes the native libraries of every ABI but `abi`.
     pub fn retain_native_abi(&mut self, abi: Abi) -> Result<()> {
         for index in 0..self.components.len() {
             for name in self.components[index].entry_names() {
-                if native_library_abi(&name).is_some_and(|library| library != abi) {
+                if native_library(&name).is_some_and(|(library, _)| library != abi) {
                     self.delete_file(index, &name)?;
                 }
             }

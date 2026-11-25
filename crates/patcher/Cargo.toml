@@ -13,6 +13,7 @@ crate-type = ["rlib"]
 reseam-storage = { workspace = true }
 reseam-journal = { workspace = true }
 reseam-hermes = { workspace = true }
+reseam-elf = { workspace = true }
 reseam-model = { workspace = true }
 reseam-dex     = { workspace = true }
 reseam-apk          = { workspace = true }

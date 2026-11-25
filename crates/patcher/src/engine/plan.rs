@@ -4,13 +4,11 @@
 use std::collections::HashSet;
 
 use super::PatchStatus;
+use super::delivery::{Delivery, REWRITES_OUTPUT};
 use crate::catalog::PatchCatalog;
-
-use crate::context::PatchContext;
 use crate::error::{PatcherError, Result};
 use crate::patch::{ApkVersion, PatchSpec};
 
-use reseam_model::InstallMethod;
 pub use reseam_model::PatchSelection;
 
 mod graph;
@@ -20,43 +18,6 @@ use graph::{
     DependencyGraph, MissingDependency, dependency_edges, desired_patches, topological_order,
 };
 pub use options::PlanOptions;
-
-/// How a run's output reaches the device, which decides what a patch may change.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Delivery {
-    /// The output installs as an app of its own.
-    Install,
-    /// The output replaces the installed app's files, and the system keeps the
-    /// manifest it read from the installed app. A patch that edits the manifest
-    /// finishes unmountable: the run undoes it and leaves out the patches that need it.
-    /// A patch that rewrites the output is unmountable before it runs.
-    Mount,
-}
-
-impl From<InstallMethod> for Delivery {
-    fn from(method: InstallMethod) -> Self {
-        match method {
-            InstallMethod::Install => Self::Install,
-            InstallMethod::Mount => Self::Mount,
-        }
-    }
-}
-
-impl Delivery {
-    /// Whether the manifest changed since `revision` in a build that cannot apply it.
-    pub(super) fn forbids_manifest_edit(self, revision: u64, ctx: &PatchContext<'_>) -> bool {
-        self == Self::Mount && ctx.apk().manifest_revision() != revision
-    }
-}
-
-pub(super) const CHANGES_MANIFEST: &str = "changes the manifest, which a mount does not apply";
-const REWRITES_OUTPUT: &str = "rewrites the written APK, which a mount cannot check";
-
-pub(super) fn unmountable_status() -> PatchStatus {
-    PatchStatus::Unmountable {
-        reason: CHANGES_MANIFEST.to_owned(),
-    }
-}
 
 /// What a run of `specs` covers, decided from the patch declarations alone, so
 /// a host can load only the code of the patches it [executes](Self::executes).

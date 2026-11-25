@@ -17,7 +17,7 @@ mod zip;
 
 pub use apk_file::{
     ApkComponent, ApkFile, ApkWriteOptions, ApplicationIcon, DexSet, EntryReader, IconLayer,
-    SignaturePolicy,
+    NativeLibrary, SignaturePolicy,
 };
 pub use axml::AxmlDocument;
 pub use container::{ContainerFormat, open_container, write_split_archive};

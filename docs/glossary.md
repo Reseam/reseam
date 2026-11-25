@@ -34,7 +34,7 @@ description: The words used across these docs.
 
 **Internal patch**: a patch with no name. It only runs as a dependency of another patch.
 
-**Mount build**: output that is mounted over the app installed from the store on a rooted phone, instead of installed as its own app. It leaves out patches that edit the manifest.
+**Mount build**: output that is mounted over the app installed from the store on a rooted phone, instead of installed as its own app. It leaves out patches that edit the manifest, and patches that edit native code the app loads from libraries it extracted at install.
 
 **Obfuscation**: renaming an app's classes and methods to short, meaningless names. The names change with every release, which is why patches use targets.
 

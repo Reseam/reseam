@@ -56,6 +56,12 @@ pub fn read_u32(buf: &[u8], offset: usize, section: &'static str) -> Result<u32>
     Ok(u32_at(buf, offset))
 }
 
+#[inline]
+pub fn read_u64(buf: &[u8], offset: usize, section: &'static str) -> Result<u64> {
+    require_len(buf, offset, 8, section)?;
+    Ok(u64_at(buf, offset))
+}
+
 /// Reads at an offset a bounds check already covered; panics past the end.
 #[inline]
 pub fn u16_at(buf: &[u8], offset: usize) -> u16 {
@@ -71,6 +77,16 @@ pub fn u32_at(buf: &[u8], offset: usize) -> u32 {
         buf[offset + 2],
         buf[offset + 3],
     ])
+}
+
+/// Reads at an offset a bounds check already covered; panics past the end.
+#[inline]
+pub fn u64_at(buf: &[u8], offset: usize) -> u64 {
+    u64::from_le_bytes(
+        buf[offset..offset + 8]
+            .try_into()
+            .expect("an eight-byte range converts to an array"),
+    )
 }
 
 /// Reads at an offset a bounds check already covered; panics past the end.

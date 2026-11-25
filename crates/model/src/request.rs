@@ -125,7 +125,9 @@ pub enum InstallMethod {
     Install,
     /// The output replaces the files of the installed app in place. The system
     /// keeps the manifest it read from the installed app, so a mount build
-    /// leaves out every patch that changes the manifest.
+    /// leaves out every patch that changes the manifest. An app that extracts
+    /// its native libraries at install loads those copies, so for such an app
+    /// it also leaves out every patch that edits native code.
     Mount,
 }
 

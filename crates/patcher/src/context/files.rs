@@ -21,6 +21,7 @@ impl PatchContext<'_> {
         data: Vec<u8>,
         compression: Compression,
     ) -> Result<()> {
+        self.release_native_library(component, path)?;
         let data = compiled_xml(self.apk_mut(), component, path, &data)?.unwrap_or(data);
         Ok(self
             .apk_mut()
@@ -37,6 +38,7 @@ impl PatchContext<'_> {
         file: File,
         compression: Compression,
     ) -> Result<()> {
+        self.release_native_library(component, path)?;
         if names_xml(path) {
             // SAFETY: the caller hands over a complete file nothing writes to anymore.
             let data = unsafe { reseam_storage::map_file(&file)? };
@@ -52,6 +54,7 @@ impl PatchContext<'_> {
     }
 
     pub fn delete_file(&mut self, component: usize, path: &str) -> Result<()> {
+        self.release_native_library(component, path)?;
         Ok(self.apk_mut().delete_file(component, path)?)
     }
 

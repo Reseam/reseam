@@ -157,7 +157,7 @@ If your extensions read strings that no setting uses, add their table with `stri
 
 ### The about card
 
-The screen opens with an about card: your brand's logo and name, your bundle's version, the engine version, and the `license` from your [`manifest.toml`](15_bundles.md#manifesttoml). `about` adds ways to reach you:
+The screen opens with an about card: your brand's logo and name, your bundle's version, the engine version, and the `license` from your [`manifest.toml`](16_bundles.md#manifesttoml). `about` adds ways to reach you:
 
 ```kotlin
 about(

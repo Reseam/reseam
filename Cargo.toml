@@ -7,6 +7,7 @@ members = [
     "crates/journal",
     "crates/dex",
     "crates/hermes",
+    "crates/elf",
     "crates/model",
     "crates/apk",
     "crates/sign",
@@ -70,6 +71,7 @@ reseam-journal = { path = "crates/journal" }
 reseam-model = { path = "crates/model" }
 reseam-dex     = { path = "crates/dex" }
 reseam-hermes  = { path = "crates/hermes" }
+reseam-elf     = { path = "crates/elf" }
 reseam-apk     = { path = "crates/apk" }
 reseam-sign    = { path = "crates/sign" }
 reseam-fixtures = { path = "crates/fixtures" }
@@ -82,6 +84,7 @@ bitflags    = "2"
 smallvec    = "1"
 fixedbitset = "0.5"
 rustc-hash  = "2"
+memchr      = "2"
 rayon       = "1.10"
 memmap2     = "0.9"
 zip         = { version = "8", default-features = false, features = ["deflate-flate2-zlib-rs"] }

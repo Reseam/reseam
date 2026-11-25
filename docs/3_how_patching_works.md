@@ -51,6 +51,6 @@ If the key is lost, the patched app must be uninstalled before a version signed 
 
 ## Versions
 
-Bundles record the engine version that built them. An engine only loads bundles from its own release line: the same minor version while the major version is 0, and the same major version after that. When the line changes, rebuild your bundle with the matching plugin and CLI. [When Reseam updates](16_publishing.md#when-reseam-updates) covers what that means for a published bundle.
+Bundles record the engine version that built them. An engine only loads bundles from its own release line: the same minor version while the major version is 0, and the same major version after that. When the line changes, rebuild your bundle with the matching plugin and CLI. [When Reseam updates](17_publishing.md#when-reseam-updates) covers what that means for a published bundle.
 
 Next: [Declaring patches](4_patches.md).

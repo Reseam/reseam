@@ -15,6 +15,7 @@ pub(crate) mod hermes;
 pub(crate) mod identity;
 pub(crate) mod inspection;
 pub(crate) mod log_host;
+pub(crate) mod native;
 pub(crate) mod options;
 pub(crate) mod output;
 mod phase;

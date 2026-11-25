@@ -64,7 +64,7 @@ reseam patch app.apkm --bundle patches.reseam --trust <key> \
 
 Android loads the first ABI in the phone's list that the app has libraries for, so give the ABIs in the phone's order. `adb shell getprop ro.product.cpu.abilist` prints that list. The output keeps that ABI's `lib/` folder, and from split input only that ABI's split. The log names the ABI it kept.
 
-The output installs only on phones that run that ABI. Leave out `--abi` when you build an APK to share.
+The output installs only on phones that run that ABI. Leave out `--abi` when you build an APK to share. Only `arm64-v8a` and `armeabi-v7a` native code can be edited, so a patch that edits native code fails for a phone that runs another ABI, such as `x86_64`.
 
 Apps that declare `android:multiArch` load every ABI the phone runs, so they keep all of them. A split that doesn't declare its ABI in `android:splitTypes` stays in the output, with the other ABIs' libraries removed.
 
@@ -103,7 +103,7 @@ Each line names the patch, the method, and the instruction where the change star
 
 ## Mount builds
 
-`--mount` builds output to bind-mount over the app installed on a rooted phone, which keeps its signature and data. Android keeps the installed app's manifest, so patches that edit the manifest are left out, and the patches that need them are skipped. When patching finds such a patch, the CLI patches again from the original APK without it.
+`--mount` builds output to bind-mount over the app installed on a rooted phone, which keeps its signature and data. Android keeps the installed app's manifest, so patches that edit the manifest are left out, and the patches that need them are skipped. So are patches that edit native code, when the app loads the native libraries it extracted at install. When patching finds such a patch, the CLI patches again from the original APK without it.
 
 ## Signing
 
@@ -141,7 +141,7 @@ RESEAM_KEYSTORE_PASSWORD=… reseam patch app.apk --bundle patches.reseam --trus
 | `--keystore <file>` | sign with the first key in a PKCS#12 keystore |
 | `--keystore-password <password>` | the keystore's password; also read from `RESEAM_KEYSTORE_PASSWORD` |
 | `--abi <abi>` | build for a phone with this ABI, keeping only the native libraries it loads; repeatable, in the phone's order |
-| `--mount` | build for mounting over the installed app; leaves out patches that edit the manifest |
+| `--mount` | build for mounting over the installed app; leaves out patches that edit the manifest, or native code the app loads from extracted libraries |
 | `--leave-out-failed` | write the output without failed patches and the patches that need them |
 | `--trace` | test build: log each place a patch changed the app's code when the app runs it |
 | `--dry-run` | check the bundles, selection, and options, without patching or writing |

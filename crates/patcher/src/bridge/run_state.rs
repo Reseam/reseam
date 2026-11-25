@@ -13,7 +13,7 @@ use jni::objects::{Global, JObject};
 
 use super::apk::{file_streams, xml};
 use super::dex::pool_copies;
-use super::{changes, handles, hermes, inspection, phase, trace};
+use super::{changes, handles, hermes, inspection, native, phase, trace};
 use crate::error::{PatcherError, Result as PatcherResult};
 
 thread_local! {
@@ -47,6 +47,7 @@ impl Drop for RunGuard {
 
 fn reset() {
     hermes::reset();
+    native::reset();
     #[cfg(feature = "kotlin")]
     KOTLIN_RUN.with(|run| *run.borrow_mut() = None);
     pool_copies::reset();

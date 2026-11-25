@@ -140,4 +140,4 @@ While the toggle is off, the function runs unchanged, so your extension never ch
 
 Hermes gates read each toggle once per process, through the [app runtime](11_settings.md#react-native-apps)'s React Native module. Your settings host adds it to the app with `addReactPackage`. Inside a Hermes hook, `whenEnabled` and `valueOf` read a toggle too.
 
-Next: [Bundle projects](15_bundles.md).
+Next: [Native code](15_native.md).

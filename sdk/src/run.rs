@@ -145,7 +145,7 @@ fn execute(
         ensure_none_failed(applied.results())?;
     }
     // Patches can add native libraries, so the ABI is chosen from the patched app.
-    let native_abi = opened.retain_native_abi_for(&request.device_abis)?;
+    let native_abi = opened.retain_native_abi()?;
 
     if opened.apk.dex_folding_requested() {
         opened

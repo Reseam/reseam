@@ -39,7 +39,7 @@ INFO patch run finished applied=1 dependencies=1 skipped=0 unmountable=0 failed=
 | `applied` | you selected, and that ran |
 | `dependencies` | you didn't select, but ran because a selected patch needs them |
 | `skipped` | didn't run: the app or version doesn't match, or a dependency was skipped or failed. The log says which. |
-| `unmountable` | were left out of a mount build, because they edit the manifest |
+| `unmountable` | were left out of a mount build, because they edit the manifest or native code a mount can't replace. The log says which. |
 | `failed` | ran into an error and were undone |
 
 Messages your patch writes with `log.info` and `log.warn` show in the log too. `log.debug` messages, and the method every target picked, only show with debug logging on:

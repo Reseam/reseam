@@ -90,13 +90,14 @@ pub(crate) fn is_native_library(name: &str) -> bool {
         && parts.next().is_none()
 }
 
-/// The ABI of a native library, `lib/<abi>/<name>.so`, when Android knows
-/// its folder.
-pub(crate) fn native_library_abi(name: &str) -> Option<Abi> {
+/// The ABI and file name of a native library, `lib/<abi>/<name>.so`, when
+/// Android knows its folder.
+pub(crate) fn native_library(name: &str) -> Option<(Abi, &str)> {
     if !is_native_library(name) {
         return None;
     }
-    name.split('/').nth(1)?.parse().ok()
+    let mut parts = name.split('/').skip(1);
+    Some((parts.next()?.parse().ok()?, parts.next()?))
 }
 
 pub(crate) fn is_signature_entry(name: &str) -> bool {
