@@ -1963,6 +1963,8 @@ public final class app/reseam/patch/settings/ToggleSetting : app/reseam/patch/se
 	public final fun copy (Z)Lapp/reseam/patch/settings/ToggleSetting;
 	public static synthetic fun copy$default (Lapp/reseam/patch/settings/ToggleSetting;ZILjava/lang/Object;)Lapp/reseam/patch/settings/ToggleSetting;
 	public final fun getCovers ()Ljava/util/List;
+	public final fun getSummaryOff ()Lapp/reseam/patch/settings/StringRef;
+	public final fun getSummaryOn ()Lapp/reseam/patch/settings/StringRef;
 	public fun getTitle ()Lapp/reseam/patch/settings/StringRef;
 }
 

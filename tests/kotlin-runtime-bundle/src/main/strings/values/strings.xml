@@ -180,7 +180,10 @@
     <string name="page_layout">Layout</string>
     <string name="layout_range">Range</string>
     <string name="layout_first">First</string>
+    <string name="layout_first_summary_on">First is on</string>
+    <string name="layout_first_summary_off">First is off</string>
     <string name="layout_second">Second</string>
+    <string name="layout_second_summary_on">Second is on</string>
     <string name="layout_hidden">Hidden</string>
     <string name="layout_stored">Stored</string>
     <string name="layout_level">Level</string>

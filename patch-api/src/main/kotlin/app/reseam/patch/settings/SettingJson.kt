@@ -15,6 +15,8 @@ internal fun Json.setting(setting: Setting<*>, icon: Vector?, rows: RowWiring): 
     when (setting) {
         is ToggleSetting -> {
             field("default", setting.default)
+            field("summaryOn") { text(setting.summaryOn) }
+            field("summaryOff") { text(setting.summaryOff) }
             field("covers") { array(setting.covers) { value(it.key) } }
         }
         is TextSetting -> {

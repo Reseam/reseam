@@ -373,3 +373,36 @@ fn a_settings_layout_places_rows_keeps_stored_values_and_describes_row_kinds() {
     assert_eq!(note["summary"]["name"], "layout_note_summary");
     assert!(note.get("default").is_none(), "a note stores nothing");
 }
+
+#[test]
+fn settings_toggles_carry_a_summary_for_each_value_their_strings_have() {
+    let (_dir, mut apk) = open_settings_test_apk();
+    apply_fixture(&mut apk, "Settings layout", "settingsLayout");
+    let schema: serde_json::Value =
+        serde_json::from_slice(&entry(&mut apk, 0, SETTINGS_SCHEMA).unwrap()).unwrap();
+    let summaries = |key: &str| {
+        let toggle = schema["sections"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|section| section["settings"].as_array().unwrap())
+            .find(|setting| setting["key"] == key)
+            .unwrap();
+        [
+            toggle["summaryOn"]["name"].as_str(),
+            toggle["summaryOff"]["name"].as_str(),
+        ]
+    };
+    assert_eq!(
+        summaries("layout.first"),
+        [
+            Some("layout_first_summary_on"),
+            Some("layout_first_summary_off")
+        ]
+    );
+    assert_eq!(
+        summaries("layout.second"),
+        [Some("layout_second_summary_on"), None],
+        "a toggle without a summary for one value falls back to its summary in the app"
+    );
+}

@@ -49,13 +49,18 @@ internal enum class SettingKind(val tag: String, val runtimeValue: String?) {
     NOTE("note", null),
 }
 
-/** While this toggle is on, every toggle in [covers] reads as on and cannot be changed. */
+/**
+ * While this toggle is on, every toggle in [covers] reads as on and cannot be changed. Its row
+ * shows [summaryOn] or [summaryOff] for its value, and [summary] when that one is missing.
+ */
 class ToggleSetting
 internal constructor(
     key: String,
     internal override val property: String,
     override val title: StringRef,
     summary: StringRef?,
+    val summaryOn: StringRef?,
+    val summaryOff: StringRef?,
     default: Boolean,
     icon: Vector?,
     takesEffect: TakesEffect,
@@ -76,7 +81,18 @@ internal constructor(
      * the app.
      */
     fun copy(default: Boolean = this.default) =
-        ToggleSetting(key, property, title, summary, default, icon, takesEffect, covers)
+        ToggleSetting(
+            key,
+            property,
+            title,
+            summary,
+            summaryOn,
+            summaryOff,
+            default,
+            icon,
+            takesEffect,
+            covers,
+        )
 }
 
 /**

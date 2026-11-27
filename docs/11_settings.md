@@ -62,7 +62,7 @@ And their text in `strings.xml`:
 </resources>
 ```
 
-A setting's title is the string named after its property in snake case: `hideAds` reads `hide_ads`. Its summary is the same name with `_summary`, when there is one. A missing title fails the build. The generated `ExampleStrings` has one member per string, for choices, [sections](#show-settings-on-the-screen), and [pages](#pages).
+A setting's title is the string named after its property in snake case: `hideAds` reads `hide_ads`. Its summary is the same name with `_summary`, when there is one. A toggle can also have `_summary_on` and `_summary_off`, and its row shows the one for its value, or `_summary` when that one is missing. A missing title fails the build. The generated `ExampleStrings` has one member per string, for choices, [sections](#show-settings-on-the-screen), and [pages](#pages).
 
 There are eight kinds of setting that hold a value, each with a default and an optional [icon](#icons). Actions and notes hold none:
 

@@ -57,7 +57,12 @@ internal class SearchResults(
 
     private fun matches(setting: SchemaSetting, words: List<String>): Boolean {
         val text =
-            listOfNotNull(setting.title, setting.summary)
+            (listOfNotNull(setting.title, setting.summary) +
+                    if (setting is SchemaSetting.Toggle) {
+                        listOfNotNull(setting.summaryOn, setting.summaryOff)
+                    } else {
+                        emptyList()
+                    })
                 .joinToString("\n") { it.resolve(bundle.name) }
                 .lowercase(Locale.ROOT)
         return words.all { it in text }

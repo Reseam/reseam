@@ -26,7 +26,7 @@ object AppSettings : SettingsGroup(ExampleStrings) {
 | `SettingsGroup(strings: StringTable, keyPrefix: String? = null)` | `strings` holds the settings' titles. `keyPrefix` starts every key; it defaults to the object's name in snake case, so `AppSettings` gives `app_settings`. Give two objects the same prefix to split one set of settings without changing their keys. |
 | `strings: StringTable` | The table the titles come from. |
 
-A setting's title is the string named after its property in snake case: `hideAds` reads `hide_ads`. Its summary is `hide_ads_summary`, when the table has one. A missing title fails the build.
+A setting's title is the string named after its property in snake case: `hideAds` reads `hide_ads`. Its summary is `hide_ads_summary`, when the table has one. A toggle's row shows `hide_ads_summary_on` or `hide_ads_summary_off` for its value, and `hide_ads_summary` when that one is missing. A missing title fails the build.
 
 ### Setting functions
 
@@ -84,6 +84,7 @@ An on/off setting.
 | Member | Description |
 |---|---|
 | `covers: List<ToggleSetting>` | The toggles it switches on while it is on. |
+| `summaryOn: StringRef?`, `summaryOff: StringRef?` | The line under the title while it is on, or off. |
 | `copy(default: Boolean = this.default): ToggleSetting` | The same setting, under the same key, with another default. A patch shows the copy when the default depends on its options or on the app version. |
 
 ### `TextSetting`

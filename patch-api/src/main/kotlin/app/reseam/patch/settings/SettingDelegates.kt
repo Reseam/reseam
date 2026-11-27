@@ -21,7 +21,18 @@ fun toggle(
     takesEffect: TakesEffect = TakesEffect.ON_RESTART,
 ) =
     SettingDelegate(key) {
-        ToggleSetting(it.key, it.property, it.title, it.summary, default, icon, takesEffect, covers)
+        ToggleSetting(
+            it.key,
+            it.property,
+            it.title,
+            it.summary,
+            it.summaryWhen("on"),
+            it.summaryWhen("off"),
+            default,
+            icon,
+            takesEffect,
+            covers,
+        )
     }
 
 fun text(
@@ -190,12 +201,17 @@ fun noteOf(key: String, title: StringRef, summary: StringRef?) =
 internal class SettingDeclaration(
     val key: String,
     val property: String,
-    val optionalTitle: StringRef?,
-    val summary: StringRef?,
+    private val name: String,
+    private val strings: StringTable,
     private val missingTitle: String,
 ) {
+    val optionalTitle: StringRef? = strings.find(name)
+    val summary: StringRef? = strings.find(name + "_summary")
+
     val title: StringRef
         get() = optionalTitle ?: error(missingTitle)
+
+    fun summaryWhen(state: String): StringRef? = strings.find("${name}_summary_$state")
 }
 
 class SettingDelegate<S : Setting<*>>
@@ -214,8 +230,8 @@ internal constructor(
                 SettingDeclaration(
                     key ?: (thisRef.keyPrefix + "." + name),
                     property.name,
-                    strings.find(name),
-                    strings.find(name + "_summary"),
+                    name,
+                    strings,
                     "${thisRef::class.simpleName}.${property.name} has no title: add '$name' to $strings",
                 )
             )

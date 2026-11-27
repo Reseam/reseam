@@ -23,6 +23,10 @@ internal sealed class SchemaSetting(json: JSONObject) {
     class Toggle(json: JSONObject) : SchemaSetting(json) {
         val defaultValue: Boolean = json.getBoolean("default")
         val covers: List<String> = json.getJSONArray("covers").strings()
+        val summaryOn: DisplayText? = json.optionalText("summaryOn")
+        val summaryOff: DisplayText? = json.optionalText("summaryOff")
+
+        fun summary(on: Boolean): DisplayText? = (if (on) summaryOn else summaryOff) ?: summary
     }
 
     sealed class Textual(json: JSONObject) : SchemaSetting(json) {

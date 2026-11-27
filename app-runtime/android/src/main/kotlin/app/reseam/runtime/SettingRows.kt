@@ -110,8 +110,12 @@ internal class SettingRows(val bundle: ReseamBundle, val ui: Ui) : Settings.OnCh
         view.setOnCheckedChangeListener { _, checked ->
             store(toggle) { settings.setBoolean(toggle.key, checked) }
         }
-        item.supporting(summary(toggle)).trailing(view).onClick { view.toggle() }
-        val showValue = { view.setChecked(settings.getBoolean(toggle.key, toggle.defaultValue)) }
+        item.trailing(view).onClick { view.toggle() }
+        val showValue: () -> Unit = {
+            val on = settings.getBoolean(toggle.key, toggle.defaultValue)
+            view.setChecked(on)
+            item.supporting(toggle.summary(on)?.resolve(bundle.name))
+        }
         (listOf(toggle.key) + settings.coverers(toggle.key)).forEach { onChange(it, showValue) }
     }
 
