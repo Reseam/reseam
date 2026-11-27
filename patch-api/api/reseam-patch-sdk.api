@@ -1474,6 +1474,7 @@ public final class app/reseam/patch/settings/ActionsKt {
 
 public final class app/reseam/patch/settings/AppRuntimeKt {
 	public static final fun addReactPackage (Lapp/reseam/patch/CodeScope;Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
+	public static final fun addReactPackage (Lapp/reseam/patch/CodeScope;Lapp/reseam/patch/ValueRef;Lapp/reseam/patch/ExtMethod;)Lapp/reseam/patch/ValueRef;
 	public static final fun openSettings (Lapp/reseam/patch/CodeScope;)Lapp/reseam/patch/ValueRef;
 	public static final fun opensSettings (Lapp/reseam/patch/XmlElement;)V
 	public static final fun valueOf (Lapp/reseam/patch/CodeScope;Lapp/reseam/patch/settings/ChoiceSetting;)Lapp/reseam/patch/ValueRef;

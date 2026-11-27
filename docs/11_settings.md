@@ -352,4 +352,27 @@ getPackages.after { addReactPackage(result) }
 
 It is added once, however many bundles call it. Apps built with R8 can rename React Native's package types, so the engine finds the app's package interface itself.
 
+To register native modules of your own, ship a package class in an extension and pass its `addTo`:
+
+```kotlin
+object ExamplePackage {
+    fun createNativeModules(context: ReactApplicationContext): List<NativeModule> =
+        listOf(ExampleModule(context))
+
+    fun createViewManagers(context: ReactApplicationContext): List<Any> = emptyList()
+
+    @Export
+    @JvmStatic
+    fun addTo(packages: MutableList<Any?>) {
+        if (packages.none { it === this }) packages.add(this)
+    }
+}
+```
+
+```kotlin
+getPackages.after { addReactPackage(result, ExamplePackage.addTo) }
+```
+
+The class doesn't extend or implement a React Native package type, since R8 may have renamed it. The engine makes it implement the app's package interface, so declare `createNativeModules` and `createViewManagers` with the interface's signatures. Its modules register the way the runtime's own do.
+
 Next: [Reading obfuscated objects](12_bindings.md).

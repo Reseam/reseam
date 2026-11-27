@@ -231,6 +231,7 @@ The receiver of `gate { }`. Each member works like the same hook outside a gate.
 | `CodeScope.openSettings(): ValueRef` | Opens your bundle's settings over the app's current screen. It works from any thread. |
 | `XmlElement.opensSettings()` | Makes an `<intent>` element, such as the one an androidx `Preference` starts, open your settings. Also redirect the row's `startActivity` call to `Reseam.startActivity`, which recognizes the intent. |
 | `CodeScope.addReactPackage(packages: ValueRef): ValueRef` | Adds the React Native package that Hermes gates read settings through to `packages`, the app's package list. It is added once, however many bundles call it. |
+| `CodeScope.addReactPackage(packages: ValueRef, addTo: ExtMethod): ValueRef` | Adds a React Native package your bundle ships, through `addTo`, a static method of the package's class that adds the package to the list it gets. The class is made to implement the app's package interface, so it names no React Native package type. |
 
 ### `onAction`
 

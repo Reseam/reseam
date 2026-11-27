@@ -5,9 +5,11 @@ package app.reseam.test
 
 import app.reseam.patch.ExtClass
 import app.reseam.patch.PatchRuntime
+import app.reseam.patch.Type
 import app.reseam.patch.after
 import app.reseam.patch.klass
 import app.reseam.patch.method
+import app.reseam.patch.settings.addReactPackage
 
 /** An extension whose `filled`, `missing`, and `unused` are `external`; `entry` calls `missing`. */
 private object Bodies : ExtClass("app.reseam.test.Bodies") {
@@ -31,4 +33,16 @@ val filledBodies =
         callBodies()
         Bodies.filled.implement { returnVoid() }
         Bodies.missing.implement { returnVoid() }
+    }
+
+/** A React Native package the bundle ships, naming no React Native type. */
+private object BundlePackage : ExtClass("app.reseam.test.BundlePackage") {
+    val addTo by static(Type.List)
+}
+
+val bundleReactPackage =
+    fixturePatch(TestStrings.bundleReactPackage, TestStrings.bundleReactPackageDescription) {
+        klass("com.example.App").method("getPackages").after {
+            addReactPackage(result, BundlePackage.addTo)
+        }
     }

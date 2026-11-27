@@ -6,12 +6,14 @@ package app.reseam.patch.settings
 import app.reseam.patch.CodeScope
 import app.reseam.patch.ExtClass
 import app.reseam.patch.ExtJsModule
+import app.reseam.patch.ExtMethod
 import app.reseam.patch.JsCodeScope
 import app.reseam.patch.JsValue
 import app.reseam.patch.Type
 import app.reseam.patch.ValueRef
 import app.reseam.patch.XmlElement
 import app.reseam.patch.dex.AccessFlags
+import app.reseam.patch.klass
 import app.reseam.patch.method
 import app.reseam.patch.run.ActiveRuntime
 import app.reseam.patch.types.HermesModule
@@ -44,14 +46,24 @@ internal object ReseamReactPackage : ExtClass("app.reseam.runtime.react.ReseamRe
 /**
  * Adds the app runtime's React Native package, which gives the app's JavaScript the settings the
  * Hermes gates read, to [packages], the app's list of React Native packages. It adds it once
- * however many bundles call this, and makes it implement the app's package interface, which apps
- * built with R8 rename.
+ * however many bundles call this.
  */
-fun CodeScope.addReactPackage(packages: ValueRef): ValueRef {
-    val runtimePackage = ReseamReactPackage.target.classDef
+fun CodeScope.addReactPackage(packages: ValueRef): ValueRef =
+    addReactPackage(packages, ReseamReactPackage.addTo)
+
+/**
+ * Adds a React Native package the bundle ships to [packages], the app's list of React Native
+ * packages, by calling [addTo], a static method of the package's class that adds the package to the
+ * list it is given. The class names no React Native package type, since apps built with R8 rename
+ * them: this makes it implement the app's package interface, whose `createNativeModules` and
+ * `createViewManagers` it declares.
+ */
+fun CodeScope.addReactPackage(packages: ValueRef, addTo: ExtMethod): ValueRef {
+    require(addTo.isStatic) { "addReactPackage needs a static method; $addTo is not" }
+    val packageClass = klass(addTo.owner).classDef
     val reactPackage = createViewManagers.owner
-    if (reactPackage !in runtimePackage.interfaces) runtimePackage.addInterface(reactPackage)
-    return call(ReseamReactPackage.addTo, packages)
+    if (reactPackage !in packageClass.interfaces) packageClass.addInterface(reactPackage)
+    return call(addTo, packages)
 }
 
 /**

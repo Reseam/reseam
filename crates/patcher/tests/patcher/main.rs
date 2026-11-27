@@ -14,6 +14,7 @@ mod files;
 mod fingerprints;
 mod points;
 mod queries;
+mod react_packages;
 mod resources;
 mod runtime;
 mod settings;

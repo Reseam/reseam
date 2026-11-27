@@ -54,6 +54,8 @@
     <string name="unfilled_bodies_description">Calls an extension whose external methods no patch implements</string>
     <string name="filled_bodies">filled-bodies</string>
     <string name="filled_bodies_description">Calls an extension and implements the external methods the call reaches</string>
+    <string name="bundle_react_package">bundle-react-package</string>
+    <string name="bundle_react_package_description">Adds a React Native package the bundle ships to the app package list</string>
     <string name="file_streams">file-streams</string>
     <string name="file_streams_description">Streams files in and out without holding them whole, and keeps what a stream opened</string>
     <string name="fold_dex_files">fold-dex-files</string>
