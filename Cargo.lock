@@ -2139,7 +2139,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "reseam-apk"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "bitflags 2.13.1",
  "flate2",
@@ -2164,14 +2164,14 @@ dependencies = [
 
 [[package]]
 name = "reseam-browser-compression"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "reseam-apk",
 ]
 
 [[package]]
 name = "reseam-browser-tools"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "reseam-model",
  "reseam-sdk",
@@ -2181,14 +2181,14 @@ dependencies = [
 
 [[package]]
 name = "reseam-bytes"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "thiserror",
 ]
 
 [[package]]
 name = "reseam-cli"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2210,7 +2210,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-dex"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "bitflags 2.13.1",
  "fixedbitset",
@@ -2230,7 +2230,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-elf"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "fixedbitset",
  "memchr",
@@ -2244,14 +2244,14 @@ dependencies = [
 
 [[package]]
 name = "reseam-fixtures"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "zip",
 ]
 
 [[package]]
 name = "reseam-hermes"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "rayon",
  "reseam-bytes",
@@ -2264,14 +2264,14 @@ dependencies = [
 
 [[package]]
 name = "reseam-journal"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "rustc-hash",
 ]
 
 [[package]]
 name = "reseam-model"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "boltffi",
  "icu_locale",
@@ -2284,7 +2284,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-patcher"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "boltffi",
  "cc",
@@ -2316,7 +2316,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-sdk"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "ed25519-dalek",
  "hex",
@@ -2339,7 +2339,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-sdk-browser"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "reseam-model",
  "reseam-sdk",
@@ -2349,7 +2349,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-sdk-native"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "boltffi",
  "jni",
@@ -2362,7 +2362,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-sign"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "der",
  "flate2",
@@ -2384,7 +2384,7 @@ dependencies = [
 
 [[package]]
 name = "reseam-storage"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "libc",
  "memmap2",
