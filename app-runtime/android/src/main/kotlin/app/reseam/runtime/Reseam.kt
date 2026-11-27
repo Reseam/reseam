@@ -7,6 +7,7 @@ import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.os.LocaleList
 import java.util.concurrent.ConcurrentHashMap
 
 /** Runtime injected into patched apps; bundles share its application context and settings. */
@@ -16,6 +17,14 @@ object Reseam {
 
     internal val context: Context
         get() = app ?: error("Reseam.init has not run")
+
+    /**
+     * The user's languages for this app, the per-app language included. The app's resources reorder
+     * or narrow their own copy to the languages the app translates, which Reseam's text doesn't
+     * depend on.
+     */
+    internal val locales: LocaleList
+        get() = LocaleList.getDefault()
 
     /** Called first in Application.onCreate. Later calls do nothing. */
     @Export

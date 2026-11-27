@@ -82,7 +82,7 @@ internal class SettingsPanel : Application.ActivityLifecycleCallbacks, Component
         val current = (state as? PanelState.Visible)?.session ?: return
         val darkChanged =
             current.ui.theme.dark != Theme.of(current.bundle.brand, current.dialog.context).dark
-        if (darkChanged || current.locales != Reseam.context.resources.configuration.locales) {
+        if (darkChanged || current.locales != Reseam.locales) {
             current.theme()
         }
     }

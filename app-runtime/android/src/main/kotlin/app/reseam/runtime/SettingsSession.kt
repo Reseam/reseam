@@ -28,7 +28,7 @@ internal class SettingsSession(
     lateinit var ui: Ui
         private set
 
-    var locales: LocaleList = Reseam.context.resources.configuration.locales
+    var locales: LocaleList = Reseam.locales
         private set
 
     val pages = mutableListOf<OpenPage>()
@@ -85,7 +85,7 @@ internal class SettingsSession(
     @Suppress("DEPRECATION")
     fun theme() {
         ui = bundle.ui(dialog.context)
-        locales = Reseam.context.resources.configuration.locales
+        locales = Reseam.locales
         val window = checkNotNull(dialog.window) { "A dialog always owns a window" }
         window.followRuntimeText()
         val surface = ui.colors.surface

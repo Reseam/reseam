@@ -73,7 +73,7 @@ Toast.makeText(context, ExampleStrings.downloadSaved(folder), Toast.LENGTH_SHORT
 val label = ExampleStrings.itemsHidden(count)
 ```
 
-Each string shows in the language the user picked in Reseam's settings, else in the first of the app's languages that translates it, including Android's per-app language setting, and falls back to the default text, which is English. Reading a string before the app runtime has started fails.
+Each string shows in the language the user picked in Reseam's settings, else in the first of the user's languages that translates it, with Android's per-app language first. The app doesn't need a translation of its own in that language. A string no translation covers shows its default text, which is English. Reading a string before the app runtime has started fails.
 
 ### `StringTable`
 

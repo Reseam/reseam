@@ -12,11 +12,11 @@ import org.json.JSONObject
 
 /**
  * Lazily reads translated assets from a table directory. Each name comes from the first table that
- * has it in the order of the language picked in Reseam's settings, then the app's locales, the way
- * the engine resolves patch text: for each locale, tables of its language in the same script, its
- * region first, then none, then other regions. The default text is English, so an English locale
- * ends the order. Missing names and use before Reseam.init throw; malformed JSON and formatting
- * errors propagate to the caller.
+ * has it in the order of the language picked in Reseam's settings, then the user's languages for
+ * the app, the way the engine resolves patch text: for each locale, tables of its language in the
+ * same script, its region first, then none, then other regions. The default text is English, so an
+ * English locale ends the order. Missing names and use before Reseam.init throw; malformed JSON and
+ * formatting errors propagate to the caller.
  */
 class StringTable(private val directory: String) {
     operator fun get(name: String): String = find(name).strings.getString(name)
@@ -84,9 +84,9 @@ class StringTable(private val directory: String) {
     }
 
     private fun readingLocales(): LocaleList {
-        val app = Reseam.context.resources.configuration.locales
-        val chosen = Appearance.language ?: return app
-        val locales = listOf(Locale.forLanguageTag(chosen)) + List(app.size()) { app[it] }
+        val user = Reseam.locales
+        val chosen = Appearance.language ?: return user
+        val locales = listOf(Locale.forLanguageTag(chosen)) + List(user.size()) { user[it] }
         return LocaleList(*locales.distinct().toTypedArray())
     }
 
