@@ -138,6 +138,7 @@ fun MethodTarget.alwaysReturnNull() = replace { returnNull() }
  */
 fun PointTarget.before(block: CodeScope.() -> Unit) {
     val point = resolved
+    point.captures.forEach { it.requireHeldAt(point.method, point.anchor.head, label) }
     point.method.insertCode(
         CodePlacement.OnEveryPath(point.anchor.head.toUInt()),
         block,
@@ -154,6 +155,7 @@ fun PointTarget.after(block: CodeScope.() -> Unit) {
     require(opcode?.endsFlow != true) {
         "$label: nothing runs after the $opcode at ${point.method.descriptor}[${point.index}]; use before"
     }
+    point.captures.forEach { it.requireHeldAt(point.method, point.anchor.tail, label) }
     point.method.insertCode(
         CodePlacement.Before(minOf(point.anchor.tail, point.method.instructionCount).toUInt()),
         block,
@@ -180,6 +182,7 @@ fun PointTarget.skipWhen(condition: CodeScope.() -> ValueRef) {
     require(method.instructions.getOrNull(point.index + 1)?.opcode?.isMoveResult != true) {
         "$label: the result of ${ref.descriptor} is used; skipWhen needs a call whose result is unused"
     }
+    point.captures.forEach { it.requireHeldAt(method, point.anchor.head, label) }
     val origins = ArgumentOrigins(method)
     val arguments =
         call.arguments("$label: ${method.descriptor}[${point.index}]").mapIndexed { i, arg ->

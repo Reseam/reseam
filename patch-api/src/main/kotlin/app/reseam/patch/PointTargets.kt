@@ -5,10 +5,12 @@ package app.reseam.patch
 
 import app.reseam.patch.dex.descriptor
 import app.reseam.patch.dex.fieldRef
+import app.reseam.patch.dex.jumps
 import app.reseam.patch.dex.methodRef
 import app.reseam.patch.dex.opcode
 import app.reseam.patch.dex.operands
 import app.reseam.patch.dex.regA
+import app.reseam.patch.dex.writers
 import app.reseam.patch.native.jumpSources
 import app.reseam.patch.points.ArgumentOrigins
 import app.reseam.patch.points.PointMatchSpec
@@ -74,7 +76,7 @@ internal constructor(
                 ?: error(
                     "$label: cannot infer the type of the value at instruction ${point.index} (${insn.opcode}); pass captureAs(\"$name\", type)"
                 )
-        Capture(name, captureType, register)
+        Capture(name, captureType, register, CaptureOrigin(point.anchor, point.writes(register)))
     }
 
     /**
@@ -95,7 +97,7 @@ internal constructor(
                     ?: error(
                         "$label: cannot infer the type of argument $argument at instruction ${point.index} (${insns[point.index].opcode}); pass captureArgumentAs(\"$name\", $argument, type)"
                     )
-            Capture(name, captureType, register)
+            Capture(name, captureType, register, CaptureOrigin(point.anchor, written = false))
         }
 
     /**
@@ -208,4 +210,10 @@ internal constructor(
             point.at(runtime, base.label, index).resolution(base.label)
         }
     }
+}
+
+/** Whether the point's instruction writes [register], so the next instruction sees its value. */
+private fun ResolvedPoint.writes(register: Int): Boolean {
+    val next = method.jumps(index)?.fallsThrough ?: return false
+    return method.writers(next, register)?.indices?.contains(index) == true
 }
