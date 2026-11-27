@@ -87,6 +87,21 @@ val inheritedMethods =
         )
     }
 
+/** Extends `android.app.Application` through an app class, not directly. */
+private val deepApplication =
+    klass("deepApplication") {
+        extends("android.app.Application")
+        sourceFile("Deep.java")
+    }
+
+val platformSuperclass =
+    fixturePatch(TestStrings.platformSuperclass, TestStrings.platformSuperclassDescription) {
+        files.write(
+            "assets/platform-superclass.txt",
+            deepApplication.descriptor.encodeToByteArray(),
+        )
+    }
+
 private val planEnum = klass("plan") { enumConstants("FREE", "PREMIUM") }
 
 val enumConstants =

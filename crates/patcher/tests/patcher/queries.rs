@@ -181,6 +181,37 @@ fn a_class_reaches_the_methods_its_base_declares() {
 }
 
 #[test]
+fn extends_matches_the_platform_class_app_superclasses_reach() {
+    use crate::common::code::dex_bytes;
+    use reseam_dex::{AccessFlags, DexFile, DexHeader, DexVersion};
+
+    let mut dex = DexFile::new(DexHeader::new(DexVersion::V035));
+    dex.create_class(
+        "Lcom/example/BaseApplication;",
+        AccessFlags::PUBLIC,
+        Some("Landroid/app/Application;"),
+    )
+    .unwrap();
+    let deep = dex
+        .create_class(
+            "Lcom/example/DeepApplication;",
+            AccessFlags::PUBLIC,
+            Some("Lcom/example/BaseApplication;"),
+        )
+        .unwrap();
+    let source = dex.intern_string("Deep.java");
+    dex.class_mut(deep).unwrap().source_file = Some(source);
+    let (_dir, mut apk) = open_dex_apk(&[&dex_bytes(&dex)]);
+    apply_fixture(&mut apk, "platform-superclass", "platformSuperclass");
+
+    assert_eq!(
+        apk.read_component_entry(0, "assets/platform-superclass.txt")
+            .unwrap(),
+        Some(b"Lcom/example/DeepApplication;".to_vec()),
+    );
+}
+
+#[test]
 fn string_prefix_queries_use_literal_prefixes_and_exclude_extensions() {
     let (_dir, mut apk) = open_dex_apk(&[dex!("prefix_queries")]);
     apk.add_dex(reseam_dex::parse(dex!("extension_routes"), ParseOptions::default()).unwrap());
