@@ -10,10 +10,6 @@ import app.reseam.patch.dex.descriptor
 import app.reseam.patch.dex.parameterTypes
 import app.reseam.patch.dex.returnType
 
-/**
- * Seeds from the first group that has any. A seed costs a handle for every method it holds for the
- * rest of the run, so a group a query has no need of is never computed.
- */
 internal fun MethodQuerySpec.seedPlan(runtime: PatchRuntime): QueryPlan<Method> {
     val index = runtime.index
     val owner = inClass?.let { runtime.resolve(it).value.descriptor }
@@ -61,19 +57,29 @@ internal fun MethodQuerySpec.seedPlan(runtime: PatchRuntime): QueryPlan<Method> 
                 add { Seeded("literals($it)", index.seeds.withLiteral(it)) }
             }
         }
-    val references =
-        callMatches.map {
-            { Seeded("calls(reference query)", index.references.methodsCalling(it)) }
-        } +
-            accessMatches.map {
-                { Seeded("accesses(reference query)", index.references.methodsAccessing(it)) }
-            }
-    val name = listOfNotNull(methodName?.let { { Seeded("name($it)", index.seeds.named(it)) } })
     val seeds =
         selective
-            .ifEmpty { references }
-            .ifEmpty { name }
-            .ifEmpty { declarationSeeds(index) + codeSeeds(index) }
+            .ifEmpty {
+                callMatches.map {
+                    { Seeded("calls(reference query)", index.references.methodsCalling(it)) }
+                } +
+                    accessMatches.map {
+                        {
+                            Seeded(
+                                "accesses(reference query)",
+                                index.references.methodsAccessing(it),
+                            )
+                        }
+                    }
+            }
+            .ifEmpty {
+                listOfNotNull(
+                    methodName?.let { name ->
+                        { Seeded("name($name)", index.seeds.named(name)) }
+                    }
+                )
+            }
+            .ifEmpty { structuralSeeds(index) }
     return QueryPlan(seeds, "method(s)", { handles -> handles.map(::Method) }) {
         CandidatePool(
             index.allMethods,
@@ -100,7 +106,7 @@ private fun MethodQuerySpec.classSeed(index: SearchIndex, owner: String): Seeded
     return Seeded(label, candidates.map(Method::handle).toSet())
 }
 
-private fun MethodQuerySpec.declarationSeeds(index: SearchIndex): List<() -> Seeded> = buildList {
+private fun MethodQuerySpec.structuralSeeds(index: SearchIndex): List<() -> Seeded> = buildList {
     parameterTypes?.let { types ->
         add {
             Seeded("params(${types.joinToString()})", index.seeds.withParameters(types))
@@ -112,12 +118,6 @@ private fun MethodQuerySpec.declarationSeeds(index: SearchIndex): List<() -> See
     hasParameters.forEach { type ->
         add { Seeded("hasParam($type)", index.seeds.withParameter(type)) }
     }
-    positionalParams.forEach { (position, type) ->
-        add { Seeded("param($position, $type)", index.seeds.withParameter(type)) }
-    }
-}
-
-private fun MethodQuerySpec.codeSeeds(index: SearchIndex): List<() -> Seeded> = buildList {
     opcodeSequences.forEach { sequence ->
         add {
             Seeded(

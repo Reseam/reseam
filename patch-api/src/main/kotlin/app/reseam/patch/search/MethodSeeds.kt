@@ -47,7 +47,7 @@ internal class MethodSeeds(memos: Memos) {
     private val code = memos.clearedOnEdit<Seed, Set<UInt>>()
 
     private fun seed(memo: Memos.Memo<Seed, Set<UInt>>, key: Seed, find: () -> UIntArray) =
-        memo.getOrPut(key) { HandleSet.of(find()) }
+        memo.getOrPut(key) { find().toCollection(linkedSetOf()) }
 
     fun named(name: String) = seed(declarations, Seed.Name(name)) { findMethodsByName(name) }
 

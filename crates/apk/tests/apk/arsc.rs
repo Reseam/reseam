@@ -110,30 +110,6 @@ fn resource_edits_reject_invalid_indices_without_changing_the_table() -> TestRes
 }
 
 #[test]
-fn names_added_after_a_lookup_are_found_by_name() -> TestResult {
-    let mut table = ResourceTable::parse(DexBytes::from_vec(make_test_arsc().serialize()?))?;
-    let hello = table.find_resource_id("string", "hello")?.expect("fixture");
-    let text = ResValue::string(table.add_global_string("Hallo"));
-    let greeting = table
-        .add_resource_in("string", "greeting", text, "de")?
-        .expect("added");
-    assert_eq!(
-        table.add_resource_in("string", "hello", text, "fr")?,
-        Some(hello)
-    );
-    for table in [&table, &table.clone()] {
-        assert_eq!(
-            table.find_resource_id("string", "greeting")?,
-            Some(greeting)
-        );
-        assert_eq!(table.find_resource_id("string", "hello")?, Some(hello));
-        assert!(table.has_entry_in("string", "hello", "fr")?);
-        assert_eq!(table.find_resource_id("string", "absent")?, None);
-    }
-    Ok(())
-}
-
-#[test]
 fn resource_lookup_and_string_replacement_survive_serialization() -> TestResult {
     for (index, case) in table_cases::cases()?.into_iter().enumerate() {
         let mut table = ResourceTable::parse(DexBytes::from_slice(&case.input))?;

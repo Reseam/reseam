@@ -274,26 +274,25 @@ fn find_entry_in(
     let Some(key) = package.key_strings.find(entry_name)? else {
         return Ok(None);
     };
-    let Some(entry_index) = package.entry_index(local_type, key)? else {
-        return Ok(None);
-    };
     let type_id = package.resource_type_id(local_type)?;
-    package.resource_id(local_type, entry_index)?;
     first_found(
         package
             .types
             .iter()
             .filter(|t| t.id == local_type)
-            .map(|res_type| {
-                if res_type.entry_key(entry_index)? != Some(key) {
-                    return Ok(None);
-                }
-                res_type.entry_head(entry_index).map(|head| {
-                    head.map(|(_, value)| EntryLocation {
-                        package_id: package.id,
-                        type_id,
-                        entry_index,
-                        value,
+            .flat_map(|res_type| {
+                (0..res_type.len()).map(move |i| {
+                    if res_type.entry_key(i)? != Some(key) {
+                        return Ok(None);
+                    }
+                    package.resource_id(local_type, i)?;
+                    res_type.entry_head(i).map(|head| {
+                        head.map(|(_, value)| EntryLocation {
+                            package_id: package.id,
+                            type_id,
+                            entry_index: i,
+                            value,
+                        })
                     })
                 })
             }),

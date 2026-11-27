@@ -48,9 +48,7 @@ internal class References(memos: Memos, private val index: SearchIndex) {
             }
 
     fun methodsCalling(pattern: MethodPattern): Set<UInt> =
-        callers.getOrPut(pattern) {
-            HandleSet.of(findCallsMatching(pattern).map { it.method }.toUIntArray())
-        }
+        callers.getOrPut(pattern) { findCallsMatching(pattern).mapTo(linkedSetOf()) { it.method } }
 
     /** The indices of the instructions in [method] accessing a field [pattern] matches. */
     fun accessesIn(method: Method, pattern: FieldPattern): Set<Int> =
@@ -62,7 +60,7 @@ internal class References(memos: Memos, private val index: SearchIndex) {
 
     fun methodsAccessing(pattern: FieldPattern): Set<UInt> =
         accessors.getOrPut(pattern) {
-            HandleSet.of(findFieldAccessesMatching(pattern).map { it.method }.toUIntArray())
+            findFieldAccessesMatching(pattern).mapTo(linkedSetOf()) { it.method }
         }
 
     /** The methods invoking [callee], with the index of each invoke. */

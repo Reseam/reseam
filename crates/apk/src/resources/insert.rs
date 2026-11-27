@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::id::ResourceAddress;
-use super::{EntryValue, ResourceTable, config_for_qualifiers, package};
+use super::{EntryValue, ResEntry, ResourceTable, config_for_qualifiers, package};
 use crate::error::{ApkError, Result, invalid};
 use crate::res_value::ResValue;
 
@@ -167,7 +167,9 @@ impl ResourceTable {
             Some(key) => key,
             None => package.key_strings.intern(entry_name)?,
         };
-        package.put(type_id, config, entry_index, key, value)?;
+        let chunk = package.config_type(type_id, config);
+        let flags = chunk.entry(entry_index)?.map_or(0, |current| current.flags);
+        chunk.set(entry_index, Some(ResEntry { flags, key, value }))?;
         package.grow_type(type_id, entry_index + 1);
         Ok(Some(package.resource_id(type_id, entry_index)?))
     }
