@@ -110,14 +110,24 @@ impl Instruction {
 
     /// The branch displacements a switch payload lists, relative to its switch.
     pub(crate) fn switch_targets(&self) -> Option<Vec<i32>> {
+        Some(
+            self.switch_cases()?
+                .into_iter()
+                .map(|(_, target)| target)
+                .collect(),
+        )
+    }
+
+    /// Each key a switch payload lists, with its branch displacement relative to the switch.
+    pub(crate) fn switch_cases(&self) -> Option<Vec<(i32, i32)>> {
         match self {
-            Self::PackedSwitchPayload(data) => Some(data.targets.clone()),
-            Self::SparseSwitchPayload(data) => Some(
-                data.keys_and_targets
-                    .iter()
-                    .map(|&(_, target)| target)
+            Self::PackedSwitchPayload(data) => Some(
+                (0..)
+                    .zip(&data.targets)
+                    .map(|(offset, &target)| (data.first_key.wrapping_add(offset), target))
                     .collect(),
             ),
+            Self::SparseSwitchPayload(data) => Some(data.keys_and_targets.clone()),
             _ => None,
         }
     }

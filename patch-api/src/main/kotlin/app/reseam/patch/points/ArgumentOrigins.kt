@@ -11,7 +11,7 @@ import app.reseam.patch.dex.opcode
 import app.reseam.patch.dex.operands
 import app.reseam.patch.dex.regA
 import app.reseam.patch.dex.regB
-import app.reseam.patch.native.registerWriters
+import app.reseam.patch.dex.writers
 import app.reseam.patch.types.Instruction
 
 internal class ArgumentOrigins(private val method: Method) {
@@ -124,13 +124,12 @@ internal class ArgumentOrigins(private val method: Method) {
             return it
         }
         if (!visiting.add(key)) return Origins(emptySet(), unknown = true)
-        val writers = registerWriters(method.handle, at.toUInt(), register.toUShort())
+        val writers = method.writers(at, register)
         val result =
             if (writers == null) Origins(emptySet(), unknown = true)
             else {
                 val sources =
-                    writers.indices.map { raw ->
-                        val index = raw.toInt()
+                    writers.indices.map { index ->
                         val insn = insns[index]
                         if (before != null && index < before) {
                             Origins(emptySet(), entry = true, registersAtBoundary = setOf(register))

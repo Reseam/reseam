@@ -6,7 +6,7 @@ use std::sync::Arc;
 use boltffi::export;
 use reseam_dex::{self as dex, AccessFlags};
 
-use crate::bridge::dex::types::{MethodEdit, RegisterWriters};
+use crate::bridge::dex::types::{InstructionJumps, MethodEdit, RegisterWriters};
 use crate::bridge::handles::{with_code, with_method_mut};
 use crate::bridge::trace;
 use crate::context::{Moved, code_mut, method_mut};
@@ -86,6 +86,24 @@ pub fn register_writers(m: u32, index: u32, register: u16) -> Option<RegisterWri
         Some(RegisterWriters {
             indices: indices.into_iter().map(|index| index as u32).collect(),
             from_entry,
+        })
+    })
+}
+
+#[export]
+pub fn instruction_jumps(m: u32, index: u32) -> Option<InstructionJumps> {
+    with_code(m, |_, code| {
+        let jumps = dex::jumps(code, index as usize)?;
+        let (case_keys, case_targets) = jumps
+            .cases
+            .into_iter()
+            .map(|(key, target)| (key, target as u32))
+            .unzip();
+        Some(InstructionJumps {
+            falls_through: jumps.falls_through.map(|index| index as u32),
+            branch: jumps.branch.map(|index| index as u32),
+            case_keys,
+            case_targets,
         })
     })
 }

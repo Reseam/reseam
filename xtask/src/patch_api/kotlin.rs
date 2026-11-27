@@ -71,6 +71,7 @@ pub fn split_surface(output: &Path) -> Result<()> {
         "CodeOperand",
         "FieldPattern",
         "InstructionHit",
+        "InstructionJumps",
         "MethodEdit",
         "MethodPattern",
         "RegisterWriters",

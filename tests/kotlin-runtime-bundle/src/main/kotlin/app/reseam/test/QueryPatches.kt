@@ -6,7 +6,9 @@ package app.reseam.test
 import app.reseam.patch.alwaysReturn
 import app.reseam.patch.before
 import app.reseam.patch.dex.Opcode
+import app.reseam.patch.dex.jumps
 import app.reseam.patch.dex.opcode
+import app.reseam.patch.dex.writers
 import app.reseam.patch.enumConstant
 import app.reseam.patch.field
 import app.reseam.patch.invoke
@@ -99,6 +101,19 @@ val platformSuperclass =
         files.write(
             "assets/platform-superclass.txt",
             deepApplication.descriptor.encodeToByteArray(),
+        )
+    }
+
+val methodFlow =
+    fixturePatch(TestStrings.methodFlow, TestStrings.methodFlowDescription) {
+        val method = klass("com.example.Flow").method("pick").method
+        val switch = checkNotNull(method.jumps(0))
+        val goto = checkNotNull(method.jumps(1))
+        val writers = checkNotNull(method.writers(4, 0))
+        files.write(
+            "assets/method-flow.txt",
+            "${switch.cases}|${switch.fallsThrough}|${goto.branch}|${writers.indices}|${writers.fromEntry}"
+                .encodeToByteArray(),
         )
     }
 

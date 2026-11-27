@@ -135,6 +135,8 @@
     <string name="instruction_shape_queries_description">Instruction order and a custom predicate separate methods nothing else tells apart</string>
     <string name="inherited_methods">inherited-methods</string>
     <string name="inherited_methods_description">A method an obfuscated base declares is reachable from the subclass it is called on</string>
+    <string name="method_flow">method-flow</string>
+    <string name="method_flow_description">Reads switch cases, branch targets and register writers by instruction index</string>
     <string name="platform_superclass">platform-superclass</string>
     <string name="platform_superclass_description">A class extends the platform class its app superclasses reach</string>
     <string name="enum_constants">enum-constants</string>

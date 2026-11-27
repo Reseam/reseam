@@ -212,6 +212,62 @@ fn extends_matches_the_platform_class_app_superclasses_reach() {
 }
 
 #[test]
+fn method_flow_reads_switch_cases_branch_targets_and_writers() {
+    use crate::common::code::dex_bytes;
+    use reseam_dex::{
+        AccessFlags, CodeItem, DexFile, DexHeader, DexVersion, EncodedMethod, Instruction,
+        PackedSwitchData,
+    };
+
+    let mut dex = DexFile::new(DexHeader::new(DexVersion::V035));
+    let class = dex
+        .create_class(
+            "Lcom/example/Flow;",
+            AccessFlags::PUBLIC,
+            Some("Ljava/lang/Object;"),
+        )
+        .unwrap();
+    let pick = dex
+        .intern_method("Lcom/example/Flow;", "pick", "(I)V")
+        .unwrap();
+    let code = CodeItem::new(
+        1,
+        1,
+        0,
+        vec![
+            Instruction::PackedSwitch {
+                test: 0,
+                payload_offset: 10,
+            },
+            Instruction::Goto { offset: 5 },
+            Instruction::Const4 { dest: 0, value: 1 },
+            Instruction::Nop,
+            Instruction::IfEqz { a: 0, offset: -2 },
+            Instruction::ReturnVoid,
+            Instruction::Nop,
+            Instruction::PackedSwitchPayload(Box::new(PackedSwitchData {
+                first_key: 10,
+                targets: vec![4, 6],
+            })),
+        ],
+    )
+    .unwrap();
+    dex.class_mut(class).unwrap().add_method(EncodedMethod {
+        method: pick,
+        access_flags: AccessFlags::PUBLIC | AccessFlags::STATIC,
+        code: Some(std::sync::Arc::new(code)),
+    });
+    let (_dir, mut apk) = open_dex_apk(&[&dex_bytes(&dex)]);
+    apply_fixture(&mut apk, "method-flow", "methodFlow");
+
+    assert_eq!(
+        apk.read_component_entry(0, "assets/method-flow.txt")
+            .unwrap(),
+        Some(b"{10=2, 11=4}|1|5|[2]|true".to_vec()),
+    );
+}
+
+#[test]
 fn string_prefix_queries_use_literal_prefixes_and_exclude_extensions() {
     let (_dir, mut apk) = open_dex_apk(&[dex!("prefix_queries")]);
     apk.add_dex(reseam_dex::parse(dex!("extension_routes"), ParseOptions::default()).unwrap());

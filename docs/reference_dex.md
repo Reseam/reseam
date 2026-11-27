@@ -50,6 +50,17 @@ Each returns an instruction index, or null when nothing matches.
 | `indexOfFirstInstructionReversed(start: Int? = null, predicate: Instruction.() -> Boolean): Int?` | The last one, searching back from `start` or the end. |
 | `findFreeRegister(atIndex: Int, exclude: List<Int> = emptyList()): Int` | A register that holds nothing live at `atIndex`, other than those in `exclude`. |
 
+**Following data and control**
+
+Each returns null when the method's control flow cannot be followed. Indexes are of `instructions`.
+
+| Member | Description |
+|---|---|
+| `writers(index: Int, register: Int): RegisterWriters?` | The instructions whose write of `register` reaches instruction `index`, along exception paths too. A wide write to the register below also writes it. |
+| `jumps(index: Int): Jumps?` | Where instruction `index` continues: the next instruction, a branch's target, and a switch's targets by key. |
+
+`RegisterWriters` has `indices: List<Int>`, and `fromEntry: Boolean`, set when the value the method was entered with, such as a parameter, reaches `index` too. `Jumps` has `fallsThrough: Int?`, the next instruction when the instruction can fall into it, `branch: Int?`, where a branch goes when taken, and `cases: Map<Int, Int>`, a switch's target for each key.
+
 **Changing**
 
 Indexes you saved go stale when you insert or remove instructions before them. [Points](6_points.md) don't have that problem.

@@ -80,3 +80,56 @@ fn edits_relocate_debug_and_handlers_and_roll_back_invalid_targets() -> TestResu
     reseam_dex::parse(&bytes, ParseOptions::default())?;
     Ok(())
 }
+
+#[test]
+fn jumps_name_switch_cases_and_branch_targets_by_instruction_index() -> TestResult {
+    use reseam_dex::{CodeItem, Instruction, Jumps, PackedSwitchData, jumps};
+    let code = CodeItem::new(
+        1,
+        1,
+        0,
+        vec![
+            Instruction::PackedSwitch {
+                test: 0,
+                payload_offset: 10,
+            },
+            Instruction::Goto { offset: 5 },
+            Instruction::Const4 { dest: 0, value: 1 },
+            Instruction::ReturnVoid,
+            Instruction::IfEqz { a: 0, offset: -2 },
+            Instruction::ReturnVoid,
+            Instruction::Nop,
+            Instruction::PackedSwitchPayload(Box::new(PackedSwitchData {
+                first_key: 10,
+                targets: vec![4, 6],
+            })),
+        ],
+    )?;
+    let jumps_at = |index| jumps(&code, index).expect("control flow is known");
+    assert_eq!(
+        jumps_at(0),
+        Jumps {
+            falls_through: Some(1),
+            branch: None,
+            cases: vec![(10, 2), (11, 4)],
+        }
+    );
+    assert_eq!(
+        jumps_at(1),
+        Jumps {
+            falls_through: None,
+            branch: Some(5),
+            cases: Vec::new(),
+        }
+    );
+    assert_eq!(
+        jumps_at(4),
+        Jumps {
+            falls_through: Some(5),
+            branch: Some(2),
+            cases: Vec::new(),
+        }
+    );
+    assert_eq!(jumps_at(3).falls_through, None);
+    Ok(())
+}

@@ -37,7 +37,7 @@ pub use edit::block::{
     BlockInsertion, BlockOperand, BlockRegister, BlockStep, FrameGrowth, insert_block,
 };
 pub use edit::body::IncomingBranches;
-pub use edit::flow::jump_sources;
+pub use edit::flow::{Jumps, jump_sources, jumps};
 pub use edit::forms::move_register;
 pub use edit::grow::grow_registers;
 pub use edit::invoke::{

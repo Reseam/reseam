@@ -1206,6 +1206,12 @@ public final class app/reseam/patch/dex/InstructionsKt {
 	public static final fun getTypeRef (Lapp/reseam/patch/types/Instruction;)Ljava/lang/String;
 }
 
+public final class app/reseam/patch/dex/Jumps {
+	public final fun getBranch ()Ljava/lang/Integer;
+	public final fun getCases ()Ljava/util/Map;
+	public final fun getFallsThrough ()Ljava/lang/Integer;
+}
+
 public final class app/reseam/patch/dex/Method {
 	public static final fun addAnnotation-impl (ILapp/reseam/patch/types/AnnotationItem;)V
 	public static final synthetic fun box-impl (I)Lapp/reseam/patch/dex/Method;
@@ -1266,6 +1272,11 @@ public final class app/reseam/patch/dex/Method {
 	public fun toString ()Ljava/lang/String;
 	public static fun toString-impl (I)Ljava/lang/String;
 	public final synthetic fun unbox-impl ()I
+}
+
+public final class app/reseam/patch/dex/MethodFlowKt {
+	public static final fun jumps-GBl35aY (II)Lapp/reseam/patch/dex/Jumps;
+	public static final fun writers-alVdlW8 (III)Lapp/reseam/patch/dex/RegisterWriters;
 }
 
 public final class app/reseam/patch/dex/Opcode : java/lang/Enum {
@@ -1506,6 +1517,11 @@ public final class app/reseam/patch/dex/Opcode : java/lang/Enum {
 
 public final class app/reseam/patch/dex/Opcode$Companion {
 	public final fun of (I)Lapp/reseam/patch/dex/Opcode;
+}
+
+public final class app/reseam/patch/dex/RegisterWriters {
+	public final fun getFromEntry ()Z
+	public final fun getIndices ()Ljava/util/List;
 }
 
 public final class app/reseam/patch/settings/About {

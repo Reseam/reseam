@@ -144,6 +144,52 @@ pub fn jump_sources(code: &CodeItem, index: usize) -> Option<Vec<usize>> {
     Some(sources)
 }
 
+/// Where instruction `index` continues, by instruction index.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Jumps {
+    /// The next instruction, when the instruction can fall into it.
+    pub falls_through: Option<usize>,
+    /// Where a branch goes when it is taken.
+    pub branch: Option<usize>,
+    /// A switch's targets by key.
+    pub cases: Vec<(i32, usize)>,
+}
+
+/// Where instruction `index` continues; `None` when control flow cannot be followed.
+pub fn jumps(code: &CodeItem, index: usize) -> Option<Jumps> {
+    let instructions = &code.instructions;
+    let instruction = instructions.get(index)?;
+    if matches!(instruction, Instruction::Raw { .. }) {
+        return None;
+    }
+    let addresses = Addresses::of(instructions);
+    let target = |delta| {
+        addresses
+            .target(index, delta)
+            .filter(|&target| target < instructions.len())
+    };
+    let branch = match instruction.branch_offset() {
+        Some(delta) => Some(target(delta)?),
+        None => None,
+    };
+    let cases = if instruction.is_switch() {
+        let payload = &instructions[target(instruction.payload_offset()?)?];
+        payload
+            .switch_cases()?
+            .into_iter()
+            .map(|(key, delta)| Some((key, target(delta)?)))
+            .collect::<Option<_>>()?
+    } else {
+        Vec::new()
+    };
+    Some(Jumps {
+        falls_through: (instruction.falls_through() && index + 1 < instructions.len())
+            .then_some(index + 1),
+        branch,
+        cases,
+    })
+}
+
 /// Where control goes after instruction `index` completes normally; `None`
 /// when that cannot be followed: an unknown instruction, or a branch that does
 /// not land on an instruction.

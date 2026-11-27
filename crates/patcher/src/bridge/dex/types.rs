@@ -101,6 +101,15 @@ pub struct RegisterWriters {
 
 #[data]
 #[derive(Debug, Clone)]
+pub struct InstructionJumps {
+    pub falls_through: Option<u32>,
+    pub branch: Option<u32>,
+    pub case_keys: Vec<i32>,
+    pub case_targets: Vec<u32>,
+}
+
+#[data]
+#[derive(Debug, Clone)]
 pub struct NewMethod {
     pub name: String,
     pub proto: String,
