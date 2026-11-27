@@ -61,4 +61,4 @@ Every `reseam release` command takes these.
 | `--notes <path>` | release notes (default: the subjects of the commits since the previous tag) |
 | `--keep <n>` | for S3 and folder targets, keep only the newest `n` releases; folders that aren't version tags stay |
 
-A release whose version has a prerelease part, such as `1.2.0-beta.1`, is published as a prerelease. The default notes come from `git`, so run it in a checkout that has your tags.
+A release whose version has a prerelease part, such as `1.2.0-beta.1`, is marked a prerelease in `patches.json`, and clients pick their channel from that. On a forge target, the forge release itself isn't flagged as a prerelease when it carries an index, so the forge's latest release always holds the newest index. A `release files` release has no index and keeps the flag. The default notes come from `git`, so run it in a checkout that has your tags.

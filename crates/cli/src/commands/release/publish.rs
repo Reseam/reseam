@@ -99,7 +99,9 @@ impl<'a> Release<'a> {
         match &self.store {
             Store::Forge(forge) => {
                 let assets: Vec<_> = files.iter().copied().chain(index).collect();
-                forge.publish(tag, body, prerelease, &assets, self.published)
+                // A forge's latest release skips prereleases; clients read the channel from the index.
+                let flagged = prerelease && index.is_none();
+                forge.publish(tag, body, flagged, &assets, self.published)
             }
             Store::Files(store) => {
                 store.upload(tag, files, index)?;
