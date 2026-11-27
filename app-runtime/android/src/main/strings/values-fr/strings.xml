@@ -37,4 +37,13 @@
     <string name="import_unreadable">Ce fichier n’est pas un export de paramètres.</string>
     <string name="import_nothing_applies">Aucun des paramètres de ce fichier n’appartient à cette application.</string>
     <string name="ok">OK</string>
+    <string name="color_hue">Teinte</string>
+    <string name="color_saturation">Saturation</string>
+    <string name="color_brightness">Luminosité</string>
+    <string name="color_opacity">Opacité</string>
+    <string name="color_code">Code couleur</string>
+    <string name="settings_as_text">Paramètres en texte</string>
+    <string name="settings_as_text_summary">Copiez vos paramètres en texte ou collez des paramètres pour les importer.</string>
+    <string name="copy">Copier</string>
+    <string name="value_out_of_range">Saisissez une valeur de <xliff:g id="min">%1$s</xliff:g> à <xliff:g id="max">%2$s</xliff:g></string>
 </resources>

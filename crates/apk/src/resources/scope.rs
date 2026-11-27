@@ -64,6 +64,7 @@ impl<'a> ResourceScope<'a> {
             axml::AttributeValue::Text => ResValue::string(self.table.add_global_string(text)),
         })
     }
+
     /// Adds or replaces `items` in every configuration of `style/name`. A style
     /// the table does not have is created in the default configuration, which
     /// needs `parent`; given for a style that exists, `parent` replaces its own.
@@ -75,60 +76,77 @@ impl<'a> ResourceScope<'a> {
         &mut self,
         name: &str,
         parent: Option<&str>,
-        items: &[(String, String)],
+        items: &[StyleItem],
     ) -> Result<u32> {
-        let names = items
-            .iter()
-            .map(|(item, _)| {
-                self.table().attr_id(item)?.ok_or_else(|| {
-                    invalid(
-                        "style item",
-                        format!(
-                            "style/{name}: no attr resource is named {item}, and an item the framework cannot resolve is ignored"
-                        ),
-                    )
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
-        let values = items
-            .iter()
-            .zip(&names)
-            .map(|((_, value), &attr)| self.parse_value(value, Some(attr)))
-            .collect::<Result<Vec<_>>>()?;
-        let parent = parent.map(|parent| self.reference(parent)).transpose()?;
-
-        let added: Vec<MapEntry> = names
-            .iter()
-            .zip(&values)
-            .map(|(&name, &value)| MapEntry { name, value })
-            .collect();
-        match self
-            .table_mut()
-            .edit_complex_entries("style", name, |style_parent, entries| {
-                if let Some(parent) = parent {
-                    *style_parent = parent;
-                }
-                merge(entries, &added);
-            })? {
+        let edit = self.style_edit(name, parent, items)?;
+        let table = self.table_mut();
+        match table.edit_complex_entries("style", name, |style_parent, entries| {
+            if let Some(parent) = edit.parent {
+                *style_parent = parent;
+            }
+            merge(entries, &edit.items);
+        })? {
             Some((id, edited)) if edited > 0 => Ok(id),
             Some(_) => Err(invalid(
                 "style",
                 format!("{name} is in the table but is not a style"),
             )),
-            None => {
-                let parent = parent.ok_or_else(|| {
-                    invalid(
-                        "style",
-                        format!("the table has no style/{name}; pass a parent to create it"),
-                    )
-                })?;
-                let mut entries = Vec::new();
-                merge(&mut entries, &added);
-                self.table_mut()
-                    .set_entry_in("style", name, EntryValue::Complex { parent, entries }, "")?
-                    .ok_or_else(|| invalid("style", format!("could not add style/{name}")))
-            }
+            None => edit.write(table, name, None, ""),
         }
+    }
+
+    /// [`Self::set_style_items`] for the one configuration `qualifiers` names,
+    /// such as `night`. A configuration without the style starts from the
+    /// default configuration's parent and items, since the loader takes a
+    /// configuration's style in place of the default one.
+    pub fn set_style_items_in(
+        &mut self,
+        name: &str,
+        parent: Option<&str>,
+        items: &[StyleItem],
+        qualifiers: &str,
+    ) -> Result<u32> {
+        let edit = self.style_edit(name, parent, items)?;
+        let table = self.table_mut();
+        let base = match table.complex_entry_in("style", name, qualifiers)? {
+            Some(found) => Some(found),
+            None => table.complex_entry_in("style", name, "")?,
+        };
+        edit.write(table, name, base, qualifiers)
+    }
+
+    fn style_edit(
+        &mut self,
+        name: &str,
+        parent: Option<&str>,
+        items: &[StyleItem],
+    ) -> Result<StyleEdit> {
+        let attributes = items
+            .iter()
+            .map(|item| {
+                self.table().attr_id(&item.attribute)?.ok_or_else(|| {
+                    invalid(
+                        "style item",
+                        format!(
+                            "style/{name}: no attr resource is named {}, and an item the framework cannot resolve is ignored",
+                            item.attribute
+                        ),
+                    )
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let items = items
+            .iter()
+            .zip(attributes)
+            .map(|(item, attribute)| {
+                Ok(MapEntry {
+                    name: attribute,
+                    value: self.parse_value(&item.value, Some(attribute))?,
+                })
+            })
+            .collect::<Result<_>>()?;
+        let parent = parent.map(|parent| self.reference(parent)).transpose()?;
+        Ok(StyleEdit { parent, items })
     }
 
     /// Replaces the elements of `array/name` in every configuration that
@@ -159,6 +177,45 @@ impl<'a> From<&'a mut ResourceTable> for ResourceScope<'a> {
             table,
             splits: None,
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StyleItem {
+    pub attribute: String,
+    pub value: String,
+}
+
+struct StyleEdit {
+    parent: Option<u32>,
+    items: Vec<MapEntry>,
+}
+
+impl StyleEdit {
+    fn write(
+        self,
+        table: &mut ResourceTable,
+        name: &str,
+        base: Option<(u32, Vec<MapEntry>)>,
+        qualifiers: &str,
+    ) -> Result<u32> {
+        let (parent, mut entries) = match (base, self.parent) {
+            (Some((existing, entries)), parent) => (parent.unwrap_or(existing), entries),
+            (None, Some(parent)) => (parent, Vec::new()),
+            (None, None) => {
+                return Err(invalid(
+                    "style",
+                    format!("the table has no style/{name}; pass a parent to create it"),
+                ));
+            }
+        };
+        merge(&mut entries, &self.items);
+        table.add_entry_in(
+            "style",
+            name,
+            EntryValue::Complex { parent, entries },
+            qualifiers,
+        )
     }
 }
 

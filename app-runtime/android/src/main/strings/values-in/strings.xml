@@ -36,4 +36,13 @@
     <string name="import_unreadable">File ini bukan ekspor setelan.</string>
     <string name="import_nothing_applies">Tidak ada setelan di file ini yang milik aplikasi ini.</string>
     <string name="ok">OK</string>
+    <string name="color_hue">Rona</string>
+    <string name="color_saturation">Saturasi</string>
+    <string name="color_brightness">Kecerahan</string>
+    <string name="color_opacity">Opasitas</string>
+    <string name="color_code">Kode warna</string>
+    <string name="settings_as_text">Setelan sebagai teks</string>
+    <string name="settings_as_text_summary">Salin setelan Anda sebagai teks, atau tempel setelan untuk mengimpornya.</string>
+    <string name="copy">Salin</string>
+    <string name="value_out_of_range">Masukkan nilai dari <xliff:g id="min">%1$s</xliff:g> sampai <xliff:g id="max">%2$s</xliff:g></string>
 </resources>

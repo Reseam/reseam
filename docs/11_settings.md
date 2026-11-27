@@ -64,15 +64,30 @@ And their text in `strings.xml`:
 
 A setting's title is the string named after its property in snake case: `hideAds` reads `hide_ads`. Its summary is the same name with `_summary`, when there is one. A missing title fails the build. The generated `ExampleStrings` has one member per string, for choices, [sections](#show-settings-on-the-screen), and [pages](#pages).
 
-There are four kinds of setting that hold a value, each with a default and an optional [icon](#icons), and actions, which hold none:
+There are eight kinds of setting that hold a value, each with a default and an optional [icon](#icons). Actions and notes hold none:
 
 | Kind | Holds |
 |---|---|
 | `toggle(default)` | on or off |
 | `text(default, multiline = false)` | text the user types. A `multiline` text holds one entry per line. |
+| `number(default, slider)` | a number the user picks on a slider |
+| `range(default, slider)` | a start and an end the user picks on one slider with two thumbs |
+| `color(default)` | a color the user picks, as ARGB |
 | `folder(default)` | a folder the user picks, with permission to read and write it |
+| `file(default, mimeTypes)` | a file of one of `mimeTypes` the user picks, with permission to read it |
 | `choice(default, choices)` | one of several values |
-| `action()` | nothing. The row runs code when tapped; see [Actions](#actions). |
+| `action()` | nothing. The row runs code when tapped, as [Actions](#actions) shows. |
+| `note()` | nothing. The row shows its summary. |
+
+Numbers, ranges and colors take what they are picked with:
+
+```kotlin
+val overlayOpacity by number(default = 60.0, slider = Slider(0.0, 100.0, 1.0, "%"))
+val seekbarPositions by range(default = 0.7..1.0, slider = Slider(0.0, 1.0, 0.01))
+val accentColor by color(default = 0xFFFF0033)
+```
+
+Extensions read them as a `Double`, a `NumberRange` and an ARGB `Int`. A stored value off the slider reads as the default, so code never sees a number the slider can't pick.
 
 ### Keys
 
@@ -122,6 +137,22 @@ Reseam's settings screens lay out right to left in Arabic, Persian, Urdu and oth
 A translation must keep the default's arguments. One that adds, drops, or changes the type of an argument fails the build, and so does a translation of a string the default lacks or marks `translatable="false"`.
 
 Titles, summaries, sections and pages show their text as it is, so they take strings without arguments. A string with an argument, or a `<plurals>`, is only in the extension-side object, and a setting named after one fails the build with a missing title.
+
+### Styled strings
+
+A string can use the styling tags of Android styled strings: `<b>`, `<i>`, `<u>`, `<small>`, `<big>`, `<sup>`, `<sub>`, and `<font>` with a `color`. The settings screen shows them wherever the string appears, in a title, a summary or a choice:
+
+```xml
+<string name="hide_shelves_summary">Hides shelves such as <b>Breaking news</b>.\nOther feeds stay.</string>
+```
+
+A line break is `\n`, as in any string. Other tags, and tags with attributes, fail the build.
+
+Things to know:
+
+- A translation of a styled string may be plain, and shows as it is. A translation of a plain string can't add styling, since the generated member's type follows the default, so that fails the build.
+- A `<plurals>` can't be styled, and neither can patch names or descriptions, which Manager shows as plain text.
+- Write tags as tags. Escaped markup such as `&lt;b&gt;` shows as the literal text.
 
 ## Add the settings screen
 
@@ -224,6 +255,32 @@ settings(appSettings, section(mediaPage, ExampleStrings.sectionPlayback, AppSett
 - Sections with the same page and title merge, so several patches can add to one section.
 - Pages without settings from patches that ran are left out.
 
+Patches add their sections in the order they run. To fix where each setting appears regardless of that order, list the sections in the host's `layout`:
+
+```kotlin
+val appSettings = settingsHost("example") {
+    layout(
+        section(mediaPage, AppSettings.autoplay, AppSettings.quality),
+        section(mediaPage, ExampleStrings.sectionAdvanced, AppSettings.codec),
+        stored(AppSettings.queueOrder),
+    )
+}
+```
+
+A section without a title continues the section before it.
+
+A `stored` setting keeps its value, and settings export carries it, but it has no row. Use it for values a patch's own dialog changes.
+
+A page's row comes before the settings of its parent page. To show it among them, place it after a setting:
+
+```kotlin
+val appSettings = settingsHost("example") {
+    place(downloadsPage, after = AppSettings.autoplay, heading = ExampleStrings.sectionDownloads)
+}
+```
+
+The row follows the setting's row while that setting shows. With a `heading`, it starts a new group under that heading.
+
 ## Brand
 
 A brand decides how your settings screen and your branded components look. The screen follows the system's light or dark theme, and before Android 10, which has none, the app's own, until the user picks one with the button at the end of its top bar. A brand has a color scheme for each:
@@ -266,6 +323,16 @@ private val ads = Vector.svg(Files::class.java.getResource("/icons/megaphone.svg
 
 `Vector.svg` reads an SVG when your patches load: paths and basic shapes, with fills and strokes. The SVG needs a `viewBox`, or a `width` and `height`. `currentColor` draws in the screen's icon color. Transforms, `style` attributes, gradients, and text fail the build.
 
+To show icons on only some rows, a patch lists the pages and settings that keep theirs:
+
+```kotlin
+execute {
+    appSettings.showIconsOf(setOf("media", AppSettings.hideAds.key))
+}
+```
+
+`showIconsOf` takes page ids and setting keys, and every other icon is left out of this run's screen. Without a call every icon shows. When several patches call it, the last one to run decides.
+
 ## Read settings in code blocks
 
 Besides gates, code blocks can branch on a toggle with `whenEnabled`, and read any setting with `valueOf`:
@@ -304,6 +371,33 @@ Things to know:
 - Every action your settings show needs code from a patch of the same run. The settings host fails, and names the action, when one has none.
 - An action stores nothing, so settings export and import skip it, and extensions have no value to read for it.
 
+## Rows that react
+
+A row can follow other settings or the app's state. It can grey out while a toggle is off, show a summary your code computes, check text before it is stored, or run code after a change. Call these in `execute`, or in the `settings` block, of a patch that shows the setting:
+
+```kotlin
+execute {
+    enabledWhile(AppSettings.adDelay, AppSettings.hideAds)
+    onSummary(AppSettings.cacheSize) { returnValue(Cache.describe(context, value)) }
+    onValidate(AppSettings.serverUrl) { returnValue(Server.problemWith(value)) }
+    onEnabled(AppSettings.quality) { returnValue(Device.supportsHdr(context)) }
+    onChange(AppSettings.uploadSegments) { Guidelines.show(activity, previous) }
+}
+```
+
+- `enabledWhile(setting, toggle)` greys out the row and stops it taking changes while `toggle` is off.
+- `onSummary` computes the line under the title. `value` is the setting's value as text, and `context` the screen. Returning null shows the declared summary.
+- `onValidate` checks text the user entered before it is stored. Returning a message keeps the old value, shows the message, and opens the editor again with the text.
+- `onEnabled` decides in the app whether the row takes changes, for conditions `enabledWhile` can't express, such as several toggles or the Android version.
+- `onChange` runs after the user changes the setting on the screen, with `previous`, the value before the change, as text.
+
+Things to know:
+
+- `onSummary` and `onEnabled` run when the row shows and again after any setting changes, because what they read may depend on other settings. Keep their code fast, and move slow work into an extension that remembers its result.
+- With both `enabledWhile` and `onEnabled`, the row takes changes only when both allow it.
+- Changes made by code, or by importing settings, don't run `onChange`.
+- `onValidate` takes a text setting. The other kinds can't hold invalid input.
+
 ## Read settings in extensions
 
 [Extensions](10_extensions.md) compile against objects the build generates from your settings module. They have the same names, with a value for each setting that the extension reads and writes while the app runs:
@@ -319,6 +413,7 @@ Toast.makeText(context, ExampleStrings.downloadSaved(folder), Toast.LENGTH_SHORT
 ```
 
 - A folder setting's `pick(activity) { ... }` opens the system folder picker, stores the folder the user picks, then runs the block. A cancelled pick runs nothing.
+- A file setting's `pick(activity) { ... }` does the same with the system file picker, for the setting's MIME types. For a one-off file, such as an export, `Reseam.openFile` and `Reseam.saveFile` open the pickers without a setting.
 - Actions have no object here; their code comes from [`onAction`](#actions).
 - A choice reads as the stored value while the setting still lists it, and as the default otherwise.
 - Before the app runtime has started, values read as their defaults.

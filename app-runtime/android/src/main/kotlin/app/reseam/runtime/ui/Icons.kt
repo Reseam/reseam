@@ -69,6 +69,14 @@ object Icons {
             "M 12 15 L 12 3",
         )
     @JvmField
+    val CLIPBOARD =
+        VectorImage.stroked(
+            "M 9 2 L 15 2 C 15.552 2 16 2.448 16 3 L 16 5 C 16 5.552 15.552 6 15 6 L 9 6 " +
+                "C 8.448 6 8 5.552 8 5 L 8 3 C 8 2.448 8.448 2 9 2 Z",
+            "M 16 4 L 18 4 C 19.105 4 20 4.895 20 6 L 20 20 C 20 21.105 19.105 22 18 22 L 6 22 " +
+                "C 4.895 22 4 21.105 4 20 L 4 6 C 4 4.895 4.895 4 6 4 L 8 4",
+        )
+    @JvmField
     val LANGUAGE =
         VectorImage.stroked(
             "M 5 8 L 11 14",

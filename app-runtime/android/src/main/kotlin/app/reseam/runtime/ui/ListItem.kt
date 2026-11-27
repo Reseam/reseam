@@ -5,6 +5,7 @@ package app.reseam.runtime.ui
 
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 
@@ -21,6 +22,8 @@ class ListItem internal constructor(private val ui: Ui, title: CharSequence?) :
             visibility = GONE
         }
     private var trailingView: View? = null
+    private val texts = LinearLayout(ui.context).apply { orientation = VERTICAL }
+    private val belowViews = mutableListOf<View>()
 
     init {
         orientation = HORIZONTAL
@@ -38,17 +41,14 @@ class ListItem internal constructor(private val ui: Ui, title: CharSequence?) :
                 marginEnd = ui.px(Tokens.SPACE_LG)
             },
         )
-        val texts =
-            LinearLayout(ui.context).apply {
-                orientation = VERTICAL
-                addView(titleView)
-                addView(
-                    supportingView,
-                    LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-                        topMargin = ui.px(Tokens.SPACE_XS)
-                    },
-                )
-            }
+        texts.addView(titleView)
+        if (title.isNullOrEmpty()) titleView.visibility = GONE
+        texts.addView(
+            supportingView,
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                topMargin = ui.px(Tokens.SPACE_XS)
+            },
+        )
         addView(texts, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
         setShape(true, true)
     }
@@ -60,7 +60,16 @@ class ListItem internal constructor(private val ui: Ui, title: CharSequence?) :
         icon.visibility = if (image == null) GONE else VISIBLE
     }
 
-    fun title(value: CharSequence?): ListItem = apply { titleView.text = value }
+    /** An empty title leaves the row to its supporting text and the views below. */
+    fun title(value: CharSequence?): ListItem = apply {
+        titleView.text = value
+        titleView.visibility = if (value.isNullOrEmpty()) GONE else VISIBLE
+    }
+
+    internal fun matches(query: String): Boolean =
+        query.isEmpty() ||
+            titleView.text.contains(query, ignoreCase = true) ||
+            supportingView.text.contains(query, ignoreCase = true)
 
     fun supporting(value: CharSequence?): ListItem = apply {
         supportingView.text = value
@@ -72,6 +81,7 @@ class ListItem internal constructor(private val ui: Ui, title: CharSequence?) :
         trailingView?.let(::removeView)
         trailingView = view
         view?.let {
+            it.isClickable = isEnabled
             addView(
                 it,
                 LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
@@ -79,6 +89,16 @@ class ListItem internal constructor(private val ui: Ui, title: CharSequence?) :
                 },
             )
         }
+    }
+
+    /**
+     * Adds [view] under the title and supporting text, such as a control the row is about. It takes
+     * input only while the row is enabled.
+     */
+    fun below(view: View): ListItem = apply {
+        view.setEnabledWithin(isEnabled)
+        belowViews += view
+        texts.addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
     }
 
     fun chevron(): ListItem =
@@ -92,6 +112,8 @@ class ListItem internal constructor(private val ui: Ui, title: CharSequence?) :
     override fun setEnabled(enabled: Boolean) {
         super.setEnabled(enabled)
         alpha = if (enabled) 1f else Tokens.DISABLED
+        trailingView?.isClickable = enabled
+        belowViews.forEach { it.setEnabledWithin(enabled) }
     }
 
     internal fun setShape(first: Boolean, last: Boolean) {
@@ -105,4 +127,10 @@ class ListItem internal constructor(private val ui: Ui, title: CharSequence?) :
                 ui.colors.onSurface,
             )
     }
+}
+
+private fun View.setEnabledWithin(enabled: Boolean) {
+    isEnabled = enabled
+    if (this is ViewGroup)
+        for (index in 0 until childCount) getChildAt(index).setEnabledWithin(enabled)
 }

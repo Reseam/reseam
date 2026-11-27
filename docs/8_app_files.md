@@ -73,14 +73,17 @@ resources.addFile("drawable", "reseam_icon", "res/reseam_icon.png", bytes)
 resources.addFile("mipmap", "reseam_launcher", "res/mipmap-xxhdpi/reseam_launcher.png", png, "xxhdpi")
 ```
 
-The last argument is the configuration: empty for the default, a density, `night` or `notnight`, or `vN`. XML passed this way is compiled.
+The last argument is the configuration, empty for the default. It is written as a `res/` folder name is, in aapt's order: a language and region such as `pt-rBR`, a screen size such as `xlarge`, `night` or `notnight`, a density, and `vN`. XML passed this way is compiled.
 
 ### Styles and arrays
 
 ```kotlin
 resources.style("Theme.App.Light") { this["headerIcon"] = "@drawable/reseam_icon" }
+resources.styleIn("Theme.App.Light", "night") { this["android:windowBackground"] = "@color/black" }
 resources.setStringArray("speed_values", resources.getArray("speed_values") + "3.0")
 ```
+
+`style` edits every configuration of a style. `styleIn` edits one, such as the dark theme's `night`. The app reads a whole style from the configuration that matches, so a configuration that didn't have the style starts from the default one's items.
 
 [`ResourceScope`](reference_files.md#resourcescope) lists the rest, including the string pool functions for changing one string everywhere it is used.
 

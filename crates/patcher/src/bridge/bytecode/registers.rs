@@ -89,3 +89,11 @@ pub fn register_writers(m: u32, index: u32, register: u16) -> Option<RegisterWri
         })
     })
 }
+
+#[export]
+pub fn jump_sources(m: u32, index: u32) -> Option<Vec<u32>> {
+    with_code(m, |_, code| {
+        dex::jump_sources(code, index as usize)
+            .map(|sources| sources.into_iter().map(|source| source as u32).collect())
+    })
+}

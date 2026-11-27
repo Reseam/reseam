@@ -37,4 +37,13 @@
     <string name="import_unreadable">یہ ترتیبات کی ایکسپورٹ فائل نہیں ہے۔</string>
     <string name="import_nothing_applies">اس فائل کی کوئی بھی ترتیب اس ایپ سے متعلق نہیں ہے۔</string>
     <string name="ok">ٹھیک ہے</string>
+    <string name="color_hue">رنگت</string>
+    <string name="color_saturation">سیرابی</string>
+    <string name="color_brightness">چمک</string>
+    <string name="color_opacity">دھندلاپن</string>
+    <string name="color_code">رنگ کوڈ</string>
+    <string name="settings_as_text">ترتیبات بطور متن</string>
+    <string name="settings_as_text_summary">اپنی ترتیبات بطور متن کاپی کریں، یا درآمد کرنے کے لیے ترتیبات پیسٹ کریں۔</string>
+    <string name="copy">کاپی کریں</string>
+    <string name="value_out_of_range"><xliff:g id="min">%1$s</xliff:g> سے <xliff:g id="max">%2$s</xliff:g> تک کی قدر درج کریں</string>
 </resources>

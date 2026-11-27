@@ -16,6 +16,7 @@ impl ResValue {
     /// whose text lives in a pool, or a kind that has no text form.
     pub fn to_text(self) -> Option<String> {
         Some(match self.kind {
+            Self::NULL if self.data == Self::NULL_EMPTY => "@empty".to_string(),
             Self::REFERENCE if self.data == 0 => "@null".to_string(),
             Self::REFERENCE => format!("@0x{:08x}", self.data),
             Self::ATTRIBUTE => format!("?0x{:08x}", self.data),

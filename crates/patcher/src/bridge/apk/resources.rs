@@ -5,7 +5,7 @@ use std::borrow::Cow;
 
 use boltffi::export;
 use reseam_apk::axml::{self, AttributeValue};
-use reseam_apk::{ApkFile, ResValue};
+use reseam_apk::{ApkFile, ResValue, ResourceScope};
 
 use super::components::{component, table, table_mut, with_component, with_scope};
 use crate::bridge::phase::{with_ctx, with_ctx_result};
@@ -99,6 +99,20 @@ pub fn res_exists(
 }
 
 #[export]
+pub fn res_exists_in(
+    component_name: Option<String>,
+    res_type: String,
+    res_name: String,
+    qualifiers: String,
+) -> Result<bool, String> {
+    with_component(component_name, |ctx, index| {
+        table(ctx, index)?
+            .has_entry_in(&res_type, &res_name, &qualifiers)
+            .map_err(|error| error.to_string())
+    })
+}
+
+#[export]
 pub fn res_get_string(
     component_name: Option<String>,
     name: String,
@@ -177,18 +191,35 @@ pub fn res_add_in(
 ) -> Result<Option<u32>, String> {
     with_component(component_name, |ctx, index| {
         with_scope(ctx, index, |scope| {
-            let parsed = if res_type == "string" {
-                ResValue::string(scope.table_mut().add_global_string(&value))
-            } else {
-                match axml::parse_value(&value, None, Some(scope)) {
-                    Ok(AttributeValue::Value(parsed)) => parsed,
-                    Ok(AttributeValue::Text) => return Ok(None),
-                    Err(error) => return Err(error.to_string()),
-                }
+            let Some(parsed) = resource_value(scope, &res_type, &value)? else {
+                return Ok(None);
             };
             scope
                 .table_mut()
                 .add_resource_in(&res_type, &name, parsed, &qualifiers)
+                .map_err(|error| error.to_string())
+        })
+    })
+}
+
+#[export]
+pub fn res_add_at(
+    component_name: Option<String>,
+    res_type: String,
+    name: String,
+    value: String,
+    qualifiers: String,
+    id: u32,
+) -> Result<Option<u32>, String> {
+    with_component(component_name, |ctx, index| {
+        with_scope(ctx, index, |scope| {
+            let Some(parsed) = resource_value(scope, &res_type, &value)? else {
+                return Ok(None);
+            };
+            scope
+                .table_mut()
+                .add_resource_at(&res_type, &name, parsed, &qualifiers, id)
+                .map(Some)
                 .map_err(|error| error.to_string())
         })
     })
@@ -247,4 +278,20 @@ pub fn res_set_package_name(component_name: Option<String>, name: String) -> Res
             .set_package_name(&name)
             .map_err(|error| error.to_string())
     })
+}
+
+fn resource_value(
+    scope: &mut ResourceScope<'_>,
+    res_type: &str,
+    value: &str,
+) -> Result<Option<ResValue>, String> {
+    if res_type == "string" {
+        return Ok(Some(ResValue::string(
+            scope.table_mut().add_global_string(value),
+        )));
+    }
+    match axml::parse_value(value, None, Some(scope)).map_err(|error| error.to_string())? {
+        AttributeValue::Value(parsed) => Ok(Some(parsed)),
+        AttributeValue::Text => Ok(None),
+    }
 }

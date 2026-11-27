@@ -3,6 +3,7 @@
 
 package app.reseam.patch
 
+import app.reseam.patch.settings.SettingsContribution
 import app.reseam.patch.settings.SettingsHost
 import app.reseam.patch.settings.SettingsSection
 import app.reseam.patch.settings.StringRef
@@ -129,7 +130,7 @@ class PatchBuilder internal constructor(private val name: StringRef?) : PatchDec
     private var enabledByDefault: Boolean? = null
     private val options = mutableListOf<Option<*>>()
     private val settings =
-        mutableListOf<Pair<SettingsHost, PatchRuntime.() -> List<SettingsSection>>>()
+        mutableListOf<Pair<SettingsHost, PatchRuntime.() -> List<SettingsContribution>>>()
     private var executeBlock: (PatchRuntime.() -> Unit)? = null
     private var afterDependentsBlock: (PatchRuntime.() -> Unit)? = null
     private var afterWriteBlock: (OutputRuntime.() -> Unit)? = null
@@ -196,13 +197,22 @@ class PatchBuilder internal constructor(private val name: StringRef?) : PatchDec
     ) = PathOption(key, title, description, required).also { options += it }
 
     /** Registers settings with `host`, which becomes a dependency. */
-    fun settings(host: SettingsHost, vararg sections: SettingsSection) {
-        val declared = sections.toList()
+    fun settings(host: SettingsHost, vararg contributions: SettingsContribution) {
+        val declared = contributions.toList()
         settings(host) { declared }
     }
 
-    /** Registers settings computed after `execute`, so they can depend on options. */
-    fun settings(host: SettingsHost, sections: PatchRuntime.() -> List<SettingsSection>) {
+    @Deprecated(
+        "Bundles built against 1.0 call settings with sections only",
+        level = DeprecationLevel.HIDDEN,
+    )
+    fun settings(host: SettingsHost, vararg sections: SettingsSection) = settings(host, *sections)
+
+    /**
+     * Registers settings computed after `execute`, so they can depend on options. The block may
+     * also return [stored] settings.
+     */
+    fun settings(host: SettingsHost, sections: PatchRuntime.() -> List<SettingsContribution>) {
         settings += host to sections
         if (host !in dependencies) dependencies += host
     }

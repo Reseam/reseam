@@ -50,7 +50,7 @@ description: The words used across these docs.
 
 **Reseam Manager**: the Reseam app for Android, Windows, and Linux.
 
-**Setting**: a value the user can change inside the patched app: a toggle, text, a folder, or a choice.
+**Setting**: a value the user can change inside the patched app: a toggle, text, a number, a range, a color, a folder, a file, or a choice.
 
 **Settings host**: the internal patch that adds a bundle's settings screen to one app.
 
@@ -59,6 +59,8 @@ description: The words used across these docs.
 **Split APK**: one part of an app that ships as several APK files.
 
 **String table**: the strings of a module's `src/main/strings`, with their translations. A patch module's table names its patches, and a settings module's table ships in the app. See [Names in every language](4_patches.md#names-in-every-language).
+
+**Styled string**: a string with bold, italic or other styling tags, which the settings screen shows styled. See [Styled strings](11_settings.md#styled-strings).
 
 **Target**: a description of a method, class, field, or function that Reseam searches the app for.
 

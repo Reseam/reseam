@@ -158,6 +158,28 @@ fn a_goto_past_127_code_units_lands_on_its_label() {
 }
 
 #[test]
+fn a_created_array_has_the_requested_type_and_length() {
+    let (_directory, mut apk) = open_dex_apk(&[dex!("constants")]);
+    apply_fixture(&mut apk, "array-creation", "arrayCreation");
+    let dex = written_dex(&apk, 0);
+    let code = read_method(&dex, "Lcom/example/ConstantHost;", "small")
+        .and_then(|method| method.code)
+        .unwrap();
+    let created: Vec<_> = code
+        .instructions()
+        .iter()
+        .filter_map(|instruction| match instruction {
+            reseam_dex::Instruction::NewArray { type_, .. } => Some(dex.type_descriptor(*type_)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(created, ["[Ljava/lang/String;"]);
+    for length in [0, 3] {
+        assert_eq!(hook_calls(&code, &[length]), (vec![], Some(length)));
+    }
+}
+
+#[test]
 fn emitted_operands_reach_registers_their_encoding_cannot_name() {
     let (_directory, mut apk) = open_dex_apk(&[dex!("entry_values")]);
     apply_fixture(&mut apk, "distant-operands", "distantOperands");

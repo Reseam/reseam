@@ -79,4 +79,9 @@ internal fun template(build: InstructionBuilder.() -> Unit): Instruction =
     buildInstructions(build).single()
 
 internal val CodeStep.fallsThrough: Boolean
-    get() = this !is CodeStep.Instruction || field0.template.opcode?.endsFlow != true
+    get() =
+        when (this) {
+            is CodeStep.Label -> true
+            is CodeStep.Jump -> false
+            is CodeStep.Instruction -> field0.template.opcode?.endsFlow != true
+        }

@@ -7,6 +7,7 @@ use std::borrow::Cow;
 
 use boltffi::export;
 use reseam_apk::ResValue;
+use reseam_apk::resources::{self as apk, AttrFormats};
 
 use super::components::{table, table_mut, with_component, with_scope};
 use super::resources::defining_component;
@@ -20,16 +21,86 @@ pub fn res_style_set(
     parent: Option<String>,
     items: Vec<StyleItem>,
 ) -> Result<u32, String> {
-    let items: Vec<(String, String)> = items
-        .into_iter()
-        .map(|item| (item.name, item.value))
-        .collect();
+    let items = style_items(items);
     with_component(component_name, |ctx, index| {
         with_scope(ctx, index, |scope| {
             scope
                 .set_style_items(&name, parent.as_deref(), &items)
                 .map_err(|error| error.to_string())
         })
+    })
+}
+
+#[export]
+pub fn res_style_set_in(
+    component_name: Option<String>,
+    name: String,
+    parent: Option<String>,
+    items: Vec<StyleItem>,
+    qualifiers: String,
+) -> Result<u32, String> {
+    let items = style_items(items);
+    with_component(component_name, |ctx, index| {
+        with_scope(ctx, index, |scope| {
+            scope
+                .set_style_items_in(&name, parent.as_deref(), &items, &qualifiers)
+                .map_err(|error| error.to_string())
+        })
+    })
+}
+
+#[export]
+pub fn res_style_items(
+    component_name: Option<String>,
+    name: String,
+    qualifiers: String,
+) -> Result<Option<Vec<StyleItem>>, String> {
+    with_component(component_name, |ctx, index| {
+        let items = table(ctx, index)?
+            .style_items(&name, &qualifiers)
+            .map_err(|error| error.to_string())?;
+        Ok(items.map(|items| {
+            items
+                .into_iter()
+                .map(|item| StyleItem {
+                    name: item.attribute,
+                    value: item.value,
+                })
+                .collect()
+        }))
+    })
+}
+
+fn style_items(items: Vec<StyleItem>) -> Vec<apk::StyleItem> {
+    items
+        .into_iter()
+        .map(|item| apk::StyleItem {
+            attribute: item.name,
+            value: item.value,
+        })
+        .collect()
+}
+
+#[export]
+pub fn res_names(component_name: Option<String>, res_type: String) -> Result<Vec<String>, String> {
+    with_component(component_name, |ctx, index| {
+        table(ctx, index)?
+            .resource_names(&res_type)
+            .map_err(|error| error.to_string())
+    })
+}
+
+#[export]
+pub fn res_attr_add(
+    component_name: Option<String>,
+    name: String,
+    formats: String,
+) -> Result<u32, String> {
+    with_component(component_name, |ctx, index| {
+        let formats = AttrFormats::parse(&formats).map_err(|error| error.to_string())?;
+        table_mut(ctx, index)?
+            .add_attr(&name, formats)
+            .map_err(|error| error.to_string())
     })
 }
 

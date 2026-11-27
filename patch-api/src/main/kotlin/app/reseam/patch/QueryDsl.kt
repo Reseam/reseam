@@ -16,6 +16,9 @@ interface MethodQuery {
     /** Contains a string literal beginning with [prefix], seeded from the string index. */
     fun stringsStartingWith(prefix: String)
 
+    /** Contains, for each part, a string literal holding it, seeded from the string index. */
+    fun stringsContaining(vararg parts: String)
+
     fun literals(vararg values: Long)
 
     fun returns(type: String)
@@ -79,6 +82,12 @@ interface MethodQuery {
     /** Take the best candidate when several match instead of failing. */
     fun first()
 
+    /**
+     * Take the best candidate when several match, ties going to the one the app's class loader
+     * meets first: DEX file, class, then member, direct methods before virtual ones.
+     */
+    fun firstInAppOrder()
+
     /** Also consider classes the bundle's extensions define; a query searches app code only. */
     fun includeExtensions()
 }
@@ -113,6 +122,12 @@ interface ClassQuery {
     fun rankBy(label: String, block: ClassRankScope.() -> Int)
 
     fun first()
+
+    /**
+     * Take the best candidate when several match, ties going to the one first in DEX file and class
+     * order.
+     */
+    fun firstInAppOrder()
 
     /** Also consider classes the bundle's extensions define; a query searches app code only. */
     fun includeExtensions()

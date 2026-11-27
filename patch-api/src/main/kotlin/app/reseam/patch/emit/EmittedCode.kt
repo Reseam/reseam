@@ -9,6 +9,7 @@ import app.reseam.patch.FieldTarget
 import app.reseam.patch.MethodLocal
 import app.reseam.patch.MethodTarget
 import app.reseam.patch.Otherwise
+import app.reseam.patch.PointTarget
 import app.reseam.patch.Type
 import app.reseam.patch.ValueRef
 import app.reseam.patch.descriptor as descriptorOf
@@ -17,79 +18,28 @@ import app.reseam.patch.dex.Opcode
 import app.reseam.patch.dex.descriptor
 import app.reseam.patch.dex.isStatic
 import app.reseam.patch.dex.parameterTypes
-import app.reseam.patch.dex.registerWordCount
-import app.reseam.patch.dex.returnType
 import app.reseam.patch.method
-import app.reseam.patch.types.CodePlacement
-import app.reseam.patch.types.CodeRegister
 import app.reseam.patch.types.FieldRef
 import app.reseam.patch.types.MethodRef
 
 /** The [CodeScope] a patch writes a block in, recording each operation in [emitter]. */
 internal class EmittedCode(val emitter: CodeEmitter) : CodeScope {
     override val thisObject: ValueRef
-        get() =
-            with(emitter) {
-                require(!isStaticMethod) {
-                    "thisObject is not available in static ${info.descriptor}"
-                }
-                parameter(0, info.classDescriptor)
-            }
+        get() = emitter.thisObject()
 
-    override fun param(index: Int): ValueRef =
-        with(emitter) {
-            val params = method.parameterTypes
-            require(index in params.indices) {
-                "Parameter index $index out of bounds for ${info.descriptor}"
-            }
-            val offset =
-                (if (isStaticMethod) 0 else 1) + params.take(index).sumOf(::registerWordCount)
-            parameter(offset, params[index])
-        }
+    override fun param(index: Int): ValueRef = emitter.param(index)
 
-    override fun paramOfType(type: String): ValueRef =
-        with(emitter) {
-            val wanted = descriptorOf(type)
-            val index = method.parameterTypes.indexOf(wanted)
-            require(index >= 0) { "No parameter of type $wanted in ${info.descriptor}" }
-            param(index)
-        }
+    override fun paramOfType(type: String): ValueRef = emitter.paramOfType(type)
 
     override val lastParam: ValueRef
-        get() = param(emitter.method.parameterTypes.lastIndex)
+        get() = emitter.param(emitter.method.parameterTypes.lastIndex)
 
     override val result: ValueRef
-        get() =
-            with(emitter) {
-                require(placement == CodePlacement.BeforeReturns && info.returnType != Type.Void) {
-                    "result exists only in a method-level after hook of a non-void method, not in ${info.descriptor}"
-                }
-                Value(this, CodeRegister.Returned, info.returnType)
-            }
+        get() = emitter.result()
 
-    override fun capture(name: String): ValueRef =
-        with(emitter) {
-            val capture =
-                captures.firstOrNull { it.name == name }
-                    ?: error(
-                        "No capture named '$name' here; available: ${captures.joinToString { it.name }.ifEmpty { "none" }}"
-                    )
-            fixed(capture.register, capture.type)
-        }
+    override fun capture(name: String): ValueRef = emitter.capture(name)
 
-    override fun local(slot: MethodLocal): ValueRef =
-        with(emitter) {
-            require(placement != CodePlacement.Body) {
-                "$slot is a register of the original body, which this block replaces"
-            }
-            require(!slot.lost) {
-                "$slot no longer exists: the method body was replaced after it was reserved"
-            }
-            require(slot.method.handle == method.handle) {
-                "$slot is a local of another method, not ${info.descriptor}"
-            }
-            fixed(slot.register, slot.type)
-        }
+    override fun local(slot: MethodLocal): ValueRef = emitter.local(slot)
 
     override fun int(value: Int): ValueRef {
         val type = if (value == 0) ValueType.Zero else ValueType.Known(Type.Int)
@@ -97,6 +47,12 @@ internal class EmittedCode(val emitter: CodeEmitter) : CodeScope {
     }
 
     override fun long(value: Long): ValueRef = constant(Type.Long) { constLong(0, value) }
+
+    override fun float(value: Float): ValueRef =
+        constant(Type.Float) { constInt(0, value.toRawBits()) }
+
+    override fun double(value: Double): ValueRef =
+        constant(Type.Double) { constLong(0, value.toRawBits()) }
 
     override fun bool(value: Boolean): ValueRef =
         constant(Type.Boolean) { constInt(0, if (value) 1 else 0) }
@@ -132,6 +88,9 @@ internal class EmittedCode(val emitter: CodeEmitter) : CodeScope {
 
     override fun newInstance(type: String, ctorProto: String, vararg args: ValueRef): ValueRef =
         emitter.construct(descriptorOf(type), ctorProto, args.map { it.builtBy(emitter) })
+
+    override fun newArray(type: String, size: ValueRef): ValueRef =
+        emitter.newArray(descriptorOf(type), size.builtBy(emitter))
 
     override fun call(method: ExtMethod, vararg args: ValueRef): ValueRef {
         require(method.isStatic) {
@@ -171,24 +130,14 @@ internal class EmittedCode(val emitter: CodeEmitter) : CodeScope {
         }
 
     override fun whenNull(value: ValueRef, block: CodeScope.() -> Unit): Otherwise =
-        with(emitter) {
-            requireAssignableType(
-                value.builtBy(this).assignableType,
-                Type.Object,
-                "null comparison",
-            )
-            whenFalse(value, block)
-        }
+        whenFalse(reference(value), block)
 
     override fun whenNotNull(value: ValueRef, block: CodeScope.() -> Unit): Otherwise =
-        with(emitter) {
-            requireAssignableType(
-                value.builtBy(this).assignableType,
-                Type.Object,
-                "null comparison",
-            )
-            whenTrue(value, block)
-        }
+        whenTrue(reference(value), block)
+
+    private fun reference(value: ValueRef): ValueRef = value.also {
+        requireAssignableType(it.builtBy(emitter).assignableType, Type.Object, "null comparison")
+    }
 
     override fun whenEqual(
         left: ValueRef,
@@ -213,6 +162,8 @@ internal class EmittedCode(val emitter: CodeEmitter) : CodeScope {
             val isInstance = instanceOf(value.builtBy(this), descriptorOf(type))
             branch(block) { ifZero(isInstance, it) }
         }
+
+    override fun jumpTo(point: PointTarget) = emitter.jumpTo(point)
 
     override fun returnVoid() = emitter.returnFromMethod(null)
 

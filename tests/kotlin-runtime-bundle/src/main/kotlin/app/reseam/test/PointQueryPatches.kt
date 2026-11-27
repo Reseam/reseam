@@ -4,6 +4,7 @@
 package app.reseam.test
 
 import app.reseam.patch.*
+import app.reseam.patch.dex.Opcode
 import app.reseam.patch.dex.literal
 import app.reseam.patch.types.MethodRef
 
@@ -144,6 +145,12 @@ val pointQueries =
             )
             check(runCatching { methods { calls { paramCount(1) } }.all }.isFailure)
             check(deferredSingle.index == 2)
+            val takeThenReturn: PointMatch.() -> Unit = {
+                literal(4)
+                then(within = 2) { invokeStatic { name("take") } }
+                then { opcode(Opcode.RETURN_VOID) }
+            }
+            check(queryHost.method("duplicates").point(block = takeThenReturn).index == 3)
             val report = mutableListOf<String>()
             for (name in
                 listOf(

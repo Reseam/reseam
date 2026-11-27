@@ -36,4 +36,13 @@
     <string name="import_unreadable">이 파일은 설정 내보내기 파일이 아닙니다.</string>
     <string name="import_nothing_applies">이 파일의 설정 중 이 앱에 해당하는 것이 없습니다.</string>
     <string name="ok">확인</string>
+    <string name="color_hue">색조</string>
+    <string name="color_saturation">채도</string>
+    <string name="color_brightness">밝기</string>
+    <string name="color_opacity">불투명도</string>
+    <string name="color_code">색상 코드</string>
+    <string name="settings_as_text">텍스트로 된 설정</string>
+    <string name="settings_as_text_summary">설정을 텍스트로 복사하거나 설정을 붙여넣어 가져옵니다.</string>
+    <string name="copy">복사</string>
+    <string name="value_out_of_range"><xliff:g id="min">%1$s</xliff:g>부터 <xliff:g id="max">%2$s</xliff:g>까지의 값을 입력하세요</string>
 </resources>

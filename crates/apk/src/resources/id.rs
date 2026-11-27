@@ -3,6 +3,8 @@
 
 use crate::res_value::ResValue;
 
+pub(super) const FRAMEWORK_PACKAGE: u32 = 0x01;
+
 /// `0xPPTTEEEE`: package, type and entry index.
 pub(super) fn res_id(package_id: u32, type_id: u8, entry_index: usize) -> u32 {
     (package_id << 24) | (u32::from(type_id) << 16) | (entry_index as u32)

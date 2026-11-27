@@ -6,7 +6,7 @@ use crate::common::documents::*;
 use crate::common::tables::*;
 use crate::common::xml_cases;
 use reseam_apk::axml::{self};
-use reseam_apk::resources::AttrFormats;
+use reseam_apk::resources::{AttrFormats, StyleItem};
 use reseam_apk::{ResValue, ResourceScope};
 
 #[test]
@@ -35,7 +35,10 @@ fn attribute_formats_control_compilation_and_style_literals() -> TestResult {
         ResourceScope::from(&mut table).set_style_items(
             "Theme",
             Some("@0x01030005"),
-            &[("value".into(), text.into())],
+            &[StyleItem {
+                attribute: "value".into(),
+                value: text.into(),
+            }],
         )?;
         let value = table.complex_entries("style", "Theme")?.expect("bag")[0].value;
         assert_eq!(value.kind, kind);

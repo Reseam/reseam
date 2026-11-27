@@ -39,4 +39,13 @@
     <string name="import_unreadable">Цей файл не є експортом налаштувань.</string>
     <string name="import_nothing_applies">Жодне з налаштувань у цьому файлі не належить цьому застосунку.</string>
     <string name="ok">OK</string>
+    <string name="color_hue">Відтінок</string>
+    <string name="color_saturation">Насиченість</string>
+    <string name="color_brightness">Яскравість</string>
+    <string name="color_opacity">Непрозорість</string>
+    <string name="color_code">Код кольору</string>
+    <string name="settings_as_text">Налаштування як текст</string>
+    <string name="settings_as_text_summary">Скопіюйте налаштування як текст або вставте налаштування, щоб імпортувати їх.</string>
+    <string name="copy">Копіювати</string>
+    <string name="value_out_of_range">Введіть значення від <xliff:g id="min">%1$s</xliff:g> до <xliff:g id="max">%2$s</xliff:g></string>
 </resources>

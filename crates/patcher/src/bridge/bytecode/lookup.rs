@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use reseam_dex::MethodKind;
-
 use crate::bridge::run_state::checked;
 use crate::error::{PatcherError, Result as PatcherResult};
 use boltffi::export;
-use reseam_dex::{DexFile, EncodedField, InstructionPattern, TypeIdx};
+use reseam_dex::{DexFile, EncodedField, InstructionPattern, MethodKind, TypeIdx};
 
 use crate::bridge::changes::changed;
 use crate::bridge::dex::types::{ClassInfo, EncodedVal, FieldInfo, MethodInfo};

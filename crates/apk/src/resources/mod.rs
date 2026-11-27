@@ -33,12 +33,12 @@ pub use attribute::{AttrFormats, AttrSymbol};
 pub use config::{config_for_qualifiers, qualifiers};
 pub use entry::{EntryValue, MapEntry, ResEntry};
 pub use lookup::ResourceName;
-pub(crate) use lookup::first_found;
+pub(crate) use lookup::{first_found, reference_text};
 pub use package::ResPackage;
 pub use res_type::ResType;
-pub use scope::{ResourceScope, SplitLookup};
+pub use scope::{ResourceScope, SplitLookup, StyleItem};
 pub use string_entries::{StringEntries, StringUse};
-pub use strings::ResourceRef;
+pub use strings::{ResourceFile, ResourceRef};
 pub use type_spec::TypeSpec;
 
 const RES_TABLE_TYPE: u16 = 0x0002;

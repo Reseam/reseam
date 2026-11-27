@@ -6,12 +6,14 @@ package app.reseam.patch.points
 import app.reseam.patch.Type
 import app.reseam.patch.dex.Method
 import app.reseam.patch.dex.Opcode
+import app.reseam.patch.dex.arithmetic
 import app.reseam.patch.dex.arrayReads
 import app.reseam.patch.dex.fieldRef
-import app.reseam.patch.dex.invokeRegisters
 import app.reseam.patch.dex.methodRef
 import app.reseam.patch.dex.opcode
+import app.reseam.patch.dex.operands
 import app.reseam.patch.dex.referencedRegisters
+import app.reseam.patch.dex.regA
 import app.reseam.patch.dex.returnType
 import app.reseam.patch.dex.typeRef
 import app.reseam.patch.types.Instruction
@@ -52,8 +54,16 @@ internal fun inferType(
         Opcode.SGET_BYTE,
         Opcode.SGET_CHAR,
         Opcode.SGET_SHORT -> insn.fieldRef?.fieldType
-        else -> null
+        else -> opcode.arithmetic?.result
     }
+}
+
+internal fun registerAType(method: Method, index: Int, label: String): String? {
+    val insn = method.instructions[index]
+    if (insn.opcode?.registers?.firstOrNull()?.access?.defines == true)
+        return inferType(method, index)
+    val operand = insn.operands(label)?.indexOfFirst { it.register == insn.regA } ?: return null
+    return ArgumentOrigins(method).operandTypes(method.instructions, index)?.getOrNull(operand)
 }
 
 internal fun writerMessage(
@@ -77,11 +87,14 @@ internal fun writerMessage(
     }
 }
 
-internal fun noRegisterMessage(label: String, index: Int, insn: Instruction): String =
-    when {
-        insn.invokeRegisters != null ->
-            "$label: instruction $index (${insn.opcode}) writes no register; capture one of its arguments with captureArgumentAs(name, argument)"
+internal fun noRegisterMessage(label: String, index: Int, insn: Instruction): String {
+    val instruction = "$label: instruction $index (${insn.opcode})"
+    val operands = insn.operands(label)
+    return when {
+        operands != null ->
+            "$instruction writes no register; capture a value it takes with captureArgumentAs(name, argument), argument 0 to ${operands.lastIndex}"
         insn.referencedRegisters.isEmpty() ->
-            "$label: instruction $index (${insn.opcode}) uses no register at all, so there is nothing to capture"
-        else -> "$label: instruction $index (${insn.opcode}) writes no register to capture"
+            "$instruction uses no register at all, so there is nothing to capture"
+        else -> "$instruction writes no register to capture"
     }
+}

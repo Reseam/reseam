@@ -51,7 +51,7 @@ Every value in a code block is a `ValueRef`:
 | `value.field(f)`, `staticField(f)` | read a field |
 | `value.set(f, v)`, `setStatic(f, v)` | write a field |
 | `value[index]`, `value[index] = v`, `value.size()` | read or write an element of an array or `List`, or get its size |
-| `value.cast(type)`, `newInstance(type)` | cast, or create an object |
+| `value.cast(type)`, `newInstance(type)`, `newArray(type, size)` | cast, or create an object or an array |
 | `capture("name")`, `value.assign(v)` | read a captured value, or overwrite a value |
 
 [API: Code blocks](reference_code.md#codescope) lists everything.
@@ -80,6 +80,19 @@ isPremium.replace {
 | `whenInstanceOf(v, type)` | the object is of this type |
 
 Each takes an optional `otherwise { }`. To return, use `returnVoid()`, `returnValue(v)`, `returnTrue()`, `returnFalse()`, or `returnNull()`. A block that doesn't return falls through to the method's own code.
+
+To skip part of the method instead, `jumpTo(point)` continues at another instruction of the same method:
+
+```kotlin
+val intro = startup.point { invokeVirtual { name("showIntro") } }
+val home = intro.next { invokeVirtual { name("loadHome") } }
+
+intro.before {
+    whenTrue(AppSettings.skipIntro()) { jumpTo(home) }
+}
+```
+
+The jump lands where any branch to the target lands, so code other patches put before the target runs first. A replaced body, and code that runs before every return, can't jump. Make sure the code from the target on doesn't need a value the skipped code would have set.
 
 ## Gates
 
@@ -163,9 +176,10 @@ It holds zero or null when the method starts.
 ## Things to know
 
 - A point's `before { }` also runs when a branch jumps to that instruction. Its `after { }` doesn't: a branch that jumps to the next instruction skips it. For code that must run on every path, use `before { }` on a later point, or the method's `after { }`.
-- A method's `after { }` saves the parameters and `thisObject` it reads at entry, because the method may reuse their registers for other values.
+- Code reads the parameters and `thisObject` as the method was entered, because the method may reuse their registers for other values. The engine saves the ones a block reads at entry, always for a method's `after { }`, and for a point when the method may have reused a register by then.
 - Several hooks on one method or point stack up, in the order patches add them.
 - Code that needs more registers than the instructions around it can reach fails with `... needs a free register at or below v...`. Move the logic into an extension and call it.
 - Access is checked: calling a private method of another class fails while patching, not in the app.
+- So is the kind of call: `callVirtual` on an interface method, or `callInterface` on a class method, fails while patching, not when the call runs.
 
 Next: [Manifest, resources, and files](8_app_files.md).

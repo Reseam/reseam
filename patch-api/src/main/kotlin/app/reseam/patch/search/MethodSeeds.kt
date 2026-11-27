@@ -9,8 +9,10 @@ import app.reseam.patch.native.findInstructionsByLiteral
 import app.reseam.patch.native.findMethodsByName
 import app.reseam.patch.native.findMethodsByOpcodes
 import app.reseam.patch.native.findMethodsByProto
+import app.reseam.patch.native.findMethodsByStringPart
 import app.reseam.patch.native.findMethodsByStringPrefix
 import app.reseam.patch.native.findMethodsByStrings
+import app.reseam.patch.native.indexOfFirstStringContaining
 import app.reseam.patch.native.indexOfFirstStringWithPrefix
 import app.reseam.patch.run.Memos
 
@@ -31,6 +33,8 @@ private sealed interface Seed {
 
     data class Prefix(val value: String) : Seed
 
+    data class Part(val value: String) : Seed
+
     data class Literal(val value: Long) : Seed
 }
 
@@ -43,7 +47,7 @@ internal class MethodSeeds(memos: Memos) {
     private val code = memos.clearedOnEdit<Seed, Set<UInt>>()
 
     private fun seed(memo: Memos.Memo<Seed, Set<UInt>>, key: Seed, find: () -> UIntArray) =
-        memo.getOrPut(key) { find().toCollection(linkedSetOf()) }
+        memo.getOrPut(key) { HandleSet.of(find()) }
 
     fun named(name: String) = seed(declarations, Seed.Name(name)) { findMethodsByName(name) }
 
@@ -72,6 +76,8 @@ internal class MethodSeeds(memos: Memos) {
     fun withStringPrefix(prefix: String) =
         seed(code, Seed.Prefix(prefix)) { findMethodsByStringPrefix(prefix) }
 
+    fun withStringPart(part: String) = seed(code, Seed.Part(part)) { findMethodsByStringPart(part) }
+
     fun withLiteral(value: Long) =
         seed(code, Seed.Literal(value)) {
             findInstructionsByLiteral(value).map { it.method }.toUIntArray()
@@ -84,6 +90,10 @@ internal class MethodSeeds(memos: Memos) {
     fun hasStringPrefix(method: Method, prefix: String): Boolean =
         code[Seed.Prefix(prefix)]?.contains(method.handle)
             ?: (indexOfFirstStringWithPrefix(method.handle, prefix) != null)
+
+    fun hasStringPart(method: Method, part: String): Boolean =
+        code[Seed.Part(part)]?.contains(method.handle)
+            ?: (indexOfFirstStringContaining(method.handle, part) != null)
 
     fun hasLiteral(method: Method, value: Long): Boolean =
         code[Seed.Literal(value)]?.contains(method.handle) ?: method.containsLiteral(value)

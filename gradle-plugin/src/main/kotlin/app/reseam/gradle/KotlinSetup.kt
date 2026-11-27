@@ -4,6 +4,7 @@
 package app.reseam.gradle
 
 import org.gradle.api.Project
+import org.gradle.api.file.Directory
 import org.gradle.api.file.FileCollection
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.Provider
@@ -59,23 +60,30 @@ internal fun Project.kotlinPackage(): Provider<String> =
 /** The standard library relocated to [kotlinPackage], and the part of it that [roots] use. */
 internal class KotlinStdlib(
     val relocated: TaskProvider<RelocateKotlinTask>,
-    val shrunk: TaskProvider<KotlinStdlibTask>,
+    val shrunk: TaskProvider<ShrinkTask>,
 )
+
+private const val RELOCATED_STDLIB = "relocateKotlinStdlib"
+
+internal fun Project.relocatedKotlinStdlib(): Provider<Directory> =
+    (if (inBundle()) rootProject else this)
+        .tasks
+        .named(RELOCATED_STDLIB, RelocateKotlinTask::class.java)
+        .flatMap { it.output }
 
 internal fun Project.registerKotlinStdlib(roots: Any, platform: FileCollection): KotlinStdlib {
     val relocated =
-        tasks.register("relocateKotlinStdlib", RelocateKotlinTask::class.java) {
+        tasks.register(RELOCATED_STDLIB, RelocateKotlinTask::class.java) {
             classes.from(kotlinStdlib())
             kotlinPackage.set(project.kotlinPackage())
             output.set(layout.buildDirectory.dir("reseam/kotlin-stdlib-relocated"))
         }
     val shrunk =
-        tasks.register("kotlinStdlib", KotlinStdlibTask::class.java) {
+        tasks.register("kotlinStdlib", ShrinkTask::class.java) {
             description = "Shrinks the Kotlin stdlib to what the roots use."
             this.roots.from(roots)
-            stdlib.from(relocated.flatMap { it.output })
+            traced.from(relocated.flatMap { it.output })
             libraries.from(platform)
-            kotlinPackage.set(project.kotlinPackage())
             output.set(layout.buildDirectory.dir("reseam/kotlin-stdlib"))
         }
     return KotlinStdlib(relocated, shrunk)

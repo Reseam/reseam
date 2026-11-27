@@ -4,6 +4,8 @@
 package app.reseam.runtime
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
@@ -17,7 +19,7 @@ import org.json.JSONObject
 internal data class ExportSettings(val bundle: String) : DocumentAction {
     override fun complete(activity: Activity, uri: Uri) {
         val bundle = Reseam.bundle(bundle)
-        val file = JSONObject().put(BUNDLE, bundle.name).put(SETTINGS, bundle.settings.export())
+        val file = exported(bundle)
         try {
             val output =
                 activity.contentResolver.openOutputStream(uri, "wt")
@@ -49,25 +51,53 @@ internal data class ImportSettings(val bundle: String) : DocumentAction {
                 Log.w(LOG_TAG, "Settings file $uri is not JSON", e)
                 null
             }
-        val values = file?.optJSONObject(SETTINGS)
-        if (values == null) {
-            failed(activity, bundle, RuntimeStrings.importFailed, RuntimeStrings.importUnreadable)
-            return
+        applySettings(activity, bundle, file)
+    }
+}
+
+private fun applySettings(activity: Activity, bundle: ReseamBundle, file: JSONObject?) {
+    val values = file?.optJSONObject(SETTINGS)
+    if (values == null) {
+        failed(activity, bundle, RuntimeStrings.importFailed, RuntimeStrings.importUnreadable)
+        return
+    }
+    val applied = if (file.optString(BUNDLE) == bundle.name) bundle.settings.import(values) else 0
+    if (applied == 0) {
+        failed(activity, bundle, RuntimeStrings.importFailed, RuntimeStrings.importNothingApplies)
+        return
+    }
+    Toast.makeText(activity, RuntimeStrings.settingsImported(applied), Toast.LENGTH_SHORT).show()
+}
+
+private fun exported(bundle: ReseamBundle): JSONObject =
+    JSONObject().put(BUNDLE, bundle.name).put(SETTINGS, bundle.settings.export())
+
+internal fun settingsAsText(activity: Activity, bundle: ReseamBundle) {
+    val ui = bundle.ui(activity)
+    val field = ui.textField(RuntimeStrings.settingsAsText).text(exported(bundle).toString(2))
+    field.multiline(8)
+    ui.dialog()
+        .title(RuntimeStrings.settingsAsText)
+        .view(field)
+        .action(RuntimeStrings.copy) {
+            val clipboard = activity.getSystemService(ClipboardManager::class.java)
+            clipboard.setPrimaryClip(
+                ClipData.newPlainText(RuntimeStrings.settingsAsText, field.text)
+            )
         }
-        val applied =
-            if (file.optString(BUNDLE) == bundle.name) bundle.settings.import(values) else 0
-        if (applied == 0) {
-            failed(
+        .dismissAction(RuntimeStrings.cancel)
+        .action(RuntimeStrings.importSettings) {
+            applySettings(
                 activity,
                 bundle,
-                RuntimeStrings.importFailed,
-                RuntimeStrings.importNothingApplies,
+                try {
+                    JSONObject(field.text)
+                } catch (e: JSONException) {
+                    null
+                },
             )
-            return
         }
-        Toast.makeText(activity, RuntimeStrings.settingsImported(applied), Toast.LENGTH_SHORT)
-            .show()
-    }
+        .show()
 }
 
 private const val BUNDLE = "bundle"

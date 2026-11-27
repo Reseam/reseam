@@ -120,7 +120,7 @@ methods("attribution") { literals(attributionId) }
 loadFeed.point { invokeVirtual { name("getDeviceId") } }.redirectTo(Identity.deviceId)
 ```
 
-For an instance call, your method receives the object first, then the arguments. Reseam checks that your method's parameters and return type fit the call. To redirect every call to a method across the app, use [`bytecode.redirectCalls`](7_changing_code.md#redirecting-a-call).
+For an instance call, your method receives the object first, then the arguments. Reseam checks that your method's parameters and return type fit the call. Your method may return a supertype of the call's result, such as `Object` for an obfuscated type. The result is then cast back to the call's type. To redirect every call to a method across the app, use [`bytecode.redirectCalls`](7_changing_code.md#redirecting-a-call).
 
 ## Arrays
 

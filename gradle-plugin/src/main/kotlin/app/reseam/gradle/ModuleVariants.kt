@@ -17,6 +17,7 @@ internal enum class ModuleVariant(val usage: String, val dependencies: String) {
 
     /** A settings module's generated extension-side classes, which extensions compile against. */
     SETTINGS("reseam-settings-classes", "reseamSettings"),
+    SETTINGS_GROUPS("reseam-settings-groups", "reseamSettings"),
 
     /** A JavaScript extension's exports, from which a patch module generates its bindings. */
     JAVASCRIPT("reseam-javascript-exports", "reseamJavascript"),
@@ -43,10 +44,13 @@ internal fun Project.publish(variant: ModuleVariant, file: Provider<RegularFile>
  * `reseamSettings(project(":settings"))`.
  */
 internal fun Project.resolve(variant: ModuleVariant): FileCollection {
-    val scope = configurations.dependencyScope(variant.dependencies)
+    // Variants of the same modules share the dependencies a build script declares.
+    val scope =
+        configurations.findByName(variant.dependencies)
+            ?: configurations.dependencyScope(variant.dependencies).get()
     return configurations
-        .resolvable("${variant.dependencies}Classpath") {
-            extendsFrom(scope.get())
+        .resolvable("${variant.usage.toCamelCase()}Classpath") {
+            extendsFrom(scope)
             attributes.attribute(
                 Usage.USAGE_ATTRIBUTE,
                 objects.named(Usage::class.java, variant.usage),
@@ -56,3 +60,8 @@ internal fun Project.resolve(variant: ModuleVariant): FileCollection {
         .incoming
         .files
 }
+
+private fun String.toCamelCase(): String =
+    split('-')
+        .mapIndexed { i, part -> if (i == 0) part else part.replaceFirstChar(Char::uppercase) }
+        .joinToString("")

@@ -11,7 +11,7 @@ use super::android_attrs::{android_attr_value_name, android_res_name};
 use super::{AxmlAttribute, AxmlDocument, AxmlEvent, element_end};
 use crate::error::{Result, invalid};
 use crate::res_value::ResValue;
-use crate::resources::{ResourceName, ResourceTable};
+use crate::resources::{ResourceTable, reference_text};
 
 const INDENT: &str = "    ";
 
@@ -189,19 +189,8 @@ impl Printer<'_> {
         })
     }
 
-    /// `@type/name` or `?attr/name`, framework resources prefixed `android:`.
     fn reference(&self, sigil: char, id: u32) -> Result<String> {
-        let name: Option<ResourceName> = match id >> 24 {
-            0x01 => android_res_name(id),
-            _ => match self.table {
-                Some(table) => table.resource_name(id)?,
-                None => None,
-            },
-        };
-        Ok(match name {
-            Some(name) => name.reference(sigil),
-            None => format!("{sigil}0x{id:08x}"),
-        })
+        reference_text(self.table, sigil, id)
     }
 }
 

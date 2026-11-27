@@ -84,6 +84,8 @@ A patch module uses a settings module with the usual `api(project(":settings"))`
 | `unsignedBundle` | Builds and packs the bundle without a key into `build/reseam/unsigned/<name>.reseam`, for [`reseam bundle sign`](/docs/cli/bundle/#reseam-bundle-sign) to sign on another machine. |
 | `generateStrings` | Compiles `src/main/strings` into JSON tables and the patch-side object. Fails on a translation of an unknown string, one marked `translatable="false"`, or one whose arguments differ from the default. |
 | `generateDeviceStrings` | Generates the extension-side object of a settings or extension module. |
+| `mockableAndroidJar` | Writes the Android classes an extension's tests run against: the platform's, with each method returning its type's default value. |
+| `generateTestSettings` | Writes the schema of every setting of the bundle's settings modules, which the app runtime reads in an extension's tests. |
 | `typecheck-<app>` | Type checks an app folder's JavaScript extensions, for a folder with a `package.json`. `bundle` runs it. |
 
 ## Properties

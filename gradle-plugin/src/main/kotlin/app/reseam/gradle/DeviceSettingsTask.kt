@@ -5,7 +5,10 @@ package app.reseam.gradle
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
@@ -30,7 +33,8 @@ private data class SettingDescription(
     val property: String,
     val key: String,
     val valueClass: String,
-    val default: JsonPrimitive,
+    val default: JsonElement,
+    val mimeTypes: List<String>? = null,
 )
 
 /** Generates, for each settings group, the extension-side object of the same name. */
@@ -70,15 +74,40 @@ internal abstract class DeviceSettingsTask : DefaultTask() {
         writer.line()
         writer.block("object $name") {
             for (setting in settings) {
-                val default =
-                    if (setting.default.isString) kotlinString(setting.default.content)
-                    else setting.default.content
+                val arguments =
+                    listOf(kotlinString(bundle.get()), kotlinString(setting.key)) +
+                        defaultArguments(setting) +
+                        listOfNotNull(
+                            setting.mimeTypes?.joinToString(prefix = "listOf(", postfix = ")") {
+                                kotlinString(it)
+                            }
+                        )
                 line(
-                    "@JvmField val ${setting.property} = ${setting.valueClass}(" +
-                        "${kotlinString(bundle.get())}, ${kotlinString(setting.key)}, $default)"
+                    "@JvmField val ${setting.property} = " +
+                        "${setting.valueClass}(${arguments.joinToString(", ")})"
                 )
             }
         }
         return writer.toString()
     }
 }
+
+private fun defaultArguments(setting: SettingDescription): List<String> =
+    when (setting.valueClass) {
+        "NumberValue" -> listOf(decimal(setting.default.jsonPrimitive))
+        "RangeValue" ->
+            setting.default.jsonObject.let {
+                listOf(
+                    decimal(it.getValue("start").jsonPrimitive),
+                    decimal(it.getValue("end").jsonPrimitive),
+                )
+            }
+        "ColorValue" ->
+            listOf("0x%08X.toInt()".format(setting.default.jsonPrimitive.content.toLong()))
+        else ->
+            setting.default.jsonPrimitive.let {
+                listOf(if (it.isString) kotlinString(it.content) else it.content)
+            }
+    }
+
+private fun decimal(number: JsonPrimitive) = number.content.toDouble().toString()

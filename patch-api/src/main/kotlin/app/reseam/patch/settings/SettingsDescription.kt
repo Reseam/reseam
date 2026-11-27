@@ -10,16 +10,26 @@ import java.io.File
  * directories.
  */
 internal fun main(args: Array<String>) {
-    val groups =
-        args
-            .drop(1)
-            .flatMap { classNames(File(it)) }
-            .map { Class.forName(it, false, SettingsGroup::class.java.classLoader) }
-            .filter {
-                SettingsGroup::class.java.isAssignableFrom(it) && it != SettingsGroup::class.java
-            }
-            .sortedBy { it.name }
+    val groups = settingsGroups(args.drop(1).map(::File))
     File(args[0]).writeText(Json.build { obj { field("groups") { array(groups) { group(it) } } } })
+}
+
+internal fun settingsGroups(roots: List<File>): List<Class<*>> =
+    roots
+        .flatMap(::classNames)
+        .map { Class.forName(it, false, SettingsGroup::class.java.classLoader) }
+        .filter {
+            SettingsGroup::class.java.isAssignableFrom(it) && it != SettingsGroup::class.java
+        }
+        .sortedBy { it.name }
+
+internal fun valueSettings(group: Class<*>): List<Setting<*>> {
+    val instance = group.getField("INSTANCE").get(null)
+    return group.methods
+        .filter { it.parameterCount == 0 && Setting::class.java.isAssignableFrom(it.returnType) }
+        .map { it.invoke(instance) as Setting<*> }
+        .filter { it.kind.runtimeValue != null }
+        .sortedBy { it.property }
 }
 
 private fun classNames(root: File): List<String> =
@@ -31,29 +41,28 @@ private fun classNames(root: File): List<String> =
         }
         .toList()
 
-private fun Json.group(type: Class<*>) {
-    val instance = type.getField("INSTANCE").get(null)
-    // Extensions read a value from each setting; an action has none.
-    val settings =
-        type.methods
-            .filter {
-                it.parameterCount == 0 && Setting::class.java.isAssignableFrom(it.returnType)
-            }
-            .map { it.invoke(instance) as Setting<*> }
-            .filter { it.kind.runtimeValue != null }
-            .sortedBy { it.property }
-    obj {
-        field("class", type.name)
-        field("settings") { array(settings) { setting(it) } }
-    }
+private fun Json.group(type: Class<*>) = obj {
+    field("class", type.name)
+    field("settings") { array(valueSettings(type)) { setting(it) } }
 }
 
 private fun Json.setting(setting: Setting<*>) = obj {
     field("property", setting.property)
     field("key", setting.key)
     field("valueClass", setting.kind.runtimeValue)
-    when (val default = setting.default) {
-        is Boolean -> field("default", default)
-        is String -> field("default", default)
+    when (setting) {
+        is ToggleSetting -> field("default", setting.default)
+        is NumberSetting -> field("default", setting.default)
+        is RangeSetting -> field("default") { range(setting.default) }
+        is ColorSetting -> field("default", setting.default.toUInt().toLong())
+        is TextSetting -> field("default", setting.default)
+        is FolderSetting -> field("default", setting.default)
+        is ChoiceSetting -> field("default", setting.default)
+        is FileSetting -> {
+            field("default", setting.default)
+            field("mimeTypes") { array(setting.mimeTypes) { value(it) } }
+        }
+        is ActionSetting,
+        is NoteSetting -> error("$setting holds no value")
     }
 }

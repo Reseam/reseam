@@ -53,6 +53,13 @@ pub fn find_methods_by_string_prefix(prefix: String) -> Vec<u32> {
 }
 
 #[export]
+pub fn find_methods_by_string_part(part: String) -> Vec<u32> {
+    alloc_methods(with_ctx(|ctx| {
+        checked(ctx.find_methods_by_string_part(&part))
+    }))
+}
+
+#[export]
 pub fn count_following_check_cast(
     sites: Vec<InstructionHit>,
     type_descriptor: String,

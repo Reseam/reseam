@@ -7,8 +7,8 @@ import app.reseam.patch.native.recordingResolutions
 import app.reseam.patch.run.MethodEntries
 import app.reseam.patch.run.RunCache
 import app.reseam.patch.run.RunJournal
+import app.reseam.patch.settings.SettingsContribution
 import app.reseam.patch.settings.SettingsHost
-import app.reseam.patch.settings.SettingsSection
 import java.util.IdentityHashMap
 
 internal class PatchRun {
@@ -17,8 +17,9 @@ internal class PatchRun {
     val cache = RunCache()
     val appModules = AppModules(journal)
     private val settings =
-        IdentityHashMap<SettingsHost, MutableList<Pair<ReseamPatch, List<SettingsSection>>>>()
+        IdentityHashMap<SettingsHost, MutableList<Pair<ReseamPatch, List<SettingsContribution>>>>()
     private val settingsOwners = mutableMapOf<String, SettingsHost>()
+    private val iconKeys = IdentityHashMap<SettingsHost, Set<String>>()
     private val lists = IdentityHashMap<RunList<*>, MutableList<Any?>>()
 
     /**
@@ -35,20 +36,30 @@ internal class PatchRun {
     @Suppress("UNCHECKED_CAST")
     fun <T> values(list: RunList<T>): List<T> = lists[list].orEmpty().toList() as List<T>
 
-    fun register(host: SettingsHost, patch: ReseamPatch, sections: List<SettingsSection>) {
+    fun register(host: SettingsHost, patch: ReseamPatch, sections: List<SettingsContribution>) {
         keepSettings(host)
         val registered = settings.getOrPut(host) { mutableListOf() }
         val index = registered.indexOfFirst { it.first === patch }
         if (index < 0) registered += patch to sections else registered[index] = patch to sections
     }
 
-    fun sections(host: SettingsHost): List<SettingsSection> =
+    fun sections(host: SettingsHost): List<SettingsContribution> =
         settings[host].orEmpty().flatMap { it.second }
 
     fun clear(host: SettingsHost) {
         keepSettings(host)
         settings.remove(host)
+        iconKeys.remove(host)
     }
+
+    fun showIcons(host: SettingsHost, keys: Set<String>) {
+        val previous = iconKeys.put(host, keys)
+        journal.record {
+            if (previous == null) iconKeys.remove(host) else iconKeys[host] = previous
+        }
+    }
+
+    fun iconKeys(host: SettingsHost): Set<String>? = iconKeys[host]
 
     /** Records that [host] writes [bundle]'s settings, which one host per app may do. */
     fun claimSettings(bundle: String, host: SettingsHost) {

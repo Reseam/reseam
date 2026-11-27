@@ -6,7 +6,6 @@ package app.reseam.patch.settings
 import app.reseam.patch.CodeScope
 import app.reseam.patch.RunList
 import app.reseam.patch.ValueRef
-import app.reseam.patch.before
 
 /**
  * Code [onAction] adds: a [CodeScope] with the activity the settings are shown over as [activity].
@@ -28,21 +27,14 @@ interface ActionScope : CodeScope {
  * ```
  */
 fun onAction(action: ActionSetting, block: ActionScope.() -> Unit) {
-    Reseam.runAction.target.before {
-        whenTrue(param(0).callVirtual(STRING, "equals", EQUALS, string(bundle.name))) {
-            whenTrue(param(1).callVirtual(STRING, "equals", EQUALS, string(action.key))) {
-                ActionCode(this, param(2)).block()
-                returnVoid()
-            }
-        }
-    }
+    Reseam.runAction.forSetting(action, { returnVoid() }) { ActionCode(this, param(2)).block() }
     coded.add(action)
 }
 
-/** Fails for an action in [sections] that no patch of this run gave code with [onAction]. */
-internal fun requireActionCode(sections: List<SettingsSection>) {
+internal fun requireActionCode(contributions: List<SettingsContribution>) {
     val missing =
-        sections
+        contributions
+            .filterIsInstance<SettingsSection>()
             .flatMap { it.settings }
             .filterIsInstance<ActionSetting>()
             .filter { action -> coded.values.none { it === action } }
@@ -53,11 +45,5 @@ internal fun requireActionCode(sections: List<SettingsSection>) {
 
 private val coded = RunList<ActionSetting>()
 
-private const val STRING = "java.lang.String"
-private const val EQUALS = "(Ljava/lang/Object;)Z"
-
 private class ActionCode(code: CodeScope, override val activity: ValueRef) :
-    ActionScope, CodeScope by code {
-    override val thisObject: ValueRef
-        get() = error("onAction code runs in a static hook; use activity")
-}
+    StaticHookCode(code, "onAction code runs in a static hook; use activity"), ActionScope

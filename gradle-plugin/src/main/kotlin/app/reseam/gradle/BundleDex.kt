@@ -30,11 +30,7 @@ internal fun Project.registerBundleDex(): BundleDex {
     val kotlinStdlib =
         registerKotlinStdlib(
             deviceProjects.map { projects ->
-                projects.map { p ->
-                    p.tasks.named("relocateKotlin", RelocateKotlinTask::class.java).flatMap {
-                        it.output
-                    }
-                }
+                projects.map { p -> p.tasks.named("dex", DexTask::class.java).map { it.sources } }
             },
             platform,
         )

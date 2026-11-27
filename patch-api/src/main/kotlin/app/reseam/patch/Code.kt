@@ -34,6 +34,10 @@ interface CodeScope {
 
     fun long(value: Long): ValueRef
 
+    fun float(value: Float): ValueRef
+
+    fun double(value: Double): ValueRef
+
     fun bool(value: Boolean): ValueRef
 
     fun string(value: String): ValueRef
@@ -51,6 +55,8 @@ interface CodeScope {
     fun setStatic(field: FieldRef, value: ValueRef)
 
     fun newInstance(type: String, ctorProto: String = "()V", vararg args: ValueRef): ValueRef
+
+    fun newArray(type: String, size: ValueRef): ValueRef
 
     fun call(method: ExtMethod, vararg args: ValueRef): ValueRef
 
@@ -84,6 +90,13 @@ interface CodeScope {
 
     /** Runs `block` when `value` is an instance of `type`; null is not an instance of anything. */
     fun whenInstanceOf(value: ValueRef, type: String, block: CodeScope.() -> Unit): Otherwise
+
+    /**
+     * Continues at [point], another instruction of the same method. Code other patches put before
+     * [point] runs, as it does on any branch there. A replaced body, and code that runs before
+     * every return, cannot jump.
+     */
+    fun jumpTo(point: PointTarget)
 
     fun returnVoid()
 

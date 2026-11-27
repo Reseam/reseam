@@ -47,7 +47,7 @@ internal abstract class StringTablesTask : StringObjectTask() {
             files
                 .single { it.locale == DEFAULT_LOCALE }
                 .strings
-                .filterValues { it is PlainString && it.placeholders.isEmpty() }
+                .filterValues { it !is PluralString && it.placeholders.isEmpty() }
                 .keys
         writeObject(host) {
             line("import app.reseam.patch.settings.StringTable")
@@ -66,6 +66,7 @@ internal abstract class StringTablesTask : StringObjectTask() {
                 file.strings.mapValues { (_, value) ->
                     when (value) {
                         is PlainString -> JsonPrimitive(value.text)
+                        is StyledString -> JsonObject(mapOf(STYLED to JsonPrimitive(value.html)))
                         is PluralString ->
                             JsonObject(value.forms.mapValues { JsonPrimitive(it.value) })
                     }
@@ -102,3 +103,5 @@ internal fun Project.registerStringTables(
         json.set(layout.buildDirectory.dir("generated/reseam/strings/json"))
         host.set(layout.buildDirectory.dir("generated/reseam/strings/host"))
     }
+
+private const val STYLED = "html"

@@ -21,11 +21,16 @@ internal val ARTIFACT_TYPE: Attribute<String> = Attribute.of("artifactType", Str
 internal val BUILD_TYPE: Attribute<String> =
     Attribute.of("com.android.build.api.attributes.BuildTypeAttr", String::class.java)
 
+/**
+ * An Android library serves a request for a jar, classes or Java resources: [AarClassesTransform]
+ * hands out the jars inside it, which hold all three, as a plain library's jar does.
+ */
 internal class AarElementsCompatibility : AttributeCompatibilityRule<LibraryElements> {
     override fun execute(details: CompatibilityCheckDetails<LibraryElements>) {
         if (
             details.producerValue?.name == "aar" &&
-                details.consumerValue?.name in setOf(LibraryElements.JAR, LibraryElements.CLASSES)
+                details.consumerValue?.name in
+                    setOf(LibraryElements.JAR, LibraryElements.CLASSES, LibraryElements.RESOURCES)
         )
             details.compatible()
     }

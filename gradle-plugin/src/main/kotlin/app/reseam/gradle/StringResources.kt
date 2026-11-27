@@ -24,6 +24,9 @@ internal sealed interface StringValue {
 internal data class PlainString(val text: String, override val placeholders: List<Placeholder>) :
     StringValue
 
+internal data class StyledString(val html: String, override val placeholders: List<Placeholder>) :
+    StringValue
+
 internal data class PluralString(
     val forms: Map<String, String>,
     override val placeholders: List<Placeholder>,
@@ -75,7 +78,7 @@ private fun check(base: StringFile, translation: StringFile, root: File) {
                 "$root: ${translation.locale} translates '$name', which is translatable=\"false\""
             )
         if (
-            original::class != value::class ||
+            !sameForm(original, value) ||
                 original.placeholders.toSet() != value.placeholders.toSet()
         )
             throw GradleException(
@@ -83,6 +86,14 @@ private fun check(base: StringFile, translation: StringFile, root: File) {
             )
     }
 }
+
+/**
+ * A translation keeps the default's form, except that a styled string may lose its styling: the
+ * generated member's type follows the default, and styled text reads plain text as it is.
+ */
+private fun sameForm(original: StringValue, translation: StringValue) =
+    original::class == translation::class ||
+        (original is StyledString && translation is PlainString)
 
 /** `values` is the default; `values-de`, `values-pt-rBR` and `values-b+sr+Latn` name locales. */
 private fun locale(directory: String): String {
@@ -119,9 +130,10 @@ private fun parse(locale: String, file: File): StringFile {
     return StringFile(locale, strings, untranslatable)
 }
 
-private fun plain(element: Element, file: File): PlainString {
-    val (text, placeholders) = content(element, file)
-    return PlainString(text, placeholders)
+private fun plain(element: Element, file: File): StringValue {
+    val content = content(element, file)
+    return if (content.html == null) PlainString(content.text, content.placeholders)
+    else StyledString(content.html, content.placeholders)
 }
 
 private fun plural(element: Element, file: File): PluralString {
@@ -135,15 +147,19 @@ private fun plural(element: Element, file: File): PluralString {
             quantity to content(item, file)
         }
     val name = element.getAttribute("name")
+    if (items.values.any { it.html != null })
+        throw GradleException("$file: plural '$name' has styling markup")
     val other = items["other"] ?: throw GradleException("$file: plural '$name' has no 'other' item")
-    if (items.values.any { it.second.toSet() != other.second.toSet() })
+    if (items.values.any { it.placeholders.toSet() != other.placeholders.toSet() })
         throw GradleException("$file: plural '$name' items differ in placeholders")
-    if (other.second.none { it.id == "count" && it.type == PlaceholderType.INTEGER })
+    if (other.placeholders.none { it.id == "count" && it.type == PlaceholderType.INTEGER })
         throw GradleException("$file: plural '$name' needs an integer placeholder with id 'count'")
-    return PluralString(items.mapValues { it.value.first }, other.second)
+    return PluralString(items.mapValues { it.value.text }, other.placeholders)
 }
 
 internal fun Element.childElements(): List<Element> =
     childNodes.asList().filterIsInstance<Element>()
 
 internal fun org.w3c.dom.NodeList.asList(): List<Node> = List(length, ::item)
+
+internal fun org.w3c.dom.NamedNodeMap.asList(): List<Node> = List(length, ::item)

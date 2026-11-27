@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use super::allocate::Plan;
-use super::planned::Planned;
+use super::planned::{Destination, Planned};
 use super::program::Program;
 use crate::edit::forms::{move_register, narrowed};
 use crate::edit::invoke::{Invocation, InvokeForm, invoke_encoding};
@@ -13,8 +13,20 @@ use crate::error::Result;
 use crate::instruction::Instruction;
 use crate::instruction::operands::{Access, map_operands};
 
+pub(super) struct Emitted {
+    pub(super) instructions: Vec<Instruction>,
+    pub(super) jumps: Vec<Jump>,
+}
+
+/// A jump into the method: the block instruction it is, and the method instruction it continues
+/// at, numbered as before the insertion.
+pub(super) struct Jump {
+    pub(super) at: usize,
+    pub(super) target: usize,
+}
+
 /// The block's instructions in the registers `plan` chose, laid out with every branch in reach.
-pub(super) fn emit(program: &Program, plan: &Plan) -> Result<Vec<Instruction>> {
+pub(super) fn emit(program: &Program, plan: &Plan) -> Result<Emitted> {
     let expansions = program
         .instructions
         .iter()
@@ -26,12 +38,29 @@ pub(super) fn emit(program: &Program, plan: &Plan) -> Result<Vec<Instruction>> {
         .iter()
         .enumerate()
         .filter_map(|(index, planned)| {
-            planned
-                .target
-                .map(|target| (index, BranchDestination::Instruction(target)))
+            planned.target.map(|target| {
+                let destination = match target {
+                    Destination::Block(target) => BranchDestination::Instruction(target),
+                    Destination::Method(_) => BranchDestination::External,
+                };
+                (index, destination)
+            })
         })
         .collect();
-    assemble(expansions, &targets)
+    let (instructions, positions) = assemble(expansions, &targets)?;
+    let jumps = program
+        .instructions
+        .iter()
+        .zip(positions)
+        .filter_map(|(planned, at)| match planned.target {
+            Some(Destination::Method(target)) => Some(Jump { at, target }),
+            _ => None,
+        })
+        .collect();
+    Ok(Emitted {
+        instructions,
+        jumps,
+    })
 }
 
 fn expansion(planned: &Planned, plan: &Plan, index: usize) -> Result<InstructionExpansion> {

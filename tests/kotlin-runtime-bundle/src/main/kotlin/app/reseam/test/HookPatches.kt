@@ -7,12 +7,12 @@ import app.reseam.patch.Type
 import app.reseam.patch.after
 import app.reseam.patch.alwaysReturn
 import app.reseam.patch.before
+import app.reseam.patch.dex.Opcode
 import app.reseam.patch.invoke
 import app.reseam.patch.klass
 import app.reseam.patch.method
 import app.reseam.patch.point
 import app.reseam.patch.reserveLocal
-import app.reseam.patch.skipWhen
 
 val afterEntryValues =
     fixturePatch(TestStrings.afterEntryValues, TestStrings.afterEntryValuesDescription) {
@@ -68,35 +68,24 @@ val afterEntryValues =
         }
     }
 
-val skipWhenCall =
-    fixturePatch(TestStrings.skipWhen, TestStrings.skipWhenDescription) {
-        skipHost
-            .method("straight")
-            .point { literal(2) }
-            .next { invokeStatic { name("mark") } }
-            .skipWhen { bool(true) }
-        skipHost
-            .method("joined")
-            .point { literal(2) }
-            .next { invokeStatic { name("mark") } }
-            .next { invokeStatic { name("mark") } }
-            .skipWhen { bool(true) }
-        skipHost
-            .method("joinedKept")
-            .point { literal(2) }
-            .next { invokeStatic { name("mark") } }
-            .next { invokeStatic { name("mark") } }
-            .skipWhen { bool(false) }
-    }
-
-val beforeJoin =
-    fixturePatch(TestStrings.beforeJoin, TestStrings.beforeJoinDescription) {
-        skipHost
-            .method("joinedBefore")
-            .point { literal(2) }
-            .next { invokeStatic { name("mark") } }
-            .next { invokeStatic { name("mark") } }
-            .before { mark(9) }
+val pointEntryValues =
+    fixturePatch(TestStrings.pointEntryValues, TestStrings.pointEntryValuesDescription) {
+        val reused =
+            klass("com.example.HookTarget").method("getFeatureSwitchValue").point {
+                opcode(Opcode.RETURN_OBJECT)
+            }
+        for (point in listOf(reused, reused.next { opcode(Opcode.RETURN_OBJECT) })) {
+            point.captureArgumentAs("returned", 0).before {
+                callStatic(
+                    "com.example.Observer",
+                    "point",
+                    "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)V",
+                    param(0),
+                    lastParam,
+                    capture("returned"),
+                )
+            }
+        }
     }
 
 val pointAnchors =

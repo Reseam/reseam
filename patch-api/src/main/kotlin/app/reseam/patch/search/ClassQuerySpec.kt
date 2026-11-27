@@ -9,6 +9,7 @@ import app.reseam.patch.PatchRuntime
 import app.reseam.patch.descriptor
 import app.reseam.patch.dex.DexClass
 import app.reseam.patch.dex.descriptor
+import app.reseam.patch.native.classAppPosition
 
 internal class ClassQuerySpec : QuerySpec<DexClass, ClassRankScope>("class"), ClassQuery {
     private val stringValues = mutableListOf<String>()
@@ -106,6 +107,8 @@ internal class ClassQuerySpec : QuerySpec<DexClass, ClassRankScope>("class"), Cl
     override fun rankScope(index: SearchIndex, value: DexClass) = ClassRankScopeImpl(index, value)
 
     override fun describe(value: DexClass) = value.descriptor
+
+    override fun appPosition(value: DexClass) = checkNotNull(classAppPosition(value.handle))
 
     override fun mismatch(value: DexClass, runtime: PatchRuntime): String? {
         val index = runtime.index

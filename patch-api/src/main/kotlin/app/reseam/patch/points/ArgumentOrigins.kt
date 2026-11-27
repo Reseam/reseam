@@ -6,11 +6,9 @@ package app.reseam.patch.points
 import app.reseam.patch.Type
 import app.reseam.patch.dex.Method
 import app.reseam.patch.dex.Opcode
-import app.reseam.patch.dex.arrayReads
-import app.reseam.patch.dex.arrayWrites
-import app.reseam.patch.dex.invokeArgumentTypes
+import app.reseam.patch.dex.OperandType
 import app.reseam.patch.dex.opcode
-import app.reseam.patch.dex.operandRegisters
+import app.reseam.patch.dex.operands
 import app.reseam.patch.dex.regA
 import app.reseam.patch.dex.regB
 import app.reseam.patch.native.registerWriters
@@ -29,11 +27,9 @@ internal class ArgumentOrigins(private val method: Method) {
     private val cache = mutableMapOf<TraceKey, Origins>()
     val diagnostics = linkedSetOf<String>()
 
-    /** Where operand [argument] of the invoke or array access at [at] was written. */
     fun argument(insns: List<Instruction>, at: Int, argument: Int, before: Int? = null): Origins? {
         val value =
-            insns[at].operandRegisters("${method.descriptor}[$at]")?.getOrNull(argument)
-                ?: return null
+            insns[at].operands("${method.descriptor}[$at]")?.getOrNull(argument) ?: return null
         val origins = trace(insns, at, value.register, before, mutableSetOf())
         if (value.words == 2) {
             val high = trace(insns, at, value.register + 1, before, mutableSetOf())
@@ -59,7 +55,7 @@ internal class ArgumentOrigins(private val method: Method) {
     /** Resolves a staged operand to the register holding its value before the anchored block. */
     fun atEntry(insns: List<Instruction>, at: Int, argument: Int, entry: Int, label: String): Int {
         val value =
-            insns[at].operandRegisters(label)?.getOrNull(argument)
+            insns[at].operands(label)?.getOrNull(argument)
                 ?: error("$label: ${insns[at].opcode} has no argument $argument")
         if (entry == at) return value.register
         val origins = checkNotNull(argument(insns, at, argument, entry))
@@ -70,18 +66,16 @@ internal class ArgumentOrigins(private val method: Method) {
         return register
     }
 
-    /**
-     * The operand types of the invoke or array access at [at], each null where the method does not
-     * show it.
-     */
-    fun operandTypes(insns: List<Instruction>, at: Int): List<String?>? {
-        val opcode = insns[at].opcode ?: return null
-        return when {
-            opcode in arrayReads -> listOf(arrayType(insns, at), Type.Int)
-            opcode in arrayWrites -> listOf(arrayType(insns, at), Type.Int, elementType(insns, at))
-            else -> insns[at].invokeArgumentTypes
+    fun operandTypes(insns: List<Instruction>, at: Int): List<String?>? =
+        insns[at].operands("${method.descriptor}[$at]")?.map { operand ->
+            when (val type = operand.type) {
+                is OperandType.Stated -> type.descriptor
+                OperandType.Written -> type(insns, at, operand.register)
+                OperandType.Array -> arrayType(insns, at)
+                OperandType.Element -> elementType(insns, at)
+                OperandType.Returned -> method.returnType
+            }
         }
-    }
 
     /** The array type of the array access at [at]. */
     fun arrayType(insns: List<Instruction>, at: Int): String? =

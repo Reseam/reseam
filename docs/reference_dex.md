@@ -99,7 +99,7 @@ A class in the app.
 | `setAccessFlags(flags: Int)` | Sets its access flags. |
 | `definal()` | Removes `final`, so other classes can extend it. |
 | `setSuperclass(superclass: String)` | Changes its superclass. |
-| `addInterface(descriptor: String)` | Makes it implement an interface. |
+| `addInterface(descriptor: String)` | Makes it implement an interface. A class that already implements it is left as it is. |
 | `addMethod(method: NewMethod): Method` | Adds a method from a [`NewMethod`](#newmethod). For most uses, [`ClassTarget.addMethod`](reference_targets.md#method-target-functions) with a code block is simpler. |
 | `addField(field: NewField)` | Adds a field. |
 | `removeField(name: String)` | Removes a field. |
@@ -116,7 +116,7 @@ Extension properties that read an [`Instruction`](#instruction) without unpackin
 | Property | Description |
 |---|---|
 | `opcode: Opcode?` | The opcode. |
-| `regA: Int?`, `regB: Int?`, `regC: Int?` | The first, second, and third register operands. |
+| `regA: Int?`, `regB: Int?`, `regC: Int?` | The first, second, and third register operands. Each is null when the instruction's format has no such register: `regB` of `const` or `sget` is null. |
 | `referencedRegisters: List<Int>` | Every register the instruction names. |
 | `invokeRegisters: List<Int>?` | The registers a call passes. |
 | `invokeArgumentTypes: List<String>?` | The types a call passes, the object first for an instance call. |
@@ -242,6 +242,8 @@ Every record has `opcode`, the opcode's byte, except the three data payloads.
 | `PackedSwitchInsn` | `firstKey`, `targets`: a switch table over consecutive keys |
 | `SparseSwitchInsn` | `keys`, `targets`: a switch table over listed keys |
 | `FillArrayInsn` | `elementWidth`, `data`: the data of a `fill-array-data` |
+
+`RegLiteralInsn`, `RegTypeInsn` and `RegFieldInsn` also hold formats with one register, such as `const`, `new-instance` and `sget`. Their `regB` is then 0. Read it through `Instruction.regB`, which is null for them.
 
 ### `MethodRef`
 

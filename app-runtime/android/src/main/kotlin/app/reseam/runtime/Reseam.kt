@@ -7,8 +7,11 @@ import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.LocaleList
+import android.view.View
 import java.util.concurrent.ConcurrentHashMap
+import java.util.function.Consumer
 
 /** Runtime injected into patched apps; bundles share its application context and settings. */
 object Reseam {
@@ -62,7 +65,7 @@ object Reseam {
     @Export
     @JvmStatic
     fun getChoice(bundle: String, key: String, defaultValue: String): String =
-        if (app == null) defaultValue else bundle(bundle).settings.getChoice(key)
+        if (app == null) defaultValue else bundle(bundle).settings.getChoice(key, defaultValue)
 
     @Export @JvmStatic fun openSettings(bundle: String) = bundle(bundle).openSettings()
 
@@ -74,6 +77,60 @@ object Reseam {
     @JvmStatic
     @Suppress("UNUSED_PARAMETER")
     fun runAction(bundle: String, key: String, activity: Activity) {}
+
+    /**
+     * Opens the system file picker over [activity] for a file of one of [mimeTypes]. [onPicked]
+     * gets the file the user picks, readable while the app runs. It does not run when they cancel.
+     */
+    @JvmStatic
+    fun openFile(activity: Activity, mimeTypes: List<String>, onPicked: Consumer<Uri>) =
+        requestDocument(activity, openDocument(mimeTypes), null, onPicked::accept)
+
+    /**
+     * Asks the user over [activity] where to save a new file of [mimeType], suggesting [name].
+     * [onCreated] gets the new, empty file to write. It does not run when they cancel.
+     */
+    @JvmStatic
+    fun saveFile(activity: Activity, name: String, mimeType: String, onCreated: Consumer<Uri>) =
+        requestDocument(
+            activity,
+            Intent(Intent.ACTION_CREATE_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType(mimeType)
+                .putExtra(Intent.EXTRA_TITLE, name),
+            null,
+            onCreated::accept,
+        )
+
+    @Export
+    @JvmStatic
+    @Suppress("UNUSED_PARAMETER", "FunctionOnlyReturningConstant")
+    fun settingSummary(
+        bundle: String,
+        key: String,
+        value: String,
+        context: Context,
+    ): CharSequence? = null
+
+    @Export
+    @JvmStatic
+    @Suppress("UNUSED_PARAMETER", "FunctionOnlyReturningConstant")
+    fun validateSetting(bundle: String, key: String, value: String): CharSequence? = null
+
+    @Export
+    @JvmStatic
+    @Suppress("UNUSED_PARAMETER")
+    fun settingChanged(bundle: String, key: String, previous: String, activity: Activity) {}
+
+    @Export
+    @JvmStatic
+    @Suppress("UNUSED_PARAMETER", "FunctionOnlyReturningConstant")
+    fun settingView(bundle: String, key: String, context: Context): View? = null
+
+    @Export
+    @JvmStatic
+    @Suppress("UNUSED_PARAMETER", "FunctionOnlyReturningConstant")
+    fun settingEnabled(bundle: String, key: String, context: Context): Boolean = true
 
     /**
      * Opens bundle settings for the SDK's settings intent, otherwise starts the intent unchanged.

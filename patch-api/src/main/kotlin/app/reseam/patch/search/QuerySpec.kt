@@ -9,10 +9,12 @@ import app.reseam.patch.RankScope
 import app.reseam.patch.dex.Opcode
 import app.reseam.patch.inspect.TargetInspection
 import app.reseam.patch.run.Resolution
+import app.reseam.patch.types.AppPosition
 
 internal enum class QueryMultiplicity {
     UNIQUE,
     FIRST,
+    FIRST_IN_APP_ORDER,
 }
 
 internal enum class SearchDomain {
@@ -31,6 +33,10 @@ internal abstract class QuerySpec<T : Any, S : RankScope>(private val kind: Stri
 
     fun first() {
         multiplicity = QueryMultiplicity.FIRST
+    }
+
+    fun firstInAppOrder() {
+        multiplicity = QueryMultiplicity.FIRST_IN_APP_ORDER
     }
 
     fun includeExtensions() {
@@ -55,6 +61,8 @@ internal abstract class QuerySpec<T : Any, S : RankScope>(private val kind: Stri
     protected abstract fun rankScope(index: SearchIndex, value: T): S
 
     protected abstract fun describe(value: T): String
+
+    protected abstract fun appPosition(value: T): AppPosition
 
     fun resolveOne(runtime: PatchRuntime, debugName: String?): Resolution<T> {
         val plan = plan(runtime)
@@ -116,7 +124,7 @@ internal abstract class QuerySpec<T : Any, S : RankScope>(private val kind: Stri
         val winner = evaluated.accepted.firstOrNull() ?: return null
         val runnerUp = evaluated.accepted.getOrNull(1)
         val chosen =
-            multiplicity == QueryMultiplicity.FIRST ||
+            multiplicity != QueryMultiplicity.UNIQUE ||
                 runnerUp == null ||
                 rankers.isNotEmpty() && winner.score > runnerUp.score
         return winner.takeIf { chosen }
@@ -179,18 +187,26 @@ internal abstract class QuerySpec<T : Any, S : RankScope>(private val kind: Stri
         )
     }
 
-    /** Best score first, ties in description order; each description is built once. */
+    /** Best score first, ties in app order or description order. */
     private fun ranked(scored: List<Scored<T>>): List<Scored<T>> =
-        if (scored.size < 2) scored
-        else
-            scored
-                .map { it to describe(it.value) }
-                .sortedWith(
-                    compareByDescending<Pair<Scored<T>, String>> { it.first.score }
-                        .thenBy { it.second }
-                )
-                .map { it.first }
+        when {
+            scored.size < 2 -> scored
+            multiplicity == QueryMultiplicity.FIRST_IN_APP_ORDER ->
+                rankedBy(scored, ::appPosition, appOrder)
+            else -> rankedBy(scored, ::describe, naturalOrder())
+        }
+
+    private fun <K> rankedBy(scored: List<Scored<T>>, key: (T) -> K, ties: Comparator<K>) =
+        scored
+            .map { it to key(it.value) }
+            .sortedWith(
+                compareByDescending<Pair<Scored<T>, K>> { it.first.score }
+                    .thenBy(ties) { it.second }
+            )
+            .map { it.first }
 }
+
+private val appOrder = compareBy<AppPosition>({ it.dex }, { it.classDef }, { it.member })
 
 internal fun noMatchMessage(kind: String, report: MatchReport): String = buildString {
     append("No $kind matched '${report.name}'. Searched ${report.considered} candidate(s).")

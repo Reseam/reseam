@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 pub(crate) mod annotations;
+pub(crate) mod app_order;
 pub(crate) mod assembly;
 pub(crate) mod class_ops;
 pub(crate) mod code;

@@ -81,6 +81,12 @@ pub fn hook_calls(code: &reseam_dex::CodeItem, incoming: &[i64]) -> (Vec<Vec<i64
                     pc = target(pc, *offset);
                     continue;
                 }
+                NewArray { dest, size, .. } => {
+                    registers[usize::from(*dest)] = registers[usize::from(*size)];
+                }
+                ArrayLength { dest, array } => {
+                    registers[usize::from(*dest)] = registers[usize::from(*array)];
+                }
                 Nop | IfEqz { .. } | IfNez { .. } | IfEq { .. } | IfNe { .. } => {}
                 Return { src } | ReturnObject { src } => {
                     return (calls, Some(registers[usize::from(*src)]));

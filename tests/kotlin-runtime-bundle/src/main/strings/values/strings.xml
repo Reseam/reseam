@@ -39,6 +39,10 @@
     <string name="constant_forms_description"></string>
     <string name="long_goto">long-goto</string>
     <string name="long_goto_description">A goto past 127 code units lands on its label</string>
+    <string name="settings_icon_keys">Settings icon keys</string>
+    <string name="settings_row_behaviour">Settings row behaviour</string>
+    <string name="array_creation">array-creation</string>
+    <string name="array_creation_description">A created array has the requested length</string>
     <string name="distant_operands">distant-operands</string>
     <string name="distant_operands_description">Compares parameters above v15 with an instruction that names only v0 to v15</string>
     <string name="added_method">added-method</string>
@@ -62,6 +66,16 @@
     <string name="fold_dex_files_description">Asks for added classes to go into the DEX files of the app</string>
     <string name="after_entry_values">after-entry-values</string>
     <string name="after_entry_values_description">Checks entry argument lifetimes through the real code emitter</string>
+    <string name="interface_call_on_class">interface-call-on-class</string>
+    <string name="interface_call_on_class_description">Calls a class method as an interface method</string>
+    <string name="after_order">after-order</string>
+    <string name="after_order_description">Adds two hooks after one instruction</string>
+    <string name="jump_to_point">jump-to-point</string>
+    <string name="jump_to_point_description">Jumps over a call, landing after the code other patches put before the target</string>
+    <string name="jump_sources">jump-sources</string>
+    <string name="jump_sources_description">Finds the branch that jumps to an instruction</string>
+    <string name="point_entry_values">point-entry-values</string>
+    <string name="point_entry_values_description">Reads parameters at points after the method reused their registers</string>
     <string name="skip_when">skip-when</string>
     <string name="skip_when_description">Guards one call behind a condition, on every path into it</string>
     <string name="before_join">before-join</string>
@@ -155,4 +169,15 @@
     <string name="option_token">token</string>
     <string name="option_marker">marker</string>
     <string name="option_label_detail">label.detail</string>
+    <string name="settings_layout">Settings layout</string>
+    <string name="page_layout">Layout</string>
+    <string name="layout_range">Range</string>
+    <string name="layout_first">First</string>
+    <string name="layout_second">Second</string>
+    <string name="layout_hidden">Hidden</string>
+    <string name="layout_stored">Stored</string>
+    <string name="layout_level">Level</string>
+    <string name="layout_tint">Tint</string>
+    <string name="layout_note">Note</string>
+    <string name="layout_note_summary">Read this</string>
 </resources>

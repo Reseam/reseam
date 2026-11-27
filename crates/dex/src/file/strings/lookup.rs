@@ -65,4 +65,19 @@ impl StringPool {
             .map(|i| StringIdx(i as u32))
             .collect()
     }
+
+    /// Every entry that contains `part`, in index order. MUTF-8 is
+    /// self-synchronizing, so a match of the encoded bytes is a match of the
+    /// code units.
+    pub fn containing(&self, part: &str) -> Vec<StringIdx> {
+        let encoded = encode_mutf8(part);
+        (0..self.len())
+            .filter(|&i| {
+                self.mutf8(i)
+                    .windows(encoded.len())
+                    .any(|window| window == encoded.as_slice())
+            })
+            .map(|i| StringIdx(i as u32))
+            .collect()
+    }
 }

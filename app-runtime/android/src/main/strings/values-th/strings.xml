@@ -36,4 +36,13 @@
     <string name="import_unreadable">ไฟล์นี้ไม่ใช่ไฟล์ส่งออกการตั้งค่า</string>
     <string name="import_nothing_applies">ไม่มีการตั้งค่าใดในไฟล์นี้ที่เป็นของแอปนี้</string>
     <string name="ok">ตกลง</string>
+    <string name="color_hue">สีสัน</string>
+    <string name="color_saturation">ความอิ่มตัว</string>
+    <string name="color_brightness">ความสว่าง</string>
+    <string name="color_opacity">ความทึบ</string>
+    <string name="color_code">รหัสสี</string>
+    <string name="settings_as_text">การตั้งค่าเป็นข้อความ</string>
+    <string name="settings_as_text_summary">คัดลอกการตั้งค่าเป็นข้อความ หรือวางการตั้งค่าเพื่อนำเข้า</string>
+    <string name="copy">คัดลอก</string>
+    <string name="value_out_of_range">ป้อนค่าตั้งแต่ <xliff:g id="min">%1$s</xliff:g> ถึง <xliff:g id="max">%2$s</xliff:g></string>
 </resources>

@@ -36,4 +36,13 @@
     <string name="import_unreadable">Tệp này không phải là tệp xuất cài đặt.</string>
     <string name="import_nothing_applies">Không có cài đặt nào trong tệp này thuộc về ứng dụng này.</string>
     <string name="ok">OK</string>
+    <string name="color_hue">Sắc độ</string>
+    <string name="color_saturation">Độ bão hòa</string>
+    <string name="color_brightness">Độ sáng</string>
+    <string name="color_opacity">Độ mờ đục</string>
+    <string name="color_code">Mã màu</string>
+    <string name="settings_as_text">Cài đặt dạng văn bản</string>
+    <string name="settings_as_text_summary">Sao chép cài đặt dưới dạng văn bản hoặc dán cài đặt để nhập.</string>
+    <string name="copy">Sao chép</string>
+    <string name="value_out_of_range">Nhập giá trị từ <xliff:g id="min">%1$s</xliff:g> đến <xliff:g id="max">%2$s</xliff:g></string>
 </resources>

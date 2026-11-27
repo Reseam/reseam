@@ -149,7 +149,7 @@ macro_rules! export_shape {
 macro_rules! import_shape {
     (($insn:ident,$dex:ident,$dex_index:ident,$native:ident), $wire:ident, $record:ident, [$($field:ident:$ty:ident=>$slot:ident),*], [$($padding:ident:$zero:expr),*]) => {{
         let Instruction::$wire(_record) = $insn else { return Err(invalid("opcode does not match instruction operands")); };
-        $(if _record.$padding != $zero { return Err(invalid("unused operand must be zero")); })*
+        $(if _record.$padding != $zero { return Err(invalid("the format has no such register operand")); })*
         Ok::<D, DexError>(D::$native { $($field:import_field!($ty,&_record.$slot,$dex,$dex_index)?,)* })
     }};
     (($insn:ident,$dex:ident,$dex_index:ident,$native:ident), special) => { Err::<D, DexError>(invalid("payload requires its dedicated representation")) };

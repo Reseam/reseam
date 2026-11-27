@@ -36,4 +36,13 @@
     <string name="import_unreadable">此文件不是导出的设置。</string>
     <string name="import_nothing_applies">此文件中的设置都不属于此应用。</string>
     <string name="ok">确定</string>
+    <string name="color_hue">色相</string>
+    <string name="color_saturation">饱和度</string>
+    <string name="color_brightness">亮度</string>
+    <string name="color_opacity">不透明度</string>
+    <string name="color_code">颜色代码</string>
+    <string name="settings_as_text">文本形式的设置</string>
+    <string name="settings_as_text_summary">将设置复制为文本，或粘贴设置以导入。</string>
+    <string name="copy">复制</string>
+    <string name="value_out_of_range">请输入 <xliff:g id="min">%1$s</xliff:g> 到 <xliff:g id="max">%2$s</xliff:g> 之间的值</string>
 </resources>

@@ -6,15 +6,15 @@
 package app.reseam.patch.settings
 
 /**
- * A user-facing setting shown on the bundle's settings screen. Every kind but [ActionSetting]
- * stores a value in the patched app. Its [key] is unique within the bundle; other bundles keep
- * their own settings.
+ * A user-facing setting shown on the bundle's settings screen. Every kind but [ActionSetting] and
+ * [NoteSetting] stores a value in the patched app. Its [key] is unique within the bundle; other
+ * bundles keep their own settings. Only an action or a note can lack a [title].
  */
 sealed class Setting<T>(
     internal val kind: SettingKind,
     val key: String,
-    internal val property: String,
-    val title: StringRef,
+    internal open val property: String?,
+    open val title: StringRef?,
     val summary: StringRef?,
     val default: T,
     val icon: Vector?,
@@ -39,17 +39,22 @@ enum class TakesEffect {
 internal enum class SettingKind(val tag: String, val runtimeValue: String?) {
     TOGGLE("toggle", "ToggleValue"),
     TEXT("text", "TextValue"),
+    NUMBER("number", "NumberValue"),
+    RANGE("range", "RangeValue"),
+    COLOR("color", "ColorValue"),
     FOLDER("folder", "FolderValue"),
+    FILE("file", "FileValue"),
     CHOICE("choice", "ChoiceValue"),
     ACTION("action", null),
+    NOTE("note", null),
 }
 
 /** While this toggle is on, every toggle in [covers] reads as on and cannot be changed. */
 class ToggleSetting
 internal constructor(
     key: String,
-    property: String,
-    title: StringRef,
+    internal override val property: String,
+    override val title: StringRef,
     summary: StringRef?,
     default: Boolean,
     icon: Vector?,
@@ -65,26 +70,38 @@ internal constructor(
         default,
         icon,
         takesEffect,
-    )
+    ) {
+    /**
+     * The same stored setting with another default, for a patch that decides it from its options or
+     * the app.
+     */
+    fun copy(default: Boolean = this.default) =
+        ToggleSetting(key, property, title, summary, default, icon, takesEffect, covers)
+}
 
-/** [multiline] lets the value hold one entry per line. */
+/**
+ * [multiline] lets the value hold one entry per line. The row shows the value under its title, or
+ * its summary while the value is empty. Without [showValue] it shows the summary only, and the
+ * editor shows the value.
+ */
 class TextSetting
 internal constructor(
     key: String,
-    property: String,
-    title: StringRef,
+    internal override val property: String,
+    override val title: StringRef,
     summary: StringRef?,
     default: String,
     val multiline: Boolean,
     icon: Vector?,
     takesEffect: TakesEffect,
+    val showValue: Boolean,
 ) : Setting<String>(SettingKind.TEXT, key, property, title, summary, default, icon, takesEffect)
 
 class FolderSetting
 internal constructor(
     key: String,
-    property: String,
-    title: StringRef,
+    internal override val property: String,
+    override val title: StringRef,
     summary: StringRef?,
     default: String,
     icon: Vector?,
@@ -101,16 +118,33 @@ internal constructor(
         takesEffect,
     )
 
+/**
+ * A file the user picks with the system picker, stored as a `content://` URI. [mimeTypes] limits
+ * what can be picked.
+ */
+class FileSetting
+internal constructor(
+    key: String,
+    internal override val property: String,
+    override val title: StringRef,
+    summary: StringRef?,
+    default: String,
+    val mimeTypes: List<String>,
+    icon: Vector?,
+    takesEffect: TakesEffect,
+) : Setting<String>(SettingKind.FILE, key, property, title, summary, default, icon, takesEffect)
+
 class ChoiceSetting
 internal constructor(
     key: String,
-    property: String,
-    title: StringRef,
+    internal override val property: String,
+    override val title: StringRef,
     summary: StringRef?,
     default: String,
     val choices: List<Choice>,
     icon: Vector?,
     takesEffect: TakesEffect,
+    val showValue: Boolean,
 ) :
     Setting<String>(
         SettingKind.CHOICE,
@@ -130,7 +164,17 @@ internal constructor(
 
     /** The same stored setting with other choices, for a patch that extends it from its options. */
     fun copy(default: String = this.default, choices: List<Choice> = this.choices) =
-        ChoiceSetting(key, property, title, summary, default, choices, icon, takesEffect)
+        ChoiceSetting(
+            key,
+            property,
+            title,
+            summary,
+            default,
+            choices,
+            icon,
+            takesEffect,
+            showValue,
+        )
 }
 
 data class Choice(val value: String, val title: DisplayText)
@@ -139,8 +183,8 @@ data class Choice(val value: String, val title: DisplayText)
 class ActionSetting
 internal constructor(
     key: String,
-    property: String,
-    title: StringRef,
+    internal override val property: String,
+    override val title: StringRef?,
     summary: StringRef?,
     icon: Vector?,
 ) :
@@ -156,47 +200,25 @@ internal constructor(
     )
 
 /**
- * Declares settings as properties. A setting's title is the string named after the property in
- * snake case (`hideAds` reads `hide_ads`); its summary, when present, is `hide_ads_summary`. Keys
- * start with [keyPrefix], by default the group's name in snake case, so groups that split one set
- * of settings can keep its keys.
+ * A row that only shows its summary, such as notes on the settings around it, or what patch code
+ * gives it with [onSummary] or [onView]. It stores nothing. A note made while patching, with
+ * [noteOf], has no [property].
  */
-abstract class SettingsGroup(val strings: StringTable, keyPrefix: String? = null) {
-    internal val keyPrefix: String = keyPrefix ?: snakeCase(this::class.simpleName!!)
-}
-
-/**
- * A reusable destination, shown as a row on its parent page. Parents allow arbitrary nesting; lower
- * orders appear first.
- */
-data class SettingsPage(
-    val id: String,
-    val title: StringRef,
-    val parent: SettingsPage? = null,
-    val order: Int = 0,
-    val summary: StringRef? = null,
-    val icon: Vector? = null,
-) {
-    init {
-        require(id.isNotBlank()) { "A settings page needs a non-blank id" }
-        var ancestor = parent
-        while (ancestor != null) {
-            require(ancestor.id != id) { "Settings page '$id' cannot be its own ancestor" }
-            ancestor = ancestor.parent
-        }
-    }
-}
-
-data class SettingsSection(
-    val title: StringRef,
-    val settings: List<Setting<*>>,
-    val page: SettingsPage? = null,
-)
-
-/** A section on the root settings screen. */
-fun section(title: StringRef, vararg settings: Setting<*>) =
-    SettingsSection(title, settings.toList())
-
-/** Contributes settings to a page shared by any number of patches. */
-fun section(page: SettingsPage, title: StringRef, vararg settings: Setting<*>) =
-    SettingsSection(title, settings.toList(), page)
+class NoteSetting
+internal constructor(
+    key: String,
+    internal override val property: String?,
+    override val title: StringRef?,
+    summary: StringRef?,
+    icon: Vector?,
+) :
+    Setting<Unit>(
+        SettingKind.NOTE,
+        key,
+        property,
+        title,
+        summary,
+        Unit,
+        icon,
+        TakesEffect.IMMEDIATELY,
+    )

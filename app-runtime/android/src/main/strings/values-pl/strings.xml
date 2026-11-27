@@ -39,4 +39,13 @@
     <string name="import_unreadable">Ten plik nie jest eksportem ustawień.</string>
     <string name="import_nothing_applies">Żadne z ustawień w tym pliku nie należy do tej aplikacji.</string>
     <string name="ok">OK</string>
+    <string name="color_hue">Odcień</string>
+    <string name="color_saturation">Nasycenie</string>
+    <string name="color_brightness">Jasność</string>
+    <string name="color_opacity">Krycie</string>
+    <string name="color_code">Kod koloru</string>
+    <string name="settings_as_text">Ustawienia jako tekst</string>
+    <string name="settings_as_text_summary">Skopiuj ustawienia jako tekst lub wklej ustawienia, aby je zaimportować.</string>
+    <string name="copy">Kopiuj</string>
+    <string name="value_out_of_range">Wpisz wartość od <xliff:g id="min">%1$s</xliff:g> do <xliff:g id="max">%2$s</xliff:g></string>
 </resources>

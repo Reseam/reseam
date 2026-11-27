@@ -33,6 +33,8 @@ internal abstract class DeviceStringsTask : StringObjectTask() {
                             "${kotlinName(it.id)}: ${it.type.kotlin}"
                         }
                     val arguments = value.placeholders.joinToString { kotlinName(it.id) }
+                    val styled = value is StyledString
+                    val type = if (styled) "CharSequence" else "String"
                     when {
                         value is PluralString ->
                             line(
@@ -40,11 +42,14 @@ internal abstract class DeviceStringsTask : StringObjectTask() {
                                     "table.plural(\"$name\", count, $arguments)"
                             )
                         value.placeholders.isEmpty() ->
-                            line("val ${kotlinName(name)}: String get() = table[\"$name\"]")
+                            line(
+                                "val ${kotlinName(name)}: $type get() = " +
+                                    (if (styled) "table.styled(\"$name\")" else "table[\"$name\"]")
+                            )
                         else ->
                             line(
-                                "fun ${kotlinName(name)}($parameters): String = " +
-                                    "table.format(\"$name\", $arguments)"
+                                "fun ${kotlinName(name)}($parameters): $type = " +
+                                    "table.${if (styled) "formatStyled" else "format"}(\"$name\", $arguments)"
                             )
                     }
                 }

@@ -66,6 +66,15 @@ val callArity =
         }
     }
 
+val interfaceCallOnClass =
+    fixturePatch(TestStrings.interfaceCallOnClass, TestStrings.interfaceCallOnClassDescription) {
+        anchoredTwice.before {
+            string("host")
+                .cast("com.example.AnchorHost")
+                .callInterface("com.example.AnchorHost", "toString", "()Ljava/lang/String;")
+        }
+    }
+
 val wideCondition = invalidCondition(TestStrings.wideCondition) { whenTrue(long(1)) {} }
 
 val primitiveNull = invalidCondition(TestStrings.primitiveNull) { whenNull(int(1)) {} }

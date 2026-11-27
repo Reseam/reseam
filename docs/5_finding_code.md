@@ -23,6 +23,7 @@ The label, `"isAd"`, is only used in error messages. The constraints you'll use 
 |---|---|
 | `strings("a", "b")` | load each of these exact strings |
 | `stringsStartingWith("reel/")` | load a string starting with this |
+| `stringsContaining("count: ")` | load, for each of these, a string that contains it |
 | `literals(42)` | use each of these number constants |
 | `returns(Type.Boolean)` | return this type |
 | `params(Type.String, Type.Int)` | take exactly these parameters, in order |
@@ -50,6 +51,7 @@ Reseam keeps indexes of the app's strings, numbers, calls, and field accesses. T
 - Add a constraint that only the right method meets. This is almost always the best fix.
 - Rank the candidates with `rankBy("label") { ... }`. The block returns a score, and the single highest score wins. A tie still fails.
 - Take the best ranked candidate with `first()`. Only do this when the matches are interchangeable.
+- Take the candidate the app's class loader meets first with `firstInAppOrder()`. Like `first()`, it settles the choice without saying why, so a constraint is still better when one exists.
 
 > [!WARNING]
 > Give every target something specific: a string, a number, a class, or a call. A target like `method { returns(Type.Boolean); paramCount(1) }` fits hundreds of methods, and `first()` on it picks a different one after the next app update.
@@ -154,7 +156,7 @@ execute {
 Common mistakes:
 
 - `returns("boolean")` is not a type. Use `Type.Boolean` or `"Z"`.
-- `strings` only matches whole strings. Use `stringsStartingWith` for a prefix.
+- `strings` only matches whole strings. Use `stringsStartingWith` for a prefix and `stringsContaining` for a part.
 - If every candidate is rejected with `class mismatch`, the class target in `inClass` found the wrong class.
 
 [Testing and debugging](9_testing.md) covers the rest of the loop.

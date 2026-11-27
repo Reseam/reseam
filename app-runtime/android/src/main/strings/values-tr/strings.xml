@@ -37,4 +37,13 @@
     <string name="import_unreadable">Bu dosya bir ayar dışa aktarımı değil.</string>
     <string name="import_nothing_applies">Bu dosyadaki ayarların hiçbiri bu uygulamaya ait değil.</string>
     <string name="ok">Tamam</string>
+    <string name="color_hue">Ton</string>
+    <string name="color_saturation">Doygunluk</string>
+    <string name="color_brightness">Parlaklık</string>
+    <string name="color_opacity">Opaklık</string>
+    <string name="color_code">Renk kodu</string>
+    <string name="settings_as_text">Metin olarak ayarlar</string>
+    <string name="settings_as_text_summary">Ayarlarınızı metin olarak kopyalayın veya içe aktarmak için ayarları yapıştırın.</string>
+    <string name="copy">Kopyala</string>
+    <string name="value_out_of_range"><xliff:g id="min">%1$s</xliff:g> ile <xliff:g id="max">%2$s</xliff:g> arasında bir değer girin</string>
 </resources>

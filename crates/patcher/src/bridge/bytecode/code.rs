@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use boltffi::export;
@@ -10,6 +9,7 @@ use reseam_dex::{
     IncomingBranches, Instruction as DexInsn, RegisterKind, TypeIdx,
 };
 
+mod entry;
 mod returns;
 
 use super::logged;
@@ -37,7 +37,7 @@ pub fn emit_code(
         .iter()
         .filter_map(|step| match step {
             CodeStep::Instruction(instruction) => Some(instruction.template.clone()),
-            CodeStep::Label(_) => None,
+            CodeStep::Label(_) | CodeStep::Jump(_) => None,
         })
         .collect();
     link_instructions(&templates);
@@ -101,7 +101,7 @@ enum Frame<'a> {
         base: u16,
     },
     Copies {
-        copies: &'a BTreeMap<u16, u16>,
+        copies: &'a entry::EntryCopies,
         returned: Option<u16>,
     },
 }
@@ -110,9 +110,10 @@ impl Frame<'_> {
     fn register(&self, register: CodeRegister) -> Result<BlockRegister, String> {
         Ok(BlockRegister::Fixed(match (register, self) {
             (CodeRegister::Temporary(id), _) => return Ok(BlockRegister::Temporary(id)),
-            (CodeRegister::Fixed(register), _) => register,
+            (CodeRegister::Fixed(register), Self::Incoming { .. }) => register,
+            (CodeRegister::Fixed(register), Self::Copies { copies, .. }) => copies.moved(register),
             (CodeRegister::Parameter(offset), Self::Incoming { base }) => base + offset,
-            (CodeRegister::Parameter(offset), Self::Copies { copies, .. }) => copies[&offset],
+            (CodeRegister::Parameter(offset), Self::Copies { copies, .. }) => copies.copy(offset),
             (CodeRegister::Returned, Self::Copies { returned, .. }) => {
                 returned.ok_or("the return here returns no value")?
             }
@@ -130,6 +131,16 @@ impl Code<'_> {
         body: &mut Option<CodeItem>,
         placement: CodePlacement,
     ) -> Result<Vec<CodeEdit>, String> {
+        if matches!(
+            placement,
+            CodePlacement::BeforeReturns | CodePlacement::Body
+        ) && self
+            .steps
+            .iter()
+            .any(|step| matches!(step, CodeStep::Jump(_)))
+        {
+            return Err("a jump to an instruction needs code placed before one instruction".into());
+        }
         match placement {
             CodePlacement::Before(index) => {
                 self.insert(existing(body)?, index, IncomingBranches::Skip)
@@ -157,15 +168,31 @@ impl Code<'_> {
         }
     }
 
+    /// Code at one instruction reads the live parameter registers, unless the method may have
+    /// reused one by then: the parameters are then read as the method was entered.
     fn insert(
         &self,
         body: &mut CodeItem,
         index: u32,
         branches: IncomingBranches,
     ) -> Result<Vec<CodeEdit>, String> {
+        let at = index as usize;
         let base = body.registers_size() - body.ins_size();
-        let block = self.block(&Frame::Incoming { base })?;
-        self.place(body, index as usize, branches, &block, &self.protected)
+        let parameters = self.parameters();
+        if !parameters
+            .iter()
+            .any(|(&offset, &kind)| entry::overwritten(body, at, base + offset, kind))
+        {
+            let block = self.block(&Frame::Incoming { base })?;
+            return self.place(body, at, branches, &block, &self.protected);
+        }
+        self.with_entry_copies(body, &parameters, |body, copies, protected, moved| {
+            let block = self.block(&Frame::Copies {
+                copies,
+                returned: None,
+            })?;
+            self.place(body, moved.starts()[at], branches, &block, protected)
+        })
     }
 
     /// Inserts `block` into the method's body before `at`.
@@ -227,6 +254,7 @@ impl Code<'_> {
             .iter()
             .map(|step| match step {
                 CodeStep::Label(label) => Ok(BlockStep::Label(*label)),
+                CodeStep::Jump(index) => Ok(BlockStep::Jump(*index as usize)),
                 CodeStep::Instruction(instruction) => Ok(BlockStep::Instruction {
                     instruction: templates
                         .next()
@@ -254,7 +282,7 @@ impl Code<'_> {
             .iter()
             .filter_map(|step| match step {
                 CodeStep::Instruction(instruction) => Some(&instruction.operands),
-                CodeStep::Label(_) => None,
+                CodeStep::Label(_) | CodeStep::Jump(_) => None,
             })
             .flatten()
     }

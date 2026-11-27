@@ -52,7 +52,11 @@ fn assert_resource_values(table: &ResourceTable) {
         (("drawable", "reseam_icon"), "res/reseam_icon.png"),
         (("mipmap", "reseam_launcher"), "res/reseam_launcher.png"),
     ] {
-        assert_eq!(table.file_paths(kind, name).unwrap(), [path]);
+        let files = table.files(kind, name).unwrap();
+        assert_eq!(
+            files.iter().map(|file| &file.path).collect::<Vec<_>>(),
+            [path]
+        );
     }
     let items = |name: &str| {
         table

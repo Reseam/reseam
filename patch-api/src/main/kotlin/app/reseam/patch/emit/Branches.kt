@@ -5,11 +5,14 @@ package app.reseam.patch.emit
 
 import app.reseam.patch.CodeScope
 import app.reseam.patch.Otherwise
+import app.reseam.patch.PointTarget
 import app.reseam.patch.Type
 import app.reseam.patch.dex.descriptor
 import app.reseam.patch.dex.isReferenceType
 import app.reseam.patch.dex.registerWordCount
 import app.reseam.patch.dex.returnType
+import app.reseam.patch.method
+import app.reseam.patch.types.CodeStep
 
 internal enum class Equality {
     EQUAL,
@@ -94,4 +97,11 @@ internal fun CodeEmitter.returnFromMethod(value: Value?) {
             else -> template { returnValue(0) }
         }
     emit(returned, value)
+}
+
+internal fun CodeEmitter.jumpTo(point: PointTarget) {
+    require(point.method.descriptor == info.descriptor) {
+        "$point is in ${point.method.descriptor}, not in ${info.descriptor}"
+    }
+    steps += CodeStep.Jump(point.resolved.anchor.entry.toUInt())
 }

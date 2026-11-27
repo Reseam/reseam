@@ -78,6 +78,8 @@ The receiver of every code block.
 |---|---|
 | `int(value: Int): ValueRef` | An `int`. |
 | `long(value: Long): ValueRef` | A `long`. |
+| `float(value: Float): ValueRef` | A `float`. |
+| `double(value: Double): ValueRef` | A `double`. |
 | `bool(value: Boolean): ValueRef` | A `boolean`. |
 | `string(value: String): ValueRef` | A `String`. |
 | `nullObject: ValueRef` | `null`. |
@@ -90,6 +92,7 @@ The receiver of every code block.
 | `staticField(field: FieldTarget)`, `staticField(field: FieldRef): ValueRef` | Reads a static field. |
 | `setStatic(field: FieldTarget, value: ValueRef)`, `setStatic(field: FieldRef, value: ValueRef)` | Writes a static field. |
 | `newInstance(type: String, ctorProto: String = "()V", vararg args: ValueRef): ValueRef` | Creates an object, calling the constructor with this prototype. |
+| `newArray(type: String, size: ValueRef): ValueRef` | Creates an array of the array type `type`, such as `[I`, with `size` elements. |
 | `call(method: ExtMethod, vararg args: ValueRef): ValueRef` | Calls a static extension method. Fails when the method doesn't exist or the argument count is wrong. Call an instance method on its object instead: `value.call(method)`. |
 | `ExtMethod.invoke(vararg args: ValueRef): ValueRef` | The same as `call`, written as a call: `AdBlocker.init(application)`. |
 | `call(method: MethodTarget, vararg args: ValueRef): ValueRef` | Calls a static app method. Call an instance method on its object: `value.call(method)`. |
@@ -113,6 +116,7 @@ Each takes a block and returns an [`Otherwise`](#otherwise), so you can add `oth
 
 | Member | Description |
 |---|---|
+| `jumpTo(point: PointTarget)` | Continues at another instruction of the same method, where any branch to it lands, so code patches put before it runs first. A replaced body, and code that runs before every return, can't jump. |
 | `returnVoid()` | Returns from a `void` method. |
 | `returnValue(value: ValueRef)` | Returns `value`. |
 | `returnTrue()`, `returnFalse()` | Returns a `boolean`. |

@@ -5,8 +5,8 @@ use crate::common::TestResult;
 use crate::common::table_bytes::*;
 use crate::common::table_cases;
 use crate::common::tables::*;
-use reseam_apk::ResValue;
-use reseam_apk::resources::{EntryValue, MapEntry, ResourceTable};
+use reseam_apk::resources::{AttrFormats, EntryValue, MapEntry, ResourceTable, StyleItem};
+use reseam_apk::{ResValue, ResourceScope};
 use reseam_dex::DexBytes;
 
 #[test]
@@ -110,6 +110,30 @@ fn resource_edits_reject_invalid_indices_without_changing_the_table() -> TestRes
 }
 
 #[test]
+fn names_added_after_a_lookup_are_found_by_name() -> TestResult {
+    let mut table = ResourceTable::parse(DexBytes::from_vec(make_test_arsc().serialize()?))?;
+    let hello = table.find_resource_id("string", "hello")?.expect("fixture");
+    let text = ResValue::string(table.add_global_string("Hallo"));
+    let greeting = table
+        .add_resource_in("string", "greeting", text, "de")?
+        .expect("added");
+    assert_eq!(
+        table.add_resource_in("string", "hello", text, "fr")?,
+        Some(hello)
+    );
+    for table in [&table, &table.clone()] {
+        assert_eq!(
+            table.find_resource_id("string", "greeting")?,
+            Some(greeting)
+        );
+        assert_eq!(table.find_resource_id("string", "hello")?, Some(hello));
+        assert!(table.has_entry_in("string", "hello", "fr")?);
+        assert_eq!(table.find_resource_id("string", "absent")?, None);
+    }
+    Ok(())
+}
+
+#[test]
 fn resource_lookup_and_string_replacement_survive_serialization() -> TestResult {
     for (index, case) in table_cases::cases()?.into_iter().enumerate() {
         let mut table = ResourceTable::parse(DexBytes::from_slice(&case.input))?;
@@ -151,5 +175,80 @@ fn entries_are_found_by_the_string_they_hold_and_named_by_id() -> TestResult {
     }
     assert!(entries.get(2).is_empty());
     assert_eq!(table.resource_name(0x7f01_0005)?, None);
+    Ok(())
+}
+
+#[test]
+fn fixed_ids_added_attributes_and_style_items_read_back_by_name() -> TestResult {
+    let mut table = make_test_arsc();
+    let hello = table
+        .find_resource_id("string", "hello")?
+        .expect("fixture id");
+    let fixed = hello + 0x10;
+    let color = ResValue::new(ResValue::INT_COLOR_ARGB8, 0xff11_2233);
+    for (name, id) in [
+        ("world", fixed),
+        ("later", hello),
+        ("later", fixed + 0x0001_0000),
+    ] {
+        assert!(
+            table
+                .add_resource_at("string", name, color, "", id)
+                .is_err(),
+            "string/{name} at {id:#010x} should be refused"
+        );
+    }
+    assert_eq!(
+        table.add_resource_at("string", "later", color, "", fixed)?,
+        fixed
+    );
+    let accent = table.add_attr("accent", AttrFormats::parse("reference | color")?)?;
+    assert!(AttrFormats::parse("colour").is_err());
+    ResourceScope::from(&mut table).set_style_items(
+        "Theme",
+        Some("@android:style/Theme"),
+        &[
+            StyleItem {
+                attribute: "accent".into(),
+                value: "@string/later".into(),
+            },
+            StyleItem {
+                attribute: "android:textColor".into(),
+                value: "#ff000000".into(),
+            },
+            StyleItem {
+                attribute: "android:windowBackground".into(),
+                value: "@empty".into(),
+            },
+        ],
+    )?;
+
+    let table = round_trip(&table);
+    assert_eq!(
+        table.attr_formats(accent)?,
+        Some(AttrFormats::REFERENCE | AttrFormats::COLOR)
+    );
+    assert_eq!(
+        table.resource_names("string")?,
+        ["hello", "world", "later"].map(String::from)
+    );
+    assert_eq!(
+        table.style_items("Theme", "")?,
+        Some(vec![
+            StyleItem {
+                attribute: "android:windowBackground".into(),
+                value: "@empty".into(),
+            },
+            StyleItem {
+                attribute: "android:textColor".into(),
+                value: "#ff000000".into(),
+            },
+            StyleItem {
+                attribute: "accent".into(),
+                value: "@string/later".into(),
+            },
+        ])
+    );
+    assert_eq!(table.style_items("Theme", "night")?, None);
     Ok(())
 }

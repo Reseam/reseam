@@ -144,7 +144,14 @@ class Ui(@JvmField val context: Context, @JvmField val theme: Theme) {
 
     fun switchView(): SwitchView = SwitchView(this)
 
+    fun slider(steps: Int, thumbs: Int = 1): SliderView = SliderView(this, steps, thumbs)
+
+    fun colorSwatch(size: Int): ColorSwatch = ColorSwatch(this, px(size))
+
     fun searchBar(hint: CharSequence?): SearchBar = SearchBar(this, hint)
+
+    fun listScreen(title: CharSequence?, searchHint: CharSequence?): ListScreen =
+        ListScreen(this, title, searchHint)
 
     fun textField(label: CharSequence?): TextField = TextField(this, label)
 

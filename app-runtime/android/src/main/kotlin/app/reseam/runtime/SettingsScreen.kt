@@ -9,8 +9,10 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import app.reseam.runtime.ui.Icons
+import app.reseam.runtime.ui.PageLayout
 import app.reseam.runtime.ui.Tokens
 import app.reseam.runtime.ui.Ui
+import app.reseam.runtime.ui.activity
 import app.reseam.runtime.ui.alignToScreen
 import java.text.Collator
 
@@ -30,10 +32,8 @@ internal fun settingsPage(
     val schema = bundle.schema
     val root = pageId.isEmpty()
     val container =
-        SettingsPageLayout(ui).apply {
+        PageLayout(ui).apply {
             setBackgroundColor(ui.colors.surface)
-            // Hosts targeting API 35 draw edge to edge; keep the bar below the status bar.
-            fitsSystemWindows = true
             val topBar =
                 ui.topBar(
                     if (root) RuntimeStrings.settings
@@ -73,30 +73,30 @@ internal fun settingsPage(
     rows.follow(container)
     val content = vertical(ui)
     if (root) content.addView(aboutCard(ui, bundle), matchWidth())
-    val pages = ui.itemGroup()
-    schema.pages
-        .filter { it.parent == pageId }
-        .forEach { page ->
-            pages.add(
-                ui.listItem(page.title.resolve(bundle.name))
-                    .icon(page.icon)
-                    .supporting(page.summary?.resolve(bundle.name))
-                    .chevron()
-                    .onClick { open(page.id) }
+    val groups = pageContents(schema, pageId)
+    for (group in groups) {
+        val title = group.title
+        val items = ui.itemGroup()
+        group.rows.forEach { row ->
+            items.add(
+                when (row) {
+                    is PageRow.Setting -> rows.create(row.setting)
+                    is PageRow.Link ->
+                        ui.listItem(row.page.title.resolve(bundle.name))
+                            .icon(row.page.icon)
+                            .supporting(row.page.summary?.resolve(bundle.name))
+                            .chevron()
+                            .onClick { open(row.page.id) }
+                }
             )
         }
-    if (pages.childCount > 0)
-        content.addView(pages, matchWidth().apply { topMargin = ui.px(Tokens.SPACE_LG) })
-    val sections = schema.sections.filter { it.page == pageId && it.settings.isNotEmpty() }
-    sections.forEach { section ->
-        content.addView(ui.sectionLabel(section.title.resolve(bundle.name)))
-        val group = ui.itemGroup()
-        section.settings.forEach { group.add(rows.create(it)) }
-        content.addView(group, matchWidth())
+        if (title != null) {
+            content.addView(ui.sectionLabel(title.resolve(bundle.name)))
+            content.addView(items, matchWidth())
+        } else content.addView(items, matchWidth().apply { topMargin = ui.px(Tokens.SPACE_LG) })
     }
-    if (pages.childCount == 0 && sections.isEmpty())
-        content.addView(settingsMessage(ui, RuntimeStrings.noSettings))
-    if (root && schema.settings.any { it !is SettingsSchema.Action }) {
+    if (groups.isEmpty()) content.addView(settingsMessage(ui, RuntimeStrings.noSettings))
+    if (root && schema.storesValues) {
         content.addView(ui.sectionLabel(RuntimeStrings.backup))
         content.addView(
             ui.itemGroup()
@@ -111,6 +111,12 @@ internal fun settingsPage(
                         .icon(Icons.DOWNLOAD)
                         .supporting(RuntimeStrings.importSettingsSummary)
                         .onClick { importSettings(activity(ui.context), bundle) }
+                )
+                .add(
+                    ui.listItem(RuntimeStrings.settingsAsText)
+                        .icon(Icons.CLIPBOARD)
+                        .supporting(RuntimeStrings.settingsAsTextSummary)
+                        .onClick { settingsAsText(activity(ui.context), bundle) }
                 ),
             matchWidth(),
         )

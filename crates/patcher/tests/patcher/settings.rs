@@ -18,16 +18,18 @@ fn settings_pages_merge_selected_contributions_and_keep_nested_ancestors() {
     let bundle = load_all(&bundle_file.path);
     let patches: Vec<&Patch> = bundle.patches().iter().collect();
     // Run twice against the same loaded host: pages from the first selection must not leak.
-    for (patch, expected_pages, expected_keys) in [
+    for (patch, expected_pages, expected_keys, first_default) in [
         (
             "navigationSecondPatch",
             vec!["general", "media", "quality"],
             vec!["quality.first", "quality.second"],
+            false,
         ),
         (
             "navigationFirstPatch",
             vec!["media", "quality"],
             vec!["quality.first"],
+            true,
         ),
     ] {
         let (_dir, mut apk) = open_settings_test_apk();
@@ -81,7 +83,7 @@ fn settings_pages_merge_selected_contributions_and_keep_nested_ancestors() {
                 .collect::<Vec<_>>(),
             expected_keys
         );
-        assert_eq!(quality[0]["settings"][0]["default"], true);
+        assert_eq!(quality[0]["settings"][0]["default"], first_default);
     }
 }
 
@@ -134,6 +136,41 @@ fn settings_schemas_carry_the_bundle_license_and_normalized_svg_icons() {
         "the circle becomes cubics, shifted to the viewBox origin: {data}"
     );
     assert_eq!(dot["paths"][0]["fill"]["paint"], "#FFFF0000");
+}
+
+#[test]
+fn settings_screens_show_only_the_icons_a_patch_lists() {
+    let (_dir, mut apk) = open_settings_test_apk();
+    apply_fixture(&mut apk, "Settings icon keys", "settingsIconKeys");
+    let schema: serde_json::Value =
+        serde_json::from_slice(&entry(&mut apk, 0, SETTINGS_SCHEMA).unwrap()).unwrap();
+    let media = schema["pages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|page| page["id"] == "media")
+        .unwrap();
+    assert!(media["icon"].is_object());
+    assert_eq!(schema["sections"][0]["settings"][0]["key"], "root.enabled");
+    assert!(schema["sections"][0]["settings"][0]["icon"].is_null());
+}
+
+#[test]
+fn settings_rows_carry_their_dependency_and_the_code_patches_give_them() {
+    let (_dir, mut apk) = open_settings_test_apk();
+    apply_fixture(&mut apk, "Settings row behaviour", "settingsRowBehaviour");
+    let schema: serde_json::Value =
+        serde_json::from_slice(&entry(&mut apk, 0, SETTINGS_SCHEMA).unwrap()).unwrap();
+    let settings = schema["sections"][0]["settings"].as_array().unwrap();
+    let toggle = settings
+        .iter()
+        .find(|s| s["key"] == "root.enabled")
+        .unwrap();
+    let text = settings.iter().find(|s| s["key"] == "root.lines").unwrap();
+    assert!(toggle["enabledBy"].is_null());
+    assert_eq!(toggle["code"], serde_json::json!(["change", "enabled"]));
+    assert_eq!(text["enabledBy"], "root.enabled");
+    assert_eq!(text["code"], serde_json::json!(["summary", "validate"]));
 }
 
 #[test]
@@ -241,4 +278,98 @@ fn an_action_without_code_fails_the_settings_host() {
         )),
         "{results:?}"
     );
+}
+
+#[test]
+fn a_settings_layout_places_rows_keeps_stored_values_and_describes_row_kinds() {
+    let (_dir, mut apk) = open_settings_test_apk();
+    apply_fixture(&mut apk, "Settings layout", "settingsLayout");
+    let schema: serde_json::Value =
+        serde_json::from_slice(&entry(&mut apk, 0, SETTINGS_SCHEMA).unwrap()).unwrap();
+    let sections: Vec<(Option<&str>, Vec<&str>)> = schema["sections"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|section| {
+            (
+                section["title"]["name"].as_str(),
+                section["settings"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|setting| setting["key"].as_str().unwrap())
+                    .collect(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        sections,
+        [
+            (None, vec!["layout.second", "layout.note"]),
+            (Some("section_general"), vec!["layout.first"]),
+            (None, vec!["layout.first"]),
+            (
+                Some("section_quality"),
+                vec!["layout.level", "layout.tint", "layout.range"]
+            ),
+            (None, vec!["layout.run"]),
+        ],
+        "the layout places its rows first and in its order, a row on each page it lists; the \
+         rest keep their section"
+    );
+    let stored: Vec<&str> = schema["stored"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|setting| setting["key"].as_str().unwrap())
+        .collect();
+    assert_eq!(stored, ["layout.stored", "layout.hidden"]);
+
+    let setting = |key: &str| {
+        schema["sections"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|section| section["settings"].as_array().unwrap())
+            .find(|setting| setting["key"] == key)
+            .unwrap()
+            .clone()
+    };
+    let typed: Vec<(&str, serde_json::Value)> = ["layout.level", "layout.tint", "layout.range"]
+        .into_iter()
+        .map(|key| {
+            let setting = setting(key);
+            (
+                key,
+                serde_json::json!([setting["type"], setting["default"]]),
+            )
+        })
+        .collect();
+    assert_eq!(
+        typed,
+        [
+            ("layout.level", serde_json::json!(["number", 5.0])),
+            ("layout.tint", serde_json::json!(["color", 0xFFFF_0000_u32])),
+            (
+                "layout.range",
+                serde_json::json!(["range", {"start": 0.2, "end": 0.8}])
+            ),
+        ],
+        "numbers, colors and ranges reach the app typed, a color as ARGB"
+    );
+    let run = setting("layout.run");
+    assert_eq!(run["type"], "note");
+    assert_eq!(run["title"]["name"], "page_layout");
+    let page = schema["pages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|page| page["id"] == "layout.run")
+        .unwrap();
+    assert_eq!(page["after"], "layout.first");
+    assert_eq!(page["heading"]["name"], "section_general");
+    let note = setting("layout.note");
+    assert_eq!(note["type"], "note");
+    assert_eq!(note["summary"]["name"], "layout_note_summary");
+    assert!(note.get("default").is_none(), "a note stores nothing");
 }

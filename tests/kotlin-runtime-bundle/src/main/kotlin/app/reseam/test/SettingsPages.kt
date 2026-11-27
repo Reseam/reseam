@@ -3,19 +3,32 @@
 
 package app.reseam.test
 
+import app.reseam.patch.ReseamPatch
 import app.reseam.patch.appEntry
 import app.reseam.patch.patch
 import app.reseam.patch.settings.About
 import app.reseam.patch.settings.Link
 import app.reseam.patch.settings.SettingsGroup
 import app.reseam.patch.settings.SettingsPage
+import app.reseam.patch.settings.Slider
 import app.reseam.patch.settings.TakesEffect
 import app.reseam.patch.settings.Vector
 import app.reseam.patch.settings.Verbatim
 import app.reseam.patch.settings.action
+import app.reseam.patch.settings.color
+import app.reseam.patch.settings.enabledWhile
+import app.reseam.patch.settings.note
+import app.reseam.patch.settings.noteOf
+import app.reseam.patch.settings.number
 import app.reseam.patch.settings.onAction
+import app.reseam.patch.settings.onChange
+import app.reseam.patch.settings.onEnabled
+import app.reseam.patch.settings.onSummary
+import app.reseam.patch.settings.onValidate
+import app.reseam.patch.settings.range
 import app.reseam.patch.settings.section
 import app.reseam.patch.settings.settingsHost
+import app.reseam.patch.settings.stored
 import app.reseam.patch.settings.text
 import app.reseam.patch.settings.toggle
 import app.reseam.patch.settings.whenEnabled
@@ -103,11 +116,40 @@ val navigationSecondPatch =
             section(
                 navigationChild,
                 TestStrings.sectionQuality,
-                NavigationSettings.qualityFirst,
+                NavigationSettings.qualityFirst.copy(default = false),
                 NavigationSettings.qualitySecond,
             ),
             section(navigationOther, TestStrings.sectionGeneral, NavigationSettings.generalEnabled),
         )
+    }
+
+val settingsIconKeys =
+    patch(TestStrings.settingsIconKeys) {
+        compatibleWith("com.example.test")
+        enabledByDefault(false)
+        dependsOn(navigationFirstPatch)
+        execute { navigationSettings.showIconsOf(setOf("media")) }
+    }
+
+val settingsRowBehaviour =
+    patch(TestStrings.settingsRowBehaviour) {
+        compatibleWith("com.example.test")
+        enabledByDefault(false)
+        settings(
+            navigationSettings,
+            section(
+                TestStrings.sectionGate,
+                NavigationSettings.rootEnabled,
+                NavigationSettings.rootLines,
+            ),
+        )
+        execute {
+            enabledWhile(NavigationSettings.rootLines, NavigationSettings.rootEnabled)
+            onSummary(NavigationSettings.rootLines) { returnValue(value) }
+            onValidate(NavigationSettings.rootLines) { returnNull() }
+            onChange(NavigationSettings.rootEnabled) {}
+            onEnabled(NavigationSettings.rootEnabled) { returnTrue() }
+        }
     }
 
 val gatedEntry =
@@ -149,4 +191,69 @@ val uncodedActionRow =
         compatibleWith("com.example.test")
         enabledByDefault(false)
         settings(navigationSettings, section(TestStrings.sectionActions, NavigationSettings.share))
+    }
+
+private val layoutPage = SettingsPage("layout", TestStrings.pageLayout)
+
+object LayoutSettings : SettingsGroup(TestStrings) {
+    val layoutFirst by toggle(default = false, key = "layout.first")
+    val layoutSecond by toggle(default = false, key = "layout.second")
+    val layoutHidden by toggle(default = false, key = "layout.hidden")
+    val layoutStored by text(default = "", key = "layout.stored")
+    val layoutLevel by
+        number(default = 5.0, slider = Slider(0.0, 10.0, 1.0, "x"), key = "layout.level")
+    val layoutTint by color(default = 0xFFFF0000, key = "layout.tint")
+    val layoutNote by note(key = "layout.note")
+    val layoutRange by
+        range(default = 0.2..0.8, slider = Slider(0.0, 1.0, 0.1), key = "layout.range")
+}
+
+private val layoutRunPage = SettingsPage("layout.run", TestStrings.pageLayout, parent = layoutPage)
+
+val layoutSettings =
+    settingsHost("layout") {
+        compatibleWith("com.example.test")
+        layout(
+            section(layoutPage, LayoutSettings.layoutSecond, LayoutSettings.layoutNote),
+            section(layoutPage, TestStrings.sectionGeneral, LayoutSettings.layoutFirst),
+            section(navigationOther, LayoutSettings.layoutFirst),
+            stored(LayoutSettings.layoutHidden),
+        )
+        place(
+            layoutRunPage,
+            after = LayoutSettings.layoutFirst,
+            heading = TestStrings.sectionGeneral,
+        )
+    }
+
+val layoutRunNotes: ReseamPatch = patch {
+    dependsOn(layoutSettings)
+    afterDependents {
+        layoutSettings.register(
+            layoutRunNotes,
+            listOf(section(layoutRunPage, noteOf("layout.run", TestStrings.pageLayout, null))),
+        )
+    }
+}
+
+val settingsLayout =
+    patch(TestStrings.settingsLayout) {
+        compatibleWith("com.example.test")
+        enabledByDefault(false)
+        dependsOn(layoutRunNotes)
+        settings(
+            layoutSettings,
+            section(
+                layoutPage,
+                TestStrings.sectionQuality,
+                LayoutSettings.layoutFirst,
+                LayoutSettings.layoutSecond,
+                LayoutSettings.layoutHidden,
+                LayoutSettings.layoutLevel,
+                LayoutSettings.layoutTint,
+                LayoutSettings.layoutNote,
+                LayoutSettings.layoutRange,
+            ),
+            stored(LayoutSettings.layoutStored),
+        )
     }

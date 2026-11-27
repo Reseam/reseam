@@ -5,6 +5,7 @@ use crate::common::TestResult;
 use crate::common::documents::*;
 use crate::common::tables::*;
 use reseam_apk::axml::{self, AxmlDocument, AxmlEvent};
+use reseam_apk::resources::ResourceFile;
 use reseam_apk::{ResValue, ResourceScope};
 
 #[test]
@@ -144,8 +145,11 @@ fn inline_resource_compilation_registers_dependencies_and_preserves_text() -> Te
                 .expect("name")
                 .trim_end_matches(".xml");
             assert_eq!(
-                table.file_paths("drawable", name)?,
-                std::slice::from_ref(&file.path)
+                table.files("drawable", name)?,
+                [ResourceFile {
+                    qualifiers: String::new(),
+                    path: file.path.clone(),
+                }]
             );
             let doc = AxmlDocument::parse(&file.data)?;
             texts.extend(doc.events().iter().filter_map(|e| {

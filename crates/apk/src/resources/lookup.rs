@@ -4,8 +4,10 @@
 use std::borrow::Cow;
 use std::fmt;
 
-use super::id::{EntryLocation, ResourceAddress};
+use super::config::{config_for_qualifiers, same_config};
+use super::id::{EntryLocation, FRAMEWORK_PACKAGE, ResourceAddress};
 use super::{ResEntry, ResPackage, ResType, ResourceTable};
+use crate::axml::android_res_name;
 use crate::error::{Result, invalid};
 use crate::res_value::ResValue;
 use crate::string_pool::StringPool;
@@ -55,7 +57,35 @@ pub(crate) fn first_found<T>(
     first_error.map_or(Ok(None), Err)
 }
 
+pub(crate) fn resource_name_of(
+    table: Option<&ResourceTable>,
+    id: u32,
+) -> Result<Option<ResourceName>> {
+    match table {
+        _ if ResourceAddress::decode(id).package_id == FRAMEWORK_PACKAGE => {
+            Ok(android_res_name(id))
+        }
+        Some(table) => table.resource_name(id),
+        None => Ok(None),
+    }
+}
+
+pub(crate) fn reference_text(
+    table: Option<&ResourceTable>,
+    sigil: char,
+    id: u32,
+) -> Result<String> {
+    Ok(resource_name_of(table, id)?.map_or_else(
+        || format!("{sigil}0x{id:08x}"),
+        |name| name.reference(sigil),
+    ))
+}
+
 impl ResourceTable {
+    pub fn reference_name(&self, res_id: u32) -> Result<Option<ResourceName>> {
+        resource_name_of(Some(self), res_id)
+    }
+
     /// Find a resource ID by type and name.
     ///
     /// Returns `None` when the name is absent. A malformed possible match is
@@ -148,6 +178,53 @@ impl ResourceTable {
         )
     }
 
+    pub fn resource_names(&self, type_name: &str) -> Result<Vec<String>> {
+        let Some(package) = self.packages.first() else {
+            return Ok(Vec::new());
+        };
+        let Some(type_id) = package.local_type(type_name)? else {
+            return Ok(Vec::new());
+        };
+        (0..package.entry_count(type_id))
+            .filter_map(|index| package.entry_key(type_id, index).transpose())
+            .map(|key| {
+                let key = key?;
+                package
+                    .key_strings
+                    .get(key)?
+                    .map(Cow::into_owned)
+                    .ok_or_else(|| invalid("resource key", format!("invalid index {key}")))
+            })
+            .collect()
+    }
+
+    pub fn has_entry_in(
+        &self,
+        type_name: &str,
+        entry_name: &str,
+        qualifiers: &str,
+    ) -> Result<bool> {
+        Ok(self.entry_in(type_name, entry_name, qualifiers)?.is_some())
+    }
+
+    pub(super) fn entry_in(
+        &self,
+        type_name: &str,
+        entry_name: &str,
+        qualifiers: &str,
+    ) -> Result<Option<ResEntry>> {
+        let Some(location) = self.find_entry(type_name, entry_name)? else {
+            return Ok(None);
+        };
+        for (package, res_type) in self.configs(location.res_id()) {
+            let config = config_for_qualifiers(qualifiers, package.config_len())?;
+            if same_config(res_type.config(), &config) {
+                return res_type.entry(location.entry_index);
+            }
+        }
+        Ok(None)
+    }
+
     /// The type and entry name of `res_id`, from whichever configuration
     /// defines it; `None` when no configuration does.
     pub fn resource_name(&self, res_id: u32) -> Result<Option<ResourceName>> {
@@ -191,33 +268,32 @@ fn find_entry_in(
     type_name: &str,
     entry_name: &str,
 ) -> Result<Option<EntryLocation>> {
-    let Some(type_index) = package.type_strings.find(type_name)? else {
+    let Some(local_type) = package.local_type(type_name)? else {
         return Ok(None);
     };
     let Some(key) = package.key_strings.find(entry_name)? else {
         return Ok(None);
     };
-    let local_type = u8::try_from(type_index + 1)
-        .map_err(|_| invalid("resource type", "type ID exceeds 255"))?;
+    let Some(entry_index) = package.entry_index(local_type, key)? else {
+        return Ok(None);
+    };
     let type_id = package.resource_type_id(local_type)?;
+    package.resource_id(local_type, entry_index)?;
     first_found(
         package
             .types
             .iter()
             .filter(|t| t.id == local_type)
-            .flat_map(|res_type| {
-                (0..res_type.len()).map(move |i| {
-                    if res_type.entry_key(i)? != Some(key) {
-                        return Ok(None);
-                    }
-                    package.resource_id(local_type, i)?;
-                    res_type.entry_head(i).map(|head| {
-                        head.map(|(_, value)| EntryLocation {
-                            package_id: package.id,
-                            type_id,
-                            entry_index: i,
-                            value,
-                        })
+            .map(|res_type| {
+                if res_type.entry_key(entry_index)? != Some(key) {
+                    return Ok(None);
+                }
+                res_type.entry_head(entry_index).map(|head| {
+                    head.map(|(_, value)| EntryLocation {
+                        package_id: package.id,
+                        type_id,
+                        entry_index,
+                        value,
                     })
                 })
             }),

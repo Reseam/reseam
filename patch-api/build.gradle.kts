@@ -22,7 +22,11 @@ kotlin {
 }
 
 // Settings hosts write the app runtime's string table into every patched app.
-tasks.test { useJUnitPlatform() }
+tasks.test {
+    useJUnitPlatform()
+    // ReleasedApiTest compares the ABI dumps.
+    inputs.dir("api")
+}
 
 tasks.processResources {
     dependsOn(gradle.includedBuild("app-runtime").task(":stage"))

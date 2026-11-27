@@ -47,8 +47,8 @@ The receiver of `patch { }`.
 | `floatOption(key, title: StringRef, description: StringRef? = null, default: Double? = null, required = false): FloatOption` | Declares a decimal option. |
 | `stringListOption(key, title: StringRef, description: StringRef? = null, default: List<String>? = null, required = false): StringListOption` | Declares a list-of-text option. |
 | `pathOption(key, title: StringRef, description: StringRef? = null, required = false): PathOption` | Declares a folder the user picks. It has no default. |
-| `settings(host: SettingsHost, vararg sections: SettingsSection)` | Adds these sections to the app's settings screen. `host` becomes a dependency. |
-| `settings(host: SettingsHost, sections: PatchRuntime.() -> List<SettingsSection>)` | The same, with sections computed after `execute`, so they can depend on options. |
+| `settings(host: SettingsHost, vararg contributions: SettingsContribution)` | Adds these sections, and any [`stored`](reference_settings.md#section) settings, to the app's settings screen. `host` becomes a dependency. |
+| `settings(host: SettingsHost, sections: PatchRuntime.() -> List<SettingsContribution>)` | The same, with settings computed after `execute`, so they can depend on options. The block can also return [`stored`](reference_settings.md#section) settings. |
 | `execute(block: PatchRuntime.() -> Unit)` | The change itself. It runs once all dependencies have run. |
 | `afterDependents(block: PatchRuntime.() -> Unit)` | Runs after every patch that depends on this one has finished. |
 | `afterWrite(block: OutputRuntime.() -> Unit)` | Runs on the written APK files, before they are signed. |

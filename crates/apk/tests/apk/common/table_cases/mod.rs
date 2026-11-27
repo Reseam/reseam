@@ -4,7 +4,7 @@
 mod edits;
 mod lookup;
 
-use edits::{array_case, file_cases, style_case};
+use edits::{array_case, file_cases, new_array_case, night_style_case, style_case};
 use lookup::{extended_case, index_cases, pool_cases, strings_case};
 use reseam_apk::{ResValue, ResourceTable};
 
@@ -47,7 +47,9 @@ pub fn cases() -> reseam_apk::Result<Vec<Case>> {
         strings_case()?,
         extended_case(),
         style_case()?,
+        night_style_case()?,
         array_case()?,
+        new_array_case()?,
     ];
     cases.extend(index_cases());
     cases.extend(file_cases()?);

@@ -37,6 +37,14 @@ object Reseam : ExtClass("app.reseam.runtime.Reseam") {
     internal val getChoice by static(Type.String, Type.String, Type.String, returns = Type.String)
     internal val openSettings by static(Type.String)
     internal val runAction by static(Type.String, Type.String, Type.Activity)
+    internal val settingSummary by
+        static(Type.String, Type.String, Type.String, Type.Context, returns = Type.CharSequence)
+    internal val validateSetting by
+        static(Type.String, Type.String, Type.String, returns = Type.CharSequence)
+    internal val settingChanged by static(Type.String, Type.String, Type.String, Type.Activity)
+    internal val settingEnabled by
+        static(Type.String, Type.String, Type.Context, returns = Type.Boolean)
+    internal val settingView by static(Type.String, Type.String, Type.Context, returns = Type.View)
 }
 
 internal object ReseamReactPackage : ExtClass("app.reseam.runtime.react.ReseamReactPackage") {

@@ -6,6 +6,7 @@ package app.reseam.runtime
 import android.icu.text.PluralRules
 import android.icu.util.ULocale
 import android.os.LocaleList
+import android.text.Html
 import android.text.TextUtils
 import java.util.Locale
 import org.json.JSONObject
@@ -16,7 +17,9 @@ import org.json.JSONObject
  * the app, the way the engine resolves patch text: for each locale, tables of its language in the
  * same script, its region first, then none, then other regions. The default text is English, so an
  * English locale ends the order. Missing names and use before Reseam.init throw; malformed JSON and
- * formatting errors propagate to the caller.
+ * formatting errors propagate to the caller. A styled string, one with bold, italic or other
+ * styling markup, reads only through [styled], [formatStyled] or [text]. A translation of it may be
+ * plain.
  */
 class StringTable(private val directory: String) {
     operator fun get(name: String): String = find(name).strings.getString(name)
@@ -24,6 +27,21 @@ class StringTable(private val directory: String) {
     fun format(name: String, vararg args: Any?): String {
         val table = find(name)
         return String.format(table.locale, table.strings.getString(name), *args)
+    }
+
+    fun styled(name: String): CharSequence = text(name)
+
+    /** Formats a styled string, showing text arguments as they are, not as markup. */
+    fun formatStyled(name: String, vararg args: Any?): CharSequence {
+        val table = find(name)
+        val html = table.html(name) ?: return format(name, *args)
+        val escaped = args.map { if (it is CharSequence) Html.escapeHtml(it) else it }
+        return fromHtml(String.format(table.locale, html, *escaped.toTypedArray()))
+    }
+
+    internal fun text(name: String): CharSequence {
+        val table = find(name)
+        return table.html(name)?.let(::fromHtml) ?: table.strings.getString(name)
     }
 
     /** Uses CLDR categories of the text's language, falling back to the entry's other form. */
@@ -95,7 +113,13 @@ class StringTable(private val directory: String) {
             ?: throw IllegalArgumentException("Unknown string $name in $directory")
 }
 
-private class LoadedTable(val locale: Locale, val strings: JSONObject)
+private class LoadedTable(val locale: Locale, val strings: JSONObject) {
+    fun html(name: String): String? = strings.optJSONObject(name)?.getString(STYLED)
+}
+
+private fun fromHtml(html: String): CharSequence = Html.fromHtml(html, Html.FROM_HTML_MODE_COMPACT)
+
+private const val STYLED = "html"
 
 private enum class Rank {
     REGION,

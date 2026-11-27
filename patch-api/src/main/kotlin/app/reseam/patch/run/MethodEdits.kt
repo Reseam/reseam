@@ -11,12 +11,19 @@ import app.reseam.patch.types.MethodEdit
 
 internal class InstructionAnchor(private val label: String, index: Int) {
     private var headIndex = index
+    private var entryIndex = index
     private var instructionIndex = index
     private var tailIndex = index + 1
     private var lost: String? = null
 
     val head: Int
         get() = live().headIndex
+
+    /**
+     * Where a branch to the instruction lands: the first of the code added before it on every path.
+     */
+    val entry: Int
+        get() = live().entryIndex
 
     val instruction: Int
         get() = live().instructionIndex
@@ -42,6 +49,7 @@ internal class InstructionAnchor(private val label: String, index: Int) {
                 EditKind.REPLACE,
                 EditKind.REMOVE -> mapping.starts[headIndex].toInt()
             }
+        entryIndex = mapping.starts[entryIndex].toInt()
         instructionIndex = mapping.instructions[instructionIndex].toInt()
         tailIndex =
             when (kind) {

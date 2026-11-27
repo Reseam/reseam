@@ -44,9 +44,11 @@ pub fn add_interface(c: u32, interface_descriptor: String) {
     link_descriptors([interface_descriptor.as_str()]);
     with_class_mut(c, |dex, loc| {
         let interface = logged("intern interface", dex.intern_type(&interface_descriptor))?;
-        logged("add interface", dex.class_mut(loc.class_idx))?
-            .interfaces
-            .push(interface);
+        let interfaces = &mut logged("add interface", dex.class_mut(loc.class_idx))?.interfaces;
+        // ART rejects a whole dex file over a class that lists an interface twice.
+        if !interfaces.contains(&interface) {
+            interfaces.push(interface);
+        }
         Ok(Some(()))
     });
 }

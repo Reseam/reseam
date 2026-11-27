@@ -74,6 +74,7 @@ public abstract interface class app/reseam/patch/ClassQuery {
 	public abstract fun enumConstants ([Ljava/lang/String;)V
 	public abstract fun extends (Ljava/lang/String;)V
 	public abstract fun first ()V
+	public abstract fun firstInAppOrder ()V
 	public abstract fun hasInstanceField (Ljava/lang/String;)V
 	public abstract fun implements (Ljava/lang/String;)V
 	public abstract fun includeExtensions ()V
@@ -103,15 +104,19 @@ public abstract interface class app/reseam/patch/CodeScope {
 	public abstract fun call (Lapp/reseam/patch/MethodTarget;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
 	public abstract fun callStatic (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
 	public abstract fun capture (Ljava/lang/String;)Lapp/reseam/patch/ValueRef;
+	public abstract fun double (D)Lapp/reseam/patch/ValueRef;
 	public abstract fun enumValue (Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/ValueRef;
+	public abstract fun float (F)Lapp/reseam/patch/ValueRef;
 	public abstract fun getLastParam ()Lapp/reseam/patch/ValueRef;
 	public abstract fun getNullObject ()Lapp/reseam/patch/ValueRef;
 	public abstract fun getResult ()Lapp/reseam/patch/ValueRef;
 	public abstract fun getThisObject ()Lapp/reseam/patch/ValueRef;
 	public abstract fun int (I)Lapp/reseam/patch/ValueRef;
 	public fun invoke (Lapp/reseam/patch/ExtMethod;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
+	public abstract fun jumpTo (Lapp/reseam/patch/PointTarget;)V
 	public abstract fun local (Lapp/reseam/patch/MethodLocal;)Lapp/reseam/patch/ValueRef;
 	public abstract fun long (J)Lapp/reseam/patch/ValueRef;
+	public abstract fun newArray (Ljava/lang/String;Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
 	public abstract fun newInstance (Ljava/lang/String;Ljava/lang/String;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
 	public static synthetic fun newInstance$default (Lapp/reseam/patch/CodeScope;Ljava/lang/String;Ljava/lang/String;[Lapp/reseam/patch/ValueRef;ILjava/lang/Object;)Lapp/reseam/patch/ValueRef;
 	public abstract fun param (I)Lapp/reseam/patch/ValueRef;
@@ -416,6 +421,7 @@ public abstract interface class app/reseam/patch/MethodQuery {
 	public abstract fun callsMethod (Lkotlin/jvm/functions/Function1;)V
 	public abstract fun custom (Lkotlin/jvm/functions/Function1;)V
 	public abstract fun first ()V
+	public abstract fun firstInAppOrder ()V
 	public abstract fun flags (I)V
 	public abstract fun hasParam (Ljava/lang/String;)V
 	public abstract fun inClass (Lapp/reseam/patch/ClassTarget;Z)V
@@ -431,6 +437,7 @@ public abstract interface class app/reseam/patch/MethodQuery {
 	public abstract fun rankBy (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public abstract fun returns (Ljava/lang/String;)V
 	public abstract fun strings ([Ljava/lang/String;)V
+	public abstract fun stringsContaining ([Ljava/lang/String;)V
 	public abstract fun stringsStartingWith (Ljava/lang/String;)V
 }
 
@@ -604,7 +611,8 @@ public final class app/reseam/patch/PatchBuilder : app/reseam/patch/PatchDeclara
 	public final fun pathOption (Ljava/lang/String;Lapp/reseam/patch/settings/StringRef;Lapp/reseam/patch/settings/StringRef;Z)Lapp/reseam/patch/PathOption;
 	public static synthetic fun pathOption$default (Lapp/reseam/patch/PatchBuilder;Ljava/lang/String;Lapp/reseam/patch/settings/StringRef;Lapp/reseam/patch/settings/StringRef;ZILjava/lang/Object;)Lapp/reseam/patch/PathOption;
 	public final fun settings (Lapp/reseam/patch/settings/SettingsHost;Lkotlin/jvm/functions/Function1;)V
-	public final fun settings (Lapp/reseam/patch/settings/SettingsHost;[Lapp/reseam/patch/settings/SettingsSection;)V
+	public final fun settings (Lapp/reseam/patch/settings/SettingsHost;[Lapp/reseam/patch/settings/SettingsContribution;)V
+	public final synthetic fun settings (Lapp/reseam/patch/settings/SettingsHost;[Lapp/reseam/patch/settings/SettingsSection;)V
 	public final fun stringListOption (Ljava/lang/String;Lapp/reseam/patch/settings/StringRef;Lapp/reseam/patch/settings/StringRef;Ljava/util/List;Z)Lapp/reseam/patch/StringListOption;
 	public static synthetic fun stringListOption$default (Lapp/reseam/patch/PatchBuilder;Ljava/lang/String;Lapp/reseam/patch/settings/StringRef;Lapp/reseam/patch/settings/StringRef;Ljava/util/List;ZILjava/lang/Object;)Lapp/reseam/patch/StringListOption;
 	public final fun stringOption (Ljava/lang/String;Lapp/reseam/patch/settings/StringRef;Lapp/reseam/patch/settings/StringRef;Ljava/lang/String;Ljava/util/List;Z)Lapp/reseam/patch/StringOption;
@@ -728,6 +736,8 @@ public final class app/reseam/patch/PointTarget : app/reseam/patch/Target {
 	public final fun getIndex ()I
 	public final fun getInstruction ()Lapp/reseam/patch/types/Instruction;
 	public final fun getMethod ()Lapp/reseam/patch/MethodTarget;
+	public final fun jumpSource (Ljava/lang/String;)Lapp/reseam/patch/PointTarget;
+	public static synthetic fun jumpSource$default (Lapp/reseam/patch/PointTarget;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/PointTarget;
 	public final fun next (Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/PointTarget;
 	public final fun previous (Lkotlin/jvm/functions/Function1;)Lapp/reseam/patch/PointTarget;
 	public final fun writer (ILjava/lang/String;)Lapp/reseam/patch/PointTarget;
@@ -793,9 +803,25 @@ public final class app/reseam/patch/ResolvedPoint {
 	public final fun getMethod-75rPyp8 ()I
 }
 
+public final class app/reseam/patch/ResourceFile {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/ResourceFile;
+	public static synthetic fun copy$default (Lapp/reseam/patch/ResourceFile;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/ResourceFile;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getQualifiers ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class app/reseam/patch/ResourceScope {
 	public final fun add-8qcQ4KI (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lkotlin/UInt;
 	public final fun add-L32MxnI (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lkotlin/UInt;
+	public final fun addAt-V1Bzyf8 (ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I
+	public static synthetic fun addAt-V1Bzyf8$default (Lapp/reseam/patch/ResourceScope;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)I
+	public final fun addAttr-xfHcF5w (Ljava/lang/String;Ljava/lang/String;)I
 	public final fun addBool-uT2Fmlo (Ljava/lang/String;Z)Lkotlin/UInt;
 	public final fun addColor-L32MxnI (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lkotlin/UInt;
 	public final fun addColor-uT2Fmlo (Ljava/lang/String;Ljava/lang/String;)Lkotlin/UInt;
@@ -812,20 +838,25 @@ public final class app/reseam/patch/ResourceScope {
 	public final fun components ()Ljava/util/List;
 	public final fun editXml (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Ljava/lang/Object;
 	public final fun exists (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun exists (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun files (Ljava/lang/String;Ljava/lang/String;)Ljava/util/List;
 	public final fun getArray (Ljava/lang/String;)Ljava/util/List;
 	public final fun getArrayValues (Ljava/lang/String;)Ljava/util/List;
 	public final fun getRaw (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Long;
 	public final fun getString (Ljava/lang/String;)Ljava/lang/String;
 	public final fun getString-WZ4Q5Ns (I)Ljava/lang/String;
 	public final fun id-uT2Fmlo (Ljava/lang/String;Ljava/lang/String;)Lkotlin/UInt;
+	public final fun names (Ljava/lang/String;)Ljava/util/List;
 	public final fun owningComponent (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
 	public final fun owningComponent-WZ4Q5Ns (I)Ljava/lang/String;
 	public final fun path (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+	public final fun path-WZ4Q5Ns (I)Ljava/lang/String;
 	public final fun paths (Ljava/lang/String;Ljava/lang/String;)Ljava/util/List;
 	public final fun poolAdd-gbq4QnA (Ljava/lang/String;)Lkotlin/UInt;
 	public final fun poolFindRefs-WZ4Q5Ns (I)Ljava/util/List;
 	public final fun poolGet-WZ4Q5Ns (I)Ljava/lang/String;
 	public final fun poolSet-qim9Vi0 (ILjava/lang/String;)V
+	public final fun reference-WZ4Q5Ns (I)Ljava/lang/String;
 	public final fun replaceEntry-feOb9K0 (II)V
 	public final fun setArray-xfHcF5w (Ljava/lang/String;Ljava/util/List;)I
 	public final fun setArrayValues-xfHcF5w (Ljava/lang/String;Ljava/util/List;)I
@@ -835,6 +866,10 @@ public final class app/reseam/patch/ResourceScope {
 	public final fun setStringArray-xfHcF5w (Ljava/lang/String;Ljava/util/List;)I
 	public final fun style-_W1zjd8 (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)I
 	public static synthetic fun style-_W1zjd8$default (Lapp/reseam/patch/ResourceScope;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)I
+	public final fun styleIn-qdVX4Bk (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)I
+	public static synthetic fun styleIn-qdVX4Bk$default (Lapp/reseam/patch/ResourceScope;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)I
+	public final fun styleItems (Ljava/lang/String;Ljava/lang/String;)Ljava/util/Map;
+	public static synthetic fun styleItems$default (Lapp/reseam/patch/ResourceScope;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ljava/util/Map;
 	public final fun xml (Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/XmlDocument;
 }
 
@@ -1466,6 +1501,7 @@ public final class app/reseam/patch/settings/ActionScope$DefaultImpls {
 }
 
 public final class app/reseam/patch/settings/ActionSetting : app/reseam/patch/settings/Setting {
+	public fun getTitle ()Lapp/reseam/patch/settings/StringRef;
 }
 
 public final class app/reseam/patch/settings/ActionsKt {
@@ -1500,6 +1536,14 @@ public final class app/reseam/patch/settings/Brand$Companion {
 	public final fun getDEFAULT ()Lapp/reseam/patch/settings/Brand;
 }
 
+public abstract interface class app/reseam/patch/settings/ChangeScope : app/reseam/patch/settings/ActionScope {
+	public abstract fun getPrevious ()Lapp/reseam/patch/ValueRef;
+}
+
+public final class app/reseam/patch/settings/ChangeScope$DefaultImpls {
+	public static fun invoke (Lapp/reseam/patch/settings/ChangeScope;Lapp/reseam/patch/ExtMethod;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
+}
+
 public final class app/reseam/patch/settings/Choice {
 	public fun <init> (Ljava/lang/String;Lapp/reseam/patch/settings/DisplayText;)V
 	public final fun component1 ()Ljava/lang/String;
@@ -1517,6 +1561,8 @@ public final class app/reseam/patch/settings/ChoiceSetting : app/reseam/patch/se
 	public final fun copy (Ljava/lang/String;Ljava/util/List;)Lapp/reseam/patch/settings/ChoiceSetting;
 	public static synthetic fun copy$default (Lapp/reseam/patch/settings/ChoiceSetting;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lapp/reseam/patch/settings/ChoiceSetting;
 	public final fun getChoices ()Ljava/util/List;
+	public final fun getShowValue ()Z
+	public fun getTitle ()Lapp/reseam/patch/settings/StringRef;
 }
 
 public final class app/reseam/patch/settings/Color {
@@ -1554,10 +1600,30 @@ public final class app/reseam/patch/settings/ColorScheme {
 	public final fun getSurfaceContainerLow ()Lapp/reseam/patch/settings/Color;
 }
 
+public final class app/reseam/patch/settings/ColorSetting : app/reseam/patch/settings/Setting {
+	public final fun getChoice ()Lapp/reseam/patch/settings/ChoiceSetting;
+	public final fun getOpacity ()Z
+	public fun getTitle ()Lapp/reseam/patch/settings/StringRef;
+}
+
 public abstract interface class app/reseam/patch/settings/DisplayText {
 }
 
+public abstract interface class app/reseam/patch/settings/EnabledScope : app/reseam/patch/CodeScope {
+	public abstract fun getContext ()Lapp/reseam/patch/ValueRef;
+}
+
+public final class app/reseam/patch/settings/EnabledScope$DefaultImpls {
+	public static fun invoke (Lapp/reseam/patch/settings/EnabledScope;Lapp/reseam/patch/ExtMethod;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
+}
+
+public final class app/reseam/patch/settings/FileSetting : app/reseam/patch/settings/Setting {
+	public final fun getMimeTypes ()Ljava/util/List;
+	public fun getTitle ()Lapp/reseam/patch/settings/StringRef;
+}
+
 public final class app/reseam/patch/settings/FolderSetting : app/reseam/patch/settings/Setting {
+	public fun getTitle ()Lapp/reseam/patch/settings/StringRef;
 }
 
 public final class app/reseam/patch/settings/Font {
@@ -1608,6 +1674,20 @@ public final class app/reseam/patch/settings/Logo {
 	public final fun getLight ()Lapp/reseam/patch/settings/Vector;
 }
 
+public final class app/reseam/patch/settings/NoteSetting : app/reseam/patch/settings/Setting {
+	public fun getTitle ()Lapp/reseam/patch/settings/StringRef;
+}
+
+public final class app/reseam/patch/settings/NumberSetting : app/reseam/patch/settings/Setting {
+	public final fun getSlider ()Lapp/reseam/patch/settings/Slider;
+	public fun getTitle ()Lapp/reseam/patch/settings/StringRef;
+}
+
+public final class app/reseam/patch/settings/RangeSetting : app/reseam/patch/settings/Setting {
+	public final fun getSlider ()Lapp/reseam/patch/settings/Slider;
+	public fun getTitle ()Lapp/reseam/patch/settings/StringRef;
+}
+
 public final class app/reseam/patch/settings/Reseam : app/reseam/patch/ExtClass {
 	public static final field INSTANCE Lapp/reseam/patch/settings/Reseam;
 	public final fun getStartActivity ()Lapp/reseam/patch/ExtMethod;
@@ -1620,8 +1700,17 @@ public abstract class app/reseam/patch/settings/Setting {
 	public final fun getKey ()Ljava/lang/String;
 	public final fun getSummary ()Lapp/reseam/patch/settings/StringRef;
 	public final fun getTakesEffect ()Lapp/reseam/patch/settings/TakesEffect;
-	public final fun getTitle ()Lapp/reseam/patch/settings/StringRef;
+	public fun getTitle ()Lapp/reseam/patch/settings/StringRef;
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/settings/SettingCodeKt {
+	public static final fun enabledWhile (Lapp/reseam/patch/settings/Setting;Lapp/reseam/patch/settings/ToggleSetting;)V
+	public static final fun onChange (Lapp/reseam/patch/settings/Setting;Lkotlin/jvm/functions/Function1;)V
+	public static final fun onEnabled (Lapp/reseam/patch/settings/Setting;Lkotlin/jvm/functions/Function1;)V
+	public static final fun onSummary (Lapp/reseam/patch/settings/Setting;Lkotlin/jvm/functions/Function1;)V
+	public static final fun onValidate (Lapp/reseam/patch/settings/TextSetting;Lkotlin/jvm/functions/Function1;)V
+	public static final fun onView (Lapp/reseam/patch/settings/Setting;Lkotlin/jvm/functions/Function1;)V
 }
 
 public final class app/reseam/patch/settings/SettingDelegate : kotlin/properties/PropertyDelegateProvider {
@@ -1632,14 +1721,33 @@ public final class app/reseam/patch/settings/SettingDelegate : kotlin/properties
 public final class app/reseam/patch/settings/SettingDelegatesKt {
 	public static final fun action (Ljava/lang/String;Lapp/reseam/patch/settings/Vector;)Lapp/reseam/patch/settings/SettingDelegate;
 	public static synthetic fun action$default (Ljava/lang/String;Lapp/reseam/patch/settings/Vector;ILjava/lang/Object;)Lapp/reseam/patch/settings/SettingDelegate;
-	public static final fun choice (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Lapp/reseam/patch/settings/Vector;Lapp/reseam/patch/settings/TakesEffect;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static final synthetic fun choice (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Lapp/reseam/patch/settings/Vector;Lapp/reseam/patch/settings/TakesEffect;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static final fun choice (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Lapp/reseam/patch/settings/Vector;Lapp/reseam/patch/settings/TakesEffect;Z)Lapp/reseam/patch/settings/SettingDelegate;
 	public static synthetic fun choice$default (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Lapp/reseam/patch/settings/Vector;Lapp/reseam/patch/settings/TakesEffect;ILjava/lang/Object;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static synthetic fun choice$default (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Lapp/reseam/patch/settings/Vector;Lapp/reseam/patch/settings/TakesEffect;ZILjava/lang/Object;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static final fun color (JZLapp/reseam/patch/settings/ChoiceSetting;Ljava/lang/String;Lapp/reseam/patch/settings/Vector;Lapp/reseam/patch/settings/TakesEffect;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static synthetic fun color$default (JZLapp/reseam/patch/settings/ChoiceSetting;Ljava/lang/String;Lapp/reseam/patch/settings/Vector;Lapp/reseam/patch/settings/TakesEffect;ILjava/lang/Object;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static final fun file (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Lapp/reseam/patch/settings/Vector;Lapp/reseam/patch/settings/TakesEffect;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static synthetic fun file$default (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Lapp/reseam/patch/settings/Vector;Lapp/reseam/patch/settings/TakesEffect;ILjava/lang/Object;)Lapp/reseam/patch/settings/SettingDelegate;
 	public static final fun folder (Ljava/lang/String;Ljava/lang/String;Lapp/reseam/patch/settings/Vector;Lapp/reseam/patch/settings/TakesEffect;)Lapp/reseam/patch/settings/SettingDelegate;
 	public static synthetic fun folder$default (Ljava/lang/String;Ljava/lang/String;Lapp/reseam/patch/settings/Vector;Lapp/reseam/patch/settings/TakesEffect;ILjava/lang/Object;)Lapp/reseam/patch/settings/SettingDelegate;
-	public static final fun text (Ljava/lang/String;ZLjava/lang/String;Lapp/reseam/patch/settings/Vector;Lapp/reseam/patch/settings/TakesEffect;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static final fun note (Ljava/lang/String;Lapp/reseam/patch/settings/Vector;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static synthetic fun note$default (Ljava/lang/String;Lapp/reseam/patch/settings/Vector;ILjava/lang/Object;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static final fun noteOf (Ljava/lang/String;Lapp/reseam/patch/settings/StringRef;Lapp/reseam/patch/settings/StringRef;)Lapp/reseam/patch/settings/NoteSetting;
+	public static final fun number (DLapp/reseam/patch/settings/Slider;Ljava/lang/String;Lapp/reseam/patch/settings/Vector;Lapp/reseam/patch/settings/TakesEffect;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static synthetic fun number$default (DLapp/reseam/patch/settings/Slider;Ljava/lang/String;Lapp/reseam/patch/settings/Vector;Lapp/reseam/patch/settings/TakesEffect;ILjava/lang/Object;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static final fun range (Lkotlin/ranges/ClosedFloatingPointRange;Lapp/reseam/patch/settings/Slider;Ljava/lang/String;Lapp/reseam/patch/settings/Vector;Lapp/reseam/patch/settings/TakesEffect;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static synthetic fun range$default (Lkotlin/ranges/ClosedFloatingPointRange;Lapp/reseam/patch/settings/Slider;Ljava/lang/String;Lapp/reseam/patch/settings/Vector;Lapp/reseam/patch/settings/TakesEffect;ILjava/lang/Object;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static final synthetic fun text (Ljava/lang/String;ZLjava/lang/String;Lapp/reseam/patch/settings/Vector;Lapp/reseam/patch/settings/TakesEffect;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static final fun text (Ljava/lang/String;ZLjava/lang/String;Lapp/reseam/patch/settings/Vector;Lapp/reseam/patch/settings/TakesEffect;Z)Lapp/reseam/patch/settings/SettingDelegate;
 	public static synthetic fun text$default (Ljava/lang/String;ZLjava/lang/String;Lapp/reseam/patch/settings/Vector;Lapp/reseam/patch/settings/TakesEffect;ILjava/lang/Object;)Lapp/reseam/patch/settings/SettingDelegate;
+	public static synthetic fun text$default (Ljava/lang/String;ZLjava/lang/String;Lapp/reseam/patch/settings/Vector;Lapp/reseam/patch/settings/TakesEffect;ZILjava/lang/Object;)Lapp/reseam/patch/settings/SettingDelegate;
 	public static final fun toggle (ZLjava/lang/String;Lapp/reseam/patch/settings/Vector;Ljava/util/List;Lapp/reseam/patch/settings/TakesEffect;)Lapp/reseam/patch/settings/SettingDelegate;
 	public static synthetic fun toggle$default (ZLjava/lang/String;Lapp/reseam/patch/settings/Vector;Ljava/util/List;Lapp/reseam/patch/settings/TakesEffect;ILjava/lang/Object;)Lapp/reseam/patch/settings/SettingDelegate;
+}
+
+public abstract interface class app/reseam/patch/settings/SettingsContribution {
+	public abstract fun getSettings ()Ljava/util/List;
 }
 
 public abstract class app/reseam/patch/settings/SettingsGroup {
@@ -1664,6 +1772,7 @@ public final class app/reseam/patch/settings/SettingsHost : app/reseam/patch/Res
 	public fun getRewritesOutput ()Z
 	public fun getUniversal ()Z
 	public final fun register (Lapp/reseam/patch/ReseamPatch;Ljava/util/List;)V
+	public final fun showIconsOf (Ljava/util/Set;)V
 	public fun toString ()Ljava/lang/String;
 }
 
@@ -1671,6 +1780,9 @@ public final class app/reseam/patch/settings/SettingsHostBuilder : app/reseam/pa
 	public final fun about (Lapp/reseam/patch/settings/About;)V
 	public final fun brand (Lapp/reseam/patch/settings/Brand;)V
 	public final fun install (Lkotlin/jvm/functions/Function1;)V
+	public final fun layout ([Lapp/reseam/patch/settings/SettingsContribution;)V
+	public final fun place (Lapp/reseam/patch/settings/SettingsPage;Lapp/reseam/patch/settings/Setting;Lapp/reseam/patch/settings/StringRef;)V
+	public static synthetic fun place$default (Lapp/reseam/patch/settings/SettingsHostBuilder;Lapp/reseam/patch/settings/SettingsPage;Lapp/reseam/patch/settings/Setting;Lapp/reseam/patch/settings/StringRef;ILjava/lang/Object;)V
 	public final fun settings ([Lapp/reseam/patch/settings/SettingsSection;)V
 	public final fun strings ([Lapp/reseam/patch/settings/StringTable;)V
 }
@@ -1681,7 +1793,9 @@ public final class app/reseam/patch/settings/SettingsHostKt {
 
 public final class app/reseam/patch/settings/SettingsKt {
 	public static final fun section (Lapp/reseam/patch/settings/SettingsPage;Lapp/reseam/patch/settings/StringRef;[Lapp/reseam/patch/settings/Setting;)Lapp/reseam/patch/settings/SettingsSection;
+	public static final fun section (Lapp/reseam/patch/settings/SettingsPage;[Lapp/reseam/patch/settings/Setting;)Lapp/reseam/patch/settings/SettingsSection;
 	public static final fun section (Lapp/reseam/patch/settings/StringRef;[Lapp/reseam/patch/settings/Setting;)Lapp/reseam/patch/settings/SettingsSection;
+	public static final fun stored ([Lapp/reseam/patch/settings/Setting;)Lapp/reseam/patch/settings/StoredSettings;
 }
 
 public final class app/reseam/patch/settings/SettingsPage {
@@ -1706,7 +1820,7 @@ public final class app/reseam/patch/settings/SettingsPage {
 	public fun toString ()Ljava/lang/String;
 }
 
-public final class app/reseam/patch/settings/SettingsSection {
+public final class app/reseam/patch/settings/SettingsSection : app/reseam/patch/settings/SettingsContribution {
 	public fun <init> (Lapp/reseam/patch/settings/StringRef;Ljava/util/List;Lapp/reseam/patch/settings/SettingsPage;)V
 	public synthetic fun <init> (Lapp/reseam/patch/settings/StringRef;Ljava/util/List;Lapp/reseam/patch/settings/SettingsPage;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lapp/reseam/patch/settings/StringRef;
@@ -1716,10 +1830,42 @@ public final class app/reseam/patch/settings/SettingsSection {
 	public static synthetic fun copy$default (Lapp/reseam/patch/settings/SettingsSection;Lapp/reseam/patch/settings/StringRef;Ljava/util/List;Lapp/reseam/patch/settings/SettingsPage;ILjava/lang/Object;)Lapp/reseam/patch/settings/SettingsSection;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getPage ()Lapp/reseam/patch/settings/SettingsPage;
-	public final fun getSettings ()Ljava/util/List;
+	public fun getSettings ()Ljava/util/List;
 	public final fun getTitle ()Lapp/reseam/patch/settings/StringRef;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/settings/Slider {
+	public fun <init> (DDDLjava/lang/String;ZDLapp/reseam/patch/settings/StringRef;Lapp/reseam/patch/settings/StringRef;Z)V
+	public synthetic fun <init> (DDDLjava/lang/String;ZDLapp/reseam/patch/settings/StringRef;Lapp/reseam/patch/settings/StringRef;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()D
+	public final fun component2 ()D
+	public final fun component3 ()D
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Z
+	public final fun component6 ()D
+	public final fun component7 ()Lapp/reseam/patch/settings/StringRef;
+	public final fun component8 ()Lapp/reseam/patch/settings/StringRef;
+	public final fun component9 ()Z
+	public final fun copy (DDDLjava/lang/String;ZDLapp/reseam/patch/settings/StringRef;Lapp/reseam/patch/settings/StringRef;Z)Lapp/reseam/patch/settings/Slider;
+	public static synthetic fun copy$default (Lapp/reseam/patch/settings/Slider;DDDLjava/lang/String;ZDLapp/reseam/patch/settings/StringRef;Lapp/reseam/patch/settings/StringRef;ZILjava/lang/Object;)Lapp/reseam/patch/settings/Slider;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDialog ()Z
+	public final fun getLogarithmic ()Z
+	public final fun getMax ()D
+	public final fun getMaxLabel ()Lapp/reseam/patch/settings/StringRef;
+	public final fun getMin ()D
+	public final fun getMinLabel ()Lapp/reseam/patch/settings/StringRef;
+	public final fun getScale ()D
+	public final fun getStep ()D
+	public final fun getUnit ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/settings/StoredSettings : app/reseam/patch/settings/SettingsContribution {
+	public fun getSettings ()Ljava/util/List;
 }
 
 public final class app/reseam/patch/settings/StringRef : app/reseam/patch/settings/DisplayText {
@@ -1741,6 +1887,15 @@ public abstract class app/reseam/patch/settings/StringTable {
 	public fun toString ()Ljava/lang/String;
 }
 
+public abstract interface class app/reseam/patch/settings/SummaryScope : app/reseam/patch/CodeScope {
+	public abstract fun getContext ()Lapp/reseam/patch/ValueRef;
+	public abstract fun getValue ()Lapp/reseam/patch/ValueRef;
+}
+
+public final class app/reseam/patch/settings/SummaryScope$DefaultImpls {
+	public static fun invoke (Lapp/reseam/patch/settings/SummaryScope;Lapp/reseam/patch/ExtMethod;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
+}
+
 public final class app/reseam/patch/settings/TakesEffect : java/lang/Enum {
 	public static final field IMMEDIATELY Lapp/reseam/patch/settings/TakesEffect;
 	public static final field ON_RESTART Lapp/reseam/patch/settings/TakesEffect;
@@ -1751,6 +1906,8 @@ public final class app/reseam/patch/settings/TakesEffect : java/lang/Enum {
 
 public final class app/reseam/patch/settings/TextSetting : app/reseam/patch/settings/Setting {
 	public final fun getMultiline ()Z
+	public final fun getShowValue ()Z
+	public fun getTitle ()Lapp/reseam/patch/settings/StringRef;
 }
 
 public final class app/reseam/patch/settings/TextStyle {
@@ -1763,7 +1920,10 @@ public final class app/reseam/patch/settings/TextStyle {
 }
 
 public final class app/reseam/patch/settings/ToggleSetting : app/reseam/patch/settings/Setting {
+	public final fun copy (Z)Lapp/reseam/patch/settings/ToggleSetting;
+	public static synthetic fun copy$default (Lapp/reseam/patch/settings/ToggleSetting;ZILjava/lang/Object;)Lapp/reseam/patch/settings/ToggleSetting;
 	public final fun getCovers ()Ljava/util/List;
+	public fun getTitle ()Lapp/reseam/patch/settings/StringRef;
 }
 
 public final class app/reseam/patch/settings/Typography {
@@ -1777,6 +1937,14 @@ public final class app/reseam/patch/settings/Typography {
 	public final fun getLabelMedium ()Lapp/reseam/patch/settings/TextStyle;
 	public final fun getTitleLarge ()Lapp/reseam/patch/settings/TextStyle;
 	public final fun getTitleMedium ()Lapp/reseam/patch/settings/TextStyle;
+}
+
+public abstract interface class app/reseam/patch/settings/ValidateScope : app/reseam/patch/CodeScope {
+	public abstract fun getValue ()Lapp/reseam/patch/ValueRef;
+}
+
+public final class app/reseam/patch/settings/ValidateScope$DefaultImpls {
+	public static fun invoke (Lapp/reseam/patch/settings/ValidateScope;Lapp/reseam/patch/ExtMethod;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
 }
 
 public final class app/reseam/patch/settings/Vector {
@@ -1797,6 +1965,14 @@ public final class app/reseam/patch/settings/Verbatim : app/reseam/patch/setting
 	public final fun getText ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class app/reseam/patch/settings/ViewScope : app/reseam/patch/CodeScope {
+	public abstract fun getContext ()Lapp/reseam/patch/ValueRef;
+}
+
+public final class app/reseam/patch/settings/ViewScope$DefaultImpls {
+	public static fun invoke (Lapp/reseam/patch/settings/ViewScope;Lapp/reseam/patch/ExtMethod;[Lapp/reseam/patch/ValueRef;)Lapp/reseam/patch/ValueRef;
 }
 
 public final class app/reseam/patch/types/AnnotationElement {
@@ -1850,6 +2026,25 @@ public final class app/reseam/patch/types/AnnotationValue {
 }
 
 public final class app/reseam/patch/types/AnnotationValue$Companion {
+}
+
+public final class app/reseam/patch/types/AppPosition {
+	public static final field Companion Lapp/reseam/patch/types/AppPosition$Companion;
+	public synthetic fun <init> (IIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-pVg5ArA ()I
+	public final fun component2-pVg5ArA ()I
+	public final fun component3-pVg5ArA ()I
+	public final fun copy-zly0blg (III)Lapp/reseam/patch/types/AppPosition;
+	public static synthetic fun copy-zly0blg$default (Lapp/reseam/patch/types/AppPosition;IIIILjava/lang/Object;)Lapp/reseam/patch/types/AppPosition;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getClassDef-pVg5ArA ()I
+	public final fun getDex-pVg5ArA ()I
+	public final fun getMember-pVg5ArA ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/AppPosition$Companion {
 }
 
 public final class app/reseam/patch/types/Branch0Insn {
@@ -1997,6 +2192,23 @@ public final class app/reseam/patch/types/CloneDepth : java/lang/Enum {
 
 public final class app/reseam/patch/types/CloneDepth$Companion {
 	public final fun fromValue (I)Lapp/reseam/patch/types/CloneDepth;
+}
+
+public final class app/reseam/patch/types/ConfigFile {
+	public static final field Companion Lapp/reseam/patch/types/ConfigFile$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lapp/reseam/patch/types/ConfigFile;
+	public static synthetic fun copy$default (Lapp/reseam/patch/types/ConfigFile;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lapp/reseam/patch/types/ConfigFile;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getQualifiers ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/reseam/patch/types/ConfigFile$Companion {
 }
 
 public final class app/reseam/patch/types/CustomInsn {

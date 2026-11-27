@@ -37,4 +37,13 @@
     <string name="import_unreadable">Diese Datei ist kein Einstellungsexport.</string>
     <string name="import_nothing_applies">Keine der Einstellungen in dieser Datei gehört zu dieser App.</string>
     <string name="ok">OK</string>
+    <string name="color_hue">Farbton</string>
+    <string name="color_saturation">Sättigung</string>
+    <string name="color_brightness">Helligkeit</string>
+    <string name="color_opacity">Deckkraft</string>
+    <string name="color_code">Farbcode</string>
+    <string name="settings_as_text">Einstellungen als Text</string>
+    <string name="settings_as_text_summary">Kopiere deine Einstellungen als Text oder füge Einstellungen zum Importieren ein.</string>
+    <string name="copy">Kopieren</string>
+    <string name="value_out_of_range">Gib einen Wert von <xliff:g id="min">%1$s</xliff:g> bis <xliff:g id="max">%2$s</xliff:g> ein</string>
 </resources>

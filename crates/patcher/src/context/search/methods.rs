@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use super::super::{ClassLocation, MethodLocation, PatchContext};
 use super::method_location;
 use crate::error::Result;
-use reseam_dex::{InstructionPattern, MethodIdx, RefKey, RefQuery, StringIdx, TypeIdx};
+use reseam_dex::{InstructionPattern, MethodIdx, RefKey, RefQuery, StringIdx, StringPool, TypeIdx};
 
 impl PatchContext<'_> {
     /// Every method whose prototype satisfies each given filter (exact return
@@ -191,9 +191,24 @@ impl PatchContext<'_> {
     /// Methods referencing a string that starts with `prefix`, found through
     /// the string pool's sorted range and the reference index.
     pub fn find_methods_by_string_prefix(&self, prefix: &str) -> Result<Vec<MethodLocation>> {
-        self.scan_all("methods by string prefix", |dex_idx, dex| {
-            let matches: HashSet<StringIdx> =
-                dex.strings().with_prefix(prefix).into_iter().collect();
+        self.find_methods_by_matching_strings("methods by string prefix", |strings| {
+            strings.with_prefix(prefix)
+        })
+    }
+
+    pub fn find_methods_by_string_part(&self, part: &str) -> Result<Vec<MethodLocation>> {
+        self.find_methods_by_matching_strings("methods by string part", |strings| {
+            strings.containing(part)
+        })
+    }
+
+    fn find_methods_by_matching_strings(
+        &self,
+        what: &str,
+        matching: impl Fn(&StringPool) -> Vec<StringIdx> + Sync,
+    ) -> Result<Vec<MethodLocation>> {
+        self.scan_all(what, |dex_idx, dex| {
+            let matches: HashSet<StringIdx> = matching(dex.strings()).into_iter().collect();
             if matches.is_empty() {
                 return Ok(Vec::new());
             }

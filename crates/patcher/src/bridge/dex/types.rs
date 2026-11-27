@@ -18,6 +18,14 @@ pub struct MethodInfo {
 }
 
 #[data]
+#[derive(Debug, Clone, Copy)]
+pub struct AppPosition {
+    pub dex: u32,
+    pub class_def: u32,
+    pub member: u32,
+}
+
+#[data]
 #[derive(Debug, Clone)]
 pub struct ClassInfo {
     pub descriptor: String,
@@ -238,6 +246,13 @@ pub struct ResourceRef {
 pub struct ResourceScalar {
     pub kind: u8,
     pub data: u32,
+}
+
+#[data]
+#[derive(Debug, Clone)]
+pub struct ConfigFile {
+    pub qualifiers: String,
+    pub path: String,
 }
 
 #[data]

@@ -318,6 +318,7 @@ pub struct CodeInstruction {
 pub enum CodeStep {
     Label(u32),
     Instruction(CodeInstruction),
+    Jump(u32),
 }
 
 /// Where emitted code goes in its method.

@@ -97,8 +97,10 @@ dependencies {
 }
 ```
 
-- `implementation`: shipped inside your extension. Android libraries (`.aar`) work too, but only their classes are used, and libraries with native code are refused.
+- `implementation`: shipped inside your extension, cut down to the classes and members your extension's code reaches. Android libraries (`.aar`) work too, but only their classes are used, and libraries with native code are refused.
 - `compileOnly`: expected to be there already, in the app or in another module of your bundle. Use it for libraries the app already contains, including Android libraries with native code.
+
+A library's own keep rules apply when it is cut down, as in an app build: `META-INF/proguard/` in a jar, and `proguard.txt` in an Android library. Code a library reaches only by reflection stays when its rules keep it.
 
 ## What extensions can use
 
@@ -108,6 +110,18 @@ Every extension also compiles against:
 - **Your [settings modules](11_settings.md#read-settings-in-extensions)**: the settings and strings of the extension's own folder, and of the extensions it uses.
 
 Outside the `apps/` and `shared/` layout, a patch module adds extensions with `reseamExtensions(project(":my-extension"))`, and an extension adds a settings module with `reseamSettings(project(":settings"))`.
+
+## Test it
+
+Tests in an extension's `src/test` run on your computer, against the same classes the extension compiles against:
+
+- Android's classes are there, but each method returns its type's default value: 0, `false` or `null`, as in Android's own unit tests with `returnDefaultValues`. Fake the framework calls a test needs, for example with a `ContextWrapper` subclass. `android.test.mock` is there too.
+- Add test libraries with `testImplementation`, such as `junit:junit`. A library Android also contains, such as `org.json`, comes before Android's version of it.
+- In a bundle, settings work once a test starts the runtime with its own context: `Reseam.init(context)`. Values go to the context's `getSharedPreferences("reseam.<bundle>")`, and defaults and choices come from your settings modules.
+
+```bash
+./gradlew :shared:common:test
+```
 
 ## Where the classes go
 

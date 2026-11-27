@@ -6,14 +6,28 @@ use std::path::Path;
 
 use anyhow::Result;
 
-/// Writes the Kotlin opcode enum and its invoke and return sets from the DEX instruction catalogue.
 pub fn write(directory: &Path) -> Result<()> {
-    struct Opcode {
-        name: &'static str,
-        value: u16,
-        invokes: bool,
-        returns: bool,
-    }
+    let opcodes = catalogue();
+    let entries = opcodes
+        .iter()
+        .map(|op| format!("    {}(0x{:02x})", kotlin_opcode_name(op.name), op.value))
+        .collect::<Vec<_>>()
+        .join(",\n");
+    fs::create_dir_all(directory)?;
+    fs::write(directory.join("OpcodeKinds.kt"), opcode_kinds(&opcodes))?;
+    fs::write(directory.join("Opcode.kt"), opcode_enum(&entries))?;
+    Ok(())
+}
+
+struct Opcode {
+    name: &'static str,
+    value: u16,
+    invokes: bool,
+    returns: bool,
+    registers: Vec<(&'static str, &'static str)>,
+}
+
+fn catalogue() -> Vec<Opcode> {
     macro_rules! operand {
         (RegList) => {
             reseam_dex::RegList::default()
@@ -53,7 +67,7 @@ pub fn write(directory: &Path) -> Result<()> {
         ($variant:ident, [{$($name:ident:$type:ident,)*}]) => { reseam_dex::Instruction::$variant { $($name:field!($type),)* } };
     }
     macro_rules! fixed {
-        ($variant:ident, $definition:tt, $name:ident, $units:literal, $result:ident) => {{
+        ($variant:ident, $definition:tt, $name:ident, $units:literal, [$(($kind:ident, $access:ident)),*], $result:ident) => {{
             let instruction = instruction!($variant, $definition);
             $result.push(Opcode {
                 name: stringify!($name),
@@ -62,42 +76,49 @@ pub fn write(directory: &Path) -> Result<()> {
                     .expect("fixed instructions have opcodes"),
                 invokes: instruction.is_invoke(),
                 returns: instruction.is_return(),
+                registers: vec![$((stringify!($kind), stringify!($access))),*],
             });
         }};
-        ($variant:ident, $definition:tt, $name:ident, $variable:tt, $result:ident) => {};
+        ($variant:ident, $definition:tt, $name:ident, $variable:tt, $registers:tt, $result:ident) => {};
     }
     macro_rules! rows {
         ($($variant:ident [$($shape:tt)*] [$($definition:tt)*] => $name:ident $opcode:expr, $units:tt; [$($register:ident:$rt:ident $kind:ident $access:ident ($max:expr)),*]; $args:ident; [$($index:ident:$it:ident $pool:ident $at:literal $width:ident),*]; $format:ident($($slot:ident),*);)*) => {{
             let mut result = Vec::new();
-            $(fixed!($variant, [$($definition)*], $name, $units, result);)*
+            $(fixed!($variant, [$($definition)*], $name, $units, [$(($kind, $access)),*], result);)*
             result
         }};
     }
-    let opcodes = reseam_dex::instruction_catalogue!(rows);
-    let invokes = opcodes
+    reseam_dex::instruction_catalogue!(rows)
+}
+
+fn opcode_kinds(opcodes: &[Opcode]) -> String {
+    let values = |keep: fn(&Opcode) -> bool| {
+        opcodes
+            .iter()
+            .filter(|op| keep(op))
+            .map(|op| op.value.to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let invokes = values(|op| op.invokes);
+    let returns = values(|op| op.returns);
+    let registers = opcodes
         .iter()
-        .filter(|op| op.invokes)
-        .map(|op| op.value.to_string())
+        .filter(|op| !op.registers.is_empty())
+        .map(|op| {
+            let uses = op
+                .registers
+                .iter()
+                .map(|&(kind, access)| register_use(kind, access))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("        0x{:02x} to listOf({uses}),", op.value)
+        })
         .collect::<Vec<_>>()
-        .join(", ");
-    let returns = opcodes
-        .iter()
-        .filter(|op| op.returns)
-        .map(|op| op.value.to_string())
-        .collect::<Vec<_>>()
-        .join(", ");
-    let entries = opcodes
-        .iter()
-        .map(|op| format!("    {}(0x{:02x})", kotlin_opcode_name(op.name), op.value))
-        .collect::<Vec<_>>()
-        .join(",\n");
-    let kinds = format!(
-        "// Generated from the DEX instruction catalogue. Do not edit.\npackage app.reseam.patch.dex\n\ninternal object OpcodeKinds {{\n    fun invokes(opcode: Int): Boolean = when (opcode) {{ {invokes} -> true; else -> false }}\n    fun returns(opcode: Int): Boolean = when (opcode) {{ {returns} -> true; else -> false }}\n}}\n"
-    );
-    fs::create_dir_all(directory)?;
-    fs::write(directory.join("OpcodeKinds.kt"), kinds)?;
-    fs::write(directory.join("Opcode.kt"), opcode_enum(&entries))?;
-    Ok(())
+        .join("\n");
+    format!(
+        "// Generated from the DEX instruction catalogue. Do not edit.\npackage app.reseam.patch.dex\n\ninternal object OpcodeKinds {{\n    fun invokes(opcode: Int): Boolean = when (opcode) {{ {invokes} -> true; else -> false }}\n    fun returns(opcode: Int): Boolean = when (opcode) {{ {returns} -> true; else -> false }}\n\n    val registers: Map<Int, List<RegisterUse>> = mapOf(\n{registers}\n    )\n}}\n"
+    )
 }
 
 fn opcode_enum(entries: &str) -> String {
@@ -114,6 +135,8 @@ enum class Opcode(val value: Int) {{
     /** Execution never falls through to the next instruction. */
     val endsFlow: Boolean get() = isReturn || this == THROW || this == GOTO || this == GOTO_16 || this == GOTO_32
     val isMoveResult: Boolean get() = this == MOVE_RESULT || this == MOVE_RESULT_WIDE || this == MOVE_RESULT_OBJECT
+    /** The register operands in encoding order, A first, with their words and access. */
+    internal val registers: List<RegisterUse> get() = OpcodeKinds.registers[value].orEmpty()
 
     companion object {{
         private val byValue = entries.associateBy {{ it.value }}
@@ -122,6 +145,20 @@ enum class Opcode(val value: Int) {{
 }}
 "
     )
+}
+
+fn register_use(kind: &str, access: &str) -> String {
+    let words = if kind == "Wide" { 2 } else { 1 };
+    let access = match access {
+        "Read" => "READ",
+        "Write" => "WRITE",
+        "ReadWrite" => "READ_WRITE",
+        "Refine" => "REFINE",
+        other => unreachable!(
+            "the catalogue's accesses are Read, Write, ReadWrite and Refine, not {other}"
+        ),
+    };
+    format!("RegisterUse({words}, RegisterAccess.{access})")
 }
 
 fn kotlin_opcode_name(name: &str) -> String {

@@ -52,6 +52,10 @@ The crates, from the bottom up. Lower crates don't depend on higher ones, and cr
 
 - Use proper types for data: newtypes for ids, enums for kinds and modes. Turn values into text only at the edges (CLI arguments, JSON, XML).
 - Bundle manifests, the release index (`patches.json`), the SDK and browser types, and the patch API are read by other code, including older releases out in the wild. Keep them stable. If one really has to change, update everything that reads it and bump the engine version as described in `../notes/RELEASING.md`.
+- Released bundles run on every engine of their major line and call the patch API by JVM signature. `patch-api/api/released.api` holds the last release's API, and `ReleasedApiTest` fails when a class or member of it is gone. Add features beside what shipped, never in place of it:
+  - A new parameter on a released function replaces its JVM method. Add the new function and keep the released one as a `@Deprecated(level = DeprecationLevel.HIDDEN)` overload that calls it.
+  - A new field on a released data class changes its constructor and `copy`. Put the new data in a new type or in the builder that uses it.
+  - Changing a generated bridge record that the patch API exposes changes it the same way. Keep its fields and put new meaning in a new record or in the patch API.
 - Each library crate has a single `thiserror` error type that says what went wrong and where. Pass errors up with `?`. Only use `expect` for things the code itself guarantees, and say what that is in the message.
 
 ## Performance

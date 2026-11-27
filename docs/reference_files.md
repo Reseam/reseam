@@ -64,6 +64,8 @@ The `resources` of a running patch: the app's compiled resource table. Lookups o
 |---|---|
 | `id(resType: String, resName: String): UInt?` | A resource's id, such as `id("string", "app_name")`. |
 | `exists(resType: String, resName: String): Boolean` | Whether the resource exists. |
+| `exists(resType: String, resName: String, qualifiers: String): Boolean` | Whether the resource has a value in the configuration `qualifiers` names, written as for `addFile`. `""` is the default configuration. |
+| `names(resType: String): List<String>` | The names of every resource of a type, in id order. |
 | `owningComponent(resType: String, resName: String): String?` | The name of the APK that defines the resource. |
 | `owningComponent(resId: UInt): String?` | The same, by id. |
 | `components(): List<String>` | The names of every APK in the app. |
@@ -79,7 +81,9 @@ The `resources` of a running patch: the app's compiled resource table. Lookups o
 | `setString(resId: UInt, value: String): Boolean` | The same, by id. |
 | `add(resType: String, name: String, value: String): UInt?` | Adds or replaces a value resource in the default configuration. Returns its id. |
 | `add(resType: String, name: String, value: String, qualifiers: String): UInt?` | The same, in the configuration `qualifiers` names, written as in `addFile`. |
+| `addAt(resId: UInt, resType: String, name: String, value: String, qualifiers: String = ""): UInt` | Adds or replaces a value resource with a fixed id, for code that refers to it by number, such as a resource table built ahead of time. Fails when the id is not one of the app's `resType` ids, another resource has it, or the name already has another id. |
 | `addString(name: String, value: String): UInt?` | Adds or replaces a string. |
+| `addAttr(name: String, formats: String): UInt` | Adds or replaces an `attr` that accepts `formats`, written as `<attr format="...">` writes them, such as `reference\|color`. Styles can then set it, and resources read it with `?attr/name`. Fails for a format Android doesn't have. |
 | `addBool(name: String, value: Boolean): UInt?` | Adds or replaces a boolean. |
 | `addInteger(name: String, value: Int): UInt?` | Adds or replaces an integer. |
 | `addColor(name: String, color: String): UInt?` | Adds or replaces a color such as `#FF6200EE`. |
@@ -97,24 +101,29 @@ Release builds often rename resource files, so `res/layout/player_controls.xml` 
 | Member | Description |
 |---|---|
 | `path(resType: String, resName: String): String` | The APK path of the default configuration's file. Fails when the resource is missing or isn't a file. |
+| `path(resId: UInt): String` | `path` for a resource id, such as one an attribute references. |
+| `reference(resId: UInt): String?` | The reference resource XML writes for a resource id, such as `@id/fullscreen_button` or `@android:color/white`, or null when no resource has the id. It turns the `@0x…` an attribute holds back into a name. |
 | `paths(resType: String, resName: String): List<String>` | The paths of every configuration's file, the default first. |
+| `files(resType: String, resName: String): List<ResourceFile>` | Every configuration's [file](#resourcefile), the default first. |
 | `xml(resType: String, resName: String): XmlDocument` | Opens the default configuration's file. Close it yourself, with `use { }`. |
 | `editXml(resType: String, resName: String, block: XmlDocument.() -> T): T` | Opens the file, runs the block, and closes it. |
 | `addFile(resType: String, name: String, apkPath: String, qualifiers: String = ""): UInt` | Registers a file already in the APK as a resource. Returns its id. |
 | `addFile(resType: String, name: String, apkPath: String, data: ByteArray, qualifiers: String = ""): UInt` | Writes the file, then registers it. XML is compiled, and each `<aapt:attr>` in it becomes a resource of its own, as aapt builds them. |
 
-`qualifiers` is written as in a `res/` folder name: `""` for the default, a density such as `xxhdpi` or `anydpi-v26`, `night`, `notnight`, or `vN`. Every configuration of one resource uses the same `name`.
+`qualifiers` is written as in a `res/` folder name, and `""` is the default configuration. It takes, in this order, a language such as `ar` with an optional region such as `pt-rBR`, a screen size such as `xlarge`, `night` or `notnight`, a density such as `xxhdpi`, and `vN`, as in `pt-rBR-night` or `anydpi-v26`. Qualifiers out of that order fail, as they do in aapt. Every configuration of one resource uses the same `name`.
 
 **Styles and arrays**
 
 | Member | Description |
 |---|---|
 | `style(name: String, parent: String? = null, block: StyleScope.() -> Unit): UInt` | Adds or replaces items in every configuration of a style. Creating a style needs `parent`. On an existing style, a `parent` replaces its parent. |
+| `styleIn(name: String, qualifiers: String, parent: String? = null, block: StyleScope.() -> Unit): UInt` | `style` in one configuration, such as `"night"`. A configuration without the style starts from the default configuration's parent and items, because the app reads the whole style from the configuration that matches. |
+| `styleItems(name: String, qualifiers: String = ""): Map<String, String>?` | A style's items in one configuration, attribute to value, both as resource XML writes them. An attribute reads as `android:textColor` or an app attribute's bare name, and a value as `@color/name`, `?attr/name`, or a literal. Null when that configuration has no such style. |
 | `getArray(name: String): List<String>` | An array's elements as text. |
-| `setArray(name: String, values: List<String>): UInt` | Replaces an array's elements in every configuration. Values are read as attribute values are, so `@string/name` is a reference. |
-| `setStringArray(name: String, values: List<String>): UInt` | Replaces an array's elements with literal text, including numbers and text that starts with `@`. |
+| `setArray(name: String, values: List<String>): UInt` | Replaces an array's elements in every configuration, or adds the array in the default configuration. Values are read as attribute values are, so `@string/name` is a reference. |
+| `setStringArray(name: String, values: List<String>): UInt` | Replaces or adds an array with literal text, including numbers and text that starts with `@`. |
 | `getArrayValues(name: String): List<ResourceValue>` | An array's elements without conversion, so references, dimensions, and colors survive a round trip. |
-| `setArrayValues(name: String, values: List<ResourceValue>): UInt` | Replaces an existing array's elements without conversion. |
+| `setArrayValues(name: String, values: List<ResourceValue>): UInt` | Replaces an array's elements without conversion, or adds the array in the default configuration. |
 
 **The string pool**
 
@@ -130,13 +139,22 @@ The resource table stores all its text in one string pool, and string resources 
 
 ### `StyleScope`
 
-The receiver of `resources.style { }`.
+The receiver of `resources.style { }` and `resources.styleIn { }`.
 
 `set(attr: String, value: String)` sets one `<item>`: `this["android:windowBackground"] = "@color/black"`. `android:` names a framework attribute, and a name without a prefix one the app declares. An attribute that doesn't exist fails the patch.
 
 ### `ResourceValue`
 
 A resource value without conversion: `kind`, Android's type byte, and `data`, its raw bits. For a string, `data` is an index in this APK's string pool, so copy strings between APKs with `poolGet` and `poolAdd`.
+
+### `ResourceFile`
+
+One configuration's file of a file resource, from `files`.
+
+| Member | Description |
+|---|---|
+| `qualifiers: String` | The configuration, as a `res/` folder name writes it: `""`, `"xxhdpi"`, `"night-v31"`. |
+| `path: String` | The APK entry the configuration points at. |
 
 ### `ResourceRef`
 

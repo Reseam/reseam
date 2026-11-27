@@ -4,10 +4,38 @@
 use boltffi::export;
 use reseam_apk::Compression;
 use reseam_apk::axml;
+use reseam_apk::resources::{ResourceFile, ResourceName};
 
 use super::components::{component, table, table_mut, with_component, with_scope};
 use super::resources::defining_component;
+use crate::bridge::dex::types::ConfigFile;
 use crate::bridge::phase::with_ctx_result;
+
+fn resource_files(
+    component_name: Option<&str>,
+    res_type: &str,
+    res_name: &str,
+) -> Result<Vec<ResourceFile>, String> {
+    with_ctx_result(|ctx| {
+        let index = defining_component(ctx, component_name, |apk| {
+            Ok(apk
+                .find_resource(res_type, res_name)?
+                .map(|(index, _)| index))
+        })?
+        .unwrap_or(0);
+        let files = table(ctx, index)?
+            .files(res_type, res_name)
+            .map_err(|error| error.to_string())?;
+        let component = component(ctx, index);
+        match files.iter().find(|file| !component.contains(&file.path)) {
+            Some(missing) => Err(format!(
+                "{res_type}/{res_name} is not file-backed: its value {} is not an entry of the APK",
+                missing.path
+            )),
+            None => Ok(files),
+        }
+    })
+}
 
 #[export]
 pub fn res_file_paths(
@@ -15,24 +43,26 @@ pub fn res_file_paths(
     res_type: String,
     res_name: String,
 ) -> Result<Vec<String>, String> {
-    with_ctx_result(|ctx| {
-        let index = defining_component(ctx, component_name.as_deref(), |apk| {
-            Ok(apk
-                .find_resource(&res_type, &res_name)?
-                .map(|(index, _)| index))
-        })?
-        .unwrap_or(0);
-        let paths = table(ctx, index)?
-            .file_paths(&res_type, &res_name)
-            .map_err(|error| error.to_string())?;
-        let component = component(ctx, index);
-        match paths.iter().find(|path| !component.contains(path)) {
-            Some(missing) => Err(format!(
-                "{res_type}/{res_name} is not file-backed: its value {missing} is not an entry of the APK"
-            )),
-            None => Ok(paths),
-        }
-    })
+    Ok(
+        resource_files(component_name.as_deref(), &res_type, &res_name)?
+            .into_iter()
+            .map(|file| file.path)
+            .collect(),
+    )
+}
+
+#[export]
+pub fn res_files(
+    component_name: Option<String>,
+    res_type: String,
+    res_name: String,
+) -> Result<Vec<ConfigFile>, String> {
+    Ok(
+        resource_files(component_name.as_deref(), &res_type, &res_name)?
+            .into_iter()
+            .map(|ResourceFile { qualifiers, path }| ConfigFile { qualifiers, path })
+            .collect(),
+    )
 }
 
 #[export]
@@ -42,6 +72,29 @@ pub fn res_file_path(
     res_name: String,
 ) -> Result<String, String> {
     Ok(res_file_paths(component, res_type, res_name)?.swap_remove(0))
+}
+
+#[export]
+pub fn res_file_path_by_id(component: Option<String>, res_id: u32) -> Result<String, String> {
+    let name = reference_name(component.clone(), res_id)?
+        .ok_or_else(|| format!("no resource has the id {res_id:#010x}"))?;
+    res_file_path(component, name.type_name, name.entry)
+}
+
+#[export]
+pub fn res_reference_by_id(
+    component: Option<String>,
+    res_id: u32,
+) -> Result<Option<String>, String> {
+    Ok(reference_name(component, res_id)?.map(|name| name.reference('@')))
+}
+
+fn reference_name(component: Option<String>, res_id: u32) -> Result<Option<ResourceName>, String> {
+    with_component(component, |ctx, index| {
+        table(ctx, index)?
+            .reference_name(res_id)
+            .map_err(|error| error.to_string())
+    })
 }
 
 #[export]

@@ -5,18 +5,17 @@ package app.reseam.runtime
 
 import java.util.concurrent.ConcurrentHashMap
 
-/** Text from a bundle's settings schema, resolved in the app's current language when shown. */
 internal sealed interface DisplayText {
-    fun resolve(bundle: String): String
+    fun resolve(bundle: String): CharSequence
 }
 
 internal data class TextRef(val table: String, val name: String) : DisplayText {
-    override fun resolve(bundle: String): String =
-        tables.computeIfAbsent("reseam/$bundle/strings/$table", ::StringTable)[name]
+    override fun resolve(bundle: String): CharSequence =
+        tables.computeIfAbsent("reseam/$bundle/strings/$table", ::StringTable).text(name)
 }
 
 internal data class Verbatim(val text: String) : DisplayText {
-    override fun resolve(bundle: String): String = text
+    override fun resolve(bundle: String): CharSequence = text
 }
 
 private val tables = ConcurrentHashMap<String, StringTable>()

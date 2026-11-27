@@ -37,4 +37,13 @@
     <string name="import_unreadable">This file is not a settings export.</string>
     <string name="import_nothing_applies">None of the settings in this file belong to this app.</string>
     <string name="ok">OK</string>
+    <string name="color_hue">Hue</string>
+    <string name="color_saturation">Saturation</string>
+    <string name="color_brightness">Brightness</string>
+    <string name="color_opacity">Opacity</string>
+    <string name="color_code">Color code</string>
+    <string name="settings_as_text">Settings as text</string>
+    <string name="settings_as_text_summary">Copy your settings as text, or paste settings to import them.</string>
+    <string name="copy">Copy</string>
+    <string name="value_out_of_range">Enter a value from <xliff:g id="min">%1$s</xliff:g> to <xliff:g id="max">%2$s</xliff:g></string>
 </resources>

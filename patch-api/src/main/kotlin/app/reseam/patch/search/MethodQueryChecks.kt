@@ -22,6 +22,8 @@ internal fun MethodQuerySpec.rejection(value: Method, runtime: PatchRuntime): St
     if (stringValues.any { !index.seeds.hasString(value, it) }) return "missing required string"
     if (stringPrefixes.any { !index.seeds.hasStringPrefix(value, it) })
         return "missing required string prefix"
+    if (stringParts.any { !index.seeds.hasStringPart(value, it) })
+        return "missing required string part"
     if (literalValues.any { !index.seeds.hasLiteral(value, it) }) return "missing required literal"
     returnType?.let { if (value.returnType != it) return "return type mismatch" }
     parameterTypes?.let { if (value.parameterTypes != it) return "parameter type mismatch" }
@@ -66,6 +68,7 @@ internal fun MethodQuerySpec.reasons(): List<String> = buildList {
     methodName?.let { add("matched name $it") }
     if (stringValues.isNotEmpty()) add("matched strings ${stringValues.joinToString()}")
     if (stringPrefixes.isNotEmpty()) add("matched string prefixes ${stringPrefixes.joinToString()}")
+    if (stringParts.isNotEmpty()) add("matched string parts ${stringParts.joinToString()}")
     if (literalValues.isNotEmpty()) add("matched literals ${literalValues.joinToString()}")
     returnType?.let { add("matched return type $it") }
     parameterTypes?.let { add("matched parameter types ${it.joinToString()}") }

@@ -18,8 +18,14 @@ pub(super) struct Planned {
     pub(super) uses: Vec<Use>,
     /// The kinds of a call's arguments, which take no fixed registers.
     pub(super) arguments: Option<Vec<RegisterKind>>,
-    /// The instruction a branch goes to, the block's length for its end.
-    pub(super) target: Option<usize>,
+    pub(super) target: Option<Destination>,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum Destination {
+    Block(usize),
+    /// An instruction of the method, numbered as before the insertion.
+    Method(usize),
 }
 
 #[derive(Clone, Copy)]
@@ -48,6 +54,12 @@ pub(super) fn plan(steps: &[BlockStep], dex: &DexFile) -> Result<Vec<Planned>> {
                 instructions.push(Planned::new(instruction, operands, dex)?);
                 targets.push(*target);
             }
+            BlockStep::Jump(index) => {
+                let mut jump = Planned::new(&Instruction::Goto32 { offset: 0 }, &[], dex)?;
+                jump.target = Some(Destination::Method(*index));
+                instructions.push(jump);
+                targets.push(None);
+            }
         }
     }
     for (planned, target) in instructions.iter_mut().zip(targets) {
@@ -55,12 +67,14 @@ pub(super) fn plan(steps: &[BlockStep], dex: &DexFile) -> Result<Vec<Planned>> {
         if planned.instruction.branch_offset().is_none() {
             return Err(invalid("code block", "only a branch has a target"));
         }
-        planned.target = Some(*labels.get(&label).ok_or_else(|| {
-            invalid(
-                "code block",
-                format!("branch to label {label}, never placed"),
-            )
-        })?);
+        planned.target = Some(Destination::Block(*labels.get(&label).ok_or_else(
+            || {
+                invalid(
+                    "code block",
+                    format!("branch to label {label}, never placed"),
+                )
+            },
+        )?));
     }
     Ok(instructions)
 }
@@ -126,7 +140,10 @@ impl Planned {
             .falls_through()
             .then_some(index + 1)
             .into_iter()
-            .chain(self.target)
+            .chain(match self.target {
+                Some(Destination::Block(target)) => Some(target),
+                Some(Destination::Method(_)) | None => None,
+            })
     }
 
     pub(super) fn temporaries(

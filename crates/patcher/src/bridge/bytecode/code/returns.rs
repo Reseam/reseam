@@ -1,16 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::collections::BTreeMap;
+use reseam_dex::{CodeItem, IncomingBranches};
 
-use reseam_dex::{self as dex, CodeItem, IncomingBranches, Instruction as DexInsn, RegisterKind};
-
-use super::super::logged;
-use super::super::mutation::{edit_mapping, growth_mapping};
-use super::{Code, Frame, kind};
-use crate::bridge::dex::types::{CodeEdit, CodeRegister};
-use crate::bridge::trace;
-use crate::context::Moved;
+use super::{Code, Frame};
+use crate::bridge::dex::types::CodeEdit;
 
 impl Code<'_> {
     /// The code before each return, reading parameters as the method was entered: copied at
@@ -24,64 +18,30 @@ impl Code<'_> {
         if returns == 0 {
             return Ok(Vec::new());
         }
-        let parameters: BTreeMap<u16, RegisterKind> = self
-            .operands()
-            .filter_map(|operand| match operand.register {
-                CodeRegister::Parameter(offset) => Some((offset, kind(operand))),
-                _ => None,
-            })
-            .collect();
-        let base = body.registers_size() - body.ins_size();
-        let mut words = 0;
-        let copies: BTreeMap<u16, u16> = parameters
-            .iter()
-            .map(|(&offset, kind)| {
-                let copy = base + words;
-                words += kind.words();
-                (offset, copy)
-            })
-            .collect();
-        let mut edits = Vec::new();
-        if words != 0 {
-            let map = logged(
-                "add parameter copies",
-                dex::grow_registers(body, words, &self.incoming, &self.protected, self.dex),
-            )?;
-            trace::moved(self.handle, &map, Moved::Rewrite);
-            edits.push(CodeEdit::Grow(growth_mapping(base, words, map)?));
-        }
-        let protected: Vec<u16> = self
-            .protected
-            .iter()
-            .copied()
-            .chain(base..base + words)
-            .collect();
-        for ordinal in (0..returns).rev() {
-            let (index, returned) = body
-                .instructions()
-                .iter()
-                .enumerate()
-                .filter(|(_, instruction)| instruction.is_return())
-                .nth(ordinal)
-                .map(|(index, instruction)| (index, instruction.registers_used().first().copied()))
-                .expect("inserting before a return keeps every return");
-            let frame = Frame::Copies {
-                copies: &copies,
-                returned,
-            };
-            let block = self.block(&frame)?;
-            edits.extend(self.place(body, index, IncomingBranches::Enter, &block, &protected)?);
-        }
-        if words != 0 {
-            let incoming = body.registers_size() - body.ins_size();
-            let moves: Vec<DexInsn> = parameters
-                .iter()
-                .map(|(offset, &kind)| dex::move_register(copies[offset], incoming + offset, kind))
-                .collect();
-            let map = logged("copy parameters", body.insert_instructions(0, &moves))?;
-            trace::moved(self.handle, &map, Moved::Insertion);
-            edits.push(CodeEdit::Insert(edit_mapping(map)?));
-        }
-        Ok(edits)
+        self.with_entry_copies(body, &self.parameters(), |body, copies, protected, _| {
+            let mut edits = Vec::new();
+            for ordinal in (0..returns).rev() {
+                let (index, returned) = body
+                    .instructions()
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, instruction)| instruction.is_return())
+                    .nth(ordinal)
+                    .map(|(index, instruction)| {
+                        (index, instruction.registers_used().first().copied())
+                    })
+                    .expect("inserting before a return keeps every return");
+                let frame = Frame::Copies { copies, returned };
+                let block = self.block(&frame)?;
+                edits.extend(self.place(
+                    body,
+                    index,
+                    IncomingBranches::Enter,
+                    &block,
+                    protected,
+                )?);
+            }
+            Ok(edits)
+        })
     }
 }

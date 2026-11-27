@@ -19,6 +19,7 @@ use super::grow::grow_registers;
 use super::relocate::InstructionMap;
 use crate::error::{Result, invalid};
 use crate::instruction::Instruction;
+use crate::instruction::branch::Addresses;
 use crate::instruction::operands::RegisterKind;
 use crate::model::code::CodeItem;
 use crate::{DexFile, TypeIdx};
@@ -49,6 +50,8 @@ pub enum BlockStep {
         operands: Vec<BlockOperand>,
         target: Option<u32>,
     },
+    /// Continues at the method's instruction at this index, numbered as before the insertion.
+    Jump(usize),
 }
 
 /// Locals added below the incoming registers, and where that moved each instruction.
@@ -95,7 +98,14 @@ pub fn insert_block(
             Err(Unallocated::Unreachable(error)) => return Err(error),
         }
     };
-    let instructions = emit::emit(&program, &plan)?;
+    let emitted = emit::emit(&program, &plan)?;
+    if emitted
+        .jumps
+        .iter()
+        .any(|jump| jump.target >= code.instructions.len())
+    {
+        return Err(invalid("code block", "jump target outside the method"));
+    }
     let growth = if growth == 0 {
         None
     } else {
@@ -105,11 +115,40 @@ pub fn insert_block(
         })
     };
     let at = growth.as_ref().map_or(at, |growth| growth.map.starts()[at]);
-    let insertion = code.insert(at, &instructions, branches)?;
-    let start = insertion.insertion_start(at, instructions.len());
+    let insertion = code.insert(at, &emitted.instructions, branches)?;
+    let start = insertion.insertion_start(at, emitted.instructions.len());
+    let moved = |target: usize| {
+        let grown = growth
+            .as_ref()
+            .map_or(target, |growth| growth.map.instructions()[target]);
+        insertion.instructions()[grown]
+    };
+    link_jumps(code, start, &emitted.jumps, moved)?;
     Ok(BlockInsertion {
         growth,
         insertion,
         start,
+    })
+}
+
+fn link_jumps(
+    code: &mut CodeItem,
+    start: usize,
+    jumps: &[emit::Jump],
+    moved: impl Fn(usize) -> usize,
+) -> Result<()> {
+    if jumps.is_empty() {
+        return Ok(());
+    }
+    code.edit_instructions(|body| {
+        let addresses = Addresses::of(body);
+        for jump in jumps {
+            let from = start + jump.at;
+            let delta = i64::from(addresses[moved(jump.target)]) - i64::from(addresses[from]);
+            let delta = i32::try_from(delta)
+                .map_err(|_| invalid("code block", "jump displacement exceeds i32"))?;
+            body[from].set_branch_offset(delta)?;
+        }
+        Ok(())
     })
 }

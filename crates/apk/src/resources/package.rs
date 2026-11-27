@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+mod names;
 mod reader;
 mod writer;
 
@@ -10,9 +11,10 @@ use reseam_storage::Bytes;
 
 use super::config::{config_for_qualifiers, same_config};
 use super::id::res_id;
-use super::{ResType, TypeSpec, first_found};
+use super::{EntryValue, ResEntry, ResType, TypeSpec};
 use crate::error::Result;
 use crate::string_pool::StringPool;
+use names::NameIndex;
 
 const HEADER_LEN: usize = 288;
 pub(super) const NAME_UNITS: usize = 128;
@@ -32,6 +34,7 @@ pub struct ResPackage {
     chunk: Range<usize>,
     header_size: usize,
     pub(super) chunks: Vec<PackageChunk>,
+    names: NameIndex,
 }
 
 #[derive(Debug, Clone)]
@@ -59,6 +62,7 @@ impl ResPackage {
             chunk: 0..0,
             header_size: HEADER_LEN,
             chunks: vec![PackageChunk::TypeStrings, PackageChunk::KeyStrings],
+            names: NameIndex::default(),
         }
     }
 
@@ -106,6 +110,9 @@ impl ResPackage {
 
     /// Adds a configuration chunk after the existing chunks, retaining their order.
     pub fn add_type(&mut self, res_type: ResType) {
+        if !res_type.is_empty() {
+            self.names.clear();
+        }
         self.chunks.push(PackageChunk::Type(self.types.len()));
         self.types.push(res_type);
     }
@@ -138,9 +145,19 @@ impl ResPackage {
         units
     }
 
+    pub(crate) fn local_type(&self, type_name: &str) -> Result<Option<u8>> {
+        self.type_strings
+            .find(type_name)?
+            .map(|index| {
+                u8::try_from(index + 1)
+                    .map_err(|_| crate::error::invalid("resource type", "type ID exceeds 255"))
+            })
+            .transpose()
+    }
+
     pub(crate) fn ensure_type(&mut self, type_name: &str) -> Result<Option<u8>> {
-        if let Some(index) = self.type_strings.find(type_name)? {
-            return Ok(u8::try_from(index + 1).ok());
+        if let Some(type_id) = self.local_type(type_name)? {
+            return Ok(Some(type_id));
         }
         if self.type_strings.len() >= u8::MAX as usize {
             return Ok(None);
@@ -173,22 +190,35 @@ impl ResPackage {
             .unwrap_or(0)
     }
 
-    pub(crate) fn entry_index(&self, type_id: u8, key: u32) -> Result<Option<usize>> {
-        first_found(
-            self.types
-                .iter()
-                .filter(|res_type| res_type.id == type_id)
-                .flat_map(|res_type| {
-                    (0..res_type.len()).map(|i| {
-                        res_type
-                            .entry_key(i)
-                            .map(|entry_key| (entry_key == Some(key)).then_some(i))
-                    })
-                }),
-        )
+    pub(crate) fn entry_key(&self, type_id: u8, index: usize) -> Result<Option<u32>> {
+        for res_type in self.types.iter().filter(|res_type| res_type.id == type_id) {
+            if let Some(key) = res_type.entry_key(index)? {
+                return Ok(Some(key));
+            }
+        }
+        Ok(None)
     }
 
-    pub(crate) fn config_type(&mut self, type_id: u8, config: Vec<u8>) -> &mut ResType {
+    pub(crate) fn entry_index(&self, type_id: u8, key: u32) -> Result<Option<usize>> {
+        self.names.find(&self.types, &self.data, type_id, key)
+    }
+
+    pub(crate) fn put(
+        &mut self,
+        type_id: u8,
+        config: Vec<u8>,
+        index: usize,
+        key: u32,
+        value: EntryValue,
+    ) -> Result<()> {
+        let chunk = self.config_type(type_id, config);
+        let flags = chunk.entry(index)?.map_or(0, |current| current.flags);
+        chunk.set(index, Some(ResEntry { flags, key, value }))?;
+        self.names.record(type_id, key, index);
+        Ok(())
+    }
+
+    fn config_type(&mut self, type_id: u8, config: Vec<u8>) -> &mut ResType {
         let existing = self
             .types
             .iter()

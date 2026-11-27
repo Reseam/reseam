@@ -13,7 +13,9 @@ use crate::paths;
 use crate::run::run;
 
 /// Sets the workspace version, commits, and tags `v<version>`. A manifest
-/// already at that version is only tagged. Requires a clean worktree.
+/// already at that version is only tagged. Requires a clean worktree. The
+/// release's patch API dump becomes the one later engines must keep, since
+/// released bundles link against it.
 #[expect(
     clippy::print_stdout,
     reason = "The release command reports the created tag"
@@ -42,8 +44,12 @@ pub fn tag(version: &str) -> Result<()> {
         run(Command::new("cargo")
             .args(["update", "--workspace"])
             .current_dir(&root))?;
+        fs::copy(
+            root.join(PATCH_API_DUMP),
+            root.join(RELEASED_PATCH_API_DUMP),
+        )?;
         run(Command::new("git")
-            .args(["add", "Cargo.toml", "Cargo.lock"])
+            .args(["add", "Cargo.toml", "Cargo.lock", RELEASED_PATCH_API_DUMP])
             .current_dir(&root))?;
         run(Command::new("git")
             .args(["commit", "-m", &format!("chore: release v{version}")])
@@ -61,6 +67,9 @@ pub fn tag(version: &str) -> Result<()> {
     println!("Tagged v{version}; push with `git push --follow-tags`.");
     Ok(())
 }
+
+const PATCH_API_DUMP: &str = "patch-api/api/reseam-patch-sdk.api";
+const RELEASED_PATCH_API_DUMP: &str = "patch-api/api/released.api";
 
 /// Fails unless `tag` is `v<workspace version>`.
 pub fn check_tag(tag: &str) -> Result<()> {

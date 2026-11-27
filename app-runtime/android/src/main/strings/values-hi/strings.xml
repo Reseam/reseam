@@ -37,4 +37,13 @@
     <string name="import_unreadable">यह फ़ाइल सेटिंग का एक्सपोर्ट नहीं है।</string>
     <string name="import_nothing_applies">इस फ़ाइल की कोई भी सेटिंग इस ऐप की नहीं है।</string>
     <string name="ok">ठीक है</string>
+    <string name="color_hue">ह्यू</string>
+    <string name="color_saturation">संतृप्ति</string>
+    <string name="color_brightness">चमक</string>
+    <string name="color_opacity">अपारदर्शिता</string>
+    <string name="color_code">रंग कोड</string>
+    <string name="settings_as_text">टेक्स्ट के रूप में सेटिंग्स</string>
+    <string name="settings_as_text_summary">अपनी सेटिंग्स टेक्स्ट के रूप में कॉपी करें, या आयात करने के लिए सेटिंग्स पेस्ट करें।</string>
+    <string name="copy">कॉपी करें</string>
+    <string name="value_out_of_range"><xliff:g id="min">%1$s</xliff:g> से <xliff:g id="max">%2$s</xliff:g> तक का मान दर्ज करें</string>
 </resources>

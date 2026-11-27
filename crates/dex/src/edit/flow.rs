@@ -128,10 +128,38 @@ impl ControlFlow {
     }
 }
 
+/// The branches and switches whose jump lands on instruction `index`, not counting an
+/// instruction that only falls into it. `None` when control flow cannot be followed.
+pub fn jump_sources(code: &CodeItem, index: usize) -> Option<Vec<usize>> {
+    let addresses = Addresses::of(&code.instructions);
+    let mut targets = Vec::new();
+    let mut sources = Vec::new();
+    for from in 0..code.instructions.len() {
+        targets.clear();
+        jump_targets(&code.instructions, &addresses, from, &mut targets)?;
+        if targets.contains(&(index as u32)) {
+            sources.push(from);
+        }
+    }
+    Some(sources)
+}
+
 /// Where control goes after instruction `index` completes normally; `None`
 /// when that cannot be followed: an unknown instruction, or a branch that does
 /// not land on an instruction.
 fn normal_successors(
+    instructions: &[Instruction],
+    addresses: &Addresses,
+    index: usize,
+    out: &mut Vec<u32>,
+) -> Option<()> {
+    if instructions[index].falls_through() && index + 1 < instructions.len() {
+        out.push(index as u32 + 1);
+    }
+    jump_targets(instructions, addresses, index, out)
+}
+
+fn jump_targets(
     instructions: &[Instruction],
     addresses: &Addresses,
     index: usize,
@@ -146,9 +174,6 @@ fn normal_successors(
             .target(index, delta)
             .filter(|&target| target < instructions.len())
     };
-    if instruction.falls_through() && index + 1 < instructions.len() {
-        out.push(index as u32 + 1);
-    }
     if let Some(delta) = instruction.branch_offset() {
         out.push(target(delta)? as u32);
     }

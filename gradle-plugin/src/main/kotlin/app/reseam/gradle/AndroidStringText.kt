@@ -11,40 +11,94 @@ import org.w3c.dom.Node
 private const val XLIFF = "urn:oasis:names:tc:xliff:document:1.2"
 private val SPECIFIER = Regex("""%(?:(\d+)\$)?[-#+ 0,(]*\d*(?:\.\d+)?([a-zA-Z%])""")
 
-/** The decoded text and its `xliff:g` placeholders, in position order. */
-internal fun content(element: Element, file: File): Pair<String, List<Placeholder>> {
+internal class StringContent(
+    val text: String,
+    val html: String?,
+    val placeholders: List<Placeholder>,
+)
+
+internal fun content(element: Element, file: File): StringContent {
+    val name = element.getAttribute("name")
     val raw = StringBuilder()
+    val tags = mutableListOf<String>()
     val placeholders = mutableListOf<Placeholder>()
-    for (node in element.childNodes.asList()) {
-        when {
-            node.nodeType == Node.TEXT_NODE || node.nodeType == Node.CDATA_SECTION_NODE ->
-                raw.append(node.nodeValue)
-            node is Element && node.namespaceURI == XLIFF && node.localName == "g" -> {
-                raw.append(node.textContent)
-                placeholders += placeholder(node, placeholders.size + 1, file)
+    fun read(parent: Element) {
+        for (node in parent.childNodes.asList()) {
+            when {
+                node.nodeType == Node.TEXT_NODE || node.nodeType == Node.CDATA_SECTION_NODE ->
+                    raw.append(node.nodeValue)
+                node is Element && node.namespaceURI == XLIFF && node.localName == "g" -> {
+                    raw.append(node.textContent)
+                    placeholders += placeholder(node, placeholders.size + 1, file)
+                }
+                node is Element && node.namespaceURI == null && styled(node) -> {
+                    tags += openTag(node)
+                    raw.append(TAG)
+                    read(node)
+                    tags += "</${node.tagName}>"
+                    raw.append(TAG)
+                }
+                node.nodeType == Node.COMMENT_NODE -> Unit
+                else -> throw GradleException("$file: '$name' has unsupported markup")
             }
-            node.nodeType == Node.COMMENT_NODE -> Unit
-            else ->
-                throw GradleException(
-                    "$file: '${element.getAttribute("name")}' has unsupported markup"
-                )
         }
     }
-    val text = decode(raw.toString(), file)
+    read(element)
+    val decoded = decode(raw.toString(), file)
+    val text = decoded.replace(TAG.toString(), "").trim()
     // Text without placeholders is shown as is, so a literal % needs no escaping there.
     val specifiers =
         if (placeholders.isEmpty()) 0
         else SPECIFIER.findAll(text).count { it.groupValues[2] != "%" }
     if (specifiers != placeholders.size)
-        throw GradleException(
-            "$file: '${element.getAttribute("name")}' has a placeholder outside xliff:g"
-        )
+        throw GradleException("$file: '$name' has a placeholder outside xliff:g")
     if (placeholders.map { it.position }.toSet() != (1..placeholders.size).toSet())
-        throw GradleException(
-            "$file: '${element.getAttribute("name")}' needs positions 1 to ${placeholders.size}"
-        )
-    return text to placeholders.sortedBy { it.position }
+        throw GradleException("$file: '$name' needs positions 1 to ${placeholders.size}")
+    return StringContent(
+        text,
+        if (tags.isEmpty()) null else html(decoded, tags),
+        placeholders.sortedBy { it.position },
+    )
 }
+
+private fun html(decoded: String, tags: List<String>): String = buildString {
+    val next = tags.iterator()
+    for (c in decoded) {
+        when (c) {
+            TAG -> append(next.next())
+            '\n' -> append("<br>")
+            else -> append(escape(c.toString()))
+        }
+    }
+}
+
+private fun styled(element: Element): Boolean {
+    val allowed = STYLES[element.tagName] ?: return false
+    return element.attributes.asList().all { it.nodeName in allowed }
+}
+
+private fun openTag(element: Element): String =
+    element.attributes.asList().joinToString("", "<${element.tagName}", ">") {
+        " ${it.nodeName}=\"${escape(it.nodeValue)}\""
+    }
+
+private fun escape(value: String) =
+    value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
+
+/** Marks where a styling tag sat, through decoding, in a character no string holds. */
+private const val TAG = '\uE000'
+
+private val STYLES =
+    mapOf(
+        "b" to emptySet(),
+        "i" to emptySet(),
+        "u" to emptySet(),
+        "small" to emptySet(),
+        "big" to emptySet(),
+        "sup" to emptySet(),
+        "sub" to emptySet(),
+        "font" to setOf("color"),
+    )
 
 private fun placeholder(node: Element, sequence: Int, file: File): Placeholder {
     val id = node.getAttribute("id")

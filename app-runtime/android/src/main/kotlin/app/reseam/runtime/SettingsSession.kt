@@ -7,15 +7,13 @@ import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.app.Activity
 import android.app.Dialog
-import android.os.Build
 import android.os.LocaleList
 import android.view.View
-import android.view.WindowInsetsController
 import android.widget.FrameLayout
 import android.widget.ScrollView
 import app.reseam.runtime.ui.Motion
 import app.reseam.runtime.ui.Ui
-import app.reseam.runtime.ui.followRuntimeText
+import app.reseam.runtime.ui.paintSurface
 
 internal class SettingsSession(
     val bundle: ReseamBundle,
@@ -82,34 +80,10 @@ internal class SettingsSession(
         }
     }
 
-    @Suppress("DEPRECATION")
     fun theme() {
         ui = bundle.ui(dialog.context)
         locales = Reseam.locales
-        val window = checkNotNull(dialog.window) { "A dialog always owns a window" }
-        window.followRuntimeText()
-        val surface = ui.colors.surface
-        window.decorView.setBackgroundColor(surface)
-        window.statusBarColor = surface
-        window.navigationBarColor = surface
-        val light = !ui.theme.dark
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val appearance =
-                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
-                    WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-            checkNotNull(window.insetsController) { "The dialog window supports system bars" }
-                .setSystemBarsAppearance(
-                    if (light) appearance else 0,
-                    appearance,
-                )
-        } else {
-            val decor = window.decorView
-            val flags =
-                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
-            val visibility = decor.systemUiVisibility
-            decor.systemUiVisibility =
-                if (light) visibility or flags else visibility and flags.inv()
-        }
+        checkNotNull(dialog.window) { "A dialog always owns a window" }.paintSurface(ui)
         display(Direction.NONE)
     }
 

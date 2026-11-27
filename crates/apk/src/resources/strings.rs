@@ -3,7 +3,9 @@
 
 use std::borrow::Cow;
 
+use super::config::qualifiers;
 use super::id::ResourceAddress;
+use super::lookup::reference_text;
 use super::{EntryValue, ResourceTable};
 use crate::error::{Result, invalid};
 use crate::res_value::ResValue;
@@ -13,6 +15,12 @@ use crate::res_value::ResValue;
 pub struct ResourceRef {
     pub res_id: u32,
     pub key_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResourceFile {
+    pub qualifiers: String,
+    pub path: String,
 }
 
 impl ResourceTable {
@@ -98,17 +106,16 @@ impl ResourceTable {
         Ok(())
     }
 
-    /// The path each configuration of `type_name/entry_name` points at, the
-    /// default configuration first. A file resource is a string entry holding
-    /// the path aapt packed the file to.
-    pub fn file_paths(&self, type_name: &str, entry_name: &str) -> Result<Vec<String>> {
+    /// Every file of `type_name/entry_name`, the default configuration first. A file resource is
+    /// a string entry holding the path aapt packed the file to.
+    pub fn files(&self, type_name: &str, entry_name: &str) -> Result<Vec<ResourceFile>> {
         let location = self.find_entry(type_name, entry_name)?.ok_or_else(|| {
             invalid(
                 "resource entry",
                 format!("the table has no {type_name}/{entry_name}"),
             )
         })?;
-        let mut paths: Vec<(bool, String)> = Vec::new();
+        let mut files = Vec::new();
         for item in self.values(location.res_id()) {
             let (res_type, value) = item?;
             let path = value
@@ -125,16 +132,19 @@ impl ResourceTable {
                         ),
                     )
                 })?;
-            paths.push((res_type.is_default_config(), path.into_owned()));
+            files.push(ResourceFile {
+                qualifiers: qualifiers(res_type.config()),
+                path: path.into_owned(),
+            });
         }
-        if paths.is_empty() {
+        if files.is_empty() {
             return Err(invalid(
                 "resource entry",
                 format!("{type_name}/{entry_name} is not file-backed: it is a complex entry"),
             ));
         }
-        paths.sort_by_key(|(is_default, _)| !is_default);
-        Ok(paths.into_iter().map(|(_, path)| path).collect())
+        files.sort_by_key(|file| !file.qualifiers.is_empty());
+        Ok(files)
     }
 
     /// A value as the text that parses back to it, or `None` for a kind that
@@ -146,6 +156,19 @@ impl ResourceTable {
         self.get_string(index)?
             .map(|text| Some(text.into_owned()))
             .ok_or_else(|| invalid("resource string", format!("invalid index {index}")))
+    }
+
+    pub(super) fn item_text(&self, value: ResValue) -> Result<String> {
+        match value.kind {
+            ResValue::REFERENCE if value.data != 0 => reference_text(Some(self), '@', value.data),
+            ResValue::ATTRIBUTE => reference_text(Some(self), '?', value.data),
+            _ => self.value_text(value)?.ok_or_else(|| {
+                invalid(
+                    "resource value",
+                    format!("a value of kind {:#04x} has no text form", value.kind),
+                )
+            }),
+        }
     }
 
     fn pool_index(&self, res_id: u32) -> Result<Option<u32>> {

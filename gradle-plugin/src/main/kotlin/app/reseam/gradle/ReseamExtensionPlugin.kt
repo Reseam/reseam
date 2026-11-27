@@ -7,11 +7,14 @@ import org.gradle.api.JavaVersion
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.attributes.LibraryElements
+import org.gradle.api.attributes.Usage
 import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.tasks.SourceSetContainer
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 
 internal const val NATIVE_MODULE_TYPES = "nativeModuleTypes"
+
+private val JAVA_USAGES = setOf(Usage.JAVA_API, Usage.JAVA_RUNTIME)
 
 internal class ReseamExtensionPlugin : Plugin<Project> {
     override fun apply(project: Project) {
@@ -35,20 +38,31 @@ internal class ReseamExtensionPlugin : Plugin<Project> {
             from.attribute(ARTIFACT_TYPE, "aar")
             to.attribute(ARTIFACT_TYPE, "jar")
         }
-        listOf("compileClasspath", "runtimeClasspath").forEach {
-            project.configurations.getByName(it).attributes {
-                attribute(ARTIFACT_TYPE, "jar")
-                attribute(BUILD_TYPE, "release")
-            }
+        // Every classpath, including ones other plugins add (protobuf's compileProtoPath), reads
+        // Android libraries through the transform.
+        project.afterEvaluate {
+            configurations
+                .filter {
+                    it.isCanBeResolved &&
+                        it.attributes.getAttribute(Usage.USAGE_ATTRIBUTE)?.name in JAVA_USAGES
+                }
+                .forEach {
+                    it.attributes {
+                        attribute(ARTIFACT_TYPE, "jar")
+                        attribute(BUILD_TYPE, "release")
+                    }
+                }
         }
         val runtime = project.configurations.getByName("runtimeClasspath")
         val sourceSets = project.extensions.getByType(SourceSetContainer::class.java)
         val stubs = sourceSets.create("stubs")
         val main = sourceSets.getByName("main")
-        main.compileClasspath += stubs.output + project.resolve(ModuleVariant.SETTINGS)
+        val settings = project.resolve(ModuleVariant.SETTINGS)
+        main.compileClasspath += stubs.output + settings
         val platform = project.files(project.provider { AndroidSdk.platformJar() })
         project.dependencies.add("compileOnly", platform)
         project.dependencies.add("stubsCompileOnly", platform)
+        project.configureExtensionTests(sourceSets.getByName("test"), stubs.output, settings)
 
         project.reseamStrings()?.let { strings ->
             project.registerStringTables(strings)
@@ -57,18 +71,52 @@ internal class ReseamExtensionPlugin : Plugin<Project> {
                 .kotlin
                 .srcDir(project.registerDeviceStrings(strings).flatMap { it.device })
         }
-        val relocate =
-            project.tasks.register("relocateKotlin", RelocateKotlinTask::class.java) {
-                classes.from(main.output.classesDirs, runtime)
+        fun relocate(name: String, classes: Any, into: String) =
+            project.tasks.register(name, RelocateKotlinTask::class.java) {
+                this.classes.from(classes)
                 appClasses.from(stubs.output.classesDirs)
                 kotlinPackage.set(project.kotlinPackage())
-                output.set(project.layout.buildDirectory.dir("reseam/relocated"))
+                output.set(project.layout.buildDirectory.dir(into))
+            }
+        val relocate = relocate("relocateKotlin", main.output.classesDirs, "reseam/relocated")
+        val relocateDependencies =
+            relocate("relocateDependencies", runtime, "reseam/dependencies-relocated")
+        val aars =
+            runtime.incoming
+                .artifactView {
+                    // Plain jars have no aar variant; real resolution failures still fail the
+                    // runtime classpath.
+                    lenient(true)
+                    attributes.attribute(ARTIFACT_TYPE, "aar")
+                }
+                .files
+        val dependencies =
+            project.tasks.register("shrinkDependencies", ShrinkTask::class.java) {
+                description = "Shrinks the extension's dependencies to what it uses."
+                roots.from(relocate.flatMap { it.output })
+                traced.from(relocateDependencies.flatMap { it.output })
+                ruleSources.from(runtime, aars)
+                libraries.from(
+                    platform,
+                    stubs.output.classesDirs,
+                    project.relocatedKotlinStdlib(),
+                )
+                output.set(project.layout.buildDirectory.dir("reseam/dependencies"))
             }
         // Outside a bundle the extension ships its own stdlib, and callers relocate theirs
         // elsewhere.
         val standalone =
             if (project.inBundle()) null
-            else project.registerKotlinStdlib(relocate.flatMap { it.output }, platform).shrunk
+            else
+                project
+                    .registerKotlinStdlib(
+                        project.files(
+                            relocate.flatMap { it.output },
+                            dependencies.flatMap { it.output },
+                        ),
+                        platform,
+                    )
+                    .shrunk
         val apiCheck =
             project.tasks.register("checkKotlinFreeApi", KotlinFreeApiTask::class.java) {
                 classes.from(main.output.classesDirs)
@@ -77,17 +125,8 @@ internal class ReseamExtensionPlugin : Plugin<Project> {
             project.tasks.register("dex", DexTask::class.java) {
                 group = "build"
                 description = "Compiles the extension and its dependencies to DEX."
-                sources.from(relocate.flatMap { it.output })
-                shippedAars.from(
-                    runtime.incoming
-                        .artifactView {
-                            // Plain jars have no aar variant; real resolution failures still fail
-                            // the runtime classpath in sources.
-                            lenient(true)
-                            attributes.attribute(ARTIFACT_TYPE, "aar")
-                        }
-                        .files
-                )
+                sources.from(relocate.flatMap { it.output }, dependencies.flatMap { it.output })
+                shippedAars.from(aars)
                 libraries.from(platform)
                 output.set(project.layout.buildDirectory.dir("reseam/dex"))
                 if (standalone == null) {

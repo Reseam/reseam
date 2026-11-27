@@ -73,6 +73,8 @@ class PatchRuntime internal constructor(internal val run: PatchRun) {
         }
         val recording = run.recordsResolutions
         if (recording) TargetRegistry.reached(target)
+        log.debug("${target.label}: resolving")
+        val started = System.nanoTime()
         val resolution =
             try {
                 target.resolve(this)
@@ -90,7 +92,9 @@ class PatchRuntime internal constructor(internal val run: PatchRun) {
             }
         resolutions[target] = resolution
         if (recording && resolution.searched) report(target, target.inspection(resolution))
-        log.debug("${target.label}: ${resolution.report.winner}")
+        log.debug(
+            "${target.label}: ${resolution.report.winner} in ${(System.nanoTime() - started) / 1000} us"
+        )
         return resolution
     }
 

@@ -100,7 +100,7 @@ fn literal(text: &str, mode: ValueMode) -> Option<ResValue> {
         "wrap_content" if inferred => Some(ResValue::int(-2)),
         "@null" => Some(ResValue::reference(0)),
         "@empty" if inferred => Some(ResValue::reference(0)),
-        "@empty" => Some(ResValue::new(0, 1)),
+        "@empty" => Some(ResValue::new(ResValue::NULL, ResValue::NULL_EMPTY)),
         _ => None,
     }
     .filter(accepts)

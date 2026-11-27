@@ -198,6 +198,7 @@ class InstructionBuilder {
             )
         )
 
+    /** [src] is the second register of `add-int/lit16` and the like. A constant has none, so 0. */
     fun literal(opcode: Opcode, dest: Int, value: Long, src: Int = 0) =
         add(
             Instruction.RegLiteral(
@@ -205,6 +206,7 @@ class InstructionBuilder {
             )
         )
 
+    /** [b] is the second register of `instance-of` and `new-array`, 0 for the other formats. */
     fun type(opcode: Opcode, a: Int, b: Int, descriptor: String) =
         add(
             Instruction.RegType(
@@ -212,6 +214,7 @@ class InstructionBuilder {
             )
         )
 
+    /** [b] is the object of an instance field access, 0 for a static one. */
     fun field(opcode: Opcode, a: Int, b: Int, field: FieldRef) =
         add(
             Instruction.RegField(

@@ -36,4 +36,13 @@
     <string name="import_unreadable">このファイルは設定のエクスポートではありません。</string>
     <string name="import_nothing_applies">このファイルには、このアプリの設定が含まれていません。</string>
     <string name="ok">OK</string>
+    <string name="color_hue">色相</string>
+    <string name="color_saturation">彩度</string>
+    <string name="color_brightness">明るさ</string>
+    <string name="color_opacity">不透明度</string>
+    <string name="color_code">カラーコード</string>
+    <string name="settings_as_text">テキストとしての設定</string>
+    <string name="settings_as_text_summary">設定をテキストとしてコピーするか、設定を貼り付けてインポートします。</string>
+    <string name="copy">コピー</string>
+    <string name="value_out_of_range"><xliff:g id="min">%1$s</xliff:g> から <xliff:g id="max">%2$s</xliff:g> までの値を入力してください</string>
 </resources>

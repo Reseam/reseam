@@ -1,19 +1,18 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package app.reseam.runtime
+package app.reseam.runtime.ui
 
 import android.graphics.Rect
 import android.view.MotionEvent
 import android.view.View
 import android.widget.LinearLayout
-import app.reseam.runtime.ui.SearchBar
-import app.reseam.runtime.ui.Ui
 
-/** A settings page that opens without focusing its search bar and dismisses it on outside taps. */
-internal class SettingsPageLayout(ui: Ui) : LinearLayout(ui.context) {
+internal class PageLayout(ui: Ui) : LinearLayout(ui.context) {
     init {
         orientation = VERTICAL
+        // Hosts targeting API 35 draw edge to edge; keep the bar below the status bar.
+        fitsSystemWindows = true
         // Gives initial focus somewhere to go other than the search editor.
         isFocusableInTouchMode = true
     }

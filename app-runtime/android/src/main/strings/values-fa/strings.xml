@@ -37,4 +37,13 @@
     <string name="import_unreadable">این فایل خروجی تنظیمات نیست.</string>
     <string name="import_nothing_applies">هیچ‌یک از تنظیمات این فایل مربوط به این برنامه نیست.</string>
     <string name="ok">تأیید</string>
+    <string name="color_hue">فام</string>
+    <string name="color_saturation">اشباع</string>
+    <string name="color_brightness">روشنایی</string>
+    <string name="color_opacity">کدری</string>
+    <string name="color_code">کد رنگ</string>
+    <string name="settings_as_text">تنظیمات به صورت متن</string>
+    <string name="settings_as_text_summary">تنظیماتتان را به صورت متن کپی کنید یا تنظیماتی را برای وارد کردن جای‌گذاری کنید.</string>
+    <string name="copy">کپی</string>
+    <string name="value_out_of_range">مقداری از <xliff:g id="min">%1$s</xliff:g> تا <xliff:g id="max">%2$s</xliff:g> وارد کنید</string>
 </resources>

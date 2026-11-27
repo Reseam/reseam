@@ -38,4 +38,13 @@
     <string name="import_unreadable">هذا الملف ليس ملف إعدادات مُصدَّرًا.</string>
     <string name="import_nothing_applies">لا ينتمي أي من الإعدادات في هذا الملف إلى هذا التطبيق.</string>
     <string name="ok">حسنًا</string>
+    <string name="color_hue">درجة اللون</string>
+    <string name="color_saturation">التشبع</string>
+    <string name="color_brightness">السطوع</string>
+    <string name="color_opacity">العتامة</string>
+    <string name="color_code">رمز اللون</string>
+    <string name="settings_as_text">الإعدادات كنص</string>
+    <string name="settings_as_text_summary">انسخ إعداداتك كنص، أو الصق إعدادات لاستيرادها.</string>
+    <string name="copy">نسخ</string>
+    <string name="value_out_of_range">أدخل قيمة من <xliff:g id="min">%1$s</xliff:g> إلى <xliff:g id="max">%2$s</xliff:g></string>
 </resources>

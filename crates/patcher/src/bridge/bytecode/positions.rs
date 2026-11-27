@@ -66,6 +66,14 @@ pub fn index_of_first_string_with_prefix(m: u32, prefix: String) -> Option<u32> 
 }
 
 #[export]
+pub fn index_of_first_string_containing(m: u32, part: String) -> Option<u32> {
+    position(m, 0, |dex, insn| {
+        insn.string_ref()
+            .is_some_and(|idx| dex.strings().get(idx).contains(&part))
+    })
+}
+
+#[export]
 pub fn find_all_indices(m: u32, op: u16) -> Vec<u32> {
     with_code(m, |_, code| {
         Some(

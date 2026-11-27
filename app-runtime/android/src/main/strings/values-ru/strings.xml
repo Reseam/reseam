@@ -39,4 +39,13 @@
     <string name="import_unreadable">Этот файл не является экспортом настроек.</string>
     <string name="import_nothing_applies">Ни одна настройка в этом файле не относится к этому приложению.</string>
     <string name="ok">ОК</string>
+    <string name="color_hue">Оттенок</string>
+    <string name="color_saturation">Насыщенность</string>
+    <string name="color_brightness">Яркость</string>
+    <string name="color_opacity">Непрозрачность</string>
+    <string name="color_code">Код цвета</string>
+    <string name="settings_as_text">Настройки в виде текста</string>
+    <string name="settings_as_text_summary">Скопируйте настройки в виде текста или вставьте настройки, чтобы импортировать их.</string>
+    <string name="copy">Копировать</string>
+    <string name="value_out_of_range">Введите значение от <xliff:g id="min">%1$s</xliff:g> до <xliff:g id="max">%2$s</xliff:g></string>
 </resources>

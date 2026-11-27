@@ -19,14 +19,14 @@ internal sealed interface DocumentAction : Serializable {
 @Suppress("DEPRECATION")
 class DocumentRequest : Fragment() {
     // Not kept across recreation: a rebuilt request completes its action without the callback.
-    internal var onCompleted: Runnable? = null
+    internal var onCompleted: ((Uri) -> Unit)? = null
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         fragmentManager!!.beginTransaction().remove(this).commit()
         val uri = data?.data
         if (requestCode != REQUEST_CODE || resultCode != Activity.RESULT_OK || uri == null) return
-        (arguments!!.getSerializable(ACTION) as DocumentAction).complete(activity!!, uri)
-        onCompleted?.run()
+        (arguments!!.getSerializable(ACTION) as DocumentAction?)?.complete(activity!!, uri)
+        onCompleted?.invoke(uri)
     }
 }
 
@@ -36,14 +36,15 @@ private const val REQUEST_CODE = 0x57C4
 
 /**
  * Starts [intent] over [activity]; the picked document completes [action], then [onCompleted] runs.
- * Neither runs when the user cancels.
+ * Neither runs when the user cancels. Without an action, a recreated activity drops the document,
+ * since [onCompleted] does not survive recreation.
  */
 @Suppress("DEPRECATION")
 internal fun requestDocument(
     activity: Activity,
     intent: Intent,
-    action: DocumentAction,
-    onCompleted: Runnable? = null,
+    action: DocumentAction?,
+    onCompleted: ((Uri) -> Unit)? = null,
 ) {
     val request =
         DocumentRequest().apply {

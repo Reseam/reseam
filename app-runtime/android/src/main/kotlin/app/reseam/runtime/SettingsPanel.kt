@@ -12,6 +12,7 @@ import android.util.Log
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import app.reseam.runtime.ui.Theme
+import app.reseam.runtime.ui.fullScreenDialog
 import java.lang.ref.WeakReference
 
 /**
@@ -51,7 +52,7 @@ internal class SettingsPanel : Application.ActivityLifecycleCallbacks, Component
             return
         }
         val before = opened ?: bundle.restartState()
-        val dialog = settingsDialog(activity, ::back, ::closed)
+        val dialog = fullScreenDialog(activity, ::back, ::closed)
         val frame = FrameLayout(dialog.context)
         dialog.setContentView(frame)
         checkNotNull(dialog.window) { "A dialog always owns a window" }

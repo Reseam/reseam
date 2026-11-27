@@ -4,7 +4,11 @@
 //! A `ResTable_config` read back into the qualifier string aapt2 writes for
 //! it, such as `fr-rCA`, `b+sr+Latn`, `night-v8` or `sw600dp-land-xhdpi`.
 
-use super::{DENSITIES, DENSITY, SDK_VERSION, UI_MODE, UI_MODE_NIGHT_NO, UI_MODE_NIGHT_YES};
+use super::locale::{LANGUAGE_BASE, REGION_BASE, unpack};
+use super::{
+    DENSITIES, DENSITY, LANGUAGE, NIGHT_MASK, NIGHT_MODES, REGION, SCREEN_LAYOUT, SCREEN_SIZE_MASK,
+    SCREEN_SIZES, SDK_VERSION, UI_MODE,
+};
 
 /// The qualifiers `config` stands for, in aapt2's order and dash-separated;
 /// the default configuration is the empty string. Fields past the end of a
@@ -25,18 +29,18 @@ pub fn qualifiers(config: &[u8]) -> String {
         &[(1, "neuter"), (2, "feminine"), (3, "masculine")],
     ));
     push(named(
-        config.u8(28) & 0xC0,
+        config.u8(SCREEN_LAYOUT) & 0xC0,
         &[(0x40, "ldltr"), (0x80, "ldrtl")],
     ));
     push(dp("sw", config.u16(30)));
     push(dp("w", config.u16(32)));
     push(dp("h", config.u16(34)));
     push(named(
-        config.u8(28) & 0x0F,
-        &[(1, "small"), (2, "normal"), (3, "large"), (4, "xlarge")],
+        config.u8(SCREEN_LAYOUT) & SCREEN_SIZE_MASK,
+        &SCREEN_SIZES,
     ));
     push(named(
-        config.u8(28) & 0x30,
+        config.u8(SCREEN_LAYOUT) & 0x30,
         &[(0x10, "notlong"), (0x20, "long")],
     ));
     push(named(
@@ -66,10 +70,7 @@ pub fn qualifiers(config: &[u8]) -> String {
             (7, "vrheadset"),
         ],
     ));
-    push(named(
-        config.u8(UI_MODE) & (UI_MODE_NIGHT_NO | UI_MODE_NIGHT_YES),
-        &[(UI_MODE_NIGHT_NO, "notnight"), (UI_MODE_NIGHT_YES, "night")],
-    ));
+    push(named(config.u8(UI_MODE) & NIGHT_MASK, &NIGHT_MODES));
     push(match config.u16(DENSITY) {
         0 => None,
         dpi => Some(
@@ -139,8 +140,8 @@ impl Config<'_> {
     /// form `b+lang+Script+REGION+variant` when a script, variant or numbering
     /// system needs it.
     fn locale(&self) -> Option<String> {
-        let language = unpack(self.u8(8), self.u8(9), b'a');
-        let region = unpack(self.u8(10), self.u8(11), b'0');
+        let language = unpack(self.u8(LANGUAGE), self.u8(LANGUAGE + 1), LANGUAGE_BASE);
+        let region = unpack(self.u8(REGION), self.u8(REGION + 1), REGION_BASE);
         // A script the runtime derived from the language is not a qualifier.
         let script = if self.u8(52) == 0 {
             self.text(36, 4)
@@ -174,26 +175,6 @@ impl Config<'_> {
     }
 }
 
-/// A language or region code from its two bytes: two letters as they are, or
-/// three letters packed into five bits each when the high bit is set.
-fn unpack(first: u8, second: u8, base: u8) -> String {
-    if first & 0x80 == 0 {
-        return [first, second]
-            .into_iter()
-            .take_while(|&byte| byte != 0)
-            .map(char::from)
-            .collect();
-    }
-    [
-        second & 0x1f,
-        ((second & 0xe0) >> 5) | ((first & 0x03) << 3),
-        (first & 0x7c) >> 2,
-    ]
-    .into_iter()
-    .map(|letter| char::from(base + letter))
-    .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::config_for_qualifiers;
@@ -201,9 +182,40 @@ mod tests {
 
     #[test]
     fn written_configs_read_back_as_their_qualifiers() {
-        for written in ["", "xxhdpi", "night", "notnight-v26", "nodpi", "560dpi-v31"] {
+        for written in [
+            "",
+            "xxhdpi",
+            "night",
+            "notnight-v26",
+            "nodpi",
+            "560dpi-v31",
+            "ar",
+            "pt-rBR-v21",
+            "fil",
+            "es-r419",
+            "xlarge-hdpi",
+            "zh-rTW-large",
+        ] {
             let config = config_for_qualifiers(written, 64).expect("supported qualifiers");
             assert_eq!(qualifiers(&config), written);
+        }
+    }
+
+    #[test]
+    fn qualifiers_out_of_aapt_order_or_unsupported_are_refused() {
+        for refused in [
+            "car",
+            "night-ar",
+            "rBR",
+            "hdpi-night",
+            "v26-xxhdpi",
+            "large-pt",
+            "land",
+        ] {
+            assert!(
+                config_for_qualifiers(refused, 64).is_err(),
+                "{refused} should be refused"
+            );
         }
     }
 }

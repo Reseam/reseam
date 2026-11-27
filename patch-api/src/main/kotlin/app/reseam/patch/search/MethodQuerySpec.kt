@@ -16,6 +16,7 @@ import app.reseam.patch.dex.Opcode
 import app.reseam.patch.dex.descriptor
 import app.reseam.patch.dex.parameterTypes
 import app.reseam.patch.dex.returnType
+import app.reseam.patch.native.methodAppPosition
 import app.reseam.patch.types.FieldPattern
 import app.reseam.patch.types.MethodPattern
 import app.reseam.patch.types.MethodRef
@@ -31,6 +32,7 @@ internal class MethodQuerySpec : QuerySpec<Method, MethodRankScope>("method"), M
 
     val stringValues = mutableListOf<String>()
     val stringPrefixes = mutableListOf<String>()
+    val stringParts = mutableListOf<String>()
     val literalValues = mutableListOf<Long>()
     var returnType: String? = null
         private set
@@ -72,6 +74,11 @@ internal class MethodQuerySpec : QuerySpec<Method, MethodRankScope>("method"), M
     override fun stringsStartingWith(prefix: String) {
         require(prefix.isNotEmpty()) { "A string prefix must not be empty" }
         stringPrefixes += prefix
+    }
+
+    override fun stringsContaining(vararg parts: String) {
+        require(parts.none(String::isEmpty)) { "A string part must not be empty" }
+        stringParts += parts
     }
 
     override fun literals(vararg values: Long) {
@@ -164,6 +171,8 @@ internal class MethodQuerySpec : QuerySpec<Method, MethodRankScope>("method"), M
     override fun rankScope(index: SearchIndex, value: Method) = MethodRankScopeImpl(index, value)
 
     override fun describe(value: Method) = value.descriptor
+
+    override fun appPosition(value: Method) = checkNotNull(methodAppPosition(value.handle))
 
     override fun mismatch(value: Method, runtime: PatchRuntime): String? = rejection(value, runtime)
 

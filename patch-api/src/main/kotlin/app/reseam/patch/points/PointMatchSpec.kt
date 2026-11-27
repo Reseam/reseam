@@ -39,23 +39,26 @@ internal fun findSequence(
     start: Int,
 ): List<Int>? {
     if (steps.isEmpty()) return null
+    val dead = HashSet<Long>()
+    fun rest(previous: Int, step: Int): List<Int>? {
+        if (step == steps.size) return emptyList()
+        val key = previous.toLong() shl 32 or step.toLong()
+        if (key in dead) return null
+        val from = previous + 1
+        for (hit in from until minOf(insns.size, from + steps[step].within)) {
+            if (!steps[step].matches(insns, hit)) continue
+            rest(hit, step + 1)?.let {
+                return listOf(hit) + it
+            }
+        }
+        dead += key
+        return null
+    }
     for (first in start until insns.size) {
         if (!steps[0].matches(insns, first)) continue
-        val matched = mutableListOf(first)
-        var ok = true
-        for (step in steps.drop(1)) {
-            val from = matched.last() + 1
-            val hit =
-                (from until minOf(insns.size, from + step.within)).firstOrNull {
-                    step.matches(insns, it)
-                }
-            if (hit == null) {
-                ok = false
-                break
-            }
-            matched += hit
+        rest(first, 1)?.let {
+            return listOf(first) + it
         }
-        if (ok) return matched
     }
     return null
 }

@@ -50,15 +50,16 @@ internal class SearchResults(
     }
 
     private fun label(section: SettingsSchema.Section): View {
-        val path = bundle.schema.path(section.page, bundle.name)
-        val title = section.title.resolve(bundle.name)
-        return ui.sectionLabel(if (path.isEmpty()) title else "$path › $title")
+        val path = bundle.schema.path(section.page, bundle.name).ifEmpty { null }
+        val title = section.title?.resolve(bundle.name)
+        return ui.sectionLabel(listOfNotNull(path, title).joinToString(" › "))
     }
 
-    private fun matches(setting: SettingsSchema.Setting, words: List<String>): Boolean {
-        val title = setting.title.resolve(bundle.name)
-        val summary = setting.summary?.resolve(bundle.name)
-        val text = (if (summary == null) title else "$title\n$summary").lowercase(Locale.ROOT)
+    private fun matches(setting: SchemaSetting, words: List<String>): Boolean {
+        val text =
+            listOfNotNull(setting.title, setting.summary)
+                .joinToString("\n") { it.resolve(bundle.name) }
+                .lowercase(Locale.ROOT)
         return words.all { it in text }
     }
 }

@@ -18,6 +18,7 @@ class StringResourcesTest {
             <string name="hide_ads">Hide ads</string>
             <string name="proxy" translatable="false">eu.example.dev</string>
             <string name="saved">Saved <xliff:g id="title">%1${'$'}s</xliff:g></string>
+            <string name="bold"><b>Bold</b></string>
         </resources>
         """
 
@@ -29,6 +30,8 @@ class StringResourcesTest {
                 """<string name="proxy">de.example.dev</string>""" to "translatable=\"false\"",
                 """<string name="saved">Gespeichert</string>""" to "other placeholders",
                 """<string name="missing">Fehlt</string>""" to "unknown string",
+                """<string name="bold">Fett</string>""" to null,
+                """<string name="hide_ads"><b>Werbung</b> ausblenden</string>""" to "form",
             )
         for ((translation, error) in cases) {
             val root = tables(translation)
@@ -40,6 +43,44 @@ class StringResourcesTest {
             } else {
                 val failure = assertFailsWith<GradleException> { readStringFiles(root) }
                 assertTrue(error in failure.message.orEmpty(), "$translation: ${failure.message}")
+            }
+        }
+    }
+
+    @Test
+    fun `styling markup becomes HTML and other markup is refused`() {
+        val cases =
+            mapOf(
+                "No markup" to PlainString("No markup", emptyList()),
+                """<b>Bold</b> &amp; <i>two\nlines</i>""" to
+                    StyledString("<b>Bold</b> &amp; <i>two<br>lines</i>", emptyList()),
+                """<b>Saved <xliff:g id="title">%1${'$'}s</xliff:g></b>""" to
+                    StyledString(
+                        "<b>Saved %1${'$'}s</b>",
+                        listOf(Placeholder(1, "title", PlaceholderType.TEXT)),
+                    ),
+                """<font color="#4CAF50">Included</font>""" to
+                    StyledString("""<font color="#4CAF50">Included</font>""", emptyList()),
+                """<a href="https://example.com">Link</a>""" to null,
+                """<font face="serif">Serif</font>""" to null,
+                """<b style="x">Bold</b>""" to null,
+            )
+        for ((content, expected) in cases) {
+            val root =
+                createTempDirectory().toFile().apply {
+                    resolve("values")
+                        .apply { mkdirs() }
+                        .resolve("strings.xml")
+                        .writeText(
+                            """<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">""" +
+                                """<string name="text">$content</string></resources>"""
+                        )
+                }
+            if (expected == null) {
+                val failure = assertFailsWith<GradleException> { readStringFiles(root) }
+                assertTrue("unsupported markup" in failure.message.orEmpty(), content)
+            } else {
+                assertEquals(expected, readStringFiles(root).single().strings["text"], content)
             }
         }
     }

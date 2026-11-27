@@ -58,6 +58,7 @@ The receiver of `method { }` and `methods { }`. Every constraint must hold.
 | `name(value: String)` | are called exactly this. Only useful for names obfuscation keeps, such as `onCreate`. |
 | `strings(vararg values: String)` | load each of these exact strings. |
 | `stringsStartingWith(prefix: String)` | load a string that starts with `prefix`. |
+| `stringsContaining(vararg parts: String)` | load, for each part, a string that contains it. |
 | `literals(vararg values: Long)` | use each of these number constants. |
 | `returns(type: String)` | return this type. |
 | `params(vararg types: String)` | take exactly these parameters, in order. `params()` means none. |
@@ -77,6 +78,7 @@ The receiver of `method { }` and `methods { }`. Every constraint must hold.
 | `custom(predicate: Method.() -> Boolean)` | pass your own check. |
 | `rankBy(label: String, block: MethodRankScope.() -> Int)` | Not a constraint: scores each match. The highest score wins. A tie still fails. |
 | `first()` | Not a constraint: when several methods match, takes the best ranked one instead of failing. |
+| `firstInAppOrder()` | Not a constraint: like `first()`, but ties go to the method the app's class loader meets first. It compares the DEX file, then the class, then the method's place in its class, direct methods first. |
 | `includeExtensions()` | Not a constraint: also searches the classes your bundle's extensions add. By default, queries only search the app's own code. |
 
 How the search runs: the most selective constraint finds the first candidates, through indexes of strings, numbers, calls, and field accesses. The rest filter them. `custom` and `opcodeSequence` only filter, so pair them with something selective, or the query checks every method in the app.
@@ -135,6 +137,7 @@ The receiver of `klass(debugName) { }`.
 | `custom(predicate: DexClass.() -> Boolean)` | pass your own check. Pair it with a selective constraint. |
 | `rankBy(label: String, block: ClassRankScope.() -> Int)` | Scores each match; the highest wins. |
 | `first()` | Takes the best ranked match instead of failing on several. |
+| `firstInAppOrder()` | Like `first()`, but ties go to the class in the earliest DEX file, then the earliest in it. |
 | `includeExtensions()` | Also searches the classes your bundle's extensions add. |
 
 ### `ClassRankScope`
@@ -218,14 +221,32 @@ One instruction. A point keeps naming the same instruction when code is added ar
 | `instruction: Instruction` | The instruction. |
 | `previous(block: PointMatch.() -> Unit): PointTarget` | The nearest earlier instruction matching the block. It takes a single step, not a sequence. |
 | `next(block: PointMatch.() -> Unit): PointTarget` | The nearest later instruction matching the block. On a call, a leading `resultOf` must match the call's own result. |
-| `captureAs(name: String, type: String? = null): PointTarget` | Saves the value this instruction writes, for `capture(name)` in code added at a later point. An array write writes no register; save its value with `captureArgumentAs(name, 2)`. |
-| `captureArgumentAs(name: String, argument: Int, type: String? = null): PointTarget` | Saves argument `argument` of this call or array access. Argument 0 of an instance call is the object it is called on. A `long` or `double` argument counts once. |
-| `writer(argument: Int, debugName: String? = null): PointTarget` | The instruction that produced argument `argument` of this call or array access, following register copies back to the source. Fails when the value is an incoming parameter or comes from several places. |
+| `captureAs(name: String, type: String? = null): PointTarget` | Saves the value in this instruction's first register, for `capture(name)` in code added at a later point: the value it writes, or the value a store, a branch or a return takes there. Its type comes from the instruction, or from what wrote the register. |
+| `captureArgumentAs(name: String, argument: Int, type: String? = null): PointTarget` | Saves argument `argument` of this instruction, counted as the table below shows. A `long` or `double` argument counts once. |
+| `writer(argument: Int, debugName: String? = null): PointTarget` | The instruction that produced argument `argument` of this instruction, counted as the table below shows, following register copies back to the source. Fails when the value is an incoming parameter or comes from several places. |
+| `jumpSource(debugName: String? = null): PointTarget` | The branch or switch that jumps to this instruction. An instruction that only falls into it doesn't count. Fails when none or several jump here. |
 | `callee(debugName: String? = null): MethodTarget` | The method this call invokes, as a target. It resolves to the nearest declaration up the class hierarchy. |
 | `field(debugName: String? = null): FieldTarget` | The field this instruction reads or writes, as a target. |
 | `redirectTo(target: ExtMethod)` | Replaces this call or array access with a call to a static extension method. For an instance call, the object comes first. An array read calls `target(array, index)` and the app takes its result as the element; a write calls `target(array, index, value)`. Arguments, the result, and access are checked. |
 
-An array access counts as a call for `argument`, `captureArgumentAs`, `writer`, and `redirectTo`: a read as `get(array, index)` and a write as `set(array, index, value)`, so argument 0 is the array, 1 the index, and 2 the value written.
+`argument`, `captureArgumentAs` and `writer` count the values an instruction takes as a call counts its arguments:
+
+| Instruction | Counts as |
+|---|---|
+| A call | Its arguments, the object first for an instance call. |
+| An array read, `aget v, array, index` | `get(array, index)` |
+| An array write, `aput value, array, index` | `set(array, index, value)` |
+| An instance field read, `iget v, object` | `get(object)` |
+| An instance field write, `iput value, object` | `set(object, value)` |
+| A static field write, `sput value` | `set(value)` |
+| A branch, `if-eqz v` or `if-eq a, b` | `test(v)` or `test(a, b)` |
+| A return, `return v` | `return(v)` |
+| Arithmetic and conversions, `add-int d, a, b`, `or-int/2addr a, b`, `and-int/lit16 d, a, 0x1000`, `int-to-long d, a` | `op(a, b)`, `op(a, b)`, `op(a)`, `op(a)` |
+| A numeric comparison, `cmpl-float d, a, b` | `op(a, b)` |
+
+So the value an `iput` stores is argument 1, and the value an `aput` stores is argument 2. Assigning argument 0 of a branch in `before { }` changes which way the branch goes. Assigning argument 0 of a return changes what that one return gives back.
+
+An array access also counts as a call for `redirectTo`.
 
 Code blocks attach here too: `before`, `after`, and `skipWhen`. See [API: Code blocks](reference_code.md#hooks). Replacing the method's body ends every point in it, and using one afterwards fails.
 
@@ -258,7 +279,7 @@ The receiver of `point { }`, `points { }`, `previous { }`, and `next { }`. Every
 | `field(block: FieldRefMatch.() -> Unit)` | reading or writing a matching field. |
 | `arrayRead(block: ArrayElementMatch.() -> Unit = {})` | reading an element of a matching array. |
 | `arrayWrite(block: ArrayElementMatch.() -> Unit = {})` | writing an element of a matching array. |
-| `argument(index: Int, block: PointMatch.() -> Unit)` | a call or array access whose argument `index` comes from an instruction matching the block, on every path that reaches it. |
+| `argument(index: Int, block: PointMatch.() -> Unit)` | an instruction whose argument `index`, counted as for [`PointTarget`](#pointtarget), comes from an instruction matching the block on every path that reaches it. |
 | `resultOf(returns: String? = null)` | reading the result of a call (`move-result`) that returns this type, or any type. |
 | `where(predicate: Instruction.() -> Boolean)` | your own check on the instruction. |
 | `then(within: Int = 1, block: PointMatch.() -> Unit)` | the next step of a sequence, at most `within` instructions later. |

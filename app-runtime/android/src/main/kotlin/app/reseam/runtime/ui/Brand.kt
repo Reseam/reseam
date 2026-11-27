@@ -3,13 +3,13 @@
 
 package app.reseam.runtime.ui
 
-import android.content.res.AssetManager
+import android.content.Context
 import android.graphics.Typeface
 import android.os.Build
 import android.util.SparseArray
 import org.json.JSONObject
 
-class Brand(json: JSONObject, private val assets: AssetManager, directory: String) {
+class Brand(json: JSONObject, private val app: Context, directory: String) {
     @JvmField val name: String = json.getString("name")
     internal val light = Colors(json.getJSONObject("light"))
     internal val dark = Colors(json.getJSONObject("dark"))
@@ -25,7 +25,9 @@ class Brand(json: JSONObject, private val assets: AssetManager, directory: Strin
     internal fun typeface(weight: Int): Typeface =
         typefaces[weight]
             ?: (font?.let {
-                    Typeface.Builder(assets, it).setFontVariationSettings("'wght' $weight").build()
+                    Typeface.Builder(app.assets, it)
+                        .setFontVariationSettings("'wght' $weight")
+                        .build()
                 } ?: systemTypeface(weight))
                 .also { typefaces.put(weight, it) }
 }

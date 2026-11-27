@@ -10,6 +10,7 @@ import app.reseam.patch.dex.arrayWrites
 import app.reseam.patch.dex.buildInstructions
 import app.reseam.patch.dex.descriptor
 import app.reseam.patch.dex.invokeRegisters
+import app.reseam.patch.dex.isReferenceType
 import app.reseam.patch.dex.methodRef
 import app.reseam.patch.dex.opcode
 import app.reseam.patch.dex.parameterTypes
@@ -28,9 +29,10 @@ import app.reseam.patch.types.CodePlacement
 import app.reseam.patch.types.Instruction
 
 /**
- * Redirect this invoke to a static extension, passing the receiver first for instance calls. An
- * array read becomes `target(array, index)`, whose result the app takes as the element, and a write
- * becomes `target(array, index, value)`.
+ * Redirect this invoke to a static extension, passing the receiver first for instance calls. A
+ * target returning a supertype of the call's result is cast back to the call's type. An array read
+ * becomes `target(array, index)`, whose result the app takes as the element, and a write becomes
+ * `target(array, index, value)`.
  */
 fun PointTarget.redirectTo(target: ExtMethod) {
     val opcode = resolved.instruction.opcode
@@ -41,12 +43,20 @@ fun PointTarget.redirectTo(target: ExtMethod) {
 
 internal fun List<PointTarget>.redirectTo(target: ExtMethod): Int {
     val edits = map { it.prepareRedirect(target) }
-    edits.forEach { it.apply() }
+    // A result cast inserts an instruction, so later points of the same method go first.
+    edits.sortedByDescending { it.point.index }.forEach { it.apply() }
     return size
 }
 
-private class CallRedirect(val point: ResolvedPoint, val replacement: Instruction) {
-    fun apply() = point.method.replaceInstruction(point.index, replacement)
+private class CallRedirect(
+    val point: ResolvedPoint,
+    val replacement: Instruction,
+    val resultCast: Instruction?,
+) {
+    fun apply() {
+        point.method.replaceInstruction(point.index, replacement)
+        resultCast?.let { point.method.insertInstructions(point.index + 2, listOf(it)) }
+    }
 }
 
 private fun PointTarget.prepareRedirect(target: ExtMethod): CallRedirect {
@@ -65,18 +75,26 @@ private fun PointTarget.prepareRedirect(target: ExtMethod): CallRedirect {
     val expected = target.ref.parameterTypes
     requireArgumentTypes(actual, expected, "$location redirect ${from.descriptor} to $target")
     val registers = call.invokeRegisters.orEmpty()
-    if (insns.getOrNull(point.index + 1)?.opcode?.isMoveResult == true) {
-        require(isAssignable(target.ref.returnType, from.returnType)) {
-            "$location: result of ${from.descriptor} is consumed; $target returns an incompatible type"
-        }
-    }
+    val result = insns.getOrNull(point.index + 1)?.takeIf { it.opcode?.isMoveResult == true }
+    val returned = target.ref.returnType
+    val resultCast =
+        result
+            ?.takeUnless { isAssignable(returned, from.returnType) }
+            ?.let {
+                require(
+                    isReferenceType(from.returnType) && isAssignable(from.returnType, returned)
+                ) {
+                    "$location: result of ${from.descriptor} is consumed; $target returns an incompatible type"
+                }
+                buildInstructions { checkCast(it.regA!!, from.returnType) }.single()
+            }
     // The registers and word count are unchanged. The existing invoke lowering
     // chooses 35c/range; replacement retains incoming branches and tracked anchors.
     val replacement = buildInstructions {
         invokeStatic(target.owner, target.name, target.proto, *registers.toIntArray())
     }
         .single()
-    return CallRedirect(point, replacement)
+    return CallRedirect(point, replacement, resultCast)
 }
 
 // An array access has no invoke to swap in place, and its registers may not fit one, so the call

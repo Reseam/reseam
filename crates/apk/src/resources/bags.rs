@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::{EntryValue, MapEntry, ResourceTable};
+use super::{EntryValue, MapEntry, ResEntry, ResourceTable, StyleItem};
 use crate::error::{Result, invalid};
 use crate::res_value::ResValue;
 
@@ -85,8 +85,9 @@ impl ResourceTable {
     }
 
     /// Replaces array scalars in every configuration without interpreting them.
-    /// String indices must belong to this table's global pool. The array must
-    /// already exist; its resource ID and configuration coverage are retained.
+    /// String indices must belong to this table's global pool. An existing
+    /// array keeps its resource ID and configuration coverage, and a missing one
+    /// is created in the default configuration.
     pub fn set_array_values(&mut self, name: &str, values: &[ResValue]) -> Result<u32> {
         let count = u32::try_from(values.len())
             .map_err(|_| invalid("array", "array exceeds the map name range"))?;
@@ -116,8 +117,48 @@ impl ResourceTable {
                 "array",
                 format!("{name} is in the table but is not an array"),
             )),
-            None => Err(invalid("array", format!("the table has no array/{name}"))),
+            None => self.add_entry_in(
+                "array",
+                name,
+                EntryValue::Complex { parent: 0, entries },
+                "",
+            ),
         }
+    }
+
+    /// The items of `style/name` in exactly the configuration `qualifiers` names, `""` being the
+    /// default, as resource XML writes them: the attribute as [`Self::attr_name`] names it, and
+    /// the value as a reference such as `@color/name` or `?attr/name`, or as a literal. `None`
+    /// when that configuration has no such style.
+    pub fn style_items(&self, name: &str, qualifiers: &str) -> Result<Option<Vec<StyleItem>>> {
+        let Some((_, entries)) = self.complex_entry_in("style", name, qualifiers)? else {
+            return Ok(None);
+        };
+        entries
+            .iter()
+            .map(|entry| {
+                Ok(StyleItem {
+                    attribute: self.attr_name(entry.name)?,
+                    value: self.item_text(entry.value)?,
+                })
+            })
+            .collect::<Result<_>>()
+            .map(Some)
+    }
+
+    pub(super) fn complex_entry_in(
+        &self,
+        type_name: &str,
+        entry_name: &str,
+        qualifiers: &str,
+    ) -> Result<Option<(u32, Vec<MapEntry>)>> {
+        Ok(match self.entry_in(type_name, entry_name, qualifiers)? {
+            Some(ResEntry {
+                value: EntryValue::Complex { parent, entries },
+                ..
+            }) => Some((parent, entries)),
+            _ => None,
+        })
     }
 
     /// Edits the parent and map of `type_name/entry_name` in every

@@ -139,6 +139,13 @@ val longGoto =
         }
     }
 
+val arrayCreation =
+    fixturePatch(TestStrings.arrayCreation, TestStrings.arrayCreationDescription) {
+        klass("com.example.ConstantHost").method("small").replace {
+            returnValue(newArray("[Ljava/lang/String;", param(0)).size())
+        }
+    }
+
 val distantOperands =
     fixturePatch(TestStrings.distantOperands, TestStrings.distantOperandsDescription) {
         val target = klass("com.example.HookTarget").method("invokeGrowth")

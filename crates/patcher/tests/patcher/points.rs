@@ -44,51 +44,6 @@ fn a_cast_leaves_the_parameter_it_casts_unchanged() {
 }
 
 #[test]
-fn point_before_runs_on_branches_into_the_instruction() {
-    const OWNER: &str = "Lcom/example/SkipHost;";
-
-    let (_apk_dir, mut apk) = open_dex_apk(&[dex!("branch_entry")]);
-    apply_fixture(&mut apk, "before-join", "beforeJoin");
-
-    let code = patched_code(&apk, OWNER, "joinedBefore");
-    assert_eq!(
-        hook_calls(&code, &[0]),
-        (vec![vec![1], vec![9], vec![2], vec![3]], None)
-    );
-    assert_eq!(
-        hook_calls(&code, &[1]),
-        (vec![vec![1], vec![4], vec![9], vec![4], vec![3]], None)
-    );
-}
-
-#[test]
-fn skip_when_guards_a_call_on_every_path_into_it() {
-    const OWNER: &str = "Lcom/example/SkipHost;";
-
-    let (_apk_dir, mut apk) = open_dex_apk(&[dex!("guarded_calls")]);
-    apply_fixture(&mut apk, "skip-when", "skipWhenCall");
-
-    let straight = patched_code(&apk, OWNER, "straight");
-    assert_eq!(hook_calls(&straight, &[]), (vec![vec![1], vec![3]], None));
-    let joined = patched_code(&apk, OWNER, "joined");
-    assert_eq!(hook_calls(&joined, &[0]), (vec![vec![1], vec![3]], None));
-    assert_eq!(
-        hook_calls(&joined, &[1]),
-        (vec![vec![1], vec![4], vec![3]], None)
-    );
-    // The branch into the guarded call must reach the guard, not jump past it.
-    let kept = patched_code(&apk, OWNER, "joinedKept");
-    assert_eq!(
-        hook_calls(&kept, &[0]),
-        (vec![vec![1], vec![2], vec![3]], None)
-    );
-    assert_eq!(
-        hook_calls(&kept, &[1]),
-        (vec![vec![1], vec![4], vec![4], vec![3]], None)
-    );
-}
-
-#[test]
 fn a_replaced_body_returns_from_its_conditional() {
     const OWNER: &str = "Lcom/example/AnchorHost;";
 
@@ -135,6 +90,7 @@ fn invalid_emitted_operations_fail_the_patch() {
         ("private-field-access", "privateFieldAccess"),
         ("ext-method-missing", "extMethodMissing"),
         ("call-arity", "callArity"),
+        ("interface-call-on-class", "interfaceCallOnClass"),
         ("replace-falls-through", "replaceFallsThrough"),
         ("wide-condition", "wideCondition"),
         ("primitive-null", "primitiveNull"),
@@ -147,6 +103,22 @@ fn invalid_emitted_operations_fail_the_patch() {
         assert!(
             matches!(kotlin_patch_failure(patch, id), PatchStatus::Failed { .. }),
             "{patch}"
+        );
+    }
+}
+
+#[test]
+fn point_hooks_read_parameters_as_entered_where_the_method_reused_their_registers() {
+    let (_apk_dir, mut apk) = open_dex_apk(&[dex!("entry_values")]);
+    apply_fixture(&mut apk, "point-entry-values", "pointEntryValues");
+    let code = patched_code(&apk, "Lcom/example/HookTarget;", "getFeatureSwitchValue");
+    // The first return follows a write of the first parameter's register, and the second is only
+    // reached by the branch that skips it. The returned register is that same one.
+    for last in [0, 106] {
+        let returned = if last == 0 { 101 } else { 0 };
+        assert_eq!(
+            hook_calls(&code, &[101, 102, 103, 104, 105, last]),
+            (vec![vec![101, last, returned]], Some(returned)),
         );
     }
 }

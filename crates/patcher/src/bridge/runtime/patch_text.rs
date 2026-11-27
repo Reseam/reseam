@@ -32,6 +32,10 @@ pub(in crate::bridge) struct Text {
 #[serde(untagged)]
 enum TableValue {
     Text(String),
+    Styled {
+        #[serde(rename = "html")]
+        _html: IgnoredAny,
+    },
     Plural(IgnoredAny),
 }
 
@@ -92,6 +96,11 @@ impl<'a> StringTables<'a> {
             let text = match strings.get(&name) {
                 None => continue,
                 Some(TableValue::Text(text)) => text.clone(),
+                Some(TableValue::Styled { .. }) => {
+                    return Err(jvm_err(format!(
+                        "string '{name}' of {id} has styling markup; patch text must be plain"
+                    )));
+                }
                 Some(TableValue::Plural(_)) => {
                     return Err(jvm_err(format!(
                         "string '{name}' of {id} is a plural; patch text must be plain"

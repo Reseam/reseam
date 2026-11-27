@@ -39,6 +39,9 @@ internal object AndroidSdk {
             .maxByOrNull { it.name.removePrefix("android-").toIntOrNull() ?: -1 }
             ?.resolve("android.jar")
             ?: throw GradleException("No platforms/android-*/android.jar under ${home()}")
+
+    fun testMockJar(): File? =
+        platformJar().resolveSibling("optional/android.test.mock.jar").takeIf { it.isFile }
 }
 
 /**

@@ -3,19 +3,19 @@
 
 package app.reseam.patch
 
-import app.reseam.patch.dex.arrayWrites
 import app.reseam.patch.dex.descriptor
 import app.reseam.patch.dex.fieldRef
 import app.reseam.patch.dex.methodRef
 import app.reseam.patch.dex.opcode
-import app.reseam.patch.dex.operandRegisters
+import app.reseam.patch.dex.operands
 import app.reseam.patch.dex.regA
+import app.reseam.patch.native.jumpSources
 import app.reseam.patch.points.ArgumentOrigins
 import app.reseam.patch.points.PointMatchSpec
 import app.reseam.patch.points.PointStep
 import app.reseam.patch.points.findSequence
-import app.reseam.patch.points.inferType
 import app.reseam.patch.points.noRegisterMessage
+import app.reseam.patch.points.registerAType
 import app.reseam.patch.points.writerMessage
 import app.reseam.patch.run.Resolution
 import app.reseam.patch.types.Instruction
@@ -61,18 +61,16 @@ internal constructor(
         }
 
     /**
-     * Captures the register this instruction writes, for `capture(name)` in code emitted at a later
-     * point.
+     * Captures the value in this instruction's first register, for `capture(name)` in code emitted
+     * at a later point: the value it writes, or the value a store, a branch or a return takes
+     * there.
      */
     fun captureAs(name: String, type: String? = null): PointTarget = capturing { point ->
         val insn = point.instruction
-        require(insn.opcode?.let { it in arrayWrites } != true) {
-            "$label: an array write at instruction ${point.index} writes no register; capture the stored value with captureArgumentAs(\"$name\", 2)"
-        }
         val register = insn.regA ?: error(noRegisterMessage(label, point.index, insn))
         val captureType =
             type?.let(::descriptor)
-                ?: inferType(point.method, point.index)
+                ?: registerAType(point.method, point.index, label)
                 ?: error(
                     "$label: cannot infer the type of the value at instruction ${point.index} (${insn.opcode}); pass captureAs(\"$name\", type)"
                 )
@@ -80,9 +78,11 @@ internal constructor(
     }
 
     /**
-     * Captures argument [argument] of the invoke or array access for `capture(name)`. Argument 0 of
-     * an instance invoke is the receiver; a wide argument counts once. An array access passes the
-     * array, the index, and for a write the stored value.
+     * Captures argument [argument] of this instruction for `capture(name)`. Instructions count the
+     * values they take as a call counts its arguments, with a wide argument counted once. A call
+     * passes the receiver first, an array write is `set(array, index, value)`, an instance field
+     * write `set(object, value)`, a branch `test(value)`, and a return `return(value)`. Arithmetic,
+     * conversions and numeric comparisons pass their operands.
      */
     fun captureArgumentAs(name: String, argument: Int, type: String? = null): PointTarget =
         capturing { point ->
@@ -99,10 +99,10 @@ internal constructor(
         }
 
     /**
-     * Finds the unique instruction defining argument [argument] of the invoke or array access,
-     * including exception paths. Register-to-register moves are followed to the instruction that
-     * produced the value. Fails for multiple reaching definitions or an incoming parameter.
-     * Arguments are counted as in [captureArgumentAs].
+     * Finds the unique instruction defining argument [argument] of this instruction, including
+     * exception paths. Register-to-register moves are followed to the instruction that produced the
+     * value. Fails for multiple reaching definitions or an incoming parameter. Arguments are
+     * counted as in [captureArgumentAs].
      */
     fun writer(argument: Int, debugName: String? = null): PointTarget {
         val base = this
@@ -116,10 +116,29 @@ internal constructor(
                 ) {
                     "$label: ${insns[point.index].opcode} has no argument $argument"
                 }
-            val register = insns[point.index].operandRegisters(label)!![argument].register
+            val register = insns[point.index].operands(label)!![argument].register
             val index =
                 origins.sites.singleOrNull()?.takeUnless { origins.entry || origins.unknown }
                     ?: error(writerMessage(label, point.method, point.index, register, origins))
+            point.at(runtime, label, index).resolution(label)
+        }
+    }
+
+    /** The one branch or switch that jumps to this instruction. */
+    fun jumpSource(debugName: String? = null): PointTarget {
+        val base = this
+        val label = debugName ?: "${base.label}.jumpSource"
+        return PointTarget(label, method) { runtime ->
+            val point = runtime.resolve(base).value
+            val sources =
+                requireNotNull(jumpSources(point.method.handle, point.index.toUInt())) {
+                    "$label: the control flow of ${point.method.descriptor} cannot be followed"
+                }
+            val index =
+                sources.singleOrNull()?.toInt()
+                    ?: error(
+                        "$label: ${sources.size} instructions jump to instruction ${point.index} of ${point.method.descriptor}, not one: ${sources.joinToString()}"
+                    )
             point.at(runtime, label, index).resolution(label)
         }
     }

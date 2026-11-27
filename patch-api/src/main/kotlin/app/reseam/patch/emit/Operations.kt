@@ -37,12 +37,33 @@ internal fun CodeEmitter.emitInvoke(
             ref.parameterTypes
         else listOf(ref.definingClass) + ref.parameterTypes
     requireArgumentTypes(args.map { it.assignableType }, expected, ref.descriptor)
+    requireInvokeKind(opcode, ref)
     access.requireMethod(ref)
     val words = args.sumOf { it.wordCount }
     emit(
         template { invokeRange(opcode.rangeVariant ?: opcode, ref, 0, words) },
         *args.toTypedArray(),
     )
+}
+
+/**
+ * ART refuses a virtual or super call on an interface, and an interface call on a class, when it
+ * runs.
+ */
+private fun requireInvokeKind(opcode: Opcode, ref: MethodRef) {
+    val owner = ActiveRuntime.current.index.classFor(ref.definingClass) ?: return
+    when (opcode) {
+        Opcode.INVOKE_VIRTUAL,
+        Opcode.INVOKE_SUPER ->
+            require(!owner.isInterface) {
+                "${ref.descriptor}: ${ref.definingClass} is an interface, so call it with callInterface"
+            }
+        Opcode.INVOKE_INTERFACE ->
+            require(owner.isInterface) {
+                "${ref.descriptor}: ${ref.definingClass} is a class, so call it with callVirtual"
+            }
+        else -> Unit
+    }
 }
 
 private val Opcode.rangeVariant: Opcode?
@@ -92,6 +113,15 @@ internal fun CodeEmitter.writeField(value: Value, field: FieldRef, newValue: Val
     )
     access.requireField(field)
     emit(template { iput(0, 0, field) }, newValue, value)
+}
+
+internal fun CodeEmitter.newArray(type: String, size: Value): Value {
+    require(type.startsWith('[')) { "new-array requires an array type: $type" }
+    requireAssignableType(size.assignableType, Type.Int, "array size")
+    access.requireClass(type)
+    val array = temporary(type)
+    emit(template { newArray(0, 0, type) }, array, size)
+    return array
 }
 
 internal fun CodeEmitter.arrayLength(array: Value): ValueRef {

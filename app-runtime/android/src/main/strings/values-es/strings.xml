@@ -37,4 +37,13 @@
     <string name="import_unreadable">Este archivo no es una exportación de ajustes.</string>
     <string name="import_nothing_applies">Ninguno de los ajustes de este archivo pertenece a esta app.</string>
     <string name="ok">Aceptar</string>
+    <string name="color_hue">Tono</string>
+    <string name="color_saturation">Saturación</string>
+    <string name="color_brightness">Brillo</string>
+    <string name="color_opacity">Opacidad</string>
+    <string name="color_code">Código de color</string>
+    <string name="settings_as_text">Ajustes como texto</string>
+    <string name="settings_as_text_summary">Copia tus ajustes como texto o pega ajustes para importarlos.</string>
+    <string name="copy">Copiar</string>
+    <string name="value_out_of_range">Introduce un valor de <xliff:g id="min">%1$s</xliff:g> a <xliff:g id="max">%2$s</xliff:g></string>
 </resources>

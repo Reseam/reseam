@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::{EntryValue, MapEntry, ResourceTable};
-use crate::error::Result;
+use super::{EntryValue, MapEntry, ResourceName, ResourceTable};
+use crate::error::{Result, invalid};
 use crate::res_value::ResValue;
 
 /// The bag item of an `attr` entry that holds its formats.
@@ -26,6 +26,17 @@ bitflags::bitflags! {
 }
 
 impl AttrFormats {
+    pub fn parse(formats: &str) -> Result<Self> {
+        formats
+            .split('|')
+            .map(str::trim)
+            .try_fold(Self::empty(), |all, format| {
+                Self::from_name(&format.to_ascii_uppercase())
+                    .map(|format| all | format)
+                    .ok_or_else(|| invalid("attr", format!("unknown format {format}")))
+            })
+    }
+
     pub(crate) fn accepts(self, value: ResValue) -> bool {
         let format = match value.kind {
             0 | ResValue::REFERENCE | ResValue::ATTRIBUTE => return true,
@@ -95,6 +106,33 @@ impl ResourceTable {
             Some(local) => Ok(crate::axml::android_attr_res_id(local)),
             None => self.find_resource_id("attr", name),
         }
+    }
+
+    /// The name a `<style>` item gives attribute `attr_id`, the inverse of [`Self::attr_id`]:
+    /// `android:name` for a framework attribute, the bare name for one of the app's.
+    pub fn attr_name(&self, attr_id: u32) -> Result<String> {
+        match self.reference_name(attr_id)? {
+            Some(ResourceName {
+                package,
+                type_name,
+                entry,
+            }) if type_name == "attr" => Ok(match package {
+                Some(package) => format!("{package}:{entry}"),
+                None => entry,
+            }),
+            _ => Err(invalid(
+                "attr",
+                format!("{attr_id:#010x} is not an attribute the table names"),
+            )),
+        }
+    }
+
+    pub fn add_attr(&mut self, name: &str, formats: AttrFormats) -> Result<u32> {
+        let entries = vec![MapEntry {
+            name: ATTR_TYPE,
+            value: ResValue::new(ResValue::INT_DEC, formats.bits()),
+        }];
+        self.add_entry_in("attr", name, EntryValue::Complex { parent: 0, entries }, "")
     }
 
     fn attr_bag(&self, attr_id: u32) -> Result<Option<AttrBag>> {

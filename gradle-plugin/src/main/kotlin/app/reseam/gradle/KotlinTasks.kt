@@ -47,50 +47,56 @@ internal abstract class RelocateKotlinTask : DefaultTask() {
 }
 
 /**
- * The part of the Kotlin standard library that [roots] use, as class files. R8 traces from the
- * roots but neither optimizes nor renames, so the roots, dexed separately, still find every member
- * they call.
+ * The classes of [traced] that [roots] reach, as class files R8 leaves them, with the classes it
+ * adds for them. R8 keeps the roots whole and neither optimizes nor renames, so the roots, dexed
+ * separately, still find every member they use.
  */
-internal abstract class KotlinStdlibTask @Inject constructor(private val exec: ExecOperations) :
+internal abstract class ShrinkTask @Inject constructor(private val exec: ExecOperations) :
     DefaultTask() {
     @get:Classpath val compiler: FileCollection = project.d8Classpath()
 
     @get:InputFiles abstract val roots: ConfigurableFileCollection
 
-    /** The standard library, relocated like the roots. */
-    @get:InputFiles abstract val stdlib: ConfigurableFileCollection
+    @get:InputFiles abstract val traced: ConfigurableFileCollection
+
+    @get:InputFiles abstract val ruleSources: ConfigurableFileCollection
 
     @get:Classpath abstract val libraries: ConfigurableFileCollection
 
-    @get:Input abstract val kotlinPackage: Property<String>
-
-    /** R8's configuration: keep the roots whole and trace the standard library from them. */
     @get:Input abstract val rules: Property<String>
 
     @get:OutputDirectory abstract val output: DirectoryProperty
 
     init {
         rules.convention(
-            kotlinPackage.map { prefix ->
-                """
-                -dontobfuscate
-                -dontoptimize
-                -dontwarn **
-                -keep class !$prefix.**,** { *; }
-                """
-                    .trimIndent()
-            }
+            """
+            -dontobfuscate
+            -dontoptimize
+            -dontwarn **
+            -keepattributes *
+            """
+                .trimIndent()
         )
     }
 
     @TaskAction
     fun run() {
         val outDir = output.get().asFile.also(::recreate)
+        val rootClasses = roots.classNames()
+        val tracedClasses = traced.classNames() - rootClasses
+        if (tracedClasses.isEmpty()) return
         val work = temporaryDir.also(::recreate)
         val program = work.resolve("program.jar")
-        jar(program, (roots.files + stdlib.files).filter(File::isDirectory))
-        val prefix = kotlinPackage.get()
-        val rulesFile = work.resolve("rules.pro").apply { writeText(rules.get()) }
+        jar(program, (roots.files + traced.files).filter(File::isDirectory))
+        val rulesFile =
+            work.resolve("rules.pro").apply {
+                writeText(
+                    (listOf(rules.get()) +
+                            ruleSources.files.flatMap(::keepRules) +
+                            rootClasses.map { "-keep class ${it.replace('/', '.')} { *; }" })
+                        .joinToString("\n")
+                )
+            }
         val shrunk = work.resolve("shrunk.jar")
         exec.javaexec {
             classpath = compiler
@@ -98,20 +104,28 @@ internal abstract class KotlinStdlibTask @Inject constructor(private val exec: E
             args(
                 listOf(
                     "--classfile",
+                    // d8 desugars the result with the roots.
+                    "--no-desugaring",
                     "--output",
                     shrunk.absolutePath,
                     "--pg-conf",
                     rulesFile.absolutePath,
                 ) +
-                    libraries.files.flatMap { listOf("--lib", it.absolutePath) } +
+                    libraryJars(work).flatMap { listOf("--lib", it.absolutePath) } +
                     program.absolutePath
             )
         }
-        val path = prefix.replace('.', '/') + "/"
         ZipFile(shrunk).use { zip ->
             zip.entries()
                 .asSequence()
-                .filter { it.name.startsWith(path) && it.name.endsWith(".class") }
+                .map { it to it.name.removeSuffix(".class") }
+                // R8 adds classes for the code it keeps, named after their class. The roots ship
+                // as they were compiled, so the classes added for them are left out.
+                .filter { (_, name) ->
+                    name !in rootClasses &&
+                        (name in tracedClasses || name.substringBeforeLast('$') !in rootClasses)
+                }
+                .map { (entry, _) -> entry }
                 .forEach { entry ->
                     val file = outDir.resolve(entry.name)
                     file.parentFile.mkdirs()
@@ -121,6 +135,38 @@ internal abstract class KotlinStdlibTask @Inject constructor(private val exec: E
                 }
         }
     }
+
+    /** R8 reads libraries from jars only. */
+    private fun libraryJars(work: File): List<File> =
+        libraries.files.filter(File::exists).mapIndexed { index, library ->
+            if (library.isDirectory)
+                work.resolve("library-$index.jar").also { jar(it, listOf(library)) }
+            else library
+        }
+
+    private fun FileCollection.classNames(): Set<String> =
+        files
+            .filter(File::isDirectory)
+            .flatMap { dir ->
+                dir.classFiles().map {
+                    it.relativeTo(dir).invariantSeparatorsPath.removeSuffix(".class")
+                }
+            }
+            .toSet()
+
+    private fun keepRules(file: File): List<String> =
+        if (!file.isFile || file.extension !in setOf("jar", "aar")) emptyList()
+        else
+            ZipFile(file).use { zip ->
+                zip.entries()
+                    .asSequence()
+                    .filter {
+                        !it.isDirectory &&
+                            (it.name == "proguard.txt" || it.name.startsWith("META-INF/proguard/"))
+                    }
+                    .map { entry -> zip.getInputStream(entry).use { it.reader().readText() } }
+                    .toList()
+            }
 
     private fun jar(target: File, directories: List<File>) {
         val written = mutableSetOf<String>()

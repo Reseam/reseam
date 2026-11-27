@@ -4,7 +4,7 @@
 use super::{Case, Readback};
 use crate::common::table_bytes::*;
 use crate::common::tables::*;
-use reseam_apk::resources::{EntryValue, MapEntry};
+use reseam_apk::resources::{EntryValue, MapEntry, StyleItem};
 use reseam_apk::{ResValue, ResourceScope};
 
 pub(super) fn style_case() -> reseam_apk::Result<Case> {
@@ -30,8 +30,14 @@ pub(super) fn style_case() -> reseam_apk::Result<Case> {
                 "AppTheme",
                 None,
                 &[
-                    ("android:windowBackground".into(), "#ffffffff".into()),
-                    ("android:textColor".into(), "#ff102030".into()),
+                    StyleItem {
+                        attribute: "android:windowBackground".into(),
+                        value: "#ffffffff".into(),
+                    },
+                    StyleItem {
+                        attribute: "android:textColor".into(),
+                        value: "#ff102030".into(),
+                    },
                 ],
             )?;
             Ok(())
@@ -56,6 +62,94 @@ pub(super) fn style_case() -> reseam_apk::Result<Case> {
                 ResValue::new(ResValue::INT_COLOR_ARGB8, 0xff10_2030),
             ]
             .repeat(2),
+            ..Default::default()
+        },
+    })
+}
+
+pub(super) fn night_style_case() -> reseam_apk::Result<Case> {
+    let text_color = MapEntry {
+        name: 0x0101_0098,
+        value: ResValue::new(ResValue::INT_COLOR_ARGB8, 0xff00_0000),
+    };
+    Ok(Case {
+        input: table_with_configs(
+            "style",
+            "AppTheme",
+            &[(
+                config(None, 0),
+                EntryValue::Complex {
+                    parent: 0x0103_0005,
+                    entries: vec![text_color],
+                },
+            )],
+            &[],
+        )
+        .serialize()?,
+        edit: Box::new(|table| {
+            ResourceScope::from(table).set_style_items_in(
+                "AppTheme",
+                None,
+                &[StyleItem {
+                    attribute: "android:windowBackground".into(),
+                    value: "#ffffffff".into(),
+                }],
+                "night",
+            )?;
+            Ok(())
+        }),
+        read: Box::new(|table| {
+            let mut result = Readback::default();
+            for config in table.packages()[0].types() {
+                let EntryValue::Complex { parent, entries } =
+                    config.entry(0)?.expect("fixture style").value
+                else {
+                    panic!("bag");
+                };
+                result.numbers.push(u32::from(config.is_default_config()));
+                result.numbers.push(parent);
+                result.numbers.extend(entries.iter().map(|e| e.name));
+            }
+            Ok(result)
+        }),
+        expected: Readback {
+            numbers: vec![
+                1,
+                0x0103_0005,
+                0x0101_0098,
+                0,
+                0x0103_0005,
+                0x0101_0054,
+                0x0101_0098,
+            ],
+            ..Default::default()
+        },
+    })
+}
+
+pub(super) fn new_array_case() -> reseam_apk::Result<Case> {
+    Ok(Case {
+        input: table_with_configs(
+            "string",
+            "label",
+            &[(config(None, 0), EntryValue::Simple(ResValue::string(0)))],
+            &["label"],
+        )
+        .serialize()?,
+        edit: Box::new(|table| {
+            table.set_string_array("added", &["one", "2"].map(String::from))?;
+            Ok(())
+        }),
+        read: Box::new(|table| {
+            Ok(Readback {
+                texts: table.array("added")?,
+                numbers: vec![table.find_resource_id("array", "added")?.expect("array id")],
+                ..Default::default()
+            })
+        }),
+        expected: Readback {
+            texts: vec!["one".into(), "2".into()],
+            numbers: vec![0x7f02_0000],
             ..Default::default()
         },
     })
@@ -146,7 +240,11 @@ pub(super) fn file_cases() -> reseam_apk::Result<Vec<Case>> {
             }),
             read: Box::new(|table| {
                 let mut result = Readback {
-                    texts: table.file_paths("mipmap", "launcher")?,
+                    texts: table
+                        .files("mipmap", "launcher")?
+                        .into_iter()
+                        .map(|file| file.path)
+                        .collect(),
                     ..Default::default()
                 };
                 let id = table
@@ -176,7 +274,7 @@ pub(super) fn file_cases() -> reseam_apk::Result<Vec<Case>> {
                 }
                 result
                     .numbers
-                    .push(table.file_paths("mipmap", "reseam_icon")?.len() as u32);
+                    .push(table.files("mipmap", "reseam_icon")?.len() as u32);
                 Ok(result)
             }),
             expected: Readback {

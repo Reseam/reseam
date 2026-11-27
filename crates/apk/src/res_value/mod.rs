@@ -31,6 +31,9 @@ impl ResValue {
         bytes[3..8].copy_from_slice(&self.encoded()[3..]);
     }
 
+    pub const NULL: u8 = 0x00;
+    /// The data of a [`Self::NULL`] value that `@empty` writes.
+    pub const NULL_EMPTY: u32 = 1;
     pub const REFERENCE: u8 = 0x01;
     pub const ATTRIBUTE: u8 = 0x02;
     pub const STRING: u8 = 0x03;

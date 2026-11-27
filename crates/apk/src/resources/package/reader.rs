@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::{HEADER_LEN, NAME_UNITS, PackageChunk, ResPackage};
+use super::{HEADER_LEN, NAME_UNITS, NameIndex, PackageChunk, ResPackage};
 use crate::chunk;
 use crate::error::{Result, malformed};
 use crate::resources::{RES_TABLE_TYPE_SPEC, RES_TABLE_TYPE_TYPE, ResType, TypeSpec};
@@ -98,6 +98,7 @@ impl ResPackage {
             chunk,
             header_size,
             chunks,
+            names: NameIndex::default(),
         })
     }
 }

@@ -212,11 +212,12 @@ impl CodeItem {
 }
 
 /// Lays out a standalone block whose branches name the expansion they go to, widening each
-/// branch its layout puts out of reach.
+/// branch its layout puts out of reach. Returns the instructions, and where each expansion's own
+/// instruction landed.
 pub(super) fn assemble(
     expansions: Vec<InstructionExpansion>,
     targets: &BTreeMap<usize, BranchDestination>,
-) -> Result<Vec<Instruction>> {
+) -> Result<(Vec<Instruction>, Vec<usize>)> {
     let original = Addresses::of(
         &expansions
             .iter()
@@ -226,7 +227,8 @@ pub(super) fn assemble(
     let entries = expansions.into_iter().map(RewriteEntry::from).collect();
     let mut rewrite = Rewrite::new(entries, Vec::new(), targets, &original)?;
     let layout = rewrite.stabilize()?;
-    rewrite.emit(&layout)
+    let positions = layout.instruction_indices.clone();
+    Ok((rewrite.emit(&layout)?, positions))
 }
 
 fn units(instructions: &[Instruction]) -> u32 {

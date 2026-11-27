@@ -27,9 +27,9 @@ val Instruction.regB: Int?
         when (this) {
             is Instruction.Reg2 -> field0.regB.toInt()
             is Instruction.Reg3 -> field0.regB.toInt()
-            is Instruction.RegLiteral -> field0.regB.toInt()
-            is Instruction.RegType -> field0.regB.toInt()
-            is Instruction.RegField -> field0.regB.toInt()
+            is Instruction.RegLiteral -> registerB(field0.opcode, field0.regB)
+            is Instruction.RegType -> registerB(field0.opcode, field0.regB)
+            is Instruction.RegField -> registerB(field0.opcode, field0.regB)
             is Instruction.Branch2 -> field0.regB.toInt()
             else -> null
         }
@@ -52,10 +52,13 @@ val Instruction.referencedRegisters: List<Int>
             is Instruction.Reg2 -> listOf(field0.regA.toInt(), field0.regB.toInt())
             is Instruction.Reg3 ->
                 listOf(field0.regA.toInt(), field0.regB.toInt(), field0.regC.toInt())
-            is Instruction.RegLiteral -> listOf(field0.regA.toInt(), field0.regB.toInt())
+            is Instruction.RegLiteral ->
+                listOfNotNull(field0.regA.toInt(), registerB(field0.opcode, field0.regB))
             is Instruction.RegString -> listOf(field0.regA.toInt())
-            is Instruction.RegType -> listOf(field0.regA.toInt(), field0.regB.toInt())
-            is Instruction.RegField -> listOf(field0.regA.toInt(), field0.regB.toInt())
+            is Instruction.RegType ->
+                listOfNotNull(field0.regA.toInt(), registerB(field0.opcode, field0.regB))
+            is Instruction.RegField ->
+                listOfNotNull(field0.regA.toInt(), registerB(field0.opcode, field0.regB))
             is Instruction.Invoke -> field0.registers.map { it.toInt() }
             is Instruction.Polymorphic -> field0.registers.map { it.toInt() }
             is Instruction.Custom -> field0.registers.map { it.toInt() }
@@ -114,30 +117,6 @@ val Instruction.invokeArgumentTypes: List<String>?
 
 internal data class InvokeArgument(val register: Int, val type: String)
 
-internal val arrayReads = Opcode.AGET..Opcode.AGET_SHORT
-
-internal val arrayWrites = Opcode.APUT..Opcode.APUT_SHORT
-
-internal data class OperandRegister(val register: Int, val words: Int)
-
-/**
- * The registers an instruction takes the way a call takes arguments, with their word counts: an
- * invoke's arguments, receiver first, or an array read as `get(array, index)` and a write as
- * `set(array, index, value)`. Null for any other instruction.
- */
-internal fun Instruction.operandRegisters(label: String): List<OperandRegister>? {
-    val opcode = opcode ?: return null
-    val array = { listOf(OperandRegister(regB!!, 1), OperandRegister(regC!!, 1)) }
-    return when {
-        opcode in arrayReads -> array()
-        opcode in arrayWrites ->
-            array() + OperandRegister(regA!!, if (opcode == Opcode.APUT_WIDE) 2 else 1)
-        invokeArgumentTypes != null ->
-            arguments(label).map { OperandRegister(it.register, registerWordCount(it.type)) }
-        else -> null
-    }
-}
-
 internal fun Instruction.arguments(label: String): List<InvokeArgument> {
     val types =
         requireNotNull(invokeArgumentTypes) {
@@ -158,3 +137,7 @@ internal fun Instruction.arguments(label: String): List<InvokeArgument> {
         InvokeArgument(register, type)
     }
 }
+
+/** Register B of a format that has one. A format with one register leaves the field 0. */
+private fun registerB(opcode: UShort, regB: UShort): Int? =
+    regB.toInt().takeIf { Opcode.of(opcode.toInt())?.registers.orEmpty().size > 1 }
