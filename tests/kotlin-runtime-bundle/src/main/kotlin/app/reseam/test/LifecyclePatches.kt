@@ -5,6 +5,7 @@ package app.reseam.test
 
 import app.reseam.patch.CompatiblePackage
 import app.reseam.patch.ExternalPatch
+import app.reseam.patch.OptionPreset
 import app.reseam.patch.appEntry
 import app.reseam.patch.invoke
 import app.reseam.patch.patch
@@ -106,9 +107,30 @@ val duplicateSettings =
 val firstAds =
     declaredFixture(TestStrings.hideAds, null) {
         enabledByDefault(false)
-        val marker = stringOption("marker", title = TestStrings.optionMarker, default = "first")
+        val marker =
+            stringOption(
+                "marker",
+                title = TestStrings.optionMarker,
+                default = "first",
+                presets =
+                    listOf(
+                        OptionPreset(TestStrings.presetFirst, "first"),
+                        OptionPreset(TestStrings.presetSecond, "second"),
+                    ),
+            )
         val label =
             stringOption("label.detail", title = TestStrings.optionLabelDetail, default = "nested")
+        intOption(
+            "level",
+            title = TestStrings.optionLevel,
+            default = 1,
+            presets =
+                listOf(
+                    OptionPreset(TestStrings.presetLow, 1L),
+                    OptionPreset(TestStrings.presetHigh, 2L),
+                ),
+            allowCustom = false,
+        )
         settings(
             duplicateSettings,
             section(TestStrings.sectionFirst, DuplicateSettings.firstEnabled),

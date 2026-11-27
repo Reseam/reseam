@@ -22,12 +22,23 @@ impl OptionDeclaration {
     }
 
     /// Whether `value` has this option's type and, when the option declares
-    /// choices, is one of them; for a list, every item is.
+    /// choices, is one of them; for a list, every item is. Without
+    /// [`Self::allows_custom`], the value is one of the presets.
     pub fn check(&self, value: &OptionValue) -> Result<(), OptionProblem> {
         if value.option_type() != self.option_type {
             return Err(OptionProblem::WrongType {
                 expected: self.option_type,
                 actual: value.option_type(),
+            });
+        }
+        if !self.allows_custom && !self.presets.iter().any(|preset| preset.value == *value) {
+            return Err(OptionProblem::NotAllowed {
+                value: value.to_string(),
+                allowed: self
+                    .presets
+                    .iter()
+                    .map(|preset| preset.value.to_string())
+                    .collect(),
             });
         }
         let Some(allowed) = &self.valid_values else {

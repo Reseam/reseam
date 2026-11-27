@@ -40,7 +40,9 @@ pub use metrics::{
 pub use mount::{
     InstalledApp, InstalledSplit, MountNamespace, MountRequest, PatchedSplit, RootScript,
 };
-pub use options::{OptionDeclaration, OptionProblem, OptionType, OptionValue, ParsedOption};
+pub use options::{
+    OptionDeclaration, OptionPreset, OptionProblem, OptionType, OptionValue, ParsedOption,
+};
 pub use outcome::{PatchArtifact, PatchOutcome, PatchResult, PatchStatus, RunEvent};
 pub use patch::{PatchPreset, PatchRef, PatchSpec};
 pub use plan::{OptionIssue, PlanRequest, PlannedPatch, PlannedRun, SelectionPlan};

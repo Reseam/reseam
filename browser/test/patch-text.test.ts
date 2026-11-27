@@ -4,8 +4,14 @@ import type { PatchSpec } from '../src/models';
 import { patchText } from '../src/patch-text';
 
 test('each field comes from the first tag that translates it, as the engine resolves it', () => {
-  for (const { locales, name, title, description } of cases.cases) {
+  for (const { locales, name, title, description, preset } of cases.cases) {
     const text = patchText(cases.spec as PatchSpec, locales);
-    expect([text.name, text.options[0]?.title, text.description], locales.join(',')).toEqual([name, title, description]);
+    const option = text.options[0];
+    expect([text.name, option?.title, text.description, option?.presets[0]?.label], locales.join(',')).toEqual([
+      name,
+      title,
+      description,
+      preset,
+    ]);
   }
 });

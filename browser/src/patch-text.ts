@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { OptionTranslation, PatchSpec, PatchText, PatchTranslation } from './models';
+import type { OptionTranslation, OptionValue, PatchSpec, PatchText, PatchTranslation } from './models';
 
 /** Patch text is written in English, so English readers stop at the source. */
 const SOURCE_LANGUAGE = 'en';
@@ -23,8 +23,21 @@ export function patchText(spec: PatchSpec, locales: readonly string[]): PatchTex
       key: declared.key,
       title: option(declared.key, (it) => it.title) ?? declared.title,
       description: option(declared.key, (it) => it.description) ?? declared.description,
+      presets: (declared.presets ?? []).map((preset) => ({
+        label:
+          chain
+            .flatMap((it) => it.options ?? [])
+            .filter((it) => it.key === declared.key)
+            .flatMap((it) => it.presets ?? [])
+            .find((it) => sameValue(it.value, preset.value))?.label ?? preset.label,
+        value: preset.value,
+      })),
     })),
   };
+}
+
+function sameValue(a: OptionValue, b: OptionValue): boolean {
+  return a.type === b.type && JSON.stringify(a.value) === JSON.stringify(b.value);
 }
 
 type Tag = { language: string; script?: string; region?: string };

@@ -32,6 +32,7 @@ const DECLARATIONS: &[Declaration] = &[
     declaration::<model::CompatiblePackage>,
     declaration::<model::Incompatibility>,
     declaration::<model::OptionDeclaration>,
+    declaration::<model::OptionPreset>,
     declaration::<model::OptionType>,
     declaration::<model::OptionValue>,
     declaration::<model::OptionProblem>,

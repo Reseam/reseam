@@ -9,7 +9,7 @@ use crate::error::{PatcherError, Result};
 use crate::patch::PatchRef;
 
 use reseam_model::OptionProblem;
-pub use reseam_model::{OptionDeclaration, OptionType, OptionValue};
+pub use reseam_model::{OptionDeclaration, OptionPreset, OptionType, OptionValue};
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(transparent)]
@@ -160,6 +160,8 @@ mod tests {
             default_value: None,
             valid_values: valid_values.map(|values| values.iter().map(|&v| v.into()).collect()),
             required: true,
+            presets: Vec::new(),
+            allows_custom: true,
         };
         let choices = Some(["home", "feed"].as_slice());
         let list =

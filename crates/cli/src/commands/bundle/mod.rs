@@ -7,7 +7,7 @@ mod init;
 use std::collections::HashSet;
 
 use anyhow::Result;
-use reseam_model::{Compatibility, InspectRequest, PatchMetadata, PatchRef};
+use reseam_model::{Compatibility, InspectRequest, OptionValue, PatchMetadata, PatchRef};
 use reseam_sdk::authoring::{BundleKey, manifest_info, pack, sign};
 use reseam_sdk::inspect;
 use tracing::info;
@@ -153,7 +153,27 @@ fn print_patch(index: usize, patch: &PatchMetadata, hidden: &HashSet<PatchRef>) 
                     "optional"
                 }
             );
+            if !option.presets.is_empty() {
+                let presets: Vec<String> = option
+                    .presets
+                    .iter()
+                    .map(|preset| format!("{} = {}", preset.label, preset_value(&preset.value)))
+                    .collect();
+                let custom = if option.allows_custom {
+                    ", or another value"
+                } else {
+                    ""
+                };
+                println!("             presets: {}{custom}", presets.join(", "));
+            }
         }
+    }
+}
+
+fn preset_value(value: &OptionValue) -> String {
+    match value {
+        OptionValue::TextList(items) => format!("[{}]", items.join(", ")),
+        value => value.to_string(),
     }
 }
 

@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 
 use super::option_metadata::ReadOption;
 use super::patch_text::Text;
-use reseam_model::{OptionTranslation, PatchTranslation};
+use reseam_model::{OptionPreset, OptionTranslation, PatchTranslation};
 
 /// The patch's text by locale, ordered by tag so manifests are reproducible.
 pub(in crate::bridge) fn translations(
@@ -31,6 +31,16 @@ pub(in crate::bridge) fn translations(
         for (locale, text) in option.description.iter().flat_map(|it| &it.translations) {
             option_translation(translation(&mut locales, locale), key).description =
                 Some(text.clone());
+        }
+        for (label, preset) in option.preset_labels.iter().zip(&option.declaration.presets) {
+            for (locale, text) in &label.translations {
+                option_translation(translation(&mut locales, locale), key)
+                    .presets
+                    .push(OptionPreset {
+                        label: text.clone(),
+                        value: preset.value.clone(),
+                    });
+            }
         }
     }
     locales.into_values().collect()
@@ -61,6 +71,7 @@ fn option_translation<'a>(
             key: key.to_owned(),
             title: None,
             description: None,
+            presets: Vec::new(),
         });
         translation.options.len() - 1
     };

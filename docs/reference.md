@@ -41,11 +41,11 @@ The receiver of `patch { }`.
 | `description(text: StringRef)` | The text users see under the name, from the module's string table. |
 | `enabledByDefault(value: Boolean)` | Whether the patch starts selected. A patch for specific apps defaults to `true`, a patch for any app to `false`. |
 | `hidden()` | Keeps a named patch off the lists users see. It still runs when selected or needed as a dependency. |
-| `stringOption(key, title: StringRef, description: StringRef? = null, default: String? = null, validValues: List<String>? = null, required = false): StringOption` | Declares a text option. With `validValues`, the user picks one of them. |
+| `stringOption(key, title: StringRef, description: StringRef? = null, default: String? = null, validValues: List<String>? = null, required = false, presets: List<OptionPreset<String>> = emptyList(), allowCustom = true): StringOption` | Declares a text option. Users pick a preset or, unless `allowCustom` is false, enter any text. With `validValues`, an older form, they pick one of those. |
 | `boolOption(key, title: StringRef, description: StringRef? = null, default: Boolean? = null, required = false): BoolOption` | Declares an on/off option. |
-| `intOption(key, title: StringRef, description: StringRef? = null, default: Long? = null, required = false): IntOption` | Declares a whole-number option. |
-| `floatOption(key, title: StringRef, description: StringRef? = null, default: Double? = null, required = false): FloatOption` | Declares a decimal option. |
-| `stringListOption(key, title: StringRef, description: StringRef? = null, default: List<String>? = null, required = false): StringListOption` | Declares a list-of-text option. |
+| `intOption(key, title: StringRef, description: StringRef? = null, default: Long? = null, required = false, presets: List<OptionPreset<Long>> = emptyList(), allowCustom = true): IntOption` | Declares a whole-number option. |
+| `floatOption(key, title: StringRef, description: StringRef? = null, default: Double? = null, required = false, presets: List<OptionPreset<Double>> = emptyList(), allowCustom = true): FloatOption` | Declares a decimal option. |
+| `stringListOption(key, title: StringRef, description: StringRef? = null, default: List<String>? = null, required = false, presets: List<OptionPreset<List<String>>> = emptyList(), allowCustom = true): StringListOption` | Declares a list-of-text option. A preset is a whole list. |
 | `pathOption(key, title: StringRef, description: StringRef? = null, required = false): PathOption` | Declares a folder the user picks. It has no default. |
 | `settings(host: SettingsHost, vararg contributions: SettingsContribution)` | Adds these sections, and any [`stored`](reference_settings.md#section) settings, to the app's settings screen. `host` becomes a dependency. |
 | `settings(host: SettingsHost, sections: PatchRuntime.() -> List<SettingsContribution>)` | The same, with settings computed after `execute`, so they can depend on options. The block can also return [`stored`](reference_settings.md#section) settings. |
@@ -119,8 +119,14 @@ The base of every option type. `options[option]` reads its value.
 | `kind: OptionKind` | The value's type. |
 | `default: T?` | The value when the user sets none. |
 | `validValues: List<String>?` | The values a text option allows, or null for any. |
+| `presets: List<OptionPreset<T>>` | Values users pick by label, in the order they see them. |
+| `allowsCustom: Boolean` | Whether a value outside the presets is accepted. |
 
 The subclasses fix the value type: `StringOption` (`String`), `BoolOption` (`Boolean`), `IntOption` (`Long`), `FloatOption` (`Double`), `StringListOption` (`List<String>`), and `PathOption` (`OptionPath`). The `PatchBuilder` functions above create them.
+
+### `OptionPreset`
+
+`OptionPreset(label: StringRef, value: T)`: a value an option offers under `label`, a string from the module's string table.
 
 ### `StringOption`
 

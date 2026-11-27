@@ -152,7 +152,15 @@ export type PatchTranslation = {
   description?: string | null;
   options?: Array<OptionTranslation>;
 };
-export type OptionTranslation = { key: string; title?: string | null; description?: string | null };
+export type OptionTranslation = {
+  key: string;
+  title?: string | null;
+  description?: string | null;
+  /**
+   * The presets whose labels this locale translates, by value.
+   */
+  presets?: Array<OptionPreset>;
+};
 export type PatchText = {
   name: string;
   description: string;
@@ -161,7 +169,15 @@ export type PatchText = {
    */
   options: Array<OptionText>;
 };
-export type OptionText = { key: string; title: string; description: string };
+export type OptionText = {
+  key: string;
+  title: string;
+  description: string;
+  /**
+   * In the order of [`OptionDeclaration::presets`](crate::OptionDeclaration::presets).
+   */
+  presets: Array<OptionPreset>;
+};
 export type PatchRef = string;
 export type PatchPreset = 'recommended' | 'all' | 'none';
 export type Compatibility = { kind: 'universal' } | { kind: 'packages'; packages: Array<CompatiblePackage> };
@@ -191,7 +207,16 @@ export type OptionDeclaration = {
   default_value: OptionValue | null;
   valid_values: Array<string> | null;
   required: boolean;
+  /**
+   * Values users pick by label, in the order they see them.
+   */
+  presets?: Array<OptionPreset>;
+  /**
+   * Whether a value none of the [`Self::presets`] holds is accepted.
+   */
+  allows_custom?: boolean;
 };
+export type OptionPreset = { label: string; value: OptionValue };
 export type OptionType = 'string' | 'bool' | 'int' | 'float' | 'string_list' | 'path';
 export type OptionValue =
   | { type: 'string'; value: string }

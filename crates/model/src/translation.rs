@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Reseam contributors <https://reseam.app>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::PatchSpec;
+use crate::{OptionPreset, PatchSpec};
 use icu_locale::subtags::{Language, Region, Script, language};
 use icu_locale::{Locale, LocaleCanonicalizer, LocaleExpander};
 use serde::{Deserialize, Serialize};
@@ -36,6 +36,9 @@ pub struct OptionTranslation {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[boltffi::default(None)]
     pub description: Option<String>,
+    /// The presets whose labels this locale translates, by value.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub presets: Vec<OptionPreset>,
 }
 
 /// What users see of a patch, in the locale [`PatchSpec::text`] picked for each field.
@@ -56,6 +59,8 @@ pub struct OptionText {
     pub key: String,
     pub title: String,
     pub description: String,
+    /// In the order of [`OptionDeclaration::presets`](crate::OptionDeclaration::presets).
+    pub presets: Vec<OptionPreset>,
 }
 
 impl PatchSpec {
@@ -82,6 +87,18 @@ impl PatchSpec {
                     .find_map(|it| it.description.as_deref())
                     .unwrap_or(&declared.description)
                     .to_owned(),
+                presets: declared
+                    .presets
+                    .iter()
+                    .map(|preset| OptionPreset {
+                        label: translated()
+                            .flat_map(|it| &it.presets)
+                            .find(|it| it.value == preset.value)
+                            .map_or(&preset.label, |it| &it.label)
+                            .clone(),
+                        value: preset.value.clone(),
+                    })
+                    .collect(),
             }
         });
         PatchText {
@@ -197,6 +214,7 @@ mod tests {
         name: String,
         title: String,
         description: String,
+        preset: String,
     }
 
     #[test]
@@ -205,9 +223,15 @@ mod tests {
             serde_json::from_str(include_str!("../tests/data/patch_text.json")).unwrap();
         for case in cases {
             let text = spec.text(&case.locales);
+            let option = &text.options[0];
             assert_eq!(
-                (text.name, text.options[0].title.clone(), text.description),
-                (case.name, case.title, case.description),
+                (
+                    text.name.clone(),
+                    option.title.clone(),
+                    text.description.clone(),
+                    option.presets[0].label.clone(),
+                ),
+                (case.name, case.title, case.description, case.preset),
                 "{:?}",
                 case.locales
             );

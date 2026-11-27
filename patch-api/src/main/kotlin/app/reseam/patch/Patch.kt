@@ -8,95 +8,11 @@ import app.reseam.patch.settings.SettingsHost
 import app.reseam.patch.settings.SettingsSection
 import app.reseam.patch.settings.StringRef
 
-interface ReseamPatch {
-    /**
-     * Display name; need not be unique. Identity comes from the public declaration. Null means an
-     * internal dependency, never listed.
-     */
-    val name: StringRef?
-    val hidden: Boolean
-        get() = name == null
-
-    val description: StringRef?
-        get() = null
-
-    val dependencies: List<ReseamPatch>
-        get() = emptyList()
-
-    val compatibleWith: List<CompatiblePackage>
-        get() = emptyList()
-
-    /**
-     * A patch with no declared package works with every app, so it is off unless its author enables
-     * it by default.
-     */
-    val universal: Boolean
-        get() = compatibleWith.isEmpty()
-
-    val enabled: Boolean
-        get() = !hidden && !universal
-
-    val options: List<Option<*>>
-        get() = emptyList()
-
-    fun execute(ctx: PatchRuntime)
-
-    /**
-     * Runs once after execution succeeds, after dependent finalizers, including for leaf patches.
-     */
-    fun afterDependents(ctx: PatchRuntime) {}
-
-    /**
-     * Whether [afterDependents] does work. The engine calls it only when this is set, and reports
-     * the patch's result as soon as it executes when it is not.
-     */
-    val finalizes: Boolean
-        get() = true
-
-    /**
-     * Runs after the engine wrote the APK files and before it signs them, for patches that
-     * [rewritesOutput]. Patches that do run dependencies first.
-     */
-    fun afterWrite(ctx: OutputRuntime) {}
-
-    /**
-     * Whether [afterWrite] does work. A mount build leaves such a patch out, since the engine
-     * cannot tell what the replaced files hold.
-     */
-    val rewritesOutput: Boolean
-        get() = false
-}
-
-/**
- * A package the patch applies to. An APK matches when its version name is in [versions] or its
- * version code is in [versionCodes]; with both empty, every version matches.
- */
-data class CompatiblePackage
-@JvmOverloads
-constructor(
-    val name: String,
-    val versions: List<String> = emptyList(),
-    /** `android:versionCode` values. */
-    val versionCodes: List<Int> = emptyList(),
-)
-
 operator fun String.invoke(vararg versions: String) = CompatiblePackage(this, versions.toList())
 
 /** A version known by its name and code; an APK matches when either one does. */
 operator fun String.invoke(versionName: String, versionCode: Int) =
     CompatiblePackage(this, listOf(versionName), listOf(versionCode))
-
-/**
- * A patch in another bundle, for `dependsOn`. The Gradle plugin generates one per patch of every
- * bundle a module declares; it is never written by hand.
- */
-class ExternalPatch(val bundle: String, val id: String) : ReseamPatch {
-    override val name: StringRef? = null
-
-    override fun execute(ctx: PatchRuntime) = error("$this belongs to another bundle")
-
-    override fun toString() = "$bundle/$id"
-}
 
 /**
  * A patch users see as [name], a string of the module's `src/main/strings` that the bundle's
@@ -148,6 +64,10 @@ class PatchBuilder internal constructor(private val name: StringRef?) : PatchDec
         hidden = true
     }
 
+    /**
+     * Offers [presets], labelled values, beside free entry. Without [allowCustom] only the presets
+     * are accepted. [validValues] is the unlabelled form of that.
+     */
     fun stringOption(
         key: String,
         title: StringRef,
@@ -155,7 +75,31 @@ class PatchBuilder internal constructor(private val name: StringRef?) : PatchDec
         default: String? = null,
         validValues: List<String>? = null,
         required: Boolean = false,
-    ) = StringOption(key, title, description, required, default, validValues).also { options += it }
+        presets: List<OptionPreset<String>> = emptyList(),
+        allowCustom: Boolean = true,
+    ): StringOption {
+        require(validValues == null || presets.isEmpty()) {
+            "Option '$key' declares both validValues and presets; use presets with allowCustom = false"
+        }
+        val allowed = validValues ?: presets.takeUnless { allowCustom }?.map { it.value }
+        val checked = presets.checked(key, allowCustom)
+        return declare(
+            StringOption(key, title, description, required, default, allowed, checked, allowCustom)
+        )
+    }
+
+    @Deprecated(
+        "Bundles built against 1.0 call stringOption without presets",
+        level = DeprecationLevel.HIDDEN,
+    )
+    fun stringOption(
+        key: String,
+        title: StringRef,
+        description: StringRef? = null,
+        default: String? = null,
+        validValues: List<String>? = null,
+        required: Boolean = false,
+    ) = stringOption(key, title, description, default, validValues, required, emptyList(), true)
 
     fun boolOption(
         key: String,
@@ -163,7 +107,7 @@ class PatchBuilder internal constructor(private val name: StringRef?) : PatchDec
         description: StringRef? = null,
         default: Boolean? = null,
         required: Boolean = false,
-    ) = BoolOption(key, title, description, required, default).also { options += it }
+    ) = declare(BoolOption(key, title, description, required, default))
 
     fun intOption(
         key: String,
@@ -171,7 +115,32 @@ class PatchBuilder internal constructor(private val name: StringRef?) : PatchDec
         description: StringRef? = null,
         default: Long? = null,
         required: Boolean = false,
-    ) = IntOption(key, title, description, required, default).also { options += it }
+        presets: List<OptionPreset<Long>> = emptyList(),
+        allowCustom: Boolean = true,
+    ): IntOption =
+        declare(
+            IntOption(
+                key,
+                title,
+                description,
+                required,
+                default,
+                presets.checked(key, allowCustom),
+                allowCustom,
+            )
+        )
+
+    @Deprecated(
+        "Bundles built against 1.0 call intOption without presets",
+        level = DeprecationLevel.HIDDEN,
+    )
+    fun intOption(
+        key: String,
+        title: StringRef,
+        description: StringRef? = null,
+        default: Long? = null,
+        required: Boolean = false,
+    ) = intOption(key, title, description, default, required, emptyList(), true)
 
     fun floatOption(
         key: String,
@@ -179,7 +148,32 @@ class PatchBuilder internal constructor(private val name: StringRef?) : PatchDec
         description: StringRef? = null,
         default: Double? = null,
         required: Boolean = false,
-    ) = FloatOption(key, title, description, required, default).also { options += it }
+        presets: List<OptionPreset<Double>> = emptyList(),
+        allowCustom: Boolean = true,
+    ): FloatOption =
+        declare(
+            FloatOption(
+                key,
+                title,
+                description,
+                required,
+                default,
+                presets.checked(key, allowCustom),
+                allowCustom,
+            )
+        )
+
+    @Deprecated(
+        "Bundles built against 1.0 call floatOption without presets",
+        level = DeprecationLevel.HIDDEN,
+    )
+    fun floatOption(
+        key: String,
+        title: StringRef,
+        description: StringRef? = null,
+        default: Double? = null,
+        required: Boolean = false,
+    ) = floatOption(key, title, description, default, required, emptyList(), true)
 
     fun stringListOption(
         key: String,
@@ -187,14 +181,41 @@ class PatchBuilder internal constructor(private val name: StringRef?) : PatchDec
         description: StringRef? = null,
         default: List<String>? = null,
         required: Boolean = false,
-    ) = StringListOption(key, title, description, required, default).also { options += it }
+        presets: List<OptionPreset<List<String>>> = emptyList(),
+        allowCustom: Boolean = true,
+    ): StringListOption =
+        declare(
+            StringListOption(
+                key,
+                title,
+                description,
+                required,
+                default,
+                presets.checked(key, allowCustom),
+                allowCustom,
+            )
+        )
+
+    @Deprecated(
+        "Bundles built against 1.0 call stringListOption without presets",
+        level = DeprecationLevel.HIDDEN,
+    )
+    fun stringListOption(
+        key: String,
+        title: StringRef,
+        description: StringRef? = null,
+        default: List<String>? = null,
+        required: Boolean = false,
+    ) = stringListOption(key, title, description, default, required, emptyList(), true)
 
     fun pathOption(
         key: String,
         title: StringRef,
         description: StringRef? = null,
         required: Boolean = false,
-    ) = PathOption(key, title, description, required).also { options += it }
+    ) = declare(PathOption(key, title, description, required))
+
+    private fun <O : Option<*>> declare(option: O): O = option.also { options += it }
 
     /** Registers settings with `host`, which becomes a dependency. */
     fun settings(host: SettingsHost, vararg contributions: SettingsContribution) {
@@ -233,39 +254,18 @@ class PatchBuilder internal constructor(private val name: StringRef?) : PatchDec
         afterWriteBlock = block
     }
 
-    internal fun build(): ReseamPatch {
-        val builder = this
-        val contributions = settings.toList()
-        val execute = executeBlock
-        val finalize = afterDependentsBlock
-        val rewrite = afterWriteBlock
-        return object : ReseamPatch {
-            override val name = builder.name
-            override val hidden = builder.hidden
-            override val description = builder.description
-            override val dependencies = builder.dependencies.toList()
-            override val compatibleWith = builder.compatibility.toList()
-            override val enabled = !builder.hidden && (builder.enabledByDefault ?: !universal)
-            override val options = builder.options.toList()
-            override val finalizes = finalize != null
-            override val rewritesOutput = rewrite != null
-
-            override fun execute(ctx: PatchRuntime) {
-                execute?.invoke(ctx)
-                for ((host, blocks) in contributions.groupBy({ it.first }, { it.second })) {
-                    host.register(this, blocks.flatMap { it(ctx) })
-                }
-            }
-
-            override fun afterDependents(ctx: PatchRuntime) {
-                finalize?.invoke(ctx)
-            }
-
-            override fun afterWrite(ctx: OutputRuntime) {
-                rewrite?.invoke(ctx)
-            }
-
-            override fun toString() = name?.toString() ?: "internal patch"
-        }
-    }
+    internal fun build(): ReseamPatch =
+        BuiltPatch(
+            name,
+            hidden,
+            description,
+            dependencies.toList(),
+            compatibility.toList(),
+            enabledByDefault,
+            options.toList(),
+            settings.toList(),
+            executeBlock,
+            afterDependentsBlock,
+            afterWriteBlock,
+        )
 }

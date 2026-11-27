@@ -100,6 +100,8 @@ fn a_plan_reports_what_a_run_would_reject_per_patch() {
         default_value: None,
         valid_values: None,
         required: true,
+        presets: Vec::new(),
+        allows_custom: true,
     }];
     let mut rewrites = spec("rewrites", Some(&[]));
     rewrites.rewrites_output = true;

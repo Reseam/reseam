@@ -18,7 +18,16 @@
         "option_type": "string",
         "default_value": null,
         "valid_values": null,
-        "required": false
+        "required": false,
+        "presets": [
+          {
+            "label": "Short",
+            "value": {
+              "type": "string",
+              "value": "short"
+            }
+          }
+        ]
       }
     ],
     "rewrites_output": false,
@@ -29,7 +38,16 @@
         "options": [
           {
             "key": "label",
-            "title": "Rótulo"
+            "title": "Rótulo",
+            "presets": [
+              {
+                "label": "Curto",
+                "value": {
+                  "type": "string",
+                  "value": "short"
+                }
+              }
+            ]
           }
         ]
       },
@@ -46,7 +64,16 @@
         "options": [
           {
             "key": "label",
-            "title": "Beschriftung"
+            "title": "Beschriftung",
+            "presets": [
+              {
+                "label": "Kurz",
+                "value": {
+                  "type": "string",
+                  "value": "short"
+                }
+              }
+            ]
           }
         ]
       },
@@ -83,7 +110,8 @@
       "locales": [],
       "name": "Hide ads",
       "title": "Label",
-      "description": "Removes ads."
+      "description": "Removes ads.",
+      "preset": "Short"
     },
     {
       "locales": [
@@ -91,7 +119,8 @@
       ],
       "name": "Esconder anúncios",
       "title": "Rótulo",
-      "description": "Removes ads."
+      "description": "Removes ads.",
+      "preset": "Curto"
     },
     {
       "locales": [
@@ -99,7 +128,8 @@
       ],
       "name": "Ocultar anúncios",
       "title": "Rótulo",
-      "description": "Removes ads."
+      "description": "Removes ads.",
+      "preset": "Curto"
     },
     {
       "locales": [
@@ -107,7 +137,8 @@
       ],
       "name": "Sakrij reklame",
       "title": "Label",
-      "description": "Removes ads."
+      "description": "Removes ads.",
+      "preset": "Short"
     },
     {
       "locales": [
@@ -116,7 +147,8 @@
       ],
       "name": "Ocultar anúncios",
       "title": "Beschriftung",
-      "description": "Removes ads."
+      "description": "Removes ads.",
+      "preset": "Kurz"
     },
     {
       "locales": [
@@ -124,7 +156,8 @@
       ],
       "name": "Hide ads",
       "title": "Label",
-      "description": "Removes ads."
+      "description": "Removes ads.",
+      "preset": "Short"
     },
     {
       "locales": [
@@ -132,7 +165,8 @@
       ],
       "name": "Сакриј рекламе",
       "title": "Ознака",
-      "description": "Removes ads."
+      "description": "Removes ads.",
+      "preset": "Short"
     },
     {
       "locales": [
@@ -140,7 +174,8 @@
       ],
       "name": "隱藏廣告",
       "title": "Label",
-      "description": "Removes ads."
+      "description": "Removes ads.",
+      "preset": "Short"
     },
     {
       "locales": [
@@ -148,7 +183,8 @@
       ],
       "name": "隐藏广告",
       "title": "Label",
-      "description": "Removes ads."
+      "description": "Removes ads.",
+      "preset": "Short"
     },
     {
       "locales": [
@@ -156,7 +192,8 @@
       ],
       "name": "隱藏廣告",
       "title": "Label",
-      "description": "Removes ads."
+      "description": "Removes ads.",
+      "preset": "Short"
     },
     {
       "locales": [
@@ -164,7 +201,8 @@
       ],
       "name": "Sembunyikan iklan",
       "title": "Label",
-      "description": "Removes ads."
+      "description": "Removes ads.",
+      "preset": "Short"
     },
     {
       "locales": [
@@ -173,7 +211,8 @@
       ],
       "name": "Hide ads",
       "title": "Label",
-      "description": "Removes ads."
+      "description": "Removes ads.",
+      "preset": "Short"
     },
     {
       "locales": [
@@ -182,7 +221,8 @@
       ],
       "name": "Hide ads",
       "title": "Label",
-      "description": "Removes adverts."
+      "description": "Removes adverts.",
+      "preset": "Short"
     },
     {
       "locales": [
@@ -191,7 +231,8 @@
       ],
       "name": "Hide ads",
       "title": "Beschriftung",
-      "description": "Removes ads."
+      "description": "Removes ads.",
+      "preset": "Kurz"
     }
   ]
 }

@@ -32,6 +32,33 @@ pub struct OptionDeclaration {
     pub default_value: Option<OptionValue>,
     pub valid_values: Option<Vec<String>>,
     pub required: bool,
+    /// Values users pick by label, in the order they see them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub presets: Vec<OptionPreset>,
+    /// Whether a value none of the [`Self::presets`] holds is accepted.
+    #[serde(default = "accepts_custom", skip_serializing_if = "is_true")]
+    #[boltffi::default(true)]
+    pub allows_custom: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[boltffi::data]
+pub struct OptionPreset {
+    pub label: String,
+    pub value: OptionValue,
+}
+
+fn accepts_custom() -> bool {
+    true
+}
+
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde passes the field by reference"
+)]
+fn is_true(value: &bool) -> bool {
+    *value
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

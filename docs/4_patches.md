@@ -148,18 +148,43 @@ val cloneApp = patch(ExamplePatchStrings.cloneApp) {
 
 | Declaration | Value in Kotlin | Notes |
 |---|---|---|
-| `stringOption` | `String` | `validValues` limits it to a list. |
+| `stringOption` | `String` | Takes `presets`. |
 | `boolOption` | `Boolean` | |
-| `intOption` | `Long` | |
-| `floatOption` | `Double` | |
-| `stringListOption` | `List<String>` | |
+| `intOption` | `Long` | Takes `presets`. |
+| `floatOption` | `Double` | Takes `presets`. |
+| `stringListOption` | `List<String>` | Takes `presets`. |
 | `pathOption` | `OptionPath` | A folder the user picks. `listContents()` and `readFile(path)` read it. |
 
 Each takes a `key` and a `title`, and optionally a `description`, a `default` (except paths), and `required`. The title and description are strings from the module's string table, like the patch name. The key is how users set the option, for example `--option "Clone app.packageName=com.example.clone"` on the CLI.
 
 `options[x]` returns the value, with the default filled in. It fails when the option is optional, has no default, and the user set nothing. Read such an option with `options.getOrNull(x)`, which returns null instead.
 
-The engine checks every value before any patch runs: its type, that a text value is one of `validValues`, and that a path exists. Your patch only ever sees valid values.
+### Presets
+
+Presets are values users pick by name instead of typing them. Give each one a label from the module's string table and a value of the option's type:
+
+```kotlin
+val appIcon =
+    stringOption(
+        "appIcon",
+        title = ExamplePatchStrings.appIcon,
+        default = "original",
+        presets = listOf(
+            OptionPreset(ExamplePatchStrings.iconOriginal, "original"),
+            OptionPreset(ExamplePatchStrings.iconDark, "dark"),
+        ),
+    )
+```
+
+Users can still enter another value. With `allowCustom = false` the presets are the only values accepted.
+
+Things to know:
+
+- Labels are translated like option titles.
+- `boolOption` and `pathOption` take no presets.
+- `validValues` on `stringOption` is the older form of `allowCustom = false`, without labels. A string option takes one or the other.
+
+The engine checks every value before any patch runs: its type, that it is one of the presets when the option allows no other value, and that a path exists. Your patch only ever sees valid values.
 
 ## When each block runs
 

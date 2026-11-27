@@ -62,6 +62,7 @@ impl fmt::Display for OptionValue {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::OptionPreset;
 
     fn declaration(option_type: OptionType, choices: Option<&[&str]>) -> OptionDeclaration {
         OptionDeclaration {
@@ -72,6 +73,8 @@ mod tests {
             default_value: None,
             valid_values: choices.map(|values| values.iter().map(|&v| v.to_owned()).collect()),
             required: false,
+            presets: Vec::new(),
+            allows_custom: true,
         }
     }
 
@@ -143,6 +146,25 @@ mod tests {
                 assert_eq!(declaration.parse(&value.to_string()), Ok(value));
             }
         }
+    }
+
+    #[test]
+    fn presets_restrict_values_only_without_custom_ones() {
+        let mut option = declaration(OptionType::Int, None);
+        option.presets = vec![OptionPreset {
+            label: "Small".to_owned(),
+            value: OptionValue::Int(8),
+        }];
+        assert_eq!(option.parse("12"), Ok(OptionValue::Int(12)));
+        option.allows_custom = false;
+        assert_eq!(option.parse("8"), Ok(OptionValue::Int(8)));
+        assert_eq!(
+            option.parse("12"),
+            Err(OptionProblem::NotAllowed {
+                value: "12".to_owned(),
+                allowed: vec!["8".to_owned()],
+            })
+        );
     }
 
     #[test]

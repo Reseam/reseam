@@ -6,17 +6,21 @@
 use jni::objects::{JObject, JValueOwned};
 use jni::{Env, jni_sig, jni_str};
 
-use super::jni_values::{boolean, list_strings, object, optional_strings, string, string_of};
+use super::jni_values::{
+    boolean, list_strings, map_list, object, optional_strings, string, string_of,
+};
 use super::jvm::jvm_err;
 use super::patch_text::{StringTables, Text};
 use crate::error::Result;
-use crate::options::{OptionDeclaration, OptionType, OptionValue};
+use crate::options::{OptionDeclaration, OptionPreset, OptionType, OptionValue};
 
 /// An option and the text of its title and description.
 pub(in crate::bridge) struct ReadOption {
     pub(in crate::bridge) declaration: OptionDeclaration,
     pub(in crate::bridge) title: Text,
     pub(in crate::bridge) description: Option<Text>,
+    /// In the order of the declaration's presets.
+    pub(in crate::bridge) preset_labels: Vec<Text>,
 }
 
 pub(in crate::bridge) fn read_option(
@@ -42,26 +46,16 @@ pub(in crate::bridge) fn read_option(
     let default_value = if default.is_null() {
         None
     } else {
-        Some(match option_type {
-            OptionType::String => OptionValue::Text(string_of(env, default)?),
-            OptionType::Path => OptionValue::Path(string_of(env, default)?),
-            OptionType::Bool => OptionValue::Bool(
-                env.call_method(&default, jni_str!("booleanValue"), jni_sig!("()Z"), &[])
-                    .and_then(JValueOwned::z)?,
-            ),
-            OptionType::Int => OptionValue::Int(
-                env.call_method(&default, jni_str!("longValue"), jni_sig!("()J"), &[])
-                    .and_then(JValueOwned::j)?,
-            ),
-            OptionType::Float => OptionValue::Float(
-                env.call_method(&default, jni_str!("doubleValue"), jni_sig!("()D"), &[])
-                    .and_then(JValueOwned::d)?,
-            ),
-            OptionType::StringList => {
-                OptionValue::TextList(list_strings(env, &default, "default")?)
-            }
-        })
+        Some(value_of(env, default, option_type)?)
     };
+    let preset_list = object(env, option, "getPresets", "()Ljava/util/List;")?;
+    let presets = map_list(env, &preset_list, "getPresets", |env, preset| {
+        let label = tables
+            .optional(env, preset, "getLabel")?
+            .ok_or_else(|| jvm_err("OptionPreset.getLabel() returned null"))?;
+        let value = object(env, preset, "getValue", "()Ljava/lang/Object;")?;
+        Ok((label, value_of(env, value, option_type)?))
+    })?;
     let declaration = OptionDeclaration {
         key: string(env, option, "getKey")?,
         title: title.source.clone(),
@@ -73,10 +67,39 @@ pub(in crate::bridge) fn read_option(
         default_value,
         valid_values: optional_strings(env, option, "getValidValues")?,
         required: boolean(env, option, "getRequired")?,
+        presets: presets
+            .iter()
+            .map(|(label, value)| OptionPreset {
+                label: label.source.clone(),
+                value: value.clone(),
+            })
+            .collect(),
+        allows_custom: boolean(env, option, "getAllowsCustom")?,
     };
     Ok(ReadOption {
         declaration,
         title,
         description,
+        preset_labels: presets.into_iter().map(|(label, _)| label).collect(),
+    })
+}
+
+fn value_of(env: &mut Env<'_>, value: JObject<'_>, option_type: OptionType) -> Result<OptionValue> {
+    Ok(match option_type {
+        OptionType::String => OptionValue::Text(string_of(env, value)?),
+        OptionType::Path => OptionValue::Path(string_of(env, value)?),
+        OptionType::Bool => OptionValue::Bool(
+            env.call_method(&value, jni_str!("booleanValue"), jni_sig!("()Z"), &[])
+                .and_then(JValueOwned::z)?,
+        ),
+        OptionType::Int => OptionValue::Int(
+            env.call_method(&value, jni_str!("longValue"), jni_sig!("()J"), &[])
+                .and_then(JValueOwned::j)?,
+        ),
+        OptionType::Float => OptionValue::Float(
+            env.call_method(&value, jni_str!("doubleValue"), jni_sig!("()D"), &[])
+                .and_then(JValueOwned::d)?,
+        ),
+        OptionType::StringList => OptionValue::TextList(list_strings(env, &value, "value")?),
     })
 }

@@ -37,10 +37,20 @@ sealed class Option<T : Any>(
     val default: T?,
     val validValues: List<String>?,
 ) {
+    /** Values users pick by label. Without [allowsCustom], the only ones accepted. */
+    open val presets: List<OptionPreset<T>>
+        get() = emptyList()
+
+    open val allowsCustom: Boolean
+        get() = true
+
     internal abstract fun read(): T?
 
     override fun toString() = key
 }
+
+/** A value an option offers under [label], which users pick it by. */
+class OptionPreset<T : Any>(val label: StringRef, val value: T)
 
 class StringOption
 internal constructor(
@@ -50,7 +60,18 @@ internal constructor(
     required: Boolean,
     default: String?,
     validValues: List<String>?,
-) : Option<String>(key, title, description, required, OptionKind.STRING, default, validValues) {
+    override val presets: List<OptionPreset<String>>,
+    override val allowsCustom: Boolean,
+) :
+    Option<String>(
+        key,
+        title,
+        description,
+        required,
+        OptionKind.STRING,
+        default,
+        validValues,
+    ) {
     override fun read() = optionGetString(key)
 }
 
@@ -72,7 +93,18 @@ internal constructor(
     description: StringRef?,
     required: Boolean,
     default: Long?,
-) : Option<Long>(key, title, description, required, OptionKind.INT, default, null) {
+    override val presets: List<OptionPreset<Long>>,
+    override val allowsCustom: Boolean,
+) :
+    Option<Long>(
+        key,
+        title,
+        description,
+        required,
+        OptionKind.INT,
+        default,
+        null,
+    ) {
     override fun read() = optionGetInt(key)
 }
 
@@ -83,7 +115,18 @@ internal constructor(
     description: StringRef?,
     required: Boolean,
     default: Double?,
-) : Option<Double>(key, title, description, required, OptionKind.FLOAT, default, null) {
+    override val presets: List<OptionPreset<Double>>,
+    override val allowsCustom: Boolean,
+) :
+    Option<Double>(
+        key,
+        title,
+        description,
+        required,
+        OptionKind.FLOAT,
+        default,
+        null,
+    ) {
     override fun read() = optionGetFloat(key)
 }
 
@@ -94,7 +137,18 @@ internal constructor(
     description: StringRef?,
     required: Boolean,
     default: List<String>?,
-) : Option<List<String>>(key, title, description, required, OptionKind.STRING_LIST, default, null) {
+    override val presets: List<OptionPreset<List<String>>>,
+    override val allowsCustom: Boolean,
+) :
+    Option<List<String>>(
+        key,
+        title,
+        description,
+        required,
+        OptionKind.STRING_LIST,
+        default,
+        null,
+    ) {
     override fun read() = optionGetStringList(key)
 }
 
@@ -125,4 +179,10 @@ class RuntimeOptions internal constructor() {
             )
 
     fun <T : Any> getOrNull(option: Option<T>): T? = option.read()
+}
+
+internal fun <T : Any> List<OptionPreset<T>>.checked(key: String, allowCustom: Boolean) = also {
+    require(allowCustom || isNotEmpty()) {
+        "Option '$key' allows no custom value, so it needs presets"
+    }
 }
