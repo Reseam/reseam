@@ -4,7 +4,9 @@
 package app.reseam.patch
 
 import app.reseam.patch.dex.Method
+import app.reseam.patch.dex.RegisterWriters
 import app.reseam.patch.dex.descriptor
+import app.reseam.patch.dex.writers
 import app.reseam.patch.points.PointMatchSpec
 import app.reseam.patch.points.findSequence
 import app.reseam.patch.run.InstructionAnchor
@@ -145,7 +147,14 @@ internal constructor(
         ResolvedPoint(method, runtime.edits.anchor(method, index, label), captures)
 }
 
-class Capture internal constructor(val name: String, val type: String, register: Int) {
+class Capture
+internal constructor(
+    val name: String,
+    val type: String,
+    register: Int,
+    /** The point a [PointTarget] took the value at, so a later point can check it still holds. */
+    internal val origin: CaptureOrigin? = null,
+) {
     /** Growing a method's frame renumbers its registers, so a capture follows its own. */
     var register: Int = register
         private set
@@ -153,4 +162,35 @@ class Capture internal constructor(val name: String, val type: String, register:
     internal fun relocate(base: Int, additional: Int) {
         if (register >= base) register += additional
     }
+
+    /**
+     * Fails unless the register still holds the captured value at instruction [at], where code
+     * reading the capture runs: the method may have reused it after the capture's point. Control
+     * flow the analysis cannot follow passes unchecked.
+     */
+    internal fun requireHeldAt(method: Method, at: Int, label: String) {
+        val origin = origin ?: return
+        if (at >= method.instructionCount) return
+        val captured = origin.writers(method, register) ?: return
+        val reaching = method.writers(at, register) ?: return
+        require(
+            reaching.indices.toSet() == captured.indices.toSet() &&
+                reaching.fromEntry == captured.fromEntry
+        ) {
+            "$label: capture '$name' in v$register is overwritten between " +
+                "${method.descriptor}[${origin.anchor.instruction}] and [$at]; " +
+                "pass the value through reserveLocal instead"
+        }
+    }
+}
+
+/**
+ * Where a capture took its value: the anchor of its point, and whether the instruction there writes
+ * the register, as a result does, or only reads it, as a store, an argument or a branch does.
+ */
+internal class CaptureOrigin(val anchor: InstructionAnchor, private val written: Boolean) {
+    /** The writes of [register] the captured value comes from. */
+    fun writers(method: Method, register: Int): RegisterWriters? =
+        if (written) RegisterWriters(listOf(anchor.instruction), fromEntry = false)
+        else method.writers(anchor.head, register)
 }

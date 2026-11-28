@@ -255,6 +255,22 @@ fn a_writer_is_the_one_instruction_that_defined_an_argument() {
 }
 
 #[test]
+fn a_capture_read_at_a_later_point_must_still_hold_its_value() {
+    const OWNER: &str = "Lcom/example/WriterHost;";
+
+    let (_apk_dir, mut apk) = open_dex_apk(&[dex!("register_writers")]);
+    apply_fixture(&mut apk, "held-captures", "heldCaptures");
+
+    // The other branch of merged writes the captured register too, so reading it there fails.
+    let report = entry(&mut apk, 0, "assets/held-captures.txt").unwrap();
+    assert_eq!(String::from_utf8(report).unwrap(), "true");
+    assert_eq!(
+        hook_calls(&patched_code(&apk, OWNER, "single"), &[6]),
+        (vec![vec![4], vec![4]], None)
+    );
+}
+
+#[test]
 fn point_queries_and_redirects_share_tracked_control_flow() {
     use reseam_dex::Instruction::*;
     const OWNER: &str = "Lcom/example/PointQueryHost;";

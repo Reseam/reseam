@@ -159,6 +159,25 @@ val capturedArguments =
         check(outOfRange.isFailure)
     }
 
+val heldCaptures =
+    fixturePatch(TestStrings.heldCaptures, TestStrings.heldCapturesDescription) {
+        fun capturedFour(method: String) =
+            writerHost
+                .method(method)
+                .point { literal(4) }
+                .captureAs("four", Type.Int)
+                .next { invokeStatic { name("take") } }
+        capturedFour("single").before {
+            callStatic("com.example.Observer", "take", "(I)V", capture("four"))
+        }
+        val replaced = runCatching {
+            capturedFour("merged").before {
+                callStatic("com.example.Observer", "take", "(I)V", capture("four"))
+            }
+        }
+        files.write("assets/held-captures.txt", replaced.isFailure.toString().encodeToByteArray())
+    }
+
 val registerWriters =
     fixturePatch(TestStrings.registerWriters, TestStrings.registerWritersDescription) {
         val single = takeCall("single").writer(0)

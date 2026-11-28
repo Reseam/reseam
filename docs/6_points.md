@@ -91,7 +91,7 @@ integrityCheck.point { string("device_verified") }
 
 - `captureAs("name")` saves the value the instruction writes.
 - `captureArgumentAs("name", n)` saves argument `n` of a call. For an instance call, argument 0 is the object the method is called on.
-- `capture("name")` reads a saved value in a code block at the same point or a later one.
+- `capture("name")` reads a saved value in a code block at the same point or a later one. A later point reads the register the value was in, so when the method can overwrite that register on the way, the patch fails. Pass such a value through a [reserved local](7_changing_code.md#passing-a-value-between-blocks) instead.
 
 ## Every match
 

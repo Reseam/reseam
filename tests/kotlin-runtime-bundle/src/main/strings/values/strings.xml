@@ -86,6 +86,8 @@
     <string name="reserved_locals_description">A reserved register carries a value between blocks, past one that needs two temporaries at once</string>
     <string name="captured_arguments">captured-arguments</string>
     <string name="captured_arguments_description">captureArgumentAs picks the register an invoke passes: the receiver first, a wide argument once</string>
+    <string name="held_captures">held-captures</string>
+    <string name="held_captures_description">a capture read at a later point must still hold its value there; a register another path writes fails the patch</string>
     <string name="register_writers">register-writers</string>
     <string name="register_writers_description">writer(argument) walks back through register moves to the one instruction that wrote an invoke\'s argument, or says why there is none</string>
     <string name="replace_falls_through">replace-falls-through</string>
